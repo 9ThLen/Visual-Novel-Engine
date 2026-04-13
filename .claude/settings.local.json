@@ -3,7 +3,13 @@
     "allow": [
       "Bash(pnpm check:*)",
       "Bash(npx tsc:*)",
-      "Bash(pnpm run:*)"
+      "Bash(pnpm run:*)",
+      "Bash(python -m uv sync)",
+      "Bash(ls -la app.config.*)",
+      "Bash(npx expo:*)",
+      "Bash(npx expo-doctor:*)",
+      "Bash(pnpm install:*)",
+      "Bash(eas build:*)"
     ]
   }
 }
