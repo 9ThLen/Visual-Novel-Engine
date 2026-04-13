@@ -10,6 +10,23 @@ import { Platform } from 'react-native';
 // Sound cache
 const soundCache: Record<string, Audio.Sound> = {};
 
+// Sound file mappings - will be loaded dynamically
+const SOUND_FILES: Record<string, any> = {};
+
+// Try to load sound files, but don't fail if they're missing
+try {
+  SOUND_FILES.click = require('@/assets/sounds/button-press.ogg');
+} catch {}
+try {
+  SOUND_FILES.success = require('@/assets/sounds/success_action.wav');
+} catch {}
+try {
+  SOUND_FILES.error = require('@/assets/sounds/error.wav');
+} catch {}
+try {
+  SOUND_FILES.whoosh = require('@/assets/sounds/button-press.ogg'); // Using button-press as fallback
+} catch {}
+
 /**
  * Play haptic feedback
  */
@@ -34,8 +51,7 @@ export async function playHaptic(
         break;
     }
   } catch (error) {
-    // Haptics not supported on device
-    console.warn('Haptics not supported:', error);
+    // Haptics not supported on device - silent fail
   }
 }
 
@@ -47,24 +63,30 @@ export async function playSound(
   volume: number = 0.3
 ) {
   try {
-    // Check if sound is already loaded
-    if (soundCache[soundName]) {
-      await soundCache[soundName].replayAsync();
+    // Check if sound file exists
+    const soundFile = SOUND_FILES[soundName];
+    if (!soundFile) {
+      // Sound file not available - silent fail (graceful degradation)
       return;
     }
 
-    // Load sound (in production, use actual sound files)
-    // For now, we'll just use a placeholder
+    // Check if sound is already loaded
+    if (soundCache[soundName]) {
+      await soundCache[soundName].setPositionAsync(0);
+      await soundCache[soundName].setVolumeAsync(volume);
+      await soundCache[soundName].playAsync();
+      return;
+    }
+
+    // Load and play sound
     const { sound } = await Audio.Sound.createAsync(
-      // Placeholder - replace with actual sound files
-      { uri: `asset:/sounds/${soundName}.mp3` },
+      soundFile,
       { volume, shouldPlay: true }
     );
 
     soundCache[soundName] = sound;
   } catch (error) {
-    // Sound not available or failed to load
-    console.warn('Sound playback failed:', error);
+    // Sound playback failed - silent fail (graceful degradation)
   }
 }
 
@@ -74,7 +96,7 @@ export async function playSound(
 export async function buttonFeedback() {
   await Promise.all([
     playHaptic('light'),
-    // playSound('click', 0.2), // Uncomment when sound files are available
+    playSound('click', 0.2),
   ]);
 }
 
@@ -84,7 +106,7 @@ export async function buttonFeedback() {
 export async function successFeedback() {
   await Promise.all([
     playHaptic('medium'),
-    // playSound('success', 0.3),
+    playSound('success', 0.3),
   ]);
 }
 
@@ -94,7 +116,17 @@ export async function successFeedback() {
 export async function errorFeedback() {
   await Promise.all([
     playHaptic('heavy'),
-    // playSound('error', 0.3),
+    playSound('error', 0.3),
+  ]);
+}
+
+/**
+ * Feedback for transitions
+ */
+export async function transitionFeedback() {
+  await Promise.all([
+    playHaptic('light'),
+    playSound('whoosh', 0.25),
   ]);
 }
 
@@ -103,6 +135,9 @@ export async function errorFeedback() {
  */
 export async function cleanupSounds() {
   for (const sound of Object.values(soundCache)) {
-    await sound.unloadAsync();
+    try {
+      await sound.unloadAsync();
+    } catch {}
   }
+  Object.keys(soundCache).forEach(key => delete soundCache[key]);
 }

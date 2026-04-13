@@ -5,7 +5,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
 import { NodeCanvas, SceneEditorPanel } from '@/components/node-editor';
 import { useStory } from '@/lib/story-context';
@@ -14,7 +14,6 @@ import type { Story, StoryScene, Choice } from '@/lib/types';
 import * as storyContextEnhanced from '@/lib/story-context-enhanced';
 
 export default function NodeEditorScreen() {
-  const router = useRouter();
   const colors = useColors();
   const { storyId } = useLocalSearchParams();
   const { stories, loadStories } = useStory();
@@ -46,7 +45,7 @@ export default function NodeEditorScreen() {
         await storyContextEnhanced.addChoice(story.id, sourceId, newChoice);
         await loadStories();
         Alert.alert('Success', 'Connection created');
-      } catch (error) {
+      } catch {
         Alert.alert('Error', 'Failed to create connection');
       }
     },

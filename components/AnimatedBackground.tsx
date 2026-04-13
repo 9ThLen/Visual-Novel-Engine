@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { View, Image, StyleSheet, Animated } from 'react-native';
+import { Image, StyleSheet, Animated } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import type { AnimatedBackground } from '@/lib/splash-types';
 
@@ -23,7 +23,7 @@ export function AnimatedBackgroundComponent({ background }: Props) {
       duration: 500,
       useNativeDriver: true,
     }).start();
-  }, [background.uri]);
+  }, [background.uri, background.opacity, opacityAnim]);
 
   if (background.type === 'static') {
     return (

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -48,9 +48,7 @@ export default function SceneEditorScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('edit');
   const [libraryTarget, setLibraryTarget] = useState<'bg' | 'voice' | 'music' | null>(null);
 
-  useEffect(() => { loadSceneData(); }, [storyId, sceneId, stories]);
-
-  const loadSceneData = () => {
+  const loadSceneData = useCallback(() => {
     if (!storyId || typeof storyId !== 'string') return;
     const foundStory = stories.find((s) => s.id === storyId);
     if (!foundStory) return;
@@ -69,7 +67,9 @@ export default function SceneEditorScreen() {
       setSplashConfig(foundScene.splashScreen);
       setInteractiveObjects(foundScene.interactiveObjects || []);
     }
-  };
+  }, [storyId, sceneId, stories]);
+
+  useEffect(() => { loadSceneData(); }, [loadSceneData]);
 
   // ── File pickers ──────────────────────────────────────────────────────────
 

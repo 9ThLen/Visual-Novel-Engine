@@ -175,7 +175,7 @@ export function SceneEditorPanel({
             Dialogue Text
           </Text>
           <Text style={[styles.sectionHint, { color: colors.muted }]}>
-            Use "Name: text" format for speaker names
+            Use &quot;Name: text&quot; format for speaker names
           </Text>
           <TextInput
             style={[

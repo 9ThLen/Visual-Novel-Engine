@@ -1,12 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
-  ScrollView,
-  Pressable,
   FlatList,
   Image,
-  Dimensions,
+  Pressable,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
@@ -23,11 +21,7 @@ export default function HomeScreen() {
   const { stories, loadStories, addStory } = useStory();
   const [isInitialized, setIsInitialized] = useState(false);
 
-  useEffect(() => {
-    initializeApp();
-  }, []);
-
-  const initializeApp = async () => {
+  const initializeApp = useCallback(async () => {
     try {
       // Read directly from AsyncStorage before loading into React state,
       // because `stories` from context is stale (still empty) at this point.
@@ -47,7 +41,11 @@ export default function HomeScreen() {
       console.error('Failed to initialize app:', error);
       setIsInitialized(true);
     }
-  };
+  }, [loadStories, addStory]);
+
+  useEffect(() => {
+    initializeApp();
+  }, [initializeApp]);
 
   const handlePlayStory = (story: Story) => {
     router.push({

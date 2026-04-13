@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
-  Pressable,
   FlatList,
   Alert,
   TextInput,
@@ -64,9 +62,8 @@ export default function EditorScreen() {
         pathname: '../scene-editor',
         params: { storyId: newStory.id, sceneId: 'scene_1' },
       });
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to create story');
-      console.error(error);
     }
   };
 
@@ -94,7 +91,7 @@ export default function EditorScreen() {
           try {
             await deleteStory(storyId);
             Alert.alert('Success', 'Story deleted');
-          } catch (error) {
+          } catch {
             Alert.alert('Error', 'Failed to delete story');
           }
         },

@@ -12,7 +12,6 @@ import {
   StyleSheet,
   Dimensions,
   PanResponder,
-  Animated,
 } from 'react-native';
 import Svg, { Path, Defs, Marker, G, Line } from 'react-native-svg';
 import { useColors } from '@/hooks/use-colors';
@@ -344,7 +343,7 @@ export function NodeCanvas({
       {selection.isConnecting && (
         <View style={[styles.statusBar, { backgroundColor: colors.warning }]}>
           <Text style={styles.statusText}>
-            🔗 Connecting from "{selection.connectionSource}" - tap target scene or drag to cancel
+            🔗 Connecting from &quot;{selection.connectionSource}&quot; - tap target scene or drag to cancel
           </Text>
         </View>
       )}

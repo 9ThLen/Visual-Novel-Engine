@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
@@ -22,23 +22,7 @@ export default function ReaderScreen() {
   const [currentScene, setCurrentScene] = useState<StoryScene | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    initializeReader();
-    return () => { audioManager.stopAll(true); };
-  }, [storyId]);
-
-  // Play BGM when scene changes
-  useEffect(() => {
-    if (!currentScene) return;
-    if (currentScene.musicUri) {
-      audioManager.crossFade('bgm', currentScene.musicUri, settings.bgmVolume);
-    }
-    if (currentScene.voiceAudioUri) {
-      audioManager.play('voice', currentScene.voiceAudioUri, { volume: settings.voiceVolume });
-    }
-  }, [currentScene?.id]);
-
-  const initializeReader = async () => {
+  const initializeReader = useCallback(async () => {
     try {
       let selectedStory: Story | null = null;
       if (storyId && typeof storyId === 'string') {
@@ -63,9 +47,25 @@ export default function ReaderScreen() {
       console.error('Failed to initialize reader:', error);
       setIsLoading(false);
     }
-  };
+  }, [storyId, stories, setCurrentStory, updatePlaybackState]);
 
-  const navigateToScene = (sceneId: string, choicesMade?: Array<{ sceneId: string; choiceId: string }>) => {
+  useEffect(() => {
+    initializeReader();
+    return () => { audioManager.stopAll(true); };
+  }, [initializeReader]);
+
+  // Play BGM when scene changes
+  useEffect(() => {
+    if (!currentScene) return;
+    if (currentScene.musicUri) {
+      audioManager.crossFade('bgm', currentScene.musicUri, settings.bgmVolume);
+    }
+    if (currentScene.voiceAudioUri) {
+      audioManager.play('voice', currentScene.voiceAudioUri, { volume: settings.voiceVolume });
+    }
+  }, [currentScene, settings.bgmVolume, settings.voiceVolume]);
+
+  const navigateToScene = (sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
     if (!story) return;
     const nextScene = story.scenes[sceneId];
     if (!nextScene) return;

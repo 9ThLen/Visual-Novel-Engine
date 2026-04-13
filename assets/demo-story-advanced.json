@@ -1,0 +1,648 @@
+{
+  "id": "demo-advanced-001",
+  "title": "The Enchanted Museum",
+  "description": "A comprehensive demo showcasing ALL engine features: splash screens, interactive objects, inventory, character sprites, voice acting, and multiple endings",
+  "author": "Visual Novel Engine - Full Feature Demo",
+  "startSceneId": "splash_intro",
+  "createdAt": 1744740000000,
+  "updatedAt": 1744740000000,
+  "scenes": {
+    "splash_intro": {
+      "id": "splash_intro",
+      "text": "",
+      "splashScreen": {
+        "type": "image",
+        "uri": "assets/splash screens/splash-title.png",
+        "duration": 3000,
+        "fadeIn": 500,
+        "fadeOut": 500,
+        "showBefore": true
+      },
+      "backgroundImageUri": null,
+      "characters": [],
+      "voiceAudioUri": null,
+      "musicUri": null,
+      "choices": [],
+      "autoAdvance": {
+        "enabled": true,
+        "delay": 3500,
+        "nextSceneId": "scene_1"
+      }
+    },
+    "scene_1": {
+      "id": "scene_1",
+      "text": "Welcome to the Enchanted Museum! You stand at the entrance of a mysterious building that appears only once every hundred years.\n\nLegend says that those who explore it thoroughly will discover ancient secrets and magical artifacts.\n\n[DEMO: This story demonstrates ALL engine features]",
+      "backgroundImageUri": "assets/background/bg-museum-entrance.png",
+      "animatedBackground": {
+        "type": "particles",
+        "config": {
+          "particleCount": 50,
+          "color": "#FFD700",
+          "speed": 0.5
+        }
+      },
+      "characters": [
+        {
+          "id": "char_guide",
+          "imageUri": "assets/charakters/char-guide.png",
+          "name": "Museum Guide",
+          "position": "right",
+          "expression": "welcoming"
+        }
+      ],
+      "voiceAudioUri": "assets/sounds for sample/voice-guide-welcome.mp3",
+      "musicUri": "assets/sounds for sample/music-mysterious-adventure.mp3",
+      "interactiveObjects": [
+        {
+          "id": "obj_entrance_sign",
+          "x": 20,
+          "y": 30,
+          "width": 15,
+          "height": 20,
+          "label": "Museum Sign",
+          "pulseAnimation": true,
+          "actions": [
+            {
+              "type": "dialogue",
+              "text": "The sign reads: 'Welcome, brave explorer. Touch nothing without permission. Take only memories... and perhaps a few magical items.'"
+            }
+          ]
+        },
+        {
+          "id": "obj_entrance_door",
+          "x": 45,
+          "y": 40,
+          "width": 20,
+          "height": 35,
+          "label": "Main Door",
+          "pulseAnimation": true,
+          "actions": [
+            {
+              "type": "scene",
+              "targetSceneId": "scene_2"
+            },
+            {
+              "type": "sound",
+              "soundUri": "assets/sounds for sample/sfx-door-open.mp3"
+            }
+          ]
+        }
+      ],
+      "choices": [
+        {
+          "id": "choice_1_1",
+          "text": "Enter the museum (click the door)",
+          "nextSceneId": "scene_2"
+        },
+        {
+          "id": "choice_1_2",
+          "text": "Read the sign first",
+          "nextSceneId": "scene_1_sign"
+        }
+      ]
+    },
+    "scene_1_sign": {
+      "id": "scene_1_sign",
+      "text": "You approach the ornate sign. It's carved from ancient wood and glows with a faint magical aura.\n\n'Welcome, brave explorer. The museum holds three legendary artifacts: the Crystal Key, the Ancient Compass, and the Phoenix Feather. Collect them all to unlock the true ending.'",
+      "backgroundImageUri": "assets/background/bg-museum-entrance.png",
+      "characters": [],
+      "voiceAudioUri": null,
+      "musicUri": "assets/sounds for sample/music-mysterious-adventure.mp3",
+      "choices": [
+        {
+          "id": "choice_1s_1",
+          "text": "Enter the museum",
+          "nextSceneId": "scene_2"
+        }
+      ]
+    },
+    "scene_2": {
+      "id": "scene_2",
+      "text": "You step into the Grand Hall. Marble columns stretch toward a vaulted ceiling painted with constellations. Display cases line the walls, each containing mysterious artifacts.\n\nTo your left is the Hall of Mirrors. To your right, the Ancient Library. Straight ahead, a locked door with three empty slots.",
+      "splashScreen": {
+        "type": "image",
+        "uri": "assets/splash screens/splash-chapter1.png",
+        "duration": 2000,
+        "fadeIn": 300,
+        "fadeOut": 300,
+        "showBefore": true
+      },
+      "backgroundImageUri": "assets/background/bg-grand-hall.png",
+      "characters": [
+        {
+          "id": "char_guide",
+          "imageUri": "assets/charakters/char-guide.png",
+          "name": "Museum Guide",
+          "position": "left",
+          "expression": "explaining"
+        }
+      ],
+      "voiceAudioUri": "assets/sounds for sample/voice-guide-hall.mp3",
+      "musicUri": "assets/sounds for sample/music-mysterious-adventure.mp3",
+      "interactiveObjects": [
+        {
+          "id": "obj_display_case",
+          "x": 15,
+          "y": 50,
+          "width": 12,
+          "height": 18,
+          "label": "Display Case",
+          "pulseAnimation": true,
+          "actions": [
+            {
+              "type": "dialogue",
+              "text": "Inside the case, you see a beautiful Crystal Key glowing with inner light. There's a button to open the case."
+            }
+          ]
+        },
+        {
+          "id": "obj_crystal_key",
+          "x": 17,
+          "y": 55,
+          "width": 8,
+          "height": 8,
+          "label": "Crystal Key",
+          "pulseAnimation": true,
+          "actions": [
+            {
+              "type": "item",
+              "itemId": "crystal_key",
+              "itemName": "Crystal Key",
+              "action": "add"
+            },
+            {
+              "type": "dialogue",
+              "text": "You obtained the Crystal Key! It feels warm in your hand and pulses with magical energy."
+            },
+            {
+              "type": "sound",
+              "soundUri": "assets/sounds for sample/sfx-item-get.mp3"
+            }
+          ]
+        },
+        {
+          "id": "obj_locked_door",
+          "x": 44,
+          "y": 35,
+          "width": 18,
+          "height": 30,
+          "label": "Locked Door",
+          "pulseAnimation": false,
+          "requiredItems": ["crystal_key", "ancient_compass", "phoenix_feather"],
+          "actions": [
+            {
+              "type": "scene",
+              "targetSceneId": "scene_final"
+            },
+            {
+              "type": "dialogue",
+              "text": "The three artifacts resonate together! The door opens, revealing a blinding light..."
+            }
+          ],
+          "lockedMessage": "The door has three empty slots. You need all three legendary artifacts to open it."
+        }
+      ],
+      "choices": [
+        {
+          "id": "choice_2_1",
+          "text": "Go to the Hall of Mirrors (left)",
+          "nextSceneId": "scene_3_mirrors"
+        },
+        {
+          "id": "choice_2_2",
+          "text": "Go to the Ancient Library (right)",
+          "nextSceneId": "scene_4_library"
+        },
+        {
+          "id": "choice_2_3",
+          "text": "Examine the locked door",
+          "nextSceneId": "scene_2_door"
+        }
+      ]
+    },
+    "scene_2_door": {
+      "id": "scene_2_door",
+      "text": "You approach the mysterious door. It's made of solid gold and has three empty slots arranged in a triangle pattern. Each slot has a symbol: a key, a compass, and a feather.\n\nThis must be the final challenge.",
+      "backgroundImageUri": "assets/background/bg-grand-hall.png",
+      "characters": [],
+      "voiceAudioUri": null,
+      "musicUri": "assets/sounds for sample/music-mysterious-adventure.mp3",
+      "choices": [
+        {
+          "id": "choice_2d_1",
+          "text": "Go back and explore",
+          "nextSceneId": "scene_2"
+        }
+      ]
+    },
+    "scene_3_mirrors": {
+      "id": "scene_3_mirrors",
+      "text": "The Hall of Mirrors is disorienting. Countless reflections surround you, each showing a slightly different version of yourself. Some reflections move independently.\n\nIn the center of the room stands a pedestal with the Ancient Compass.",
+      "backgroundImageUri": "assets/background/bg-hall-mirrors.png",
+      "animatedBackground": {
+        "type": "shimmer",
+        "config": {
+          "intensity": 0.7,
+          "speed": 1.2
+        }
+      },
+      "characters": [
+        {
+          "id": "char_reflection",
+          "imageUri": "assets/charakters/char-reflection.png",
+          "name": "Your Reflection",
+          "position": "center",
+          "expression": "mysterious"
+        }
+      ],
+      "voiceAudioUri": "assets/sounds for sample/voice-reflection.mp3",
+      "musicUri": "assets/sounds for sample/music-eerie.mp3",
+      "interactiveObjects": [
+        {
+          "id": "obj_mirror_left",
+          "x": 10,
+          "y": 30,
+          "width": 15,
+          "height": 40,
+          "label": "Left Mirror",
+          "pulseAnimation": true,
+          "actions": [
+            {
+              "type": "dialogue",
+              "text": "Your reflection waves at you. It mouths the words: 'The compass shows the way to truth.'"
+            },
+            {
+              "type": "image",
+              "imageUri": "assets/images/img-reflection-hint.png"
+            }
+          ]
+        },
+        {
+          "id": "obj_compass_pedestal",
+          "x": 42,
+          "y": 50,
+          "width": 16,
+          "height": 20,
+          "label": "Ancient Compass",
+          "pulseAnimation": true,
+          "actions": [
+            {
+              "type": "item",
+              "itemId": "ancient_compass",
+              "itemName": "Ancient Compass",
+              "action": "add"
+            },
+            {
+              "type": "dialogue",
+              "text": "You obtained the Ancient Compass! Its needle spins wildly before pointing toward your heart."
+            },
+            {
+              "type": "sound",
+              "soundUri": "assets/sounds for sample/sfx-item-get.mp3"
+            }
+          ]
+        },
+        {
+          "id": "obj_mirror_right",
+          "x": 75,
+          "y": 30,
+          "width": 15,
+          "height": 40,
+          "label": "Right Mirror",
+          "pulseAnimation": true,
+          "actions": [
+            {
+              "type": "dialogue",
+              "text": "This mirror shows you as you could be—confident, powerful, complete. But you're not there yet."
+            }
+          ]
+        }
+      ],
+      "choices": [
+        {
+          "id": "choice_3_1",
+          "text": "Return to the Grand Hall",
+          "nextSceneId": "scene_2"
+        },
+        {
+          "id": "choice_3_2",
+          "text": "Talk to your reflection",
+          "nextSceneId": "scene_3_reflection"
+        }
+      ]
+    },
+    "scene_3_reflection": {
+      "id": "scene_3_reflection",
+      "text": "Your reflection steps forward, as if breaking free from the mirror's surface. It speaks with your voice, but the words are not yours.\n\n'I am what you could become. Take the compass. It will guide you to your destiny.'",
+      "backgroundImageUri": "assets/background/bg-hall-mirrors.png",
+      "characters": [
+        {
+          "id": "char_reflection",
+          "imageUri": "assets/charakters/char-reflection.png",
+          "name": "Your Reflection",
+          "position": "center",
+          "expression": "wise"
+        }
+      ],
+      "voiceAudioUri": "assets/sounds for sample/voice-reflection-wisdom.mp3",
+      "musicUri": "assets/sounds for sample/music-eerie.mp3",
+      "choices": [
+        {
+          "id": "choice_3r_1",
+          "text": "Thank your reflection",
+          "nextSceneId": "scene_2"
+        }
+      ]
+    },
+    "scene_4_library": {
+      "id": "scene_4_library",
+      "text": "The Ancient Library is vast and silent. Towering shelves filled with leather-bound books stretch into darkness. A spiral staircase leads to an upper level where a golden glow emanates.\n\nYou hear the faint sound of pages turning.",
+      "backgroundImageUri": "assets/background/bg-ancient-library.png",
+      "characters": [
+        {
+          "id": "char_librarian",
+          "imageUri": "assets/charakters/char-librarian.png",
+          "name": "Ancient Librarian",
+          "position": "right",
+          "expression": "reading"
+        }
+      ],
+      "voiceAudioUri": "assets/sounds for sample/voice-librarian-greeting.mp3",
+      "musicUri": "assets/sounds for sample/music-peaceful.mp3",
+      "interactiveObjects": [
+        {
+          "id": "obj_bookshelf",
+          "x": 15,
+          "y": 25,
+          "width": 20,
+          "height": 50,
+          "label": "Bookshelf",
+          "pulseAnimation": true,
+          "actions": [
+            {
+              "type": "dialogue",
+              "text": "You pull out a random book. It's titled 'The History of Magical Artifacts.' Inside, you find a note: 'The Phoenix Feather rests where knowledge meets the sky.'"
+            }
+          ]
+        },
+        {
+          "id": "obj_spiral_stairs",
+          "x": 70,
+          "y": 40,
+          "width": 15,
+          "height": 35,
+          "label": "Spiral Staircase",
+          "pulseAnimation": true,
+          "actions": [
+            {
+              "type": "scene",
+              "targetSceneId": "scene_5_upper_library"
+            },
+            {
+              "type": "sound",
+              "soundUri": "assets/sounds for sample/sfx-stairs.mp3"
+            }
+          ]
+        },
+        {
+          "id": "obj_reading_table",
+          "x": 40,
+          "y": 60,
+          "width": 20,
+          "height": 15,
+          "label": "Reading Table",
+          "pulseAnimation": true,
+          "actions": [
+            {
+              "type": "dialogue",
+              "text": "An open book lies on the table. The page shows an illustration of a magnificent phoenix with golden feathers."
+            },
+            {
+              "type": "image",
+              "imageUri": "assets/images/img-phoenix-illustration.png"
+            }
+          ]
+        }
+      ],
+      "choices": [
+        {
+          "id": "choice_4_1",
+          "text": "Climb the spiral staircase",
+          "nextSceneId": "scene_5_upper_library"
+        },
+        {
+          "id": "choice_4_2",
+          "text": "Talk to the Librarian",
+          "nextSceneId": "scene_4_librarian"
+        },
+        {
+          "id": "choice_4_3",
+          "text": "Return to the Grand Hall",
+          "nextSceneId": "scene_2"
+        }
+      ]
+    },
+    "scene_4_librarian": {
+      "id": "scene_4_librarian",
+      "text": "The Ancient Librarian looks up from her book. Her eyes are kind but ancient, as if she's seen countless centuries pass.\n\n'Welcome, seeker. The Phoenix Feather you seek is on the upper level. But be warned—it will only reveal itself to those who have proven their worth.'",
+      "backgroundImageUri": "assets/background/bg-ancient-library.png",
+      "characters": [
+        {
+          "id": "char_librarian",
+          "imageUri": "assets/charakters/char-librarian.png",
+          "name": "Ancient Librarian",
+          "position": "center",
+          "expression": "wise"
+        }
+      ],
+      "voiceAudioUri": "assets/sounds for sample/voice-librarian-advice.mp3",
+      "musicUri": "assets/sounds for sample/music-peaceful.mp3",
+      "choices": [
+        {
+          "id": "choice_4l_1",
+          "text": "Ask about proving your worth",
+          "nextSceneId": "scene_4_librarian_2"
+        },
+        {
+          "id": "choice_4l_2",
+          "text": "Thank her and continue exploring",
+          "nextSceneId": "scene_4_library"
+        }
+      ]
+    },
+    "scene_4_librarian_2": {
+      "id": "scene_4_librarian_2",
+      "text": "'To prove your worth,' she says, 'you must collect the Crystal Key and the Ancient Compass first. Only then will the Phoenix Feather appear to you. It is the final piece of the puzzle.'",
+      "backgroundImageUri": "assets/background/bg-ancient-library.png",
+      "characters": [
+        {
+          "id": "char_librarian",
+          "imageUri": "assets/charakters/char-librarian.png",
+          "name": "Ancient Librarian",
+          "position": "center",
+          "expression": "explaining"
+        }
+      ],
+      "voiceAudioUri": "assets/sounds for sample/voice-librarian-explain.mp3",
+      "musicUri": "assets/sounds for sample/music-peaceful.mp3",
+      "choices": [
+        {
+          "id": "choice_4l2_1",
+          "text": "Continue exploring",
+          "nextSceneId": "scene_4_library"
+        }
+      ]
+    },
+    "scene_5_upper_library": {
+      "id": "scene_5_upper_library",
+      "text": "You reach the upper level of the library. Here, the ceiling opens to reveal the night sky filled with stars. In the center of the room, on a golden pedestal, rests a magnificent Phoenix Feather glowing with inner fire.",
+      "backgroundImageUri": "assets/background/bg-upper-library.png",
+      "animatedBackground": {
+        "type": "stars",
+        "config": {
+          "starCount": 100,
+          "twinkleSpeed": 2
+        }
+      },
+      "characters": [],
+      "voiceAudioUri": null,
+      "musicUri": "assets/sounds for sample/music-magical.mp3",
+      "interactiveObjects": [
+        {
+          "id": "obj_phoenix_feather",
+          "x": 42,
+          "y": 45,
+          "width": 16,
+          "height": 20,
+          "label": "Phoenix Feather",
+          "pulseAnimation": true,
+          "requiredItems": ["crystal_key", "ancient_compass"],
+          "actions": [
+            {
+              "type": "item",
+              "itemId": "phoenix_feather",
+              "itemName": "Phoenix Feather",
+              "action": "add"
+            },
+            {
+              "type": "dialogue",
+              "text": "You obtained the Phoenix Feather! It burns with eternal flame but doesn't hurt you. You now have all three legendary artifacts!"
+            },
+            {
+              "type": "sound",
+              "soundUri": "assets/sounds for sample/sfx-item-get-special.mp3"
+            }
+          ],
+          "lockedMessage": "The Phoenix Feather is protected by a magical barrier. You need the Crystal Key and Ancient Compass to break the seal."
+        },
+        {
+          "id": "obj_telescope",
+          "x": 75,
+          "y": 30,
+          "width": 12,
+          "height": 25,
+          "label": "Telescope",
+          "pulseAnimation": true,
+          "actions": [
+            {
+              "type": "dialogue",
+              "text": "You look through the telescope. The stars form a pattern that looks like a phoenix spreading its wings."
+            },
+            {
+              "type": "image",
+              "imageUri": "assets/images/img-constellation-phoenix.png"
+            }
+          ]
+        }
+      ],
+      "choices": [
+        {
+          "id": "choice_5_1",
+          "text": "Go back downstairs",
+          "nextSceneId": "scene_4_library"
+        },
+        {
+          "id": "choice_5_2",
+          "text": "Try to take the Phoenix Feather",
+          "nextSceneId": "scene_5_feather_attempt"
+        }
+      ]
+    },
+    "scene_5_feather_attempt": {
+      "id": "scene_5_feather_attempt",
+      "text": "You reach for the Phoenix Feather. If you have the Crystal Key and Ancient Compass, the magical barrier dissolves and you can take it. Otherwise, an invisible force pushes your hand away.\n\n[Check your inventory to see what you've collected]",
+      "backgroundImageUri": "assets/background/bg-upper-library.png",
+      "characters": [],
+      "voiceAudioUri": null,
+      "musicUri": "assets/sounds for sample/music-magical.mp3",
+      "choices": [
+        {
+          "id": "choice_5a_1",
+          "text": "Continue exploring",
+          "nextSceneId": "scene_5_upper_library"
+        }
+      ]
+    },
+    "scene_final": {
+      "id": "scene_final",
+      "text": "As you place the three artifacts into their slots, the golden door erupts with brilliant light. The entire museum trembles with ancient power.\n\nThe door swings open, revealing a chamber filled with treasures beyond imagination. But more importantly, you see a mirror showing your true self—brave, clever, and worthy.",
+      "splashScreen": {
+        "type": "image",
+        "uri": "assets/splash screens/splash-victory.png",
+        "duration": 3000,
+        "fadeIn": 800,
+        "fadeOut": 800,
+        "showBefore": true
+      },
+      "backgroundImageUri": "assets/background/bg-treasure-chamber.png",
+      "animatedBackground": {
+        "type": "particles",
+        "config": {
+          "particleCount": 200,
+          "color": "#FFD700",
+          "speed": 1.5
+        }
+      },
+      "characters": [
+        {
+          "id": "char_guide",
+          "imageUri": "assets/charakters/char-guide.png",
+          "name": "Museum Guide",
+          "position": "left",
+          "expression": "proud"
+        },
+        {
+          "id": "char_librarian",
+          "imageUri": "assets/charakters/char-librarian.png",
+          "name": "Ancient Librarian",
+          "position": "right",
+          "expression": "happy"
+        }
+      ],
+      "voiceAudioUri": "assets/sounds for sample/voice-victory.mp3",
+      "musicUri": "assets/sounds for sample/music-triumphant.mp3",
+      "choices": [
+        {
+          "id": "choice_final_1",
+          "text": "Accept your reward",
+          "nextSceneId": "scene_ending_true"
+        }
+      ]
+    },
+    "scene_ending_true": {
+      "id": "scene_ending_true",
+      "text": "Congratulations! You've discovered the TRUE ENDING!\n\n✨ You collected all three legendary artifacts\n✨ You explored every corner of the museum\n✨ You proved yourself worthy\n\nThis demo showcased:\n• Splash screens (intro, chapter transitions, victory)\n• Interactive objects (signs, doors, pedestals, mirrors)\n• Inventory system (Crystal Key, Ancient Compass, Phoenix Feather)\n• Conditional actions (Phoenix Feather requires other items)\n• Multiple character sprites with positions\n• Background music and voice acting\n• Animated backgrounds (particles, shimmer, stars)\n• Branching narrative with multiple paths\n• Rich dialogue and storytelling\n\nThank you for playing! Now create your own amazing stories!",
+      "backgroundImageUri": "assets/background/bg-treasure-chamber.png",
+      "characters": [],
+      "voiceAudioUri": null,
+      "musicUri": "assets/sounds for sample/music-triumphant.mp3",
+      "choices": [
+        {
+          "id": "choice_end_1",
+          "text": "Return to beginning",
+          "nextSceneId": "splash_intro"
+        }
+      ]
+    }
+  }
+}

@@ -3,7 +3,7 @@
  * UI for managing story-specific audio library
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -42,16 +42,16 @@ export function AudioLibraryManager({
   );
   const [editingItem, setEditingItem] = useState<AudioLibraryItem | null>(null);
 
+  const loadLibrary = useCallback(async () => {
+    const items = await audioLibrary.getAudioLibrary(storyId);
+    setLibrary(items);
+  }, [storyId]);
+
   useEffect(() => {
     if (visible) {
       loadLibrary();
     }
-  }, [visible, storyId]);
-
-  const loadLibrary = async () => {
-    const items = await audioLibrary.getAudioLibrary(storyId);
-    setLibrary(items);
-  };
+  }, [visible, loadLibrary]);
 
   const handleAddAudio = async () => {
     try {
