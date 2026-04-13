@@ -1,0 +1,280 @@
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  FlatList,
+  Alert,
+  TextInput,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { ScreenContainer } from '@/components/screen-container';
+import { useStory } from '@/lib/story-context';
+import { useColors } from '@/hooks/use-colors';
+import { Story } from '@/lib/types';
+import { HelpableElement } from '@/components/HelpableElement';
+import { HelpModeToggle } from '@/components/HelpModeToggle';
+import { HelpTooltip } from '@/components/HelpTooltip';
+import { GuidedTourOverlay } from '@/components/GuidedTourOverlay';
+import { FirstTimeGuide } from '@/components/FirstTimeGuide';
+import { Button } from '@/components/ui/Button';
+
+export default function EditorScreen() {
+  const router = useRouter();
+  const colors = useColors();
+  const { stories, addStory, deleteStory } = useStory();
+  const [newStoryTitle, setNewStoryTitle] = useState('');
+  const [showNewStoryForm, setShowNewStoryForm] = useState(false);
+
+  const handleCreateStory = async () => {
+    if (!newStoryTitle.trim()) {
+      Alert.alert('Error', 'Please enter a story title');
+      return;
+    }
+
+    const newStory: Story = {
+      id: `story-${Date.now()}`,
+      title: newStoryTitle,
+      description: 'A new story',
+      author: 'Author',
+      startSceneId: 'scene_1',
+      scenes: {
+        scene_1: {
+          id: 'scene_1',
+          text: 'Your story begins here...',
+          backgroundImageUri: undefined,
+          characters: [],
+          voiceAudioUri: undefined,
+          choices: [],
+          musicUri: undefined,
+        },
+      },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    try {
+      await addStory(newStory);
+      setNewStoryTitle('');
+      setShowNewStoryForm(false);
+      
+      // Navigate to scene editor
+      router.push({
+        pathname: '../scene-editor',
+        params: { storyId: newStory.id, sceneId: 'scene_1' },
+      });
+    } catch (error) {
+      Alert.alert('Error', 'Failed to create story');
+      console.error(error);
+    }
+  };
+
+  const handleEditStory = (story: Story) => {
+    router.push({
+      pathname: '../scene-editor',
+      params: { storyId: story.id, sceneId: story.startSceneId },
+    });
+  };
+
+  const handleOpenNodeEditor = (story: Story) => {
+    router.push({
+      pathname: '../node-editor',
+      params: { storyId: story.id },
+    });
+  };
+
+  const handleDeleteStory = (storyId: string) => {
+    Alert.alert('Delete Story', 'Are you sure you want to delete this story?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteStory(storyId);
+            Alert.alert('Success', 'Story deleted');
+          } catch (error) {
+            Alert.alert('Error', 'Failed to delete story');
+          }
+        },
+      },
+    ]);
+  };
+
+  const renderStoryCard = ({ item }: { item: Story }) => (
+    <HelpableElement helpId="story_list">
+      <View
+        style={{
+          backgroundColor: colors.surface,
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 12,
+          borderWidth: 1,
+          borderColor: colors.border,
+        }}
+      >
+        <View style={{ gap: 8 }}>
+          <Text
+            style={{
+              fontSize: 16,
+              fontWeight: '600',
+              color: colors.foreground,
+            }}
+          >
+            {item.title}
+          </Text>
+          <Text
+            style={{
+              fontSize: 12,
+              color: colors.muted,
+            }}
+          >
+            {Object.keys(item.scenes).length} scenes
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+            <HelpableElement
+              helpId="scene_connections"
+              onPress={() => handleOpenNodeEditor(item)}
+            >
+              <Button variant="primary" size="sm" style={{ flex: 1 }}>
+                🗺 Graph
+              </Button>
+            </HelpableElement>
+            <HelpableElement
+              helpId="scene_editor"
+              onPress={() => handleEditStory(item)}
+            >
+              <Button variant="secondary" size="sm" style={{ flex: 1 }}>
+                ✏️ Edit
+              </Button>
+            </HelpableElement>
+            <HelpableElement
+              helpId="delete_story_button"
+              onPress={() => handleDeleteStory(item.id)}
+            >
+              <Button variant="danger" size="sm">
+                🗑
+              </Button>
+            </HelpableElement>
+          </View>
+        </View>
+      </View>
+    </HelpableElement>
+  );
+
+  return (
+    <ScreenContainer className="p-4">
+      {/* Help System Components */}
+      <HelpTooltip />
+      <GuidedTourOverlay />
+      <FirstTimeGuide />
+
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 20,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 28,
+            fontWeight: '700',
+            color: colors.foreground,
+          }}
+        >
+          Editor
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <HelpModeToggle />
+          <HelpableElement
+            helpId="add_story_button"
+            onPress={() => setShowNewStoryForm(!showNewStoryForm)}
+          >
+            <Button variant="primary" size="sm">
+              {showNewStoryForm ? 'Cancel' : '+ New'}
+            </Button>
+          </HelpableElement>
+        </View>
+      </View>
+
+      {showNewStoryForm && (
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            gap: 8,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: '600',
+              color: colors.foreground,
+            }}
+          >
+            Story Title
+          </Text>
+          <TextInput
+            style={{
+              backgroundColor: colors.background,
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 10,
+              color: colors.foreground,
+              fontSize: 14,
+            }}
+            placeholder="Enter story title"
+            placeholderTextColor={colors.muted}
+            value={newStoryTitle}
+            onChangeText={setNewStoryTitle}
+          />
+          <HelpableElement
+            helpId="add_story_button"
+            onPress={handleCreateStory}
+          >
+            <Button variant="primary" size="base" fullWidth>
+              Create Story
+            </Button>
+          </HelpableElement>
+        </View>
+      )}
+
+      {stories.length === 0 ? (
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 16,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 16,
+              color: colors.muted,
+              textAlign: 'center',
+            }}
+          >
+            No stories yet. Create one to get started!
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={stories}
+          renderItem={renderStoryCard}
+          keyExtractor={(item) => item.id}
+          scrollEnabled={true}
+          contentContainerStyle={{ paddingBottom: 20 }}
+        />
+      )}
+    </ScreenContainer>
+  );
+}

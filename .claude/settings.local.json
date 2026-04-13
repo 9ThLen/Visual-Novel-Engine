@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm check:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm run:*)"
+    ]
+  }
+}
