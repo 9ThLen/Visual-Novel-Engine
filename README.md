@@ -59,7 +59,7 @@ A powerful, cross-platform visual novel engine built with React Native and Expo.
   - Emotional Moment (gentle fade, 4s)
 - **Customizable Timing** - Control fade in/out duration
 
-### 🌍 Multilingual Support (i18n)
+### 🌍 Multilingual Support
 - **3 Languages Built-in:**
   - 🇬🇧 English
   - 🇺🇦 Ukrainian (Українська)
@@ -406,44 +406,6 @@ visual-novel-engine/
 - [UI/UX Improvements](./UI_UX_IMPROVEMENTS.md) - Interaction patterns, animations
 - [Help System](./HELP_SYSTEM.md) - Complete help system documentation
 - [Build Readiness Report](./BUILD_READINESS_REPORT.md) - Pre-build checklist
-
-## 🎯 Roadmap
-
-### Completed Features ✅
-
-- [x] Story editor with node graph
-- [x] Save/load system with 10 slots
-- [x] Interactive objects and inventory
-- [x] Splash screens
-- [x] Multilingual support (EN/UK/RU)
-- [x] Beige UI theme with haptic feedback
-- [x] Interactive help system
-- [x] Guided tours
-- [x] First-time user guide
-
-### Planned Features 🔜
-
-- [ ] Cloud sync for stories
-- [ ] Story marketplace
-- [ ] Advanced animation system
-- [ ] Video backgrounds
-- [ ] Mini-games integration
-- [ ] Achievement system
-- [ ] Statistics and analytics
-- [ ] Export to web/desktop
-- [ ] Collaborative editing
-- [ ] Version control for stories
-
-### Future Enhancements 💡
-
-- [ ] More language support
-- [ ] Custom theme creator
-- [ ] Advanced audio mixing
-- [ ] Particle effects
-- [ ] 3D character models
-- [ ] Live2D integration
-- [ ] Voice recording in-app
-- [ ] AI-assisted writing
 
 ## 🤝 Contributing
 
