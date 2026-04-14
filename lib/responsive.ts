@@ -1,19 +1,38 @@
 import { Dimensions, Platform } from 'react-native';
 
+// Web breakpoints
+export const BREAKPOINTS = {
+  mobile: 768,
+  tablet: 1024,
+  desktop: 1280,
+} as const;
+
 export const getResponsiveValues = () => {
   const { width, height } = Dimensions.get('window');
-  
+
   // Determine if device is tablet (width > 600dp is typical tablet threshold)
   const isTablet = width > 600;
   const isLandscape = width > height;
-  
+  const isWeb = Platform.OS === 'web';
+
+  // Web-specific breakpoints
+  const isWebMobile = isWeb && width < BREAKPOINTS.mobile;
+  const isWebTablet = isWeb && width >= BREAKPOINTS.mobile && width < BREAKPOINTS.tablet;
+  const isWebDesktop = isWeb && width >= BREAKPOINTS.tablet;
+  const isWebLargeDesktop = isWeb && width >= BREAKPOINTS.desktop;
+
   return {
     width,
     height,
     isTablet,
     isLandscape,
-    isWeb: Platform.OS === 'web',
+    isWeb,
     isNative: Platform.OS !== 'web',
+    // Web-specific
+    isWebMobile,
+    isWebTablet,
+    isWebDesktop,
+    isWebLargeDesktop,
   };
 };
 
@@ -89,12 +108,46 @@ export const getGridColumns = () => {
 
 export const getMaxContentWidth = () => {
   const { width, isTablet } = getResponsiveValues();
-  
+
   if (isTablet && width > 1000) {
     return 900;
   } else if (isTablet) {
     return 600;
   } else {
     return width - 32; // Full width minus padding
+  }
+};
+
+// Web-specific layout configuration
+export const getWebLayout = () => {
+  const { width, isWebDesktop, isWebTablet, isWebMobile } = getResponsiveValues();
+
+  if (isWebDesktop) {
+    return {
+      sidebarWidth: 240,
+      contentMaxWidth: 1200,
+      gridColumns: width > 1400 ? 3 : 2,
+      showSidebar: true,
+      showTopBar: true,
+      editorLayout: 'split' as const, // split-screen for editor
+    };
+  } else if (isWebTablet) {
+    return {
+      sidebarWidth: 200,
+      contentMaxWidth: 900,
+      gridColumns: 2,
+      showSidebar: false, // collapsible
+      showTopBar: true,
+      editorLayout: 'stacked' as const,
+    };
+  } else {
+    return {
+      sidebarWidth: 0,
+      contentMaxWidth: width - 32,
+      gridColumns: 1,
+      showSidebar: false,
+      showTopBar: false,
+      editorLayout: 'stacked' as const,
+    };
   }
 };
