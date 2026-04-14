@@ -60,10 +60,11 @@ A powerful, cross-platform visual novel engine built with React Native and Expo.
 - **Customizable Timing** - Control fade in/out duration
 
 ### 🌍 Multilingual Support
-- **3 Languages Built-in:**
+- **4 Languages Built-in:**
   - 🇬🇧 English
   - 🇺🇦 Ukrainian (Українська)
   - 🇷🇺 Russian (Русский)
+  - 🇵🇱 Polish (Polski)
 - **80+ Translated UI Elements**
 - **Language Selector** with flag icons
 - **Persistent Language Preference**
@@ -259,7 +260,8 @@ Edit `lib/translations.json`:
   "your.key": {
     "en": "English text",
     "uk": "Український текст",
-    "ru": "Русский текст"
+    "ru": "Русский текст",
+    "pl": "Polski tekst"
   }
 }
 ```
@@ -456,4 +458,4 @@ If you like this project, please give it a ⭐ on GitHub!
 
 **Made with ❤️
 
-*Last updated: April 13, 2026*
+*Last updated: April 14, 2026*
