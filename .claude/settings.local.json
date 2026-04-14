@@ -19,7 +19,9 @@
       "Bash(taskkill:*)",
       "Bash(bash:*)",
       "Bash(netstat -ano)",
-      "Bash(findstr :8081)"
+      "Bash(findstr :8081)",
+      "Bash(git revert:*)",
+      "Bash(git stash:*)"
     ]
   }
 }

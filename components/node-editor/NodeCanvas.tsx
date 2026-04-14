@@ -43,7 +43,7 @@ export function NodeCanvas({
   const colors = useColors();
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-  // Viewport state - start at origin
+  // Viewport state
   const [viewport, setViewport] = useState<ViewportState>({
     x: 0,
     y: 0,
@@ -70,13 +70,6 @@ export function NodeCanvas({
   const edges = useMemo(() => {
     return buildEdges(story, nodes);
   }, [story, nodes]);
-
-  console.log('[NodeCanvas] Rendered with:', {
-    nodeCount: nodes.length,
-    edgeCount: edges.length,
-    viewport,
-    firstNode: nodes[0],
-  });
 
   // Canvas dimensions
   const canvasWidth = Math.max(screenWidth * 2, ...nodes.map(n => n.position.x + NODE_WIDTH + 200));
@@ -132,17 +125,7 @@ export function NodeCanvas({
   };
 
   const handleResetView = () => {
-    // Center the view on the first node or origin
-    if (nodes.length > 0) {
-      const firstNode = nodes[0];
-      setViewport({
-        x: screenWidth / 4 - firstNode.position.x,
-        y: 100,
-        zoom: 0.8,
-      });
-    } else {
-      setViewport({ x: 50, y: 50, zoom: 0.8 });
-    }
+    setViewport({ x: 0, y: 0, zoom: 1 });
   };
 
   // Pan responder for canvas dragging
@@ -186,18 +169,6 @@ export function NodeCanvas({
 
   return (
     <View style={styles.container}>
-      {/* Debug info */}
-      <View style={{ position: 'absolute', top: 10, left: 10, zIndex: 9999, backgroundColor: 'rgba(255,0,0,0.8)', padding: 8, borderRadius: 4 }}>
-        <Text style={{ color: '#fff', fontSize: 10 }}>
-          Nodes: {nodes.length} | VP: {Math.round(viewport.x)},{Math.round(viewport.y)} | Z: {viewport.zoom.toFixed(2)}
-        </Text>
-        {nodes.length > 0 && (
-          <Text style={{ color: '#fff', fontSize: 10 }}>
-            First node at: {Math.round(nodes[0].position.x)},{Math.round(nodes[0].position.y)}
-          </Text>
-        )}
-      </View>
-
       {/* Toolbar */}
       <View style={[styles.toolbar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <View style={styles.toolbarLeft}>
@@ -234,23 +205,30 @@ export function NodeCanvas({
       </View>
 
       {/* Canvas */}
-      <View style={styles.canvasContainer}>
-        <View
-          {...panResponder.panHandlers}
-          style={[
-            styles.canvas,
-            {
-              width: canvasWidth,
-              height: canvasHeight,
-              backgroundColor: colors.background,
-              transform: [
-                { translateX: viewport.x },
-                { translateY: viewport.y },
-                { scale: viewport.zoom },
-              ],
-            },
-          ]}
+      <View style={styles.canvasContainer} {...panResponder.panHandlers}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          scrollEnabled={false}
         >
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            scrollEnabled={false}
+          >
+            <View
+              style={[
+                styles.canvas,
+                {
+                  width: canvasWidth,
+                  height: canvasHeight,
+                  transform: [
+                    { translateX: viewport.x },
+                    { translateY: viewport.y },
+                    { scale: viewport.zoom },
+                  ],
+                },
+              ]}
+            >
               {/* Grid background */}
               <Svg style={StyleSheet.absoluteFillObject} width={canvasWidth} height={canvasHeight}>
                 <Defs>
@@ -357,8 +335,8 @@ export function NodeCanvas({
                 </View>
               ))}
             </View>
-          </View>
-        </View>
+          </ScrollView>
+        </ScrollView>
       </View>
 
       {/* Status bar */}
@@ -518,12 +496,9 @@ const styles = StyleSheet.create({
   },
   canvasContainer: {
     flex: 1,
-    overflow: 'hidden',
   },
   canvas: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
+    position: 'relative',
   },
   nodeWrapper: {
     position: 'absolute',
