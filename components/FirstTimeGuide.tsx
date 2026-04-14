@@ -67,8 +67,8 @@ export function FirstTimeGuide() {
   if (!visible || hasSeenFirstTimeGuide) return null;
 
   return (
-    <Modal transparent visible={visible}>
-      <View style={styles.overlay}>
+    <Modal transparent visible={visible} animationType="fade">
+      <View style={styles.overlay} pointerEvents="box-none">
         <Animated.View
           style={[
             styles.card,
@@ -79,6 +79,7 @@ export function FirstTimeGuide() {
               transform: [{ scale: scaleAnim }],
             },
           ]}
+          pointerEvents="auto"
         >
           {/* Welcome icon */}
           <View style={styles.iconContainer}>
