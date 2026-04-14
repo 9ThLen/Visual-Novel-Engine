@@ -17,6 +17,10 @@ import { HelpTooltip } from '@/components/HelpTooltip';
 import { GuidedTourOverlay } from '@/components/GuidedTourOverlay';
 import { FirstTimeGuide } from '@/components/FirstTimeGuide';
 import { Button } from '@/components/ui/Button';
+import { DesktopLayout } from '@/components/DesktopLayout';
+import { TopBarAction } from '@/components/WebTopBar';
+import { useKeyboardShortcuts, COMMON_SHORTCUTS } from '@/hooks/use-keyboard-shortcuts';
+import { getResponsiveValues, getWebLayout } from '@/lib/responsive';
 
 export default function EditorScreen() {
   const router = useRouter();
@@ -24,6 +28,19 @@ export default function EditorScreen() {
   const { stories, addStory, deleteStory } = useStory();
   const [newStoryTitle, setNewStoryTitle] = useState('');
   const [showNewStoryForm, setShowNewStoryForm] = useState(false);
+  const { isWebDesktop } = getResponsiveValues();
+  const layout = getWebLayout();
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    shortcuts: {
+      new: {
+        ...COMMON_SHORTCUTS.new,
+        handler: () => setShowNewStoryForm(true),
+      },
+    },
+    enabled: true,
+  });
 
   const handleCreateStory = async () => {
     if (!newStoryTitle.trim()) {
@@ -165,43 +182,64 @@ export default function EditorScreen() {
     </HelpableElement>
   );
 
-  return (
-    <ScreenContainer className="p-4">
-      {/* Help System Components */}
-      <HelpTooltip />
-      <GuidedTourOverlay />
-      <FirstTimeGuide />
+  const topBarActions = isWebDesktop ? (
+    <>
+      <TopBarAction
+        icon="+"
+        label="New Story"
+        onPress={() => setShowNewStoryForm(!showNewStoryForm)}
+        shortcut="Ctrl+N"
+        variant="primary"
+      />
+    </>
+  ) : null;
 
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 20,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 28,
-            fontWeight: '700',
-            color: colors.foreground,
-          }}
-        >
-          Editor
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          <HelpModeToggle />
-          <HelpableElement helpId="add_story_button">
-            <Button
-              variant="primary"
-              size="sm"
-              onPress={() => setShowNewStoryForm(!showNewStoryForm)}
+  return (
+    <DesktopLayout
+      showSidebar={isWebDesktop}
+      showTopBar={isWebDesktop}
+      topBarTitle="Story Editor"
+      topBarActions={topBarActions}
+    >
+      <ScreenContainer className="p-4">
+        {/* Help System Components */}
+        <HelpTooltip />
+        <GuidedTourOverlay />
+        <FirstTimeGuide />
+
+        {/* Mobile/Tablet Header - only show when not desktop */}
+        {!isWebDesktop && (
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 20,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 28,
+                fontWeight: '700',
+                color: colors.foreground,
+              }}
             >
-              {showNewStoryForm ? 'Cancel' : '+ New'}
-            </Button>
-          </HelpableElement>
-        </View>
-      </View>
+              Editor
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <HelpModeToggle />
+              <HelpableElement helpId="add_story_button">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onPress={() => setShowNewStoryForm(!showNewStoryForm)}
+                >
+                  {showNewStoryForm ? 'Cancel' : '+ New'}
+                </Button>
+              </HelpableElement>
+            </View>
+          </View>
+        )}
 
       {showNewStoryForm && (
         <View
@@ -272,14 +310,30 @@ export default function EditorScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={stories}
-          renderItem={renderStoryCard}
-          keyExtractor={(item) => item.id}
-          scrollEnabled={true}
-          contentContainerStyle={{ paddingBottom: 20 }}
-        />
+        <View
+          style={{
+            flexDirection: isWebDesktop ? 'row' : 'column',
+            flexWrap: isWebDesktop ? 'wrap' : 'nowrap',
+            gap: 12,
+          }}
+        >
+          {stories.map((item) => (
+            <View
+              key={item.id}
+              style={{
+                width: isWebDesktop
+                  ? layout.gridColumns === 3
+                    ? 'calc(33.333% - 8px)'
+                    : 'calc(50% - 6px)'
+                  : '100%',
+              }}
+            >
+              {renderStoryCard({ item })}
+            </View>
+          ))}
+        </View>
       )}
     </ScreenContainer>
+    </DesktopLayout>
   );
 }
