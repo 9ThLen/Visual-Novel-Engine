@@ -15,6 +15,8 @@ import { useThemeContext } from '@/lib/theme-provider';
 import { useI18n } from '@/lib/i18n-context';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { Button } from '@/components/ui/Button';
+import { DesktopLayout } from '@/components/DesktopLayout';
+import { getResponsiveValues } from '@/lib/responsive';
 
 export default function SettingsScreen() {
   const router = useRouter();
