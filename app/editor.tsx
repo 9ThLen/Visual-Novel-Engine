@@ -93,8 +93,8 @@ export default function EditorScreen() {
 
   const handleOpenNodeEditor = (story: Story) => {
     router.push({
-      pathname: '/node-editor',
-      params: { storyId: story.id, sceneId: story.startSceneId },
+      pathname: '../node-editor',
+      params: { storyId: story.id },
     });
   };
 
@@ -149,6 +149,14 @@ export default function EditorScreen() {
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
             <Button
               variant="primary"
+              size="sm"
+              style={{ flex: 1 }}
+              onPress={() => handleOpenNodeEditor(item)}
+            >
+              🗺 Graph
+            </Button>
+            <Button
+              variant="secondary"
               size="sm"
               style={{ flex: 1 }}
               onPress={() => handleEditStory(item)}
