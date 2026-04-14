@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
+  Pressable,
 } from 'react-native';
 import { useHelpSystem } from '@/lib/help-system-context';
 import { useColors } from '@/hooks/use-colors';
@@ -68,19 +69,23 @@ export function FirstTimeGuide() {
 
   return (
     <Modal transparent visible={visible} animationType="fade">
-      <View style={styles.overlay} pointerEvents="box-none">
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              opacity: fadeAnim,
-              transform: [{ scale: scaleAnim }],
-            },
-          ]}
-          pointerEvents="auto"
+      <Pressable style={styles.overlay} onPress={handleSkip} pointerEvents="auto">
+        <Pressable
+          onPress={(e) => e.stopPropagation()}
+          style={{ width: Math.min(SCREEN_WIDTH - 40, 400) }}
         >
+          <Animated.View
+            style={[
+              styles.card,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }],
+              },
+            ]}
+            pointerEvents="auto"
+          >
           {/* Welcome icon */}
           <View style={styles.iconContainer}>
             <Text style={styles.icon}>👋</Text>
@@ -128,7 +133,8 @@ export function FirstTimeGuide() {
             💡 You can always access help by tapping the ? button
           </Text>
         </Animated.View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }

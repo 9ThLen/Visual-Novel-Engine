@@ -147,26 +147,22 @@ export default function EditorScreen() {
             {Object.keys(item.scenes).length} scenes
           </Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-            <HelpableElement helpId="scene_connections">
-              <Button
-                variant="primary"
-                size="sm"
-                style={{ flex: 1 }}
-                onPress={() => handleOpenNodeEditor(item)}
-              >
-                🗺 Graph
-              </Button>
-            </HelpableElement>
-            <HelpableElement helpId="scene_editor">
-              <Button
-                variant="secondary"
-                size="sm"
-                style={{ flex: 1 }}
-                onPress={() => handleEditStory(item)}
-              >
-                ✏️ Edit
-              </Button>
-            </HelpableElement>
+            <Button
+              variant="primary"
+              size="sm"
+              style={{ flex: 1 }}
+              onPress={() => handleOpenNodeEditor(item)}
+            >
+              🗺 Graph
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              style={{ flex: 1 }}
+              onPress={() => handleEditStory(item)}
+            >
+              ✏️ Edit
+            </Button>
             <HelpableElement helpId="delete_story_button">
               <Button
                 variant="danger"
