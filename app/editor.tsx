@@ -151,14 +151,6 @@ export default function EditorScreen() {
               variant="primary"
               size="sm"
               style={{ flex: 1 }}
-              onPress={() => handleOpenNodeEditor(item)}
-            >
-              🗺 Graph
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              style={{ flex: 1 }}
               onPress={() => handleEditStory(item)}
             >
               ✏️ Edit
