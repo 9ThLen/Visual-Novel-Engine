@@ -53,18 +53,38 @@ export function HelpableElement({
   }, [isGuidedTourActive, isCurrentTourStep]);
 
   const handlePress = () => {
+    console.log('[HelpableElement] handlePress called', {
+      helpId,
+      isHelpModeActive,
+      isGuidedTourActive,
+      hasOnPress: !!onPress,
+      disabled,
+    });
+
     if (isHelpModeActive || isGuidedTourActive) {
       // In help mode, show tooltip instead of normal action
+      console.log('[HelpableElement] Showing tooltip for', helpId);
       viewRef.current?.measure((x, y, width, height, pageX, pageY) => {
+        console.log('[HelpableElement] Measured position:', { x, y, width, height, pageX, pageY });
         showTooltip(helpId, { x: pageX, y: pageY, width, height });
       });
     } else if (onPress && !disabled) {
-      // Normal mode - execute action
+      // Normal mode - execute action (only if onPress is provided)
+      console.log('[HelpableElement] Executing onPress for', helpId);
       onPress();
     }
   };
 
   const shouldHighlight = isHelpModeActive || (isGuidedTourActive && isCurrentTourStep);
+
+  // Simple wrapper when not in help mode and no custom onPress
+  if (!shouldHighlight && !onPress) {
+    return (
+      <View ref={viewRef} style={style}>
+        {children}
+      </View>
+    );
+  }
 
   return (
     <Animated.View
@@ -77,16 +97,21 @@ export function HelpableElement({
         },
       ]}
     >
-      <Pressable
-        onPress={handlePress}
-        disabled={disabled && !isHelpModeActive && !isGuidedTourActive}
-        style={({ pressed }) => [
-          shouldHighlight && styles.highlightedPressable,
-          pressed && !shouldHighlight && { opacity: 0.7 },
-        ]}
-      >
+      {/* Overlay Pressable for help mode - captures events before children */}
+      {shouldHighlight && (
+        <Pressable
+          onPress={handlePress}
+          style={[
+            StyleSheet.absoluteFillObject,
+            styles.highlightedPressable,
+            { zIndex: 1000 },
+          ]}
+        />
+      )}
+      {/* Normal content - disable pointer events in help mode */}
+      <View pointerEvents={shouldHighlight ? 'none' : 'auto'}>
         {children}
-      </Pressable>
+      </View>
     </Animated.View>
   );
 }

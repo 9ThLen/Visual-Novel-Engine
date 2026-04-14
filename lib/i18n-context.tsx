@@ -7,7 +7,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Supported languages
-export type Language = 'en' | 'uk' | 'ru';
+export type Language = 'en' | 'uk' | 'ru' | 'pl';
 
 export interface LanguageInfo {
   code: Language;
@@ -20,6 +20,7 @@ export const SUPPORTED_LANGUAGES: LanguageInfo[] = [
   { code: 'en', name: 'English', nativeName: 'English', flag: '🇬🇧' },
   { code: 'uk', name: 'Ukrainian', nativeName: 'Українська', flag: '🇺🇦' },
   { code: 'ru', name: 'Russian', nativeName: 'Русский', flag: '🇷🇺' },
+  { code: 'pl', name: 'Polish', nativeName: 'Polski', flag: '🇵🇱' },
 ];
 
 // Translation type
@@ -52,7 +53,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const loadLanguage = async () => {
     try {
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
-      if (saved && (saved === 'en' || saved === 'uk' || saved === 'ru')) {
+      if (saved && (saved === 'en' || saved === 'uk' || saved === 'ru' || saved === 'pl')) {
         setLanguageState(saved as Language);
       }
     } catch (error) {

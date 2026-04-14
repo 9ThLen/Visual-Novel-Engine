@@ -130,27 +130,32 @@ export default function EditorScreen() {
             {Object.keys(item.scenes).length} scenes
           </Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-            <HelpableElement
-              helpId="scene_connections"
-              onPress={() => handleOpenNodeEditor(item)}
-            >
-              <Button variant="primary" size="sm" style={{ flex: 1 }}>
+            <HelpableElement helpId="scene_connections">
+              <Button
+                variant="primary"
+                size="sm"
+                style={{ flex: 1 }}
+                onPress={() => handleOpenNodeEditor(item)}
+              >
                 🗺 Graph
               </Button>
             </HelpableElement>
-            <HelpableElement
-              helpId="scene_editor"
-              onPress={() => handleEditStory(item)}
-            >
-              <Button variant="secondary" size="sm" style={{ flex: 1 }}>
+            <HelpableElement helpId="scene_editor">
+              <Button
+                variant="secondary"
+                size="sm"
+                style={{ flex: 1 }}
+                onPress={() => handleEditStory(item)}
+              >
                 ✏️ Edit
               </Button>
             </HelpableElement>
-            <HelpableElement
-              helpId="delete_story_button"
-              onPress={() => handleDeleteStory(item.id)}
-            >
-              <Button variant="danger" size="sm">
+            <HelpableElement helpId="delete_story_button">
+              <Button
+                variant="danger"
+                size="sm"
+                onPress={() => handleDeleteStory(item.id)}
+              >
                 🗑
               </Button>
             </HelpableElement>
@@ -186,11 +191,12 @@ export default function EditorScreen() {
         </Text>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           <HelpModeToggle />
-          <HelpableElement
-            helpId="add_story_button"
-            onPress={() => setShowNewStoryForm(!showNewStoryForm)}
-          >
-            <Button variant="primary" size="sm">
+          <HelpableElement helpId="add_story_button">
+            <Button
+              variant="primary"
+              size="sm"
+              onPress={() => setShowNewStoryForm(!showNewStoryForm)}
+            >
               {showNewStoryForm ? 'Cancel' : '+ New'}
             </Button>
           </HelpableElement>
@@ -233,11 +239,13 @@ export default function EditorScreen() {
             value={newStoryTitle}
             onChangeText={setNewStoryTitle}
           />
-          <HelpableElement
-            helpId="add_story_button"
-            onPress={handleCreateStory}
-          >
-            <Button variant="primary" size="base" fullWidth>
+          <HelpableElement helpId="add_story_button">
+            <Button
+              variant="primary"
+              size="base"
+              fullWidth
+              onPress={handleCreateStory}
+            >
               Create Story
             </Button>
           </HelpableElement>

@@ -127,43 +127,66 @@ export default function ReaderScreen() {
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       {/* Floating menu */}
       {showMenu && (
-        <View
-          style={{
-            position: 'absolute',
-            top: 48,
-            left: 16,
-            zIndex: 100,
-            backgroundColor: colors.surface,
-            borderRadius: 12,
-            padding: 8,
-            borderWidth: 1,
-            borderColor: colors.border,
-            minWidth: 140,
-          }}
-        >
-          {[
-            { label: '💾 Save / Load', action: () => { setShowMenu(false); router.push('../save-load'); } },
-            { label: '🎒 Inventory', action: () => { setShowMenu(false); setShowInventory(true); } },
-            { label: '⚙️ Settings', action: () => { setShowMenu(false); router.push('../settings'); } },
-            { label: '🏠 Home', action: () => router.back() },
-            { label: '✕ Close menu', action: () => setShowMenu(false) },
-          ].map((item) => (
-            <Pressable
-              key={item.label}
-              style={({ pressed }) => ({
-                paddingVertical: 10,
-                paddingHorizontal: 14,
-                borderRadius: 8,
-                opacity: pressed ? 0.7 : 1,
-              })}
-              onPress={item.action}
-            >
-              <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '500' }}>
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        <>
+          {/* Backdrop */}
+          <Pressable
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.6)',
+              zIndex: 99,
+            }}
+            onPress={() => setShowMenu(false)}
+          />
+          {/* Menu */}
+          <View
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: [{ translateX: -160 }, { translateY: -200 }],
+              zIndex: 100,
+              backgroundColor: colors.surface,
+              borderRadius: 16,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: colors.border,
+              width: 320,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 12,
+              elevation: 8,
+            }}
+          >
+            {[
+              { label: '💾 Save / Load', action: () => { setShowMenu(false); router.push('../save-load'); } },
+              { label: '🎒 Inventory', action: () => { setShowMenu(false); setShowInventory(true); } },
+              { label: '⚙️ Settings', action: () => { setShowMenu(false); router.push('../settings'); } },
+              { label: '🏠 Home', action: () => router.back() },
+              { label: '✕ Close menu', action: () => setShowMenu(false) },
+            ].map((item) => (
+              <Pressable
+                key={item.label}
+                style={({ pressed }) => ({
+                  paddingVertical: 14,
+                  paddingHorizontal: 18,
+                  borderRadius: 10,
+                  backgroundColor: pressed ? colors.background : 'transparent',
+                  marginBottom: 4,
+                })}
+                onPress={item.action}
+              >
+                <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '500' }}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
       )}
 
       {/* Menu button */}
