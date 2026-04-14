@@ -15,7 +15,11 @@
       "Bash(git pull:*)",
       "Bash(EXPO_PORT=8081 pnpm run:*)",
       "Bash(git add:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(taskkill:*)",
+      "Bash(bash:*)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :8081)"
     ]
   }
 }

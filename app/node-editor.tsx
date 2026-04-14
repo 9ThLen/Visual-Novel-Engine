@@ -15,10 +15,12 @@ import * as storyContextEnhanced from '@/lib/story-context-enhanced';
 
 export default function NodeEditorScreen() {
   const colors = useColors();
-  const { storyId } = useLocalSearchParams();
+  const { storyId, sceneId } = useLocalSearchParams();
   const { stories, loadStories } = useStory();
 
-  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(
+    typeof sceneId === 'string' ? sceneId : null
+  );
 
   // Handle node selection
   const handleNodeSelect = useCallback((nodeId: string) => {
@@ -150,10 +152,24 @@ export default function NodeEditorScreen() {
     );
   }
 
+  if (!story) {
+    return (
+      <View style={styles.container}>
+        <Text style={{ padding: 20, color: colors.foreground }}>Story not found</Text>
+      </View>
+    );
+  }
+
+  console.log('[NodeEditor] Rendering with:', {
+    storyId: story.id,
+    selectedSceneId,
+    sceneCount: Object.keys(story.scenes).length,
+  });
+
   return (
     <View style={styles.container}>
       {/* Left Panel: Node Canvas */}
-      <View style={[styles.leftPanel, { borderRightColor: colors.border }]}>
+      <View style={[styles.leftPanel, { borderRightColor: colors.border, backgroundColor: colors.background }]}>
         <NodeCanvas
           story={story}
           selectedSceneId={selectedSceneId}

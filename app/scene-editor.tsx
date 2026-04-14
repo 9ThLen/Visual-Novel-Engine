@@ -391,21 +391,37 @@ export default function SceneEditorScreen() {
                 onChangeText={setNewChoiceText}
               />
               <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 4 }}>Target scene:</Text>
-              <View style={{ backgroundColor: colors.background, borderRadius: 6, borderWidth: 1, borderColor: colors.border, marginBottom: 8, maxHeight: 110 }}>
-                <FlatList
-                  data={sceneList}
-                  renderItem={({ item }) => (
-                    <Pressable
-                      style={({ pressed }) => ({ paddingHorizontal: 8, paddingVertical: 7, backgroundColor: newChoiceTarget === item ? colors.primary : 'transparent', opacity: pressed ? 0.7 : 1 })}
-                      onPress={() => setNewChoiceTarget(item)}
-                    >
-                      <Text style={{ color: newChoiceTarget === item ? '#fff' : colors.foreground, fontSize: 12 }}>{item}</Text>
-                    </Pressable>
-                  )}
-                  keyExtractor={(item) => item}
-                  scrollEnabled
-                />
-              </View>
+              {sceneList.length === 0 ? (
+                <Text style={{ fontSize: 12, color: colors.error, padding: 8 }}>No scenes available. Create a scene first.</Text>
+              ) : (
+                <View style={{ backgroundColor: colors.background, borderRadius: 6, borderWidth: 1, borderColor: colors.border, marginBottom: 8, minHeight: 80, maxHeight: 150 }}>
+                  <FlatList
+                    data={sceneList}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        style={({ pressed }) => ({
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          backgroundColor: newChoiceTarget === item ? colors.primary : 'transparent',
+                          opacity: pressed ? 0.7 : 1,
+                          borderBottomWidth: 1,
+                          borderBottomColor: colors.border,
+                        })}
+                        onPress={() => {
+                          console.log('Selected scene:', item);
+                          setNewChoiceTarget(item);
+                        }}
+                      >
+                        <Text style={{ color: newChoiceTarget === item ? '#fff' : colors.foreground, fontSize: 13, fontWeight: newChoiceTarget === item ? '600' : '400' }}>
+                          {item} {newChoiceTarget === item ? '✓' : ''}
+                        </Text>
+                      </Pressable>
+                    )}
+                    keyExtractor={(item) => item}
+                    scrollEnabled
+                  />
+                </View>
+              )}
               <Pressable
                 style={({ pressed }) => ({ backgroundColor: colors.primary, paddingVertical: 9, borderRadius: 8, opacity: pressed ? 0.8 : 1 })}
                 onPress={handleAddChoice}
