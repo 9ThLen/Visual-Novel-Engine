@@ -26,6 +26,7 @@ export function HelpTooltip() {
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
   useEffect(() => {
+    console.log('[HelpTooltip] State changed:', { activeTooltip, tooltipPosition });
     if (activeTooltip) {
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -46,10 +47,18 @@ export function HelpTooltip() {
     }
   }, [activeTooltip]);
 
-  if (!activeTooltip || !tooltipPosition) return null;
+  if (!activeTooltip || !tooltipPosition) {
+    console.log('[HelpTooltip] Not rendering - missing data');
+    return null;
+  }
 
   const helpItem = HELP_CONTENT[activeTooltip];
-  if (!helpItem) return null;
+  if (!helpItem) {
+    console.log('[HelpTooltip] Help item not found:', activeTooltip);
+    return null;
+  }
+
+  console.log('[HelpTooltip] Rendering tooltip for:', helpItem.label);
 
   const category = HELP_CATEGORIES[helpItem.category];
 
