@@ -85,6 +85,7 @@ const config: ExpoConfig = {
     output: "static",
     favicon: "./assets/images/favicon.png",
   },
+  assetBundlePatterns: ["**/*"],
   plugins: [
     "expo-router",
     "expo-asset",
