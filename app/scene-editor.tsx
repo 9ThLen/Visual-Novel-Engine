@@ -493,7 +493,7 @@ export default function SceneEditorScreen() {
                     </Pressable>
                   )}
                   keyExtractor={(item) => item}
-                  scrollEnabled
+                  scrollEnabled={false}
                 />
               </View>
               <Pressable
