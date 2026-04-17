@@ -3,7 +3,7 @@
  * Handles resolution of bundled and external asset URIs
  */
 
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 // Bundled assets mapping - maps asset IDs to actual asset locations
 const BUNDLED_ASSETS: Record<string, any> = {
