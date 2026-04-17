@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Story, SaveSlot, PlaybackState, UserSettings } from './types';
 
@@ -113,7 +113,7 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const loadStories = async () => {
+  const loadStories = useCallback(async () => {
     try {
       const storiesJson = await AsyncStorage.getItem('stories');
       if (storiesJson) {
@@ -123,17 +123,17 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to load stories:', error);
     }
-  };
+  }, []);
 
-  const setCurrentStory = (story: Story | null) => {
+  const setCurrentStory = useCallback((story: Story | null) => {
     dispatch({ type: 'SET_CURRENT_STORY', payload: story });
-  };
+  }, []);
 
-  const updatePlaybackState = (playbackState: PlaybackState) => {
+  const updatePlaybackState = useCallback((playbackState: PlaybackState) => {
     dispatch({ type: 'UPDATE_PLAYBACK_STATE', payload: playbackState });
-  };
+  }, []);
 
-  const saveGame = async (slotId: string) => {
+  const saveGame = useCallback(async (slotId: string) => {
     if (!state.playbackState || !state.currentStory) return;
 
     try {
@@ -163,14 +163,14 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to save game:', error);
     }
-  };
+  }, [state]);
 
-  const autoSave = async () => {
+  const autoSave = useCallback(async () => {
     // Auto-save to special slot
     await saveGame('autosave');
-  };
+  }, [saveGame]);
 
-  const loadGame = async (slotId: string) => {
+  const loadGame = useCallback(async (slotId: string) => {
     try {
       const slot = state.saveSlots.find((s) => s.id === slotId);
       if (!slot) return;
@@ -187,9 +187,9 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to load game:', error);
     }
-  };
+  }, [state]);
 
-  const deleteGame = async (slotId: string) => {
+  const deleteGame = useCallback(async (slotId: string) => {
     try {
       const updatedSlots = state.saveSlots.filter((s) => s.id !== slotId);
       dispatch({ type: 'SET_SAVE_SLOTS', payload: updatedSlots });
@@ -197,9 +197,9 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to delete game:', error);
     }
-  };
+  }, [state]);
 
-  const updateSettings = async (newSettings: Partial<UserSettings>) => {
+  const updateSettings = useCallback(async (newSettings: Partial<UserSettings>) => {
     try {
       const updated = { ...state.settings, ...newSettings };
       dispatch({ type: 'UPDATE_SETTINGS', payload: newSettings });
@@ -207,9 +207,9 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to update settings:', error);
     }
-  };
+  }, [state]);
 
-  const addStory = async (story: Story) => {
+  const addStory = useCallback(async (story: Story) => {
     try {
       const updatedStories = [...state.stories, story];
       dispatch({ type: 'ADD_STORY', payload: story });
@@ -217,9 +217,9 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to add story:', error);
     }
-  };
+  }, [state]);
 
-  const deleteStory = async (storyId: string) => {
+  const deleteStory = useCallback(async (storyId: string) => {
     try {
       const updatedStories = state.stories.filter((s) => s.id !== storyId);
       dispatch({ type: 'DELETE_STORY', payload: storyId });
@@ -227,9 +227,9 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to delete story:', error);
     }
-  };
+  }, [state]);
 
-  const value: StoryContextType = {
+  const value: StoryContextType = useMemo(() => ({
     stories: state.stories,
     currentStory: state.currentStory,
     playbackState: state.playbackState,
@@ -245,7 +245,7 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     updateSettings,
     addStory,
     deleteStory,
-  };
+  }), [state]);
 
   return <StoryContext.Provider value={value}>{children}</StoryContext.Provider>;
 }
