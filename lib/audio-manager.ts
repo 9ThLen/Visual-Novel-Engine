@@ -57,7 +57,7 @@ class AudioManager {
 
       if (fadeIn) this._fade(id, 0, volume, FADE_DURATION_MS);
     } catch (err) {
-      console.warn(`[Audio] play(${id}) failed:`, err);
+      // Silently fail to avoid spam - audio file may not be available
     }
   }
 
