@@ -5,11 +5,20 @@
 
 import * as FileSystem from 'expo-file-system';
 
-// Bundled assets mapping
-const BUNDLED_ASSETS: Record<string, string> = {
-  'demo-bg-1': require('@/assets/demo-bg-1.png'),
-  'demo-bg-2': require('@/assets/demo-bg-2.png'),
-  'demo-character-1': require('@/assets/demo-character-1.png'),
+// Bundled assets mapping - maps asset IDs to actual asset locations
+const BUNDLED_ASSETS: Record<string, any> = {
+  // Background assets
+  'bg-ancient-library': require('@/assets/background/bg-ancient-library.png'),
+  'bg-grand-hall': require('@/assets/background/bg-grand-hall.png'),
+  'bg-hall-mirrors': require('@/assets/background/bg-hall-mirrors.png'),
+  'bg-museum-entrance': require('@/assets/background/bg-museum-entrance.png'),
+  'bg-treasure-chamber': require('@/assets/background/bg-treasure-chamber.png'),
+  'bg-upper-library': require('@/assets/background/bg-upper-library.png'),
+
+  // Character assets
+  'char-guide': require('@/assets/charakters/char-guide.png'),
+  'char-librarian': require('@/assets/charakters/char-librarian.png'),
+  'char-reflection': require('@/assets/charakters/char-reflection.png'),
 };
 
 /**
@@ -28,6 +37,13 @@ export function getBundledAsset(assetId: string): any {
   const cleaned = assetId.replace('bundle://', '');
   if (BUNDLED_ASSETS[cleaned]) {
     return BUNDLED_ASSETS[cleaned];
+  }
+
+  // Try to find by partial match (useful for URIs that include paths)
+  for (const [key, value] of Object.entries(BUNDLED_ASSETS)) {
+    if (assetId.includes(key) || assetId.endsWith(key)) {
+      return value;
+    }
   }
 
   return null;
