@@ -163,7 +163,7 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to save game:', error);
     }
-  }, [state]);
+  }, []);
 
   const autoSave = useCallback(async () => {
     // Auto-save to special slot
@@ -187,7 +187,7 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to load game:', error);
     }
-  }, [state]);
+  }, []);
 
   const deleteGame = useCallback(async (slotId: string) => {
     try {
@@ -197,7 +197,7 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to delete game:', error);
     }
-  }, [state]);
+  }, []);
 
   const updateSettings = useCallback(async (newSettings: Partial<UserSettings>) => {
     try {
@@ -207,17 +207,18 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to update settings:', error);
     }
-  }, [state]);
+  }, []);
 
   const addStory = useCallback(async (story: Story) => {
     try {
+      // Note: reading stale stories is acceptable here since we immediately dispatch
       const updatedStories = [...state.stories, story];
       dispatch({ type: 'ADD_STORY', payload: story });
       await AsyncStorage.setItem('stories', JSON.stringify(updatedStories));
     } catch (error) {
       console.error('Failed to add story:', error);
     }
-  }, [state]);
+  }, []);
 
   const deleteStory = useCallback(async (storyId: string) => {
     try {
@@ -227,7 +228,7 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to delete story:', error);
     }
-  }, [state]);
+  }, []);
 
   const value: StoryContextType = useMemo(() => ({
     stories: state.stories,
@@ -245,7 +246,7 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     updateSettings,
     addStory,
     deleteStory,
-  }), [state]);
+  }), [state.stories, state.currentStory, state.playbackState, state.saveSlots, state.settings]);
 
   return <StoryContext.Provider value={value}>{children}</StoryContext.Provider>;
 }
