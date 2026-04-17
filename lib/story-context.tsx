@@ -85,6 +85,7 @@ function storyReducer(state: State, action: Action): State {
 
 export function StoryProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(storyReducer, initialState);
+  const autoSaveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   // Load data on mount
   useEffect(() => {
@@ -133,6 +134,7 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'UPDATE_PLAYBACK_STATE', payload: playbackState });
   }, []);
 
+  // saveGame зависит от current state
   const saveGame = useCallback(async (slotId: string) => {
     if (!state.playbackState || !state.currentStory) return;
 
@@ -163,13 +165,57 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to save game:', error);
     }
+  }, [state.playbackState, state.currentStory, state.saveSlots]);
+
+  // autoSave с debounce — не сохраняет слишком часто
+  const autoSave = useCallback(async () => {
+    // Clear existing timeout to debounce
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Debounce auto-save to avoid excessive writes (500ms)
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        if (!state.playbackState || !state.currentStory) return;
+
+        const currentScene = state.currentStory.scenes[state.playbackState.currentSceneId];
+        const sceneText = currentScene?.text.split('\n')[0].slice(0, 100) || '';
+
+        const newSlot: SaveSlot = {
+          id: 'autosave',
+          storyId: state.currentStory.id,
+          sceneId: state.playbackState.currentSceneId,
+          choicesMade: state.playbackState.choicesMade,
+          timestamp: Date.now(),
+          sceneName: currentScene?.id,
+          thumbnailUri: currentScene?.backgroundImageUri || undefined,
+          storyTitle: state.currentStory.title,
+          sceneText,
+          playTime: 0,
+        };
+
+        const updatedSlots = state.saveSlots.filter((s) => s.id !== 'autosave');
+        updatedSlots.push(newSlot);
+
+        dispatch({ type: 'SET_SAVE_SLOTS', payload: updatedSlots });
+        await AsyncStorage.setItem('saveSlots', JSON.stringify(updatedSlots));
+      } catch (error) {
+        console.error('Failed to auto-save game:', error);
+      }
+    }, 500);
+  }, [state.playbackState, state.currentStory, state.saveSlots]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
   }, []);
 
-  const autoSave = useCallback(async () => {
-    // Auto-save to special slot
-    await saveGame('autosave');
-  }, [saveGame]);
-
+  // loadGame зависит от state.saveSlots
   const loadGame = useCallback(async (slotId: string) => {
     try {
       const slot = state.saveSlots.find((s) => s.id === slotId);
@@ -187,8 +233,9 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to load game:', error);
     }
-  }, []);
+  }, [state.saveSlots]);
 
+  // deleteGame зависит от state.saveSlots
   const deleteGame = useCallback(async (slotId: string) => {
     try {
       const updatedSlots = state.saveSlots.filter((s) => s.id !== slotId);
@@ -197,8 +244,9 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to delete game:', error);
     }
-  }, []);
+  }, [state.saveSlots]);
 
+  // updateSettings зависит от state.settings
   const updateSettings = useCallback(async (newSettings: Partial<UserSettings>) => {
     try {
       const updated = { ...state.settings, ...newSettings };
@@ -207,19 +255,20 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to update settings:', error);
     }
-  }, []);
+  }, [state.settings]);
 
+  // addStory зависит от state.stories
   const addStory = useCallback(async (story: Story) => {
     try {
-      // Note: reading stale stories is acceptable here since we immediately dispatch
       const updatedStories = [...state.stories, story];
       dispatch({ type: 'ADD_STORY', payload: story });
       await AsyncStorage.setItem('stories', JSON.stringify(updatedStories));
     } catch (error) {
       console.error('Failed to add story:', error);
     }
-  }, []);
+  }, [state.stories]);
 
+  // deleteStory зависит от state.stories
   const deleteStory = useCallback(async (storyId: string) => {
     try {
       const updatedStories = state.stories.filter((s) => s.id !== storyId);
@@ -228,8 +277,9 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to delete story:', error);
     }
-  }, []);
+  }, [state.stories]);
 
+  // useMemo включает ВСЕ функции + state
   const value: StoryContextType = useMemo(() => ({
     stories: state.stories,
     currentStory: state.currentStory,
@@ -246,7 +296,23 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     updateSettings,
     addStory,
     deleteStory,
-  }), [state.stories, state.currentStory, state.playbackState, state.saveSlots, state.settings]);
+  }), [
+    state.stories,
+    state.currentStory,
+    state.playbackState,
+    state.saveSlots,
+    state.settings,
+    loadStories,
+    setCurrentStory,
+    updatePlaybackState,
+    saveGame,
+    autoSave,
+    loadGame,
+    deleteGame,
+    updateSettings,
+    addStory,
+    deleteStory,
+  ]);
 
   return <StoryContext.Provider value={value}>{children}</StoryContext.Provider>;
 }
