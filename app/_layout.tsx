@@ -8,6 +8,7 @@ import { StoryProvider } from "@/lib/story-context";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { InventoryProvider } from "@/lib/inventory-context";
 import { HelpSystemProvider } from "@/lib/help-system-context";
+import { I18nProvider } from "@/lib/i18n-context";
 
 export const unstable_settings = {
   anchor: "(tabs)",
