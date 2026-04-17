@@ -88,7 +88,6 @@ export function HelpSystemProvider({ children }: { children: React.ReactNode }) 
   };
 
   const showTooltip = (helpItemId: string, position: HelpTooltipPosition) => {
-    console.log('[HelpSystem] showTooltip called', { helpItemId, position });
     setState((prev) => ({
       ...prev,
       activeTooltip: helpItemId,

@@ -7,6 +7,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Image, StyleSheet, Animated, Easing } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import type { SplashScreen, UITransition } from '@/lib/splash-types';
+import { resolveAssetUri } from '@/lib/asset-resolver';
 
 interface Props {
   splash: SplashScreen;
@@ -28,10 +29,22 @@ export function SplashScreenComponent({
   const splashOpacity = useRef(new Animated.Value(0)).current;
   const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [resolvedUri, setResolvedUri] = useState<string | null>(null);
+
+  // Resolve splash URI
+  useEffect(() => {
+    let mounted = true;
+    resolveAssetUri(splash.uri).then((uri) => {
+      if (mounted) setResolvedUri(uri);
+    });
+    return () => { mounted = false; };
+  }, [splash.uri]);
 
   useEffect(() => {
-    playSplash();
-  }, []);
+    if (resolvedUri) {
+      playSplash();
+    }
+  }, [resolvedUri]);
 
   const playSplash = async () => {
     // Fade in splash
@@ -76,7 +89,7 @@ export function SplashScreenComponent({
     }
   };
 
-  if (!isPlaying) return null;
+  if (!isPlaying || !resolvedUri) return null;
 
   return (
     <Animated.View
@@ -90,7 +103,7 @@ export function SplashScreenComponent({
     >
       {splash.type === 'image' && (
         <Image
-          source={{ uri: splash.uri }}
+          source={{ uri: resolvedUri }}
           style={styles.media}
           resizeMode="cover"
         />
@@ -99,7 +112,7 @@ export function SplashScreenComponent({
       {(splash.type === 'video' || splash.type === 'animation') && (
         <Video
           ref={videoRef}
-          source={{ uri: splash.uri }}
+          source={{ uri: resolvedUri }}
           style={styles.media}
           resizeMode={ResizeMode.COVER}
           shouldPlay

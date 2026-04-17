@@ -146,11 +146,11 @@ export default function EditorScreen() {
           >
             {Object.keys(item.scenes).length} scenes
           </Text>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 12, justifyContent: 'center' }}>
             <Button
               variant="primary"
-              size="sm"
-              style={{ flex: 1 }}
+              size="base"
+              style={{ minWidth: 120 }}
               onPress={() => handleEditStory(item)}
             >
               ✏️ Edit
@@ -158,10 +158,11 @@ export default function EditorScreen() {
             <HelpableElement helpId="delete_story_button">
               <Button
                 variant="danger"
-                size="sm"
+                size="base"
+                style={{ minWidth: 120 }}
                 onPress={() => handleDeleteStory(item.id)}
               >
-                🗑
+                🗑 Delete
               </Button>
             </HelpableElement>
           </View>
@@ -308,13 +309,13 @@ export default function EditorScreen() {
           {stories.map((item) => (
             <View
               key={item.id}
-              style={{
-                width: isWebDesktop
+              style={[
+                isWebDesktop
                   ? layout.gridColumns === 3
-                    ? 'calc(33.333% - 8px)'
-                    : 'calc(50% - 6px)'
-                  : '100%',
-              }}
+                    ? { width: '33.333%', paddingHorizontal: 4 }
+                    : { width: '50%', paddingHorizontal: 4 }
+                  : { width: '100%' }
+              ]}
             >
               {renderStoryCard({ item })}
             </View>
