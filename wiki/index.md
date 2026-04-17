@@ -1,23 +1,20 @@
 # Wiki Index
 
-Last updated: 2026-04-13
+Last updated: 2026-04-17
 
-## Overview
+## Overview & Documentation
 - [overview.md](overview.md) - Visual Novel Engine project summary
+- [README.md](README.md) - Project README
+- [SCHEMA.md](SCHEMA.md) - Data schema documentation
 
-## Entities (0 pages)
-*Entity pages will be created as we ingest code and documentation*
+## Fixes & Updates
+- [FIXES_2026_04_17.md](FIXES_2026_04_17.md) - **Latest: Complete cleanup and fixes (2026-04-17)**
+  - HelpSystemProvider context setup
+  - Removed debug files and console.log
+  - Fixed memory leaks in useEffect
+  - Fixed deprecated APIs
+  - Fixed infinite loops (audio/updates)
+  - Asset resolver improvements
 
-## Concepts (0 pages)
-*Concept pages will be created as we identify patterns*
-
-## Sources (0 pages)
-*Source pages will be created as we process materials*
-
-## Queries (0 pages)
-*Query pages will be created from significant questions*
-
----
-
-**Total pages:** 1 (excluding index and log)
-**Status:** Wiki initialized, ready for ingestion
+## Activity Log
+- [log.md](log.md) - Development activity log
