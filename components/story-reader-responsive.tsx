@@ -107,29 +107,19 @@ export function StoryReaderResponsive({
     const bundledAsset = getBundledAsset(bgUri);
     if (bundledAsset) {
       setBgSource(bundledAsset);
-    } else {
-      console.warn('[StoryReader] Bundled asset NOT found:', bgUri);
-      // Try async resolution as fallback
-      resolveAssetUri(bgUri).then((uri) => {
-        if (!mounted) {
-          return;
-        }
-        if (uri) {
-          // Use direct URI string for consistency with bundled assets
-          setBgSource(uri);
-        } else {
-          console.error('[StoryReader] Failed to resolve background:', bgUri);
-          setBgSource(null);
-        }
-      }).catch((error) => {
-        console.error('[StoryReader] Error resolving background:', error);
-        if (mounted) setBgSource(null);
-      });
+      return () => {
+        mounted = false;
+      };
     }
 
-    return () => {
-      mounted = false;
-    };
+    // Try async resolution as fallback (non-blocking)
+    resolveAssetUri(bgUri).then((uri) => {
+      if (mounted && uri) {
+        setBgSource(uri);
+      }
+    }).catch(() => {
+      // Silently fail if asset can't be resolved
+    });
   }, [scene.id]); // Only depend on scene.id to avoid re-renders
 
   // Resolve character image URIs when scene changes
@@ -376,8 +366,8 @@ export function StoryReaderResponsive({
             style={StyleSheet.absoluteFillObject}
             contentFit="cover"
             cachePolicy="memory-disk"
-            onLoad={() => console.log('[StoryReader] Background image loaded successfully')}
-            onError={(error) => console.error('[StoryReader] Background image load error:', error)}
+            onLoad={() => {}}
+            onError={() => {}}
             placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
             transition={300}
           />
