@@ -235,7 +235,7 @@ export function StoryReaderResponsive({
   useEffect(() => {
     const { body } = extractSpeaker(pages[pageIndex] ?? '');
     startTypewriter(body);
-  }, [pageIndex, scene.id, startTypewriter]);
+  }, [pageIndex, pages]);
 
   // ── Push to history when page fully shown ───────────────────────────────
   useEffect(() => {
@@ -266,7 +266,7 @@ export function StoryReaderResponsive({
     }, AUTO_PLAY_DELAY_MS);
 
     return () => { if (autoPlayTimer.current) clearTimeout(autoPlayTimer.current); };
-  }, [autoPlayActive, isTyping, isLastPage, scene.choices.length, pageIndex]);
+  }, [autoPlayActive, isTyping, isLastPage, scene.choices.length, onContinue];
 
   // ── Turbo skip ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -286,7 +286,7 @@ export function StoryReaderResponsive({
       }
     }, 180);
     return () => { if (turboInterval.current) clearInterval(turboInterval.current); };
-  }, [turbo, isLastPage, scene.choices.length]);
+  }, [turbo, isLastPage, scene.choices.length, onContinue]);
 
   // ── Cleanup ──────────────────────────────────────────────────────────────
   useEffect(() => () => {
