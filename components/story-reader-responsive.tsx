@@ -266,7 +266,7 @@ export function StoryReaderResponsive({
     }, AUTO_PLAY_DELAY_MS);
 
     return () => { if (autoPlayTimer.current) clearTimeout(autoPlayTimer.current); };
-  }, [autoPlayActive, isTyping, isLastPage, scene.choices.length, onContinue];
+  }, [autoPlayActive, isTyping, isLastPage, scene.choices.length, onContinue]);
 
   // ── Turbo skip ───────────────────────────────────────────────────────────
   useEffect(() => {
