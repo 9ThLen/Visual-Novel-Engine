@@ -102,24 +102,27 @@ export function StoryReaderResponsive({
       return;
     }
 
-
     // Try direct bundled asset first
     const bundledAsset = getBundledAsset(bgUri);
     if (bundledAsset) {
+      console.log('[StoryReader] Using bundled asset for:', bgUri);
       setBgSource(bundledAsset);
-      return () => {
-        mounted = false;
-      };
+    } else {
+      console.log('[StoryReader] Bundled asset not found, trying resolver:', bgUri);
+      // Try async resolution as fallback (non-blocking)
+      resolveAssetUri(bgUri).then((uri) => {
+        console.log('[StoryReader] Resolver returned:', uri);
+        if (mounted && uri) {
+          setBgSource(uri);
+        }
+      }).catch((err) => {
+        console.log('[StoryReader] Resolver failed:', err);
+      });
     }
 
-    // Try async resolution as fallback (non-blocking)
-    resolveAssetUri(bgUri).then((uri) => {
-      if (mounted && uri) {
-        setBgSource(uri);
-      }
-    }).catch(() => {
-      // Silently fail if asset can't be resolved
-    });
+    return () => {
+      mounted = false;
+    };
   }, [scene.id]); // Only depend on scene.id to avoid re-renders
 
   // Resolve character image URIs when scene changes
