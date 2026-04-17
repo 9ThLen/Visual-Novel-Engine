@@ -7,7 +7,15 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 // Bundled assets mapping - maps asset IDs to actual asset locations
 const BUNDLED_ASSETS: Record<string, any> = {
-  // Background assets
+  // Background assets - full paths (from demo-story.json)
+  'assets/background/bg-ancient-library.png': require('@/assets/background/bg-ancient-library.png'),
+  'assets/background/bg-grand-hall.png': require('@/assets/background/bg-grand-hall.png'),
+  'assets/background/bg-hall-mirrors.png': require('@/assets/background/bg-hall-mirrors.png'),
+  'assets/background/bg-museum-entrance.png': require('@/assets/background/bg-museum-entrance.png'),
+  'assets/background/bg-treasure-chamber.png': require('@/assets/background/bg-treasure-chamber.png'),
+  'assets/background/bg-upper-library.png': require('@/assets/background/bg-upper-library.png'),
+
+  // Background assets - short names
   'bg-ancient-library': require('@/assets/background/bg-ancient-library.png'),
   'bg-grand-hall': require('@/assets/background/bg-grand-hall.png'),
   'bg-hall-mirrors': require('@/assets/background/bg-hall-mirrors.png'),
@@ -16,6 +24,9 @@ const BUNDLED_ASSETS: Record<string, any> = {
   'bg-upper-library': require('@/assets/background/bg-upper-library.png'),
 
   // Character assets
+  'assets/charakters/char-guide.png': require('@/assets/charakters/char-guide.png'),
+  'assets/charakters/char-librarian.png': require('@/assets/charakters/char-librarian.png'),
+  'assets/charakters/char-reflection.png': require('@/assets/charakters/char-reflection.png'),
   'char-guide': require('@/assets/charakters/char-guide.png'),
   'char-librarian': require('@/assets/charakters/char-librarian.png'),
   'char-reflection': require('@/assets/charakters/char-reflection.png'),
@@ -28,7 +39,7 @@ const BUNDLED_ASSETS: Record<string, any> = {
 export function getBundledAsset(assetId: string): any {
   if (!assetId) return null;
 
-  // Try direct lookup
+  // Try direct lookup first (exact match)
   if (BUNDLED_ASSETS[assetId]) {
     return BUNDLED_ASSETS[assetId];
   }
@@ -39,9 +50,9 @@ export function getBundledAsset(assetId: string): any {
     return BUNDLED_ASSETS[cleaned];
   }
 
-  // Try to find by partial match (useful for URIs that include paths)
+  // Try to find by filename (e.g., "bg-ancient-library.png" -> full path)
   for (const [key, value] of Object.entries(BUNDLED_ASSETS)) {
-    if (assetId.includes(key) || assetId.endsWith(key)) {
+    if (key.endsWith(assetId) || assetId.endsWith(key.split('/').pop() || '')) {
       return value;
     }
   }
@@ -82,13 +93,22 @@ export async function resolveAssetUri(uri: string | undefined): Promise<string |
 
     // Try as a relative path from the caches directory
     const cachePath = `${FileSystem.cacheDirectory}${uri}`;
-    const cacheInfo = await FileSystem.getInfoAsync(cachePath);
-    if (cacheInfo.exists) {
-      return cachePath;
+    try {
+      const cacheInfo = await FileSystem.getInfoAsync(cachePath);
+      if (cacheInfo.exists) {
+        return cachePath;
+      }
+    } catch {
+      // Cache path doesn't exist, continue
     }
 
-    // Try as is (might be a valid path the system knows about)
-    return uri;
+    // If it looks like an asset path (assets/...), return it as-is since it might be a static asset
+    if (uri.startsWith('assets/')) {
+      return uri;
+    }
+
+    // If all else fails, return null to indicate resource couldn't be resolved
+    return null;
   } catch (error) {
     console.error('[AssetResolver] Error resolving asset URI:', uri, error);
     return null;
