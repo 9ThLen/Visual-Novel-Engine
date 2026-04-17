@@ -61,19 +61,25 @@ export default function ReaderScreen() {
 
     let isMounted = true;
 
-    // Resolve and play music
-    if (currentScene.musicUri) {
+    // Resolve and play music (only if URI is provided and valid)
+    if (currentScene.musicUri && currentScene.musicUri.trim()) {
       resolveAssetUri(currentScene.musicUri).then((uri) => {
         if (isMounted && uri) {
           audioManager.crossFade('bgm', uri, settings.bgmVolume);
+        } else if (isMounted) {
+          audioManager.stop('bgm');
         }
       }).catch(() => {
         // Silent fail for missing music
+        if (isMounted) audioManager.stop('bgm');
       });
+    } else {
+      // No music URI, stop playing
+      audioManager.stop('bgm');
     }
 
     // Resolve and play voice
-    if (currentScene.voiceAudioUri) {
+    if (currentScene.voiceAudioUri && currentScene.voiceAudioUri.trim()) {
       resolveAssetUri(currentScene.voiceAudioUri).then((uri) => {
         if (isMounted && uri) {
           audioManager.play('voice', uri, { volume: settings.voiceVolume });
@@ -86,7 +92,7 @@ export default function ReaderScreen() {
     return () => {
       isMounted = false;
     };
-  }, [currentScene, settings.bgmVolume, settings.voiceVolume]);
+  }, [currentScene?.id]);
 
   const navigateToScene = (sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
     if (!story) return;
