@@ -53,7 +53,6 @@ export function HelpableElement({
   }, [isGuidedTourActive, isCurrentTourStep]);
 
   const handlePress = () => {
-    console.log('[HelpableElement] handlePress called', {
       helpId,
       isHelpModeActive,
       isGuidedTourActive,
@@ -63,14 +62,11 @@ export function HelpableElement({
 
     if (isHelpModeActive || isGuidedTourActive) {
       // In help mode, show tooltip instead of normal action
-      console.log('[HelpableElement] Showing tooltip for', helpId);
       viewRef.current?.measure((x, y, width, height, pageX, pageY) => {
-        console.log('[HelpableElement] Measured position:', { x, y, width, height, pageX, pageY });
         showTooltip(helpId, { x: pageX, y: pageY, width, height });
       });
     } else if (onPress && !disabled) {
       // Normal mode - execute action (only if onPress is provided)
-      console.log('[HelpableElement] Executing onPress for', helpId);
       onPress();
     }
   };

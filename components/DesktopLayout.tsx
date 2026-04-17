@@ -67,17 +67,17 @@ export function DesktopLayout({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    flexDirection: 'row',
-    height: '100vh',
-    overflow: 'hidden',
+    flexDirection: 'row' as 'row',
+    ...(Platform.OS === 'web' && { height: '100vh' as any }),
+    overflow: 'hidden' as any,
   },
   main: {
     flex: 1,
-    flexDirection: 'column',
-    overflow: 'hidden',
+    flexDirection: 'column' as 'column',
+    overflow: 'hidden' as any,
   },
   content: {
     flex: 1,
-    overflow: 'auto',
+    ...(Platform.OS === 'web' && { overflow: 'auto' as any }),
   },
 });

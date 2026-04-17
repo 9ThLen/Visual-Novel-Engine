@@ -17,6 +17,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { useColors } from '@/hooks/use-colors';
 
 export type AssetType = 'image' | 'audio';
@@ -48,11 +49,41 @@ async function addAssetToLibrary(
   type: AssetType
 ): Promise<LibraryAsset> {
   const assets = await getLibraryAssets();
+
   // Don't duplicate the same URI
   const existing = assets.find((a) => a.uri === uri);
   if (existing) return existing;
 
-  const asset: LibraryAsset = { id: `asset-${Date.now()}`, type, uri, name, addedAt: Date.now() };
+  // Copy file to permanent storage
+  let permanentUri = uri;
+  try {
+    if (!FileSystem.documentDirectory) {
+      throw new Error('Document directory not available');
+    }
+
+    const filename = name || uri.split('/').pop() || `asset-${Date.now()}`;
+    const ext = filename.includes('.') ? '' : (type === 'image' ? '.png' : '.mp3');
+    const targetPath = `${FileSystem.documentDirectory}media-library/${type}s/${filename}${ext}`;
+
+    // Ensure directory exists
+    const dirPath = `${FileSystem.documentDirectory}media-library/${type}s/`;
+    await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
+
+    // Copy file
+    await FileSystem.copyAsync({ from: uri, to: targetPath });
+    permanentUri = targetPath;
+  } catch (err) {
+    console.warn('[MediaLibrary] Failed to copy to permanent storage, using original URI:', err);
+    permanentUri = uri;
+  }
+
+  const asset: LibraryAsset = {
+    id: `asset-${Date.now()}`,
+    type,
+    uri: permanentUri,
+    name,
+    addedAt: Date.now()
+  };
   await saveLibraryAssets([...assets, asset]);
   return asset;
 }

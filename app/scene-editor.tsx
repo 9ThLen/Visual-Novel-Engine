@@ -26,6 +26,107 @@ import type { InteractiveObject } from '@/lib/interactive-types';
 
 type Tab = 'edit' | 'graph';
 
+// ── Reusable file-picker row component ────────────────────────────────────
+interface FilePickerRowProps {
+  label: string;
+  value: string;
+  onPick: () => void;
+  onLibrary: () => void;
+  onClear: () => void;
+  isImage?: boolean;
+  colors: ReturnType<typeof useColors>;
+}
+
+const FilePickerRow = React.memo(({
+  label,
+  value,
+  onPick,
+  onLibrary,
+  onClear,
+  isImage = false,
+  colors,
+}: FilePickerRowProps) => {
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.muted, marginBottom: 6 }}>{label}</Text>
+      {isImage && value ? (
+        <Image
+          source={{ uri: value }}
+          style={{ width: '100%', height: 110, borderRadius: 8, marginBottom: 8, backgroundColor: colors.surface }}
+          resizeMode="cover"
+        />
+      ) : null}
+      <View style={{ backgroundColor: colors.surface, borderRadius: 6, borderWidth: 1, borderColor: colors.border, padding: 10, marginBottom: 8 }}>
+        <Text style={{ color: value ? colors.foreground : colors.muted, fontSize: 13 }} numberOfLines={1}>
+          {value ? value.split('/').pop() : 'No file selected'}
+        </Text>
+      </View>
+
+      {/* Buttons Row */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <Pressable
+          onPress={() => {
+            onPick();
+          }}
+          style={{
+            flex: 1,
+            backgroundColor: colors.primary,
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            borderRadius: 8,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 8,
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>📂 Pick File</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => {
+            onLibrary();
+          }}
+          style={{
+            flex: 1,
+            backgroundColor: colors.surface,
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            borderRadius: 8,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginRight: value ? 8 : 0,
+          }}
+        >
+          <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '600' }}>🗂 Library</Text>
+        </Pressable>
+
+        {value ? (
+          <Pressable
+            onPress={() => {
+              onClear();
+            }}
+            style={{
+              paddingVertical: 12,
+              paddingHorizontal: 16,
+              borderRadius: 8,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: colors.error,
+            }}
+          >
+            <Text style={{ color: colors.error, fontSize: 16, fontWeight: '600' }}>✕</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+});
+
+FilePickerRow.displayName = 'FilePickerRow';
+
 export default function SceneEditorScreen() {
   const router = useRouter();
   const colors = useColors();
@@ -74,29 +175,64 @@ export default function SceneEditorScreen() {
   // ── File pickers ──────────────────────────────────────────────────────────
 
   const handlePickBg = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
-    if (!result.canceled && result.assets[0]) {
-      const uri = result.assets[0].uri;
-      const name = result.assets[0].fileName ?? uri.split('/').pop() ?? 'image';
-      await addAssetToLibrary(uri, name, 'image');
-      setBackgroundUri(uri);
+    try {
+      // Request permissions first
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to access your photos');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+
+      if (!result.canceled && result.assets[0]) {
+        const uri = result.assets[0].uri;
+        const name = result.assets[0].fileName ?? uri.split('/').pop() ?? 'image';
+        const asset = await addAssetToLibrary(uri, name, 'image');
+        setBackgroundUri(asset.uri);
+        Alert.alert('Success', 'Image added! Don\'t forget to Save.');
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image: ' + error);
     }
   };
 
   const handlePickAudio = async (target: 'voice' | 'music') => {
-    const result = await DocumentPicker.getDocumentAsync({ type: 'audio/*', copyToCacheDirectory: true });
-    if (!result.canceled && result.assets[0]) {
-      const { uri, name } = result.assets[0];
-      await addAssetToLibrary(uri, name ?? 'audio', 'audio');
-      if (target === 'voice') setVoiceUri(uri);
-      else setMusicUri(uri);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+        copyToCacheDirectory: true
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const { uri, name } = result.assets[0];
+        const asset = await addAssetToLibrary(uri, name ?? 'audio', 'audio');
+
+        if (target === 'voice') {
+          setVoiceUri(asset.uri);
+          Alert.alert('Success', 'Voice audio added! Don\'t forget to Save.');
+        } else {
+          setMusicUri(asset.uri);
+          Alert.alert('Success', 'Background music added! Don\'t forget to Save.');
+        }
+      } else {
+      }
+    } catch (error) {
+      console.error('Error picking audio:', error);
+      Alert.alert('Error', 'Failed to pick audio file: ' + error);
     }
   };
 
   const handleLibrarySelect = (asset: LibraryAsset) => {
-    if (libraryTarget === 'bg') setBackgroundUri(asset.uri);
-    else if (libraryTarget === 'voice') setVoiceUri(asset.uri);
-    else if (libraryTarget === 'music') setMusicUri(asset.uri);
+    if (libraryTarget === 'bg') {
+      setBackgroundUri(asset.uri);
+    } else if (libraryTarget === 'voice') {
+      setVoiceUri(asset.uri);
+    } else if (libraryTarget === 'music') {
+      setMusicUri(asset.uri);
+    }
     setLibraryTarget(null);
   };
 
@@ -211,58 +347,6 @@ export default function SceneEditorScreen() {
     );
   }
 
-  // ── Reusable file-picker row ────────────────────────────────────────────
-
-  const FilePickerRow = ({
-    label,
-    value,
-    onPick,
-    onLibrary,
-    onClear,
-    isImage = false,
-  }: {
-    label: string; value: string; onPick: () => void; onLibrary: () => void;
-    onClear: () => void; isImage?: boolean;
-  }) => (
-    <View style={{ marginBottom: 16 }}>
-      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.muted, marginBottom: 6 }}>{label}</Text>
-      {isImage && value ? (
-        <Image
-          source={{ uri: value }}
-          style={{ width: '100%', height: 110, borderRadius: 8, marginBottom: 8, backgroundColor: colors.surface }}
-          resizeMode="cover"
-        />
-      ) : null}
-      <View style={{ backgroundColor: colors.surface, borderRadius: 6, borderWidth: 1, borderColor: colors.border, padding: 10, marginBottom: 8 }}>
-        <Text style={{ color: value ? colors.foreground : colors.muted, fontSize: 13 }} numberOfLines={1}>
-          {value ? value.split('/').pop() : 'No file selected'}
-        </Text>
-      </View>
-      <View style={{ flexDirection: 'row', gap: 6 }}>
-        <Pressable
-          style={({ pressed }) => ({ flex: 1, backgroundColor: colors.primary, paddingVertical: 9, borderRadius: 6, alignItems: 'center', opacity: pressed ? 0.8 : 1 })}
-          onPress={onPick}
-        >
-          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>📂 File</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => ({ flex: 1, backgroundColor: colors.surface, paddingVertical: 9, borderRadius: 6, alignItems: 'center', borderWidth: 1, borderColor: colors.border, opacity: pressed ? 0.8 : 1 })}
-          onPress={onLibrary}
-        >
-          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: '600' }}>🗂 Library</Text>
-        </Pressable>
-        {value ? (
-          <Pressable
-            style={({ pressed }) => ({ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 6, borderWidth: 1, borderColor: colors.error, alignItems: 'center', opacity: pressed ? 0.8 : 1 })}
-            onPress={onClear}
-          >
-            <Text style={{ color: colors.error, fontSize: 13, fontWeight: '600' }}>✕</Text>
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
-  );
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -306,7 +390,10 @@ export default function SceneEditorScreen() {
 
       {/* ── EDIT TAB ─────────────────────────────────────────────────────── */}
       {activeTab === 'edit' && (
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
 
           {/* Dialogue Text */}
           <View style={{ marginBottom: 16 }}>
@@ -332,6 +419,7 @@ export default function SceneEditorScreen() {
             onPick={handlePickBg}
             onLibrary={() => setLibraryTarget('bg')}
             onClear={() => setBackgroundUri('')}
+            colors={colors}
           />
           <FilePickerRow
             label="Voice Audio (MP3)"
@@ -339,6 +427,7 @@ export default function SceneEditorScreen() {
             onPick={() => handlePickAudio('voice')}
             onLibrary={() => setLibraryTarget('voice')}
             onClear={() => setVoiceUri('')}
+            colors={colors}
           />
           <FilePickerRow
             label="Background Music (MP3)"
@@ -346,6 +435,7 @@ export default function SceneEditorScreen() {
             onPick={() => handlePickAudio('music')}
             onLibrary={() => setLibraryTarget('music')}
             onClear={() => setMusicUri('')}
+            colors={colors}
           />
 
           {/* Splash Screen Editor */}

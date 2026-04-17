@@ -21,7 +21,27 @@
       "Bash(netstat -ano)",
       "Bash(findstr :8081)",
       "Bash(git revert:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm start:*)",
+      "Bash(npm run:*)",
+      "Bash(pnpm add:*)",
+      "Bash(timeout 10 pnpm dev)",
+      "Bash(pnpm dev:metro)",
+      "Bash(findstr LISTENING)",
+      "Bash(pnpm dev:*)",
+      "Bash(cp app/_layout.tsx app/_layout.backup.tsx)",
+      "Bash(cp app/_layout.minimal.tsx app/_layout.tsx)",
+      "Bash(grep -E \"\\\\.tsx$|\\\\.ts$\")",
+      "Bash(grep -E \"\\\\.md$|^app-template|^cross-env|^npm$\")",
+      "Bash(grep -E \"^d.*app-template|^d.*cross-env|^d.*npm$\")",
+      "Bash(ls -la *.md)",
+      "Bash(node:*)",
+      "Bash(ls -la *.json)",
+      "Bash(ls -la app/*.tsx)",
+      "Bash(grep -rn \"useEffect\" components/*.tsx)",
+      "Bash(grep -rn \"\\\\.then\\\\|async\" components/*.tsx)",
+      "Bash(chmod +x scripts/check-quality.sh)"
     ]
   }
 }

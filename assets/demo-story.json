@@ -10,10 +10,10 @@
     "scene_1": {
       "id": "scene_1",
       "text": "You wake up in a vast, dimly lit library. Dust particles float through the air, catching the faint light from tall windows. The smell of old books fills your nostrils.\n\nWhere are you? How did you get here?",
-      "backgroundImageUri": "assets/demo/bg-library-1.jpg",
+      "backgroundImageUri": "assets/background/bg-ancient-library.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-mysterious.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_1_1",
@@ -30,10 +30,10 @@
     "scene_2": {
       "id": "scene_2",
       "text": "You approach the towering shelves on your left. Ancient leather-bound books line the shelves, their spines worn with age. A golden glow emanates from one particular book on the middle shelf.\n\nIt's calling to you somehow...",
-      "backgroundImageUri": "assets/demo/bg-library-2.jpg",
+      "backgroundImageUri": "assets/background/bg-ancient-library.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-mysterious.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_2_1",
@@ -50,10 +50,10 @@
     "scene_3": {
       "id": "scene_3",
       "text": "You walk toward the windows, your footsteps echoing through the silent library. As you get closer, you notice something strange—the light seems to shimmer and flicker, almost like it's not real.\n\nBeyond the glass, you see a world that doesn't quite make sense.",
-      "backgroundImageUri": "assets/demo/bg-library-3.jpg",
+      "backgroundImageUri": "assets/background/bg-hall-mirrors.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-mysterious.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_3_1",
@@ -70,10 +70,10 @@
     "scene_4": {
       "id": "scene_4",
       "text": "You pull the glowing book from the shelf. The moment your fingers touch it, the library erupts in brilliant light. The book opens itself, revealing pages filled with swirling symbols and ancient text.\n\nYou understand now—this is the key to everything.",
-      "backgroundImageUri": "assets/demo/bg-library-4.jpg",
+      "backgroundImageUri": "assets/background/bg-upper-library.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-triumphant.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_4_1",
@@ -90,10 +90,10 @@
     "scene_5": {
       "id": "scene_5",
       "text": "You wander deeper into the library, passing shelf after shelf of forgotten knowledge. Hours seem to pass, but time feels strange here. Eventually, you realize you're lost.\n\nThe library is endless, and you're running out of energy.",
-      "backgroundImageUri": "assets/demo/bg-library-5.jpg",
+      "backgroundImageUri": "assets/background/bg-ancient-library.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-mysterious.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_5_1",
@@ -110,10 +110,10 @@
     "scene_6": {
       "id": "scene_6",
       "text": "You open the window, and the shimmer dissolves. Beyond is not a world, but an endless void of swirling colors and light. It's beautiful and terrifying at the same time.\n\nYou feel a pull toward it, as if it's inviting you to step through.",
-      "backgroundImageUri": "assets/demo/bg-library-6.jpg",
+      "backgroundImageUri": "assets/background/bg-hall-mirrors.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-mysterious.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_6_1",
@@ -130,10 +130,10 @@
     "scene_7": {
       "id": "scene_7",
       "text": "As you read the ancient text, knowledge floods your mind. You learn the truth: this library exists outside of time, a repository of all stories ever told and yet to be told.\n\nYou are not a visitor—you are the Keeper of Stories. This was always your destiny.",
-      "backgroundImageUri": "assets/demo/bg-library-4.jpg",
+      "backgroundImageUri": "assets/background/bg-treasure-chamber.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-triumphant.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_7_1",
@@ -145,10 +145,10 @@
     "scene_8": {
       "id": "scene_8",
       "text": "You close the book and place it back on the shelf. The light fades, and the library returns to its quiet state. You turn and walk toward the exit, leaving the mysteries behind.\n\nAs you step outside, you wonder if it was all just a dream.",
-      "backgroundImageUri": "assets/demo/bg-library-7.jpg",
+      "backgroundImageUri": "assets/background/bg-museum-entrance.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-mysterious.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_8_1",
@@ -160,17 +160,16 @@
     "scene_9": {
       "id": "scene_9",
       "text": "Your voice echoes through the endless shelves. For a moment, nothing happens. Then, a figure emerges from the shadows—a woman in a long dress, her eyes glowing with ancient knowledge.\n\n\"You called,\" she says softly. \"I am the Librarian.\"",
-      "backgroundImageUri": "assets/demo/bg-library-5.jpg",
+      "backgroundImageUri": "assets/background/bg-ancient-library.png",
       "characters": [
         {
-          "id": "char_librarian",
-          "imageUri": "assets/demo/char-librarian.png",
-          "name": "The Librarian",
-          "position": "center"
+          "id": "librarian",
+          "name": "Librarian",
+          "imageUri": "assets/charakters/char-librarian.png"
         }
       ],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-mysterious.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_9_1",
@@ -187,10 +186,10 @@
     "scene_10": {
       "id": "scene_10",
       "text": "You sit down on the cold stone floor, surrounded by the towering shelves of forgotten knowledge. As you close your eyes, you feel a strange peace wash over you.\n\nMaybe this is where you were always meant to be.",
-      "backgroundImageUri": "assets/demo/bg-library-5.jpg",
+      "backgroundImageUri": "assets/background/bg-ancient-library.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-mysterious.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_10_1",
@@ -202,10 +201,10 @@
     "scene_11": {
       "id": "scene_11",
       "text": "You step into the void, and reality dissolves around you. Colors swirl and shift. You're falling, flying, and standing still all at once.\n\nWhen the sensation stops, you find yourself back at the beginning of the library, as if nothing has changed. But something feels different about you now.",
-      "backgroundImageUri": "assets/demo/bg-library-1.jpg",
+      "backgroundImageUri": "assets/background/bg-hall-mirrors.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-mysterious.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_11_1",
@@ -217,10 +216,10 @@
     "scene_12": {
       "id": "scene_12",
       "text": "You accept the role, and the book glows brighter. The library expands infinitely around you, revealing its true nature. You are now the Keeper of Stories—guardian of all tales, protector of narratives, weaver of worlds.\n\nYour journey has only just begun.",
-      "backgroundImageUri": "assets/demo/bg-library-4.jpg",
+      "backgroundImageUri": "assets/background/bg-treasure-chamber.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-triumphant.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_12_1",
@@ -232,7 +231,7 @@
     "scene_13": {
       "id": "scene_13",
       "text": "Thank you for playing 'The Forgotten Library'!\n\nThis demo story showcases the branching narrative system of the Visual Novel Engine. Try different choices to explore multiple endings and story paths.\n\nYou can now create your own stories using the built-in editor!",
-      "backgroundImageUri": "assets/demo/bg-library-1.jpg",
+      "backgroundImageUri": "assets/background/bg-grand-hall.png",
       "characters": [],
       "voiceAudioUri": null,
       "musicUri": null,
@@ -247,17 +246,16 @@
     "scene_14": {
       "id": "scene_14",
       "text": "\"You are a Reader,\" the Librarian says. \"One who has been chosen to navigate the infinite stories within these walls. Your purpose is to find the story that resonates with your soul.\"\n\nShe points deeper into the library. \"Will you continue your search?\"",
-      "backgroundImageUri": "assets/demo/bg-library-5.jpg",
+      "backgroundImageUri": "assets/background/bg-ancient-library.png",
       "characters": [
         {
-          "id": "char_librarian",
-          "imageUri": "assets/demo/char-librarian.png",
-          "name": "The Librarian",
-          "position": "center"
+          "id": "librarian",
+          "name": "Librarian",
+          "imageUri": "assets/charakters/char-librarian.png"
         }
       ],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-mysterious.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_14_1",
@@ -274,17 +272,16 @@
     "scene_15": {
       "id": "scene_15",
       "text": "The Librarian smiles sadly. \"There is no escape from the library. But you don't need to escape—you need to understand. This place is not a prison; it's a sanctuary.\"\n\nShe extends her hand. \"Come. Let me show you the way.\"",
-      "backgroundImageUri": "assets/demo/bg-library-5.jpg",
+      "backgroundImageUri": "assets/background/bg-ancient-library.png",
       "characters": [
         {
-          "id": "char_librarian",
-          "imageUri": "assets/demo/char-librarian.png",
-          "name": "The Librarian",
-          "position": "center"
+          "id": "librarian",
+          "name": "Librarian",
+          "imageUri": "assets/charakters/char-librarian.png"
         }
       ],
       "voiceAudioUri": null,
-      "musicUri": "assets/demo/music-mysterious.mp3",
+      "musicUri": null,
       "choices": [
         {
           "id": "choice_15_1",

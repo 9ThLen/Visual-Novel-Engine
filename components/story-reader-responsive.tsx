@@ -33,6 +33,7 @@ import { StoryScene, Choice, UserSettings } from '@/lib/types';
 import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
 import { DialogueHistory, HistoryEntry } from './dialogue-history';
 import { SplashScreenComponent } from './SplashScreen';
+import { resolveAssetUri, getBundledAsset } from '@/lib/asset-resolver';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -86,6 +87,71 @@ export function StoryReaderResponsive({
   const [pageIndex, setPageIndex] = useState(0);
   const [displayedText, setDisplayedText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+
+  // ── Resolved asset URIs ─────────────────────────────────────────────────
+  const [bgSource, setBgSource] = useState<any>(null);
+  const [resolvedCharUris, setResolvedCharUris] = useState<Record<string, string>>({});
+
+  // Resolve background image URI when scene changes
+  useEffect(() => {
+    let mounted = true;
+    const bgUri = scene.backgroundImageUri;
+
+    if (!bgUri) {
+      setBgSource(null);
+      return;
+    }
+
+
+    // Try direct bundled asset first
+    const bundledAsset = getBundledAsset(bgUri);
+    if (bundledAsset) {
+      setBgSource(bundledAsset);
+    } else {
+      console.warn('[StoryReader] Bundled asset NOT found:', bgUri);
+      // Try async resolution as fallback
+      resolveAssetUri(bgUri).then((uri) => {
+        if (!mounted) {
+          return;
+        }
+        if (uri) {
+          // Use direct URI string for consistency with bundled assets
+          setBgSource(uri);
+        } else {
+          console.error('[StoryReader] Failed to resolve background:', bgUri);
+          setBgSource(null);
+        }
+      }).catch((error) => {
+        console.error('[StoryReader] Error resolving background:', error);
+        if (mounted) setBgSource(null);
+      });
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, [scene.id]); // Only depend on scene.id to avoid re-renders
+
+  // Resolve character image URIs when scene changes
+  useEffect(() => {
+    const chars = scene.characters;
+    if (!chars || chars.length === 0) {
+      setResolvedCharUris({});
+      return;
+    }
+
+
+    const resolved: Record<string, any> = {};
+    for (const char of chars) {
+      const bundledAsset = getBundledAsset(char.imageUri);
+      if (bundledAsset) {
+        resolved[char.id] = bundledAsset;
+      } else {
+        console.warn('[StoryReader] Character asset NOT found:', char.id, char.imageUri);
+      }
+    }
+    setResolvedCharUris(resolved);
+  }, [scene.id]); // Only depend on scene.id
 
   // ── History ─────────────────────────────────────────────────────────────
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -150,19 +216,19 @@ export function StoryReaderResponsive({
     if (scene.splashScreen?.splash) {
       setShowSplash(true);
       setUiVisible(false);
-      return;
+      // Don't return - let background load in parallel
+    } else {
+      // Entrance animation
+      sceneOpacity.setValue(0);
+      dialogueSlide.setValue(40);
+      bgScale.setValue(1.04);
+
+      Animated.parallel([
+        Animated.timing(sceneOpacity, { toValue: 1, duration: 380, useNativeDriver: true }),
+        Animated.spring(dialogueSlide, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }),
+        Animated.timing(bgScale, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ]).start();
     }
-
-    // Entrance animation
-    sceneOpacity.setValue(0);
-    dialogueSlide.setValue(40);
-    bgScale.setValue(1.04);
-
-    Animated.parallel([
-      Animated.timing(sceneOpacity, { toValue: 1, duration: 380, useNativeDriver: true }),
-      Animated.spring(dialogueSlide, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }),
-      Animated.timing(bgScale, { toValue: 1, duration: 700, useNativeDriver: true }),
-    ]).start();
   }, [scene.id]);
 
   // ── Start typewriter when page changes ──────────────────────────────────
@@ -304,16 +370,19 @@ export function StoryReaderResponsive({
           { opacity: uiVisible ? sceneOpacity : 0, transform: [{ scale: bgScale }] },
         ]}
       >
-        {scene.backgroundImageUri ? (
+        {bgSource ? (
           <Image
-            source={{ uri: scene.backgroundImageUri }}
+            source={bgSource}
             style={StyleSheet.absoluteFillObject}
             contentFit="cover"
-            transition={300}
             cachePolicy="memory-disk"
+            onLoad={() => console.log('[StoryReader] Background image loaded successfully')}
+            onError={(error) => console.error('[StoryReader] Background image load error:', error)}
+            placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+            transition={300}
           />
         ) : (
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.background }]} />
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1a1a2e' }]} />
         )}
       </Animated.View>
 
@@ -332,19 +401,23 @@ export function StoryReaderResponsive({
           ]}
           pointerEvents="none"
         >
-          {scene.characters.map((char) => (
-            <Image
-              key={char.id}
-              source={{ uri: char.imageUri }}
-              style={{
-                height: layout.backgroundHeight * 0.78,
-                width: layout.backgroundHeight * 0.45,
-                marginHorizontal: -16,
-              }}
-              contentFit="contain"
-              cachePolicy="memory-disk"
-            />
-          ))}
+          {scene.characters.map((char) => {
+            const charSource = resolvedCharUris[char.id];
+            if (!charSource) return null;
+            return (
+              <Image
+                key={char.id}
+                source={charSource}
+                style={{
+                  height: layout.backgroundHeight * 0.78,
+                  width: layout.backgroundHeight * 0.45,
+                  marginHorizontal: -16,
+                }}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+              />
+            );
+          })}
         </Animated.View>
       )}
 

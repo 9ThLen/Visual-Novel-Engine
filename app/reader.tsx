@@ -9,6 +9,7 @@ import { useStory } from '@/lib/story-context';
 import { useColors } from '@/hooks/use-colors';
 import { Story, StoryScene, Choice, PlaybackState } from '@/lib/types';
 import { audioManager } from '@/lib/audio-manager';
+import { resolveAssetUri } from '@/lib/asset-resolver';
 import demoStory from '@/assets/demo-story.json';
 
 export default function ReaderScreen() {
@@ -57,12 +58,34 @@ export default function ReaderScreen() {
   // Play BGM when scene changes
   useEffect(() => {
     if (!currentScene) return;
+
+    let isMounted = true;
+
+    // Resolve and play music
     if (currentScene.musicUri) {
-      audioManager.crossFade('bgm', currentScene.musicUri, settings.bgmVolume);
+      resolveAssetUri(currentScene.musicUri).then((uri) => {
+        if (isMounted && uri) {
+          audioManager.crossFade('bgm', uri, settings.bgmVolume);
+        }
+      }).catch(() => {
+        // Silent fail for missing music
+      });
     }
+
+    // Resolve and play voice
     if (currentScene.voiceAudioUri) {
-      audioManager.play('voice', currentScene.voiceAudioUri, { volume: settings.voiceVolume });
+      resolveAssetUri(currentScene.voiceAudioUri).then((uri) => {
+        if (isMounted && uri) {
+          audioManager.play('voice', uri, { volume: settings.voiceVolume });
+        }
+      }).catch(() => {
+        // Silent fail for missing voice
+      });
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [currentScene, settings.bgmVolume, settings.voiceVolume]);
 
   const navigateToScene = (sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
@@ -108,11 +131,16 @@ export default function ReaderScreen() {
 
   const handleObjectDialogue = (text: string, speaker?: string) => {
     // TODO: Show dialogue overlay
-    console.log('Dialogue:', speaker, text);
   };
 
   const handleObjectPlayAudio = (audioUri: string, volume?: number, loop?: boolean) => {
-    audioManager.play('sfx', audioUri, { volume: volume ?? 0.7, loop: loop ?? false });
+    resolveAssetUri(audioUri).then((uri) => {
+      if (uri) {
+        audioManager.play('sfx', uri, { volume: volume ?? 0.7, loop: loop ?? false });
+      }
+    }).catch(() => {
+      // Silent fail for missing audio
+    });
   };
 
   if (isLoading || !story || !currentScene) {
