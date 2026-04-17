@@ -53,13 +53,6 @@ export function HelpableElement({
   }, [isGuidedTourActive, isCurrentTourStep]);
 
   const handlePress = () => {
-      helpId,
-      isHelpModeActive,
-      isGuidedTourActive,
-      hasOnPress: !!onPress,
-      disabled,
-    });
-
     if (isHelpModeActive || isGuidedTourActive) {
       // In help mode, show tooltip instead of normal action
       viewRef.current?.measure((x, y, width, height, pageX, pageY) => {
