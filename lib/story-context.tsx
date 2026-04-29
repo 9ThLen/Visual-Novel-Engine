@@ -85,7 +85,7 @@ function storyReducer(state: State, action: Action): State {
 
 export function StoryProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(storyReducer, initialState);
-  const autoSaveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const autoSaveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load data on mount
   useEffect(() => {

@@ -223,7 +223,7 @@ import { BackgroundEffectsManager } from '@/components/effects/BackgroundEffects
 
 <View style={styles.container}>
   {/* Background */}
-  <Image source={{ uri: scene.backgroundUri }} style={styles.background} />
+  <Image source={{ uri: scene.backgroundImageUri }} style={styles.background} />
   
   {/* Effects */}
   <BackgroundEffectsManager effects={scene.backgroundEffects || []} />

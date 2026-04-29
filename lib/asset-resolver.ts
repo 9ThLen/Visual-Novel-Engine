@@ -7,55 +7,69 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 // Bundled assets mapping - maps asset IDs to actual asset locations
 const BUNDLED_ASSETS: Record<string, any> = {
-  // Background assets - full paths (from demo-story.json)
-  'assets/background/bg-ancient-library.png': require('@/assets/background/bg-ancient-library.png'),
-  'assets/background/bg-grand-hall.png': require('@/assets/background/bg-grand-hall.png'),
-  'assets/background/bg-hall-mirrors.png': require('@/assets/background/bg-hall-mirrors.png'),
-  'assets/background/bg-museum-entrance.png': require('@/assets/background/bg-museum-entrance.png'),
-  'assets/background/bg-treasure-chamber.png': require('@/assets/background/bg-treasure-chamber.png'),
-  'assets/background/bg-upper-library.png': require('@/assets/background/bg-upper-library.png'),
+  // Background assets - full paths
+  'assets/background/bg-ancient-library.png': require('../assets/background/bg-ancient-library.png'),
+  'assets/background/bg-grand-hall.png': require('../assets/background/bg-grand-hall.png'),
+  'assets/background/bg-hall-mirrors.png': require('../assets/background/bg-hall-mirrors.png'),
+  'assets/background/bg-museum-entrance.png': require('../assets/background/bg-museum-entrance.png'),
+  'assets/background/bg-treasure-chamber.png': require('../assets/background/bg-treasure-chamber.png'),
+  'assets/background/bg-upper-library.png': require('../assets/background/bg-upper-library.png'),
 
   // Background assets - short names
-  'bg-ancient-library': require('@/assets/background/bg-ancient-library.png'),
-  'bg-grand-hall': require('@/assets/background/bg-grand-hall.png'),
-  'bg-hall-mirrors': require('@/assets/background/bg-hall-mirrors.png'),
-  'bg-museum-entrance': require('@/assets/background/bg-museum-entrance.png'),
-  'bg-treasure-chamber': require('@/assets/background/bg-treasure-chamber.png'),
-  'bg-upper-library': require('@/assets/background/bg-upper-library.png'),
+  'bg-ancient-library': require('../assets/background/bg-ancient-library.png'),
+  'bg-grand-hall': require('../assets/background/bg-grand-hall.png'),
+  'bg-hall-mirrors': require('../assets/background/bg-hall-mirrors.png'),
+  'bg-museum-entrance': require('../assets/background/bg-museum-entrance.png'),
+  'bg-treasure-chamber': require('../assets/background/bg-treasure-chamber.png'),
+  'bg-upper-library': require('../assets/background/bg-upper-library.png'),
 
   // Character assets
-  'assets/charakters/char-guide.png': require('@/assets/charakters/char-guide.png'),
-  'assets/charakters/char-librarian.png': require('@/assets/charakters/char-librarian.png'),
-  'assets/charakters/char-reflection.png': require('@/assets/charakters/char-reflection.png'),
-  'char-guide': require('@/assets/charakters/char-guide.png'),
-  'char-librarian': require('@/assets/charakters/char-librarian.png'),
-  'char-reflection': require('@/assets/charakters/char-reflection.png'),
+  'assets/charakters/char-guide.png': require('../assets/charakters/char-guide.png'),
+  'assets/charakters/char-librarian.png': require('../assets/charakters/char-librarian.png'),
+  'assets/charakters/char-reflection.png': require('../assets/charakters/char-reflection.png'),
+  'char-guide': require('../assets/charakters/char-guide.png'),
+  'char-librarian': require('../assets/charakters/char-librarian.png'),
+  'char-reflection': require('../assets/charakters/char-reflection.png'),
+
+  // Splash screen assets
+  'assets/splash screens/splash-chapter1.png': require('../assets/splash screens/splash-chapter1.png'),
+  'assets/splash screens/splash-title.png': require('../assets/splash screens/splash-title.png'),
+  'assets/splash screens/splash-victory.png': require('../assets/splash screens/splash-victory.png'),
+  'splash-chapter1': require('../assets/splash screens/splash-chapter1.png'),
+  'splash-title': require('../assets/splash screens/splash-title.png'),
+  'splash-victory': require('../assets/splash screens/splash-victory.png'),
+
+  // Audio assets
+  'assets/sounds-sample/music-eerie.mp3': require('../assets/sounds-sample/music-eerie.mp3'),
+  'assets/sounds-sample/music-magical.mp3': require('../assets/sounds-sample/music-magical.mp3'),
+  'assets/sounds-sample/music-mysterious-adventure.mp3': require('../assets/sounds-sample/music-mysterious-adventure.mp3'),
+  'assets/sounds-sample/music-peaceful.mp3': require('../assets/sounds-sample/music-peaceful.mp3'),
+  'assets/sounds-sample/music-triumphant.mp3': require('../assets/sounds-sample/music-triumphant.mp3'),
+  'assets/sounds-sample/sfx-door-open.mp3': require('../assets/sounds-sample/sfx-door-open.mp3'),
+  'assets/sounds-sample/sfx-item-get-special.mp3': require('../assets/sounds-sample/sfx-item-get-special.mp3'),
+  'assets/sounds-sample/sfx-item-get.mp3': require('../assets/sounds-sample/sfx-item-get.mp3'),
+  'assets/sounds-sample/sfx-stairs.mp3': require('../assets/sounds-sample/sfx-stairs.mp3'),
+  'assets/sounds-sample/voice-guide-welcome.mp3': require('../assets/sounds-sample/voice-guide-welcome.mp3'),
 };
 
 /**
  * Get a bundled asset by ID
- * Returns the asset directly if found (can be used with Image source)
  */
 export function getBundledAsset(assetId: string): any {
   if (!assetId) return null;
 
-  // Try direct lookup first (exact match)
-  if (BUNDLED_ASSETS[assetId]) {
-    return BUNDLED_ASSETS[assetId];
-  }
-
-  // Try removing 'bundle://' prefix
   const cleaned = assetId.replace('bundle://', '');
-  if (BUNDLED_ASSETS[cleaned]) {
-    return BUNDLED_ASSETS[cleaned];
-  }
+  
+  // Direct match
+  if (BUNDLED_ASSETS[cleaned]) return BUNDLED_ASSETS[cleaned];
+  if (BUNDLED_ASSETS[assetId]) return BUNDLED_ASSETS[assetId];
 
-  // Try to find by filename (e.g., "bg-ancient-library.png" -> full path)
-  for (const [key, value] of Object.entries(BUNDLED_ASSETS)) {
-    if (key.endsWith(assetId) || assetId.endsWith(key.split('/').pop() || '')) {
-      return value;
-    }
-  }
+  // Filename match
+  const filename = cleaned.split('/').pop() || '';
+  const filenameNoExt = filename.replace(/\.[^/.]+$/, '');
+  
+  if (BUNDLED_ASSETS[filename]) return BUNDLED_ASSETS[filename];
+  if (BUNDLED_ASSETS[filenameNoExt]) return BUNDLED_ASSETS[filenameNoExt];
 
   return null;
 }
@@ -63,19 +77,16 @@ export function getBundledAsset(assetId: string): any {
 /**
  * Resolve an asset URI
  * Handles both local files and external URIs
- * Returns a string URI that can be used with expo-image or audio players
+ * Returns a string URI or a numeric asset ID that can be used with expo-image or audio players
  */
-export async function resolveAssetUri(uri: string | undefined): Promise<string | null> {
+export async function resolveAssetUri(uri: string | undefined): Promise<any> {
   if (!uri) return null;
 
   try {
-    // If it's a bundled asset reference, try to resolve it
-    if (uri.startsWith('bundle://')) {
-      const assetId = uri.replace('bundle://', '');
-      const bundled = getBundledAsset(assetId);
-      if (bundled) {
-        return bundled;
-      }
+    // ALWAYS try to find in bundled assets first, regardless of prefix
+    const bundled = getBundledAsset(uri);
+    if (bundled) {
+      return bundled;
     }
 
     // If it already looks like a valid file URI, verify it exists
@@ -102,12 +113,13 @@ export async function resolveAssetUri(uri: string | undefined): Promise<string |
       // Cache path doesn't exist, continue
     }
 
-    // If it looks like an asset path (assets/...), return it as-is since it might be a static asset
+    // If it looks like an asset path (assets/...), return it as-is
+    // but at this point we already checked BUNDLED_ASSETS
     if (uri.startsWith('assets/')) {
       return uri;
     }
 
-    // If all else fails, return null to indicate resource couldn't be resolved
+    // If all else fails, return null
     return null;
   } catch (error) {
     console.error('[AssetResolver] Error resolving asset URI:', uri, error);

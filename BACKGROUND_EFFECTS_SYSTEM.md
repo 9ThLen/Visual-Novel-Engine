@@ -304,7 +304,7 @@ import { BackgroundEffectsManager } from '@/components/effects/BackgroundEffects
 // In story reader component
 <View style={styles.container}>
   {/* Background image */}
-  <Image source={{ uri: scene.backgroundUri }} style={styles.background} />
+  <Image source={{ uri: scene.backgroundImageUri }} style={styles.background} />
   
   {/* Background effects */}
   <BackgroundEffectsManager effects={scene.backgroundEffects || []} />

@@ -34,6 +34,7 @@ import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
 import { DialogueHistory, HistoryEntry } from './dialogue-history';
 import { SplashScreenComponent } from './SplashScreen';
 import { resolveAssetUri, getBundledAsset } from '@/lib/asset-resolver';
+import { BackgroundEffectsManager } from './effects/BackgroundEffectsManager';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -360,7 +361,11 @@ export function StoryReaderResponsive({
       <Animated.View
         style={[
           StyleSheet.absoluteFillObject,
-          { opacity: uiVisible ? sceneOpacity : 0, transform: [{ scale: bgScale }] },
+          { 
+            opacity: uiVisible ? sceneOpacity : 0, 
+            transform: [{ scale: bgScale }],
+            backgroundColor: '#000', // Ensure black base during transitions
+          },
         ]}
       >
         {bgSource ? (
@@ -370,12 +375,17 @@ export function StoryReaderResponsive({
             contentFit="cover"
             cachePolicy="memory-disk"
             onLoad={() => {}}
-            onError={() => {}}
+            onError={(err) => console.error('[StoryReader] Background load error:', err)}
             placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
             transition={300}
           />
         ) : (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1a1a2e' }]} />
+        )}
+        
+        {/* ── Background Effects ─────────────────────────────────────────── */}
+        {uiVisible && (
+          <BackgroundEffectsManager effects={scene.backgroundEffects || []} />
         )}
       </Animated.View>
 
