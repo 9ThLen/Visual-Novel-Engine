@@ -1,8 +1,3 @@
-/**
- * DesktopLayout Component
- * Main layout wrapper for desktop web experience
- */
-
 import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
@@ -62,7 +57,7 @@ export function DesktopLayout({
       </View>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -81,3 +76,5 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' && { overflow: 'auto' as any }),
   },
 });
+
+

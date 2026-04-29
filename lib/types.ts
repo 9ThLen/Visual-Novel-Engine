@@ -4,6 +4,7 @@
 
 import type { SplashScreenConfig } from './splash-types';
 import type { InteractiveObject } from './interactive-types';
+import type { BackgroundEffect } from './background-effects-types';
 
 /**
  * Represents a single choice option in a scene
@@ -38,6 +39,7 @@ export interface StoryScene {
   musicUri?: string | null;
   splashScreen?: SplashScreenConfig;
   interactiveObjects?: InteractiveObject[];
+  backgroundEffects?: BackgroundEffect[];
 }
 
 /**

@@ -14,6 +14,7 @@ import { Story } from '@/lib/types';
 import { useColors } from '@/hooks/use-colors';
 import { Button } from '@/components/ui/Button';
 import demoStory from '@/assets/demo-story.json';
+import demoStoryAdvanced from '@/assets/demo-story-advanced.json';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -30,10 +31,15 @@ export default function HomeScreen() {
 
       await loadStories();
 
-      // Add demo story only if none exist yet
-      if (existingStories.length === 0) {
-        const demo = demoStory as Story;
-        await addStory(demo);
+      // Add demo stories if they don't exist
+      const demo1 = demoStory as Story;
+      const demo2 = demoStoryAdvanced as Story;
+
+      if (!existingStories.find(s => s.id === demo1.id)) {
+        await addStory(demo1);
+      }
+      if (!existingStories.find(s => s.id === demo2.id)) {
+        await addStory(demo2);
       }
 
       setIsInitialized(true);
@@ -45,21 +51,21 @@ export default function HomeScreen() {
 
   useEffect(() => {
     initializeApp();
-  }, [initializeApp]);
+  }, []); // Run only once on mount to avoid infinite loops
 
   const handlePlayStory = (story: Story) => {
     router.push({
-      pathname: '../reader',
+      pathname: '/reader',
       params: { storyId: story.id },
     });
   };
 
   const handleOpenEditor = () => {
-    router.push('../editor');
+    router.push('/editor');
   };
 
   const handleOpenSettings = () => {
-    router.push('../settings');
+    router.push('/settings');
   };
 
   const renderStoryCard = ({ item }: { item: Story }) => (
