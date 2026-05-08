@@ -57,14 +57,23 @@
 - `components/lego-editor/LegoCanvas.tsx`
 
 ### Етап 4: Підказки та допомога ⏳
+**Статус:** В процесі реалізації (2026-05-08 20:45)
+
 **Завдання:**
-- [ ] Додати перший тур (FirstTimeGuide) для LEGO Editor
-- [ ] Показувати підказки при довгому натисканні на кнопки
-- [ ] Додати інформаційні модальні вікна для нових функцій
+- [x] Додати спливаючі підказки (Tooltip) для елементів інтерфейсу
+- [x] Створити інтерактивний тур (TourGuide) для нових користувачів
+- [ ] Додати контекстну довідку при довгому натисканні
+
+**Виконано:**
+1. Створено компонент `Tooltip.tsx` (common)
+2. Створено компонент `TourGuide.tsx` з 5 кроками (Welcome, Tabs, Scenes, Add Scene, Canvas)
+3. Інтегровано Tooltip у вкладки lego-editor
+4. Додано кнопку "❓ Тур" в інтерфейс
 
 **Файли для зміни:**
-- `app/(tabs)/lego-editor.tsx`
-- Створити `components/lego-editor/LegoEditorGuide.tsx`
+- `app/lego-editor.tsx` (оновлено)
+- `components/common/Tooltip.tsx` (новий)
+- `components/common/TourGuide.tsx` (новий)
 
 ### Етап 5: Адаптація під планшети 🔄
 **Завдання:**
