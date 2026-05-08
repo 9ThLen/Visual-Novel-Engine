@@ -35,7 +35,18 @@ export function SplashScreenComponent({
   useEffect(() => {
     let mounted = true;
     resolveAssetUri(splash.uri).then((uri) => {
-      if (mounted) setResolvedUri(uri);
+      if (mounted) {
+        if (uri) {
+          setResolvedUri(uri);
+        } else {
+          // If resolution fails, don't hang the game
+          console.warn('[SplashScreen] Failed to resolve splash URI:', splash.uri);
+          onComplete();
+        }
+      }
+    }).catch(err => {
+      console.error('[SplashScreen] Error resolving splash URI:', err);
+      if (mounted) onComplete();
     });
     return () => { mounted = false; };
   }, [splash.uri]);
@@ -58,7 +69,7 @@ export function SplashScreenComponent({
     });
 
     // Wait for duration
-    await new Promise((resolve) => setTimeout(resolve, splash.duration));
+    await new Promise((resolve) => setTimeout(resolve, splash.duration || 2000));
 
     // Fade out splash
     Animated.timing(splashOpacity, {
@@ -91,6 +102,8 @@ export function SplashScreenComponent({
 
   if (!isPlaying || !resolvedUri) return null;
 
+  const source = typeof resolvedUri === 'string' ? { uri: resolvedUri } : resolvedUri;
+
   return (
     <Animated.View
       style={[
@@ -103,7 +116,7 @@ export function SplashScreenComponent({
     >
       {splash.type === 'image' && (
         <Image
-          source={{ uri: resolvedUri }}
+          source={source}
           style={styles.media}
           resizeMode="cover"
         />
@@ -112,7 +125,7 @@ export function SplashScreenComponent({
       {(splash.type === 'video' || splash.type === 'animation') && (
         <Video
           ref={videoRef}
-          source={{ uri: resolvedUri }}
+          source={source}
           style={styles.media}
           resizeMode={ResizeMode.COVER}
           shouldPlay

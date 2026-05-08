@@ -6,7 +6,6 @@
       {
         "id": "left-sidebar",
         "type": "split",
-        "dimension": 15.649452269170578,
         "children": [
           {
             "id": "93a32279dea4ae4c",
@@ -24,23 +23,9 @@
                   "icon": "lucide-folder-closed",
                   "title": "Файловый менеджер"
                 }
-              }
-            ]
-          }
-        ],
-        "direction": "vertical"
-      },
-      {
-        "id": "main-editor",
-        "type": "split",
-        "dimension": 84.35054773082942,
-        "children": [
-          {
-            "id": "bdc3ab00f81ca9a6",
-            "type": "tabs",
-            "children": [
+              },
               {
-                "id": "overview-tab",
+                "id": "47e872b3e2d48053",
                 "type": "leaf",
                 "state": {
                   "type": "graph",
@@ -49,7 +34,8 @@
                   "title": "Граф"
                 }
               }
-            ]
+            ],
+            "currentTab": 1
           }
         ],
         "direction": "vertical"
@@ -242,13 +228,21 @@
       "bases:Создать новую базу": false
     }
   },
-  "active": "overview-tab",
+  "active": "47e872b3e2d48053",
   "lastOpenFiles": [
-    "overview.md",
-    "SCHEMA.md",
     "index.md",
+    "overview.md",
+    "entities/story-engine.md",
+    "log.md",
+    "SCHEMA.md",
+    "DEV_SERVER_FIX_2026_05_06.md",
+    "PLAN_2026_05_07.md",
+    "README.md",
     "entities/save-system.md",
-    "entities/interactive-objects.md",
-    "log.md"
+    "DEV_SERVER_FIX_2026_05_07.md",
+    "audit-report-2026-05-07.md",
+    "entities/inventory-system.md",
+    "FIXES_2026_04_17.md",
+    "entities/interactive-objects.md"
   ]
 }

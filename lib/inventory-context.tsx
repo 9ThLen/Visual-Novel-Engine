@@ -3,7 +3,7 @@
  * Context for managing player inventory across the app
  */
 
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { InventoryItem, InventoryState } from './interactive-types';
 
@@ -85,7 +85,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     saveInventory();
   }, [state]);
 
-  const loadInventory = async () => {
+  const loadInventory = useCallback(async () => {
     try {
       const inventoryJson = await AsyncStorage.getItem('inventory');
       if (inventoryJson) {
@@ -95,17 +95,17 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to load inventory:', error);
     }
-  };
+  }, []);
 
-  const saveInventory = async () => {
+  const saveInventory = useCallback(async () => {
     try {
       await AsyncStorage.setItem('inventory', JSON.stringify(state));
     } catch (error) {
       console.error('Failed to save inventory:', error);
     }
-  };
+  }, [state]);
 
-  const addItem = async (item: InventoryItem): Promise<boolean> => {
+  const addItem = useCallback(async (item: InventoryItem): Promise<boolean> => {
     // Check if already exists
     if (state.items.some((i) => i.id === item.id)) {
       return false;
@@ -118,9 +118,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
     dispatch({ type: 'ADD_ITEM', payload: item });
     return true;
-  };
+  }, [state.items, state.maxSlots]);
 
-  const removeItem = async (itemId: string): Promise<boolean> => {
+  const removeItem = useCallback(async (itemId: string): Promise<boolean> => {
     const exists = state.items.some((item) => item.id === itemId);
     if (!exists) {
       return false;
@@ -128,25 +128,25 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
     dispatch({ type: 'REMOVE_ITEM', payload: itemId });
     return true;
-  };
+  }, [state.items]);
 
-  const hasItem = (itemId: string): boolean => {
+  const hasItem = useCallback((itemId: string): boolean => {
     return state.items.some((item) => item.id === itemId);
-  };
+  }, [state.items]);
 
-  const hasItems = (itemIds: string[]): boolean => {
+  const hasItems = useCallback((itemIds: string[]): boolean => {
     return itemIds.every((id) => hasItem(id));
-  };
+  }, [hasItem]);
 
-  const clearInventory = async () => {
+  const clearInventory = useCallback(async () => {
     dispatch({ type: 'CLEAR_INVENTORY' });
-  };
+  }, []);
 
-  const getItem = (itemId: string): InventoryItem | undefined => {
+  const getItem = useCallback((itemId: string): InventoryItem | undefined => {
     return state.items.find((item) => item.id === itemId);
-  };
+  }, [state.items]);
 
-  const value: InventoryContextType = {
+  const value = useMemo<InventoryContextType>(() => ({
     inventory: state,
     addItem,
     removeItem,
@@ -154,7 +154,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     hasItems,
     clearInventory,
     getItem,
-  };
+  }), [state, addItem, removeItem, hasItem, hasItems, clearInventory, getItem]);
 
   return (
     <InventoryContext.Provider value={value}>

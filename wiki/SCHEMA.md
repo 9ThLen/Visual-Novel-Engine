@@ -272,3 +272,6 @@ This schema will evolve as we discover what works. When conventions change:
 **Version:** 1.0
 **Created:** 2026-04-13
 **Last Updated:** 2026-04-13
+
+## Пов'язані сторінки
+- [[audit-report-2026-05-07|Звіт про аудит 2026-05-07]]

@@ -23,7 +23,7 @@ import {
   Text,
   Pressable,
   Animated,
-  Dimensions,
+
   Platform,
   StyleSheet,
 } from 'react-native';
@@ -57,7 +57,7 @@ const AUTO_PLAY_DELAY_MS = 2400;
 
 interface Props {
   scene: StoryScene;
-  onContinue: () => void;
+  onContinue: (targetSceneId?: string) => void;
   onChoiceSelect: (choice: Choice) => void;
   isLoading?: boolean;
   settings?: Partial<UserSettings>;
@@ -89,9 +89,9 @@ export function StoryReaderResponsive({
   const [displayedText, setDisplayedText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
-  // ── Resolved asset URIs ─────────────────────────────────────────────────
-  const [bgSource, setBgSource] = useState<any>(null);
-  const [resolvedCharUris, setResolvedCharUris] = useState<Record<string, string>>({});
+// Resolved asset URIs
+  const [bgSource, setBgSource] = useState<null | { uri: string }>(null);
+  const [resolvedCharUris, setResolvedCharUris] = useState<Record<string, { uri: string }>>({});
 
   // Resolve background image URI when scene changes
   useEffect(() => {
@@ -100,52 +100,42 @@ export function StoryReaderResponsive({
 
     if (!bgUri) {
       setBgSource(null);
-      return;
+    } else {
+      // Try direct bundled asset first
+      const bundledAsset = getBundledAsset(bgUri);
+      if (bundledAsset) {
+        console.log('[StoryReader] Using bundled asset for:', bgUri);
+        setBgSource(bundledAsset);
+      } else {
+        resolveAssetUri(bgUri).then((uri) => {
+          if (mounted && uri) {
+            console.log(`[StoryReader] Background: ${bgUri} ->`, uri);
+            // If it's a string (URI), wrap it in { uri: ... }
+            // If it's already an object or number (bundled), use as is
+            setBgSource(typeof uri === 'string' ? { uri } : uri);
+          }
+        }).catch((err) => {
+          console.log('[StoryReader] Resolver failed:', err);
+        });
+      }
     }
 
-    // Try direct bundled asset first
-    const bundledAsset = getBundledAsset(bgUri);
-    if (bundledAsset) {
-      console.log('[StoryReader] Using bundled asset for:', bgUri);
-      setBgSource(bundledAsset);
-    } else {
-      console.log('[StoryReader] Bundled asset not found, trying resolver:', bgUri);
-      // Try async resolution as fallback (non-blocking)
-      resolveAssetUri(bgUri).then((uri) => {
-        console.log('[StoryReader] Resolver returned:', uri);
+    scene.characters.forEach((char) => {
+      resolveAssetUri(char.imageUri).then((uri) => {
         if (mounted && uri) {
-          setBgSource(uri);
+          const source = typeof uri === 'string' ? { uri } : uri;
+          console.log(`[StoryReader] Character ${char.name}: ${char.imageUri} ->`, uri);
+          setResolvedCharUris((prev) => ({ ...prev, [char.id]: source }));
         }
-      }).catch((err) => {
-        console.log('[StoryReader] Resolver failed:', err);
+      }).catch(err => {
+        console.error(`[StoryReader] Failed to resolve char ${char.name}:`, err);
       });
-    }
+    });
 
     return () => {
       mounted = false;
     };
   }, [scene.id]); // Only depend on scene.id to avoid re-renders
-
-  // Resolve character image URIs when scene changes
-  useEffect(() => {
-    const chars = scene.characters;
-    if (!chars || chars.length === 0) {
-      setResolvedCharUris({});
-      return;
-    }
-
-
-    const resolved: Record<string, any> = {};
-    for (const char of chars) {
-      const bundledAsset = getBundledAsset(char.imageUri);
-      if (bundledAsset) {
-        resolved[char.id] = bundledAsset;
-      } else {
-        console.warn('[StoryReader] Character asset NOT found:', char.id, char.imageUri);
-      }
-    }
-    setResolvedCharUris(resolved);
-  }, [scene.id]); // Only depend on scene.id
 
   // ── History ─────────────────────────────────────────────────────────────
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -243,7 +233,28 @@ export function StoryReaderResponsive({
     });
   }, [isTyping, pageIndex, scene.id]);
 
-  // ── Auto-play ────────────────────────────────────────────────────────────
+  // ── Auto-advance (Scene-level) ───────────────────────────────────────────
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    
+    if (uiVisible && !isTyping && scene.autoAdvance?.enabled && scene.autoAdvance.nextSceneId) {
+      const delay = scene.autoAdvance.delay || 3000;
+      timer = setTimeout(() => {
+        // Find the choice that leads to the next scene, or trigger a generic continue
+        const autoChoice = scene.choices.find(c => c.nextSceneId === scene.autoAdvance?.nextSceneId);
+        if (autoChoice) {
+          onChoiceSelect(autoChoice);
+        } else {
+          // If no specific choice, we assume the user wants to trigger the next scene logic
+          onContinue(scene.autoAdvance?.nextSceneId);
+        }
+      }, delay);
+    }
+    
+    return () => { if (timer) clearTimeout(timer); };
+  }, [uiVisible, isTyping, scene.id, scene.autoAdvance]);
+
+  // ── Auto-play (Page-level) ───────────────────────────────────────────────
   const isLastPage = pageIndex === pages.length - 1;
 
   useEffect(() => {
@@ -253,7 +264,7 @@ export function StoryReaderResponsive({
     autoPlayTimer.current = setTimeout(() => {
       if (isLastPage) {
         if (scene.choices.length === 0) onContinue();
-        // If there are choices, don't auto-advance
+        // If there are choices, don't auto-advance page-level auto-play
       } else {
         setPageIndex((p) => p + 1);
       }
@@ -424,33 +435,6 @@ export function StoryReaderResponsive({
         </Animated.View>
       )}
 
-      {/* ── Gradient overlay ──────────────────────────────────────────────── */}
-      {uiVisible && (
-        <View
-          style={[
-            StyleSheet.absoluteFillObject,
-            {
-              justifyContent: 'flex-end',
-            },
-          ]}
-          pointerEvents="none"
-        >
-        {[0.0, 0.08, 0.20, 0.42, 0.68, 0.88].map((opacity, i) => (
-          <View
-            key={i}
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: (isPortrait ? layout.dialogueHeight : layout.backgroundHeight) + 60,
-              backgroundColor: `rgba(0,0,0,${opacity * 0.7})`,
-              opacity: (i + 1) / 6,
-            }}
-          />
-        ))}
-      </View>
-      )}
 
       {/* ── Main tappable area ────────────────────────────────────────────── */}
       {uiVisible && (
@@ -551,7 +535,7 @@ export function StoryReaderResponsive({
               {scene.choices.map((choice) => (
                 <Pressable
                   key={choice.id}
-                  style={({ pressed }) => ({
+                  style={({ pressed }: { pressed: boolean }) => ({
                     backgroundColor: colors.choiceBg ?? 'rgba(124,58,237,0.12)',
                     borderWidth: 1,
                     borderColor: colors.choiceBorder ?? colors.primary,
@@ -617,7 +601,7 @@ export function StoryReaderResponsive({
               <Pressable
                 onPressIn={() => setTurbo(true)}
                 onPressOut={() => setTurbo(false)}
-                style={({ pressed }) => ({
+                style={({ pressed }: { pressed: boolean }) => ({
                   paddingHorizontal: 10,
                   paddingVertical: 5,
                   borderRadius: 6,
@@ -662,7 +646,7 @@ function ControlButton({
 }) {
   return (
     <Pressable
-      style={({ pressed }) => ({
+      style={({ pressed }: { pressed: boolean }) => ({
         paddingHorizontal: 10,
         paddingVertical: 6,
         borderRadius: 8,

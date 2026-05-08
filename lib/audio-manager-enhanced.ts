@@ -3,7 +3,7 @@
  * Manages audio playback with trigger-based system
  */
 
-import { setAudioModeAsync, AudioModule } from 'expo-audio';
+import { setAudioModeAsync, createAudioPlayer } from 'expo-audio';
 import type { AudioPlayer } from 'expo-audio';
 import type {
   AudioLibraryItem,
@@ -155,7 +155,7 @@ class EnhancedAudioManager {
     await this.stop(trackId);
 
     try {
-      const player = new AudioModule.AudioPlayer(uri, 100, false);
+      const player = createAudioPlayer(uri);
       player.loop = loop;
       player.volume = fadeIn ? 0 : Math.max(0, Math.min(1, volume));
 

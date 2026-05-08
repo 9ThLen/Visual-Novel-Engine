@@ -16,12 +16,16 @@ export default function ReaderScreen() {
   const router = useRouter();
   const colors = useColors();
   const { storyId } = useLocalSearchParams();
-  const { stories, settings, setCurrentStory, updatePlaybackState, playbackState, autoSave } = useStory();
+  const { stories, settings, setCurrentStory, updatePlaybackState, playbackState, currentStory, autoSave } = useStory();
   const [showMenu, setShowMenu] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
-  const [story, setStory] = useState<Story | null>(null);
-  const [currentScene, setCurrentScene] = useState<StoryScene | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const story = currentStory;
+  const currentScene = React.useMemo(() => {
+    if (!story || !playbackState) return null;
+    return story.scenes[playbackState.currentSceneId] || null;
+  }, [story, playbackState?.currentSceneId]);
 
   const initializeReader = useCallback(async () => {
     try {
@@ -31,7 +35,16 @@ export default function ReaderScreen() {
       }
       if (!selectedStory) selectedStory = demoStory as Story;
 
-      setStory(selectedStory);
+      // If we already have a playback state for this story in the context, 
+      // don't overwrite it (this happens when returning from the load menu)
+      if (playbackState && playbackState.storyId === selectedStory.id) {
+        if (!currentStory || currentStory.id !== selectedStory.id) {
+          setCurrentStory(selectedStory);
+        }
+        setIsLoading(false);
+        return;
+      }
+
       setCurrentStory(selectedStory);
 
       const newPlaybackState: PlaybackState = {
@@ -42,13 +55,12 @@ export default function ReaderScreen() {
         choicesMade: [],
       };
       updatePlaybackState(newPlaybackState);
-      setCurrentScene(selectedStory.scenes[selectedStory.startSceneId]);
       setIsLoading(false);
     } catch (error) {
       console.error('Failed to initialize reader:', error);
       setIsLoading(false);
     }
-  }, [storyId, stories, setCurrentStory, updatePlaybackState]);
+  }, [storyId, stories, setCurrentStory, updatePlaybackState, playbackState, currentStory]);
 
   useEffect(() => {
     initializeReader();
@@ -106,7 +118,6 @@ export default function ReaderScreen() {
       choicesMade: choicesMade || playbackState?.choicesMade || [],
     };
     updatePlaybackState(updated);
-    setCurrentScene(nextScene);
 
     // Auto-save on scene change
     setTimeout(() => {
@@ -114,11 +125,29 @@ export default function ReaderScreen() {
     }, 500);
   };
 
-  const handleContinue = () => {
+  const handleContinue = (targetSceneId?: string) => {
     if (!story || !playbackState) return;
-    const nextSceneId = story.scenes[playbackState.currentSceneId]?.choices[0]?.nextSceneId;
-    if (nextSceneId) navigateToScene(nextSceneId);
-    else router.back();
+    
+    // 1. Use explicit target if provided
+    if (targetSceneId) {
+      navigateToScene(targetSceneId);
+      return;
+    }
+
+    // 2. Check for autoAdvance in current scene
+    const currentSceneData = story.scenes[playbackState.currentSceneId];
+    if (currentSceneData?.autoAdvance?.enabled && currentSceneData.autoAdvance.nextSceneId) {
+      navigateToScene(currentSceneData.autoAdvance.nextSceneId);
+      return;
+    }
+
+    // 3. Fallback to first choice
+    const nextSceneId = currentSceneData?.choices[0]?.nextSceneId;
+    if (nextSceneId) {
+      navigateToScene(nextSceneId);
+    } else {
+      router.back();
+    }
   };
 
   const handleChoiceSelect = (choice: Choice) => {

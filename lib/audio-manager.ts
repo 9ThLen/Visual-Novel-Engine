@@ -6,7 +6,7 @@
  *   "voice" – one-shot character voice line
  *   "sfx"   – one-shot sound effect
  */
-import { setAudioModeAsync, AudioModule } from 'expo-audio';
+import { setAudioModeAsync, createAudioPlayer } from 'expo-audio';
 import type { AudioPlayer } from 'expo-audio';
 
 interface ManagedTrack {
@@ -18,7 +18,7 @@ interface ManagedTrack {
 const FADE_STEP_MS = 50;   // tick every 50 ms
 const FADE_DURATION_MS = 600;
 
-class AudioManager {
+export class AudioManager {
   private tracks = new Map<string, ManagedTrack>();
   private initialized = false;
 
@@ -32,6 +32,25 @@ class AudioManager {
     } catch (err) {
       console.warn('[Audio] init failed:', err);
     }
+  }
+
+  // ── cleanup ───────────────────────────────────────────────────────────
+
+  /** Completely destroy the manager: stop all tracks, clear intervals, reset state */
+  destroy(): void {
+    // Collect keys first to avoid mutation during iteration
+    const ids = Array.from(this.tracks.keys());
+    for (const id of ids) {
+      this.stop(id, false).catch(() => {});
+    }
+    // Safety: clear any remaining intervals directly
+    for (const [, track] of Array.from(this.tracks)) {
+      if (track.fadeInterval) {
+        clearInterval(track.fadeInterval);
+      }
+    }
+    this.tracks.clear();
+    this.initialized = false;
   }
 
   // ── playback ─────────────────────────────────────────────────────────────
@@ -48,7 +67,7 @@ class AudioManager {
     await this.stop(id, false);
 
     try {
-      const player = new AudioModule.AudioPlayer(uri, 100, false);
+      const player = createAudioPlayer(uri);
       player.loop = loop;
       player.volume = fadeIn ? 0 : Math.max(0, Math.min(1, volume));
 
@@ -57,7 +76,7 @@ class AudioManager {
 
       if (fadeIn) this._fade(id, 0, volume, FADE_DURATION_MS);
     } catch (err) {
-      // Silently fail to avoid spam - audio file may not be available
+      console.error(`[Audio] play(${id}) failed for URI: ${uri}`, err);
     }
   }
 

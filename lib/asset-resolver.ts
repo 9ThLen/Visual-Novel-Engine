@@ -32,12 +32,12 @@ const BUNDLED_ASSETS: Record<string, any> = {
   'char-reflection': require('../assets/charakters/char-reflection.png'),
 
   // Splash screen assets
-  'assets/splash screens/splash-chapter1.png': require('../assets/splash screens/splash-chapter1.png'),
-  'assets/splash screens/splash-title.png': require('../assets/splash screens/splash-title.png'),
-  'assets/splash screens/splash-victory.png': require('../assets/splash screens/splash-victory.png'),
-  'splash-chapter1': require('../assets/splash screens/splash-chapter1.png'),
-  'splash-title': require('../assets/splash screens/splash-title.png'),
-  'splash-victory': require('../assets/splash screens/splash-victory.png'),
+  'assets/splash-screens/splash-chapter1.png': require('../assets/splash-screens/splash-chapter1.png'),
+  'assets/splash-screens/splash-title.png': require('../assets/splash-screens/splash-title.png'),
+  'assets/splash-screens/splash-victory.png': require('../assets/splash-screens/splash-victory.png'),
+  'splash-chapter1': require('../assets/splash-screens/splash-chapter1.png'),
+  'splash-title': require('../assets/splash-screens/splash-title.png'),
+  'splash-victory': require('../assets/splash-screens/splash-victory.png'),
 
   // Audio assets
   'assets/sounds-sample/music-eerie.mp3': require('../assets/sounds-sample/music-eerie.mp3'),
@@ -89,10 +89,29 @@ export async function resolveAssetUri(uri: string | undefined): Promise<any> {
       return bundled;
     }
 
+    // Blob and data URIs are valid sources — return directly
+    if (uri.startsWith('blob:') || uri.startsWith('data:')) {
+      return uri;
+    }
+
     // If it already looks like a valid file URI, verify it exists
     if (uri.startsWith('file://') || uri.startsWith('/')) {
-      const info = await FileSystem.getInfoAsync(uri);
-      if (info.exists) {
+      // For media-library paths, try to verify but trust them even if check fails
+      const isMediaLibraryPath = uri.includes('media-library');
+
+      try {
+        const info = await FileSystem.getInfoAsync(uri);
+        if (info.exists) {
+          console.log('[AssetResolver] File verified:', uri);
+          return uri;
+        }
+      } catch {
+        // getInfoAsync can fail on web — fall through
+      }
+
+      // Trust media-library paths even if getInfoAsync failed (common on web/OPFS)
+      if (isMediaLibraryPath) {
+        console.log('[AssetResolver] Trusting media-library path:', uri);
         return uri;
       }
     }
@@ -102,28 +121,45 @@ export async function resolveAssetUri(uri: string | undefined): Promise<any> {
       return uri;
     }
 
-    // Try as a relative path from the caches directory
-    const cachePath = `${FileSystem.cacheDirectory}${uri}`;
-    try {
-      const cacheInfo = await FileSystem.getInfoAsync(cachePath);
-      if (cacheInfo.exists) {
-        return cachePath;
+    // Try as a relative path from the document directory
+    if (FileSystem.documentDirectory) {
+      const docPath = `${FileSystem.documentDirectory}${uri}`;
+      try {
+        const docInfo = await FileSystem.getInfoAsync(docPath);
+        if (docInfo.exists) {
+          return docPath;
+        }
+      } catch {
+        // Continue
       }
-    } catch {
-      // Cache path doesn't exist, continue
+    }
+
+    // Try as a relative path from the caches directory
+    if (FileSystem.cacheDirectory) {
+      const cachePath = `${FileSystem.cacheDirectory}${uri}`;
+      try {
+        const cacheInfo = await FileSystem.getInfoAsync(cachePath);
+        if (cacheInfo.exists) {
+          return cachePath;
+        }
+      } catch {
+        // Cache path doesn't exist, continue
+      }
     }
 
     // If it looks like an asset path (assets/...), return it as-is
-    // but at this point we already checked BUNDLED_ASSETS
     if (uri.startsWith('assets/')) {
       return uri;
     }
 
-    // If all else fails, return null
-    return null;
+    // Fallback: return the URI as-is rather than losing it entirely.
+    // The Image / Audio component will handle load errors gracefully.
+    console.warn('[AssetResolver] Could not verify URI, using as-is:', uri);
+    return uri;
   } catch (error) {
     console.error('[AssetResolver] Error resolving asset URI:', uri, error);
-    return null;
+    // Return the URI anyway so the component can attempt to load it
+    return uri;
   }
 }
 

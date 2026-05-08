@@ -29,13 +29,15 @@ export async function updateScene(storyId: string, scene: StoryScene): Promise<v
   try {
     const storiesJson = await AsyncStorage.getItem('stories');
     const stories = storiesJson ? JSON.parse(storiesJson) : [];
-    
+
     const story = stories.find((s: Story) => s.id === storyId);
-    if (story) {
-      story.scenes[scene.id] = scene;
-      story.updatedAt = Date.now();
-      await AsyncStorage.setItem('stories', JSON.stringify(stories));
+    if (!story) {
+      throw new Error(`Story with id ${storyId} not found`);
     }
+
+    story.scenes[scene.id] = scene;
+    story.updatedAt = Date.now();
+    await AsyncStorage.setItem('stories', JSON.stringify(stories));
   } catch (error) {
     console.error('Failed to update scene:', error);
     throw error;
@@ -46,13 +48,15 @@ export async function addScene(storyId: string, scene: StoryScene): Promise<void
   try {
     const storiesJson = await AsyncStorage.getItem('stories');
     const stories = storiesJson ? JSON.parse(storiesJson) : [];
-    
+
     const story = stories.find((s: Story) => s.id === storyId);
-    if (story) {
-      story.scenes[scene.id] = scene;
-      story.updatedAt = Date.now();
-      await AsyncStorage.setItem('stories', JSON.stringify(stories));
+    if (!story) {
+      throw new Error(`Story with id ${storyId} not found`);
     }
+
+    story.scenes[scene.id] = scene;
+    story.updatedAt = Date.now();
+    await AsyncStorage.setItem('stories', JSON.stringify(stories));
   } catch (error) {
     console.error('Failed to add scene:', error);
     throw error;
@@ -63,13 +67,19 @@ export async function deleteScene(storyId: string, sceneId: string): Promise<voi
   try {
     const storiesJson = await AsyncStorage.getItem('stories');
     const stories = storiesJson ? JSON.parse(storiesJson) : [];
-    
+
     const story = stories.find((s: Story) => s.id === storyId);
-    if (story && story.scenes[sceneId]) {
-      delete story.scenes[sceneId];
-      story.updatedAt = Date.now();
-      await AsyncStorage.setItem('stories', JSON.stringify(stories));
+    if (!story) {
+      throw new Error(`Story with id ${storyId} not found`);
     }
+
+    if (!story.scenes[sceneId]) {
+      throw new Error(`Scene with id ${sceneId} not found in story ${storyId}`);
+    }
+
+    delete story.scenes[sceneId];
+    story.updatedAt = Date.now();
+    await AsyncStorage.setItem('stories', JSON.stringify(stories));
   } catch (error) {
     console.error('Failed to delete scene:', error);
     throw error;
@@ -80,13 +90,19 @@ export async function addChoice(storyId: string, sceneId: string, choice: Choice
   try {
     const storiesJson = await AsyncStorage.getItem('stories');
     const stories = storiesJson ? JSON.parse(storiesJson) : [];
-    
+
     const story = stories.find((s: Story) => s.id === storyId);
-    if (story && story.scenes[sceneId]) {
-      story.scenes[sceneId].choices.push(choice);
-      story.updatedAt = Date.now();
-      await AsyncStorage.setItem('stories', JSON.stringify(stories));
+    if (!story) {
+      throw new Error(`Story with id ${storyId} not found`);
     }
+
+    if (!story.scenes[sceneId]) {
+      throw new Error(`Scene with id ${sceneId} not found in story ${storyId}`);
+    }
+
+    story.scenes[sceneId].choices.push(choice);
+    story.updatedAt = Date.now();
+    await AsyncStorage.setItem('stories', JSON.stringify(stories));
   } catch (error) {
     console.error('Failed to add choice:', error);
     throw error;
@@ -97,15 +113,21 @@ export async function deleteChoice(storyId: string, sceneId: string, choiceId: s
   try {
     const storiesJson = await AsyncStorage.getItem('stories');
     const stories = storiesJson ? JSON.parse(storiesJson) : [];
-    
+
     const story = stories.find((s: Story) => s.id === storyId);
-    if (story && story.scenes[sceneId]) {
-      story.scenes[sceneId].choices = story.scenes[sceneId].choices.filter(
-        (c: Choice) => c.id !== choiceId
-      );
-      story.updatedAt = Date.now();
-      await AsyncStorage.setItem('stories', JSON.stringify(stories));
+    if (!story) {
+      throw new Error(`Story with id ${storyId} not found`);
     }
+
+    if (!story.scenes[sceneId]) {
+      throw new Error(`Scene with id ${sceneId} not found in story ${storyId}`);
+    }
+
+    story.scenes[sceneId].choices = story.scenes[sceneId].choices.filter(
+      (c: Choice) => c.id !== choiceId
+    );
+    story.updatedAt = Date.now();
+    await AsyncStorage.setItem('stories', JSON.stringify(stories));
   } catch (error) {
     console.error('Failed to delete choice:', error);
     throw error;

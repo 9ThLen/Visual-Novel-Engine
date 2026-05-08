@@ -3,7 +3,7 @@
  * Manages help mode state and guided tours
  */
 
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   HelpSystemState,
@@ -45,12 +45,7 @@ export function HelpSystemProvider({ children }: { children: React.ReactNode }) 
     loadState();
   }, []);
 
-  // Persist state changes
-  useEffect(() => {
-    saveState();
-  }, [state.hasSeenFirstTimeGuide]);
-
-  const loadState = async () => {
+  const loadState = useCallback(async () => {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -63,9 +58,9 @@ export function HelpSystemProvider({ children }: { children: React.ReactNode }) 
     } catch (error) {
       console.error('Failed to load help system state:', error);
     }
-  };
+  }, []);
 
-  const saveState = async () => {
+  const saveState = useCallback(async () => {
     try {
       await AsyncStorage.setItem(
         STORAGE_KEY,
@@ -76,34 +71,39 @@ export function HelpSystemProvider({ children }: { children: React.ReactNode }) 
     } catch (error) {
       console.error('Failed to save help system state:', error);
     }
-  };
+  }, [state.hasSeenFirstTimeGuide]);
 
-  const toggleHelpMode = () => {
+  // Persist state changes
+  useEffect(() => {
+    saveState();
+  }, [saveState]);
+
+  const toggleHelpMode = useCallback(() => {
     setState((prev) => ({
       ...prev,
       isHelpModeActive: !prev.isHelpModeActive,
       activeTooltip: null,
       tooltipPosition: null,
     }));
-  };
+  }, []);
 
-  const showTooltip = (helpItemId: string, position: HelpTooltipPosition) => {
+  const showTooltip = useCallback((helpItemId: string, position: HelpTooltipPosition) => {
     setState((prev) => ({
       ...prev,
       activeTooltip: helpItemId,
       tooltipPosition: position,
     }));
-  };
+  }, []);
 
-  const hideTooltip = () => {
+  const hideTooltip = useCallback(() => {
     setState((prev) => ({
       ...prev,
       activeTooltip: null,
       tooltipPosition: null,
     }));
-  };
+  }, []);
 
-  const startGuidedTour = (tourId: string) => {
+  const startGuidedTour = useCallback((tourId: string) => {
     const tour = GUIDED_TOURS[tourId];
     if (!tour) {
       console.warn(`Tour ${tourId} not found`);
@@ -119,9 +119,9 @@ export function HelpSystemProvider({ children }: { children: React.ReactNode }) 
       activeTooltip: null,
       tooltipPosition: null,
     }));
-  };
+  }, []);
 
-  const nextTourStep = () => {
+  const nextTourStep = useCallback(() => {
     const tour = getCurrentTour();
     if (!tour) return;
 
@@ -144,9 +144,9 @@ export function HelpSystemProvider({ children }: { children: React.ReactNode }) 
         tooltipPosition: null,
       };
     });
-  };
+  }, []);
 
-  const previousTourStep = () => {
+  const previousTourStep = useCallback(() => {
     setState((prev) => {
       const prevStep = Math.max(0, prev.currentTourStep - 1);
       return {
@@ -156,9 +156,9 @@ export function HelpSystemProvider({ children }: { children: React.ReactNode }) 
         tooltipPosition: null,
       };
     });
-  };
+  }, []);
 
-  const skipTour = () => {
+  const skipTour = useCallback(() => {
     setState((prev) => ({
       ...prev,
       isGuidedTourActive: false,
@@ -168,9 +168,9 @@ export function HelpSystemProvider({ children }: { children: React.ReactNode }) 
       activeTooltip: null,
       tooltipPosition: null,
     }));
-  };
+  }, []);
 
-  const completeTour = () => {
+  const completeTour = useCallback(() => {
     setState((prev) => ({
       ...prev,
       isGuidedTourActive: false,
@@ -180,21 +180,21 @@ export function HelpSystemProvider({ children }: { children: React.ReactNode }) 
       activeTooltip: null,
       tooltipPosition: null,
     }));
-  };
+  }, []);
 
-  const markFirstTimeGuideSeen = () => {
+  const markFirstTimeGuideSeen = useCallback(() => {
     setState((prev) => ({
       ...prev,
       hasSeenFirstTimeGuide: true,
     }));
-  };
+  }, []);
 
-  const getCurrentTour = (): GuidedTour | null => {
+  const getCurrentTour = useCallback((): GuidedTour | null => {
     if (!state.currentTourId) return null;
     return GUIDED_TOURS[state.currentTourId] || null;
-  };
+  }, [state.currentTourId]);
 
-  const value: HelpSystemContextValue = {
+  const value = useMemo<HelpSystemContextValue>(() => ({
     ...state,
     toggleHelpMode,
     showTooltip,
@@ -206,7 +206,7 @@ export function HelpSystemProvider({ children }: { children: React.ReactNode }) 
     completeTour,
     markFirstTimeGuideSeen,
     getCurrentTour,
-  };
+  }), [state, toggleHelpMode, showTooltip, hideTooltip, startGuidedTour, nextTourStep, previousTourStep, skipTour, completeTour, markFirstTimeGuideSeen, getCurrentTour]);
 
   return (
     <HelpSystemContext.Provider value={value}>

@@ -2,7 +2,7 @@
  * MediaLibrary — reusable asset picker for the scene editor.
  * Assets are persisted in AsyncStorage under the key 'mediaLibrary'.
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -49,39 +49,140 @@ async function addAssetToLibrary(
   type: AssetType
 ): Promise<LibraryAsset> {
   const assets = await getLibraryAssets();
+  const filename = name || uri.split('/').pop() || `asset-${Date.now()}`;
+  const ext = filename.includes('.') ? '' : (type === 'image' ? '.png' : '.mp3');
+  const fullFilename = filename.includes('.') ? filename : `${filename}${ext}`;
 
-  // Don't duplicate the same URI
-  const existing = assets.find((a) => a.uri === uri);
-  if (existing) return existing;
-
-  // Copy file to permanent storage
-  let permanentUri = uri;
-  try {
-    if (!FileSystem.documentDirectory) {
-      throw new Error('Document directory not available');
-    }
-
-    const filename = name || uri.split('/').pop() || `asset-${Date.now()}`;
-    const ext = filename.includes('.') ? '' : (type === 'image' ? '.png' : '.mp3');
-    const targetPath = `${FileSystem.documentDirectory}media-library/${type}s/${filename}${ext}`;
-
-    // Ensure directory exists
-    const dirPath = `${FileSystem.documentDirectory}media-library/${type}s/`;
-    await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
-
-    // Copy file
-    await FileSystem.copyAsync({ from: uri, to: targetPath });
-    permanentUri = targetPath;
-  } catch (err) {
-    console.warn('[MediaLibrary] Failed to copy to permanent storage, using original URI:', err);
-    permanentUri = uri;
+  // 1. Check if an asset with this exact URI already exists in the library
+  const existingByUri = assets.find((a) => a.uri === uri);
+  if (existingByUri) {
+    console.log('[MediaLibrary] Reusing existing asset by URI');
+    return existingByUri;
   }
 
+  // 2. Check if an asset with this filename already exists in the library
+  const existingByName = assets.find((a) => a.name === name || a.name === filename);
+  if (existingByName && existingByName.uri.includes('media-library')) {
+    try {
+      const info = await FileSystem.getInfoAsync(existingByName.uri);
+      if (info.exists) {
+        console.log('[MediaLibrary] Reusing existing asset by name:', existingByName.name);
+        return existingByName;
+      }
+    } catch (e) {
+      // If error, continue to create a new one
+    }
+  }
+
+  // Skip copy for bundled assets
+  if (uri.startsWith('assets/') || uri.startsWith('bundle://')) {
+    const asset: LibraryAsset = {
+      id: `asset-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      type,
+      uri,
+      name: name || filename,
+      addedAt: Date.now()
+    };
+    await saveLibraryAssets([...assets, asset]);
+    return asset;
+  }
+
+  // Copy file to permanent storage
+  if (!FileSystem.documentDirectory) {
+    // Fallback for environments without documentDirectory (e.g. web)
+    console.warn('[MediaLibrary] Document directory not available, using original URI');
+    const asset: LibraryAsset = {
+      id: `asset-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      type,
+      uri,
+      name: name || filename,
+      addedAt: Date.now()
+    };
+    await saveLibraryAssets([...assets, asset]);
+    return asset;
+  }
+
+  const targetPath = `${FileSystem.documentDirectory}media-library/${type}s/${fullFilename}`;
+  const dirPath = `${FileSystem.documentDirectory}media-library/${type}s/`;
+
+  try {
+    // Ensure directory exists
+    await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
+  } catch {
+    // Directory may already exist
+  }
+
+  // Check if file already exists at target location
+  const checkTarget = await FileSystem.getInfoAsync(targetPath);
+  if (checkTarget.exists) {
+    console.log('[MediaLibrary] File already exists in storage, reusing:', targetPath);
+    // Update library entry even if file exists
+    const asset: LibraryAsset = {
+      id: `asset-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      type,
+      uri: targetPath,
+      name: name || filename,
+      addedAt: Date.now()
+    };
+    await saveLibraryAssets([...assets, asset]);
+    return asset;
+  }
+
+  // Try to copy the file
+  let copySucceeded = false;
+  try {
+    console.log('[MediaLibrary] Copying file from:', uri, 'to:', targetPath);
+    await FileSystem.copyAsync({ from: uri, to: targetPath });
+
+    // Verify the file was actually copied
+    const verifyInfo = await FileSystem.getInfoAsync(targetPath);
+    if (verifyInfo.exists && verifyInfo.size > 0) {
+      copySucceeded = true;
+      console.log('[MediaLibrary] File copied successfully, size:', verifyInfo.size);
+    } else {
+      console.warn('[MediaLibrary] Copy appeared to succeed but file is missing or empty');
+    }
+  } catch (copyErr) {
+    console.warn('[MediaLibrary] copyAsync failed, trying read/write fallback:', copyErr);
+
+    // Fallback: read as base64 and write to target
+    try {
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      await FileSystem.writeAsStringAsync(targetPath, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const verifyInfo = await FileSystem.getInfoAsync(targetPath);
+      if (verifyInfo.exists && verifyInfo.size > 0) {
+        copySucceeded = true;
+        console.log('[MediaLibrary] Fallback copy succeeded, size:', verifyInfo.size);
+      }
+    } catch (fallbackErr) {
+      console.error('[MediaLibrary] Fallback copy also failed:', fallbackErr);
+    }
+  }
+
+  if (copySucceeded) {
+    const asset: LibraryAsset = {
+      id: `asset-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      type,
+      uri: targetPath,
+      name: name || filename,
+      addedAt: Date.now()
+    };
+    await saveLibraryAssets([...assets, asset]);
+    return asset;
+  }
+
+  // Last resort: save with original URI (will likely break on reload)
+  console.error('[MediaLibrary] All copy attempts failed, saving with original URI');
   const asset: LibraryAsset = {
-    id: `asset-${Date.now()}`,
+    id: `asset-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     type,
-    uri: permanentUri,
-    name,
+    uri,
+    name: name || filename,
     addedAt: Date.now()
   };
   await saveLibraryAssets([...assets, asset]);
@@ -138,7 +239,7 @@ export function MediaLibrary({ visible, type, onSelect, onClose }: Props) {
         }
       } else {
         const result = await DocumentPicker.getDocumentAsync({
-          type: 'audio/*',
+          type: ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/x-wav'],
           copyToCacheDirectory: true,
         });
         if (!result.canceled && result.assets[0]) {
@@ -250,6 +351,7 @@ export function MediaLibrary({ visible, type, onSelect, onClose }: Props) {
           </View>
         ) : (
           <FlatList
+            key={type}
             data={assets}
             numColumns={type === 'image' ? 3 : 1}
             keyExtractor={(a) => a.id}

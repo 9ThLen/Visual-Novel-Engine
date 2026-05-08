@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+﻿import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,11 +20,17 @@ import * as storyContextEnhanced from '@/lib/story-context-enhanced';
 import { MediaLibrary, LibraryAsset, addAssetToLibrary } from '@/components/media-library';
 import { SceneGraph } from '@/components/scene-graph';
 import { SplashScreenEditor } from '@/components/SplashScreenEditor';
+
+
+import { Block, ROOT_BLOCK, createDefaultBlock } from '@/lib/block-types';
+import { BlockFlowCanvas, BlockToolbar } from '@/components/block-editor';
+import { getCharacterLibrary } from '@/lib/character-library';
 import { InteractiveObjectsEditor } from '@/components/InteractiveObjectsEditor';
 import type { SplashScreenConfig } from '@/lib/splash-types';
 import type { InteractiveObject } from '@/lib/interactive-types';
+import { LanguageSelector } from '@/components/LanguageSelector';
 
-type Tab = 'edit' | 'graph';
+type Tab = 'blocks' | 'edit' | 'graph';
 
 // ── Reusable file-picker row component ────────────────────────────────────
 interface FilePickerRowProps {
@@ -140,25 +146,55 @@ export default function SceneEditorScreen() {
   const [voiceUri, setVoiceUri] = useState('');
   const [musicUri, setMusicUri] = useState('');
   const [splashConfig, setSplashConfig] = useState<SplashScreenConfig | undefined>(undefined);
+  const [sceneBlocks, setSceneBlocks] = useState<Block[]>([]);
+  const [sceneRoot, setSceneRoot] = useState<Block>(ROOT_BLOCK);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [interactiveObjects, setInteractiveObjects] = useState<InteractiveObject[]>([]);
   const [newChoiceText, setNewChoiceText] = useState('');
   const [newChoiceTarget, setNewChoiceTarget] = useState('');
   const [sceneList, setSceneList] = useState<string[]>([]);
+  const [characterList, setCharacterList] = useState<string[]>([]);
 
   // UI state
-  const [activeTab, setActiveTab] = useState<Tab>('edit');
+  const [activeTab, setActiveTab] = useState<Tab>('blocks');
   const [libraryTarget, setLibraryTarget] = useState<'bg' | 'voice' | 'music' | null>(null);
 
+  const skipNextReloadRef = React.useRef(false);
+
+  // Memoize the current story to avoid unnecessary recalculations
+  const currentStory = useMemo(() => {
+    if (!storyId || typeof storyId !== 'string') return null;
+    return stories.find((s) => s.id === storyId) || null;
+  }, [stories, storyId]);
+
+  // Memoize scene list
+  const sceneListMemo = useMemo(() => {
+    return currentStory ? Object.keys(currentStory.scenes) : [];
+  }, [currentStory]);
+
   const loadSceneData = useCallback(() => {
-    if (!storyId || typeof storyId !== 'string') return;
-    const foundStory = stories.find((s) => s.id === storyId);
-    if (!foundStory) return;
+    // After a successful save we call loadStories() which changes the
+    // `stories` reference and would re-trigger this callback, overwriting
+    // the local editor state with (potentially stale) data.  Skip once.
+    if (skipNextReloadRef.current) {
+      skipNextReloadRef.current = false;
+      return;
+    }
 
-    setStory(foundStory);
-    setSceneList(Object.keys(foundStory.scenes));
+    if (!currentStory) return;
 
-    const sceneIdStr = typeof sceneId === 'string' ? sceneId : foundStory.startSceneId;
-    const foundScene = foundStory.scenes[sceneIdStr];
+    setStory(currentStory);
+    setSceneList(sceneListMemo);
+    // Load character library
+    if (typeof storyId === "string") {
+      getCharacterLibrary(storyId).then((chars) => {
+        setCharacterList(chars.map((c) => c.name));
+      }).catch(() => setCharacterList([]));
+    }
+
+
+    const sceneIdStr = typeof sceneId === 'string' ? sceneId : currentStory.startSceneId;
+    const foundScene = currentStory.scenes[sceneIdStr];
     if (foundScene) {
       setScene(foundScene);
       setSceneText(foundScene.text);
@@ -167,14 +203,29 @@ export default function SceneEditorScreen() {
       setMusicUri(foundScene.musicUri || '');
       setSplashConfig(foundScene.splashScreen);
       setInteractiveObjects(foundScene.interactiveObjects || []);
+      // Initialize scene blocks if present
+      const blocks = (foundScene as any).blocks as Block[] | undefined;
+      if (blocks && blocks.length > 0) {
+        setSceneBlocks(blocks);
+        const rootBlock: Block = {
+          ...ROOT_BLOCK,
+          id: `scene_${foundScene.id}_root`,
+          data: { title: foundScene.id },
+          children: blocks,
+        };
+        setSceneRoot(rootBlock);
+      } else {
+        setSceneBlocks([]);
+        setSceneRoot({ ...ROOT_BLOCK, id: `scene_${foundScene.id}_root`, data: { title: foundScene.id } });
+      }
     }
-  }, [storyId, sceneId, stories]);
+  }, [storyId, sceneId, currentStory, sceneListMemo]);
 
   useEffect(() => { loadSceneData(); }, [loadSceneData]);
 
   // ── File pickers ──────────────────────────────────────────────────────────
 
-  const handlePickBg = async () => {
+  const handlePickBg = useCallback(async () => {
     try {
       // Request permissions first
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -189,43 +240,59 @@ export default function SceneEditorScreen() {
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
         const name = result.assets[0].fileName ?? uri.split('/').pop() ?? 'image';
+        console.log('[SceneEditor] Picking background image:', uri);
         const asset = await addAssetToLibrary(uri, name, 'image');
+        console.log('[SceneEditor] Background asset URI:', asset.uri);
         setBackgroundUri(asset.uri);
-        Alert.alert('Success', 'Image added! Don\'t forget to Save.');
+        if (asset.uri.includes('media-library')) {
+          Alert.alert('Success', 'Image added and saved to library! Don\'t forget to Save.');
+        } else {
+          Alert.alert('Warning', 'Image added but may not persist after reload. Check console for details.');
+        }
       }
     } catch (error) {
-      console.error('Error picking image:', error);
+      console.error('[SceneEditor] Error picking image:', error);
       Alert.alert('Error', 'Failed to pick image: ' + error);
     }
-  };
+  }, []);
 
-  const handlePickAudio = async (target: 'voice' | 'music') => {
+  const handlePickAudio = useCallback(async (target: 'voice' | 'music') => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'audio/*',
+        type: ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/x-wav'],
         copyToCacheDirectory: true
       });
 
       if (!result.canceled && result.assets[0]) {
         const { uri, name } = result.assets[0];
+        console.log('[SceneEditor] Picking audio:', uri, 'target:', target);
         const asset = await addAssetToLibrary(uri, name ?? 'audio', 'audio');
+        console.log('[SceneEditor] Audio asset URI:', asset.uri);
 
         if (target === 'voice') {
           setVoiceUri(asset.uri);
-          Alert.alert('Success', 'Voice audio added! Don\'t forget to Save.');
+          if (asset.uri.includes('media-library')) {
+            Alert.alert('Success', 'Voice audio added and saved to library! Don\'t forget to Save.');
+          } else {
+            Alert.alert('Warning', 'Voice audio added but may not persist after reload. Check console for details.');
+          }
         } else {
           setMusicUri(asset.uri);
-          Alert.alert('Success', 'Background music added! Don\'t forget to Save.');
+          if (asset.uri.includes('media-library')) {
+            Alert.alert('Success', 'Background music added and saved to library! Don\'t forget to Save.');
+          } else {
+            Alert.alert('Warning', 'Background music added but may not persist after reload. Check console for details.');
+          }
         }
       } else {
       }
     } catch (error) {
-      console.error('Error picking audio:', error);
+      console.error('[SceneEditor] Error picking audio:', error);
       Alert.alert('Error', 'Failed to pick audio file: ' + error);
     }
-  };
+  }, []);
 
-  const handleLibrarySelect = (asset: LibraryAsset) => {
+  const handleLibrarySelect = useCallback((asset: LibraryAsset) => {
     if (libraryTarget === 'bg') {
       setBackgroundUri(asset.uri);
     } else if (libraryTarget === 'voice') {
@@ -234,13 +301,22 @@ export default function SceneEditorScreen() {
       setMusicUri(asset.uri);
     }
     setLibraryTarget(null);
-  };
+  }, [libraryTarget]);
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
-  const handleSaveScene = async () => {
+  const handleSaveScene = useCallback(async () => {
     if (!story || !scene) return;
     try {
+      // Explicitly extract blocks from sceneRoot, ensuring positions are included
+      const blocksToSave: Block[] | undefined = sceneRoot?.children?.length > 0 ?
+        sceneRoot.children.map((block: Block) => ({
+          ...block,
+          // Ensure x and y are saved even if they were modified
+          x: block.x ?? undefined,
+          y: block.y ?? undefined,
+        })) : undefined;
+
       const updatedScene: StoryScene = {
         ...scene,
         text: sceneText,
@@ -249,15 +325,19 @@ export default function SceneEditorScreen() {
         musicUri: musicUri || undefined,
         splashScreen: splashConfig,
         interactiveObjects: interactiveObjects.length > 0 ? interactiveObjects : undefined,
+        blocks: blocksToSave,
       };
       await storyContextEnhanced.updateScene(story.id, updatedScene);
       setScene(updatedScene);
+
+      // Tell loadSceneData to skip the next trigger caused by loadStories()
+      skipNextReloadRef.current = true;
       await loadStories();
       Alert.alert('Saved', 'Scene saved successfully!');
     } catch { Alert.alert('Error', 'Failed to save scene'); }
-  };
+  }, [story, scene, sceneText, backgroundUri, voiceUri, musicUri, splashConfig, interactiveObjects, sceneRoot, loadStories]);
 
-  const handleAddScene = async () => {
+  const handleAddScene = useCallback(async () => {
     if (!story) return;
     const newSceneId = `scene_${Date.now()}`;
     const newScene: StoryScene = {
@@ -269,8 +349,8 @@ export default function SceneEditorScreen() {
       setSceneList([...sceneList, newSceneId]);
       await loadStories();
       Alert.alert('Created', `Scene "${newSceneId}" added.`);
-    } catch { Alert.alert('Error', 'Failed to create scene'); }
-  };
+    } catch (error) { Alert.alert('Error', 'Failed to create scene'); }
+  }, [story, sceneList, loadStories]);
 
   const handleDeleteScene = async (sceneIdToDelete: string) => {
     if (!story || sceneIdToDelete === story.startSceneId) {
@@ -357,7 +437,8 @@ export default function SceneEditorScreen() {
           <Text style={{ fontSize: 20, fontWeight: '700', color: colors.foreground }}>Scene Editor</Text>
           <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600', marginTop: 1 }}>{scene.id}</Text>
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 1, minWidth: 0 }}>
+          <LanguageSelector style={{ flex: 1, minWidth: 0 }} />
           <Pressable
             style={({ pressed }) => ({ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.success, opacity: pressed ? 0.8 : 1 })}
             onPress={handleSaveScene}
@@ -375,19 +456,41 @@ export default function SceneEditorScreen() {
 
       {/* Tabs */}
       <View style={{ flexDirection: 'row', gap: 0, marginBottom: 16, backgroundColor: colors.surface, borderRadius: 10, padding: 4, borderWidth: 1, borderColor: colors.border }}>
-        {(['edit', 'graph'] as Tab[]).map((tab) => (
+        {(['blocks', 'edit', 'graph'] as Tab[]).map((tab) => (
           <Pressable
             key={tab}
             style={{ flex: 1, paddingVertical: 8, borderRadius: 7, backgroundColor: activeTab === tab ? colors.primary : 'transparent', alignItems: 'center' }}
             onPress={() => setActiveTab(tab)}
           >
             <Text style={{ color: activeTab === tab ? '#fff' : colors.muted, fontWeight: '600', fontSize: 13, textTransform: 'capitalize' }}>
-              {tab === 'edit' ? '✏️ Edit' : '🗺 Graph'}
+              {tab === 'blocks' ? '🧱 Blocks' : tab === 'edit' ? '✏️ Edit' : '🗺 Graph'}
             </Text>
           </Pressable>
         ))}
       </View>
 
+      {/* ── BLOCKS TAB ─────────────────────────────────────────────────── */}
+      {activeTab === 'blocks' && sceneRoot && (
+        <BlockFlowCanvas
+          root={sceneRoot}
+          onChange={(root) => {
+            setSceneRoot(root);
+            setSceneBlocks(root.children);
+          }}
+          selectedId={selectedBlockId}
+          onSelect={setSelectedBlockId}
+          sceneList={sceneList}
+          characterList={characterList}
+          colors={{
+            foreground: colors.foreground,
+            background: colors.background,
+            surface: colors.surface,
+            border: colors.border,
+            muted: colors.muted,
+            primary: colors.primary,
+          }}
+        />
+      )}
       {/* ── EDIT TAB ─────────────────────────────────────────────────────── */}
       {activeTab === 'edit' && (
         <ScrollView
@@ -449,6 +552,7 @@ export default function SceneEditorScreen() {
             objects={interactiveObjects}
             onChange={setInteractiveObjects}
           />
+
 
           {/* Choices */}
           <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
@@ -571,3 +675,10 @@ export default function SceneEditorScreen() {
     </ScreenContainer>
   );
 }
+
+
+
+
+
+
+
