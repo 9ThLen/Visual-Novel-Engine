@@ -18,7 +18,8 @@
       "@shared/*": [
         "./shared/*"
       ]
-    }
+    },
+    "module": "preserve"
   },
   "include": [
     "**/*.ts",
