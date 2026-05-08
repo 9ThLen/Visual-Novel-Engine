@@ -41,7 +41,8 @@
       "Bash(ls -la app/*.tsx)",
       "Bash(grep -rn \"useEffect\" components/*.tsx)",
       "Bash(grep -rn \"\\\\.then\\\\|async\" components/*.tsx)",
-      "Bash(chmod +x scripts/check-quality.sh)"
+      "Bash(chmod +x scripts/check-quality.sh)",
+      "Bash(npm test:*)"
     ]
   }
 }

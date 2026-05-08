@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { AtomBlock } from '../../lib/atom-types';
+import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 
 type ComponentProps = {
   atom: AtomBlock;
@@ -25,13 +26,26 @@ const ATOM_TYPE_ICONS = {
 } as const;
 
 const AtomBlockComponent: React.FC<ComponentProps> = ({ atom, isSelected, onPress }) => {
+  const layout = useResponsiveLayout();
   const typeColor = ATOM_TYPE_COLORS[atom.type] || '#000000';
+
+  // Збільшений hitSlop для планшетів
+  const hitSlop = layout.isTablet 
+    ? { top: 10, bottom: 10, left: 10, right: 10 }
+    : { top: 5, bottom: 5, left: 5, right: 5 };
 
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
-      style={[styles.container, { borderColor: typeColor }, isSelected && styles.selectedContainer]}
+      hitSlop={hitSlop}
+      style={[
+        styles.container, 
+        { borderColor: typeColor }, 
+        isSelected && styles.selectedContainer,
+        // Більші атоми на планшетах
+        layout.isTablet && styles.tabletContainer,
+      ]}
     >
       {/* Snap point indicators */}
       <View style={[styles.snapPoint, styles.snapLeft]} />
@@ -41,9 +55,9 @@ const AtomBlockComponent: React.FC<ComponentProps> = ({ atom, isSelected, onPres
 
       {/* Atom content */}
       <View style={styles.contentRow}>
-        <Text style={styles.iconText}>{ATOM_TYPE_ICONS[atom.type] || '⬜'}</Text>
-        <View style={[styles.typeDot, { backgroundColor: typeColor }]} />
-        <Text style={styles.label}>{atom.label}</Text>
+        <Text style={[styles.iconText, layout.isTablet && styles.iconTextTablet]}>{ATOM_TYPE_ICONS[atom.type] || '⬜'}</Text>
+        <View style={[styles.typeDot, { backgroundColor: typeColor }, layout.isTablet && styles.typeDotTablet]} />
+        <Text style={[styles.label, layout.isTablet && styles.labelTablet]}>{atom.label}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -65,6 +79,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
+  },
+  tabletContainer: {
+    minWidth: 140,
+    minHeight: 80,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 10,
   },
   selectedContainer: {
     borderColor: '#FF3B30',
@@ -104,16 +125,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginRight: 6,
   },
+  iconTextTablet: {
+    fontSize: 20,
+    marginRight: 8,
+  },
   typeDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
     marginRight: 8,
   },
+  typeDotTablet: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginRight: 10,
+  },
   label: {
     fontSize: 14,
     color: '#1A1A1A',
     fontWeight: '500',
+  },
+  labelTablet: {
+    fontSize: 16,
   },
 });
 

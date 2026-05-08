@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LEGO Block System — Visual Novel Engine Design</title>
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-tertiary: #334155;
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --accent-blue: #3b82f6;
+      --accent-green: #10b981;
+      --accent-yellow: #f59e0b;
+      --accent-purple: #8b5cf6;
+      --accent-pink: #ec4899;
+      --border-radius: 8px;
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      margin-bottom: 30px;
+      font-size: 16px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 30px;
+      border-bottom: 2px solid var(--bg-tertiary);
+      padding-bottom: 12px;
+    }
+
+    .tab {
+      padding: 10px 20px;
+      background: var(--bg-secondary);
+      border: none;
+      border-radius: var(--border-radius);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .tab:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .tab.active {
+      background: var(--accent-blue);
+      color: white;
+    }
+
+    /* Panel */
+    .panel {
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Atom Grid */
+    .section-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .atom-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 30px;
+    }
+
+    .atom-card {
+      background: var(--bg-secondary);
+      border: 2px solid transparent;
+      border-radius: var(--border-radius);
+      padding: 20px;
+      text-align: center;
+      cursor: grab;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .atom-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow);
+    }
+
+    .atom-card.snap-active {
+      border-color: white;
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+    }
+
+    .atom-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      margin: 0 auto 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+
+    .atom-label {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .atom-type {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Snap Points */
+    .snap-point {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: 2px solid;
+      background: white;
+    }
+
+    .snap-left { left: -4px; top: 50%; transform: translateY(-50%); border-color: var(--atom-color); }
+    .snap-right { right: -4px; top: 50%; transform: translateY(-50%); border-color: var(--atom-color); }
+    .snap-top { top: -4px; left: 50%; transform: translateX(-50%); border-color: var(--atom-color); }
+    .snap-bottom { bottom: -4px; left: 50%; transform: translateX(-50%); border-color: var(--atom-color); }
+
+    /* Canvas */
+    .canvas {
+      background: var(--bg-secondary);
+      border-radius: var(--border-radius);
+      min-height: 400px;
+      padding: 20px;
+      position: relative;
+      margin-bottom: 20px;
+    }
+
+    .molecule-container {
+      background: rgba(59, 130, 246, 0.1);
+      border: 2px dashed var(--accent-blue);
+      border-radius: var(--border-radius);
+      padding: 20px;
+      margin-bottom: 16px;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      transition: all 0.3s;
+    }
+
+    .molecule-container:hover {
+      background: rgba(59, 130, 246, 0.15);
+    }
+
+    .molecule-label {
+      position: absolute;
+      top: -12px;
+      left: 20px;
+      background: var(--accent-blue);
+      color: white;
+      padding: 2px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* Timeline */
+    .timeline-container {
+      background: var(--bg-secondary);
+      border-radius: var(--border-radius);
+      padding: 20px;
+      overflow-x: auto;
+    }
+
+    .timeline-ruler {
+      height: 30px;
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      position: relative;
+      margin-bottom: 20px;
+    }
+
+    .timeline-mark {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      width: 1px;
+      background: var(--text-secondary);
+    }
+
+    .timeline-mark-label {
+      position: absolute;
+      top: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+
+    .timeline-track {
+      min-height: 60px;
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      margin-bottom: 8px;
+      padding: 8px;
+      position: relative;
+    }
+
+    .timeline-block {
+      position: absolute;
+      height: 44px;
+      background: var(--accent-green);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: white;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .timeline-block:hover {
+      filter: brightness(1.1);
+    }
+
+    /* Story Graph */
+    .graph-container {
+      background: var(--bg-secondary);
+      border-radius: var(--border-radius);
+      padding: 20px;
+      min-height: 500px;
+      position: relative;
+    }
+
+    .graph-node {
+      position: absolute;
+      padding: 16px 24px;
+      background: var(--bg-tertiary);
+      border: 2px solid var(--accent-purple);
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .graph-node:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+    }
+
+    .graph-edge {
+      position: absolute;
+      height: 2px;
+      background: var(--accent-purple);
+      transform-origin: left center;
+    }
+
+    .graph-edge::after {
+      content: '→';
+      position: absolute;
+      right: -8px;
+      top: -8px;
+      color: var(--accent-purple);
+      font-size: 16px;
+    }
+
+    /* Demo Controls */
+    .demo-controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: var(--border-radius);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--accent-blue);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #2563eb;
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .btn-secondary:hover {
+      background: #475569;
+    }
+
+    /* Info Box */
+    .info-box {
+      background: rgba(59, 130, 246, 0.1);
+      border-left: 4px solid var(--accent-blue);
+      padding: 16px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+
+    .info-box h3 {
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    .info-box p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    /* Zoom Controls */
+    .zoom-controls {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .zoom-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--bg-tertiary);
+      border: none;
+      color: var(--text-primary);
+      font-size: 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--shadow);
+    }
+
+    .zoom-btn:hover {
+      background: var(--accent-blue);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧱 LEGO Block System</h1>
+    <p class="subtitle">Візуальна система створення новел — від атомів до графу сюжету</p>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('atoms')">⚛️ Атоми</button>
+      <button class="tab" onclick="switchTab('molecules')">🧬 Молекули</button>
+      <button class="tab" onclick="switchTab('scenes')">🎬 Сцени</button>
+      <button class="tab" onclick="switchTab('timeline')">⏱ Таймлайн</button>
+      <button class="tab" onclick="switchTab('graph')">🕸 Граф сюжету</button>
+    </div>
+
+    <!-- Atoms Panel -->
+    <div id="atoms-panel" class="panel active">
+      <div class="info-box">
+        <h3>Що таке Атоми?</h3>
+        <p>Атоми — це найменші блоки з одним елементом. Вони мають "магнітні" точки на гранях для з'єднання з іншими атомами. Перетягуйте атоми один до одного, щоб утворити Молекули.</p>
+      </div>
+
+      <h2 class="section-title">📦 Бібліотека Атомів</h2>
+      <div class="atom-grid">
+        <div class="atom-card" style="--atom-color: var(--accent-blue)" onmouseover="showSnapIndicators(this)" onmouseout="hideSnapIndicators(this)">
+          <div class="snap-point snap-left"></div>
+          <div class="snap-point snap-right"></div>
+          <div class="snap-point snap-top"></div>
+          <div class="snap-point snap-bottom"></div>
+          <div class="atom-icon" style="background: rgba(59, 130, 246, 0.2); color: var(--accent-blue);">📝</div>
+          <div class="atom-label">Text Atom</div>
+          <div class="atom-type">text_atom</div>
+        </div>
+
+        <div class="atom-card" style="--atom-color: var(--accent-green)" onmouseover="showSnapIndicators(this)" onmouseout="hideSnapIndicators(this)">
+          <div class="snap-point snap-left"></div>
+          <div class="snap-point snap-right"></div>
+          <div class="snap-point snap-top"></div>
+          <div class="snap-point snap-bottom"></div>
+          <div class="atom-icon" style="background: rgba(16, 185, 129, 0.2); color: var(--accent-green);">👤</div>
+          <div class="atom-label">Character Atom</div>
+          <div class="atom-type">character_atom</div>
+        </div>
+
+        <div class="atom-card" style="--atom-color: var(--accent-yellow)" onmouseover="showSnapIndicators(this)" onmouseout="hideSnapIndicators(this)">
+          <div class="snap-point snap-left"></div>
+          <div class="snap-point snap-right"></div>
+          <div class="snap-point snap-top"></div>
+          <div class="snap-point snap-bottom"></div>
+          <div class="atom-icon" style="background: rgba(245, 158, 11, 0.2); color: var(--accent-yellow);">🖼</div>
+          <div class="atom-label">Background Atom</div>
+          <div class="atom-type">background_atom</div>
+        </div>
+
+        <div class="atom-card" style="--atom-color: var(--accent-purple)" onmouseover="showSnapIndicators(this)" onmouseout="hideSnapIndicators(this)">
+          <div class="snap-point snap-left"></div>
+          <div class="snap-point snap-right"></div>
+          <div class="snap-point snap-top"></div>
+          <div class="snap-point snap-bottom"></div>
+          <div class="atom-icon" style="background: rgba(139, 92, 246, 0.2); color: var(--accent-purple);">🎵</div>
+          <div class="atom-label">Audio Atom</div>
+          <div class="atom-type">audio_atom</div>
+        </div>
+
+        <div class="atom-card" style="--atom-color: var(--accent-pink)" onmouseover="showSnapIndicators(this)" onmouseout="hideSnapIndicators(this)">
+          <div class="snap-point snap-left"></div>
+          <div class="snap-point snap-right"></div>
+          <div class="snap-point snap-top"></div>
+          <div class="snap-point snap-bottom"></div>
+          <div class="atom-icon" style="background: rgba(236, 72, 153, 0.2); color: var(--accent-pink);">✨</div>
+          <div class="atom-label">FX Atom</div>
+          <div class="atom-type">fx_atom</div>
+        </div>
+      </div>
+
+      <h2 class="section-title">🎨 Кольорова схема</h2>
+      <div class="canvas">
+        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 20px; height: 20px; background: var(--accent-blue); border-radius: 4px;"></div>
+            <span style="font-size: 14px;">Text — Синій</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 20px; height: 20px; background: var(--accent-green); border-radius: 4px;"></div>
+            <span style="font-size: 14px;">Character — Зелений</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 20px; height: 20px; background: var(--accent-yellow); border-radius: 4px;"></div>
+            <span style="font-size: 14px;">Background — Жовтий</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 20px; height: 20px; background: var(--accent-purple); border-radius: 4px;"></div>
+            <span style="font-size: 14px;">Audio — Фіолетовий</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 20px; height: 20px; background: var(--accent-pink); border-radius: 4px;"></div>
+            <span style="font-size: 14px;">FX — Рожевий</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Molecules Panel -->
+    <div id="molecules-panel" class="panel">
+      <div class="info-box">
+        <h3>Що таке Молекули?</h3>
+        <p>Молекули утворюються, коли атоми "притягуються" один до одного. Наприклад: Character Atom + Text Atom = Dialogue Molecule (діалог персонажа).</p>
+      </div>
+
+      <h2 class="section-title">🧬 Приклади Молекул</h2>
+      <div class="canvas">
+        <div style="position: relative;">
+          <!-- Dialogue Molecule -->
+          <div class="molecule-container" style="position: relative;">
+            <span class="molecule-label">Dialogue Molecule</span>
+            <div class="atom-card" style="--atom-color: var(--accent-green); border-color: var(--accent-green);">
+              <div class="atom-icon" style="background: rgba(16, 185, 129, 0.2); color: var(--accent-green);">👤</div>
+              <div class="atom-label">Character</div>
+            </div>
+            <div style="font-size: 24px; color: var(--accent-blue);">+</div>
+            <div class="atom-card" style="--atom-color: var(--accent-blue); border-color: var(--accent-blue);">
+              <div class="atom-icon" style="background: rgba(59, 130, 246, 0.2); color: var(--accent-blue);">📝</div>
+              <div class="atom-label">Text</div>
+            </div>
+            <div style="margin-left: auto; padding: 8px 16px; background: rgba(16, 185, 129, 0.1); border-radius: 4px; font-size: 12px; color: var(--accent-green);">
+              → Діалог готовий
+            </div>
+          </div>
+
+          <!-- Multi-Dialogue Molecule -->
+          <div class="molecule-container" style="position: relative;">
+            <span class="molecule-label">Multi-Dialogue Molecule</span>
+            <div class="atom-card" style="--atom-color: var(--accent-green); border-color: var(--accent-green);">
+              <div class="atom-icon" style="background: rgba(16, 185, 129, 0.2); color: var(--accent-green);">👤</div>
+              <div class="atom-label">Hero</div>
+            </div>
+            <div class="atom-card" style="--atom-color: var(--accent-green); border-color: var(--accent-green);">
+              <div class="atom-icon" style="background: rgba(16, 185, 129, 0.2); color: var(--accent-green);">👤</div>
+              <div class="atom-label">Villain</div>
+            </div>
+            <div style="font-size: 24px; color: var(--accent-blue);">+</div>
+            <div class="atom-card" style="--atom-color: var(--accent-blue); border-color: var(--accent-blue);">
+              <div class="atom-icon" style="background: rgba(59, 130, 246, 0.2); color: var(--accent-blue);">📝</div>
+              <div class="atom-label">Text</div>
+            </div>
+            <div style="margin-left: auto; padding: 8px 16px; background: rgba(16, 185, 129, 0.1); border-radius: 4px; font-size: 12px; color: var(--accent-green);">
+              → Діалог 2-х персонажів
+            </div>
+          </div>
+
+          <!-- Scene Molecule -->
+          <div class="molecule-container" style="position: relative;">
+            <span class="molecule-label">Scene Molecule</span>
+            <div class="atom-card" style="--atom-color: var(--accent-yellow); border-color: var(--accent-yellow);">
+              <div class="atom-icon" style="background: rgba(245, 158, 11, 0.2); color: var(--accent-yellow);">🖼</div>
+              <div class="atom-label">Background</div>
+            </div>
+            <div style="font-size: 24px; color: var(--accent-pink);">+</div>
+            <div class="atom-card" style="--atom-color: var(--accent-pink); border-color: var(--accent-pink);">
+              <div class="atom-icon" style="background: rgba(236, 72, 153, 0.2); color: var(--accent-pink);">✨</div>
+              <div class="atom-label">FX</div>
+            </div>
+            <div style="margin-left: auto; padding: 8px 16px; background: rgba(16, 185, 129, 0.1); border-radius: 4px; font-size: 12px; color: var(--accent-green);">
+              → Сцена з ефектом
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scenes Panel -->
+    <div id="scenes-panel" class="panel">
+      <div class="info-box">
+        <h3>Що таке Сцени?</h3>
+        <p>Сцена — це головний контейнер, що об'єднує молекули та атоми в єдиний кадр. Всередині сцени ви встановлюєте послідовність появи елементів через Timeline.</p>
+      </div>
+
+      <div class="demo-controls">
+        <button class="btn btn-primary">+ Створити нову сцену</button>
+        <button class="btn btn-secondary">📥 Імпорт зображення</button>
+        <button class="btn btn-secondary">👤 Додати персонажа</button>
+      </div>
+
+      <h2 class="section-title">🎬 Поточна сцена: "Битва біля озера"</h2>
+      <div class="canvas" style="min-height: 300px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; gap: 16px; align-items: center; padding: 16px; background: var(--bg-tertiary); border-radius: var(--border-radius);">
+          <div style="font-size: 32px;">🖼</div>
+          <div>
+            <div style="font-weight: 600;">Background: lake_battle.png</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">background_atom • Transition: fade (500ms)</div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 16px; align-items: center; padding: 16px; background: var(--bg-tertiary); border-radius: var(--border-radius);">
+          <div style="display: flex; gap: 8px;">
+            <div style="font-size: 32px;">👤</div>
+            <div>
+              <div style="font-weight: 600;">Hero (center)</div>
+              <div style="font-size: 12px; color: var(--text-secondary);">character_atom • Entrance: fade_in</div>
+            </div>
+          </div>
+          <div style="font-size: 24px; color: var(--accent-blue);">+</div>
+          <div style="display: flex; gap: 8px;">
+            <div style="font-size: 32px;">📝</div>
+            <div>
+              <div style="font-weight: 600;">"Я зупиню тебе!"</div>
+              <div style="font-size: 12px; color: var(--text-secondary);">text_atom • Duration: 2000ms</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 16px; align-items: center; padding: 16px; background: var(--bg-tertiary); border-radius: var(--border-radius);">
+          <div style="display: flex; gap: 8px;">
+            <div style="font-size: 32px;">👤</div>
+            <div>
+              <div style="font-weight: 600;">Villain (right)</div>
+              <div style="font-size: 12px; color: var(--text-secondary);">character_atom • Entrance: slide_in_right</div>
+            </div>
+          </div>
+          <div style="font-size: 24px; color: var(--accent-blue);">+</div>
+          <div style="display: flex; gap: 8px;">
+            <div style="font-size: 32px;">📝</div>
+            <div>
+              <div style="font-weight: 600;">"Ніколи!"</div>
+              <div style="font-size: 12px; color: var(--text-secondary);">text_atom • Duration: 1500ms</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 16px; align-items: center; padding: 16px; background: rgba(139, 92, 246, 0.1); border-radius: var(--border-radius); border: 1px solid var(--accent-purple);">
+          <div style="font-size: 32px;">🎵</div>
+          <div>
+            <div style="font-weight: 600;">Epic Battle Music</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">audio_atom • Loop: true • Volume: 80%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timeline Panel -->
+    <div id="timeline-panel" class="panel">
+      <div class="info-box">
+        <h3>Що таке Timeline?</h3>
+        <p>Таймлайн визначає послідовність появи елементів у сцені. Перетягуйте блоки на вісь часу, щоб встановити, коли і як довго вони з'являються.</p>
+      </div>
+
+      <h2 class="section-title">⏱ Timeline: "Битва біля озера"</h2>
+      <div class="timeline-container">
+        <div class="timeline-ruler">
+          <div class="timeline-mark" style="left: 0%;"><span class="timeline-mark-label">0s</span></div>
+          <div class="timeline-mark" style="left: 25%;"><span class="timeline-mark-label">1s</span></div>
+          <div class="timeline-mark" style="left: 50%;"><span class="timeline-mark-label">2s</span></div>
+          <div class="timeline-mark" style="left: 75%;"><span class="timeline-mark-label">3s</span></div>
+          <div class="timeline-mark" style="left: 100%;"><span class="timeline-mark-label">4s</span></div>
+        </div>
+
+        <div class="timeline-track" style="height: 60px;">
+          <div style="position: absolute; left: 0%; width: 30%; background: var(--accent-yellow);" class="timeline-block">
+            🖼 Background (0-1.2s)
+          </div>
+        </div>
+
+        <div class="timeline-track" style="height: 60px;">
+          <div style="position: absolute; left: 10%; width: 25%; background: var(--accent-green);" class="timeline-block">
+            👤 Hero (0.5-2s)
+          </div>
+          <div style="position: absolute; left: 60%; width: 25%; background: var(--accent-green);" class="timeline-block">
+            👤 Villain (3-4.5s)
+          </div>
+        </div>
+
+        <div class="timeline-track" style="height: 60px;">
+          <div style="position: absolute; left: 20%; width: 30%; background: var(--accent-blue);" class="timeline-block">
+            📝 "Я зупиню тебе!" (1-3s)
+          </div>
+          <div style="position: absolute; left: 70%; width: 25%; background: var(--accent-blue);" class="timeline-block">
+            📝 "Ніколи!" (3.5-4.5s)
+          </div>
+        </div>
+
+        <div class="timeline-track" style="height: 60px;">
+          <div style="position: absolute; left: 0%; width: 100%; background: var(--accent-purple); opacity: 0.6;" class="timeline-block">
+            🎵 Music (весь час)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Story Graph Panel -->
+    <div id="graph-panel" class="panel">
+      <div class="info-box">
+        <h3>Що таке Граф сюжету?</h3>
+        <p>Граф сюжету — це макро-рівень, де сцени з'єднуються стрілками в єдину історію. Це DAG (орієнтований ациклічний граф). Використовуйте зум, щоб перемикатися між рівнями.</p>
+      </div>
+
+      <h2 class="section-title">🕸 Граф сюжету: "Втеча з в'язниці"</h2>
+      <div class="graph-container">
+        <!-- Nodes -->
+        <div class="graph-node" style="left: 50px; top: 50px;">
+          <div style="font-weight: 600;">🎬 Сцена 1</div>
+          <div style="font-size: 12px; color: var(--text-secondary);">В'язнична камера</div>
+        </div>
+
+        <div class="graph-node" style="left: 300px; top: 50px;">
+          <div style="font-weight: 600;">🎬 Сцена 2</div>
+          <div style="font-size: 12px; color: var(--text-secondary);">Втеча</div>
+        </div>
+
+        <div class="graph-node" style="left: 550px; top: 50px;">
+          <div style="font-weight: 600;">🎬 Сцена 3</div>
+          <div style="font-size: 12px; color: var(--text-secondary);">Погоня</div>
+        </div>
+
+        <div class="graph-node" style="left: 300px; top: 250px;">
+          <div style="font-weight: 600;">🎬 Сцена 4</div>
+          <div style="font-size: 12px; color: var(--text-secondary);">Розв'язка</div>
+        </div>
+
+        <!-- Edges (simplified visualization) -->
+        <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;">
+          <defs>
+            <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+              <polygon points="0 0, 10 3, 0 6" fill="var(--accent-purple)" />
+            </marker>
+          </defs>
+          <line x1="130" y1="80" x2="300" y2="80" stroke="var(--accent-purple)" stroke-width="2" marker-end="url(#arrowhead)" />
+          <line x1="380" y1="80" x2="550" y2="80" stroke="var(--accent-purple)" stroke-width="2" marker-end="url(#arrowhead)" />
+          <line x1="330" y1="100" x2="330" y2="250" stroke="var(--accent-purple)" stroke-width="2" marker-end="url(#arrowhead)" />
+          <line x1="580" y1="100" x2="330" y2="250" stroke="var(--accent-purple)" stroke-width="2" marker-end="url(#arrowhead)" />
+        </svg>
+
+        <!-- Zoom hint -->
+        <div style="position: absolute; bottom: 20px; left: 20px; padding: 12px; background: var(--bg-tertiary); border-radius: var(--border-radius); font-size: 12px; color: var(--text-secondary);">
+          💡 Наведіть мишу на вузол, щоб побачити деталі. Клік — відкрити сцену.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zoom Controls (simulated) -->
+  <div class="zoom-controls">
+    <button class="zoom-btn" onclick="alert('Zoom In: перехід до детальнішого вигляду (Scene)')">+</button>
+    <button class="zoom-btn" onclick="alert('Zoom Out: перехід до графа сюжету (Story Graph)')">-</button>
+  </div>
+
+  <script>
+    function switchTab(tabName) {
+      // Hide all panels
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+
+      // Show selected panel
+      document.getElementById(tabName + '-panel').classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    function showSnapIndicators(card) {
+      card.classList.add('snap-active');
+    }
+
+    function hideSnapIndicators(card) {
+      card.classList.remove('snap-active');
+    }
+
+    // Simulate drag-and-drop (visual only)
+    let draggedElement = null;
+
+    document.querySelectorAll('.atom-card').forEach(card => {
+      card.addEventListener('dragstart', function(e) {
+        draggedElement = this;
+        this.style.opacity = '0.5';
+      });
+
+      card.addEventListener('dragend', function(e) {
+        this.style.opacity = '1';
+      });
+    });
+
+    document.querySelectorAll('.canvas').forEach(canvas => {
+      canvas.addEventListener('dragover', function(e) {
+        e.preventDefault();
+      });
+
+      canvas.addEventListener('drop', function(e) {
+        e.preventDefault();
+        if (draggedElement) {
+          alert('✨ Магнітне притягування! Блоки з\'єднано в молекулу.');
+        }
+      });
+    });
+
+    // LocalStorage for persistence (simulated)
+    localStorage.setItem('lego-design-view', 'atoms');
+  </script>
+</body>
+</html>
