@@ -4,6 +4,52 @@ Chronological record of all wiki operations.
 
 ---
 
+## [2026-05-09 00:30] wiki | Documentation Update + Telegram Bot Debugging
+**Статус:** Частково завершено ⚠️
+
+### Visual Novel Engine — зміни (продовження з 08.05)
+- **Аудіо система**: завершено рефакторинг, видалено `audio-manager.ts`
+- **Типи даних**: оновлено `Story`, `StoryScene` з аудіо полями
+- **Сховище**: створено централізовані константи `storage-keys.ts`
+- **Мутації стану**: виправлено в `story-context-enhanced.ts` (spread оператори)
+- **Аудіо тригери**: додано обробку в `app/reader.tsx`
+- **Тести**: **203/203 passing** ✅ (підтверджено повторно)
+
+### Налаштування Telegram ботів
+**Головний бот (@hermesconductorbot)**: ✅ Працює коректно
+
+**Гостьовий бот (@Dalmatianpuppy1bot)**: ❌ НЕ ПРАЦЮЄ
+- **Проблема**: "No messaging platforms enabled" в логах гейтвею
+- **Токен**: [REDACTED] (валідний)
+- **Admin ID**: 131751260 додано в конфігурацію
+- **Локація**: `/home/viktor/.hermes/profiles/guest/`
+
+#### Виконані дії для налагодження:
+1. Перевірка токена через Telegram API — працює ✅
+2. Валідація YAML структури — коректна ✅
+3. Зміна структури `platforms:` (тести: `true`, `{enabled: true}`, список)
+4. Встановлення токена через `hermes config set`
+5. Створення `.env` з `GATEWAY_ALLOW_ALL_USERS=true`
+6. Запуск з `HERMES_HOME=/home/viktor/.hermes/profiles/guest`
+7. Аналіз коду `gateway/run.py` — проблема в `platform_config.enabled`
+
+**Висновок**: Виявлено можливий баг Hermes — профілі (`--profile`) некоректно завантажують платформи.
+
+### Wiki документація створена:
+- [[CHANGELOG_2026_05_09|Журнал змін 9 травня]]
+- Оновлено [[CHANGELOG_2026_05_08|Журнал змін 8 травня]] (203 тести)
+- Оновлено [[test-registry-2026-05-08|Реєстр тестів]]
+
+### Коміти в git (8-9 травня):
+- `88cce9b`, `8a6286a`, `88299fe`, `adc144b`, `a56901c`, `00eb7ca`, `0206afb`
+
+**Наступні кроки:**
+1. Оновити Hermes (`hermes update`) для виправлення бага з профілями
+2. Або встановити окрему копію Hermes без використання `--profile`
+3. Виправити помилку TS2559 в `lib/story-validator.ts` (splashScreen)
+
+---
+
 ## [2026-05-07 16:20] ✅ PLAN COMPLETED - Metro + Tests + Refactoring
 **Status:** ALL 7 TASKS COMPLETED ✅
 
@@ -211,5 +257,60 @@ Integrated automated memory system from claude-memory-compiler.
 
 ---
 
+## [2026-05-08 23:45] deploy | GitHub Actions + Code Cleanup + Wiki Documentation
+
+**Статус:** Завершено ✅
+
+### Основні зміни:
+
+**1. GitHub Actions — оновлення Node.js**
+- Workflow `deploy-web` оновлено до **Node.js 20** (з 18)
+- Причина: підтримка ES2023 методів (`toReversed()`)
+- Файл: `.github/workflows/deploy-web.yml`
+
+**2. Очищення застарілого коду**
+Видалено компоненти Help System:
+- `HelpableElement`, `HelpModeToggle`, `HelpTooltip`
+- `GuidedTourOverlay`, `FirstTimeGuide`
+- `help-system-context.tsx`
+- Видалено з проекту та GitHub
+
+**3. Виправлення помилок Metro bundler**
+- Виправлено імпорти в `app/_layout.tsx` та `app/editor.tsx`
+- Підтверджено роботу dev server (Metro) станом на 2026-05-07
+- Проблема з запуском була через режим перевірки, а не реальну помилку
+
+**4. Тести**
+- **203/203 passing** ✅ (станом на 2026-05-08)
+- Конфігурація: `vitest.config.ts` з `resolve.alias` для `@/`
+- `tsconfig.json`: `skipLibCheck:true`
+
+**5. Переміщення StoryApp**
+- З: `~/.hermes/hermes-agent/StoryApp`
+- До: `~/StoryApp`
+- Причина: запобігання циклам git stash при оновленні Hermes
+
+**6. Мережеві налаштування**
+- WSL2 NAT — Expo Go LAN mode не працює для телефону
+- Рішення: `npx expo start --tunnel`
+
+**7. Telegram боти**
+- `@hermesconductorbot` працює ✅ (тестовано 2026-05-08)
+- `@Dalmatianpuppy1bot` протестовано, немає відповіді
+- Gateway polling, allow-all увімкнено
+
+### Статус проекту:
+- Dev server (Metro): ✅ працює
+- Тести: 203/203 ✅
+- Deploy workflow: ✅ оновлено
+- Застарілий код: ✅ видалено
+
+---
+
 ## Пов'язані сторінки
 - [[audit-report-2026-05-07|Звіт про аудит 2026-05-07]]
+- [[CHANGELOG_2026_05_08|Журнал змін 2026-05-08]]
+- [[test-registry-2026-05-08|Реєстр тестів 203]]
+- [[DEV_SERVER_FIX_2026_05_07|Виправлення Metro 2026-05-07]]
+- [[next-session-plan-2026-05-08|План на 2026-05-08]]
+- [[next-session-plan-2026-05-09|План на 2026-05-09]]
