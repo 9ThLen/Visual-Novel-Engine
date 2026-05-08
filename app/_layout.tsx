@@ -10,7 +10,7 @@ import { InventoryProvider } from "@/lib/inventory-context";
 import { I18nProvider } from "@/lib/i18n-context";
 
 export const unstable_settings = {
-  anchor: "(tabs)",
+  anchor: "tabs",
 };
 
 export default function RootLayout() {
@@ -21,7 +21,7 @@ export default function RootLayout() {
           <InventoryProvider>
             <StoryProvider>
                 <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="tabs" />
                 </Stack>
                 <StatusBar style="auto" />
             </StoryProvider>
