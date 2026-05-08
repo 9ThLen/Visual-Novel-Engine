@@ -123,9 +123,9 @@ export class StoryValidator {
       voiceAudioUri: this.validateUri(data.voiceAudioUri),
       musicUri: this.validateUri(data.musicUri),
       choices: validatedChoices,
-      splashScreen: data.splashScreen, // TODO: Add validation for splash screen
-      interactiveObjects: data.interactiveObjects, // TODO: Add validation for interactive objects
-      blocks: data.blocks, // TODO: Add validation for blocks
+      splashScreen: data.splashScreen ? this.validateUri(data.splashScreen) : undefined,
+      interactiveObjects: Array.isArray(data.interactiveObjects) ? data.interactiveObjects : [],
+      blocks: data.blocks, // TODO: Add validation for blocks (complex Block system)
     };
   }
 
