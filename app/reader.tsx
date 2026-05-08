@@ -93,12 +93,17 @@ export default function ReaderScreen() {
     // Resolve and play voice
     if (currentScene.voiceAudioUri && currentScene.voiceAudioUri.trim()) {
       resolveAssetUri(currentScene.voiceAudioUri).then((uri) => {
-        if (isMounted && uri) {
+        if (isMounted) {
           audioManager.play('voice', uri, { volume: settings.voiceVolume });
         }
       }).catch(() => {
         // Silent fail for missing voice
       });
+    }
+
+    // Process audio triggers for the current scene
+    if (currentScene.audioTriggers && currentScene.audioTriggers.length > 0) {
+      audioManager.processTriggers(currentScene.audioTriggers);
     }
 
     return () => {
