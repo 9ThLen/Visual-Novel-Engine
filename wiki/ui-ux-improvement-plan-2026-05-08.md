@@ -66,15 +66,26 @@
 - `app/(tabs)/lego-editor.tsx`
 - Створити `components/lego-editor/LegoEditorGuide.tsx`
 
-### Етап 5: Адаптація під планшети ⏳
+### Етап 5: Адаптація під планшети 🔄
 **Завдання:**
-- [ ] Змінити layout для широких екранів (бічна панель)
-- [ ] Збільшити розміри кнопок та елементів для планшетів
-- [ ] Додати split-view режим (canvas + timeline side by side)
+- [x] Створити хук useResponsiveLayout для визначення типу пристрою
+- [x] Змінити layout для широких екранів (бічна панель, split view)
+- [x] Збільшити розміри кнопок та елементів для планшетів
+- [x] Додати підтримку повороту екрану (landscape/portrait)
+- [x] Оптимізувати TouchableOpacity та жести для планшетного вводу
+- [x] Додати адаптивну сітку LegoCanvas для ширших екранів
+- [ ] Тестування на планшетах (iPad, Android tablets)
 
 **Файли для зміни:**
+- `hooks/useResponsiveLayout.ts` (новий файл)
 - `app/(tabs)/lego-editor.tsx`
 - `components/lego-editor/LegoCanvas.tsx`
+- `components/lego-editor/AtomBlockComponent.tsx`
+- `app.json` (новий файл для підтримки повороту)
+
+**Детальний план:** `wiki/tablet-adaptation-plan-stage5.md`
+
+**Статус:** В процесі реалізації (2026-05-08 20:30)
 
 ## Технічні деталі
 

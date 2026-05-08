@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   useSharedValue,
@@ -11,6 +11,7 @@ import * as Haptics from 'expo-haptics';
 import { AtomBlock } from '../../lib/atom-types';
 import { canSnap, MoleculeBlock, calculateBounds } from '../../lib/molecule-types';
 import AtomBlockComponent from './AtomBlockComponent';
+import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 
 type LegoCanvasProps = {
   atoms: AtomBlock[];
@@ -107,6 +108,7 @@ const DraggableAtom: React.FC<{
   onDragEnd: (index: number, x: number, y: number) => void;
   onPress: (atomId: string) => void;
 }> = ({ atom, index, allAtoms, canvasSize, isSelected, onDragEnd, onPress }) => {
+  const layout = useResponsiveLayout();
   const posX = useSharedValue(atom.x);
   const posY = useSharedValue(atom.y);
 
@@ -118,6 +120,9 @@ const DraggableAtom: React.FC<{
 
   const [isDragging, setIsDragging] = useState(false);
   const scale = useSharedValue(1);
+  
+  // Adaptive snap threshold based on device
+  const snapThreshold = layout.isTablet ? 30 : 20;
   
   const animatedStyle = useAnimatedStyle(() => ({
     position: 'absolute' as const,
@@ -133,13 +138,21 @@ const DraggableAtom: React.FC<{
     transform: [{ scale: scale.value }],
     borderWidth: isDragging ? 2 : (isSelected ? 1 : 0),
     borderColor: isDragging ? '#3B82F6' : '#1D4ED8',
-    borderRadius: 8,
+    borderRadius: layout.isTablet ? 10 : 8,
   }));
 
   const panGesture = Gesture.Pan()
+    .hitSlop(layout.isTablet ? 15 : 8)
     .onBegin(() => {
       runOnJS(setIsDragging)(true);
-      scale.value = withSpring(1.05);
+      // Bigger scale on tablets
+      scale.value = withSpring(layout.isTablet ? 1.08 : 1.05);
+      // Stronger haptic feedback on tablets
+      if (layout.isTablet) {
+        runOnJS(() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        })();
+      }
     })
     .onUpdate((event) => {
       // Calculate new position based on gesture translation
@@ -154,7 +167,7 @@ const DraggableAtom: React.FC<{
         newY = Math.max(0, Math.min(newY, canvasSize.height - atom.height));
       }
 
-      // Check for magnetic snapping with other atoms
+      // Check for magnetic snapping with other atoms using adaptive threshold
       const draggedAtom = { ...atom, x: newX, y: newY };
       let snapped = false;
       for (let i = 0; i < allAtoms.length; i++) {
@@ -162,17 +175,25 @@ const DraggableAtom: React.FC<{
         const otherAtom = allAtoms[i];
         if (canAtomsSnap(draggedAtom, otherAtom)) {
           const snapPos = calculateSnapPosition(draggedAtom, otherAtom);
-          newX = snapPos.x;
-          newY = snapPos.y;
-          snapped = true;
-          break; // Snap to first compatible atom
+          // Use adaptive threshold
+          const dist = Math.sqrt(
+            Math.pow(newX - snapPos.x, 2) + Math.pow(newY - snapPos.y, 2)
+          );
+          if (dist < snapThreshold) {
+            newX = snapPos.x;
+            newY = snapPos.y;
+            snapped = true;
+            break; // Snap to first compatible atom
+          }
         }
       }
       
       // Trigger haptic feedback on snap
       if (snapped) {
         runOnJS(() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          Haptics.impactAsync(
+            layout.isTablet ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Medium
+          );
         })();
       }
 
@@ -220,6 +241,12 @@ const LegoCanvas: React.FC<LegoCanvasProps> = ({
 }) => {
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+  const layout = useResponsiveLayout();
+  const { width } = useWindowDimensions();
+
+  // Calculate grid columns based on screen width
+  const gridColumns = layout.gridColumns;
+  const isTabletLandscape = layout.isTablet && layout.isLandscape;
 
   // Use external selection if provided, otherwise internal
   const activeSelectedId = selectedAtomId ?? internalSelectedId;
@@ -259,20 +286,49 @@ const LegoCanvas: React.FC<LegoCanvasProps> = ({
     setCanvasSize({ width, height });
   };
 
+  // Adaptive canvas style
+  const canvasStyle = [
+    styles.container,
+    layout.isTablet && styles.containerTablet,
+    isTabletLandscape && styles.containerLandscape,
+    {
+      padding: layout.spacing,
+    }
+  ];
+
   return (
-    <View style={styles.container} onLayout={onCanvasLayout} onStartShouldSetResponder={() => true} onResponderRelease={handleCanvasPress}>
-      {atoms.map((atom, index) => (
-        <DraggableAtom
-          key={atom.id}
-          atom={atom}
-          index={index}
-          allAtoms={atoms}
-          canvasSize={canvasSize}
-          isSelected={atom.id === activeSelectedId}
-          onDragEnd={handleDragEnd}
-          onPress={handlePress}
-        />
-      ))}
+    <View style={canvasStyle} onLayout={onCanvasLayout} onStartShouldSetResponder={() => true} onResponderRelease={handleCanvasPress}>
+      {/* Render atoms in adaptive grid layout for tablets */}
+      {isTabletLandscape ? (
+        <View style={styles.gridContainer}>
+          {atoms.map((atom, index) => (
+            <View key={atom.id} style={[styles.gridItem, { width: `${100 / gridColumns}%` }]}>
+              <DraggableAtom
+                atom={atom}
+                index={index}
+                allAtoms={atoms}
+                canvasSize={canvasSize}
+                isSelected={atom.id === activeSelectedId}
+                onDragEnd={handleDragEnd}
+                onPress={handlePress}
+              />
+            </View>
+          ))}
+        </View>
+      ) : (
+        atoms.map((atom, index) => (
+          <DraggableAtom
+            key={atom.id}
+            atom={atom}
+            index={index}
+            allAtoms={atoms}
+            canvasSize={canvasSize}
+            isSelected={atom.id === activeSelectedId}
+            onDragEnd={handleDragEnd}
+            onPress={handlePress}
+          />
+        ))
+      )}
     </View>
   );
 };
@@ -282,6 +338,24 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
     backgroundColor: '#F5F5F5',
+  },
+  containerTablet: {
+    backgroundColor: '#E8E8E8',
+    borderRadius: 12,
+    margin: 8,
+  },
+  containerLandscape: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    width: '100%',
+  },
+  gridItem: {
+    padding: 4,
   },
 });
 
