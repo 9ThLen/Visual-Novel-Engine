@@ -341,3 +341,6 @@ class EnhancedAudioManager {
 }
 
 export const enhancedAudioManager = new EnhancedAudioManager();
+
+// Export enhanced manager as default audioManager for backward compatibility
+export const audioManager = enhancedAudioManager;

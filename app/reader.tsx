@@ -8,7 +8,7 @@ import { InventoryUI } from '@/components/InventoryUI';
 import { useStory } from '@/lib/story-context';
 import { useColors } from '@/hooks/use-colors';
 import { Story, StoryScene, Choice, PlaybackState } from '@/lib/types';
-import { audioManager } from '@/lib/audio-manager';
+import { enhancedAudioManager as audioManager } from '@/lib/audio-manager-enhanced';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 import demoStory from '@/assets/demo-story.json';
 
