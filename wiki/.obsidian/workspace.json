@@ -25,7 +25,7 @@
                 }
               },
               {
-                "id": "47e872b3e2d48053",
+                "id": "379aa76155b92310",
                 "type": "leaf",
                 "state": {
                   "type": "graph",
@@ -228,13 +228,18 @@
       "bases:Создать новую базу": false
     }
   },
-  "active": "47e872b3e2d48053",
+  "active": "379aa76155b92310",
   "lastOpenFiles": [
+    "drag-drop-integration-2026-05-09.md",
+    "test-registry-2026-05-08.md",
+    "SCHEMA.md",
+    "recommendations-implementation-2026-05-08.md",
+    "design/lego-block-system-design.html.md",
+    "design",
     "index.md",
     "overview.md",
     "entities/story-engine.md",
     "log.md",
-    "SCHEMA.md",
     "DEV_SERVER_FIX_2026_05_06.md",
     "PLAN_2026_05_07.md",
     "README.md",
