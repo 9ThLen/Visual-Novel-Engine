@@ -15,18 +15,18 @@ import { useColors } from '@/hooks/use-colors';
 import { Button } from '@/components/ui/Button';
 import demoStory from '@/assets/demo-story.json';
 import demoStoryAdvanced from '@/assets/demo-story-advanced.json';
+import { STORAGE_KEYS } from '@/lib/storage-keys';
 
 export default function HomeScreen() {
   const router = useRouter();
   const colors = useColors();
   const { stories, loadStories, addStory } = useStory();
-  const [isInitialized, setIsInitialized] = useState(false);
 
   const initializeApp = useCallback(async () => {
     try {
       // Read directly from AsyncStorage before loading into React state,
       // because `stories` from context is stale (still empty) at this point.
-      const storiesJson = await AsyncStorage.getItem('stories');
+      const storiesJson = await AsyncStorage.getItem(STORAGE_KEYS.STORIES);
       const existingStories: Story[] = storiesJson ? JSON.parse(storiesJson) : [];
 
       await loadStories();
