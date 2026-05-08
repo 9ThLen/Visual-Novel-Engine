@@ -6,6 +6,7 @@ import type { SplashScreenConfig } from './splash-types';
 import type { InteractiveObject } from './interactive-types';
 import type { BackgroundEffect } from './background-effects-types';
 import type { Block } from './block-types';
+import type { AudioLibraryItem, AudioTrigger } from './audio-types';
 
 /**
  * Represents a single choice option in a scene
@@ -36,8 +37,10 @@ export interface StoryScene {
   text: string;
   backgroundImageUri?: string | null;
   characters: CharacterSprite[];
+  /** @deprecated Use audioTriggers instead */
   voiceAudioUri?: string | null;
   choices: Choice[];
+  /** @deprecated Use audioTriggers instead */
   musicUri?: string | null;
   splashScreen?: SplashScreenConfig;
   interactiveObjects?: InteractiveObject[];
@@ -50,6 +53,8 @@ export interface StoryScene {
   };
   // Block-based content for the scene (can contain text, images, audio, etc.)
   blocks?: Block[];
+  // Audio triggers for enhanced audio system
+  audioTriggers?: AudioTrigger[];
 }
 
 /**
@@ -62,6 +67,7 @@ export interface Story {
   author?: string;
   startSceneId: string;
   scenes: Record<string, StoryScene>;
+  audioLibrary?: AudioLibraryItem[]; // Per-story audio library
   createdAt: number;
   updatedAt: number;
   thumbnailUri?: string;

@@ -3,7 +3,7 @@
  * Support for audio library and trigger-based playback
  */
 
-import type { StoryScene } from './types';
+import type { Story, StoryScene } from './types';
 
 /**
  * Audio trigger types
@@ -59,18 +59,11 @@ export interface StorySceneExtended extends Omit<StoryScene, 'musicUri' | 'voice
 
 /**
  * Story with audio library
+ * Extends the base Story type with audio support
  */
-export interface StoryWithAudio {
-  id: string;
-  title: string;
-  description?: string;
-  author?: string;
-  startSceneId: string;
+export interface StoryWithAudio extends Story {
   scenes: Record<string, StorySceneExtended>;
-  audioLibrary: AudioLibraryItem[]; // Per-story audio library
-  createdAt: number;
-  updatedAt: number;
-  thumbnailUri?: string;
+  // audioLibrary is now inherited from Story
 }
 
 /**
