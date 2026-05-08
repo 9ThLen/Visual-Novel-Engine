@@ -5,6 +5,7 @@
 import type { SplashScreenConfig } from './splash-types';
 import type { InteractiveObject } from './interactive-types';
 import type { BackgroundEffect } from './background-effects-types';
+import type { Block } from './block-types';
 
 /**
  * Represents a single choice option in a scene
@@ -22,8 +23,9 @@ export interface CharacterSprite {
   id: string;
   imageUri: string;
   name: string;
-  position?: 'left' | 'center' | 'right';
+  position?: string; // More flexible than just 'left' | 'center' | 'right'
   scale?: number;
+  expression?: string;
 }
 
 /**
@@ -40,6 +42,14 @@ export interface StoryScene {
   splashScreen?: SplashScreenConfig;
   interactiveObjects?: InteractiveObject[];
   backgroundEffects?: BackgroundEffect[];
+  animatedBackground?: unknown; // Compatibility for demo stories — use type guard before use
+  autoAdvance?: {
+    enabled: boolean;
+    delay: number;
+    nextSceneId: string;
+  };
+  // Block-based content for the scene (can contain text, images, audio, etc.)
+  blocks?: Block[];
 }
 
 /**
@@ -93,7 +103,7 @@ export interface PlaybackState {
   storyId: string;
   currentSceneId: string;
   isPlaying: boolean;
-  currentDialogueIndex: number;
+  currentDialogueIndex: number; // Reserved for future feature: step-by-step dialogue display
   choicesMade: Array<{ sceneId: string; choiceId: string }>;
 }
 

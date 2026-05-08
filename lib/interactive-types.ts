@@ -74,7 +74,10 @@ export type InteractiveAction =
   | AddItemAction
   | RemoveItemAction
   | ShowImageAction
-  | TriggerEventAction;
+  | TriggerEventAction
+  | { type: 'item'; itemId: string; itemName?: string; action: 'add' | 'remove' }
+  | { type: 'scene'; targetSceneId: string }
+  | { type: 'sound'; soundUri: string };
 
 // ── Interactive Object ────────────────────────────────────────────────────
 
@@ -87,8 +90,15 @@ export interface InteractiveObjectPosition {
 
 export interface InteractiveObject {
   id: string;
-  name: string; // For editor display
-  position: InteractiveObjectPosition;
+  name?: string; // For editor display
+  label?: string; // Alternative to name
+  position?: InteractiveObjectPosition;
+
+  // Flattened position (alternative to position object)
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 
   // Visual representation
   imageUri?: string; // Optional image overlay
@@ -101,6 +111,7 @@ export interface InteractiveObject {
   requiredItems?: string[]; // Item IDs needed to interact
   oneTimeOnly?: boolean; // Can only be clicked once
   isActive?: boolean; // Can be toggled on/off
+  lockedMessage?: string; // Message shown when required items are missing
 
   // Visual feedback
   pulseAnimation?: boolean;

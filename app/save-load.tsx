@@ -28,13 +28,31 @@ export default function SaveLoadScreen() {
     }
 
     await saveGame(slotId);
+    // After saving, load the same slot to apply saved state
+    await loadGame(slotId);
+    const slot = saveSlots.find((s) => s.id === slotId);
+    if (slot) {
+      // Navigate to reader with correct storyId to reflect loaded state
+      router.replace({
+        pathname: '/reader',
+        params: { storyId: slot.storyId },
+      });
+    }
     Alert.alert(t('common.success'), t('save.success'));
   };
 
   const handleLoadFromSlot = async (slotId: string) => {
+    const slot = saveSlots.find((s) => s.id === slotId);
+    if (!slot) return;
+
     await loadGame(slotId);
     Alert.alert(t('common.success'), t('save.loadSuccess'));
-    router.back();
+
+    // Navigate to reader with the correct storyId to ensure UI stays in sync
+    router.replace({
+      pathname: '/reader',
+      params: { storyId: slot.storyId },
+    });
   };
 
   const handleDeleteSlot = (slotId: string) => {

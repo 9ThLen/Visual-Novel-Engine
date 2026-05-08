@@ -98,3 +98,6 @@ Built collaboratively with Claude Sonnet 4. Recent work focused on:
 **Created:** 2026-04-13
 **Last Updated:** 2026-04-13
 **Sources:** README.md, project structure, recent development session
+
+## Пов'язані сторінки
+- [[audit-report-2026-05-07|Звіт про аудит 2026-05-07]]

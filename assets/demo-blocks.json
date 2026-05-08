@@ -1,0 +1,31 @@
+{
+  "id": "root",
+  "type": "group",
+  "data": { "title": "Root" },
+  "children": [
+    {
+      "id": "b1",
+      "type": "text",
+      "data": { "text": "Hello, this is a block!" },
+      "children": [],
+      "x": 20,
+      "y": 60
+    },
+    {
+      "id": "b2",
+      "type": "group",
+      "data": { "title": "Nested" },
+      "collapsed": false,
+      "children": [
+        {
+          "id": "b2_1",
+          "type": "text",
+          "data": { "text": "Nested child 1" },
+          "children": [],
+          "x": 60,
+          "y": 120
+        }
+      ]
+    }
+  ]
+}

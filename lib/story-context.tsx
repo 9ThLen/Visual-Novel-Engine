@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Story, SaveSlot, PlaybackState, UserSettings } from './types';
+import { ErrorHandler, ErrorCategory, ErrorSeverity, retryAsync } from './error-handler';
+import { withLogging } from './state-logger';
 
 interface StoryContextType {
   stories: Story[];
@@ -39,7 +41,8 @@ type Action =
   | { type: 'SET_SAVE_SLOTS'; payload: SaveSlot[] }
   | { type: 'UPDATE_SETTINGS'; payload: Partial<UserSettings> }
   | { type: 'ADD_STORY'; payload: Story }
-  | { type: 'DELETE_STORY'; payload: string };
+  | { type: 'DELETE_STORY'; payload: string }
+  | { type: 'LOAD_GAME_STATE'; payload: { story: Story; playbackState: PlaybackState } };
 
 const initialSettings: UserSettings = {
   bgmVolume: 0.7,
@@ -64,19 +67,37 @@ function storyReducer(state: State, action: Action): State {
     case 'SET_STORIES':
       return { ...state, stories: action.payload };
     case 'SET_CURRENT_STORY':
-      return { ...state, currentStory: action.payload };
+      return { 
+        ...state, 
+        currentStory: action.payload,
+        playbackState: null // Reset playback state when switching stories to prevent stale data
+      };
     case 'UPDATE_PLAYBACK_STATE':
       return { ...state, playbackState: action.payload };
     case 'SET_SAVE_SLOTS':
       return { ...state, saveSlots: action.payload };
     case 'UPDATE_SETTINGS':
       return { ...state, settings: { ...state.settings, ...action.payload } };
-    case 'ADD_STORY':
+    case 'ADD_STORY': {
+      const exists = state.stories.find(s => s.id === action.payload.id);
+      if (exists) {
+        return {
+          ...state,
+          stories: state.stories.map(s => s.id === action.payload.id ? action.payload : s)
+        };
+      }
       return { ...state, stories: [...state.stories, action.payload] };
+    }
     case 'DELETE_STORY':
       return {
         ...state,
         stories: state.stories.filter((s) => s.id !== action.payload),
+      };
+    case 'LOAD_GAME_STATE':
+      return {
+        ...state,
+        currentStory: action.payload.story,
+        playbackState: action.payload.playbackState,
       };
     default:
       return state;
@@ -84,8 +105,10 @@ function storyReducer(state: State, action: Action): State {
 }
 
 export function StoryProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(storyReducer, initialState);
+  // Wrap reducer with logging middleware
+  const [state, dispatch] = useReducer(withLogging(storyReducer), initialState);
   const autoSaveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = React.useRef(true);
 
   // Load data on mount
   useEffect(() => {
@@ -94,11 +117,20 @@ export function StoryProvider({ children }: { children: ReactNode }) {
 
   const loadInitialData = async () => {
     try {
-      const [storiesJson, slotsJson, settingsJson] = await Promise.all([
-        AsyncStorage.getItem('stories'),
-        AsyncStorage.getItem('saveSlots'),
-        AsyncStorage.getItem('settings'),
-      ]);
+      const [storiesJson, slotsJson, settingsJson] = await retryAsync(
+        () => Promise.all([
+          AsyncStorage.getItem('stories'),
+          AsyncStorage.getItem('saveSlots'),
+          AsyncStorage.getItem('settings'),
+        ]),
+        {
+          maxRetries: 3,
+          delayMs: 500,
+          onRetry: (attempt) => {
+            console.log(`Retrying loadInitialData, attempt ${attempt}`);
+          }
+        }
+      );
 
       if (storiesJson) {
         dispatch({ type: 'SET_STORIES', payload: JSON.parse(storiesJson) });
@@ -110,19 +142,28 @@ export function StoryProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'UPDATE_SETTINGS', payload: JSON.parse(settingsJson) });
       }
     } catch (error) {
-      console.error('Failed to load initial data:', error);
+      ErrorHandler.handleStorageError('load initial data', error, {
+        operation: 'loadInitialData'
+      });
     }
   };
 
   const loadStories = useCallback(async () => {
     try {
-      const storiesJson = await AsyncStorage.getItem('stories');
+      const storiesJson = await retryAsync(
+        () => AsyncStorage.getItem('stories'),
+        { maxRetries: 3, delayMs: 500 }
+      );
+
       if (storiesJson) {
         const stories = JSON.parse(storiesJson);
         dispatch({ type: 'SET_STORIES', payload: stories });
       }
     } catch (error) {
-      console.error('Failed to load stories:', error);
+      ErrorHandler.handleStorageError('load stories', error, {
+        operation: 'loadStories'
+      });
+      throw error; // Re-throw so caller can handle
     }
   }, []);
 
@@ -136,13 +177,20 @@ export function StoryProvider({ children }: { children: ReactNode }) {
 
   // saveGame зависит от current state
   const saveGame = useCallback(async (slotId: string) => {
-    if (!state.playbackState || !state.currentStory) return;
+    if (!state.playbackState || !state.currentStory) {
+      ErrorHandler.handleValidationError('Cannot save game: no active story or playback state', {
+        slotId,
+        hasPlaybackState: !!state.playbackState,
+        hasCurrentStory: !!state.currentStory
+      });
+      return;
+    }
 
     try {
       const currentScene = state.currentStory.scenes[state.playbackState.currentSceneId];
 
-      // Extract first line of dialogue for preview
-      const sceneText = currentScene?.text.split('\n')[0].slice(0, 100) || '';
+      // Extract first line of dialogue for preview - safe access
+      const sceneText = currentScene?.text?.split('\n')[0]?.slice(0, 100) || '';
 
       const newSlot: SaveSlot = {
         id: slotId,
@@ -161,9 +209,18 @@ export function StoryProvider({ children }: { children: ReactNode }) {
       updatedSlots.push(newSlot);
 
       dispatch({ type: 'SET_SAVE_SLOTS', payload: updatedSlots });
-      await AsyncStorage.setItem('saveSlots', JSON.stringify(updatedSlots));
+
+      await retryAsync(
+        () => AsyncStorage.setItem('saveSlots', JSON.stringify(updatedSlots)),
+        { maxRetries: 3, delayMs: 500 }
+      );
     } catch (error) {
-      console.error('Failed to save game:', error);
+      ErrorHandler.handleStorageError('save game', error, {
+        slotId,
+        storyId: state.currentStory.id,
+        sceneId: state.playbackState.currentSceneId
+      });
+      throw error;
     }
   }, [state.playbackState, state.currentStory, state.saveSlots]);
 
@@ -177,10 +234,13 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     // Debounce auto-save to avoid excessive writes (500ms)
     autoSaveTimeoutRef.current = setTimeout(async () => {
       try {
-        if (!state.playbackState || !state.currentStory) return;
+        // Check if component is still mounted before async operations
+        if (!isMountedRef.current) return;
+        // Check if game is active and playing
+        if (!state.playbackState || !state.currentStory || !state.playbackState.isPlaying) return;
 
         const currentScene = state.currentStory.scenes[state.playbackState.currentSceneId];
-        const sceneText = currentScene?.text.split('\n')[0].slice(0, 100) || '';
+        const sceneText = currentScene?.text?.split('\n')[0]?.slice(0, 100) || '';
 
         const newSlot: SaveSlot = {
           id: 'autosave',
@@ -198,10 +258,19 @@ export function StoryProvider({ children }: { children: ReactNode }) {
         const updatedSlots = state.saveSlots.filter((s) => s.id !== 'autosave');
         updatedSlots.push(newSlot);
 
+        // Check again before state updates
+        if (!isMountedRef.current) return;
+
         dispatch({ type: 'SET_SAVE_SLOTS', payload: updatedSlots });
-        await AsyncStorage.setItem('saveSlots', JSON.stringify(updatedSlots));
+        await retryAsync(
+          () => AsyncStorage.setItem('saveSlots', JSON.stringify(updatedSlots)),
+          { maxRetries: 2, delayMs: 300 }
+        );
       } catch (error) {
-        console.error('Failed to auto-save game:', error);
+        ErrorHandler.handleStorageError('auto-save game', error, {
+          storyId: state.currentStory.id,
+          sceneId: state.playbackState.currentSceneId
+        });
       }
     }, 500);
   }, [state.playbackState, state.currentStory, state.saveSlots]);
@@ -209,6 +278,7 @@ export function StoryProvider({ children }: { children: ReactNode }) {
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
+      isMountedRef.current = false;
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
       }
@@ -219,7 +289,19 @@ export function StoryProvider({ children }: { children: ReactNode }) {
   const loadGame = useCallback(async (slotId: string) => {
     try {
       const slot = state.saveSlots.find((s) => s.id === slotId);
-      if (!slot) return;
+      if (!slot) {
+        ErrorHandler.handleValidationError(`Save slot not found: ${slotId}`, { slotId });
+        return;
+      }
+
+      const story = state.stories.find((s) => s.id === slot.storyId);
+      if (!story) {
+        ErrorHandler.handleValidationError(`Story not found for save slot: ${slot.storyId}`, {
+          slotId,
+          storyId: slot.storyId
+        });
+        return;
+      }
 
       const playbackState: PlaybackState = {
         storyId: slot.storyId,
@@ -229,20 +311,31 @@ export function StoryProvider({ children }: { children: ReactNode }) {
         choicesMade: slot.choicesMade,
       };
 
-      dispatch({ type: 'UPDATE_PLAYBACK_STATE', payload: playbackState });
+      dispatch({
+        type: 'LOAD_GAME_STATE',
+        payload: { story, playbackState }
+      });
     } catch (error) {
-      console.error('Failed to load game:', error);
+      ErrorHandler.handle('Failed to load game', error, ErrorCategory.UNKNOWN, ErrorSeverity.HIGH, {
+        slotId
+      });
+      throw error;
     }
-  }, [state.saveSlots]);
+  }, [state.saveSlots, state.stories]);
 
   // deleteGame зависит от state.saveSlots
   const deleteGame = useCallback(async (slotId: string) => {
     try {
       const updatedSlots = state.saveSlots.filter((s) => s.id !== slotId);
       dispatch({ type: 'SET_SAVE_SLOTS', payload: updatedSlots });
-      await AsyncStorage.setItem('saveSlots', JSON.stringify(updatedSlots));
+
+      await retryAsync(
+        () => AsyncStorage.setItem('saveSlots', JSON.stringify(updatedSlots)),
+        { maxRetries: 3, delayMs: 500 }
+      );
     } catch (error) {
-      console.error('Failed to delete game:', error);
+      ErrorHandler.handleStorageError('delete game save', error, { slotId });
+      throw error;
     }
   }, [state.saveSlots]);
 
@@ -251,16 +344,29 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     try {
       const updated = { ...state.settings, ...newSettings };
       dispatch({ type: 'UPDATE_SETTINGS', payload: newSettings });
-      await AsyncStorage.setItem('settings', JSON.stringify(updated));
+
+      await retryAsync(
+        () => AsyncStorage.setItem('settings', JSON.stringify(updated)),
+        { maxRetries: 3, delayMs: 500 }
+      );
     } catch (error) {
-      console.error('Failed to update settings:', error);
+      ErrorHandler.handleStorageError('update settings', error, { newSettings });
+      throw error;
     }
   }, [state.settings]);
 
   // addStory зависит от state.stories
   const addStory = useCallback(async (story: Story) => {
     try {
-      const updatedStories = [...state.stories, story];
+      const exists = state.stories.find(s => s.id === story.id);
+      let updatedStories: Story[];
+      
+      if (exists) {
+        updatedStories = state.stories.map(s => s.id === story.id ? story : s);
+      } else {
+        updatedStories = [...state.stories, story];
+      }
+      
       dispatch({ type: 'ADD_STORY', payload: story });
       await AsyncStorage.setItem('stories', JSON.stringify(updatedStories));
     } catch (error) {
@@ -279,13 +385,24 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     }
   }, [state.stories]);
 
-  // useMemo включает ВСЕ функции + state
-  const value: StoryContextType = useMemo(() => ({
+  // Optimize: Split state and functions to reduce re-renders
+  // State changes frequently, but functions are stable
+  const stateValue = useMemo(() => ({
     stories: state.stories,
     currentStory: state.currentStory,
     playbackState: state.playbackState,
     saveSlots: state.saveSlots,
     settings: state.settings,
+  }), [
+    state.stories,
+    state.currentStory,
+    state.playbackState,
+    state.saveSlots,
+    state.settings,
+  ]);
+
+  // Functions are stable (wrapped in useCallback), so we can create this object once
+  const functionsValue = useMemo(() => ({
     loadStories,
     setCurrentStory,
     updatePlaybackState,
@@ -297,11 +414,6 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     addStory,
     deleteStory,
   }), [
-    state.stories,
-    state.currentStory,
-    state.playbackState,
-    state.saveSlots,
-    state.settings,
     loadStories,
     setCurrentStory,
     updatePlaybackState,
@@ -313,6 +425,12 @@ export function StoryProvider({ children }: { children: ReactNode }) {
     addStory,
     deleteStory,
   ]);
+
+  // Combine state and functions
+  const value: StoryContextType = useMemo(() => ({
+    ...stateValue,
+    ...functionsValue,
+  }), [stateValue, functionsValue]);
 
   return <StoryContext.Provider value={value}>{children}</StoryContext.Provider>;
 }

@@ -74,8 +74,9 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
   const handleUpdatePosition = (updates: Partial<InteractiveObjectPosition>) => {
     if (!selectedObject) return;
 
+    const currentPos = selectedObject.position || { x: 0, y: 0, width: 0, height: 0 };
     handleUpdateObject({
-      position: { ...selectedObject.position, ...updates },
+      position: { ...currentPos, ...updates },
     });
   };
 
@@ -321,7 +322,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                           fontSize: 12,
                           textAlign: 'center',
                         }}
-                        value={String(selectedObject.position[key])}
+                        value={String(selectedObject.position?.[key] ?? 0)}
                         onChangeText={(text) => {
                           const num = parseFloat(text) || 0;
                           handleUpdatePosition({ [key]: num });

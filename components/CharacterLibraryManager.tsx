@@ -4,13 +4,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
   Pressable,
   TextInput,
-  FlatList,
   Alert,
   StyleSheet,
   Image,
@@ -19,6 +19,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useColors } from '@/hooks/use-colors';
 import type { Character, CharacterSprite } from '@/lib/character-types';
 import * as characterLibrary from '@/lib/character-library';
+import { CharacterList } from './CharacterList';
 
 interface Props {
   storyId: string;
@@ -246,58 +247,12 @@ export function CharacterLibraryManager({
               onChangeText={setSearchQuery}
             />
 
-            <ScrollView style={styles.characterList}>
-              {filteredCharacters.map((char) => (
-                <Pressable
-                  key={char.id}
-                  style={[
-                    styles.characterItem,
-                    {
-                      backgroundColor:
-                        selectedCharacter?.id === char.id ? colors.primary : colors.surface,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                  onPress={() => setSelectedCharacter(char)}
-                >
-                  <View style={styles.characterInfo}>
-                    <Text
-                      style={[
-                        styles.characterName,
-                        {
-                          color:
-                            selectedCharacter?.id === char.id ? '#fff' : colors.foreground,
-                        },
-                      ]}
-                    >
-                      {char.name}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.spriteCount,
-                        { color: selectedCharacter?.id === char.id ? '#fff' : colors.muted },
-                      ]}
-                    >
-                      {char.sprites.length} sprites
-                    </Text>
-                  </View>
-                  <Pressable
-                    style={styles.deleteButton}
-                    onPress={() => handleDeleteCharacter(char.id)}
-                  >
-                    <Text style={{ color: colors.error }}>🗑</Text>
-                  </Pressable>
-                </Pressable>
-              ))}
-
-              {filteredCharacters.length === 0 && (
-                <View style={styles.empty}>
-                  <Text style={[styles.emptyText, { color: colors.muted }]}>
-                    No characters
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
+            <CharacterList
+              characters={filteredCharacters}
+              selectedCharacter={selectedCharacter}
+              onSelect={setSelectedCharacter}
+              onDelete={handleDeleteCharacter}
+            />
 
             <Pressable
               style={[styles.addButton, { backgroundColor: colors.primary }]}

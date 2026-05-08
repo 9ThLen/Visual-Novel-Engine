@@ -14,6 +14,7 @@ import {
   Alert,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
+import { getBundledAsset } from '@/lib/asset-resolver';
 import { useInventory } from '@/lib/inventory-context';
 import type {
   InteractiveObject,
@@ -189,10 +190,17 @@ function InteractiveObjectView({ object, onPress, isClicked }: ObjectViewProps) 
   }
 
   // Calculate absolute position
-  const left = (object.position.x / 100) * screenWidth;
-  const top = (object.position.y / 100) * screenHeight;
-  const width = (object.position.width / 100) * screenWidth;
-  const height = (object.position.height / 100) * screenHeight;
+  const pos = object.position || {
+    x: object.x ?? 0,
+    y: object.y ?? 0,
+    width: object.width ?? 10,
+    height: object.height ?? 10,
+  };
+
+  const left = (pos.x / 100) * screenWidth;
+  const top = (pos.y / 100) * screenHeight;
+  const width = (pos.width / 100) * screenWidth;
+  const height = (pos.height / 100) * screenHeight;
 
   return (
     <Animated.View
@@ -235,11 +243,17 @@ function InteractiveObjectView({ object, onPress, isClicked }: ObjectViewProps) 
 
         {/* Object image */}
         {object.imageUri ? (
-          <Image
-            source={{ uri: object.imageUri }}
-            style={styles.objectImage}
-            resizeMode="contain"
-          />
+          // Resolve bundled asset or fall back to URI
+          (() => {
+            const resolved = getBundledAsset(object.imageUri) ?? { uri: object.imageUri };
+            return (
+              <Image
+                source={resolved}
+                style={styles.objectImage}
+                resizeMode="contain"
+              />
+            );
+          })()
         ) : (
           // Debug outline (only in dev mode)
           __DEV__ && (

@@ -32,14 +32,26 @@ export default function HomeScreen() {
       await loadStories();
 
       // Add demo stories if they don't exist
-      const demo1 = demoStory as Story;
-      const demo2 = demoStoryAdvanced as Story;
+      const demo1 = (demoStory as unknown) as Story;
+      const demo2 = (demoStoryAdvanced as unknown) as Story;
 
-      if (!existingStories.find(s => s.id === demo1.id)) {
-        await addStory(demo1);
-      }
-      if (!existingStories.find(s => s.id === demo2.id)) {
-        await addStory(demo2);
+      // Always update demo stories to ensure they have the latest asset paths
+      await addStory(demo1);
+      await addStory(demo2);
+
+      // Pre-populate Media Library with demo assets for the editor
+      const { getLibraryAssets, addAssetToLibrary } = await import('@/components/media-library');
+      const libraryAssets = await getLibraryAssets();
+      
+      if (libraryAssets.length === 0) {
+        // Add some demo backgrounds
+        await addAssetToLibrary('assets/background/bg-ancient-library.png', 'Ancient Library', 'image');
+        await addAssetToLibrary('assets/background/bg-museum-entrance.png', 'Museum Entrance', 'image');
+        
+        // Add some demo sounds
+        await addAssetToLibrary('assets/sounds-sample/music-magical.mp3', 'Magical Music', 'audio');
+        await addAssetToLibrary('assets/sounds-sample/music-mysterious-adventure.mp3', 'Mysterious Adventure', 'audio');
+        await addAssetToLibrary('assets/sounds-sample/sfx-door-open.mp3', 'Door Open SFX', 'audio');
       }
 
       setIsInitialized(true);

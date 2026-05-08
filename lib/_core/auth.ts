@@ -75,7 +75,7 @@ export async function getUserInfo(): Promise<User | null> {
     let info: string | null = null;
     if (Platform.OS === "web") {
       // Use localStorage for web
-      info = window.localStorage.getItem(USER_INFO_KEY);
+      info = typeof window !== 'undefined' ? window.localStorage.getItem(USER_INFO_KEY) : null;
     } else {
       // Use SecureStore for native
       info = await SecureStore.getItemAsync(USER_INFO_KEY);
@@ -100,8 +100,10 @@ export async function setUserInfo(user: User): Promise<void> {
 
     if (Platform.OS === "web") {
       // Use localStorage for web
-      window.localStorage.setItem(USER_INFO_KEY, JSON.stringify(user));
-      console.log("[Auth] User info stored in localStorage successfully");
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(USER_INFO_KEY, JSON.stringify(user));
+        console.log("[Auth] User info stored in localStorage successfully");
+      }
       return;
     }
 
@@ -117,7 +119,9 @@ export async function clearUserInfo(): Promise<void> {
   try {
     if (Platform.OS === "web") {
       // Use localStorage for web
-      window.localStorage.removeItem(USER_INFO_KEY);
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(USER_INFO_KEY);
+      }
       return;
     }
 

@@ -3,7 +3,7 @@
  * Support for audio library and trigger-based playback
  */
 
-import type { StoryScene, Choice, CharacterSprite } from './types';
+import type { StoryScene } from './types';
 
 /**
  * Audio trigger types

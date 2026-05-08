@@ -3,11 +3,11 @@
  * Context for managing app language and translations
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Supported languages
-export type Language = 'en' | 'uk' | 'ru' | 'pl';
+export type Language = 'en' | 'uk' | 'ru' | 'pl' | 'de';
 
 export interface LanguageInfo {
   code: Language;
@@ -21,6 +21,7 @@ export const SUPPORTED_LANGUAGES: LanguageInfo[] = [
   { code: 'uk', name: 'Ukrainian', nativeName: 'Українська', flag: '🇺🇦' },
   { code: 'ru', name: 'Russian', nativeName: 'Русский', flag: '🇷🇺' },
   { code: 'pl', name: 'Polish', nativeName: 'Polski', flag: '🇵🇱' },
+  { code: 'de', name: 'German', nativeName: 'Deutsch', flag: '🇩🇪' },
 ];
 
 // Translation type
@@ -53,7 +54,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const loadLanguage = async () => {
     try {
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
-      if (saved && (saved === 'en' || saved === 'uk' || saved === 'ru' || saved === 'pl')) {
+      if (saved && ['en', 'uk', 'ru', 'pl', 'de'].includes(saved)) {
         setLanguageState(saved as Language);
       }
     } catch (error) {
@@ -70,8 +71,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Translation function
-  const t = (key: TranslationKey, fallback?: string): string => {
+  // Translation function - reactive to language changes
+  const t = useCallback((key: TranslationKey, fallback?: string): string => {
     const translation = (translations as Translations)[key];
 
     if (!translation) {
@@ -92,14 +93,14 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     }
 
     return text;
-  };
+  }, [language]);
 
-  const value: I18nContextType = {
+  const value = useMemo<I18nContextType>(() => ({
     language,
     setLanguage,
     t,
     languages: SUPPORTED_LANGUAGES,
-  };
+  }), [language, setLanguage, t]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

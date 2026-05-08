@@ -22,15 +22,6 @@ export function LanguageSelector({ style }: Props) {
 
   return (
     <View style={[styles.container, style]}>
-      <Text
-        style={[
-          styles.label,
-          { color: colors.foreground },
-        ]}
-      >
-        {t('settings.language')}
-      </Text>
-
       <View style={styles.buttonsContainer}>
         {languages.map((lang) => (
           <Pressable
@@ -43,21 +34,13 @@ export function LanguageSelector({ style }: Props) {
                 borderColor:
                   language === lang.code ? colors.primary : colors.border,
                 opacity: pressed ? 0.8 : 1,
+                paddingHorizontal: 8,
+                paddingVertical: 6,
               },
             ]}
             onPress={() => handleLanguageChange(lang.code)}
           >
             <Text style={styles.flag}>{lang.flag}</Text>
-            <Text
-              style={[
-                styles.languageName,
-                {
-                  color: language === lang.code ? '#fff' : colors.foreground,
-                },
-              ]}
-            >
-              {lang.nativeName}
-            </Text>
           </Pressable>
         ))}
       </View>
@@ -67,7 +50,7 @@ export function LanguageSelector({ style }: Props) {
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    marginBottom: 0,
   },
   label: {
     fontSize: 14,
@@ -76,24 +59,24 @@ const styles = StyleSheet.create({
   },
   buttonsContainer: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 4,
+    flexWrap: 'wrap',
   },
   languageButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
     borderWidth: 2,
-    gap: 8,
+    gap: 4,
   },
   flag: {
-    fontSize: 20,
+    fontSize: 18,
   },
   languageName: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
 });

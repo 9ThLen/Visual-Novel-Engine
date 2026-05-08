@@ -10,7 +10,6 @@ import {
   Animated,
   Dimensions,
   StyleSheet,
-  Platform,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 

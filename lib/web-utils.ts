@@ -238,6 +238,7 @@ export function supportsFeature(feature: 'clipboard' | 'dragdrop' | 'filereader'
  */
 export function hasLocalStorage(): boolean {
   if (!isWeb()) return false;
+  if (typeof window === 'undefined' || !window.localStorage) return false;
 
   try {
     const test = '__storage_test__';

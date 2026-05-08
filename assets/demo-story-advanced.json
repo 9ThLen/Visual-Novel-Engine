@@ -12,7 +12,7 @@
       "text": "",
       "splashScreen": {
         "type": "image",
-        "uri": "assets/splash screens/splash-title.png",
+        "uri": "assets/splash-screens/splash-title.png",
         "duration": 3000,
         "fadeIn": 500,
         "fadeOut": 500,
@@ -50,8 +50,8 @@
           "expression": "welcoming"
         }
       ],
-      "voiceAudioUri": "assets/sounds for sample/voice-guide-welcome.mp3",
-      "musicUri": "assets/sounds for sample/music-mysterious-adventure.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-guide-welcome.mp3",
+      "musicUri": "assets/sounds-sample/music-mysterious-adventure.mp3",
       "interactiveObjects": [
         {
           "id": "obj_entrance_sign",
@@ -83,7 +83,7 @@
             },
             {
               "type": "sound",
-              "soundUri": "assets/sounds for sample/sfx-door-open.mp3"
+              "soundUri": "assets/sounds-sample/sfx-door-open.mp3"
             }
           ]
         }
@@ -107,7 +107,7 @@
       "backgroundImageUri": "assets/background/bg-museum-entrance.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/sounds for sample/music-mysterious-adventure.mp3",
+      "musicUri": "assets/sounds-sample/music-mysterious-adventure.mp3",
       "choices": [
         {
           "id": "choice_1s_1",
@@ -121,7 +121,7 @@
       "text": "You step into the Grand Hall. Marble columns stretch toward a vaulted ceiling painted with constellations. Display cases line the walls, each containing mysterious artifacts.\n\nTo your left is the Hall of Mirrors. To your right, the Ancient Library. Straight ahead, a locked door with three empty slots.",
       "splashScreen": {
         "type": "image",
-        "uri": "assets/splash screens/splash-chapter1.png",
+        "uri": "assets/splash-screens/splash-chapter1.png",
         "duration": 2000,
         "fadeIn": 300,
         "fadeOut": 300,
@@ -137,8 +137,8 @@
           "expression": "explaining"
         }
       ],
-      "voiceAudioUri": "assets/sounds for sample/voice-guide-hall.mp3",
-      "musicUri": "assets/sounds for sample/music-mysterious-adventure.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-guide-hall.mp3",
+      "musicUri": "assets/sounds-sample/music-mysterious-adventure.mp3",
       "interactiveObjects": [
         {
           "id": "obj_display_case",
@@ -176,7 +176,7 @@
             },
             {
               "type": "sound",
-              "soundUri": "assets/sounds for sample/sfx-item-get.mp3"
+              "soundUri": "assets/sounds-sample/sfx-item-get.mp3"
             }
           ]
         },
@@ -226,7 +226,7 @@
       "backgroundImageUri": "assets/background/bg-grand-hall.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/sounds for sample/music-mysterious-adventure.mp3",
+      "musicUri": "assets/sounds-sample/music-mysterious-adventure.mp3",
       "choices": [
         {
           "id": "choice_2d_1",
@@ -255,8 +255,8 @@
           "expression": "mysterious"
         }
       ],
-      "voiceAudioUri": "assets/sounds for sample/voice-reflection.mp3",
-      "musicUri": "assets/sounds for sample/music-eerie.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-reflection.mp3",
+      "musicUri": "assets/sounds-sample/music-eerie.mp3",
       "interactiveObjects": [
         {
           "id": "obj_mirror_left",
@@ -298,7 +298,7 @@
             },
             {
               "type": "sound",
-              "soundUri": "assets/sounds for sample/sfx-item-get.mp3"
+              "soundUri": "assets/sounds-sample/sfx-item-get.mp3"
             }
           ]
         },
@@ -344,8 +344,8 @@
           "expression": "wise"
         }
       ],
-      "voiceAudioUri": "assets/sounds for sample/voice-reflection-wisdom.mp3",
-      "musicUri": "assets/sounds for sample/music-eerie.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-reflection-wisdom.mp3",
+      "musicUri": "assets/sounds-sample/music-eerie.mp3",
       "choices": [
         {
           "id": "choice_3r_1",
@@ -367,8 +367,8 @@
           "expression": "reading"
         }
       ],
-      "voiceAudioUri": "assets/sounds for sample/voice-librarian-greeting.mp3",
-      "musicUri": "assets/sounds for sample/music-peaceful.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-librarian-greeting.mp3",
+      "musicUri": "assets/sounds-sample/music-peaceful.mp3",
       "interactiveObjects": [
         {
           "id": "obj_bookshelf",
@@ -400,7 +400,7 @@
             },
             {
               "type": "sound",
-              "soundUri": "assets/sounds for sample/sfx-stairs.mp3"
+              "soundUri": "assets/sounds-sample/sfx-stairs.mp3"
             }
           ]
         },
@@ -455,8 +455,8 @@
           "expression": "wise"
         }
       ],
-      "voiceAudioUri": "assets/sounds for sample/voice-librarian-advice.mp3",
-      "musicUri": "assets/sounds for sample/music-peaceful.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-librarian-advice.mp3",
+      "musicUri": "assets/sounds-sample/music-peaceful.mp3",
       "choices": [
         {
           "id": "choice_4l_1",
@@ -483,8 +483,8 @@
           "expression": "explaining"
         }
       ],
-      "voiceAudioUri": "assets/sounds for sample/voice-librarian-explain.mp3",
-      "musicUri": "assets/sounds for sample/music-peaceful.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-librarian-explain.mp3",
+      "musicUri": "assets/sounds-sample/music-peaceful.mp3",
       "choices": [
         {
           "id": "choice_4l2_1",
@@ -506,7 +506,7 @@
       },
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/sounds for sample/music-magical.mp3",
+      "musicUri": "assets/sounds-sample/music-magical.mp3",
       "interactiveObjects": [
         {
           "id": "obj_phoenix_feather",
@@ -530,7 +530,7 @@
             },
             {
               "type": "sound",
-              "soundUri": "assets/sounds for sample/sfx-item-get-special.mp3"
+              "soundUri": "assets/sounds-sample/sfx-item-get-special.mp3"
             }
           ],
           "lockedMessage": "The Phoenix Feather is protected by a magical barrier. You need the Crystal Key and Ancient Compass to break the seal."
@@ -574,7 +574,7 @@
       "backgroundImageUri": "assets/background/bg-upper-library.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/sounds for sample/music-magical.mp3",
+      "musicUri": "assets/sounds-sample/music-magical.mp3",
       "choices": [
         {
           "id": "choice_5a_1",
@@ -588,7 +588,7 @@
       "text": "As you place the three artifacts into their slots, the golden door erupts with brilliant light. The entire museum trembles with ancient power.\n\nThe door swings open, revealing a chamber filled with treasures beyond imagination. But more importantly, you see a mirror showing your true self—brave, clever, and worthy.",
       "splashScreen": {
         "type": "image",
-        "uri": "assets/splash screens/splash-victory.png",
+        "uri": "assets/splash-screens/splash-victory.png",
         "duration": 3000,
         "fadeIn": 800,
         "fadeOut": 800,
@@ -619,8 +619,8 @@
           "expression": "happy"
         }
       ],
-      "voiceAudioUri": "assets/sounds for sample/voice-victory.mp3",
-      "musicUri": "assets/sounds for sample/music-triumphant.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-victory.mp3",
+      "musicUri": "assets/sounds-sample/music-triumphant.mp3",
       "choices": [
         {
           "id": "choice_final_1",
@@ -635,7 +635,7 @@
       "backgroundImageUri": "assets/background/bg-treasure-chamber.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": "assets/sounds for sample/music-triumphant.mp3",
+      "musicUri": "assets/sounds-sample/music-triumphant.mp3",
       "choices": [
         {
           "id": "choice_end_1",
