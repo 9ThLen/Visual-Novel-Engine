@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useSceneStore } from '../../stores/scene-store';
 import { TimelineEvent } from '../../lib/scene-types';
+import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 
 interface TimelineEditorProps {
   sceneId: string;
@@ -11,6 +12,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ sceneId }) => {
   // Get scene data from store
   const scenes = useSceneStore((state) => state.scenes);
   const scene = scenes.find((s) => s.id === sceneId);
+  const layout = useResponsiveLayout();
 
   // Handle scene not found
   if (!scene) {
@@ -33,14 +35,14 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ sceneId }) => {
   const timeScale = 100;
   const totalWidth = Math.max(totalDuration, 10) * timeScale;
 
-  // Generate ruler marks (0s, 1s, 2s, etc.) - use Math.ceil for fractional durations
+  // Generate ruler marks (0s, 1s, 2s, etc.)
   const rulerMarks = [];
   for (let i = 0; i <= Math.ceil(totalDuration); i++) {
     rulerMarks.push(i);
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, layout.isTablet && styles.containerTablet]}>
       {/* Timeline Ruler */}
       <ScrollView horizontal style={styles.rulerContainer}>
         <View style={[styles.ruler, { width: totalWidth }]}>
@@ -49,7 +51,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ sceneId }) => {
               key={`ruler-${second}`} 
               style={[styles.rulerMark, { left: second * timeScale }]}
             >
-              <Text style={styles.rulerText}>{second}s</Text>
+              <Text style={[styles.rulerText, layout.isTablet && styles.rulerTextTablet]}>{second}s</Text>
               <View style={styles.rulerTick} />
             </View>
           ))}
@@ -64,15 +66,16 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ sceneId }) => {
               key={event.elementId || `event-${index}`}
               style={[
                 styles.timelineBlock,
+                layout.isTablet && styles.timelineBlockTablet,
                 {
                   left: event.startTime * timeScale,
-                  width: Math.max(event.duration * timeScale, 60), // Minimum block width
+                  width: Math.max(event.duration * timeScale, 60),
                 },
               ]}
             >
-              <Text style={styles.blockText}>ID: {event.elementId}</Text>
-              <Text style={styles.blockText}>Start: {event.startTime}s</Text>
-              <Text style={styles.blockText}>Duration: {event.duration}s</Text>
+              <Text style={[styles.blockText, layout.isTablet && styles.blockTextTablet]}>ID: {event.elementId}</Text>
+              <Text style={[styles.blockText, layout.isTablet && styles.blockTextTablet]}>Start: {event.startTime}s</Text>
+              <Text style={[styles.blockText, layout.isTablet && styles.blockTextTablet]}>Duration: {event.duration}s</Text>
             </View>
           ))}
         </View>
@@ -85,6 +88,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+  },
+  containerTablet: {
+    padding: 8,
   },
   errorText: {
     fontSize: 16,
@@ -107,17 +113,15 @@ const styles = StyleSheet.create({
     top: 0,
     alignItems: 'center',
     width: 40,
-    marginLeft: -20, // Center the mark under the tick
+    marginLeft: -20,
   },
   rulerText: {
     fontSize: 12,
     color: '#6c757d',
     marginBottom: 2,
   },
-  rulerTick: {
-    width: 1,
-    height: 12,
-    backgroundColor: '#adb5bd',
+  rulerTextTablet: {
+    fontSize: 14,
   },
   timelineContainer: {
     flex: 1,
@@ -139,10 +143,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2c6cb0',
   },
+  timelineBlockTablet: {
+    height: 100,
+    padding: 12,
+    minHeight: 60,
+    borderRadius: 8,
+  },
   blockText: {
     color: '#fff',
     fontSize: 12,
     lineHeight: 16,
+  },
+  blockTextTablet: {
+    fontSize: 14,
+    lineHeight: 20,
   },
 });
 
