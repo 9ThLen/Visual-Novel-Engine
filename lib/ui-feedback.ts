@@ -16,16 +16,24 @@ const SOUND_FILES: Record<string, any> = {};
 // Try to load sound files, but don't fail if they're missing
 try {
   SOUND_FILES.click = require('@/assets/sounds/button-press.ogg');
-} catch {}
+} catch (error) {
+  console.debug('Sound file not found: button-press.ogg', error);
+}
 try {
   SOUND_FILES.success = require('@/assets/sounds/success_action.wav');
-} catch {}
+} catch (error) {
+  console.debug('Sound file not found: success_action.wav', error);
+}
 try {
   SOUND_FILES.error = require('@/assets/sounds/error.wav');
-} catch {}
+} catch (error) {
+  console.debug('Sound file not found: error.wav', error);
+}
 try {
   SOUND_FILES.whoosh = require('@/assets/sounds/button-press.ogg'); // Using button-press as fallback
-} catch {}
+} catch (error) {
+  console.debug('Sound file not found: button-press.ogg (whoosh)', error);
+}
 
 /**
  * Play haptic feedback
@@ -51,7 +59,8 @@ export async function playHaptic(
         break;
     }
   } catch (error) {
-    // Haptics not supported on device - silent fail
+    // Haptics not supported on device - graceful degradation
+    console.debug('Haptics not supported:', error);
   }
 }
 
@@ -67,6 +76,7 @@ export async function playSound(
     const soundFile = SOUND_FILES[soundName];
     if (!soundFile) {
       // Sound file not available - silent fail (graceful degradation)
+      console.debug(`Sound not available: ${soundName}`);
       return;
     }
 
@@ -87,6 +97,7 @@ export async function playSound(
     soundCache[soundName] = sound;
   } catch (error) {
     // Sound playback failed - silent fail (graceful degradation)
+    console.debug(`Sound playback failed: ${soundName}`, error);
   }
 }
 
@@ -137,7 +148,9 @@ export async function cleanupSounds() {
   for (const sound of Object.values(soundCache)) {
     try {
       await sound.unloadAsync();
-    } catch {}
+    } catch (error) {
+      console.debug('Failed to unload sound:', error);
+    }
   }
   Object.keys(soundCache).forEach(key => delete soundCache[key]);
 }
