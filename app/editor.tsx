@@ -11,11 +11,6 @@ import { ScreenContainer } from '@/components/screen-container';
 import { useStory } from '@/lib/story-context';
 import { useColors } from '@/hooks/use-colors';
 import { Story } from '@/lib/types';
-import { HelpableElement } from '@/components/HelpableElement';
-import { HelpModeToggle } from '@/components/HelpModeToggle';
-import { HelpTooltip } from '@/components/HelpTooltip';
-import { GuidedTourOverlay } from '@/components/GuidedTourOverlay';
-import { FirstTimeGuide } from '@/components/FirstTimeGuide';
 import { Button } from '@/components/ui/Button';
 import { DesktopLayout } from '@/components/DesktopLayout';
 import { TopBarAction } from '@/components/WebTopBar';
@@ -117,58 +112,54 @@ export default function EditorScreen() {
   };
 
   const renderStoryCard = ({ item }: { item: Story }) => (
-    <HelpableElement helpId="story_list">
-      <View
-        style={{
-          backgroundColor: colors.surface,
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 12,
-          borderWidth: 1,
-          borderColor: colors.border,
-        }}
-      >
-        <View style={{ gap: 8 }}>
-          <Text
-            style={{
-              fontSize: 16,
-              fontWeight: '600',
-              color: colors.foreground,
-            }}
+    <View
+      style={{
+        backgroundColor: colors.surface,
+        borderRadius: 12,
+        padding: 12,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
+      <View style={{ gap: 8 }}>
+        <Text
+          style={{
+            fontSize: 16,
+            fontWeight: '600',
+            color: colors.foreground,
+          }}
+        >
+          {item.title}
+        </Text>
+        <Text
+          style={{
+            fontSize: 12,
+            color: colors.muted,
+          }}
+        >
+          {Object.keys(item.scenes).length} scenes
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 12, justifyContent: 'center' }}>
+          <Button
+            variant="primary"
+            size="base"
+            style={{ minWidth: 120 }}
+            onPress={() => handleEditStory(item)}
           >
-            {item.title}
-          </Text>
-          <Text
-            style={{
-              fontSize: 12,
-              color: colors.muted,
-            }}
+            ✏️ Edit
+          </Button>
+          <Button
+            variant="danger"
+            size="base"
+            style={{ minWidth: 120 }}
+            onPress={() => handleDeleteStory(item.id)}
           >
-            {Object.keys(item.scenes).length} scenes
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 12, marginTop: 12, justifyContent: 'center' }}>
-            <Button
-              variant="primary"
-              size="base"
-              style={{ minWidth: 120 }}
-              onPress={() => handleEditStory(item)}
-            >
-              ✏️ Edit
-            </Button>
-            <HelpableElement helpId="delete_story_button">
-              <Button
-                variant="danger"
-                size="base"
-                style={{ minWidth: 120 }}
-                onPress={() => handleDeleteStory(item.id)}
-              >
-                🗑 Delete
-              </Button>
-            </HelpableElement>
-          </View>
+            🗑 Delete
+          </Button>
         </View>
       </View>
-    </HelpableElement>
+    </View>
   );
 
   const topBarActions = isWebDesktop ? (
@@ -191,12 +182,7 @@ export default function EditorScreen() {
       topBarActions={topBarActions}
     >
       <ScreenContainer className="p-4">
-        {/* Help System Components */}
-        <HelpTooltip />
-        <GuidedTourOverlay />
-        <FirstTimeGuide />
 
-        {/* Mobile/Tablet Header - only show when not desktop */}
         {!isWebDesktop && (
           <View
             style={{
@@ -216,16 +202,13 @@ export default function EditorScreen() {
               Editor
             </Text>
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <HelpModeToggle />
-              <HelpableElement helpId="add_story_button">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onPress={() => setShowNewStoryForm(!showNewStoryForm)}
-                >
-                  {showNewStoryForm ? 'Cancel' : '+ New'}
-                </Button>
-              </HelpableElement>
+              <Button
+                variant="primary"
+                size="sm"
+                onPress={() => setShowNewStoryForm(!showNewStoryForm)}
+              >
+                {showNewStoryForm ? 'Cancel' : '+ New'}
+              </Button>
             </View>
           </View>
         )}
@@ -266,16 +249,14 @@ export default function EditorScreen() {
             value={newStoryTitle}
             onChangeText={setNewStoryTitle}
           />
-          <HelpableElement helpId="add_story_button">
-            <Button
-              variant="primary"
-              size="base"
-              fullWidth
-              onPress={handleCreateStory}
-            >
-              Create Story
-            </Button>
-          </HelpableElement>
+          <Button
+            variant="primary"
+            size="base"
+            fullWidth
+            onPress={handleCreateStory}
+          >
+            Create Story
+          </Button>
         </View>
       )}
 
