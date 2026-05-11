@@ -18,11 +18,9 @@ import { useColors } from '@/hooks/use-colors';
 import { Story, StoryScene, Choice } from '@/lib/types';
 import * as storyContextEnhanced from '@/lib/story-context-enhanced';
 import { MediaLibrary, LibraryAsset, addAssetToLibrary } from '@/components/media-library';
-import { SceneGraph } from '@/components/scene-graph';
 import { SplashScreenEditor } from '@/components/SplashScreenEditor';
 import { useSceneEditorMedia } from '@/hooks/useSceneEditorMedia';
 import { useSceneEditorActions } from '@/hooks/useSceneEditorActions';
-
 
 import { Block, ROOT_BLOCK, createDefaultBlock } from '@/lib/block-types';
 import { BlockFlowCanvas, BlockToolbar } from '@/components/block-editor';
@@ -33,9 +31,15 @@ import type { InteractiveObject } from '@/lib/interactive-types';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { BlocksTab } from '@/components/scene-editor/BlocksTab';
 import { EditTab } from '@/components/scene-editor/EditTab';
-import { GraphTab } from '@/components/scene-editor/GraphTab';
 
-type Tab = 'blocks' | 'edit' | 'graph';
+// LEGO editor imports
+import LegoCanvas from '@/components/lego-editor/LegoCanvas';
+import TimelineEditor from '@/components/lego-editor/TimelineEditor';
+import { useSceneManagement } from '@/hooks/lego/useSceneManagement';
+import { useLegoDnD } from '@/hooks/lego/useLegoDnD';
+import type { AtomBlock } from '@/lib/atom-types';
+
+type Tab = 'blocks' | 'edit' | 'lego';
 
 // ── Reusable file-picker row component ────────────────────────────────────
 interface FilePickerRowProps {
@@ -157,9 +161,18 @@ export default function SceneEditorScreen() {
   const [sceneList, setSceneList] = useState<string[]>([]);
   const [characterList, setCharacterList] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>('blocks');
+  const [legoSubTab, setLegoSubTab] = useState<'canvas' | 'timeline'>('canvas');
   
   const skipNextReloadRef = React.useRef(false);
   const { stories, loadStories, currentStory, setCurrentStory } = useStory();
+
+  // LEGO hooks
+  const {
+    activeScene: legoScene,
+    activeSceneId: legoActiveSceneId,
+    handleAtomsChange,
+  } = useSceneManagement();
+  const [selectedAtomId, setSelectedAtomId] = useState<string | null>(null);
 
   // Media Hook
   const { 
@@ -176,7 +189,6 @@ export default function SceneEditorScreen() {
     handleDeleteScene: deleteScene,
     handleAddChoice: addChoice,
     handleDeleteChoice: deleteChoice,
-    handleGraphLink: graphLink,
   } = useSceneEditorActions(currentStory, scene, loadStories, skipNextReloadRef);
 
   // Load story on mount
@@ -271,11 +283,6 @@ export default function SceneEditorScreen() {
   };
 
   const handleDeleteChoice = (id: string) => deleteChoice(id, setScene);
-  const handleGraphLink = (from: string, to: string) => graphLink(from, to);
-
-  const handleGraphNavigate = (targetSceneId: string) => {
-    router.push({ pathname: '../scene-editor', params: { storyId: currentStory?.id, sceneId: targetSceneId } });
-  };
 
   if (!currentStory || !scene) {
     return (
@@ -314,14 +321,14 @@ export default function SceneEditorScreen() {
 
       {/* Tabs */}
       <View style={{ flexDirection: 'row', gap: 0, marginBottom: 16, backgroundColor: colors.surface, borderRadius: 10, padding: 4, borderWidth: 1, borderColor: colors.border }}>
-        {(['blocks', 'edit', 'graph'] as Tab[]).map((tab) => (
+        {(['blocks', 'edit', 'lego'] as Tab[]).map((tab) => (
           <Pressable
             key={tab}
             style={{ flex: 1, paddingVertical: 8, borderRadius: 7, backgroundColor: activeTab === tab ? colors.primary : 'transparent', alignItems: 'center' }}
             onPress={() => setActiveTab(tab)}
           >
             <Text style={{ color: activeTab === tab ? '#fff' : colors.muted, fontWeight: '600', fontSize: 13, textTransform: 'capitalize' }}>
-              {tab === 'blocks' ? '🧱 Blocks' : tab === 'edit' ? '✏️ Edit' : '🗺 Graph'}
+              {tab === 'blocks' ? '🧱 Blocks' : tab === 'edit' ? '✏️ Edit' : '🧱 LEGO'}
             </Text>
           </Pressable>
         ))}
@@ -365,7 +372,7 @@ export default function SceneEditorScreen() {
           handlePickBg={handlePickBg}
           handlePickAudio={handlePickAudio}
           setLibraryTarget={setLibraryTarget}
-          handleGraphNavigate={handleGraphNavigate}
+          handleGraphNavigate={() => {}}
           handleDeleteChoice={handleDeleteChoice}
           handleAddChoice={handleAddChoice}
           handleAddScene={handleAddScene}
@@ -376,15 +383,42 @@ export default function SceneEditorScreen() {
         />
       )}
 
-      {/* ── GRAPH TAB ─────────────────────────────────────────────────────── */}
-      {activeTab === 'graph' && (
-        <GraphTab
-          currentStory={currentStory}
-          sceneId={scene.id}
-          handleGraphNavigate={handleGraphNavigate}
-          handleGraphLink={handleGraphLink}
-          colors={colors}
-        />
+      {/* ── LEGO TAB ─────────────────────────────────────────────────────── */}
+      {activeTab === 'lego' && (
+        <View style={{ flex: 1 }}>
+          {/* LEGO sub-tab selector */}
+          <View style={{ flexDirection: 'row', gap: 0, marginBottom: 12, backgroundColor: colors.surface, borderRadius: 8, padding: 3, borderWidth: 1, borderColor: colors.border }}>
+            {(['canvas', 'timeline'] as const).map((subTab) => (
+              <Pressable
+                key={subTab}
+                style={{ flex: 1, paddingVertical: 6, borderRadius: 6, backgroundColor: legoSubTab === subTab ? colors.primary : 'transparent', alignItems: 'center' }}
+                onPress={() => setLegoSubTab(subTab)}
+              >
+                <Text style={{ color: legoSubTab === subTab ? '#fff' : colors.muted, fontWeight: '600', fontSize: 13 }}>
+                  {subTab === 'canvas' ? '🎨 Canvas' : '📅 Timeline'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {/* LEGO workspace */}
+          {legoSubTab === 'canvas' && legoScene ? (
+            <LegoCanvas
+              atoms={legoScene.elements.filter((e): e is AtomBlock => 'snapPoints' in e)}
+              onAtomsChange={handleAtomsChange}
+              selectedAtomId={selectedAtomId}
+              onAtomSelect={setSelectedAtomId}
+            />
+          ) : legoSubTab === 'timeline' && legoScene ? (
+            <TimelineEditor sceneId={legoScene.id} />
+          ) : (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ color: colors.muted, fontSize: 16 }}>
+                Select a scene in the LEGO store to start editing
+              </Text>
+            </View>
+          )}
+        </View>
       )}
 
       {/* ── Media Library drawer ────────────────────────────────────────── */}
@@ -397,10 +431,3 @@ export default function SceneEditorScreen() {
     </ScreenContainer>
   );
 }
-
-
-
-
-
-
-

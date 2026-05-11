@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { Animated } from 'react-native';
 
-export type TabType = 'canvas' | 'timeline' | 'graph';
+export type TabType = 'canvas' | 'timeline';
 
 export function useLegoTabs() {
   const [activeTab, setActiveTab] = useState<TabType>('canvas');

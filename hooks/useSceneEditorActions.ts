@@ -118,26 +118,11 @@ export function useSceneEditorActions(
     } catch { Alert.alert('Error', 'Failed to delete choice'); }
   }, [currentStory, scene]);
 
-  const handleGraphLink = useCallback(async (fromId: string, toId: string) => {
-    if (!currentStory) return;
-    const fromScene = currentStory.scenes[fromId];
-    if (!fromScene) return;
-    const newChoice: Choice = {
-      id: `choice-${Date.now()}`,
-      text: `Go to ${toId}`,
-      nextSceneId: toId,
-    };
-    const updated: StoryScene = { ...fromScene, choices: [...fromScene.choices, newChoice] };
-    await storyContextEnhanced.updateScene(currentStory.id, updated);
-    await loadStories();
-  }, [currentStory, loadStories]);
-
   return {
     handleSaveScene,
     handleAddScene,
     handleDeleteScene,
     handleAddChoice,
     handleDeleteChoice,
-    handleGraphLink,
   };
 }
