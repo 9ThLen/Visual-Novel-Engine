@@ -22,7 +22,7 @@ describe('storage', () => {
       
       await saveTreeToStorage(mockBlock);
       
-      expect(AsyncStorage.setItem).toHaveBeenCalledWith('block_tree', JSON.stringify(mockBlock));
+      expect(AsyncStorage.setItem).toHaveBeenCalledWith('vne_block_tree', JSON.stringify(mockBlock));
     });
 
     it('should throw error when AsyncStorage fails', async () => {
@@ -40,7 +40,7 @@ describe('storage', () => {
       
       const result = await loadTreeFromStorage();
       
-      expect(AsyncStorage.getItem).toHaveBeenCalledWith('block_tree');
+      expect(AsyncStorage.getItem).toHaveBeenCalledWith('vne_block_tree');
       expect(result).toEqual(mockBlock);
     });
 

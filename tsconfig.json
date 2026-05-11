@@ -1,16 +1,25 @@
 {
-  "extends": "expo/tsconfig.base",
   "compilerOptions": {
+    "allowJs": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "lib": [
+      "DOM",
+      "ESNext"
+    ],
+    "module": "preserve",
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "customConditions": [
+      "react-native"
+    ],
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "target": "ESNext",
     "strict": true,
     "baseUrl": ".",
     "preserveSymlinks": true,
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "types": [
-      "nativewind/types"
-    ],
     "paths": {
       "@/*": [
         "./*"
@@ -18,8 +27,7 @@
       "@shared/*": [
         "./shared/*"
       ]
-    },
-    "module": "preserve"
+    }
   },
   "include": [
     "**/*.ts",
@@ -30,6 +38,11 @@
   ],
   "exclude": [
     "node_modules",
-    "dist"
-  ]
+    "dist",
+    "babel.config.cjs",
+    "metro.config.js",
+    "android",
+    "ios"
+  ],
+  "extends": "expo/tsconfig.base"
 }
