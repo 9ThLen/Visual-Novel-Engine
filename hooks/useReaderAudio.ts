@@ -5,26 +5,23 @@ import { enhancedAudioManager as audioManager } from '../lib/audio-manager-enhan
 import { resolveAssetUri } from '../lib/asset-resolver';
 
 export function useReaderAudio(currentScene: StoryScene | null, settings: UserSettings) {
-  // Use refs to avoid re-triggering scene effects when volume changes
   const volumesRef = useRef({ bgm: settings.bgmVolume, voice: settings.voiceVolume });
+  // Track the currently playing BGM uri so we can compare across scenes
+  const currentBgmUriRef = useRef<string | null>(null);
 
   useEffect(() => {
     volumesRef.current = { bgm: settings.bgmVolume, voice: settings.voiceVolume };
-    // Update live volume without restarting audio
     audioManager.setVolume('bgm', settings.bgmVolume);
     audioManager.setVolume('voice', settings.voiceVolume);
   }, [settings.bgmVolume, settings.voiceVolume]);
 
-  // Stop ALL audio when leaving the reader screen (blur/unfocus)
-  // Expo Router keeps screens mounted in the stack, so useEffect cleanup
-  // on unmount is NOT reliable — useFocusEffect handles navigation away.
+  // Stop ALL audio when leaving the reader screen (back to menu, etc.)
   useFocusEffect(
     useRef(() => {
-      // on focus: nothing — audio is started by the scene effect below
       return () => {
-        // on blur: user navigated away (back to menu, etc.)
         audioManager.cancelAllTriggers();
         audioManager.stopAll(0);
+        currentBgmUriRef.current = null;
       };
     }).current,
   );
@@ -34,54 +31,67 @@ export function useReaderAudio(currentScene: StoryScene | null, settings: UserSe
 
     let isMounted = true;
 
-    // Stop all previous audio before starting new scene audio.
-    // This ensures trigger-based tracks (music_trigger1, etc.) from the
-    // previous scene are cleaned up — crossFade only manages the 'bgm' track.
+    // Always stop non-BGM tracks (voice, SFX, ambient from triggers)
+    // Voice is scene-specific, triggers are scene-specific
     audioManager.cancelAllTriggers();
-    audioManager.stopAll(0).then(() => {
-      if (!isMounted) return;
-
-      // Resolve and play music (only if URI is provided and valid)
-      if (currentScene.musicUri && currentScene.musicUri.trim()) {
-        resolveAssetUri(currentScene.musicUri).then((uri) => {
-          if (isMounted && uri) {
-            audioManager.play('bgm', uri, {
-              volume: volumesRef.current.bgm,
-              loop: true,
-              fadeIn: 400,
-            });
-          } else if (isMounted) {
-            audioManager.stop('bgm');
-          }
-        }).catch(() => {
-          if (isMounted) audioManager.stop('bgm');
-        });
+    audioManager.stop('voice');
+    // Stop trigger-based tracks that are NOT bgm type
+    // (we handle bgm separately below)
+    const activeTracks = audioManager.getPlaybackState();
+    for (const track of activeTracks) {
+      if (track.trackId !== 'bgm') {
+        audioManager.stop(track.trackId, 300);
       }
+    }
 
-      // Resolve and play voice
-      if (currentScene.voiceAudioUri && currentScene.voiceAudioUri.trim()) {
-        resolveAssetUri(currentScene.voiceAudioUri).then((uri) => {
-          if (isMounted) {
-            audioManager.play('voice', uri, { volume: volumesRef.current.voice });
-          }
-        }).catch(() => {
-          // Silent fail for missing voice
-        });
-      }
+    // ── BGM logic: only change music if the new scene has a different URI ──
+    const newMusicUri = (currentScene.musicUri && currentScene.musicUri.trim())
+      ? currentScene.musicUri.trim()
+      : null;
 
-      // Process audio triggers for the current scene
-      if (currentScene.audioTriggers && currentScene.audioTriggers.length > 0) {
-        audioManager.processTriggers(currentScene.audioTriggers);
-      }
-    });
+    if (newMusicUri) {
+      // New scene has music — resolve and play (crossfade if different track)
+      resolveAssetUri(newMusicUri).then((uri) => {
+        if (!isMounted) return;
+        if (!uri) return;
+
+        if (currentBgmUriRef.current === uri) {
+          // Same track already playing — just adjust volume
+          audioManager.setVolume('bgm', volumesRef.current.bgm);
+          return;
+        }
+
+        // Different track — crossfade to new music
+        audioManager.crossFade('bgm', uri, volumesRef.current.bgm, 800);
+        currentBgmUriRef.current = uri;
+      }).catch(() => {
+        // Failed to resolve — stop if nothing was playing
+      });
+    }
+    // If newMusicUri is null, DON'T stop the current BGM — let it keep playing
+
+    // ── Voice ──
+    if (currentScene.voiceAudioUri && currentScene.voiceAudioUri.trim()) {
+      resolveAssetUri(currentScene.voiceAudioUri).then((uri) => {
+        if (isMounted && uri) {
+          audioManager.play('voice', uri, { volume: volumesRef.current.voice });
+        }
+      }).catch(() => {
+        // Silent fail for missing voice
+      });
+    }
+
+    // ── Audio triggers ──
+    if (currentScene.audioTriggers && currentScene.audioTriggers.length > 0) {
+      audioManager.processTriggers(currentScene.audioTriggers);
+    }
 
     return () => {
       isMounted = false;
     };
-  }, [currentScene?.id]); // Only re-run when scene changes
+  }, [currentScene?.id]);
 
   useEffect(() => {
-    // Initialize audio system early to prevent playback delays
     audioManager.initialize().catch(err => console.warn('Audio init failed:', err));
   }, []);
 }
