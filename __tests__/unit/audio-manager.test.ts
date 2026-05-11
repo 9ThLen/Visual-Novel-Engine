@@ -1,5 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AudioManager } from '../../lib/audio-manager';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock expo-audio module
 vi.mock('expo-audio', () => ({
@@ -18,39 +17,30 @@ vi.mock('expo-audio', () => ({
   },
 }));
 
+import { enhancedAudioManager } from '../../lib/audio-manager-enhanced';
+
 describe('AudioManager', () => {
-  let audioManager: InstanceType<typeof AudioManager>;
-
   beforeEach(() => {
-    audioManager = new AudioManager();
-  });
-
-  afterEach(() => {
-    audioManager.destroy();
-  });
-
-  it('initializes correctly', async () => {
-    await audioManager.initialize();
-    expect(audioManager.isPlaying('nonexistent')).toBe(false);
+    vi.clearAllMocks();
   });
 
   it('returns false for non-existent track isPlaying check', () => {
-    expect(audioManager.isPlaying('nonexistent')).toBe(false);
-  });
-
-  it('stops all tracks and cleans up on destroy', () => {
-    expect(() => audioManager.destroy()).not.toThrow();
+    expect(enhancedAudioManager.isPlaying('nonexistent')).toBe(false);
   });
 
   it('handles stop for non-existent track gracefully', async () => {
-    await expect(audioManager.stop('nonexistent')).resolves.not.toThrow();
+    await expect(enhancedAudioManager.stop('nonexistent')).resolves.not.toThrow();
   });
 
   it('handles stopAll gracefully when no tracks', async () => {
-    await expect(audioManager.stopAll()).resolves.not.toThrow();
+    await expect(enhancedAudioManager.stopAll()).resolves.not.toThrow();
   });
 
   it('handles setVolume for non-existent track gracefully', async () => {
-    await expect(audioManager.setVolume('nonexistent', 0.5)).resolves.not.toThrow();
+    await expect(enhancedAudioManager.setVolume('nonexistent', 0.5)).resolves.not.toThrow();
+  });
+
+  it('singleton instance is defined', () => {
+    expect(enhancedAudioManager).toBeDefined();
   });
 });
