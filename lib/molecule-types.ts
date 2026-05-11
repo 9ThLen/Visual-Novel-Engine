@@ -67,9 +67,9 @@ export function validateAtomsForMolecule(type: MoleculeType, atoms: AtomBlock[])
       }
       break;
     case 'scene_molecule':
-      const hasBackground = atoms.some(a => a.type === 'background_atom');
-      if (!hasBackground) {
-        return { valid: false, error: 'Scene molecule requires at least one background_atom' };
+      const hasBackgroundOrFX = atoms.some(a => a.type === 'background_atom' || a.type === 'fx_atom');
+      if (!hasBackgroundOrFX) {
+        return { valid: false, error: 'Scene molecule requires at least one background_atom or fx_atom' };
       }
       break;
     case 'character_molecule':

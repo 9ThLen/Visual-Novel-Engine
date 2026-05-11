@@ -12,15 +12,15 @@ interface CharacterListProps {
   selectedCharacter: Character | null;
   onSelect: (char: Character) => void;
   onDelete: (id: string) => void;
-  colors: ReturnType<typeof useColors>;
+  colors?: ReturnType<typeof useColors>;
 }
 
-export function CharacterList({
+export const CharacterList = React.memo(({
   characters,
   selectedCharacter,
   onSelect,
   onDelete,
-}: CharacterListProps) {
+}: CharacterListProps) => {
   const colors = useColors();
 
   if (characters.length === 0) {
@@ -41,6 +41,9 @@ export function CharacterList({
               padding: 12,
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
             },
             selectedCharacter?.id === char.id && {
               backgroundColor: colors.primary,
@@ -70,10 +73,10 @@ export function CharacterList({
             style={{ padding: 8 }}
             onPress={() => onDelete(char.id)}
           >
-            <Text style={{ color: colors.error }}>🗑</Text>
+            <Text style={{ color: selectedCharacter?.id === char.id ? '#fff' : colors.error }}>🗑</Text>
           </Pressable>
         </Pressable>
       ))}
     </ScrollView>
   );
-}
+});

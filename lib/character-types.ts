@@ -11,6 +11,10 @@ export interface CharacterSprite {
   uri: string;
   tags?: string[]; // e.g., ["emotion", "happy"], ["outfit", "casual"]
   createdAt: number;
+  // Optional instance properties for compatibility
+  position?: string;
+  scale?: number;
+  expression?: string;
 }
 
 export interface Character {

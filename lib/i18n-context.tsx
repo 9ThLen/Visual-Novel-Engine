@@ -3,7 +3,7 @@
  * Context for managing app language and translations
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Supported languages
@@ -26,7 +26,7 @@ export const SUPPORTED_LANGUAGES: LanguageInfo[] = [
 
 // Translation type
 export type TranslationKey = string;
-export type Translations = Record<TranslationKey, Record<Language, string>>;
+export type Translations = Record<TranslationKey, Partial<Record<Language, string>>>;
 
 interface I18nContextType {
   language: Language;
@@ -73,7 +73,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   // Translation function - reactive to language changes
   const t = useCallback((key: TranslationKey, fallback?: string): string => {
-    const translation = (translations as Translations)[key];
+    const translation = (translations as any)[key] as Partial<Record<Language, string>> | undefined;
 
     if (!translation) {
       console.warn(`Translation missing for key: ${key}`);

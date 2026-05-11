@@ -15,7 +15,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'to
     setVisible(!visible);
   };
 
-  const positionStyles = {
+  const positionStyles: Record<string, any> = {
     top: { bottom: '100%', marginBottom: 8 },
     bottom: { top: '100%', marginTop: 8 },
     left: { right: '100%', marginRight: 8 },
@@ -33,18 +33,12 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'to
       </TouchableOpacity>
 
       {visible && (
-        <Modal transparent visible={visible} animationType="fade">
-          <TouchableWithoutFeedback onPress={toggleTooltip}>
-            <View style={styles.overlay}>
-              <View style={[styles.tooltipBox, positionStyles[position]]}>
-                <Text style={styles.tooltipText}>{text}</Text>
-                <TouchableOpacity onPress={toggleTooltip} style={styles.closeButton}>
-                  <Ionicons name="close" size={16} color="#94a3b8" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
+        <View style={[styles.tooltipBox, positionStyles[position]]}>
+          <Text style={styles.tooltipText}>{text}</Text>
+          <TouchableOpacity onPress={toggleTooltip} style={styles.closeButton}>
+            <Ionicons name="close" size={16} color="#94a3b8" />
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -57,12 +51,6 @@ const styles = StyleSheet.create({
   },
   iconContainer: {
     padding: 4,
-  },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   tooltipBox: {
     position: 'absolute',

@@ -92,12 +92,12 @@ export const choiceSchema = z.object({
 export const conditionSchema = z.object({
   variable: z.string().min(1, 'Variable name is required'),
   operator: z.enum(['equals', 'not_equals', 'greater_than', 'less_than', 'contains']).default('equals'),
-  value: z.union([z.string(), z.number(), z.boolean()], { errorMap: () => ({ message: 'Value must be string, number, or boolean' }) }),
+  value: z.union([z.string(), z.number(), z.boolean()]),
 });
 
 export const setVariableSchema = z.object({
   variable: z.string().min(1, 'Variable name is required'),
-  value: z.union([z.string(), z.number(), z.boolean()], { errorMap: () => ({ message: 'Value must be string, number, or boolean' }) }),
+  value: z.union([z.string(), z.number(), z.boolean()]),
 });
 
 export const transitionSchema = z.object({

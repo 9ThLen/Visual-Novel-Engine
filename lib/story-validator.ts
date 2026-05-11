@@ -68,7 +68,7 @@ export class StoryValidator {
       title: data.title,
       description: this.sanitizeString(data.description || ''),
       author: this.sanitizeString(data.author || 'Unknown'),
-      coverImageUri: this.validateUri(data.coverImageUri),
+      thumbnailUri: this.validateUri(data.thumbnailUri || data.coverImageUri),
       startSceneId: data.startSceneId,
       scenes: validatedScenes,
       createdAt: typeof data.createdAt === 'number' ? data.createdAt : Date.now(),
@@ -123,7 +123,7 @@ export class StoryValidator {
       voiceAudioUri: this.validateUri(data.voiceAudioUri),
       musicUri: this.validateUri(data.musicUri),
       choices: validatedChoices,
-      splashScreen: data.splashScreen ? this.validateUri(data.splashScreen) : undefined,
+      splashScreen: data.splashScreen ? (typeof data.splashScreen === 'string' ? { imageUri: data.splashScreen, type: 'image' as const } : data.splashScreen) : undefined,
       interactiveObjects: Array.isArray(data.interactiveObjects) ? data.interactiveObjects : [],
       blocks: data.blocks, // TODO: Add validation for blocks (complex Block system)
     };
@@ -156,7 +156,7 @@ export class StoryValidator {
     return {
       id: data.id,
       text: this.sanitizeText(data.text),
-      targetSceneId: data.targetSceneId,
+      nextSceneId: data.targetSceneId || data.nextSceneId,
     };
   }
 
@@ -185,7 +185,7 @@ export class StoryValidator {
 
       const scene = scenes[sceneId];
       for (const choice of scene.choices) {
-        if (dfs(choice.targetSceneId)) {
+        if (dfs(choice.nextSceneId)) {
           return true;
         }
       }

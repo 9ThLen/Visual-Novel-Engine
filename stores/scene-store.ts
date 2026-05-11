@@ -17,6 +17,9 @@ type SceneStore = {
   addTimelineEvent: (sceneId: string, event: TimelineEvent) => void;
   removeTimelineEvent: (sceneId: string, eventId: string) => void;
   updateTimelineEvent: (sceneId: string, eventId: string, updates: Partial<TimelineEvent>) => void;
+  batchUpdateTimelineEvents: (sceneId: string, events: TimelineEvent[]) => void;
+  updateElement: (sceneId: string, elementId: string, updates: Partial<AtomBlock | MoleculeBlock>) => void;
+  batchUpdateElements: (sceneId: string, elements: Array<AtomBlock | MoleculeBlock>) => void;
 };
 
 export const useSceneStore = create<SceneStore>()(
@@ -102,6 +105,39 @@ export const useSceneStore = create<SceneStore>()(
                   ),
                   updatedAt: new Date(),
                 }
+              : scene
+          ),
+        })),
+      
+      batchUpdateTimelineEvents: (sceneId, events) =>
+        set((state) => ({
+          scenes: state.scenes.map((scene) =>
+            scene.id === sceneId
+              ? { ...scene, timeline: events, updatedAt: new Date() }
+              : scene
+          ),
+        })),
+
+      updateElement: (sceneId, elementId, updates) =>
+        set((state) => ({
+          scenes: state.scenes.map((scene) =>
+            scene.id === sceneId
+              ? {
+                  ...scene,
+                  elements: scene.elements.map((el) =>
+                    el.id === elementId ? { ...el, ...updates } as (AtomBlock | MoleculeBlock) : el
+                  ),
+                  updatedAt: new Date(),
+                }
+              : scene
+          ),
+        })),
+
+      batchUpdateElements: (sceneId, elements) =>
+        set((state) => ({
+          scenes: state.scenes.map((scene) =>
+            scene.id === sceneId
+              ? { ...scene, elements, updatedAt: new Date() }
               : scene
           ),
         })),

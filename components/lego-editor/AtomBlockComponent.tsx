@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { AtomBlock } from '../../lib/atom-types';
+import { AtomBlock, getTextData, getCharacterData, getBackgroundData, getAudioData, getFXData } from '../../lib/atom-types';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 
 type ComponentProps = {
@@ -9,28 +9,28 @@ type ComponentProps = {
   onPress: () => void;
 };
 
-const ATOM_TYPE_COLORS = {
-  text: '#3B82F6',      // Vibrant Blue
-  character: '#10B981', // Vibrant Green (Emerald)
-  background: '#F59E0B',// Vibrant Amber
-  audio: '#8B5CF6',     // Vibrant Purple (Violet)
-  fx: '#EC4899',        // Vibrant Pink
-} as const;
+const ATOM_TYPE_COLORS: Record<string, string> = {
+  text_atom: '#3B82F6',      // Vibrant Blue
+  character_atom: '#10B981', // Vibrant Green (Emerald)
+  background_atom: '#F59E0B',// Vibrant Amber
+  audio_atom: '#8B5CF6',     // Vibrant Purple (Violet)
+  fx_atom: '#EC4899',        // Vibrant Pink
+};
 
-const ATOM_TYPE_ICONS = {
-  text: '💬',
-  character: '👤',
-  background: '🖼️',
-  audio: '🎵',
-  fx: '✨',
-} as const;
+const ATOM_TYPE_ICONS: Record<string, string> = {
+  text_atom: '💬',
+  character_atom: '👤',
+  background_atom: '🖼️',
+  audio_atom: '🎵',
+  fx_atom: '✨',
+};
 
 const AtomBlockComponent: React.FC<ComponentProps> = ({ atom, isSelected, onPress }) => {
   const layout = useResponsiveLayout();
   const typeColor = ATOM_TYPE_COLORS[atom.type] || '#000000';
 
   // Збільшений hitSlop для планшетів
-  const hitSlop = layout.isTablet 
+  const hitSlop = layout.isTablet
     ? { top: 10, bottom: 10, left: 10, right: 10 }
     : { top: 5, bottom: 5, left: 5, right: 5 };
 
@@ -40,8 +40,8 @@ const AtomBlockComponent: React.FC<ComponentProps> = ({ atom, isSelected, onPres
       activeOpacity={0.7}
       hitSlop={hitSlop}
       style={[
-        styles.container, 
-        { borderColor: typeColor }, 
+        styles.container,
+        { borderColor: typeColor },
         isSelected && styles.selectedContainer,
         // Більші атоми на планшетах
         layout.isTablet && styles.tabletContainer,
@@ -57,7 +57,7 @@ const AtomBlockComponent: React.FC<ComponentProps> = ({ atom, isSelected, onPres
       <View style={styles.contentRow}>
         <Text style={[styles.iconText, layout.isTablet && styles.iconTextTablet]}>{ATOM_TYPE_ICONS[atom.type] || '⬜'}</Text>
         <View style={[styles.typeDot, { backgroundColor: typeColor }, layout.isTablet && styles.typeDotTablet]} />
-        <Text style={[styles.label, layout.isTablet && styles.labelTablet]}>{atom.label}</Text>
+        <Text style={[styles.label, layout.isTablet && styles.labelTablet]}>{getTextData(atom)?.content || getCharacterData(atom)?.characterId || atom.id}</Text>
       </View>
     </TouchableOpacity>
   );

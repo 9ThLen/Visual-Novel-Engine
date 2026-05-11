@@ -16,16 +16,24 @@ import * as storyContextEnhanced from '@/lib/story-context-enhanced';
 export default function NodeEditorScreen() {
   const colors = useColors();
   const { storyId } = useLocalSearchParams();
-  const { stories, loadStories } = useStory();
+  const { stories, loadStories, currentStory, setCurrentStory } = useStory();
 
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
+
+  // Load story on mount
+  React.useEffect(() => {
+    const id = Array.isArray(storyId) ? storyId[0] : storyId;
+    if (id && typeof id === 'string') {
+      setCurrentStory(id);
+    }
+  }, [storyId, setCurrentStory]);
+
+  const story = currentStory;
 
   // Handle node selection
   const handleNodeSelect = useCallback((nodeId: string) => {
     setSelectedSceneId(nodeId);
   }, []);
-
-  const story = stories.find((s) => s.id === storyId) as Story | undefined;
 
   // Handle node connection (create choice)
   const handleNodeConnect = useCallback(

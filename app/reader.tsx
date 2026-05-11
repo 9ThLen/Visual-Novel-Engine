@@ -1,115 +1,31 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
 import { StoryReaderResponsive } from '@/components/story-reader-responsive';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { InventoryUI } from '@/components/InventoryUI';
+import { ReaderMenu } from '@/components/ReaderMenu';
 import { useStory } from '@/lib/story-context';
 import { useColors } from '@/hooks/use-colors';
-import { Story, StoryScene, Choice, PlaybackState } from '@/lib/types';
+import { Choice, PlaybackState } from '@/lib/types';
 import { enhancedAudioManager as audioManager } from '@/lib/audio-manager-enhanced';
 import { resolveAssetUri } from '@/lib/asset-resolver';
-import demoStory from '@/assets/demo-story.json';
+import { useReaderAudio } from '@/hooks/useReaderAudio';
+import { useReaderInitialization } from '@/hooks/useReaderInitialization';
 
 export default function ReaderScreen() {
   const router = useRouter();
   const colors = useColors();
   const { storyId } = useLocalSearchParams();
-  const { stories, settings, setCurrentStory, updatePlaybackState, playbackState, currentStory, autoSave } = useStory();
+  const { settings } = useStory();
   const [showMenu, setShowMenu] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
-  const story = currentStory;
-  const currentScene = React.useMemo(() => {
-    if (!story || !playbackState) return null;
-    return story.scenes[playbackState.currentSceneId] || null;
-  }, [story, playbackState?.currentSceneId]);
+  const { isLoading, currentScene, story, playbackState, updatePlaybackState } = useReaderInitialization(storyId);
 
-  const initializeReader = useCallback(async () => {
-    try {
-      let selectedStory: Story | null = null;
-      if (storyId && typeof storyId === 'string') {
-        selectedStory = stories.find((s) => s.id === storyId) || null;
-      }
-      if (!selectedStory) selectedStory = demoStory as Story;
-
-      // If we already have a playback state for this story in the context, 
-      // don't overwrite it (this happens when returning from the load menu)
-      if (playbackState && playbackState.storyId === selectedStory.id) {
-        if (!currentStory || currentStory.id !== selectedStory.id) {
-          setCurrentStory(selectedStory);
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      setCurrentStory(selectedStory);
-
-      const newPlaybackState: PlaybackState = {
-        storyId: selectedStory.id,
-        currentSceneId: selectedStory.startSceneId,
-        isPlaying: true,
-        currentDialogueIndex: 0,
-        choicesMade: [],
-      };
-      updatePlaybackState(newPlaybackState);
-      setIsLoading(false);
-    } catch (error) {
-      console.error('Failed to initialize reader:', error);
-      setIsLoading(false);
-    }
-  }, [storyId, stories, setCurrentStory, updatePlaybackState, playbackState, currentStory]);
-
-  useEffect(() => {
-    initializeReader();
-    return () => { audioManager.stopAll(true); };
-  }, [initializeReader]);
-
-  // Play BGM when scene changes
-  useEffect(() => {
-    if (!currentScene) return;
-
-    let isMounted = true;
-
-    // Resolve and play music (only if URI is provided and valid)
-    if (currentScene.musicUri && currentScene.musicUri.trim()) {
-      resolveAssetUri(currentScene.musicUri).then((uri) => {
-        if (isMounted && uri) {
-          audioManager.crossFade('bgm', uri, settings.bgmVolume);
-        } else if (isMounted) {
-          audioManager.stop('bgm');
-        }
-      }).catch(() => {
-        // Silent fail for missing music
-        if (isMounted) audioManager.stop('bgm');
-      });
-    } else {
-      // No music URI, stop playing
-      audioManager.stop('bgm');
-    }
-
-    // Resolve and play voice
-    if (currentScene.voiceAudioUri && currentScene.voiceAudioUri.trim()) {
-      resolveAssetUri(currentScene.voiceAudioUri).then((uri) => {
-        if (isMounted) {
-          audioManager.play('voice', uri, { volume: settings.voiceVolume });
-        }
-      }).catch(() => {
-        // Silent fail for missing voice
-      });
-    }
-
-    // Process audio triggers for the current scene
-    if (currentScene.audioTriggers && currentScene.audioTriggers.length > 0) {
-      audioManager.processTriggers(currentScene.audioTriggers);
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [currentScene?.id]);
+  // Use the extracted audio hook
+  useReaderAudio(currentScene, settings);
 
   const navigateToScene = (sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
     if (!story) return;
@@ -123,30 +39,22 @@ export default function ReaderScreen() {
       choicesMade: choicesMade || playbackState?.choicesMade || [],
     };
     updatePlaybackState(updated);
-
-    // Auto-save on scene change
-    setTimeout(() => {
-      autoSave();
-    }, 500);
   };
 
   const handleContinue = (targetSceneId?: string) => {
-    if (!story || !playbackState) return;
-    
-    // 1. Use explicit target if provided
+    if (isLoading || !story || !playbackState) return;
+
     if (targetSceneId) {
       navigateToScene(targetSceneId);
       return;
     }
 
-    // 2. Check for autoAdvance in current scene
     const currentSceneData = story.scenes[playbackState.currentSceneId];
     if (currentSceneData?.autoAdvance?.enabled && currentSceneData.autoAdvance.nextSceneId) {
       navigateToScene(currentSceneData.autoAdvance.nextSceneId);
       return;
     }
 
-    // 3. Fallback to first choice
     const nextSceneId = currentSceneData?.choices[0]?.nextSceneId;
     if (nextSceneId) {
       navigateToScene(nextSceneId);
@@ -156,7 +64,7 @@ export default function ReaderScreen() {
   };
 
   const handleChoiceSelect = (choice: Choice) => {
-    if (!playbackState) return;
+    if (isLoading || !playbackState) return;
     const updatedChoices = [
       ...playbackState.choicesMade,
       { sceneId: playbackState.currentSceneId, choiceId: choice.id },
@@ -164,7 +72,6 @@ export default function ReaderScreen() {
     navigateToScene(choice.nextSceneId, updatedChoices);
   };
 
-  // Interactive object handlers
   const handleObjectSceneTransition = (sceneId: string) => {
     navigateToScene(sceneId);
   };
@@ -173,17 +80,22 @@ export default function ReaderScreen() {
     // TODO: Show dialogue overlay
   };
 
+  const sfxPoolIndexRef = React.useRef(0);
+  const MAX_SFX_TRACKS = 5;
+
   const handleObjectPlayAudio = (audioUri: string, volume?: number, loop?: boolean) => {
     resolveAssetUri(audioUri).then((uri) => {
       if (uri) {
-        audioManager.play('sfx', uri, { volume: volume ?? 0.7, loop: loop ?? false });
+        sfxPoolIndexRef.current = (sfxPoolIndexRef.current + 1) % MAX_SFX_TRACKS;
+        const trackId = `sfx_object_${sfxPoolIndexRef.current}`;
+        audioManager.play(trackId, uri, { volume: volume ?? 0.7, loop: loop ?? false });
       }
     }).catch(() => {
       // Silent fail for missing audio
     });
   };
 
-  if (isLoading || !story || !currentScene) {
+  if (isLoading || !story || !currentScene || (playbackState && playbackState.storyId !== story.id)) {
     return (
       <ScreenContainer className="items-center justify-center">
         <Text style={{ color: colors.foreground, fontSize: 16 }}>Loading story...</Text>
@@ -193,69 +105,12 @@ export default function ReaderScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
-      {/* Floating menu */}
-      {showMenu && (
-        <>
-          {/* Backdrop */}
-          <Pressable
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.6)',
-              zIndex: 99,
-            }}
-            onPress={() => setShowMenu(false)}
-          />
-          {/* Menu */}
-          <View
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: [{ translateX: -160 }, { translateY: -200 }],
-              zIndex: 100,
-              backgroundColor: colors.surface,
-              borderRadius: 16,
-              padding: 16,
-              borderWidth: 1,
-              borderColor: colors.border,
-              width: 320,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.3,
-              shadowRadius: 12,
-              elevation: 8,
-            }}
-          >
-            {[
-              { label: '💾 Save / Load', action: () => { setShowMenu(false); router.push('../save-load'); } },
-              { label: '🎒 Inventory', action: () => { setShowMenu(false); setShowInventory(true); } },
-              { label: '⚙️ Settings', action: () => { setShowMenu(false); router.push('../settings'); } },
-              { label: '🏠 Home', action: () => router.back() },
-              { label: '✕ Close menu', action: () => setShowMenu(false) },
-            ].map((item) => (
-              <Pressable
-                key={item.label}
-                style={({ pressed }) => ({
-                  paddingVertical: 14,
-                  paddingHorizontal: 18,
-                  borderRadius: 10,
-                  backgroundColor: pressed ? colors.background : 'transparent',
-                  marginBottom: 4,
-                })}
-                onPress={item.action}
-              >
-                <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '500' }}>
-                  {item.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </>
-      )}
+      {/* Floating menu extracted component */}
+      <ReaderMenu
+        visible={showMenu}
+        onClose={() => setShowMenu(false)}
+        onOpenInventory={() => setShowInventory(true)}
+      />
 
       {/* Menu button */}
       <Pressable
@@ -285,7 +140,6 @@ export default function ReaderScreen() {
         settings={settings}
       />
 
-      {/* Interactive Objects Layer */}
       {currentScene?.interactiveObjects && currentScene.interactiveObjects.length > 0 && (
         <InteractiveObjectsLayer
           objects={currentScene.interactiveObjects}
@@ -295,7 +149,6 @@ export default function ReaderScreen() {
         />
       )}
 
-      {/* Inventory UI */}
       <InventoryUI
         visible={showInventory}
         onClose={() => setShowInventory(false)}

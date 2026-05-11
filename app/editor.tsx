@@ -11,6 +11,7 @@ import { ScreenContainer } from '@/components/screen-container';
 import { useStory } from '@/lib/story-context';
 import { useColors } from '@/hooks/use-colors';
 import { Story } from '@/lib/types';
+import { StoryMetadata } from '@/lib/story-domain';
 import { Button } from '@/components/ui/Button';
 import { DesktopLayout } from '@/components/DesktopLayout';
 import { TopBarAction } from '@/components/WebTopBar';
@@ -68,7 +69,7 @@ export default function EditorScreen() {
       await addStory(newStory);
       setNewStoryTitle('');
       setShowNewStoryForm(false);
-      
+
       // Navigate to scene editor
       router.push({
         pathname: '../scene-editor',
@@ -79,14 +80,14 @@ export default function EditorScreen() {
     }
   };
 
-  const handleEditStory = (story: Story) => {
+  const handleEditStory = (story: StoryMetadata) => {
     router.push({
       pathname: '../scene-editor',
       params: { storyId: story.id, sceneId: story.startSceneId },
     });
   };
 
-  const handleOpenNodeEditor = (story: Story) => {
+  const handleOpenNodeEditor = (story: StoryMetadata) => {
     router.push({
       pathname: '../node-editor',
       params: { storyId: story.id },
@@ -111,7 +112,7 @@ export default function EditorScreen() {
     ]);
   };
 
-  const renderStoryCard = ({ item }: { item: Story }) => (
+  const renderStoryCard = ({ item }: { item: StoryMetadata }) => (
     <View
       style={{
         backgroundColor: colors.surface,
@@ -138,7 +139,7 @@ export default function EditorScreen() {
             color: colors.muted,
           }}
         >
-          {Object.keys(item.scenes).length} scenes
+          {item.sceneCount} scenes
         </Text>
         <View style={{ flexDirection: 'row', gap: 12, marginTop: 12, justifyContent: 'center' }}>
           <Button
@@ -213,97 +214,97 @@ export default function EditorScreen() {
           </View>
         )}
 
-      {showNewStoryForm && (
-        <View
-          style={{
-            backgroundColor: colors.surface,
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 16,
-            borderWidth: 1,
-            borderColor: colors.border,
-            gap: 8,
-          }}
-        >
-          <Text
+        {showNewStoryForm && (
+          <View
             style={{
-              fontSize: 14,
-              fontWeight: '600',
-              color: colors.foreground,
-            }}
-          >
-            Story Title
-          </Text>
-          <TextInput
-            style={{
-              backgroundColor: colors.background,
-              borderRadius: 6,
+              backgroundColor: colors.surface,
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 16,
               borderWidth: 1,
               borderColor: colors.border,
-              padding: 10,
-              color: colors.foreground,
-              fontSize: 14,
-            }}
-            placeholder="Enter story title"
-            placeholderTextColor={colors.muted}
-            value={newStoryTitle}
-            onChangeText={setNewStoryTitle}
-          />
-          <Button
-            variant="primary"
-            size="base"
-            fullWidth
-            onPress={handleCreateStory}
-          >
-            Create Story
-          </Button>
-        </View>
-      )}
-
-      {stories.length === 0 ? (
-        <View
-          style={{
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: 16,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 16,
-              color: colors.muted,
-              textAlign: 'center',
+              gap: 8,
             }}
           >
-            No stories yet. Create one to get started!
-          </Text>
-        </View>
-      ) : (
-        <View
-          style={{
-            flexDirection: isWebDesktop ? 'row' : 'column',
-            flexWrap: isWebDesktop ? 'wrap' : 'nowrap',
-            gap: 12,
-          }}
-        >
-          {stories.map((item) => (
-            <View
-              key={item.id}
-              style={[
-                isWebDesktop
-                  ? layout.gridColumns === 3
-                    ? { width: '33.333%', paddingHorizontal: 4 }
-                    : { width: '50%', paddingHorizontal: 4 }
-                  : { width: '100%' }
-              ]}
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: '600',
+                color: colors.foreground,
+              }}
             >
-              {renderStoryCard({ item })}
-            </View>
-          ))}
-        </View>
-      )}
-    </ScreenContainer>
+              Story Title
+            </Text>
+            <TextInput
+              style={{
+                backgroundColor: colors.background,
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: colors.border,
+                padding: 10,
+                color: colors.foreground,
+                fontSize: 14,
+              }}
+              placeholder="Enter story title"
+              placeholderTextColor={colors.muted}
+              value={newStoryTitle}
+              onChangeText={setNewStoryTitle}
+            />
+            <Button
+              variant="primary"
+              size="base"
+              fullWidth
+              onPress={handleCreateStory}
+            >
+              Create Story
+            </Button>
+          </View>
+        )}
+
+        {stories.length === 0 ? (
+          <View
+            style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: 16,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 16,
+                color: colors.muted,
+                textAlign: 'center',
+              }}
+            >
+              No stories yet. Create one to get started!
+            </Text>
+          </View>
+        ) : (
+          <View
+            style={{
+              flexDirection: isWebDesktop ? 'row' : 'column',
+              flexWrap: isWebDesktop ? 'wrap' : 'nowrap',
+              gap: 12,
+            }}
+          >
+            {stories.map((item) => (
+              <View
+                key={item.id}
+                style={[
+                  isWebDesktop
+                    ? layout.gridColumns === 3
+                      ? { width: '33.333%', paddingHorizontal: 4 }
+                      : { width: '50%', paddingHorizontal: 4 }
+                    : { width: '100%' }
+                ]}
+              >
+                {renderStoryCard({ item })}
+              </View>
+            ))}
+          </View>
+        )}
+      </ScreenContainer>
     </DesktopLayout>
   );
 }

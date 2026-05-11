@@ -1,16 +1,39 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSceneStore } from '../../stores/scene-store';
 import { TimelineEvent } from '../../lib/scene-types';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
+
+type TimelineSortableItem = TimelineEvent & { id: string };
 
 interface TimelineEditorProps {
   sceneId: string;
 }
 
+/**
+ * Recalculate startTime values for reordered timeline events.
+ * This domain logic is extracted to a pure utility function so it can be
+ * reused across different views (e.g. read-only timeline previews).
+ */
+export function recalculateTimelineStartTimes(
+  events: TimelineEvent[]
+): TimelineEvent[] {
+  let currentTime = 0;
+  return events.map(event => {
+    const updated = {
+      ...event,
+      startTime: Math.round(currentTime),
+    };
+    currentTime += event.duration;
+    return updated;
+  });
+}
+
 const TimelineEditor: React.FC<TimelineEditorProps> = ({ sceneId }) => {
-  // Get scene data from store
   const scenes = useSceneStore((state) => state.scenes);
+  const addTimelineEvent = useSceneStore((state) => state.addTimelineEvent);
+  const removeTimelineEvent = useSceneStore((state) => state.removeTimelineEvent);
+  const batchUpdateTimelineEvents = useSceneStore((state) => state.batchUpdateTimelineEvents);
   const scene = scenes.find((s) => s.id === sceneId);
   const layout = useResponsiveLayout();
 
@@ -23,23 +46,77 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ sceneId }) => {
     );
   }
 
-  const timelineEvents: TimelineEvent[] = scene.timeline || [];
-  
-  // Calculate total timeline duration (max end time of all events)
+  const timelineEvents: TimelineSortableItem[] = (scene.timeline || []).map((evt) => ({
+    ...evt,
+    // id is already present from TimelineEvent
+  }));
+
+  // Time scale factor (px per second)
+  const timeScale = 100;
+
+  // Calculate per-item widths based on actual duration so drag-and-drop
+  // target calculations match the rendered layout
+  const itemWidths = useMemo(() => {
+    return timelineEvents.map((evt) => Math.max(evt.duration * timeScale, 80));
+  }, [timelineEvents, timeScale]);
+
+  // Use the average width as a rough itemWidth for HorizontalSortable,
+  // or fall back to a reasonable minimum
+  const avgItemWidth = itemWidths.length > 0
+    ? Math.round(itemWidths.reduce((a, b) => a + b, 0) / itemWidths.length)
+    : 120;
+
+  // Calculate total timeline duration
   const totalDuration = timelineEvents.reduce((max, event) => {
     const eventEnd = event.startTime + event.duration;
     return eventEnd > max ? eventEnd : max;
   }, 0);
-  
-  // Timeline scale: 100px per second, minimum 10 seconds width
-  const timeScale = 100;
+
   const totalWidth = Math.max(totalDuration, 10) * timeScale;
 
-  // Generate ruler marks (0s, 1s, 2s, etc.)
-  const rulerMarks = [];
-  for (let i = 0; i <= Math.ceil(totalDuration); i++) {
-    rulerMarks.push(i);
-  }
+  // Dynamic ruler interval calculation to prevent rendering thousands of components
+  // for very long scenes (e.g. 1h+).
+  const rulerInterval = useMemo(() => {
+    if (totalDuration <= 60) return 1;
+    if (totalDuration <= 300) return 5;
+    if (totalDuration <= 1800) return 30;
+    if (totalDuration <= 3600) return 60;
+    return 300; // Every 5 minutes for very long scenes
+  }, [totalDuration]);
+
+  // Generate ruler marks with calculated interval
+  const rulerMarks = useMemo(() => {
+    const marks = [];
+    const duration = Math.ceil(totalDuration);
+    for (let i = 0; i <= duration; i += rulerInterval) {
+      marks.push(i);
+    }
+    return marks;
+  }, [totalDuration, rulerInterval]);
+
+  // Render individual timeline block
+  const renderTimelineItem = (event: TimelineSortableItem, index: number) => {
+    const blockWidth = Math.max(event.duration * timeScale, 80);
+
+    return (
+      <TouchableOpacity
+        key={event.id || `timeline-${index}`}
+        onPress={() => { }}
+        style={[
+          styles.timelineBlock,
+          layout.isTablet && styles.timelineBlockTablet,
+          { width: blockWidth },
+        ]}
+      >
+        <Text style={[styles.blockText, layout.isTablet && styles.blockTextTablet]}>
+          ID: {event.elementId}
+        </Text>
+        <Text style={[styles.blockText, layout.isTablet && styles.blockTextTablet]}>
+          {event.startTime}s - {event.duration}s
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={[styles.container, layout.isTablet && styles.containerTablet]}>
@@ -47,38 +124,59 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ sceneId }) => {
       <ScrollView horizontal style={styles.rulerContainer}>
         <View style={[styles.ruler, { width: totalWidth }]}>
           {rulerMarks.map((second) => (
-            <View 
-              key={`ruler-${second}`} 
+            <View
+              key={`ruler-${second}`}
               style={[styles.rulerMark, { left: second * timeScale }]}
             >
-              <Text style={[styles.rulerText, layout.isTablet && styles.rulerTextTablet]}>{second}s</Text>
+              <Text style={[styles.rulerText, layout.isTablet && styles.rulerTextTablet]}>
+                {second}s
+              </Text>
               <View style={styles.rulerTick} />
             </View>
           ))}
         </View>
       </ScrollView>
 
-      {/* Timeline Tracks with Blocks */}
-      <ScrollView horizontal style={styles.timelineContainer}>
-        <View style={[styles.timeline, { width: totalWidth }]}>
-          {timelineEvents.map((event, index) => (
-            <View
-              key={event.elementId || `event-${index}`}
-              style={[
-                styles.timelineBlock,
-                layout.isTablet && styles.timelineBlockTablet,
-                {
-                  left: event.startTime * timeScale,
-                  width: Math.max(event.duration * timeScale, 60),
-                },
-              ]}
-            >
-              <Text style={[styles.blockText, layout.isTablet && styles.blockTextTablet]}>ID: {event.elementId}</Text>
-              <Text style={[styles.blockText, layout.isTablet && styles.blockTextTablet]}>Start: {event.startTime}s</Text>
-              <Text style={[styles.blockText, layout.isTablet && styles.blockTextTablet]}>Duration: {event.duration}s</Text>
+      {/* Timeline Events (DnD disabled - HorizontalSortable not exported by library) */}
+      <ScrollView
+        horizontal
+        style={styles.sortableContainer}
+        contentContainerStyle={styles.sortableContent}
+      >
+        {timelineEvents.map((event, index) => renderTimelineItem(event, index))}
+        {timelineEvents.length === 0 && (
+          <Text style={{ color: '#94a3b8', padding: 20 }}>
+            No timeline events
+          </Text>
+        )}
+      </ScrollView>
+
+      {/* Detailed view below sortable */}
+      <ScrollView style={styles.detailContainer}>
+        {timelineEvents.map((event, index) => (
+          <View
+            key={event.id || `detail-${index}`}
+            style={[styles.detailCard, layout.isTablet && styles.detailCardTablet]}
+          >
+            <View style={styles.detailHeader}>
+              <Text style={[styles.detailTitle, layout.isTablet && styles.detailTitleTablet]}>
+                🎬 {event.elementId}
+              </Text>
+              <Text style={styles.detailBadge}>{event.easing}</Text>
             </View>
-          ))}
-        </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Старт:</Text>
+              <Text style={styles.detailValue}>{event.startTime}s</Text>
+              <Text style={styles.detailLabel}>Тривалість:</Text>
+              <Text style={styles.detailValue}>{event.duration}s</Text>
+            </View>
+          </View>
+        ))}
+        {timelineEvents.length === 0 && (
+          <View style={styles.emptyDetail}>
+            <Text style={styles.emptyDetailText}>Немає подій на таймлайні</Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -123,19 +221,24 @@ const styles = StyleSheet.create({
   rulerTextTablet: {
     fontSize: 14,
   },
-  timelineContainer: {
-    flex: 1,
-    backgroundColor: '#fff',
+  rulerTick: {
+    width: 1,
+    height: 12,
+    backgroundColor: '#adb5bd',
   },
-  timeline: {
-    position: 'relative',
-    height: '100%',
-    minHeight: 200,
+  // Sortable timeline area
+  sortableContainer: {
+    minHeight: 100,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#dee2e6',
+  },
+  sortableContent: {
+    paddingVertical: 12,
+    alignItems: 'center',
   },
   timelineBlock: {
-    position: 'absolute',
-    top: 16,
-    height: 80,
+    height: 72,
     backgroundColor: '#4a90e2',
     borderRadius: 6,
     padding: 8,
@@ -144,9 +247,8 @@ const styles = StyleSheet.create({
     borderColor: '#2c6cb0',
   },
   timelineBlockTablet: {
-    height: 100,
+    height: 90,
     padding: 12,
-    minHeight: 60,
     borderRadius: 8,
   },
   blockText: {
@@ -157,6 +259,69 @@ const styles = StyleSheet.create({
   blockTextTablet: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  // Detail cards below
+  detailContainer: {
+    flex: 1,
+    padding: 8,
+  },
+  detailCard: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#4a90e2',
+  },
+  detailCardTablet: {
+    padding: 16,
+    minHeight: 70,
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  detailTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  detailTitleTablet: {
+    fontSize: 17,
+  },
+  detailBadge: {
+    fontSize: 11,
+    color: '#6c757d',
+    backgroundColor: '#e9ecef',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: '#6c757d',
+  },
+  detailValue: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  emptyDetail: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyDetailText: {
+    color: '#94a3b8',
+    fontSize: 14,
   },
 });
 

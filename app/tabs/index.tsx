@@ -6,11 +6,11 @@ import {
   Image,
   Pressable,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
 import { useStory } from '@/lib/story-context';
 import { Story } from '@/lib/types';
+import { StoryMetadata } from '@/lib/story-domain';
 import { useColors } from '@/hooks/use-colors';
 import { Button } from '@/components/ui/Button';
 import demoStory from '@/assets/demo-story.json';
@@ -21,14 +21,10 @@ export default function HomeScreen() {
   const router = useRouter();
   const colors = useColors();
   const { stories, loadStories, addStory } = useStory();
+  const [isInitialized, setIsInitialized] = useState(false);
 
   const initializeApp = useCallback(async () => {
     try {
-      // Read directly from AsyncStorage before loading into React state,
-      // because `stories` from context is stale (still empty) at this point.
-      const storiesJson = await AsyncStorage.getItem(STORAGE_KEYS.STORIES);
-      const existingStories: Story[] = storiesJson ? JSON.parse(storiesJson) : [];
-
       await loadStories();
 
       // Add demo stories if they don't exist
@@ -42,12 +38,12 @@ export default function HomeScreen() {
       // Pre-populate Media Library with demo assets for the editor
       const { getLibraryAssets, addAssetToLibrary } = await import('@/components/media-library');
       const libraryAssets = await getLibraryAssets();
-      
+
       if (libraryAssets.length === 0) {
         // Add some demo backgrounds
         await addAssetToLibrary('assets/background/bg-ancient-library.png', 'Ancient Library', 'image');
         await addAssetToLibrary('assets/background/bg-museum-entrance.png', 'Museum Entrance', 'image');
-        
+
         // Add some demo sounds
         await addAssetToLibrary('assets/sounds-sample/music-magical.mp3', 'Magical Music', 'audio');
         await addAssetToLibrary('assets/sounds-sample/music-mysterious-adventure.mp3', 'Mysterious Adventure', 'audio');
@@ -65,7 +61,7 @@ export default function HomeScreen() {
     initializeApp();
   }, []); // Run only once on mount to avoid infinite loops
 
-  const handlePlayStory = (story: Story) => {
+  const handlePlayStory = (story: StoryMetadata) => {
     router.push({
       pathname: '/reader',
       params: { storyId: story.id },
@@ -80,7 +76,7 @@ export default function HomeScreen() {
     router.push('/settings');
   };
 
-  const renderStoryCard = ({ item }: { item: Story }) => (
+  const renderStoryCard = ({ item }: { item: StoryMetadata }) => (
     <Pressable
       style={({ pressed }) => [
         {
@@ -216,7 +212,7 @@ export default function HomeScreen() {
           </Button>
         </View>
       ) : (
-        <FlatList
+        <FlatList<StoryMetadata>
           data={stories}
           renderItem={renderStoryCard}
           keyExtractor={(item) => item.id}

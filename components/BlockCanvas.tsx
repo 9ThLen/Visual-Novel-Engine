@@ -76,7 +76,7 @@ export const BlockCanvas: React.FC<Props> = ({ root, onRootChange }) => {
       {blocks.map(({ path, block }) => (
         <div key={block.id} onMouseDown={(e) => startDrag(e, block)} style={{ position: 'absolute', left: (block.x ?? 0), top: (block.y ?? 0), width: 200, padding: 8, border: '1px solid #ccc', borderRadius: 6, background: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,.08)', cursor: 'move' }}>
           <div style={{ fontWeight: '700', fontSize: 12 }}>{block.type}</div>
-          <div style={{ fontSize: 12, color: '#333' }}>{block.data?.text ?? block.data?.title ?? ''}</div>
+          <div style={{ fontSize: 12, color: '#333' }}>{(block.data as Record<string, any>)?.text ?? (block.data as Record<string, any>)?.title ?? ''}</div>
         </div>
       ))}
       <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)', backgroundSize: '50px 50px', pointerEvents: 'none' }} />

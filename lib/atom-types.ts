@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // Атоми — найменші блоки з одним елементом
-export type AtomType = 
+export type AtomType =
   | 'text_atom'        // Текст (репліка/викладка)
   | 'character_atom'   // Персонаж (спрайт/3D-модель)
   | 'background_atom'  // Фон (зображення/атмосфера)
@@ -26,7 +26,7 @@ export interface SnapPoint {
   compatibleTypes: AtomType[]; // з якими типами можна з'єднуватись
 }
 
-export type AtomData = 
+export type AtomData =
   | TextAtomData
   | CharacterAtomData
   | BackgroundAtomData
@@ -34,6 +34,40 @@ export type AtomData =
   | FXAtomData;
 
 // Схеми для кожного типу атома
+// Type guards for AtomData using the block's type field
+export function isTextAtom(block: AtomBlock): block is AtomBlock & { data: TextAtomData } {
+  return block.type === 'text_atom';
+}
+export function isCharacterAtom(block: AtomBlock): block is AtomBlock & { data: CharacterAtomData } {
+  return block.type === 'character_atom';
+}
+export function isBackgroundAtom(block: AtomBlock): block is AtomBlock & { data: BackgroundAtomData } {
+  return block.type === 'background_atom';
+}
+export function isAudioAtom(block: AtomBlock): block is AtomBlock & { data: AudioAtomData } {
+  return block.type === 'audio_atom';
+}
+export function isFXAtom(block: AtomBlock): block is AtomBlock & { data: FXAtomData } {
+  return block.type === 'fx_atom';
+}
+
+// Safe accessors that return the data narrowed by type, or undefined if wrong type
+export function getTextData(block: AtomBlock): TextAtomData | undefined {
+  return isTextAtom(block) ? block.data : undefined;
+}
+export function getCharacterData(block: AtomBlock): CharacterAtomData | undefined {
+  return isCharacterAtom(block) ? block.data : undefined;
+}
+export function getBackgroundData(block: AtomBlock): BackgroundAtomData | undefined {
+  return isBackgroundAtom(block) ? block.data : undefined;
+}
+export function getAudioData(block: AtomBlock): AudioAtomData | undefined {
+  return isAudioAtom(block) ? block.data : undefined;
+}
+export function getFXData(block: AtomBlock): FXAtomData | undefined {
+  return isFXAtom(block) ? block.data : undefined;
+}
+
 export const textAtomSchema = z.object({
   content: z.string().min(1, 'Text is required'),
   speaker: z.string().optional(), // ім'я персонажа (якщо діалог)
@@ -80,7 +114,7 @@ export function createAtom(type: AtomType, overrides?: Partial<AtomData>): AtomB
     audio_atom: { uri: '', loop: false, volume: 80, type: 'sfx' },
     fx_atom: { effectType: 'particles', intensity: 50, duration: 3000 },
   };
-  
+
   return {
     id: `atom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     type,
@@ -101,35 +135,35 @@ export function createAtom(type: AtomType, overrides?: Partial<AtomData>): AtomB
 function getCompatibleTypes(atomType: AtomType, side: string): AtomType[] {
   // Логіка сумісності для магнітного притягування
   const compatibility: Record<AtomType, Record<string, AtomType[]>> = {
-    text_atom: { 
-      left: ['character_atom'], 
-      right: ['character_atom'], 
-      top: [], 
-      bottom: [] 
+    text_atom: {
+      left: ['character_atom'],
+      right: ['character_atom'],
+      top: [],
+      bottom: []
     },
-    character_atom: { 
-      left: ['text_atom', 'character_atom'], 
-      right: ['text_atom', 'character_atom'], 
-      top: ['background_atom'], 
-      bottom: [] 
+    character_atom: {
+      left: ['text_atom', 'character_atom'],
+      right: ['text_atom', 'character_atom'],
+      top: ['background_atom'],
+      bottom: []
     },
-    background_atom: { 
-      left: [], 
-      right: [], 
-      top: [], 
-      bottom: ['character_atom', 'text_atom', 'audio_atom', 'fx_atom'] 
+    background_atom: {
+      left: [],
+      right: [],
+      top: [],
+      bottom: ['character_atom', 'text_atom', 'audio_atom', 'fx_atom']
     },
-    audio_atom: { 
-      left: ['background_atom'], 
-      right: [], 
-      top: [], 
-      bottom: [] 
+    audio_atom: {
+      left: ['background_atom'],
+      right: [],
+      top: [],
+      bottom: []
     },
-    fx_atom: { 
-      left: ['background_atom'], 
-      right: [], 
-      top: [], 
-      bottom: [] 
+    fx_atom: {
+      left: ['background_atom'],
+      right: [],
+      top: [],
+      bottom: []
     },
   };
   return compatibility[atomType]?.[side] || [];

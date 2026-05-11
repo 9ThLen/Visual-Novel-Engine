@@ -19,64 +19,88 @@ interface RainDrop {
   length: number;
   animatedY: Animated.Value;
   delay: number;
+  randomOpacity: number;
 }
+
+const RainDropItem = React.memo(({ drop, color, opacity }: { drop: RainDrop; color: string; opacity: number }) => {
+  return (
+    <Animated.View
+      style={[
+        styles.drop,
+        {
+          left: drop.x,
+          height: drop.length,
+          backgroundColor: color,
+          opacity: opacity * drop.randomOpacity,
+          transform: [{ translateY: drop.animatedY }, { rotate: '10deg' }],
+        },
+      ]}
+    />
+  );
+});
 
 export function RainEffect({ intensity, speed, opacity, color = '#A0C4FF' }: Props) {
   const { width, height } = useWindowDimensions();
-  const dropsRef = useRef<RainDrop[]>([]);
+  const speedRef = useRef(speed);
+  const heightRef = useRef(height);
+  const activeRef = useRef(true);
 
   const dropCount = Math.round(50 + intensity * 150); // 50-200 drops
 
-  useEffect(() => {
-    // Initialize drops
-    dropsRef.current = Array.from({ length: dropCount }, (_, i) => ({
+  const drops = React.useMemo(() => {
+    return Array.from({ length: dropCount }, (_, i) => ({
       id: i,
       x: Math.random() * width,
       length: 20 + Math.random() * 30,
       animatedY: new Animated.Value(-50),
       delay: Math.random() * 2000,
+      randomOpacity: 0.3 + Math.random() * 0.4,
     }));
+  }, [dropCount, width]);
 
-    // Animate drops
-    const animations = dropsRef.current.map((drop) => {
-      const duration = (2000 - speed * 800) / (0.5 + Math.random() * 0.5);
+  useEffect(() => {
+    speedRef.current = speed;
+    heightRef.current = height;
+  }, [speed, height]);
 
-      return Animated.loop(
-        Animated.sequence([
-          Animated.delay(drop.delay),
-          Animated.timing(drop.animatedY, {
-            toValue: height + 50,
-            duration,
-            easing: Easing.linear,
-            useNativeDriver: true,
-          }),
-        ])
-      );
+  useEffect(() => {
+    activeRef.current = true;
+
+    drops.forEach((drop) => {
+      const runIteration = () => {
+        if (!activeRef.current) return;
+
+        const currentSpeed = speedRef.current;
+        const currentHeight = heightRef.current;
+        const duration = (2000 - currentSpeed * 800) / (0.5 + Math.random() * 0.5);
+
+        drop.animatedY.setValue(-50);
+
+        Animated.timing(drop.animatedY, {
+          toValue: currentHeight + 50,
+          duration: Math.max(300, duration),
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }).start(() => {
+          if (activeRef.current) {
+            runIteration();
+          }
+        });
+      };
+
+      const timeoutId = setTimeout(runIteration, drop.delay);
+      return () => clearTimeout(timeoutId);
     });
 
-    animations.forEach((anim) => anim.start());
-
     return () => {
-      animations.forEach((anim) => anim.stop());
+      activeRef.current = false;
     };
-  }, [dropCount, speed, width, height]);
+  }, [drops]);
 
   return (
     <View style={styles.container} pointerEvents="none">
-      {dropsRef.current.map((drop) => (
-        <Animated.View
-          key={drop.id}
-          style={[
-            styles.drop,
-            {
-              left: drop.x,
-              height: drop.length,
-              backgroundColor: color,
-              opacity: opacity * (0.3 + Math.random() * 0.4),
-              transform: [{ translateY: drop.animatedY }, { rotate: '10deg' }],
-            },
-          ]}
-        />
+      {drops.map((drop) => (
+        <RainDropItem key={drop.id} drop={drop} color={color} opacity={opacity} />
       ))}
     </View>
   );
