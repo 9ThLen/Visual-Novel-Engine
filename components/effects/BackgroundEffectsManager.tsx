@@ -18,6 +18,16 @@ interface Props {
   effects: BackgroundEffect[];
 }
 
+const EFFECT_COMPONENTS: Record<string, React.ComponentType<any>> = {
+  sunrays: SunraysEffect,
+  rain: RainEffect,
+  snow: SnowEffect,
+  fog: FogEffect,
+  storm: StormEffect,
+  particles: ParticlesEffect,
+  sparkles: SparklesEffect,
+};
+
 export function BackgroundEffectsManager({ effects }: Props) {
   const activeEffects = effects.filter((effect) => effect.enabled);
 
@@ -25,89 +35,27 @@ export function BackgroundEffectsManager({ effects }: Props) {
     return null;
   }
 
+  // Scaling factor to prevent excessive view counts and overdraw when multiple effects are active.
+  // Each additional effect reduces the intensity of all effects to maintain a stable budget.
+  const scaleFactor = activeEffects.length > 1 
+    ? 1 / (1 + (activeEffects.length - 1) * 0.5) 
+    : 1;
+
   return (
     <View style={styles.container} pointerEvents="none">
       {activeEffects.map((effect) => {
-        switch (effect.type) {
-          case 'sunrays':
-            return (
-              <SunraysEffect
-                key={effect.id}
-                intensity={effect.intensity}
-                speed={effect.speed}
-                opacity={effect.opacity ?? 1}
-                color={effect.color}
-              />
-            );
+        const EffectComponent = EFFECT_COMPONENTS[effect.type];
+        if (!EffectComponent) return null;
 
-          case 'rain':
-            return (
-              <RainEffect
-                key={effect.id}
-                intensity={effect.intensity}
-                speed={effect.speed}
-                opacity={effect.opacity ?? 1}
-                color={effect.color}
-              />
-            );
-
-          case 'snow':
-            return (
-              <SnowEffect
-                key={effect.id}
-                intensity={effect.intensity}
-                speed={effect.speed}
-                opacity={effect.opacity ?? 1}
-              />
-            );
-
-          case 'fog':
-            return (
-              <FogEffect
-                key={effect.id}
-                intensity={effect.intensity}
-                speed={effect.speed}
-                opacity={effect.opacity ?? 1}
-                color={effect.color}
-              />
-            );
-
-          case 'storm':
-            return (
-              <StormEffect
-                key={effect.id}
-                intensity={effect.intensity}
-                speed={effect.speed}
-                opacity={effect.opacity ?? 1}
-                color={effect.color}
-              />
-            );
-
-          case 'particles':
-            return (
-              <ParticlesEffect
-                key={effect.id}
-                intensity={effect.intensity}
-                speed={effect.speed}
-                opacity={effect.opacity ?? 1}
-                color={effect.color}
-              />
-            );
-
-          case 'sparkles':
-            return (
-              <SparklesEffect
-                key={effect.id}
-                intensity={effect.intensity}
-                speed={effect.speed}
-                opacity={effect.opacity ?? 1}
-                color={effect.color}
-              />
-            );
-
-          default:
-            return null;
-        }
+        return (
+          <EffectComponent
+            key={effect.id}
+            intensity={effect.intensity * scaleFactor}
+            speed={effect.speed}
+            opacity={(effect.opacity ?? 1) * (activeEffects.length > 2 ? 0.8 : 1)}
+            color={effect.color}
+          />
+        );
       })}
     </View>
   );

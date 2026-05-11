@@ -17,17 +17,7 @@ export interface Choice {
   nextSceneId: string;
 }
 
-/**
- * Represents a character sprite with optional positioning
- */
-export interface CharacterSprite {
-  id: string;
-  imageUri: string;
-  name: string;
-  position?: string; // More flexible than just 'left' | 'center' | 'right'
-  scale?: number;
-  expression?: string;
-}
+import type { CharacterSprite } from './character-types';
 
 /**
  * Represents a single scene/node in the story

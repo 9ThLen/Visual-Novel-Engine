@@ -9,9 +9,6 @@ import { ThemeProvider } from "@/lib/theme-provider";
 import { InventoryProvider } from "@/lib/inventory-context";
 import { I18nProvider } from "@/lib/i18n-context";
 
-export const unstable_settings = {
-  anchor: "tabs",
-};
 
 export default function RootLayout() {
   return (

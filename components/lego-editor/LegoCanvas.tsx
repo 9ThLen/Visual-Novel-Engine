@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, useWindowDimensions, Text } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   useSharedValue,
@@ -9,7 +9,7 @@ import {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { AtomBlock } from '../../lib/atom-types';
-import { canSnap, MoleculeBlock, calculateBounds } from '../../lib/molecule-types';
+import { canSnap, MoleculeBlock, calculateBounds, MoleculeType } from '../../lib/molecule-types';
 import AtomBlockComponent from './AtomBlockComponent';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 
@@ -18,40 +18,48 @@ type LegoCanvasProps = {
   onAtomsChange: (atoms: AtomBlock[]) => void;
   selectedAtomId?: string | null;
   onAtomSelect?: (atomId: string | null) => void;
+  sceneId?: string;
 };
 
 const SNAP_THRESHOLD = 20; // px
+
+function getMoleculeTypeForAtom(atomType: string): MoleculeType {
+  switch (atomType) {
+    case 'text_atom': return 'dialogue_molecule';
+    case 'character_atom': return 'character_molecule';
+    case 'background_atom': return 'scene_molecule';
+    case 'audio_atom': return 'audio_molecule';
+    case 'fx_atom': return 'scene_molecule';
+    default: return 'dialogue_molecule';
+  }
+}
 
 // Convert atom to a temporary molecule for canSnap check
 function atomToMolecule(atom: AtomBlock): MoleculeBlock {
   return {
     id: atom.id,
-    type: 'dialogue_molecule', // dummy type, canSnap only uses bounds
+    type: getMoleculeTypeForAtom(atom.type),
     atoms: [atom],
-    bounds: calculateBounds([atom]),
+    bounds: { x: atom.x, y: atom.y, width: atom.width, height: atom.height },
   };
 }
 
-// Check if two atoms can magnetically snap (distance < threshold and snapPoints compatible)
+// Check if two atoms can magnetically snap
 function canAtomsSnap(atomA: AtomBlock, atomB: AtomBlock): boolean {
-  // Use canSnap from molecule-types for geometric proximity check
   const molA = atomToMolecule(atomA);
   const molB = atomToMolecule(atomB);
   if (!canSnap(molA, molB, SNAP_THRESHOLD)) {
     return false;
   }
 
-  // Check snapPoints compatibility
   for (const spA of atomA.snapPoints) {
     for (const spB of atomB.snapPoints) {
-      // Check if sides are opposite (left-right, top-bottom)
       const oppositeSides =
         (spA.side === 'left' && spB.side === 'right') ||
         (spA.side === 'right' && spB.side === 'left') ||
         (spA.side === 'top' && spB.side === 'bottom') ||
         (spA.side === 'bottom' && spB.side === 'top');
       if (oppositeSides) {
-        // Check type compatibility
         if (
           spA.compatibleTypes.includes(atomB.type) ||
           spB.compatibleTypes.includes(atomA.type)
@@ -77,28 +85,37 @@ function calculateSnapPosition(
   let newX = draggedAtom.x;
   let newY = draggedAtom.y;
 
-  // Horizontal snapping (left-right edges)
   const leftDist = Math.abs(draggedAtom.x - targetRight);
   const rightDist = Math.abs(draggedRight - targetAtom.x);
   if (leftDist < SNAP_THRESHOLD) {
-    newX = targetRight; // snap dragged left to target right
+    newX = targetRight;
   } else if (rightDist < SNAP_THRESHOLD) {
-    newX = targetAtom.x - draggedAtom.width; // snap dragged right to target left
+    newX = targetAtom.x - draggedAtom.width;
   }
 
-  // Vertical snapping (top-bottom edges)
   const topDist = Math.abs(draggedAtom.y - targetBottom);
   const bottomDist = Math.abs(draggedBottom - targetAtom.y);
   if (topDist < SNAP_THRESHOLD) {
-    newY = targetBottom; // snap dragged top to target bottom
+    newY = targetBottom;
   } else if (bottomDist < SNAP_THRESHOLD) {
-    newY = targetAtom.y - draggedAtom.height; // snap dragged bottom to target top
+    newY = targetAtom.y - draggedAtom.height;
   }
 
   return { x: newX, y: newY };
 }
 
-// Subcomponent for each draggable atom
+// JS-scoped haptic callbacks (extracted for use with runOnJS from worklets)
+function triggerHeavyHaptic() {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+}
+
+function triggerSnapHaptic(isTablet: boolean) {
+  Haptics.impactAsync(
+    isTablet ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Medium
+  );
+}
+
+// Subcomponent for each draggable atom on the canvas
 const DraggableAtom: React.FC<{
   atom: AtomBlock;
   index: number;
@@ -107,12 +124,12 @@ const DraggableAtom: React.FC<{
   isSelected: boolean;
   onDragEnd: (index: number, x: number, y: number) => void;
   onPress: (atomId: string) => void;
-}> = ({ atom, index, allAtoms, canvasSize, isSelected, onDragEnd, onPress }) => {
+  sceneId?: string;
+}> = ({ atom, index, allAtoms, canvasSize, isSelected, onDragEnd, onPress, sceneId }) => {
   const layout = useResponsiveLayout();
   const posX = useSharedValue(atom.x);
   const posY = useSharedValue(atom.y);
 
-  // Update shared values when atom position changes externally
   React.useEffect(() => {
     posX.value = atom.x;
     posY.value = atom.y;
@@ -120,10 +137,10 @@ const DraggableAtom: React.FC<{
 
   const [isDragging, setIsDragging] = useState(false);
   const scale = useSharedValue(1);
-  
-  // Adaptive snap threshold based on device
+  const wasSnapped = useSharedValue(false);
+
   const snapThreshold = layout.isTablet ? 30 : 20;
-  
+
   const animatedStyle = useAnimatedStyle(() => ({
     position: 'absolute' as const,
     left: posX.value,
@@ -141,41 +158,46 @@ const DraggableAtom: React.FC<{
     borderRadius: layout.isTablet ? 10 : 8,
   }));
 
+  const handleHeavyHaptic = useCallback(() => {
+    triggerHeavyHaptic();
+  }, []);
+
+  const handleSnapHaptic = useCallback(() => {
+    triggerSnapHaptic(layout.isTablet);
+  }, [layout.isTablet]);
+
   const panGesture = Gesture.Pan()
     .hitSlop(layout.isTablet ? 15 : 8)
     .onBegin(() => {
       runOnJS(setIsDragging)(true);
-      // Bigger scale on tablets
       scale.value = withSpring(layout.isTablet ? 1.08 : 1.05);
-      // Stronger haptic feedback on tablets
       if (layout.isTablet) {
-        runOnJS(() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        })();
+        runOnJS(handleHeavyHaptic)();
       }
     })
     .onUpdate((event) => {
-      // Calculate new position based on gesture translation
       let newX = atom.x + event.translationX;
       let newY = atom.y + event.translationY;
 
-      // Clamp to canvas bounds
-      if (canvasSize.width > 0) {
-        newX = Math.max(0, Math.min(newX, canvasSize.width - atom.width));
-      }
-      if (canvasSize.height > 0) {
-        newY = Math.max(0, Math.min(newY, canvasSize.height - atom.height));
-      }
+      // Coordinate clamping removed to allow dragging atoms 
+      // beyond canvas boundaries to reach sidebar drop zones
 
-      // Check for magnetic snapping with other atoms using adaptive threshold
       const draggedAtom = { ...atom, x: newX, y: newY };
       let snapped = false;
       for (let i = 0; i < allAtoms.length; i++) {
         if (i === index) continue;
         const otherAtom = allAtoms[i];
+        
+        // Fast spatial check before expensive molecule construction
+        const dx = Math.abs(newX - otherAtom.x);
+        const dy = Math.abs(newY - otherAtom.y);
+        if (dx > draggedAtom.width + otherAtom.width + snapThreshold || 
+            dy > draggedAtom.height + otherAtom.height + snapThreshold) {
+          continue;
+        }
+
         if (canAtomsSnap(draggedAtom, otherAtom)) {
           const snapPos = calculateSnapPosition(draggedAtom, otherAtom);
-          // Use adaptive threshold
           const dist = Math.sqrt(
             Math.pow(newX - snapPos.x, 2) + Math.pow(newY - snapPos.y, 2)
           );
@@ -183,18 +205,18 @@ const DraggableAtom: React.FC<{
             newX = snapPos.x;
             newY = snapPos.y;
             snapped = true;
-            break; // Snap to first compatible atom
+            break;
           }
         }
       }
-      
-      // Trigger haptic feedback on snap
+
       if (snapped) {
-        runOnJS(() => {
-          Haptics.impactAsync(
-            layout.isTablet ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Medium
-          );
-        })();
+        if (!wasSnapped.value) {
+          runOnJS(handleSnapHaptic)();
+          wasSnapped.value = true;
+        }
+      } else {
+        wasSnapped.value = false;
       }
 
       posX.value = newX;
@@ -203,31 +225,28 @@ const DraggableAtom: React.FC<{
     .onEnd(() => {
       runOnJS(setIsDragging)(false);
       scale.value = withSpring(1);
-      
-      const finalX = Math.round(posX.value);
-      const finalY = Math.round(posY.value);
-      // Clamp to canvas bounds
-      let clampedX = finalX;
-      let clampedY = finalY;
-      if (canvasSize.width > 0) {
-        clampedX = Math.max(0, Math.min(finalX, canvasSize.width - atom.width));
-      }
-      if (canvasSize.height > 0) {
-        clampedY = Math.max(0, Math.min(finalY, canvasSize.height - atom.height));
-      }
-      posX.value = clampedX;
-      posY.value = clampedY;
-      runOnJS(onDragEnd)(index, clampedX, clampedY);
+
+      // Do NOT clamp coordinates here — cross-scene dragging requires original
+      // unclamped positions so sidebar drop zones can receive the atom.
+      runOnJS(onDragEnd)(index, Math.round(posX.value), Math.round(posY.value));
     });
 
   return (
     <GestureDetector gesture={panGesture}>
-      <View style={[animatedStyle, { position: 'absolute' }]}>
+      <View style={[animatedStyle, { position: 'absolute' }]} testID={`atom-${atom.id}`}>
         <AtomBlockComponent
           atom={atom}
           isSelected={isSelected}
           onPress={() => onPress(atom.id)}
         />
+        {/* Cross-scene drag indicator badge */}
+        {isDragging && sceneId && (
+          <View style={styles.dragBadge} pointerEvents="none">
+            <Text style={styles.dragBadgeText}>
+              ↗ drop on scene
+            </Text>
+          </View>
+        )}
       </View>
     </GestureDetector>
   );
@@ -238,17 +257,16 @@ const LegoCanvas: React.FC<LegoCanvasProps> = ({
   onAtomsChange,
   selectedAtomId,
   onAtomSelect,
+  sceneId,
 }) => {
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
   const layout = useResponsiveLayout();
   const { width } = useWindowDimensions();
 
-  // Calculate grid columns based on screen width
   const gridColumns = layout.gridColumns;
   const isTabletLandscape = layout.isTablet && layout.isLandscape;
 
-  // Use external selection if provided, otherwise internal
   const activeSelectedId = selectedAtomId ?? internalSelectedId;
 
   const handleDragEnd = useCallback(
@@ -273,7 +291,6 @@ const LegoCanvas: React.FC<LegoCanvasProps> = ({
   }, [onAtomSelect, activeSelectedId]);
 
   const handleCanvasPress = useCallback(() => {
-    // Deselect when tapping empty canvas area
     if (onAtomSelect) {
       onAtomSelect(null);
     } else {
@@ -286,7 +303,6 @@ const LegoCanvas: React.FC<LegoCanvasProps> = ({
     setCanvasSize({ width, height });
   };
 
-  // Adaptive canvas style
   const canvasStyle = [
     styles.container,
     layout.isTablet && styles.containerTablet,
@@ -298,37 +314,28 @@ const LegoCanvas: React.FC<LegoCanvasProps> = ({
 
   return (
     <View style={canvasStyle} onLayout={onCanvasLayout} onStartShouldSetResponder={() => true} onResponderRelease={handleCanvasPress}>
-      {/* Render atoms in adaptive grid layout for tablets */}
-      {isTabletLandscape ? (
-        <View style={styles.gridContainer}>
-          {atoms.map((atom, index) => (
-            <View key={atom.id} style={[styles.gridItem, { width: `${100 / gridColumns}%` }]}>
-              <DraggableAtom
-                atom={atom}
-                index={index}
-                allAtoms={atoms}
-                canvasSize={canvasSize}
-                isSelected={atom.id === activeSelectedId}
-                onDragEnd={handleDragEnd}
-                onPress={handlePress}
-              />
-            </View>
-          ))}
+      {/* Empty state */}
+      {atoms.length === 0 && (
+        <View style={styles.emptyState} pointerEvents="none">
+          <Text style={styles.emptyStateText}>
+            🧩 Додайте атоми на canvas{'\n'}або перетягніть їх між сценами
+          </Text>
         </View>
-      ) : (
-        atoms.map((atom, index) => (
-          <DraggableAtom
-            key={atom.id}
-            atom={atom}
-            index={index}
-            allAtoms={atoms}
-            canvasSize={canvasSize}
-            isSelected={atom.id === activeSelectedId}
-            onDragEnd={handleDragEnd}
-            onPress={handlePress}
-          />
-        ))
       )}
+      {/* Render atoms directly without grid wrappers to preserve absolute positioning */}
+      {atoms.map((atom, index) => (
+        <DraggableAtom
+          key={atom.id}
+          atom={atom}
+          index={index}
+          allAtoms={atoms}
+          canvasSize={canvasSize}
+          isSelected={atom.id === activeSelectedId}
+          onDragEnd={handleDragEnd}
+          onPress={handlePress}
+          sceneId={sceneId}
+        />
+      ))}
     </View>
   );
 };
@@ -345,9 +352,7 @@ const styles = StyleSheet.create({
     margin: 8,
   },
   containerLandscape: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-start',
+    // Removed flex properties that conflict with absolute positioning of atoms
   },
   gridContainer: {
     flexDirection: 'row',
@@ -356,6 +361,35 @@ const styles = StyleSheet.create({
   },
   gridItem: {
     padding: 4,
+  },
+  emptyState: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#94a3b8',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  dragBadge: {
+    position: 'absolute',
+    top: -24,
+    left: 0,
+    backgroundColor: 'rgba(59, 130, 246, 0.9)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  dragBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
   },
 });
 

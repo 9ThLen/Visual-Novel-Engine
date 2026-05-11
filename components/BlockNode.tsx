@@ -85,7 +85,7 @@ export const BlockNode: React.FC<Props> = ({ block, path, depth = 0, onMove, onD
       </div>
       {/* Content preview, simplified */}
       <div style={{ minHeight: 20 }}>
-        {block.data?.text ?? (block.data?.title ?? '')}
+        {(block.data as Record<string, any>)?.text ?? (block.data as Record<string, any>)?.title ?? ''}
       </div>
 
       {/* Render children recursively */}

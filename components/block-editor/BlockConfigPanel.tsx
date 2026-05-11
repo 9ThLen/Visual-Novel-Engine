@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { View, Text, TextInput, Pressable, ScrollView } from 'react-native';
-import { Block } from '../../lib/block-types';
+import { Block, getDialogueData, getNarrationData, getShowCharacterData, getHideCharacterData, getCharacterAnimationData, getSetBackgroundData, getPlayMusicData, getPlaySfxData, getPlayVoiceData, getChoiceData, getConditionData, getSetVariableData, getTransitionData, getWaitData, getGroupData } from '../../lib/block-types';
 import { getBlockEntry } from '../../lib/block-registry';
 
 interface Colors {
@@ -62,7 +62,7 @@ const SegCtl: React.FC<{ options: { label: string; value: string }[]; value: str
 
 export const BlockConfigPanel: React.FC<Props> = ({ block, onChange, onClose, sceneList, characterList, colors }) => {
   const entry = getBlockEntry(block.type);
-  const d = block.data;
+  const d = block.data as Record<string, any>;
   const sf = (field: string, value: any) => onChange({ ...d, [field]: value });
 
   const render = () => {

@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { Image, View, ActivityIndicator, StyleSheet, ImageProps, ImageStyle } from 'react-native';
 import { ErrorHandler } from '@/lib/error-handler';
 
-interface LazyImageProps extends Omit<ImageProps, 'source'> {
+interface LazyImageProps extends Omit<ImageProps, 'source' | 'onError'> {
   uri: string;
   placeholder?: React.ReactNode;
   errorPlaceholder?: React.ReactNode;

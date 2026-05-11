@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Block } from '../../lib/block-types';
+import { Block, getDialogueData, getNarrationData, getShowCharacterData, getHideCharacterData, getCharacterAnimationData, getSetBackgroundData, getPlayMusicData, getPlaySfxData, getPlayVoiceData, getChoiceData, getConditionData, getSetVariableData, getTransitionData, getWaitData, getGroupData } from '../../lib/block-types';
 import { getBlockEntry } from '../../lib/block-registry';
 
 interface BlockCardProps {
@@ -140,38 +140,67 @@ export const BlockCard: React.FC<BlockCardProps> = ({
 };
 
 function getSummaryText(block: Block, entry: any): string {
-  const d = block.data;
   switch (block.type) {
-    case 'dialogue':
-      return d.character ? `${d.character}: ${d.text?.slice(0, 40) || ''}` : d.text?.slice(0, 50) || '';
-    case 'narration':
-      return d.text?.slice(0, 60) || '';
-    case 'show_character':
-      return `Show ${d.characterId || '???'} at ${d.position || 'center'}`;
-    case 'hide_character':
-      return `Hide ${d.characterId || '???'}`;
-    case 'character_animation':
-      return `${d.characterId || '???'} ${d.animation || 'shake'}`;
-    case 'set_background':
-      return d.backgroundUri ? `BG: ${d.backgroundUri.split('/').pop()}` : 'No background set';
-    case 'play_music':
-      return d.musicUri ? `Music: ${d.musicUri.split('/').pop()}` : 'No music set';
-    case 'play_sfx':
-      return d.sfxUri ? `SFX: ${d.sfxUri.split('/').pop()}` : 'No SFX set';
-    case 'play_voice':
-      return d.voiceUri ? `Voice: ${d.voiceUri.split('/').pop()}` : 'No voice set';
-    case 'choice':
-      return d.text || 'No choice text';
-    case 'condition':
-      return `${d.variable || '?'} ${d.operator || ''} ${d.value || ''}`;
-    case 'set_variable':
-      return `${d.variable || '?'} = ${d.value || ''}`;
-    case 'transition':
-      return `${d.type || 'fade'} ${d.duration || 500}ms`;
-    case 'wait':
-      return `${d.duration || 1000}ms`;
-    case 'group':
-      return d.title || 'Group';
+    case 'dialogue': {
+      const d = getDialogueData(block);
+      return d ? `${d.character}: ${d.text.slice(0, 40)}` : '';
+    }
+    case 'narration': {
+      const d = getNarrationData(block);
+      return d ? d.text.slice(0, 60) : '';
+    }
+    case 'show_character': {
+      const d = getShowCharacterData(block);
+      return d ? `Show ${d.characterId || '???'} at ${d.position || 'center'}` : '';
+    }
+    case 'hide_character': {
+      const d = getHideCharacterData(block);
+      return d ? `Hide ${d.characterId || '???'}` : '';
+    }
+    case 'character_animation': {
+      const d = getCharacterAnimationData(block);
+      return d ? `${d.characterId || '???'} ${d.animation || 'shake'}` : '';
+    }
+    case 'set_background': {
+      const d = getSetBackgroundData(block);
+      return d ? (d.backgroundUri ? `BG: ${d.backgroundUri.split('/').pop()}` : 'No background set') : '';
+    }
+    case 'play_music': {
+      const d = getPlayMusicData(block);
+      return d ? (d.musicUri ? `Music: ${d.musicUri.split('/').pop()}` : 'No music set') : '';
+    }
+    case 'play_sfx': {
+      const d = getPlaySfxData(block);
+      return d ? (d.sfxUri ? `SFX: ${d.sfxUri.split('/').pop()}` : 'No SFX set') : '';
+    }
+    case 'play_voice': {
+      const d = getPlayVoiceData(block);
+      return d ? (d.voiceUri ? `Voice: ${d.voiceUri.split('/').pop()}` : 'No voice set') : '';
+    }
+    case 'choice': {
+      const d = getChoiceData(block);
+      return d ? d.text || 'No choice text' : '';
+    }
+    case 'condition': {
+      const d = getConditionData(block);
+      return d ? `${d.variable || '?'} ${d.operator || ''} ${d.value || ''}` : '';
+    }
+    case 'set_variable': {
+      const d = getSetVariableData(block);
+      return d ? `${d.variable || '?'} = ${d.value || ''}` : '';
+    }
+    case 'transition': {
+      const d = getTransitionData(block);
+      return d ? `${d.type || 'fade'} ${d.duration || 500}ms` : '';
+    }
+    case 'wait': {
+      const d = getWaitData(block);
+      return d ? `${d.duration || 1000}ms` : '';
+    }
+    case 'group': {
+      const d = getGroupData(block);
+      return d ? d.title || 'Group' : '';
+    }
     default:
       return '';
   }

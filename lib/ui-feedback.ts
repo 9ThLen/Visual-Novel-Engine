@@ -10,30 +10,14 @@ import { Platform } from 'react-native';
 // Sound cache
 const soundCache: Record<string, Audio.Sound> = {};
 
-// Sound file mappings - will be loaded dynamically
-const SOUND_FILES: Record<string, any> = {};
-
-// Try to load sound files, but don't fail if they're missing
-try {
-  SOUND_FILES.click = require('@/assets/sounds/button-press.ogg');
-} catch (error) {
-  console.debug('Sound file not found: button-press.ogg', error);
-}
-try {
-  SOUND_FILES.success = require('@/assets/sounds/success_action.wav');
-} catch (error) {
-  console.debug('Sound file not found: success_action.wav', error);
-}
-try {
-  SOUND_FILES.error = require('@/assets/sounds/error.wav');
-} catch (error) {
-  console.debug('Sound file not found: error.wav', error);
-}
-try {
-  SOUND_FILES.whoosh = require('@/assets/sounds/button-press.ogg'); // Using button-press as fallback
-} catch (error) {
-  console.debug('Sound file not found: button-press.ogg (whoosh)', error);
-}
+// Static require map — Metro resolves these at build time, so files must exist.
+// All paths point to assets/sounds/ which contains the actual audio files.
+const SOUND_FILES: Record<string, any> = {
+  click:   require('../assets/sounds/button-press.ogg'),
+  whoosh:  require('../assets/sounds/button-press.ogg'),
+  success: require('../assets/sounds/success_action.wav'),
+  error:   require('../assets/sounds/error.wav'),
+};
 
 /**
  * Play haptic feedback
@@ -71,6 +55,9 @@ export async function playSound(
   soundName: 'click' | 'success' | 'error' | 'whoosh',
   volume: number = 0.3
 ) {
+  // expo-av Audio.Sound is not supported on web
+  if (Platform.OS === 'web') return;
+
   try {
     // Check if sound file exists
     const soundFile = SOUND_FILES[soundName];
