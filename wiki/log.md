@@ -4,6 +4,71 @@ Chronological record of all wiki operations.
 
 ---
 
+## [2026-05-09 21:20] fix | PNPM Windows .cmd Wrappers — Dev Server Blocked
+
+**Статус:** Завершено ✅
+
+### Проблема
+Після `pnpm install` на Windows команда `pnpm dev` не запускалась:
+```
+'concurrently' is not recognized as an internal or external command
+```
+
+**Причина:** pnpm v9.12.0 не створив `.cmd` wrapper файли в `node_modules/.bin/` — тільки Unix shell-скрипти, які не працюють у Windows.
+
+### Виправлено
+1. **Перевстановлено всі залежності** — очищено `node_modules` та pnpm store, виконано чисту установку
+2. **Згенеровано `.cmd` wrappers** — створено Windows-сумісні обгортки для всіх 50+ бінарників (concurrently, cross-env, expo, tsx, vitest, eslint тощо)
+3. **Перевірено `pnpm dev`** — обидва сервіси запускаються: Server (порт 3000) та Metro Bundler (порт 8081)
+
+### Деталі
+- [[PNPM_WINDOWS_CMD_WRAPPERS_FIX|Виправлення pnpm на Windows — .cmd wrappers]]
+
+---
+
+## [2026-05-09 18:50] fix | Runtime Error Fixes — Critical
+
+**Статус:** Завершено ✅
+
+### Проблема
+Додаток не відображав нічого після збірки. Metro працював, бандл генерувався, але при запуску — помилка.
+
+### Виправлено
+1. **`lib/story-context.tsx` — 6 подвійних ком** `AsyncStorage.setItem(KEY, , JSON.stringify(...))` → виправлено на `AsyncStorage.setItem(KEY, JSON.stringify(...))` (рядки 215, 267, 334, 350, 372, 383)
+2. **`lib/story-context.tsx` — подвійні номери рядків** у файлі (`1|     1|import React...`) → очищено
+3. **`app/tabs/index.tsx` — відсутній `useState`** для `isInitialized` → додано
+4. **`node_modules/expo-asset` — зламаний симлінк** (pnpm на WSL/NTFS) → перестворено
+5. **`babel.config.cjs` — відсутній плагін Reanimated** (виявлено користувачем) → додано `react-native-reanimated/plugin` та `react-native-worklets/plugin`
+6. **`app/lego-editor.tsx` — неправильне розташування** (виявлено користувачем) → переміщено в `app/tabs/lego-editor.tsx`
+7. **`app/_layout.tsx` — застарілі `unstable_settings`** (виявлено користувачем) → видалено
+
+### Результати
+- ✅ 219/219 тестів проходять (16 файлів)
+- ✅ Бандл Android: 13 МБ без помилок
+- ✅ Бандл Web: 10 МБ без помилок
+- ✅ Усі @/ імпорти резолвляться
+
+### Що далі
+- Тестування на реальному пристрої (Expo Go + --tunnel)
+- Перевірка Canvas/Timeline/Graph
+- Деталі: [[runtime-fixes-2026-05-09|Виправлення runtime-помилок]]
+
+---
+
+## [2026-05-09 21:30] docs | Повний довідник архітектури
+
+**Статус:** Завершено ✅
+
+Створено повну документацію усіх файлів проекту:
+- 149 файлів у 20 директоріях
+- Кожен файл: призначення, ключові експорти
+- Потік даних, шари додатку, конфігураційні файли
+- Зауваження для AI-моделей (Reanimated, pnpm, WSL)
+
+Деталі: [[architecture-reference|Довідник архітектури]]
+
+---
+
 ## [2026-05-09 00:30] wiki | Documentation Update + Telegram Bot Debugging
 **Статус:** Частково завершено ⚠️
 

@@ -77,18 +77,34 @@ Last updated: 2026-05-08
 ---
 
 ## Останні звіти
-- [[lego-block-system-plan-2026-05-07|План реалізації LEGO-системи 2026-05-07]] ⭐ **НОВЕ**
-- [[code-analysis-report-2026-05-07|Звіт глибокого аналізу коду 2026-05-07]] ⭐ **НОВЕ**
+- [[testing-plan-2026-05-09|План тестування 2026-05-09]] ⭐ **НОВЕ**
+- [[runtime-fixes-2026-05-09|Виправлення runtime-помилок 2026-05-09]]
+- [[next-session-plan-2026-05-10|План на сесію 2026-05-10]]
+- [[next-session-plan-2026-05-09|План на сесію 2026-05-09]]
+- [[lego-block-system-plan-2026-05-07|План реалізації LEGO-системи 2026-05-07]]
+- [[code-analysis-report-2026-05-07|Звіт глибокого аналізу коду 2026-05-07]]
 - [[audit-report-2026-05-07|Звіт про аудит 2026-05-07]]
 - [[PLAN_2026_05_07|План роботи 2026-05-07]]
 - [[DEV_SERVER_FIX_2026_05_07|Виправлення Dev Server 2026-05-07]]
 
 ## Документація
+- [[architecture-reference|Довідник архітектури (усі файли проекту)]]
 - [[overview|Огляд проекту Visual Novel Engine]]
 - [[README|README проекту]]
 - [[SCHEMA|Схема даних]]
 
 ## Fixes & Updates
+- [[vitest-config-copy-removal-2026-05-09|Видалення дубліката vitest.config copy.ts (2026-05-09)]] ⭐ **НОВЕ**
+- [[PNPM_WINDOWS_CMD_WRAPPERS_FIX|Виправлення pnpm на Windows — .cmd wrappers (2026-05-09)]]
+- [[runtime-fixes-2026-05-09|Виправлення runtime-помилок (2026-05-09)]]
+  - 6 подвійних ком у AsyncStorage.setItem()
+  - Подвійні номери рядків у story-context.tsx
+  - Відсутній useState для isInitialized
+  - Зламаний симлінк expo-asset (pnpm на WSL)
+  - Відсутній babel-плагін Reanimated (білий екран)
+  - Переміщено lego-editor.tsx у app/tabs/
+  - Видалено застарілі unstable_settings з _layout.tsx
+  - 219/219 тестів, бандли без помилок
 - [[FIXES_2026_05_06|Оптимізація продуктивності та тести (2026-05-06)]]
   - Context optimization (useCallback/useMemo)
   - AudioManager memory leak fixes
@@ -106,6 +122,8 @@ Last updated: 2026-05-08
 - [[log|Журнал подій розробки]]
 
 ## Пов'язані сторінки
+- [[runtime-fixes-2026-05-09|Виправлення runtime-помилок]]
+- [[next-session-plan-2026-05-10|План на наступну сесію]]
 - [[lego-block-system-plan-2026-05-07|План LEGO-системи]]
 - [[code-analysis-report-2026-05-07|Аналіз коду]]
 - [[audit-report-2026-05-07|Аудит проекту]]
