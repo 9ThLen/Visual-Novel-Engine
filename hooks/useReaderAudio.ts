@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { StoryScene, UserSettings } from '../lib/types';
 import { enhancedAudioManager as audioManager } from '../lib/audio-manager-enhanced';
 import { resolveAssetUri } from '../lib/asset-resolver';
@@ -14,43 +15,65 @@ export function useReaderAudio(currentScene: StoryScene | null, settings: UserSe
     audioManager.setVolume('voice', settings.voiceVolume);
   }, [settings.bgmVolume, settings.voiceVolume]);
 
+  // Stop ALL audio when leaving the reader screen (blur/unfocus)
+  // Expo Router keeps screens mounted in the stack, so useEffect cleanup
+  // on unmount is NOT reliable — useFocusEffect handles navigation away.
+  useFocusEffect(
+    useRef(() => {
+      // on focus: nothing — audio is started by the scene effect below
+      return () => {
+        // on blur: user navigated away (back to menu, etc.)
+        audioManager.cancelAllTriggers();
+        audioManager.stopAll(0);
+      };
+    }).current,
+  );
+
   useEffect(() => {
     if (!currentScene) return;
 
     let isMounted = true;
 
-    // Resolve and play music (only if URI is provided and valid)
-    if (currentScene.musicUri && currentScene.musicUri.trim()) {
-      resolveAssetUri(currentScene.musicUri).then((uri) => {
-        if (isMounted && uri) {
-          audioManager.crossFade('bgm', uri, volumesRef.current.bgm);
-        } else if (isMounted) {
-          audioManager.stop('bgm');
-        }
-      }).catch(() => {
-        // Silent fail for missing music
-        if (isMounted) audioManager.stop('bgm');
-      });
-    } else {
-      // No music URI, stop playing
-      audioManager.stop('bgm');
-    }
+    // Stop all previous audio before starting new scene audio.
+    // This ensures trigger-based tracks (music_trigger1, etc.) from the
+    // previous scene are cleaned up — crossFade only manages the 'bgm' track.
+    audioManager.cancelAllTriggers();
+    audioManager.stopAll(0).then(() => {
+      if (!isMounted) return;
 
-    // Resolve and play voice
-    if (currentScene.voiceAudioUri && currentScene.voiceAudioUri.trim()) {
-      resolveAssetUri(currentScene.voiceAudioUri).then((uri) => {
-        if (isMounted) {
-          audioManager.play('voice', uri, { volume: volumesRef.current.voice });
-        }
-      }).catch(() => {
-        // Silent fail for missing voice
-      });
-    }
+      // Resolve and play music (only if URI is provided and valid)
+      if (currentScene.musicUri && currentScene.musicUri.trim()) {
+        resolveAssetUri(currentScene.musicUri).then((uri) => {
+          if (isMounted && uri) {
+            audioManager.play('bgm', uri, {
+              volume: volumesRef.current.bgm,
+              loop: true,
+              fadeIn: 400,
+            });
+          } else if (isMounted) {
+            audioManager.stop('bgm');
+          }
+        }).catch(() => {
+          if (isMounted) audioManager.stop('bgm');
+        });
+      }
 
-    // Process audio triggers for the current scene
-    if (currentScene.audioTriggers && currentScene.audioTriggers.length > 0) {
-      audioManager.processTriggers(currentScene.audioTriggers);
-    }
+      // Resolve and play voice
+      if (currentScene.voiceAudioUri && currentScene.voiceAudioUri.trim()) {
+        resolveAssetUri(currentScene.voiceAudioUri).then((uri) => {
+          if (isMounted) {
+            audioManager.play('voice', uri, { volume: volumesRef.current.voice });
+          }
+        }).catch(() => {
+          // Silent fail for missing voice
+        });
+      }
+
+      // Process audio triggers for the current scene
+      if (currentScene.audioTriggers && currentScene.audioTriggers.length > 0) {
+        audioManager.processTriggers(currentScene.audioTriggers);
+      }
+    });
 
     return () => {
       isMounted = false;
@@ -60,9 +83,5 @@ export function useReaderAudio(currentScene: StoryScene | null, settings: UserSe
   useEffect(() => {
     // Initialize audio system early to prevent playback delays
     audioManager.initialize().catch(err => console.warn('Audio init failed:', err));
-
-    return () => {
-      audioManager.stopAll(0);
-    };
   }, []);
 }
