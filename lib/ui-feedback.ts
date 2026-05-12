@@ -44,7 +44,7 @@ export async function playHaptic(
     }
   } catch (error) {
     // Haptics not supported on device - graceful degradation
-    console.debug('Haptics not supported:', error);
+    if (__DEV__) console.debug('Haptics not supported:', error);
   }
 }
 
@@ -63,7 +63,7 @@ export async function playSound(
     const soundFile = SOUND_FILES[soundName];
     if (!soundFile) {
       // Sound file not available - silent fail (graceful degradation)
-      console.debug(`Sound not available: ${soundName}`);
+      if (__DEV__) console.debug(`Sound not available: ${soundName}`);
       return;
     }
 
@@ -84,7 +84,7 @@ export async function playSound(
     soundCache[soundName] = sound;
   } catch (error) {
     // Sound playback failed - silent fail (graceful degradation)
-    console.debug(`Sound playback failed: ${soundName}`, error);
+    if (__DEV__) console.debug(`Sound playback failed: ${soundName}`, error);
   }
 }
 
@@ -136,7 +136,7 @@ export async function cleanupSounds() {
     try {
       await sound.unloadAsync();
     } catch (error) {
-      console.debug('Failed to unload sound:', error);
+      if (__DEV__) console.debug('Failed to unload sound:', error);
     }
   }
   Object.keys(soundCache).forEach(key => delete soundCache[key]);

@@ -87,7 +87,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
   const loadInventory = useCallback(async () => {
     try {
-      const inventoryJson = await AsyncStorage.getItem('inventory');
+      const inventoryJson = await AsyncStorage.getItem('vne_inventory');
       if (inventoryJson) {
         const inventory = JSON.parse(inventoryJson);
         dispatch({ type: 'SET_INVENTORY', payload: inventory });
@@ -99,7 +99,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
   const saveInventory = useCallback(async () => {
     try {
-      await AsyncStorage.setItem('inventory', JSON.stringify(state));
+      await AsyncStorage.setItem('vne_inventory', JSON.stringify(state));
     } catch (error) {
       console.error('Failed to save inventory:', error);
     }

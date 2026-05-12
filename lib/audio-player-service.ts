@@ -24,9 +24,9 @@ export class AudioPlayerService {
         try {
             await setAudioModeAsync({ playsInSilentMode: true });
             this.initialized = true;
-        } catch (err) {
-            console.warn('[AudioPlayer] init failed:', err);
-        }
+} catch (err) {
+      if (__DEV__) console.warn('[AudioPlayer] init failed:', err);
+    }
     }
 
     async play(
@@ -57,9 +57,9 @@ export class AudioPlayerService {
             if (fadeIn) {
                 this._fade(trackId, 0, volume, fadeIn);
             }
-        } catch (err) {
-            console.warn(`[AudioPlayer] play(${trackId}) failed:`, err);
-        }
+} catch (err) {
+      if (__DEV__) console.warn(`[AudioPlayer] play(${trackId}) failed:`, err);
+    }
     }
 
     async pause(trackId: string): Promise<void> {

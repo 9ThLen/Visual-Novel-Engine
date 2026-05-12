@@ -1,0 +1,1 @@
+import{measure}from"react-native-reanimated";export const safeMeasure=ref=>{"worklet";try{const measurement=measure(ref);if(!measurement){return null}if(measurement.width<=0||measurement.height<=0){return null}return measurement}catch(_a){return null}};

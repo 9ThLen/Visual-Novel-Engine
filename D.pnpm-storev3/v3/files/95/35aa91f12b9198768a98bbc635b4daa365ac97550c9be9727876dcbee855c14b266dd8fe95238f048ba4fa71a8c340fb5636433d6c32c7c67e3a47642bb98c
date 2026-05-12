@@ -1,0 +1,1 @@
+export var DraggableState;(function(DraggableState){DraggableState["IDLE"]="IDLE";DraggableState["DRAGGING"]="DRAGGING";DraggableState["DROPPED"]="DROPPED"})(DraggableState||(DraggableState={}));

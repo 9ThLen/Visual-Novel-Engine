@@ -8,7 +8,7 @@ export async function saveTreeToStorage(root: Block): Promise<void> {
   try {
     await AsyncStorage.setItem(STORAGE_KEYS.BLOCK_TREE, json);
   } catch (error) {
-    console.error('[Storage] Failed to save tree:', error);
+    if (__DEV__) console.error('[Storage] Failed to save tree:', error);
     throw error;
   }
 }
@@ -18,7 +18,7 @@ export async function loadTreeFromStorage(): Promise<Block | null> {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.BLOCK_TREE);
     return raw ? JSON.parse(raw) as Block : null;
   } catch (error) {
-    console.error('[Storage] Failed to load tree:', error);
+    if (__DEV__) console.error('[Storage] Failed to load tree:', error);
     return null;
   }
 }

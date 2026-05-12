@@ -32,7 +32,7 @@ const AtomBlockComponent: React.FC<ComponentProps> = ({ atom, isSelected, onPres
   // Збільшений hitSlop для планшетів
   const hitSlop = layout.isTablet
     ? { top: 10, bottom: 10, left: 10, right: 10 }
-    : { top: 5, bottom: 5, left: 5, right: 5 };
+    : { top: 12, bottom: 12, left: 12, right: 12 }; // Phone: even larger for fat-finger touch
 
   return (
     <TouchableOpacity
@@ -45,6 +45,8 @@ const AtomBlockComponent: React.FC<ComponentProps> = ({ atom, isSelected, onPres
         isSelected && styles.selectedContainer,
         // Більші атоми на планшетах
         layout.isTablet && styles.tabletContainer,
+        // На телефоні — мінімальні розміри для зручного тачу
+        !layout.isTablet && styles.phoneContainer,
       ]}
     >
       {/* Snap point indicators */}
@@ -55,9 +57,9 @@ const AtomBlockComponent: React.FC<ComponentProps> = ({ atom, isSelected, onPres
 
       {/* Atom content */}
       <View style={styles.contentRow}>
-        <Text style={[styles.iconText, layout.isTablet && styles.iconTextTablet]}>{ATOM_TYPE_ICONS[atom.type] || '⬜'}</Text>
+        <Text style={[styles.iconText, layout.isTablet && styles.iconTextTablet, !layout.isTablet && styles.iconTextPhone]}>{ATOM_TYPE_ICONS[atom.type] || '⬜'}</Text>
         <View style={[styles.typeDot, { backgroundColor: typeColor }, layout.isTablet && styles.typeDotTablet]} />
-        <Text style={[styles.label, layout.isTablet && styles.labelTablet]}>{getTextData(atom)?.content || getCharacterData(atom)?.characterId || atom.id}</Text>
+        <Text style={[styles.label, layout.isTablet && styles.labelTablet, !layout.isTablet && styles.labelPhone]} numberOfLines={1}>{getTextData(atom)?.content || getCharacterData(atom)?.characterId || atom.id}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -86,6 +88,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderRadius: 10,
+  },
+  phoneContainer: {
+    minWidth: 100,
+    minHeight: 52,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 6,
   },
   selectedContainer: {
     borderColor: '#FF3B30',
@@ -129,6 +138,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
     marginRight: 8,
   },
+  iconTextPhone: {
+    fontSize: 14,
+    marginRight: 4,
+  },
   typeDot: {
     width: 12,
     height: 12,
@@ -148,6 +161,10 @@ const styles = StyleSheet.create({
   },
   labelTablet: {
     fontSize: 16,
+  },
+  labelPhone: {
+    fontSize: 12,
+    flexShrink: 1,
   },
 });
 

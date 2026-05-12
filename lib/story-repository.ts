@@ -16,7 +16,7 @@ export const StoryRepository = {
     
     // Migration: If the first item has scenes, it's the old format
     if (parsed.length > 0 && parsed[0].scenes) {
-      console.log('Migrating stories to new storage format...');
+      if (__DEV__) console.log('Migrating stories to new storage format...');
       const stories = parsed as Story[];
       
       const sceneMigrationPromises = stories.map((s: Story) => 

@@ -102,7 +102,7 @@ export async function resolveAssetUri(uri: string | undefined): Promise<any> {
       try {
         const info = await FileSystem.getInfoAsync(uri);
         if (info.exists) {
-          console.log('[AssetResolver] File verified:', uri);
+          if (__DEV__) console.log('[AssetResolver] File verified:', uri);
           return uri;
         }
       } catch {
@@ -111,7 +111,7 @@ export async function resolveAssetUri(uri: string | undefined): Promise<any> {
 
       // Trust media-library paths even if getInfoAsync failed (common on web/OPFS)
       if (isMediaLibraryPath) {
-        console.log('[AssetResolver] Trusting media-library path:', uri);
+        if (__DEV__) console.log('[AssetResolver] Trusting media-library path:', uri);
         return uri;
       }
     }
@@ -154,10 +154,10 @@ export async function resolveAssetUri(uri: string | undefined): Promise<any> {
 
     // Fallback: return the URI as-is rather than losing it entirely.
     // The Image / Audio component will handle load errors gracefully.
-    console.warn('[AssetResolver] Could not verify URI, using as-is:', uri);
+    if (__DEV__) console.warn('[AssetResolver] Could not verify URI, using as-is:', uri);
     return uri;
   } catch (error) {
-    console.error('[AssetResolver] Error resolving asset URI:', uri, error);
+    if (__DEV__) console.error('[AssetResolver] Error resolving asset URI:', uri, error);
     // Return the URI anyway so the component can attempt to load it
     return uri;
   }
@@ -186,7 +186,7 @@ export async function copyAssetToPermanentStorage(
     await FileSystem.copyAsync({ from: sourceUri, to: targetPath });
     return targetPath;
   } catch (error) {
-    console.error('[AssetResolver] Failed to copy asset:', error);
+    if (__DEV__) console.error('[AssetResolver] Failed to copy asset:', error);
     // Return original if copy fails
     return sourceUri;
   }

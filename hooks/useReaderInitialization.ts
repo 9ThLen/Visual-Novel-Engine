@@ -37,21 +37,19 @@ export function useReaderInitialization(storyIdParam?: string | string[]) {
         selectedStoryId = (demoStory as unknown as Story).id;
         const hasDemo = stories.some(s => s.id === selectedStoryId);
         if (!hasDemo) {
-          console.warn('Demo story metadata missing from context. Attempting to load anyway...');
+          if (__DEV__) console.warn('Demo story metadata missing from context. Attempting to load anyway...');
         }
       }
 
-      const { currentStory: refStory, playbackState: refPlayback } = stateRef.current;
+      if (requestId !== initRequestIdRef.current) return;
 
-      if (refStory?.id !== selectedStoryId) {
+      if (stateRef.current.currentStory?.id !== selectedStoryId) {
         await setCurrentStory(selectedStoryId);
       }
 
       if (requestId !== initRequestIdRef.current) return;
 
-      // We need to check stateRef again as setCurrentStory may have updated context 
-      // (though it won't reflect immediately in ref without render, so we rely on the next render)
-      if (refPlayback && refPlayback.storyId === selectedStoryId) {
+      if (stateRef.current.playbackState && stateRef.current.playbackState.storyId === selectedStoryId) {
         return;
       }
 
@@ -64,10 +62,10 @@ export function useReaderInitialization(storyIdParam?: string | string[]) {
         choicesMade: [],
       };
       updatePlaybackState(newPlaybackState);
-      
+
     } catch (error) {
       if (requestId !== initRequestIdRef.current) return;
-      console.error('Failed to initialize reader:', error);
+      if (__DEV__) console.error('Failed to initialize reader:', error);
       setIsLoading(false);
     }
   }, [storyIdParam, stories, setCurrentStory, updatePlaybackState]);

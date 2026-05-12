@@ -12,7 +12,11 @@ interface Props {
   spriteUri: string;
 }
 
-export function CharacterDisplay({ instance, spriteUri }: Props) {
+export function CharacterDisplay(props: Props) {
+  return <MemoizedCharacterDisplay {...props} />;
+}
+
+const MemoizedCharacterDisplay = React.memo(({ instance, spriteUri }: Props) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   return (
@@ -36,26 +40,13 @@ export function CharacterDisplay({ instance, spriteUri }: Props) {
         style={[
           styles.image,
           {
-            maxHeight: screenHeight * 0.7, // 70% of screen height
-            maxWidth: screenWidth * 0.4, // 40% of screen width
+            maxHeight: screenHeight * 0.7,
+            maxWidth: screenWidth * 0.4,
           },
         ]}
         resizeMode="contain"
       />
     </Animated.View>
   );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    bottom: 0,
-    left: '50%',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  image: {
-    width: 300,
-    height: 500,
-  },
 });
+MemoizedCharacterDisplay.displayName = 'CharacterDisplay';

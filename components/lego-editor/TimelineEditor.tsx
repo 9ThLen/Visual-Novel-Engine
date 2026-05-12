@@ -119,16 +119,16 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ sceneId }) => {
   };
 
   return (
-    <View style={[styles.container, layout.isTablet && styles.containerTablet]}>
+    <View style={[styles.container, layout.isTablet && styles.containerTablet, !layout.isTablet && styles.containerPhone]}>
       {/* Timeline Ruler */}
-      <ScrollView horizontal style={styles.rulerContainer}>
+      <ScrollView horizontal style={[styles.rulerContainer, !layout.isTablet && styles.rulerContainerPhone]}>
         <View style={[styles.ruler, { width: totalWidth }]}>
           {rulerMarks.map((second) => (
             <View
               key={`ruler-${second}`}
               style={[styles.rulerMark, { left: second * timeScale }]}
             >
-              <Text style={[styles.rulerText, layout.isTablet && styles.rulerTextTablet]}>
+              <Text style={[styles.rulerText, layout.isTablet && styles.rulerTextTablet, !layout.isTablet && styles.rulerTextPhone]}>
                 {second}s
               </Text>
               <View style={styles.rulerTick} />
@@ -140,7 +140,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ sceneId }) => {
       {/* Timeline Events (DnD disabled - HorizontalSortable not exported by library) */}
       <ScrollView
         horizontal
-        style={styles.sortableContainer}
+        style={[styles.sortableContainer, !layout.isTablet && styles.sortableContainerPhone]}
         contentContainerStyle={styles.sortableContent}
       >
         {timelineEvents.map((event, index) => renderTimelineItem(event, index))}
@@ -152,23 +152,23 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ sceneId }) => {
       </ScrollView>
 
       {/* Detailed view below sortable */}
-      <ScrollView style={styles.detailContainer}>
+      <ScrollView style={[styles.detailContainer, !layout.isTablet && styles.detailContainerPhone]}>
         {timelineEvents.map((event, index) => (
           <View
             key={event.id || `detail-${index}`}
-            style={[styles.detailCard, layout.isTablet && styles.detailCardTablet]}
+            style={[styles.detailCard, layout.isTablet && styles.detailCardTablet, !layout.isTablet && styles.detailCardPhone]}
           >
             <View style={styles.detailHeader}>
-              <Text style={[styles.detailTitle, layout.isTablet && styles.detailTitleTablet]}>
+              <Text style={[styles.detailTitle, layout.isTablet && styles.detailTitleTablet, !layout.isTablet && styles.detailTitlePhone]}>
                 🎬 {event.elementId}
               </Text>
-              <Text style={styles.detailBadge}>{event.easing}</Text>
+              <Text style={[styles.detailBadge, !layout.isTablet && styles.detailBadgePhone]}>{event.easing}</Text>
             </View>
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Старт:</Text>
-              <Text style={styles.detailValue}>{event.startTime}s</Text>
-              <Text style={styles.detailLabel}>Тривалість:</Text>
-              <Text style={styles.detailValue}>{event.duration}s</Text>
+              <Text style={[styles.detailLabel, !layout.isTablet && styles.detailLabelPhone]}>Старт:</Text>
+              <Text style={[styles.detailValue, !layout.isTablet && styles.detailValuePhone]}>{event.startTime}s</Text>
+              <Text style={[styles.detailLabel, !layout.isTablet && styles.detailLabelPhone]}>Тривалість:</Text>
+              <Text style={[styles.detailValue, !layout.isTablet && styles.detailValuePhone]}>{event.duration}s</Text>
             </View>
           </View>
         ))}
@@ -187,6 +187,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f9fa',
   },
+  containerPhone: {
+    backgroundColor: '#f8f9fa',
+    // On phone, TimelineEditor is inside a maxHeight wrapper from the parent,
+    // so we don't use flex:1 which would try to fill the whole screen.
+    // Instead, just let content flow naturally.
+  },
   containerTablet: {
     padding: 8,
   },
@@ -201,6 +207,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#dee2e6',
     backgroundColor: '#fff',
+  },
+  rulerContainerPhone: {
+    height: 36,
   },
   ruler: {
     position: 'relative',
@@ -221,6 +230,10 @@ const styles = StyleSheet.create({
   rulerTextTablet: {
     fontSize: 14,
   },
+  rulerTextPhone: {
+    fontSize: 10,
+    marginBottom: 1,
+  },
   rulerTick: {
     width: 1,
     height: 12,
@@ -232,6 +245,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#dee2e6',
+  },
+  sortableContainerPhone: {
+    minHeight: 72,
   },
   sortableContent: {
     paddingVertical: 12,
@@ -265,6 +281,9 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 8,
   },
+  detailContainerPhone: {
+    padding: 4,
+  },
   detailCard: {
     backgroundColor: '#fff',
     borderRadius: 8,
@@ -276,6 +295,11 @@ const styles = StyleSheet.create({
   detailCardTablet: {
     padding: 16,
     minHeight: 70,
+  },
+  detailCardPhone: {
+    padding: 8,
+    marginBottom: 6,
+    borderLeftWidth: 2,
   },
   detailHeader: {
     flexDirection: 'row',
@@ -291,6 +315,9 @@ const styles = StyleSheet.create({
   detailTitleTablet: {
     fontSize: 17,
   },
+  detailTitlePhone: {
+    fontSize: 13,
+  },
   detailBadge: {
     fontSize: 11,
     color: '#6c757d',
@@ -298,6 +325,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
+  },
+  detailBadgePhone: {
+    fontSize: 9,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
   },
   detailRow: {
     flexDirection: 'row',
@@ -308,10 +340,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6c757d',
   },
+  detailLabelPhone: {
+    fontSize: 10,
+  },
   detailValue: {
     fontSize: 12,
     fontWeight: '600',
     color: '#1a1a2e',
+  },
+  detailValuePhone: {
+    fontSize: 10,
   },
   emptyDetail: {
     flex: 1,

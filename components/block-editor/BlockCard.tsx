@@ -22,7 +22,7 @@ interface BlockCardProps {
   };
 }
 
-export const BlockCard: React.FC<BlockCardProps> = ({
+export const BlockCard = React.memo(({
   block,
   isSelected,
   isDragging,
@@ -32,7 +32,7 @@ export const BlockCard: React.FC<BlockCardProps> = ({
   onDragStart,
   onPanGesture,
   colors,
-}) => {
+}: BlockCardProps) => {
   const entry = getBlockEntry(block.type);
   const summaryText = getSummaryText(block, entry);
 
