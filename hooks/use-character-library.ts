@@ -3,18 +3,10 @@ import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import type { Character, CharacterSprite } from '@/lib/character-types';
-
-const STORAGE_KEY = (storyId: string) => `character_library_${storyId}`;
-
-function loadFromStorage(storyId: string): Promise<Character[]> {
-  return AsyncStorage.getItem(STORAGE_KEY(storyId))
-    .then((raw) => (raw ? JSON.parse(raw) : []))
-    .catch(() => []);
-}
-
-function saveToStorage(storyId: string, characters: Character[]): Promise<void> {
-  return AsyncStorage.setItem(STORAGE_KEY(storyId), JSON.stringify(characters));
-}
+import {
+  getCharacterLibrary as loadFromStorage,
+  saveCharacterLibrary as saveToStorage,
+} from '@/lib/character-library';
 
 export function useCharacterLibrary(storyId: string, enabled: boolean) {
   const [characters, setCharacters] = useState<Character[]>([]);

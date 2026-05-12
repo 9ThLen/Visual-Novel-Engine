@@ -2,8 +2,20 @@ import React, { useCallback } from 'react';
 import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Story, StoryScene, Choice } from '@/lib/types';
+import { SplashScreenConfig } from '@/lib/splash-types';
+import { InteractiveObject } from '@/lib/interactive-types';
 import * as storyContextEnhanced from '@/lib/story-context-enhanced';
 import { Block } from '@/lib/block-types';
+
+interface SceneSaveData {
+  sceneText: string;
+  backgroundUri: string;
+  voiceUri: string;
+  musicUri: string;
+  splashConfig: SplashScreenConfig;
+  interactiveObjects: InteractiveObject[];
+  sceneRoot: { children: Block[] };
+}
 
 export function useSceneEditorActions(
   currentStory: Story | null,
@@ -13,15 +25,7 @@ export function useSceneEditorActions(
 ) {
   const router = useRouter();
 
-  const handleSaveScene = useCallback(async (data: {
-    sceneText: string;
-    backgroundUri: string;
-    voiceUri: string;
-    musicUri: string;
-    splashConfig: any;
-    interactiveObjects: any[];
-    sceneRoot: any;
-  }) => {
+  const handleSaveScene = useCallback(async (data: SceneSaveData) => {
     if (!currentStory || !scene) return;
     try {
       const blocksToSave: Block[] | undefined = data.sceneRoot?.children?.length > 0 ?

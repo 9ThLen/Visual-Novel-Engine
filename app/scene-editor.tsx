@@ -8,6 +8,8 @@ import {
   Alert,
   FlatList,
   Image,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -38,6 +40,7 @@ import TimelineEditor from '@/components/lego-editor/TimelineEditor';
 import { useSceneManagement } from '@/hooks/lego/useSceneManagement';
 import { useLegoDnD } from '@/hooks/lego/useLegoDnD';
 import type { AtomBlock } from '@/lib/atom-types';
+import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 
 type Tab = 'blocks' | 'edit' | 'lego';
 
@@ -173,6 +176,7 @@ export default function SceneEditorScreen() {
     handleAtomsChange,
   } = useSceneManagement();
   const [selectedAtomId, setSelectedAtomId] = useState<string | null>(null);
+  const layout = useResponsiveLayout();
 
   // Media Hook
   const { 
@@ -294,140 +298,247 @@ export default function SceneEditorScreen() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  const isPhone = layout.deviceType === 'phone';
+
   return (
-    <ScreenContainer className="p-4">
-      {/* Header */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <View>
-          <Text style={{ fontSize: 20, fontWeight: '700', color: colors.foreground }}>Scene Editor</Text>
-          <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600', marginTop: 1 }}>{scene.id}</Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 1, minWidth: 0 }}>
-          <LanguageSelector style={{ flex: 1, minWidth: 0 }} />
-          <Pressable
-            style={({ pressed }) => ({ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.success, opacity: pressed ? 0.8 : 1 })}
-            onPress={handleSaveScene}
-          >
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>💾 Save</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => ({ paddingHorizontal: 10, paddingVertical: 8, opacity: pressed ? 0.7 : 1 })}
-            onPress={() => router.back()}
-          >
-            <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Back</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Tabs */}
-      <View style={{ flexDirection: 'row', gap: 0, marginBottom: 16, backgroundColor: colors.surface, borderRadius: 10, padding: 4, borderWidth: 1, borderColor: colors.border }}>
-        {(['blocks', 'edit', 'lego'] as Tab[]).map((tab) => (
-          <Pressable
-            key={tab}
-            style={{ flex: 1, paddingVertical: 8, borderRadius: 7, backgroundColor: activeTab === tab ? colors.primary : 'transparent', alignItems: 'center' }}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Text style={{ color: activeTab === tab ? '#fff' : colors.muted, fontWeight: '600', fontSize: 13, textTransform: 'capitalize' }}>
-              {tab === 'blocks' ? '🧱 Blocks' : tab === 'edit' ? '✏️ Edit' : '🧱 LEGO'}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {/* ── BLOCKS TAB ─────────────────────────────────────────────────── */}
-      {activeTab === 'blocks' && sceneRoot && (
-        <BlocksTab
-          sceneRoot={sceneRoot}
-          setSceneRoot={setSceneRoot}
-          setSceneBlocks={setSceneBlocks}
-          selectedBlockId={selectedBlockId}
-          setSelectedBlockId={setSelectedBlockId}
-          sceneList={sceneList}
-          characterList={characterList}
-          colors={colors}
-        />
-      )}
-
-      {/* ── EDIT TAB ─────────────────────────────────────────────────────── */}
-      {activeTab === 'edit' && (
-        <EditTab
-          scene={scene}
-          sceneText={sceneText}
-          setSceneText={setSceneText}
-          backgroundUri={backgroundUri}
-          setBackgroundUri={setBackgroundUri}
-          voiceUri={voiceUri}
-          setVoiceUri={setVoiceUri}
-          musicUri={musicUri}
-          setMusicUri={setMusicUri}
-          splashConfig={splashConfig}
-          setSplashConfig={setSplashConfig}
-          interactiveObjects={interactiveObjects}
-          setInteractiveObjects={setInteractiveObjects}
-          newChoiceText={newChoiceText}
-          setNewChoiceText={setNewChoiceText}
-          newChoiceTarget={newChoiceTarget}
-          setNewChoiceTarget={setNewChoiceTarget}
-          sceneList={sceneList}
-          handlePickBg={handlePickBg}
-          handlePickAudio={handlePickAudio}
-          setLibraryTarget={setLibraryTarget}
-          handleGraphNavigate={() => {}}
-          handleDeleteChoice={handleDeleteChoice}
-          handleAddChoice={handleAddChoice}
-          handleAddScene={handleAddScene}
-          handleDeleteScene={handleDeleteScene}
-          colors={colors}
-          FilePickerRow={FilePickerRow}
-          storyId={currentStory.id}
-        />
-      )}
-
-      {/* ── LEGO TAB ─────────────────────────────────────────────────────── */}
-      {activeTab === 'lego' && (
-        <View style={{ flex: 1 }}>
-          {/* LEGO sub-tab selector */}
-          <View style={{ flexDirection: 'row', gap: 0, marginBottom: 12, backgroundColor: colors.surface, borderRadius: 8, padding: 3, borderWidth: 1, borderColor: colors.border }}>
-            {(['canvas', 'timeline'] as const).map((subTab) => (
-              <Pressable
-                key={subTab}
-                style={{ flex: 1, paddingVertical: 6, borderRadius: 6, backgroundColor: legoSubTab === subTab ? colors.primary : 'transparent', alignItems: 'center' }}
-                onPress={() => setLegoSubTab(subTab)}
-              >
-                <Text style={{ color: legoSubTab === subTab ? '#fff' : colors.muted, fontWeight: '600', fontSize: 13 }}>
-                  {subTab === 'canvas' ? '🎨 Canvas' : '📅 Timeline'}
-                </Text>
-              </Pressable>
-            ))}
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScreenContainer className="p-4" edges={isPhone ? ['top', 'left', 'right', 'bottom'] : undefined}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: isPhone ? 10 : 16 }}>
+          <View style={{ flex: 1, marginRight: 8 }}>
+            <Text style={{ fontSize: isPhone ? 16 : 20, fontWeight: '700', color: colors.foreground }} numberOfLines={1}>Scene Editor</Text>
+            <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '600', marginTop: 1 }} numberOfLines={1}>{scene.id}</Text>
           </View>
-
-          {/* LEGO workspace */}
-          {legoSubTab === 'canvas' && legoScene ? (
-            <LegoCanvas
-              atoms={legoScene.elements.filter((e): e is AtomBlock => 'snapPoints' in e)}
-              onAtomsChange={handleAtomsChange}
-              selectedAtomId={selectedAtomId}
-              onAtomSelect={setSelectedAtomId}
-            />
-          ) : legoSubTab === 'timeline' && legoScene ? (
-            <TimelineEditor sceneId={legoScene.id} />
-          ) : (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{ color: colors.muted, fontSize: 16 }}>
-                Select a scene in the LEGO store to start editing
-              </Text>
-            </View>
-          )}
+          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+            <LanguageSelector style={{ flex: 0 }} />
+            <Pressable
+              style={({ pressed }) => ({ paddingHorizontal: isPhone ? 10 : 14, paddingVertical: isPhone ? 6 : 8, borderRadius: 8, backgroundColor: colors.success, opacity: pressed ? 0.8 : 1 })}
+              onPress={handleSaveScene}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: isPhone ? 12 : 13 }}>💾 Save</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => ({ paddingHorizontal: 8, paddingVertical: isPhone ? 6 : 8, opacity: pressed ? 0.7 : 1 })}
+              onPress={() => router.back()}
+            >
+              <Text style={{ color: colors.primary, fontWeight: '600', fontSize: isPhone ? 12 : 14 }}>Back</Text>
+            </Pressable>
+          </View>
         </View>
-      )}
 
-      {/* ── Media Library drawer ────────────────────────────────────────── */}
-      <MediaLibrary
-        visible={libraryTarget !== null}
-        type={libraryTarget === 'bg' ? 'image' : 'audio'}
-        onSelect={handleLibrarySelect}
-        onClose={() => setLibraryTarget(null)}
-      />
-    </ScreenContainer>
+        {/* Tabs */}
+        <View style={{ flexDirection: 'row', gap: 0, marginBottom: isPhone ? 10 : 16, backgroundColor: colors.surface, borderRadius: isPhone ? 8 : 10, padding: isPhone ? 3 : 4, borderWidth: 1, borderColor: colors.border }}>
+          {(['blocks', 'edit', 'lego'] as Tab[]).map((tab) => (
+            <Pressable
+              key={tab}
+              style={{ flex: 1, paddingVertical: isPhone ? 6 : 8, borderRadius: isPhone ? 6 : 7, backgroundColor: activeTab === tab ? colors.primary : 'transparent', alignItems: 'center' }}
+              onPress={() => setActiveTab(tab)}
+            >
+              <Text style={{ color: activeTab === tab ? '#fff' : colors.muted, fontWeight: '600', fontSize: isPhone ? 11 : 13 }} numberOfLines={1}>
+                {tab === 'blocks' ? '🧱 Blocks' : tab === 'edit' ? '✏️ Edit' : '🧱 LEGO'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Tab content in ScrollView for phone so nothing gets pushed off-screen */}
+        {isPhone ? (
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {activeTab === 'blocks' && sceneRoot && (
+              <BlocksTab
+                sceneRoot={sceneRoot}
+                setSceneRoot={setSceneRoot}
+                setSceneBlocks={setSceneBlocks}
+                selectedBlockId={selectedBlockId}
+                setSelectedBlockId={setSelectedBlockId}
+                sceneList={sceneList}
+                characterList={characterList}
+                colors={colors}
+              />
+            )}
+
+            {activeTab === 'edit' && (
+              <EditTab
+                scene={scene}
+                sceneText={sceneText}
+                setSceneText={setSceneText}
+                backgroundUri={backgroundUri}
+                setBackgroundUri={setBackgroundUri}
+                voiceUri={voiceUri}
+                setVoiceUri={setVoiceUri}
+                musicUri={musicUri}
+                setMusicUri={setMusicUri}
+                splashConfig={splashConfig}
+                setSplashConfig={setSplashConfig}
+                interactiveObjects={interactiveObjects}
+                setInteractiveObjects={setInteractiveObjects}
+                newChoiceText={newChoiceText}
+                setNewChoiceText={setNewChoiceText}
+                newChoiceTarget={newChoiceTarget}
+                setNewChoiceTarget={setNewChoiceTarget}
+                sceneList={sceneList}
+                handlePickBg={handlePickBg}
+                handlePickAudio={handlePickAudio}
+                setLibraryTarget={setLibraryTarget}
+                handleGraphNavigate={() => {}}
+                handleDeleteChoice={handleDeleteChoice}
+                handleAddChoice={handleAddChoice}
+                handleAddScene={handleAddScene}
+                handleDeleteScene={handleDeleteScene}
+                colors={colors}
+                FilePickerRow={FilePickerRow}
+                storyId={currentStory.id}
+              />
+            )}
+
+            {/* ── LEGO TAB (phone) ─────────────────────────────────────── */}
+            {activeTab === 'lego' && (
+              <View style={{ minHeight: 300 }}>
+                {/* LEGO sub-tab selector */}
+                <View style={{ flexDirection: 'row', gap: 0, marginBottom: 8, backgroundColor: colors.surface, borderRadius: 6, padding: 2, borderWidth: 1, borderColor: colors.border }}>
+                  {(['canvas', 'timeline'] as const).map((subTab) => (
+                    <Pressable
+                      key={subTab}
+                      style={{ flex: 1, paddingVertical: 7, borderRadius: 5, backgroundColor: legoSubTab === subTab ? colors.primary : 'transparent', alignItems: 'center' }}
+                      onPress={() => setLegoSubTab(subTab)}
+                    >
+                      <Text style={{ color: legoSubTab === subTab ? '#fff' : colors.muted, fontWeight: '600', fontSize: 12 }}>
+                        {subTab === 'canvas' ? '🎨 Canvas' : '📅 Timeline'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                {/* LEGO workspace (phone) — with bounded height */}
+                {legoSubTab === 'canvas' && legoScene ? (
+                  <View style={{ height: layout.screenHeight * 0.55, borderRadius: 8, overflow: 'hidden' }}>
+                    <LegoCanvas
+                      atoms={legoScene.elements.filter((e): e is AtomBlock => 'snapPoints' in e)}
+                      onAtomsChange={handleAtomsChange}
+                      selectedAtomId={selectedAtomId}
+                      onAtomSelect={setSelectedAtomId}
+                    />
+                  </View>
+                ) : legoSubTab === 'timeline' && legoScene ? (
+                  <View style={{ maxHeight: layout.screenHeight * 0.6 }}>
+                    <TimelineEditor sceneId={legoScene.id} />
+                  </View>
+                ) : (
+                  <View style={{ paddingVertical: 40, justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ color: colors.muted, fontSize: 14, textAlign: 'center' }}>
+                      🧩 Оберіть сцену в LEGO store для редагування
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </ScrollView>
+        ) : (
+          /* ── Tablet/Desktop layout: original flex behavior ────────── */
+          <>
+            {activeTab === 'blocks' && sceneRoot && (
+              <BlocksTab
+                sceneRoot={sceneRoot}
+                setSceneRoot={setSceneRoot}
+                setSceneBlocks={setSceneBlocks}
+                selectedBlockId={selectedBlockId}
+                setSelectedBlockId={setSelectedBlockId}
+                sceneList={sceneList}
+                characterList={characterList}
+                colors={colors}
+              />
+            )}
+
+            {activeTab === 'edit' && (
+              <EditTab
+                scene={scene}
+                sceneText={sceneText}
+                setSceneText={setSceneText}
+                backgroundUri={backgroundUri}
+                setBackgroundUri={setBackgroundUri}
+                voiceUri={voiceUri}
+                setVoiceUri={setVoiceUri}
+                musicUri={musicUri}
+                setMusicUri={setMusicUri}
+                splashConfig={splashConfig}
+                setSplashConfig={setSplashConfig}
+                interactiveObjects={interactiveObjects}
+                setInteractiveObjects={setInteractiveObjects}
+                newChoiceText={newChoiceText}
+                setNewChoiceText={setNewChoiceText}
+                newChoiceTarget={newChoiceTarget}
+                setNewChoiceTarget={setNewChoiceTarget}
+                sceneList={sceneList}
+                handlePickBg={handlePickBg}
+                handlePickAudio={handlePickAudio}
+                setLibraryTarget={setLibraryTarget}
+                handleGraphNavigate={() => {}}
+                handleDeleteChoice={handleDeleteChoice}
+                handleAddChoice={handleAddChoice}
+                handleAddScene={handleAddScene}
+                handleDeleteScene={handleDeleteScene}
+                colors={colors}
+                FilePickerRow={FilePickerRow}
+                storyId={currentStory.id}
+              />
+            )}
+
+            {/* ── LEGO TAB (tablet/desktop) ──────────────────────────────── */}
+            {activeTab === 'lego' && (
+              <View style={{ flex: 1 }}>
+                {/* LEGO sub-tab selector */}
+                <View style={{ flexDirection: 'row', gap: 0, marginBottom: 12, backgroundColor: colors.surface, borderRadius: 8, padding: 3, borderWidth: 1, borderColor: colors.border }}>
+                  {(['canvas', 'timeline'] as const).map((subTab) => (
+                    <Pressable
+                      key={subTab}
+                      style={{ flex: 1, paddingVertical: 6, borderRadius: 6, backgroundColor: legoSubTab === subTab ? colors.primary : 'transparent', alignItems: 'center' }}
+                      onPress={() => setLegoSubTab(subTab)}
+                    >
+                      <Text style={{ color: legoSubTab === subTab ? '#fff' : colors.muted, fontWeight: '600', fontSize: 13 }}>
+                        {subTab === 'canvas' ? '🎨 Canvas' : '📅 Timeline'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                {/* LEGO workspace */}
+                {legoSubTab === 'canvas' && legoScene ? (
+                  <LegoCanvas
+                    atoms={legoScene.elements.filter((e): e is AtomBlock => 'snapPoints' in e)}
+                    onAtomsChange={handleAtomsChange}
+                    selectedAtomId={selectedAtomId}
+                    onAtomSelect={setSelectedAtomId}
+                  />
+                ) : legoSubTab === 'timeline' && legoScene ? (
+                  <TimelineEditor sceneId={legoScene.id} />
+                ) : (
+                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ color: colors.muted, fontSize: 16 }}>
+                      Select a scene in the LEGO store to start editing
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </>
+        )}
+
+        {/* ── Media Library drawer ────────────────────────────────────────── */}
+        <MediaLibrary
+          visible={libraryTarget !== null}
+          type={libraryTarget === 'bg' ? 'image' : 'audio'}
+          onSelect={handleLibrarySelect}
+          onClose={() => setLibraryTarget(null)}
+        />
+      </ScreenContainer>
+    </KeyboardAvoidingView>
   );
 }

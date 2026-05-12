@@ -21,7 +21,7 @@ const typeColors: Record<string, string> = {
   snippet: '#fff5e6',
 };
 
-export const BlockNode: React.FC<Props> = ({ block, path, depth = 0, onMove, onDropBlock, onAddChild }) => {
+export const BlockNode = React.memo(({ block, path, depth = 0, onMove, onDropBlock, onAddChild }: Props) => {
   const paddingLeft = depth * 20 + basePadding;
   const blockStyle: React.CSSProperties = {
     padding: 12,

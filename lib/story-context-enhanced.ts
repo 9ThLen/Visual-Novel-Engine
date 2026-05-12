@@ -21,7 +21,7 @@ export async function updateStory(story: Story): Promise<void> {
     
     await AsyncStorage.setItem(STORAGE_KEYS.STORIES, JSON.stringify(stories));
   } catch (error) {
-    console.error('Failed to update story:', error);
+    if (__DEV__) console.error('Failed to update story:', error);
     throw error;
   }
 }
@@ -47,7 +47,7 @@ export async function updateScene(storyId: string, scene: StoryScene): Promise<v
     };
     await AsyncStorage.setItem(STORAGE_KEYS.STORIES, JSON.stringify(stories));
   } catch (error) {
-    console.error('Failed to update scene:', error);
+    if (__DEV__) console.error('Failed to update scene:', error);
     throw error;
   }
 }
@@ -73,7 +73,7 @@ export async function addScene(storyId: string, scene: StoryScene): Promise<void
     };
     await AsyncStorage.setItem(STORAGE_KEYS.STORIES, JSON.stringify(stories));
   } catch (error) {
-    console.error('Failed to add scene:', error);
+    if (__DEV__) console.error('Failed to add scene:', error);
     throw error;
   }
 }
@@ -103,7 +103,7 @@ export async function deleteScene(storyId: string, sceneId: string): Promise<voi
     };
     await AsyncStorage.setItem(STORAGE_KEYS.STORIES, JSON.stringify(stories));
   } catch (error) {
-    console.error('Failed to delete scene:', error);
+    if (__DEV__) console.error('Failed to delete scene:', error);
     throw error;
   }
 }
@@ -136,7 +136,7 @@ export async function addChoice(storyId: string, sceneId: string, choice: Choice
     };
     await AsyncStorage.setItem(STORAGE_KEYS.STORIES, JSON.stringify(stories));
   } catch (error) {
-    console.error('Failed to add choice:', error);
+    if (__DEV__) console.error('Failed to add choice:', error);
     throw error;
   }
 }
@@ -171,7 +171,7 @@ export async function deleteChoice(storyId: string, sceneId: string, choiceId: s
     };
     await AsyncStorage.setItem(STORAGE_KEYS.STORIES, JSON.stringify(stories));
   } catch (error) {
-    console.error('Failed to delete choice:', error);
+    if (__DEV__) console.error('Failed to delete choice:', error);
     throw error;
   }
 }
@@ -187,7 +187,7 @@ export async function exportStory(storyId: string): Promise<string> {
     }
     throw new Error('Story not found');
   } catch (error) {
-    console.error('Failed to export story:', error);
+    if (__DEV__) console.error('Failed to export story:', error);
     throw error;
   }
 }
@@ -213,7 +213,7 @@ export async function importStory(storyJson: string): Promise<Story> {
     await AsyncStorage.setItem(STORAGE_KEYS.STORIES, JSON.stringify(stories));
     return story;
   } catch (error) {
-    console.error('Failed to import story:', error);
+    if (__DEV__) console.error('Failed to import story:', error);
     throw error;
   }
 }

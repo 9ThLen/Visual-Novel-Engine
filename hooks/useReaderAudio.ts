@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { useFocusEffect } from 'expo-router';
 import { StoryScene, UserSettings } from '../lib/types';
 import { enhancedAudioManager as audioManager } from '../lib/audio-manager-enhanced';
 import { resolveAssetUri } from '../lib/asset-resolver';
@@ -16,15 +15,13 @@ export function useReaderAudio(currentScene: StoryScene | null, settings: UserSe
   }, [settings.bgmVolume, settings.voiceVolume]);
 
   // Stop ALL audio when leaving the reader screen (back to menu, etc.)
-  useFocusEffect(
-    useRef(() => {
-      return () => {
-        audioManager.cancelAllTriggers();
-        audioManager.stopAll(0);
-        currentBgmUriRef.current = null;
-      };
-    }).current,
-  );
+  useEffect(() => {
+    return () => {
+      audioManager.cancelAllTriggers();
+      audioManager.stopAll(0);
+      currentBgmUriRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!currentScene) return;
@@ -92,6 +89,7 @@ export function useReaderAudio(currentScene: StoryScene | null, settings: UserSe
   }, [currentScene?.id]);
 
   useEffect(() => {
-    audioManager.initialize().catch(err => console.warn('Audio init failed:', err));
+    if (__DEV__) audioManager.initialize().catch(err => console.warn('Audio init failed:', err));
+    else audioManager.initialize();
   }, []);
 }

@@ -18,6 +18,7 @@
     "skipLibCheck": true,
     "target": "ESNext",
     "strict": true,
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "preserveSymlinks": true,
     "paths": {
@@ -44,5 +45,4 @@
     "android",
     "ios"
   ],
-  "extends": "expo/tsconfig.base"
 }

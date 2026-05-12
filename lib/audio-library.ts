@@ -16,7 +16,7 @@ export async function getAudioLibrary(storyId: string): Promise<AudioLibraryItem
     const data = await AsyncStorage.getItem(`${AUDIO_LIBRARY_KEY}_${storyId}`);
     return data ? JSON.parse(data) : [];
   } catch (error) {
-    console.error('Failed to get audio library:', error);
+    if (__DEV__) console.error('Failed to get audio library:', error);
     return [];
   }
 }
@@ -34,7 +34,7 @@ export async function saveAudioLibrary(
       JSON.stringify(library)
     );
   } catch (error) {
-    console.error('Failed to save audio library:', error);
+    if (__DEV__) console.error('Failed to save audio library:', error);
     throw error;
   }
 }
@@ -60,7 +60,7 @@ export async function addAudioToLibrary(
 
     return newItem;
   } catch (error) {
-    console.error('Failed to add audio to library:', error);
+    if (__DEV__) console.error('Failed to add audio to library:', error);
     throw error;
   }
 }
@@ -84,7 +84,7 @@ export async function updateAudioInLibrary(
     library[index] = { ...library[index], ...updates };
     await saveAudioLibrary(storyId, library);
   } catch (error) {
-    console.error('Failed to update audio in library:', error);
+    if (__DEV__) console.error('Failed to update audio in library:', error);
     throw error;
   }
 }
@@ -101,7 +101,7 @@ export async function deleteAudioFromLibrary(
     const filtered = library.filter((item) => item.id !== audioId);
     await saveAudioLibrary(storyId, filtered);
   } catch (error) {
-    console.error('Failed to delete audio from library:', error);
+    if (__DEV__) console.error('Failed to delete audio from library:', error);
     throw error;
   }
 }
@@ -125,7 +125,7 @@ export async function searchAudioLibrary(
       return nameMatch || tagMatch;
     });
   } catch (error) {
-    console.error('Failed to search audio library:', error);
+    if (__DEV__) console.error('Failed to search audio library:', error);
     return [];
   }
 }
@@ -141,7 +141,7 @@ export async function getAudioByType(
     const library = await getAudioLibrary(storyId);
     return library.filter((item) => item.type === type);
   } catch (error) {
-    console.error('Failed to get audio by type:', error);
+    if (__DEV__) console.error('Failed to get audio by type:', error);
     return [];
   }
 }
@@ -170,7 +170,7 @@ export async function importAudioLibrary(
 
     await saveAudioLibrary(targetStoryId, [...targetLibrary, ...importedItems]);
   } catch (error) {
-    console.error('Failed to import audio library:', error);
+    if (__DEV__) console.error('Failed to import audio library:', error);
     throw error;
   }
 }
@@ -183,7 +183,7 @@ export async function exportAudioLibrary(storyId: string): Promise<string> {
     const library = await getAudioLibrary(storyId);
     return JSON.stringify(library, null, 2);
   } catch (error) {
-    console.error('Failed to export audio library:', error);
+    if (__DEV__) console.error('Failed to export audio library:', error);
     throw error;
   }
 }

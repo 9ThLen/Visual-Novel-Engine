@@ -31,10 +31,10 @@ export class AudioTriggerScheduler {
         trigger: AudioTrigger,
         _context?: { sceneId?: string },
     ): Promise<void> {
-        const audioItem = this.library.get(trigger.audioId);
+const audioItem = this.library.get(trigger.audioId);
         if (!audioItem) {
-            console.warn(`[AudioTriggerScheduler] Audio item not found: ${trigger.audioId}`);
-            return;
+          if (__DEV__) console.warn(`[AudioTriggerScheduler] Audio item not found: ${trigger.audioId}`);
+          return;
         }
 
         const trackId = buildTrackId(audioItem.type, trigger.id);

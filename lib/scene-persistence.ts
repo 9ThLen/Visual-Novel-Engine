@@ -39,7 +39,7 @@ export function useAutoSave(intervalMs: number = 30000): AutoSaveResult {
       await AsyncStorage.setItem(AUTOSAVE_TIMESTAMP_KEY, now.toISOString());
       setLastSaved(now);
     } catch (error) {
-      console.warn('[AutoSave] Failed to save:', error);
+      if (__DEV__) console.warn('[AutoSave] Failed to save:', error);
     } finally {
       setIsSaving(false);
     }

@@ -63,9 +63,8 @@ export function addBlockAtPath(root: Block, parentPath: Path, block: Block): Blo
 export function addBlockAfterPath(root: Block, path: Path, block: Block): Block {
   return produce(root, draft => {
     if (path.length === 0) {
-      const parent = draft;
-      const idx = path.length;
-      parent.children.splice(path[path.length - 1] + 1, 0, block);
+      // Add to root level
+      draft.children.push(block);
       return;
     }
     const parentPath = path.slice(0, -1);

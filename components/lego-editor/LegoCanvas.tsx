@@ -307,6 +307,7 @@ const LegoCanvas: React.FC<LegoCanvasProps> = ({
     styles.container,
     layout.isTablet && styles.containerTablet,
     isTabletLandscape && styles.containerLandscape,
+    !layout.isTablet && styles.containerPhone,
     {
       padding: layout.spacing,
     }
@@ -317,7 +318,7 @@ const LegoCanvas: React.FC<LegoCanvasProps> = ({
       {/* Empty state */}
       {atoms.length === 0 && (
         <View style={styles.emptyState} pointerEvents="none">
-          <Text style={styles.emptyStateText}>
+          <Text style={[styles.emptyStateText, !layout.isTablet && styles.emptyStateTextPhone]}>
             🧩 Додайте атоми на canvas{'\n'}або перетягніть їх між сценами
           </Text>
         </View>
@@ -345,6 +346,12 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
     backgroundColor: '#F5F5F5',
+  },
+  containerPhone: {
+    // On phone the canvas is placed in a fixed-height wrapper by the parent,
+    // so flex:1 works correctly within that bounded container.
+    // Ensure atoms don't overflow and touch targets are accessible.
+    overflow: 'hidden',
   },
   containerTablet: {
     backgroundColor: '#E8E8E8',
@@ -376,6 +383,10 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     textAlign: 'center',
     lineHeight: 24,
+  },
+  emptyStateTextPhone: {
+    fontSize: 13,
+    lineHeight: 20,
   },
   dragBadge: {
     position: 'absolute',

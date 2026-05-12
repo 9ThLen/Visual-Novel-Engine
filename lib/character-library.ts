@@ -18,7 +18,7 @@ export async function getCharacterLibrary(storyId: string): Promise<Character[]>
     const library: CharacterLibrary = JSON.parse(json);
     return library.characters || [];
   } catch (error) {
-    console.error('[CharacterLibrary] getCharacterLibrary failed:', error);
+    if (__DEV__) console.error('[CharacterLibrary] getCharacterLibrary failed:', error);
     return [];
   }
 }
@@ -34,7 +34,7 @@ export async function saveCharacterLibrary(
     const library: CharacterLibrary = { characters };
     await AsyncStorage.setItem(key, JSON.stringify(library));
   } catch (error) {
-    console.error('[CharacterLibrary] saveCharacterLibrary failed:', error);
+    if (__DEV__) console.error('[CharacterLibrary] saveCharacterLibrary failed:', error);
     throw error;
   }
 }

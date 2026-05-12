@@ -12,9 +12,8 @@ import { Platform } from "react-native";
 import type { Metrics } from "react-native-safe-area-context";
 
 // Debug logging with timestamps
-const DEBUG = true;
 const log = (msg: string) => {
-  if (!DEBUG) return;
+  if (!__DEV__) return;
   const ts = new Date().toISOString();
   console.log(`[ManusRuntime ${ts}] ${msg}`);
 };

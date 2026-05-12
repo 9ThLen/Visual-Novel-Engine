@@ -91,23 +91,25 @@ export class ErrorHandler {
       context,
     };
 
-    // Log to console
+    // Log to console (dev only)
     const logLevel = severity === ErrorSeverity.CRITICAL || severity === ErrorSeverity.HIGH
       ? 'error'
       : 'warn';
 
-    console[logLevel](`[${category.toUpperCase()}] ${message}`, {
-      severity,
-      originalError,
-      context,
-    });
+    if (__DEV__) {
+      console[logLevel](`[${category.toUpperCase()}] ${message}`, {
+        severity,
+        originalError,
+        context,
+      });
+    }
 
     // Notify listeners
     this.errorListeners.forEach(listener => {
       try {
         listener(appError);
       } catch (err) {
-        console.error('Error in error listener:', err);
+        if (__DEV__) console.error('Error in error listener:', err);
       }
     });
 
@@ -117,7 +119,7 @@ export class ErrorHandler {
         const userMessage = ErrorHandler.getUserMessage(appError);
         this.userAlertCallback(userMessage, severity);
       } catch (err) {
-        console.error('Error in user alert callback:', err);
+        if (__DEV__) console.error('Error in user alert callback:', err);
       }
     }
 
