@@ -3,23 +3,20 @@
  * Renders clickable objects on top of scene background
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Pressable,
   Image,
   Animated,
   StyleSheet,
-  Dimensions,
-  Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { getBundledAsset } from '@/lib/asset-resolver';
-import { useInventory } from '@/lib/inventory-context';
 import type {
   InteractiveObject,
   InteractiveAction,
-  InteractionResult,
 } from '@/lib/interactive-types';
 
 interface Props {
@@ -28,7 +25,7 @@ interface Props {
   onDialogue?: (text: string, speaker?: string) => void;
   onPlayAudio?: (audioUri: string, volume?: number, loop?: boolean) => void;
   onShowImage?: (imageUri: string, duration?: number) => void;
-  onEvent?: (eventId: string, data?: Record<string, any>) => void;
+  onEvent?: (eventId: string, data?: Record<string, unknown>) => void;
 }
 
 export function InteractiveObjectsLayer({
@@ -39,37 +36,23 @@ export function InteractiveObjectsLayer({
   onShowImage,
   onEvent,
 }: Props) {
-  const colors = useColors();
-  const { addItem, removeItem, hasItems } = useInventory();
   const [clickedObjects, setClickedObjects] = useState<Set<string>>(new Set());
 
   const handleObjectPress = async (object: InteractiveObject) => {
-    // Check if object is active
-    if (object.isActive === false) {
-      return;
-    }
+    if (object.isActive === false) return;
 
-    // Check if one-time only and already clicked
-    if (object.oneTimeOnly && clickedObjects.has(object.id)) {
-      return;
-    }
+    if (object.oneTimeOnly && clickedObjects.has(object.id)) return;
 
-    // Check required items
-    if (object.requiredItems && object.requiredItems.length > 0) {
-      if (!hasItems(object.requiredItems)) {
-        Alert.alert('Required Items', 'You need certain items to interact with this.');
-        return;
-      }
-    }
-
-    // Mark as clicked if one-time only
     if (object.oneTimeOnly) {
       setClickedObjects((prev) => new Set(prev).add(object.id));
     }
 
-    // Execute actions
     for (const action of object.actions) {
-      await executeAction(action);
+      try {
+        await executeAction(action);
+      } catch (error) {
+        if (__DEV__) console.error('[InteractiveObjects] Action failed:', action.type, error);
+      }
     }
   };
 
@@ -87,27 +70,15 @@ export function InteractiveObjectsLayer({
         onPlayAudio?.(action.audioUri, action.volume, action.loop);
         break;
 
-      case 'add_item':
-        const added = await addItem(action.item);
-        if (added && action.showNotification) {
-          Alert.alert(
-            'Item Acquired',
-            `You obtained: ${action.item.name}`,
-            [{ text: 'OK' }]
-          );
-        }
-        break;
-
-      case 'remove_item':
-        await removeItem(action.itemId);
-        break;
-
       case 'show_image':
         onShowImage?.(action.imageUri, action.duration);
         break;
 
       case 'trigger_event':
         onEvent?.(action.eventId, action.data);
+        break;
+      default:
+        action satisfies never;
         break;
     }
   };
@@ -138,7 +109,7 @@ function InteractiveObjectView({ object, onPress, isClicked }: ObjectViewProps) 
   const colors = useColors();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
-  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   // Pulse animation
   useEffect(() => {
@@ -160,7 +131,7 @@ function InteractiveObjectView({ object, onPress, isClicked }: ObjectViewProps) 
       pulse.start();
       return () => pulse.stop();
     }
-  }, [object.pulseAnimation, isClicked]);
+  }, [object.pulseAnimation, isClicked, pulseAnim]);
 
   // Glow animation
   useEffect(() => {
@@ -182,7 +153,7 @@ function InteractiveObjectView({ object, onPress, isClicked }: ObjectViewProps) 
       glow.start();
       return () => glow.stop();
     }
-  }, [object.glowColor, isClicked]);
+  }, [object.glowColor, isClicked, glowAnim]);
 
   // Don't render if one-time and already clicked
   if (object.oneTimeOnly && isClicked) {
@@ -190,12 +161,7 @@ function InteractiveObjectView({ object, onPress, isClicked }: ObjectViewProps) 
   }
 
   // Calculate absolute position
-  const pos = object.position || {
-    x: object.x ?? 0,
-    y: object.y ?? 0,
-    width: object.width ?? 10,
-    height: object.height ?? 10,
-  };
+  const pos = object.position ?? { x: 0, y: 0, width: 10, height: 10 };
 
   const left = (pos.x / 100) * screenWidth;
   const top = (pos.y / 100) * screenHeight;

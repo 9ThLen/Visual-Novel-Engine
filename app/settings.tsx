@@ -8,27 +8,68 @@ import {
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
+import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
-import { useStory } from '@/lib/story-context';
+import { useStoryState, useStoryActions } from '@/lib/story-hooks';
 import { useColors } from '@/hooks/use-colors';
-import { useThemeContext } from '@/lib/theme-provider';
-import { useI18n } from '@/lib/i18n-context';
+import { useI18n } from '@/lib/i18n';
 import { LanguageSelector } from '@/components/LanguageSelector';
-import { Button } from '@/components/ui/Button';
-import { DesktopLayout } from '@/components/DesktopLayout';
-import { getResponsiveValues } from '@/lib/responsive';
+import { Button } from '@/components/ui';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  useFocusEffect(
+    useCallback(() => {
+      void stopReaderPlayback();
+      return () => {
+        void stopReaderPlayback();
+      };
+    }, []),
+  );
   const colors = useColors();
-  const { settings, updateSettings } = useStory();
-  const { setColorScheme, colorScheme } = useThemeContext();
+  const { settings } = useStoryState();
+  const { updateSettings } = useStoryActions();
   const { t } = useI18n();
 
-  const handleDarkModeToggle = (value: boolean) => {
-    updateSettings({ darkMode: value });
-    setColorScheme(value ? 'dark' : 'light');
-  };
+  // ── Toggle row ───────────────────────────────────────────────────────────
+  const ToggleRow = ({
+    label,
+    value,
+    onValueChange,
+    emoji,
+    description,
+  }: { label: string; value: boolean; onValueChange: (v: boolean) => void; emoji?: string; description?: string }) => (
+    <View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View style={{ flex: 1, marginRight: 12 }}>
+          <Text style={{ fontSize: 14, color: colors.foreground, fontWeight: '500' }}>
+            {emoji ? `${emoji}  ` : ''}{label}
+          </Text>
+          {description && (
+            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{description}</Text>
+          )}
+        </View>
+        <Switch
+          value={value}
+          onValueChange={onValueChange}
+          trackColor={{ false: colors.border, true: colors.primary }}
+          thumbColor="#fff"
+        />
+      </View>
+    </View>
+  );
+
+  if (!settings) {
+    return (
+      <ScreenContainer>
+        <View className="flex-1 items-center justify-center">
+          <Text style={{ color: colors.foreground }}>{t('common.loading')}</Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   // ── Reusable section wrapper ─────────────────────────────────────────────
   const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
@@ -78,34 +119,6 @@ export default function SettingsScreen() {
         maximumTrackTintColor={colors.border}
         thumbTintColor={colors.primary}
       />
-    </View>
-  );
-
-  // ── Toggle row ───────────────────────────────────────────────────────────
-  const ToggleRow = ({
-    label,
-    value,
-    onValueChange,
-    emoji,
-    description,
-  }: { label: string; value: boolean; onValueChange: (v: boolean) => void; emoji?: string; description?: string }) => (
-    <View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <View style={{ flex: 1, marginRight: 12 }}>
-          <Text style={{ fontSize: 14, color: colors.foreground, fontWeight: '500' }}>
-            {emoji ? `${emoji}  ` : ''}{label}
-          </Text>
-          {description && (
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{description}</Text>
-          )}
-        </View>
-        <Switch
-          value={value}
-          onValueChange={onValueChange}
-          trackColor={{ false: colors.border, true: colors.primary }}
-          thumbColor="#fff"
-        />
-      </View>
     </View>
   );
 
@@ -186,17 +199,6 @@ export default function SettingsScreen() {
             value={settings.autoPlay}
             onValueChange={(v) => updateSettings({ autoPlay: v })}
             description="Automatically advance dialogue"
-          />
-        </Section>
-
-        {/* Appearance */}
-        <Section title="🎨  Appearance">
-          <ToggleRow
-            label={t('settings.darkMode')}
-            emoji="🌙"
-            value={colorScheme === 'dark'}
-            onValueChange={handleDarkModeToggle}
-            description="Switch between dark and light theme"
           />
         </Section>
 

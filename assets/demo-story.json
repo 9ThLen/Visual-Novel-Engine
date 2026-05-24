@@ -13,7 +13,7 @@
       "backgroundImageUri": "assets/background/bg-ancient-library.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": null,
+      "musicUri": "assets/sounds-sample/music-mysterious-adventure.mp3",
       "choices": [
         {
           "id": "choice_1_1",
@@ -33,7 +33,7 @@
       "backgroundImageUri": "assets/background/bg-ancient-library.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": null,
+      "musicUri": "assets/sounds-sample/music-mysterious-adventure.mp3",
       "choices": [
         {
           "id": "choice_2_1",
@@ -53,7 +53,7 @@
       "backgroundImageUri": "assets/background/bg-hall-mirrors.png",
       "characters": [],
       "voiceAudioUri": null,
-      "musicUri": null,
+      "musicUri": "assets/sounds-sample/music-eerie.mp3",
       "choices": [
         {
           "id": "choice_3_1",
@@ -165,7 +165,7 @@
         {
           "id": "librarian",
           "name": "Librarian",
-          "imageUri": "assets/charakters/char-librarian.png"
+          "uri": "assets/charakters/char-librarian.png"
         }
       ],
       "voiceAudioUri": null,
@@ -251,7 +251,7 @@
         {
           "id": "librarian",
           "name": "Librarian",
-          "imageUri": "assets/charakters/char-librarian.png"
+          "uri": "assets/charakters/char-librarian.png"
         }
       ],
       "voiceAudioUri": null,
@@ -277,7 +277,7 @@
         {
           "id": "librarian",
           "name": "Librarian",
-          "imageUri": "assets/charakters/char-librarian.png"
+          "uri": "assets/charakters/char-librarian.png"
         }
       ],
       "voiceAudioUri": null,

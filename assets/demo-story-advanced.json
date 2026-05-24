@@ -44,7 +44,7 @@
       "characters": [
         {
           "id": "char_guide",
-          "imageUri": "assets/charakters/char-guide.png",
+          "uri": "assets/charakters/char-guide.png",
           "name": "Museum Guide",
           "position": "right",
           "expression": "welcoming"
@@ -131,7 +131,7 @@
       "characters": [
         {
           "id": "char_guide",
-          "imageUri": "assets/charakters/char-guide.png",
+          "uri": "assets/charakters/char-guide.png",
           "name": "Museum Guide",
           "position": "left",
           "expression": "explaining"
@@ -249,7 +249,7 @@
       "characters": [
         {
           "id": "char_reflection",
-          "imageUri": "assets/charakters/char-reflection.png",
+          "uri": "assets/charakters/char-reflection.png",
           "name": "Your Reflection",
           "position": "center",
           "expression": "mysterious"
@@ -273,7 +273,7 @@
             },
             {
               "type": "image",
-              "imageUri": "assets/images/img-reflection-hint.png"
+              "uri": "assets/images/img-reflection-hint.png"
             }
           ]
         },
@@ -338,7 +338,7 @@
       "characters": [
         {
           "id": "char_reflection",
-          "imageUri": "assets/charakters/char-reflection.png",
+          "uri": "assets/charakters/char-reflection.png",
           "name": "Your Reflection",
           "position": "center",
           "expression": "wise"
@@ -361,7 +361,7 @@
       "characters": [
         {
           "id": "char_librarian",
-          "imageUri": "assets/charakters/char-librarian.png",
+          "uri": "assets/charakters/char-librarian.png",
           "name": "Ancient Librarian",
           "position": "right",
           "expression": "reading"
@@ -419,7 +419,7 @@
             },
             {
               "type": "image",
-              "imageUri": "assets/images/img-phoenix-illustration.png"
+              "uri": "assets/images/img-phoenix-illustration.png"
             }
           ]
         }
@@ -449,7 +449,7 @@
       "characters": [
         {
           "id": "char_librarian",
-          "imageUri": "assets/charakters/char-librarian.png",
+          "uri": "assets/charakters/char-librarian.png",
           "name": "Ancient Librarian",
           "position": "center",
           "expression": "wise"
@@ -477,7 +477,7 @@
       "characters": [
         {
           "id": "char_librarian",
-          "imageUri": "assets/charakters/char-librarian.png",
+          "uri": "assets/charakters/char-librarian.png",
           "name": "Ancient Librarian",
           "position": "center",
           "expression": "explaining"
@@ -550,7 +550,7 @@
             },
             {
               "type": "image",
-              "imageUri": "assets/images/img-constellation-phoenix.png"
+              "uri": "assets/images/img-constellation-phoenix.png"
             }
           ]
         }
@@ -606,14 +606,14 @@
       "characters": [
         {
           "id": "char_guide",
-          "imageUri": "assets/charakters/char-guide.png",
+          "uri": "assets/charakters/char-guide.png",
           "name": "Museum Guide",
           "position": "left",
           "expression": "proud"
         },
         {
           "id": "char_librarian",
-          "imageUri": "assets/charakters/char-librarian.png",
+          "uri": "assets/charakters/char-librarian.png",
           "name": "Ancient Librarian",
           "position": "right",
           "expression": "happy"

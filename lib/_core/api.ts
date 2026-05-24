@@ -1,11 +1,16 @@
 import { Platform } from "react-native";
 import { getApiBaseUrl } from "@/constants/oauth";
 import * as Auth from "./auth";
+import { ErrorHandler, ErrorCategory } from "@/lib/error-handler";
 
-type ApiResponse<T> = {
-  data?: T;
-  error?: string;
-};
+interface ApiUser {
+  id: number;
+  openId: string;
+  name: string | null;
+  email: string | null;
+  loginMethod: string | null;
+  lastSignedIn: string;
+}
 
 export async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
@@ -40,7 +45,7 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
     const response = await fetch(url, {
       ...options,
       headers,
-      credentials: "include",
+      credentials: Platform.OS === "web" ? "include" : "same-origin",
     });
 
     if (__DEV__) {
@@ -77,9 +82,10 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
 
     const text = await response.text();
     if (__DEV__) console.log("[API] Text response received");
-    return (text ? JSON.parse(text) : {}) as T;
+    // Non-JSON response — return text as-is (caller should expect T = string or handle)
+    return text as unknown as T;
   } catch (error) {
-    if (__DEV__) console.error("[API] Request failed:", error);
+    ErrorHandler.handle('API request failed', error, ErrorCategory.NETWORK);
     if (error instanceof Error) {
       throw error;
     }
@@ -92,13 +98,13 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
 export async function exchangeOAuthCode(
   code: string,
   state: string,
-): Promise<{ sessionToken: string; user: any }> {
+): Promise<{ sessionToken: string; user: ApiUser }> {
   if (__DEV__) console.log("[API] exchangeOAuthCode called");
   // Use GET with query params
   const params = new URLSearchParams({ code, state });
   const endpoint = `/api/oauth/mobile?${params.toString()}`;
   if (__DEV__) console.log("[API] Calling OAuth mobile endpoint:", endpoint);
-  const result = await apiCall<{ app_session_id: string; user: any }>(endpoint);
+  const result = await apiCall<{ app_session_id: string; user: ApiUser }>(endpoint);
 
   // Convert app_session_id to sessionToken for compatibility
   const sessionToken = result.app_session_id;
@@ -131,10 +137,10 @@ export async function getMe(): Promise<{
   lastSignedIn: string;
 } | null> {
   try {
-    const result = await apiCall<{ user: any }>("/api/auth/me");
+    const result = await apiCall<{ user: ApiUser }>("/api/auth/me");
     return result.user || null;
   } catch (error) {
-    console.error("[API] getMe failed:", error);
+    ErrorHandler.handle('API getMe failed', error, ErrorCategory.NETWORK);
     return null;
   }
 }
@@ -164,7 +170,7 @@ export async function establishSession(token: string): Promise<boolean> {
     if (__DEV__) console.log("[API] establishSession: cookie set successfully");
     return true;
   } catch (error) {
-    if (__DEV__) console.error("[API] establishSession error:", error);
+    ErrorHandler.handle('API establishSession error', error, ErrorCategory.NETWORK);
     return false;
   }
 }

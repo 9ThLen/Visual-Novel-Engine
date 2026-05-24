@@ -64,7 +64,7 @@ export function ShortcutHint({ shortcut, label, size = 'md' }: ShortcutHintProps
 }
 
 interface ShortcutListProps {
-  shortcuts: Array<{ key: string; label: string }>;
+  shortcuts: { key: string; label: string }[];
   title?: string;
 }
 

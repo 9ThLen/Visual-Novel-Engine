@@ -1,52 +1,36 @@
-/**
- * Character Display Component
- * Renders animated characters in story reader
- */
-
-import React, { useEffect, useRef } from 'react';
-import { View, Image, Animated, StyleSheet, useWindowDimensions } from 'react-native';
+import React from 'react';
+import { Image, Animated, useWindowDimensions } from 'react-native';
 import type { AnimatedCharacterInstance } from '@/lib/character-animator';
 
 interface Props {
   instance: AnimatedCharacterInstance;
   spriteUri: string;
+  dialogueTop?: number;
 }
 
-export function CharacterDisplay(props: Props) {
-  return <MemoizedCharacterDisplay {...props} />;
-}
-
-const MemoizedCharacterDisplay = React.memo(({ instance, spriteUri }: Props) => {
+export const CharacterDisplay = React.memo(function CharacterDisplay({ instance, spriteUri }: Props) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const charWidth = screenWidth * 0.35;
 
   return (
     <Animated.View
-      style={[
-        styles.container,
-        {
-          opacity: instance.animatedOpacity,
-          transform: [
-            { translateX: instance.animatedTranslateX },
-            { translateY: instance.animatedTranslateY },
-            { scale: instance.animatedScale },
-          ],
-          zIndex: instance.zIndex || 0,
-        },
-      ]}
+      style={{
+        width: charWidth,
+        opacity: instance.animatedOpacity,
+        transform: [
+          { translateX: instance.animatedTranslateX },
+          { translateY: instance.animatedTranslateY },
+          { scale: instance.animatedScale },
+        ],
+        zIndex: instance.zIndex || 0,
+      }}
       pointerEvents="none"
     >
       <Image
-        source={{ uri: spriteUri }}
-        style={[
-          styles.image,
-          {
-            maxHeight: screenHeight * 0.7,
-            maxWidth: screenWidth * 0.4,
-          },
-        ]}
+        source={spriteUri ? { uri: spriteUri } : { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' }}
+        style={{ width: '100%', aspectRatio: 9 / 16, maxHeight: screenHeight * 0.65 }}
         resizeMode="contain"
       />
     </Animated.View>
   );
 });
-MemoizedCharacterDisplay.displayName = 'CharacterDisplay';

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VNE Editor - Design Preview</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0b0c1f; color: #e1e0fb; font-family: 'Hanken Grotesk', 'Google Sans', sans-serif; padding: 24px; }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; color: #cdbdff; }
+  h2 { font-size: 18px; font-weight: 600; margin: 32px 0 16px; color: #cdbdff; border-bottom: 1px solid #2e3050; padding-bottom: 8px; }
+  .subtitle { color: #cac3d8; margin-bottom: 32px; font-size: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 24px; }
+  .card { background: #1d1e31; border: 1px solid #2e3050; border-radius: 12px; overflow: hidden; transition: border-color 0.2s; }
+  .card:hover { border-color: #7c4dff; }
+  .card img { width: 100%; height: auto; display: block; }
+  .card .info { padding: 16px; }
+  .card .info h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .card .info p { font-size: 12px; color: #cac3d8; }
+  .card .actions { padding: 0 16px 16px; display: flex; gap: 8px; }
+  .card .actions a { display: inline-block; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 500; text-decoration: none; }
+  .card .actions .view-html { background: #7c4dff; color: #fff; }
+  .card .actions .view-img { background: #2e3050; color: #e1e0fb; }
+  .design-system { background: #1d1e31; border: 1px solid #2e3050; border-radius: 12px; padding: 24px; margin-bottom: 32px; }
+  .design-system h2 { margin-top: 0; }
+  .color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin-top: 16px; }
+  .color-swatch { border-radius: 8px; padding: 8px; font-size: 10px; }
+  .color-swatch .name { font-weight: 600; margin-bottom: 4px; }
+  .color-swatch .value { font-family: monospace; opacity: 0.8; }
+</style>
+</head>
+<body>
+
+<h1>VNE Editor — Design Preview</h1>
+<p class="subtitle">Generated via Google Stitch MCP · Project: VNE Editor - Visual Novel Engine</p>
+
+<div class="design-system">
+  <h2>Design System: Visual Novel Narrative Engine</h2>
+  <p style="color: #cac3d8; font-size: 14px;">Dark theme · Hanken Grotesk · 8px grid · Material Design elevation</p>
+  <div class="color-grid">
+    <div class="color-swatch" style="background: #111224; color: #e1e0fb; border: 1px solid #2e3050;"><div class="name">surface</div><div class="value">#111224</div></div>
+    <div class="color-swatch" style="background: #1d1e31; color: #e1e0fb; border: 1px solid #2e3050;"><div class="name">surface-container</div><div class="value">#1d1e31</div></div>
+    <div class="color-swatch" style="background: #2e3050; color: #e1e0fb;"><div class="name">outline</div><div class="value">#2e3050</div></div>
+    <div class="color-swatch" style="background: #7c4dff; color: #fff;"><div class="name">primary-container</div><div class="value">#7c4dff</div></div>
+    <div class="color-swatch" style="background: #cdbdff; color: #370096;"><div class="name">primary</div><div class="value">#cdbdff</div></div>
+    <div class="color-swatch" style="background: #c2c3eb; color: #2c2e4d;"><div class="name">secondary</div><div class="value">#c2c3eb</div></div>
+    <div class="color-swatch" style="background: #ffb688; color: #512400;"><div class="name">tertiary</div><div class="value">#ffb688</div></div>
+    <div class="color-swatch" style="background: #ffb4ab; color: #690005;"><div class="name">error</div><div class="value">#ffb4ab</div></div>
+    <div class="color-swatch" style="background: #e1e0fb; color: #2e2f43;"><div class="name">on-surface</div><div class="value">#e1e0fb</div></div>
+    <div class="color-swatch" style="background: #cac3d8; color: #2e2f43;"><div class="name">on-surface-variant</div><div class="value">#cac3d8</div></div>
+  </div>
+</div>
+
+<h2>Screens &amp; Components</h2>
+<div class="grid">
+
+  <div class="card">
+    <img src="main_editor.png" alt="Main Editor" onerror="this.style.display='none'">
+    <div class="info">
+      <h3>Main Editor Screen</h3>
+      <p>3-panel layout: Block Library / Timeline / Properties. Header with scene name, undo/redo, preview, save.</p>
+    </div>
+    <div class="actions">
+      <a href="main_editor.html" class="view-html" target="_blank">View HTML</a>
+      <a href="main_editor.png" class="view-img" target="_blank">View Image</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="block_library.png" alt="Block Library" onerror="this.style.display='none'">
+    <div class="info">
+      <h3>Block Library Panel</h3>
+      <p>12 draggable block types with color-coded borders. Search, categories, drag handles.</p>
+    </div>
+    <div class="actions">
+      <a href="block_library.html" class="view-html" target="_blank">View HTML</a>
+      <a href="block_library.png" class="view-img" target="_blank">View Image</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="timeline.png" alt="Timeline" onerror="this.style.display='none'">
+    <div class="info">
+      <h3>Timeline Panel</h3>
+      <p>Vertical block chain with 6 sample blocks. Connectors, drag handles, collapse/expand.</p>
+    </div>
+    <div class="actions">
+      <a href="timeline.html" class="view-html" target="_blank">View HTML</a>
+      <a href="timeline.png" class="view-img" target="_blank">View Image</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="properties.png" alt="Properties" onerror="this.style.display='none'">
+    <div class="info">
+      <h3>Properties Inspector</h3>
+      <p>Dialogue block properties: speaker, sprite, text, speed, anchor, delay, duration.</p>
+    </div>
+    <div class="actions">
+      <a href="properties.html" class="view-html" target="_blank">View HTML</a>
+      <a href="properties.png" class="view-img" target="_blank">View Image</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="storyflow.png" alt="Story Flow" onerror="this.style.display='none'">
+    <div class="info">
+      <h3>Story Flow (Node Graph)</h3>
+      <p>5 scene nodes with bezier connections. Mini-map, toolbar, zoom controls.</p>
+    </div>
+    <div class="actions">
+      <a href="storyflow.html" class="view-html" target="_blank">View HTML</a>
+      <a href="storyflow.png" class="view-img" target="_blank">View Image</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="asset_picker.png" alt="Asset Picker" onerror="this.style.display='none'">
+    <div class="info">
+      <h3>Asset Picker Modal</h3>
+      <p>Category tabs, search, 4-column grid, selection highlight, import button.</p>
+    </div>
+    <div class="actions">
+      <a href="asset_picker.html" class="view-html" target="_blank">View HTML</a>
+      <a href="asset_picker.png" class="view-img" target="_blank">View Image</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="character_creator.png" alt="Character Creator" onerror="this.style.display='none'">
+    <div class="info">
+      <h3>Character Creator Modal</h3>
+      <p>Name, color picker, voice selector, sprite slots grid, create button.</p>
+    </div>
+    <div class="actions">
+      <a href="character_creator.html" class="view-html" target="_blank">View HTML</a>
+      <a href="character_creator.png" class="view-img" target="_blank">View Image</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="saveload.png" alt="Save/Load" onerror="this.style.display='none'">
+    <div class="info">
+      <h3>Save / Load Dialogs</h3>
+      <p>Save scene form with name, description, tags. Load scene list with search.</p>
+    </div>
+    <div class="actions">
+      <a href="saveload.html" class="view-html" target="_blank">View HTML</a>
+      <a href="saveload.png" class="view-img" target="_blank">View Image</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="preview.png" alt="Preview" onerror="this.style.display='none'">
+    <div class="info">
+      <h3>Full Preview Mode</h3>
+      <p>Scene playback with background, character, dialogue box, choices, controls.</p>
+    </div>
+    <div class="actions">
+      <a href="preview.html" class="view-html" target="_blank">View HTML</a>
+      <a href="preview.png" class="view-img" target="_blank">View Image</a>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

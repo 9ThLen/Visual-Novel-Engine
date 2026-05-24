@@ -4,17 +4,17 @@
  */
 
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, type ViewStyle } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n, type Language, type LanguageInfo } from '@/lib/i18n-context';
+import { useI18n, type Language } from '@/lib/i18n';
 
 interface Props {
-  style?: any;
+  style?: ViewStyle;
 }
 
 export function LanguageSelector({ style }: Props) {
   const colors = useColors();
-  const { language, setLanguage, languages, t } = useI18n();
+  const { language, setLanguage, languages } = useI18n();
 
   const handleLanguageChange = async (lang: Language) => {
     await setLanguage(lang);

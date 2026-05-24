@@ -23,19 +23,8 @@
                   "icon": "lucide-folder-closed",
                   "title": "Файловый менеджер"
                 }
-              },
-              {
-                "id": "90c5bc22a0363f09",
-                "type": "leaf",
-                "state": {
-                  "type": "graph",
-                  "state": {},
-                  "icon": "lucide-git-fork",
-                  "title": "Граф"
-                }
               }
-            ],
-            "currentTab": 1
+            ]
           }
         ],
         "direction": "vertical"
@@ -179,12 +168,13 @@
             "state": {
               "type": "outline",
               "state": {
+                "file": "SCHEMA.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Структура"
+              "title": "Структура SCHEMA"
             }
           }
         ]
@@ -199,6 +189,7 @@
             "state": {
               "type": "backlink",
               "state": {
+                "file": "SCHEMA.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -208,7 +199,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Обратные ссылки"
+              "title": "Обратные ссылки для SCHEMA"
             }
           }
         ]
@@ -228,13 +219,23 @@
       "bases:Создать новую базу": false
     }
   },
-  "active": "90c5bc22a0363f09",
+  "active": "file-explorer",
   "lastOpenFiles": [
+    "README.md",
+    "SCHEMA.md",
+    "2026-05-17-session-report.md",
+    "2026-05-12-code-audit.md",
+    "sanitize-security.md",
+    "EDITOR-UNIFICATION-DECISION.md",
+    "2026-05-09.md",
+    "DEV_SERVER_FIX_2026_05_06.md",
+    "CHANGELOG_2026_05_13.md",
+    "next-session-plan-2026-05-08.md",
+    "log.md",
     "Без названия.canvas",
     "architecture-reference.md",
     "vitest-config-copy-removal-2026-05-09.md",
     "PNPM_WINDOWS_CMD_WRAPPERS_FIX.md",
-    "SCHEMA.md",
     "tablet-adaptation-plan-stage5.md",
     "DEV_SERVER_FIX_2026_05_07.md",
     "testing-plan-2026-05-09.md",
@@ -243,21 +244,12 @@
     "code-analysis-report-2026-05-07.md",
     "CHANGELOG_2026_05_08.md",
     "Без названия 1.canvas",
-    "2026-05-09.md",
     "CHANGELOG_2026_05_09.md",
     "audit-report-2026-05-07.md",
     "wiki/index.md",
     "entities/save-system.md",
     "wiki",
     "design/lego-block-system-design.html.md",
-    "DEV_SERVER_FIX_2026_05_06.md",
-    "runtime-fixes-2026-05-09.md",
-    "index.md",
-    "drag-drop-integration-2026-05-09.md",
-    "test-registry-2026-05-08.md",
-    "recommendations-implementation-2026-05-08.md",
-    "design",
-    "overview.md",
-    "entities/story-engine.md"
+    "design"
   ]
 }

@@ -52,7 +52,6 @@ export interface StorySceneExtended extends Omit<StoryScene, 'musicUri' | 'voice
   // Audio triggers replace simple URIs
   audioTriggers: AudioTrigger[];
 
-  // Legacy support (will be migrated to triggers)
   musicUri?: string | null;
   voiceAudioUri?: string | null;
 }

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "error-container": "#93000a",
+                      "tertiary-fixed": "#ffdbc7",
+                      "secondary": "#c2c3eb",
+                      "on-secondary": "#2c2e4d",
+                      "on-primary-fixed-variant": "#4f00d0",
+                      "on-surface": "#e1e0fb",
+                      "outline": "#948ea1",
+                      "tertiary": "#ffb688",
+                      "background": "#111224",
+                      "inverse-primary": "#6833ea",
+                      "on-tertiary-fixed-variant": "#733600",
+                      "on-primary-fixed": "#20005f",
+                      "primary": "#cdbdff",
+                      "surface-container-lowest": "#0b0c1f",
+                      "error": "#ffb4ab",
+                      "surface-variant": "#323347",
+                      "surface-dim": "#111224",
+                      "secondary-container": "#444668",
+                      "surface-bright": "#37374c",
+                      "on-tertiary-container": "#fff7f4",
+                      "on-secondary-fixed-variant": "#424465",
+                      "on-secondary-fixed": "#161837",
+                      "surface": "#111224",
+                      "inverse-surface": "#e1e0fb",
+                      "primary-fixed-dim": "#cdbdff",
+                      "tertiary-fixed-dim": "#ffb688",
+                      "on-secondary-container": "#b4b5dd",
+                      "tertiary-container": "#b55800",
+                      "surface-container": "#1d1e31",
+                      "primary-fixed": "#e8deff",
+                      "on-primary": "#370096",
+                      "surface-container-high": "#27283c",
+                      "surface-tint": "#cdbdff",
+                      "on-tertiary": "#512400",
+                      "on-surface-variant": "#cac3d8",
+                      "secondary-fixed-dim": "#c2c3eb",
+                      "on-error-container": "#ffdad6",
+                      "surface-container-highest": "#323347",
+                      "surface-container-low": "#191a2d",
+                      "primary-container": "#7c4dff",
+                      "on-background": "#e1e0fb",
+                      "on-primary-container": "#fcf6ff",
+                      "on-error": "#690005",
+                      "secondary-fixed": "#e0e0ff",
+                      "on-tertiary-fixed": "#311300",
+                      "inverse-on-surface": "#2e2f43",
+                      "outline-variant": "#494455"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "unit": "4px",
+                      "sidebar-width": "320px",
+                      "inspector-width": "280px",
+                      "container-padding": "24px",
+                      "gutter": "16px"
+              },
+              "fontFamily": {
+                      "headline-sm": ["Hanken Grotesk"],
+                      "label-md": ["Hanken Grotesk"],
+                      "headline-md": ["Hanken Grotesk"],
+                      "body-lg": ["Hanken Grotesk"],
+                      "body-md": ["Hanken Grotesk"],
+                      "code-sm": ["monospace"],
+                      "display-lg": ["Hanken Grotesk"]
+              },
+              "fontSize": {
+                      "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                      "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                      "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                      "code-sm": ["12px", {"lineHeight": "18px", "fontWeight": "400"}],
+                      "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+              }
+            },
+          },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .modal-overlay {
+            background: radial-gradient(circle, rgba(17, 18, 36, 0.8) 0%, rgba(11, 12, 31, 0.95) 100%);
+        }
+        .narrative-block-border {
+            border-left: 4px solid var(--tw-border-opacity);
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #323347;
+            border-radius: 10px;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md selection:bg-primary-container selection:text-white overflow-hidden">
+<!-- Top App Bar (Shared Component Reference) -->
+<header class="fixed top-0 left-0 right-0 h-16 flex justify-between items-center px-gutter w-full bg-surface-container border-b border-surface-variant z-10">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">menu</span>
+<h1 class="font-headline-md text-headline-md font-bold text-primary">Novel Architect</h1>
+</div>
+<button class="bg-primary-container text-on-primary-container px-6 py-2 rounded-lg font-label-md text-label-md hover:bg-opacity-90 transition-all active:scale-95">
+            Export
+        </button>
+</header>
+<!-- Project Navigator (Shared Component Reference) -->
+<aside class="fixed left-0 top-16 bottom-0 w-sidebar-width bg-surface-container-low border-r border-surface-variant flex flex-col py-4 px-2 z-10 hidden md:flex">
+<div class="px-4 mb-6">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Project Navigator</h2>
+</div>
+<nav class="space-y-1">
+<div class="flex items-center gap-3 px-4 py-3 bg-secondary-container text-on-secondary-container rounded-lg cursor-pointer transition-transform translate-x-1">
+<span class="material-symbols-outlined">account_tree</span>
+<span class="font-label-md text-label-md">Scenes</span>
+</div>
+<div class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant rounded-lg cursor-pointer transition-colors">
+<span class="material-symbols-outlined">groups</span>
+<span class="font-label-md text-label-md">Characters</span>
+</div>
+<div class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant rounded-lg cursor-pointer transition-colors">
+<span class="material-symbols-outlined">folder_open</span>
+<span class="font-label-md text-label-md">Assets</span>
+</div>
+<div class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant rounded-lg cursor-pointer transition-colors">
+<span class="material-symbols-outlined">data_object</span>
+<span class="font-label-md text-label-md">Variables</span>
+</div>
+<div class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-variant rounded-lg cursor-pointer transition-colors">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-md text-label-md">Settings</span>
+</div>
+</nav>
+</aside>
+<!-- Main Canvas Backdrop -->
+<main class="ml-sidebar-width pt-16 h-screen w-full relative overflow-hidden">
+<div class="absolute inset-0 flex flex-col items-center justify-center p-container-padding opacity-20 pointer-events-none">
+<div class="w-full max-w-3xl space-y-4">
+<div class="h-24 w-full bg-surface-container-high rounded-lg border border-outline-variant"></div>
+<div class="h-24 w-full bg-surface-container-high rounded-lg border border-outline-variant"></div>
+<div class="h-24 w-full bg-surface-container-high rounded-lg border border-outline-variant"></div>
+</div>
+</div>
+<!-- Modal Overlay -->
+<div class="absolute inset-0 modal-overlay flex items-center justify-center gap-8 px-gutter overflow-x-auto z-50">
+<!-- SAVE DIALOG -->
+<section class="flex-shrink-0 w-[500px] bg-surface-container-high rounded-xl shadow-[0px_12px_32px_rgba(0,0,0,0.6)] border border-outline-variant overflow-hidden flex flex-col">
+<header class="px-6 py-5 border-b border-surface-variant">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Save Scene</h2>
+</header>
+<div class="p-6 space-y-6 flex-grow">
+<!-- Scene Name -->
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant">Scene Name</label>
+<input class="w-full bg-background border border-surface-variant text-on-surface rounded-lg px-4 py-2.5 focus:border-primary-container focus:ring-1 focus:ring-primary-container outline-none transition-all" type="text" value="The Hidden Path"/>
+</div>
+<!-- Description -->
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant">Description</label>
+<textarea class="w-full bg-background border border-surface-variant text-on-surface rounded-lg px-4 py-2.5 focus:border-primary-container focus:ring-1 focus:ring-primary-container outline-none transition-all resize-none" placeholder="Enter scene notes or narrative hooks..." rows="4"></textarea>
+</div>
+<!-- Tags -->
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant">Tags</label>
+<div class="w-full bg-background border border-surface-variant rounded-lg p-2 flex flex-wrap gap-2 items-center">
+<span class="flex items-center gap-1.5 bg-tertiary-container/30 text-tertiary-fixed-dim px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider border border-tertiary-container/50">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+                                romance
+                                <span class="material-symbols-outlined text-[14px] cursor-pointer hover:text-white">close</span>
+</span>
+<span class="flex items-center gap-1.5 bg-secondary-container/30 text-secondary px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider border border-secondary-container/50">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+                                forest
+                                <span class="material-symbols-outlined text-[14px] cursor-pointer hover:text-white">close</span>
+</span>
+<input class="bg-transparent border-none focus:ring-0 text-body-md py-1 px-2 flex-grow min-w-[100px]" placeholder="Add tag..." type="text"/>
+</div>
+</div>
+<!-- Checkbox -->
+<label class="flex items-center gap-3 cursor-pointer group">
+<div class="relative flex items-center">
+<input class="peer appearance-none w-5 h-5 border-2 border-outline rounded bg-transparent checked:bg-primary-container checked:border-primary-container transition-all" type="checkbox"/>
+<span class="material-symbols-outlined absolute opacity-0 peer-checked:opacity-100 text-on-primary-container text-[18px] left-[1px]">check</span>
+</div>
+<span class="font-body-md text-on-surface group-hover:text-primary transition-colors">Set as start scene</span>
+</label>
+</div>
+<footer class="px-6 py-4 bg-surface-container-highest flex justify-end gap-3">
+<button class="px-6 py-2 text-primary font-label-md text-label-md rounded-lg hover:bg-surface-variant transition-colors active:scale-95">Cancel</button>
+<button class="px-8 py-2 bg-primary-container text-on-primary-container font-label-md text-label-md rounded-lg hover:opacity-90 shadow-lg active:scale-95 transition-all">Save</button>
+</footer>
+</section>
+<!-- LOAD DIALOG -->
+<section class="flex-shrink-0 w-[600px] h-[640px] bg-surface-container-high rounded-xl shadow-[0px_12px_32px_rgba(0,0,0,0.6)] border border-outline-variant overflow-hidden flex flex-col">
+<header class="px-6 py-5 border-b border-surface-variant flex items-center justify-between gap-4">
+<h2 class="font-headline-sm text-headline-sm text-on-surface whitespace-nowrap">Load Scene</h2>
+<div class="relative flex-grow max-w-[280px]">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full bg-background border border-surface-variant text-on-surface rounded-lg pl-10 pr-4 py-2 text-body-md focus:border-primary-container focus:ring-1 focus:ring-primary-container outline-none transition-all" placeholder="Search scenes..." type="text"/>
+</div>
+</header>
+<div class="flex-grow overflow-y-auto">
+<div class="divide-y divide-surface-variant">
+<!-- Item 1 -->
+<div class="flex items-center gap-4 p-4 hover:bg-surface-variant cursor-pointer transition-colors group">
+<img class="w-[80px] h-[50px] object-cover rounded shadow-inner bg-surface-container" data-alt="A cinematic, low-angle shot of a dense, mystical forest during twilight. The atmosphere is thick with soft blue mist, and glowing fireflies illuminate the ancient oak trees. The visual style is highly detailed and professional, featuring a moody, dark-mode color palette of deep indigo and vibrant violet accents, reminiscent of a high-end visual novel production." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAzqgDm0v_LGue6tFfmUxd_eK7xg2fdDJQ76C5pgnLHxF5T7H0Hs9JXTCF3hwSRilQgpzpEa3_Ojx3J7t0rmB7t1T6PoyfWlMcfclq6W0eI-FSG7lDaIn_6O8FNXRVzGcfSLJOQh7xcRkwezcjT2qK4ufYXqQaG83TRPCrNeQEGDPJJJeRZTxpVY2Vto4m8F74UGQokYZ_ypOsgRAVjAguivoTBu0cKN0FVf4K58rqI9SwnWS1zb8XlWKOqbKHHs9MS-q2eAAC0rGA"/>
+<div class="flex-grow min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-body-lg text-on-surface font-semibold truncate">Entrance Gates</h3>
+<span class="text-[10px] bg-surface-container-highest px-2 py-0.5 rounded text-on-surface-variant font-bold">42 BLOCKS</span>
+</div>
+<p class="text-body-md text-on-surface-variant truncate">The protagonist arrives at the mansion...</p>
+<span class="text-[11px] text-outline mt-1 block">Modified 2h ago</span>
+</div>
+</div>
+<!-- Item 2 (Selected) -->
+<div class="flex items-center gap-4 p-4 bg-primary-container/10 border-l-4 border-primary-container cursor-pointer group">
+<img class="w-[80px] h-[50px] object-cover rounded shadow-inner bg-surface-container" data-alt="An interior shot of an old library lit by a single flickering candle on a mahogany desk. Dust motes dance in the warm golden light against deep shadow-filled bookshelves. The style is moody and editorial, utilizing a dark workspace aesthetic with rich, professional colors including midnight blue and sharp purple highlights to maintain a cinematic feel." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDfSKJEAJ_xYkhBQiMYSndMMRsvie_yPC9gnbg3AS_T0rjkQCAq5YByDO2P6wf_PPpPNE-MxemkxMq1mJ7Wu0LgWOx39QwVrQB8CPlIjUwnCO8l4bcf8I22qKP979UwIlZG7llG3ks9pIuL1IfRaGKE3WYnCoaeDf61w-ba-n4GZU0h1okKy-ZPyKeYY-cj4DEE1ruBlIwiA-Oj21DiN6L0Y1Lh8bq05Pk8Xlh5wPJsQpBqJvF2nM4e9_Vv1um90eJDXyJJxE5hsvw"/>
+<div class="flex-grow min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-body-lg text-primary font-semibold truncate">The Hidden Path</h3>
+<span class="text-[10px] bg-primary-container text-on-primary-container px-2 py-0.5 rounded font-bold">128 BLOCKS</span>
+</div>
+<p class="text-body-md text-on-surface truncate">Branching choice for the forest investigation...</p>
+<span class="text-[11px] text-primary/70 mt-1 block font-medium">Modified 5h ago</span>
+</div>
+</div>
+<!-- Item 3 -->
+<div class="flex items-center gap-4 p-4 hover:bg-surface-variant cursor-pointer transition-colors group">
+<div class="w-[80px] h-[50px] bg-surface-container-highest rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-outline">image</span>
+</div>
+<div class="flex-grow min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-body-lg text-on-surface font-semibold truncate">Night Market</h3>
+<span class="text-[10px] bg-surface-container-highest px-2 py-0.5 rounded text-on-surface-variant font-bold">67 BLOCKS</span>
+</div>
+<p class="text-body-md text-on-surface-variant truncate">Crowded stalls and neon signs...</p>
+<span class="text-[11px] text-outline mt-1 block">Modified Yesterday</span>
+</div>
+</div>
+<!-- Item 4 -->
+<div class="flex items-center gap-4 p-4 hover:bg-surface-variant cursor-pointer transition-colors group">
+<img class="w-[80px] h-[50px] object-cover rounded shadow-inner bg-surface-container" data-alt="A serene mountain lake reflecting the vibrant purple and orange of a sunset sky. The lighting is high-contrast with deep shadows in the foreground cliffs and brilliant colors in the reflection. The overall mood is peaceful but visually striking, designed with a modern editorial aesthetic using dark foundational tones and electric color accents." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBbOxXuPArdoUzwOmOdqZJewdv7-HOam1M_6geV9fTGDOYNs2cTmhLo5o9XE3E02E_SosbpA-UBgTz9dVhAScLnDDGVZ3Zpcd3YJtKNtbC22OXxhIo1ofKsm07B3-HDy0ZjYJTgb8bHVhIaf5G1NyIyb0ljmkm7eMYOYcVw7CMSzqUp3B2caV0RU8IQxuXqyzyVnu5YTidoP0CRanOufogO1aiBiktKw5IJekW7J-1OsjJquxmupOtXpDiJ-izapF9GP0smFlOj9JE"/>
+<div class="flex-grow min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-body-lg text-on-surface font-semibold truncate">Cliffside Reunion</h3>
+<span class="text-[10px] bg-surface-container-highest px-2 py-0.5 rounded text-on-surface-variant font-bold">15 BLOCKS</span>
+</div>
+<p class="text-body-md text-on-surface-variant truncate">End of Act 1 cinematic sequence.</p>
+<span class="text-[11px] text-outline mt-1 block">Modified 3 days ago</span>
+</div>
+</div>
+<!-- Item 5 -->
+<div class="flex items-center gap-4 p-4 hover:bg-surface-variant cursor-pointer transition-colors group">
+<div class="w-[80px] h-[50px] bg-surface-container-highest rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-outline">landscape</span>
+</div>
+<div class="flex-grow min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-body-lg text-on-surface font-semibold truncate">Morning Frost</h3>
+<span class="text-[10px] bg-surface-container-highest px-2 py-0.5 rounded text-on-surface-variant font-bold">29 BLOCKS</span>
+</div>
+<p class="text-body-md text-on-surface-variant truncate">Atmospheric transition after the battle.</p>
+<span class="text-[11px] text-outline mt-1 block">Modified 1 week ago</span>
+</div>
+</div>
+<!-- Item 6 -->
+<div class="flex items-center gap-4 p-4 hover:bg-surface-variant cursor-pointer transition-colors group">
+<img class="w-[80px] h-[50px] object-cover rounded shadow-inner bg-surface-container" data-alt="An expansive snowy mountain range under a clear, starlit sky. The cold blue moonlight highlights the sharp textures of the rock and snow. The scene is presented in a cinematic wide-angle view, maintaining a professional production quality with a dark-mode UI palette of cool grays, deep blacks, and sharp primary violet highlights." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC56DJZpgdlVNGf7zwGgbaTjEo0altxVb10kTZzPv0jdujHrnO6EY0LTY1ebREzQqwol8ydjrtiflYXv3ACYl6U1o7-Qsm_yNaIogIvLvA2qv9Ht9coX70e_INIuD0vozma5zOp7z0LrpZShJ4FsEZG4PAt-EzBvhOLxnrgl4jQvCZ6HSBPaRzCRYp_R6D8IKUpH3zzLHOrMUoGhHA2dNPTnY6QMahMHkAsvBoRcH0ern9J5cS55P9PVvhaBzOlvbsjFlDiuOfNIG8"/>
+<div class="flex-grow min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-body-lg text-on-surface font-semibold truncate">Secret Archive</h3>
+<span class="text-[10px] bg-surface-container-highest px-2 py-0.5 rounded text-on-surface-variant font-bold">92 BLOCKS</span>
+</div>
+<p class="text-body-md text-on-surface-variant truncate">Discovery of the ancient manuscript.</p>
+<span class="text-[11px] text-outline mt-1 block">Modified Oct 12</span>
+</div>
+</div>
+</div>
+</div>
+<footer class="px-6 py-4 bg-surface-container-highest flex justify-end gap-3">
+<button class="px-6 py-2 text-primary font-label-md text-label-md rounded-lg hover:bg-surface-variant transition-colors active:scale-95">Cancel</button>
+<button class="px-8 py-2 bg-primary-container text-on-primary-container font-label-md text-label-md rounded-lg hover:opacity-90 shadow-lg active:scale-95 transition-all">Load</button>
+</footer>
+</section>
+</div>
+</main>
+<!-- Background Atmospheric Effect -->
+<div class="fixed inset-0 pointer-events-none opacity-40 z-0">
+<div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 blur-[120px] rounded-full animate-pulse"></div>
+<div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-secondary/10 blur-[120px] rounded-full"></div>
+</div>
+<script>
+        // Simple micro-interactions
+        document.querySelectorAll('button, [role="button"]').forEach(btn => {
+            btn.addEventListener('mousedown', () => {
+                btn.classList.add('scale-95');
+            });
+            btn.addEventListener('mouseup', () => {
+                btn.classList.remove('scale-95');
+            });
+            btn.addEventListener('mouseleave', () => {
+                btn.classList.remove('scale-95');
+            });
+        });
+    </script>
+</body></html>

@@ -30,7 +30,10 @@ interface ButtonProps {
   icon?: React.ReactNode;
   iconPosition?: 'left' | 'right';
   style?: ViewStyle;
+  className?: string;
   textStyle?: TextStyle;
+  accessibilityLabel?: string;
+  accessibilityRole?: 'button' | 'link' | 'none';
 }
 
 export function Button({
@@ -44,7 +47,10 @@ export function Button({
   icon,
   iconPosition = 'left',
   style,
+  className,
   textStyle,
+  accessibilityLabel,
+  accessibilityRole = 'button',
 }: ButtonProps) {
   const colors = useColors();
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -121,7 +127,7 @@ export function Button({
     lg: 17,
   };
 
-  // Variant styles
+  // Variant styles — using new OKLCH design tokens
   const getVariantStyles = () => {
     switch (variant) {
       case 'primary':
@@ -146,7 +152,7 @@ export function Button({
         };
       case 'ghost':
         return {
-          backgroundColor: 'transparent',
+          backgroundColor: colors.hover ?? 'transparent',
           borderWidth: 0,
           textColor: colors.primary,
         };
@@ -163,20 +169,16 @@ export function Button({
   const isDisabled = disabled || loading;
 
   return (
-    <Animated.View
-      style={[
-        {
-          transform: [{ scale: scaleAnim }],
-          opacity: isDisabled ? 0.5 : 1,
-        },
-        fullWidth && { width: '100%' },
-      ]}
-    >
+    <Animated.View style={[{ opacity: isDisabled ? 0.5 : 1 }, fullWidth && { width: '100%' }]}>
+      <Animated.View style={[{ transform: [{ scale: scaleAnim }] }]}>
       <Pressable
         onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={isDisabled}
+        accessibilityLabel={accessibilityLabel}
+        accessibilityRole={accessibilityRole}
+        className={className}
         style={[
           styles.button,
           sizeStyles[size],
@@ -232,6 +234,7 @@ export function Button({
           </>
         )}
       </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }

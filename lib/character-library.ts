@@ -1,168 +1,144 @@
-/**
- * Character Library Management
- * CRUD operations for character library (per-story)
- */
-
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Character, CharacterSprite, CharacterLibrary } from './character-types';
+import { useAppStore } from '../stores/use-app-store';
+import { generateId } from './id-utils';
 
-const STORAGE_PREFIX = 'character_library_';
-
-// ── Get Library ───────────────────────────────────────────────────────────
-
-export async function getCharacterLibrary(storyId: string): Promise<Character[]> {
-  try {
-    const key = `${STORAGE_PREFIX}${storyId}`;
-    const json = await AsyncStorage.getItem(key);
-    if (!json) return [];
-    const library: CharacterLibrary = JSON.parse(json);
-    return library.characters || [];
-  } catch (error) {
-    if (__DEV__) console.error('[CharacterLibrary] getCharacterLibrary failed:', error);
-    return [];
-  }
+function getLibrary(storyId: string): Character[] {
+  return useAppStore.getState().characterLibraries[storyId] || [];
 }
 
-// ── Save Library ──────────────────────────────────────────────────────────
+function saveLibrary(storyId: string, characters: Character[]): void {
+  useAppStore.getState().setCharacterLibrary(storyId, characters);
+}
 
-export async function saveCharacterLibrary(
+export function getCharacterLibrary(storyId: string): Character[] {
+  return getLibrary(storyId);
+}
+
+export function saveCharacterLibrary(
   storyId: string,
   characters: Character[]
-): Promise<void> {
-  try {
-    const key = `${STORAGE_PREFIX}${storyId}`;
-    const library: CharacterLibrary = { characters };
-    await AsyncStorage.setItem(key, JSON.stringify(library));
-  } catch (error) {
-    if (__DEV__) console.error('[CharacterLibrary] saveCharacterLibrary failed:', error);
-    throw error;
-  }
+): void {
+  saveLibrary(storyId, characters);
 }
 
-// ── Add Character ─────────────────────────────────────────────────────────
-
-export async function addCharacter(
+export function addCharacter(
   storyId: string,
   character: Omit<Character, 'id' | 'createdAt'>
-): Promise<Character> {
-  const library = await getCharacterLibrary(storyId);
+): Character {
+  const library = getLibrary(storyId);
   const newCharacter: Character = {
     ...character,
-    id: `char_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    id: generateId('char', 11),
     createdAt: Date.now(),
   };
-  library.push(newCharacter);
-  await saveCharacterLibrary(storyId, library);
+  saveLibrary(storyId, [...library, newCharacter]);
   return newCharacter;
 }
 
-// ── Update Character ──────────────────────────────────────────────────────
-
-export async function updateCharacter(
+export function updateCharacter(
   storyId: string,
   characterId: string,
   updates: Partial<Omit<Character, 'id' | 'createdAt'>>
-): Promise<void> {
-  const library = await getCharacterLibrary(storyId);
+): void {
+  const library = getLibrary(storyId);
   const index = library.findIndex((c) => c.id === characterId);
   if (index === -1) throw new Error('Character not found');
-  library[index] = { ...library[index], ...updates };
-  await saveCharacterLibrary(storyId, library);
+  const updated = library.map((c, i) => i === index ? { ...c, ...updates } : c);
+  saveLibrary(storyId, updated);
 }
 
-// ── Delete Character ──────────────────────────────────────────────────────
-
-export async function deleteCharacter(storyId: string, characterId: string): Promise<void> {
-  const library = await getCharacterLibrary(storyId);
+export function deleteCharacter(storyId: string, characterId: string): void {
+  const library = getLibrary(storyId);
   const filtered = library.filter((c) => c.id !== characterId);
-  await saveCharacterLibrary(storyId, filtered);
+  saveLibrary(storyId, filtered);
 }
 
-// ── Add Sprite to Character ───────────────────────────────────────────────
-
-export async function addSpriteToCharacter(
+export function addSpriteToCharacter(
   storyId: string,
   characterId: string,
   sprite: Omit<CharacterSprite, 'id' | 'createdAt'>
-): Promise<CharacterSprite> {
-  const library = await getCharacterLibrary(storyId);
-  const character = library.find((c) => c.id === characterId);
-  if (!character) throw new Error('Character not found');
+): CharacterSprite {
+  const library = getLibrary(storyId);
+  const charIndex = library.findIndex((c) => c.id === characterId);
+  if (charIndex === -1) throw new Error('Character not found');
+
+  const character = library[charIndex];
 
   const newSprite: CharacterSprite = {
     ...sprite,
-    id: `sprite_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    id: generateId('sprite', 11),
     createdAt: Date.now(),
   };
 
-  character.sprites.push(newSprite);
+  const updatedSprites = [...character.sprites, newSprite];
+  const updatedChar = {
+    ...character,
+    sprites: updatedSprites,
+    defaultSpriteId: character.defaultSpriteId ?? (updatedSprites.length === 1 ? newSprite.id : undefined),
+  };
 
-  // Set as default if it's the first sprite
-  if (character.sprites.length === 1) {
-    character.defaultSpriteId = newSprite.id;
-  }
-
-  await saveCharacterLibrary(storyId, library);
+  const updatedLibrary = library.map((c, i) => i === charIndex ? updatedChar : c);
+  saveLibrary(storyId, updatedLibrary);
   return newSprite;
 }
 
-// ── Update Sprite ─────────────────────────────────────────────────────────
-
-export async function updateSprite(
+export function updateSprite(
   storyId: string,
   characterId: string,
   spriteId: string,
   updates: Partial<Omit<CharacterSprite, 'id' | 'createdAt'>>
-): Promise<void> {
-  const library = await getCharacterLibrary(storyId);
-  const character = library.find((c) => c.id === characterId);
-  if (!character) throw new Error('Character not found');
+): void {
+  const library = getLibrary(storyId);
+  const charIndex = library.findIndex((c) => c.id === characterId);
+  if (charIndex === -1) throw new Error('Character not found');
 
+  const character = library[charIndex];
   const spriteIndex = character.sprites.findIndex((s) => s.id === spriteId);
   if (spriteIndex === -1) throw new Error('Sprite not found');
 
-  character.sprites[spriteIndex] = { ...character.sprites[spriteIndex], ...updates };
-  await saveCharacterLibrary(storyId, library);
+  const updatedSprites = character.sprites.map((s, i) =>
+    i === spriteIndex ? { ...s, ...updates } : s
+  );
+  const updatedChar = { ...character, sprites: updatedSprites };
+  const updated = library.map((c, i) => i === charIndex ? updatedChar : c);
+  saveLibrary(storyId, updated);
 }
 
-// ── Delete Sprite ─────────────────────────────────────────────────────────
-
-export async function deleteSprite(
+export function deleteSprite(
   storyId: string,
   characterId: string,
   spriteId: string
-): Promise<void> {
-  const library = await getCharacterLibrary(storyId);
-  const character = library.find((c) => c.id === characterId);
-  if (!character) throw new Error('Character not found');
+): void {
+  const library = getLibrary(storyId);
+  const charIndex = library.findIndex((c) => c.id === characterId);
+  if (charIndex === -1) throw new Error('Character not found');
 
-  character.sprites = character.sprites.filter((s) => s.id !== spriteId);
+  const character = library[charIndex];
+  const updatedSprites = character.sprites.filter((s) => s.id !== spriteId);
+  const updatedDefaultId = character.defaultSpriteId === spriteId
+    ? updatedSprites[0]?.id
+    : character.defaultSpriteId;
 
-  // Update default if deleted
-  if (character.defaultSpriteId === spriteId) {
-    character.defaultSpriteId = character.sprites[0]?.id;
-  }
-
-  await saveCharacterLibrary(storyId, library);
+  const updatedChar = { ...character, sprites: updatedSprites, defaultSpriteId: updatedDefaultId };
+  const updated = library.map((c, i) => i === charIndex ? updatedChar : c);
+  saveLibrary(storyId, updated);
 }
 
-// ── Search & Filter ───────────────────────────────────────────────────────
-
-export async function searchCharacters(
+export function searchCharacters(
   storyId: string,
   query: string
-): Promise<Character[]> {
-  const library = await getCharacterLibrary(storyId);
+): Character[] {
+  const library = getLibrary(storyId);
   const lowerQuery = query.toLowerCase();
   return library.filter((char) => char.name.toLowerCase().includes(lowerQuery));
 }
 
-export async function searchSprites(
+export function searchSprites(
   storyId: string,
   characterId: string,
   query: string
-): Promise<CharacterSprite[]> {
-  const library = await getCharacterLibrary(storyId);
+): CharacterSprite[] {
+  const library = getLibrary(storyId);
   const character = library.find((c) => c.id === characterId);
   if (!character) return [];
 
@@ -174,12 +150,12 @@ export async function searchSprites(
   );
 }
 
-export async function getSpritesByTag(
+export function getSpritesByTag(
   storyId: string,
   characterId: string,
   tag: string
-): Promise<CharacterSprite[]> {
-  const library = await getCharacterLibrary(storyId);
+): CharacterSprite[] {
+  const library = getLibrary(storyId);
   const character = library.find((c) => c.id === characterId);
   if (!character) return [];
 
@@ -188,68 +164,81 @@ export async function getSpritesByTag(
   );
 }
 
-// ── Import/Export ─────────────────────────────────────────────────────────
-
-export async function importCharacterLibrary(
+export function importCharacterLibrary(
   targetStoryId: string,
   sourceStoryId: string
-): Promise<void> {
-  const sourceLibrary = await getCharacterLibrary(sourceStoryId);
-  const targetLibrary = await getCharacterLibrary(targetStoryId);
+): void {
+  const sourceLibrary = getLibrary(sourceStoryId);
+  const targetLibrary = getLibrary(targetStoryId);
 
-  // Merge libraries, regenerating IDs to avoid conflicts
-  const importedCharacters = sourceLibrary.map((char) => ({
-    ...char,
-    id: `char_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    sprites: char.sprites.map((sprite) => ({
-      ...sprite,
-      id: `sprite_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    })),
-  }));
+  const spriteIdMap = new Map<string, string>();
 
-  await saveCharacterLibrary(targetStoryId, [...targetLibrary, ...importedCharacters]);
+  const importedCharacters = sourceLibrary.map((char) => {
+    const newCharId = generateId('char', 11);
+
+    const newSprites = char.sprites.map((sprite) => {
+      const newSpriteId = generateId('sprite', 11);
+      spriteIdMap.set(sprite.id, newSpriteId);
+      return { ...sprite, id: newSpriteId };
+    });
+
+    return {
+      ...char,
+      id: newCharId,
+      sprites: newSprites,
+      defaultSpriteId: char.defaultSpriteId ? spriteIdMap.get(char.defaultSpriteId) ?? char.defaultSpriteId : undefined,
+    };
+  });
+
+  saveLibrary(targetStoryId, [...targetLibrary, ...importedCharacters]);
 }
 
-export async function exportCharacterLibrary(storyId: string): Promise<string> {
-  const library = await getCharacterLibrary(storyId);
+export function exportCharacterLibrary(storyId: string): string {
+  const library = getLibrary(storyId);
   return JSON.stringify({ characters: library }, null, 2);
 }
 
-export async function importCharacterLibraryFromJSON(
+export function importCharacterLibraryFromJSON(
   storyId: string,
   json: string
-): Promise<void> {
+): void {
   const parsed: CharacterLibrary = JSON.parse(json);
-  const targetLibrary = await getCharacterLibrary(storyId);
+  const targetLibrary = getLibrary(storyId);
 
-  // Regenerate IDs
-  const importedCharacters = parsed.characters.map((char) => ({
-    ...char,
-    id: `char_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    sprites: char.sprites.map((sprite) => ({
-      ...sprite,
-      id: `sprite_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    })),
-  }));
+  const spriteIdMap = new Map<string, string>();
 
-  await saveCharacterLibrary(storyId, [...targetLibrary, ...importedCharacters]);
+  const importedCharacters = parsed.characters.map((char) => {
+    const newCharId = generateId('char', 11);
+
+    const newSprites = char.sprites.map((sprite) => {
+      const newSpriteId = generateId('sprite', 11);
+      spriteIdMap.set(sprite.id, newSpriteId);
+      return { ...sprite, id: newSpriteId };
+    });
+
+    return {
+      ...char,
+      id: newCharId,
+      sprites: newSprites,
+    };
+  });
+
+  saveLibrary(storyId, [...targetLibrary, ...importedCharacters]);
 }
 
-// ── Get Character by ID ───────────────────────────────────────────────────
-
-export async function getCharacter(
+export function getCharacter(
   storyId: string,
   characterId: string
-): Promise<Character | undefined> {
-  const library = await getCharacterLibrary(storyId);
+): Character | undefined {
+  const library = getLibrary(storyId);
   return library.find((c) => c.id === characterId);
 }
 
-export async function getSprite(
+export function getSprite(
   storyId: string,
   characterId: string,
   spriteId: string
-): Promise<CharacterSprite | undefined> {
-  const character = await getCharacter(storyId, characterId);
+): CharacterSprite | undefined {
+  const character = getCharacter(storyId, characterId);
   return character?.sprites.find((s) => s.id === spriteId);
 }

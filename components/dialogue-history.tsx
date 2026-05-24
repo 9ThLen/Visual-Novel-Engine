@@ -1,17 +1,19 @@
-/**
- * DialogueHistory — slide-up drawer showing all past dialogue lines.
- */
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   Pressable,
   FlatList,
   Animated,
-  Dimensions,
+  useWindowDimensions,
   StyleSheet,
+  useColorScheme,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
+
+/** Solid panel — RN StyleSheet does not parse oklch(); rgba dialogue-bg is too transparent here. */
+const HISTORY_PANEL_BG = '#0F0E17';
+const HISTORY_PANEL_BG_LIGHT = '#FDFCF9';
 
 export interface HistoryEntry {
   id: string;
@@ -28,8 +30,11 @@ interface Props {
 
 export function DialogueHistory({ visible, entries, onClose }: Props) {
   const colors = useColors();
+  const colorScheme = useColorScheme();
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const { height } = Dimensions.get('window');
+  const { height } = useWindowDimensions();
+  const panelHeight = height * 0.72;
+  const panelBg = colorScheme === 'light' ? HISTORY_PANEL_BG_LIGHT : HISTORY_PANEL_BG;
 
   useEffect(() => {
     Animated.spring(slideAnim, {
@@ -38,45 +43,59 @@ export function DialogueHistory({ visible, entries, onClose }: Props) {
       tension: 65,
       friction: 11,
     }).start();
-  }, [visible]);
+  }, [visible, slideAnim]);
 
-  const translateY = slideAnim.interpolate({
+  const sheetTranslateY = slideAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [height, 0],
+    outputRange: [panelHeight, 0],
   });
 
-  // Don't render if not visible and animation is complete
+  const reversedEntries = useMemo(() => [...entries].reverse(), [entries]);
+
+  const renderEntry = useCallback(
+    ({ item, index }: { item: HistoryEntry; index: number }) => (
+      <View style={{ opacity: index === 0 ? 1 : Math.max(0, 0.72 - index * 0.04) }}>
+        {item.speaker ? (
+          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary, marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            {item.speaker}
+          </Text>
+        ) : null}
+        <Text style={{ fontSize: 14, color: colors.foreground, lineHeight: 21 }}>
+          {item.text}
+        </Text>
+        {index < entries.length - 1 && (
+          <View style={{ height: 1, backgroundColor: colors.border, marginTop: 12 }} />
+        )}
+      </View>
+    ),
+    [colors, entries.length]
+  );
+
   if (!visible) return null;
 
   return (
-    <Animated.View
-      style={[
-        StyleSheet.absoluteFillObject,
-        { transform: [{ translateY }], zIndex: 200 },
-      ]}
-      pointerEvents={visible ? 'auto' : 'none'}
-    >
-      {/* Backdrop */}
+    <View style={[StyleSheet.absoluteFillObject, { zIndex: 200 }]} pointerEvents="auto">
       <Pressable
-        style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
+        style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.72)' }]}
         onPress={onClose}
       />
 
-      {/* Drawer panel */}
-      <View
+      <Animated.View
         style={{
           position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
-          height: height * 0.72,
-          backgroundColor: colors.surface,
+          height: panelHeight,
+          transform: [{ translateY: sheetTranslateY }],
+          backgroundColor: panelBg,
           borderTopLeftRadius: 20,
           borderTopRightRadius: 20,
           overflow: 'hidden',
+          borderTopWidth: 1,
+          borderColor: colors.border,
         }}
       >
-        {/* Handle + header */}
         <View
           style={{
             alignItems: 'center',
@@ -87,6 +106,7 @@ export function DialogueHistory({ visible, entries, onClose }: Props) {
             paddingHorizontal: 20,
             flexDirection: 'row',
             justifyContent: 'space-between',
+            backgroundColor: panelBg,
           }}
         >
           <View
@@ -114,51 +134,19 @@ export function DialogueHistory({ visible, entries, onClose }: Props) {
         </View>
 
         {entries.length === 0 ? (
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: panelBg }}>
             <Text style={{ color: colors.muted, fontSize: 14 }}>No history yet.</Text>
           </View>
         ) : (
           <FlatList
-            data={[...entries].reverse()}
+            data={reversedEntries}
             keyExtractor={(e) => e.id}
+            style={{ flex: 1, backgroundColor: panelBg }}
             contentContainerStyle={{ padding: 16, gap: 12 }}
-            renderItem={({ item, index }) => (
-              <View
-                style={{
-                  opacity: index === 0 ? 1 : 0.72 - index * 0.04,
-                }}
-              >
-                {item.speaker ? (
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      fontWeight: '700',
-                      color: colors.primary,
-                      marginBottom: 3,
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.8,
-                    }}
-                  >
-                    {item.speaker}
-                  </Text>
-                ) : null}
-                <Text style={{ fontSize: 14, color: colors.foreground, lineHeight: 21 }}>
-                  {item.text}
-                </Text>
-                {index < entries.length - 1 && (
-                  <View
-                    style={{
-                      height: 1,
-                      backgroundColor: colors.border,
-                      marginTop: 12,
-                    }}
-                  />
-                )}
-              </View>
-            )}
+            renderItem={renderEntry}
           />
         )}
-      </View>
-    </Animated.View>
+      </Animated.View>
+    </View>
   );
 }

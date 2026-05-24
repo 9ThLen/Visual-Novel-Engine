@@ -6,7 +6,7 @@
  *   - AudioLibraryService   – catalog/management of audio library items
  *   - AudioTriggerScheduler – trigger-based scheduling and orchestration
  *
- * This module re-exports the same singleton interface for backward compatibility.
+ * Dependencies are injected via constructor. Default singleton exported for convenience.
  */
 
 import type {
@@ -15,62 +15,71 @@ import type {
   AudioTriggerType,
   AudioPlaybackState,
 } from './audio-types';
+import type { IAudioPlayerService, IAudioLibraryService, IAudioManager } from './audio-interfaces';
 import { AudioPlayerService } from './audio-player-service';
 import { AudioLibraryService } from './audio-library-service';
 import { AudioTriggerScheduler } from './audio-trigger-scheduler';
-
-// ── Service instances (singletons) ─────────────────────────────────────────
-
-const playerService = new AudioPlayerService();
-const libraryService = new AudioLibraryService();
-const triggerScheduler = new AudioTriggerScheduler(playerService, libraryService);
+import { isReaderAudioSessionActive } from './reader-audio-session';
 
 // ── Facade class (backward-compatible API surface) ─────────────────────────
 
-class EnhancedAudioManager {
+class EnhancedAudioManager implements IAudioManager {
+  private playerService: IAudioPlayerService;
+  private libraryService: IAudioLibraryService;
+  private triggerScheduler: AudioTriggerScheduler;
+
+  constructor(
+    playerService?: IAudioPlayerService,
+    libraryService?: IAudioLibraryService,
+  ) {
+    this.playerService = playerService ?? new AudioPlayerService();
+    this.libraryService = libraryService ?? new AudioLibraryService();
+    this.triggerScheduler = new AudioTriggerScheduler(this.playerService, this.libraryService);
+  }
+  // ── Initialization ──────────────────────────────────────────────────────
+
   // ── Initialization ──────────────────────────────────────────────────────
 
   async initialize(): Promise<void> {
-    await playerService.initialize();
+    await this.playerService.initialize();
   }
 
   // ── Library Management (delegates to AudioLibraryService) ───────────────
 
   loadLibrary(items: AudioLibraryItem[]): void {
-    libraryService.load(items);
+    this.libraryService.load(items);
   }
 
   getLibraryItem(audioId: string): AudioLibraryItem | undefined {
-    return libraryService.get(audioId);
+    return this.libraryService.get(audioId);
   }
 
   // ── Trigger System (delegates to AudioTriggerScheduler) ────────────────
 
-  async executeTrigger(
-    trigger: AudioTrigger,
-    context?: { sceneId?: string },
-  ): Promise<void> {
-    await triggerScheduler.executeTrigger(trigger, context);
+  async executeTrigger(trigger: AudioTrigger): Promise<void> {
+    if (!isReaderAudioSessionActive()) return;
+    await this.triggerScheduler.executeTrigger(trigger);
   }
 
   async executeTriggersByType(
     triggers: AudioTrigger[],
     triggerType: AudioTriggerType,
-    context?: { sceneId?: string },
   ): Promise<void> {
-    await triggerScheduler.executeTriggersByType(triggers, triggerType, context);
+    if (!isReaderAudioSessionActive()) return;
+    await this.triggerScheduler.executeTriggersByType(triggers, triggerType);
   }
 
   cancelTrigger(triggerId: string): void {
-    triggerScheduler.cancelTrigger(triggerId);
+    this.triggerScheduler.cancelTrigger(triggerId);
   }
 
   cancelAllTriggers(): void {
-    triggerScheduler.cancelAllTriggers();
+    this.triggerScheduler.cancelAllTriggers();
   }
 
   async processTriggers(triggers: AudioTrigger[]): Promise<void> {
-    await triggerScheduler.processTriggers(triggers);
+    if (!isReaderAudioSessionActive()) return;
+    await this.triggerScheduler.processTriggers(triggers);
   }
 
   // ── Playback Control (delegates to AudioPlayerService) ──────────────────
@@ -86,7 +95,8 @@ class EnhancedAudioManager {
       triggerId?: string;
     } = {},
   ): Promise<void> {
-    await playerService.play(trackId, uri, {
+    if (!isReaderAudioSessionActive()) return;
+    await this.playerService.play(trackId, uri, {
       volume: opts.volume,
       loop: opts.loop,
       fadeIn: opts.fadeIn,
@@ -95,50 +105,54 @@ class EnhancedAudioManager {
   }
 
   async pause(trackId: string): Promise<void> {
-    await playerService.pause(trackId);
+    await this.playerService.pause(trackId);
   }
 
   async resume(trackId: string): Promise<void> {
-    await playerService.resume(trackId);
+    await this.playerService.resume(trackId);
   }
 
   async stop(trackId: string, fadeOut?: number): Promise<void> {
-    await playerService.stop(trackId, fadeOut);
+    await this.playerService.stop(trackId, fadeOut);
   }
 
   async stopAll(fadeOut?: number): Promise<void> {
-    await playerService.stopAll(fadeOut);
+    await this.playerService.stopAll(fadeOut);
   }
 
   async stopByType(type: AudioLibraryItem['type'], fadeOut?: number): Promise<void> {
-    await triggerScheduler.stopByType(type, fadeOut);
+    await this.triggerScheduler.stopByType(type, fadeOut);
   }
 
   async setVolume(trackId: string, volume: number): Promise<void> {
-    await playerService.setVolume(trackId, volume);
+    await this.playerService.setVolume(trackId, volume);
   }
 
   async crossFade(
     trackId: string,
     newUri: string,
-    volume = 1,
-    duration = 600,
+    opts: {
+      volume?: number;
+      loop?: boolean;
+      duration?: number;
+    } = {},
   ): Promise<void> {
-    await playerService.crossFade(trackId, newUri, volume, duration);
+    if (!isReaderAudioSessionActive()) return;
+    await this.playerService.crossFade(trackId, newUri, opts);
   }
 
   isPlaying(trackId: string): boolean {
-    return playerService.isPlaying(trackId);
+    return this.playerService.isPlaying(trackId);
   }
 
   // ── State Query ────────────────────────────────────────────────────────
 
   getActiveTracksByType(type: AudioLibraryItem['type']): string[] {
     const matching: string[] = [];
-    for (const track of playerService.getAllActiveTracks()) {
+    for (const track of this.playerService.getAllActiveTracks()) {
       const metaAudioId = track.metadata?.audioId;
       if (metaAudioId) {
-        const item = libraryService.get(metaAudioId);
+        const item = this.libraryService.get(metaAudioId);
         if (item && item.type === type && track.isPlaying) {
           matching.push(track.trackId);
         }
@@ -148,19 +162,27 @@ class EnhancedAudioManager {
   }
 
   getPlaybackState(): AudioPlaybackState[] {
-    return triggerScheduler.getPlaybackStates();
+    return this.triggerScheduler.getPlaybackStates();
   }
 
   // ── Cleanup ────────────────────────────────────────────────────────────
 
   async cleanup(): Promise<void> {
-    triggerScheduler.cleanup();
-    await playerService.cleanup();
-    libraryService.clear();
+    this.triggerScheduler.cleanup();
+    await this.playerService.cleanup();
+    this.libraryService.clear();
   }
 }
 
-// ── Singleton exports (backward compatible) ────────────────────────────────
+// ── Factory function ───────────────────────────────────────────────────────
 
-export const enhancedAudioManager = new EnhancedAudioManager();
-export const audioManager = enhancedAudioManager;
+export function createEnhancedAudioManager(
+  playerService?: IAudioPlayerService,
+  libraryService?: IAudioLibraryService,
+): EnhancedAudioManager {
+  return new EnhancedAudioManager(playerService, libraryService);
+}
+
+// ── Singleton export ───────────────────────────────────────────────────────
+
+export const enhancedAudioManager = createEnhancedAudioManager();

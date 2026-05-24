@@ -4,7 +4,7 @@ import path from 'path';
 export default defineConfig({
   test: {
     globals: true,
-    environment: 'node',
+    environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
     include: ['__tests__/**/*.test.{ts,tsx}'],
     exclude: ['node_modules', 'dist', '.expo', '__tests__/e2e'],
@@ -16,8 +16,10 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@shared': path.resolve(__dirname, 'shared'),
       '@': path.resolve(__dirname),
     },
+  },
+  esbuild: {
+    jsx: 'automatic',
   },
 });

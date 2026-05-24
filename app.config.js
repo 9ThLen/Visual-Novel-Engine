@@ -16,7 +16,7 @@ const appConfig = {
   name: "Visual Novel Engine",
   slug: "visual-novel-engine",
   version: "1.0.0",
-  orientation: "portrait",
+  orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: schemeFromBundleId,
   userInterfaceStyle: "automatic",
@@ -42,7 +42,7 @@ const appConfig = {
   },
   web: {
     bundler: "metro",
-    output: "static",
+    output: "single",
     favicon: "./assets/images/favicon.png",
   },
   assetBundlePatterns: ["**/*"],

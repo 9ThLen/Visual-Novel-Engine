@@ -1,8 +1,11 @@
 import React, { Component, ReactNode } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
+import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
+import type { RuntimePalette } from '@/lib/_core/theme';
 
 interface Props {
   children: ReactNode;
+  colors?: RuntimePalette;
   fallback?: (error: Error, errorInfo: React.ErrorInfo, reset: () => void) => ReactNode;
 }
 
@@ -40,7 +43,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    ErrorHandler.handle('ErrorBoundary caught an error', error, ErrorCategory.RENDERING, ErrorSeverity.HIGH, { componentStack: errorInfo.componentStack });
     this.setState({ errorInfo });
   }
 
@@ -56,10 +59,11 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError && this.state.error) {
       // Use custom fallback if provided
       if (this.props.fallback) {
-        return this.props.fallback(this.state.error, this.state.errorInfo!, this.resetError);
+        return this.props.fallback(this.state.error, this.state.errorInfo ?? { componentStack: '' }, this.resetError);
       }
 
       // Default error UI
+      const c = this.props.colors;
       return (
         <View
           style={{
@@ -67,20 +71,17 @@ export class ErrorBoundary extends Component<Props, State> {
             justifyContent: 'center',
             alignItems: 'center',
             padding: 20,
-            backgroundColor: '#f8f9fa',
+            backgroundColor: c?.background ?? '#f8f9fa',
           }}
         >
           <View
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: c?.surface ?? '#fff',
               borderRadius: 12,
               padding: 24,
               maxWidth: 600,
               width: '100%',
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.1,
-              shadowRadius: 8,
+              boxShadow: '0px 2px 8px rgba(0,0,0,0.1)',
               elevation: 4,
             }}
           >
@@ -88,7 +89,7 @@ export class ErrorBoundary extends Component<Props, State> {
               style={{
                 fontSize: 24,
                 fontWeight: 'bold',
-                color: '#dc3545',
+                color: c?.danger ?? '#dc3545',
                 marginBottom: 16,
                 textAlign: 'center',
               }}
@@ -99,7 +100,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <Text
               style={{
                 fontSize: 16,
-                color: '#6c757d',
+                color: c?.muted ?? '#6c757d',
                 marginBottom: 20,
                 textAlign: 'center',
                 lineHeight: 24,
@@ -111,7 +112,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <ScrollView
               style={{
                 maxHeight: 200,
-                backgroundColor: '#f8f9fa',
+                backgroundColor: c?.background ?? '#f8f9fa',
                 borderRadius: 8,
                 padding: 12,
                 marginBottom: 20,
@@ -121,7 +122,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 style={{
                   fontSize: 12,
                   fontFamily: 'monospace',
-                  color: '#495057',
+                  color: c?.foreground ?? '#495057',
                 }}
               >
                 {this.state.error.toString()}
@@ -133,7 +134,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <Pressable
               onPress={this.resetError}
               style={{
-                backgroundColor: '#007bff',
+                backgroundColor: c?.primary ?? '#007bff',
                 borderRadius: 8,
                 padding: 14,
                 alignItems: 'center',

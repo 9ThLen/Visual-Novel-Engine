@@ -30,17 +30,18 @@ export const StoryDomain = {
     // Extract first line of dialogue for preview - safe access
     const sceneText = currentScene?.text?.split('\n')[0]?.slice(0, 100) || '';
 
+    const sceneTitle = currentScene?.id;
     return {
       id: slotId,
       storyId: story.id,
       sceneId: playbackState.currentSceneId,
       choicesMade: playbackState.choicesMade,
       timestamp: Date.now(),
-      sceneName: currentScene?.id,
+      sceneName: sceneTitle,
       thumbnailUri: currentScene?.backgroundImageUri || undefined,
       storyTitle: story.title,
       sceneText,
-      playTime: 0, // TODO: Track actual play time
+      playTime: 0,
     };
   }
 };

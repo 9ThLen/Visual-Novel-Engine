@@ -2,433 +2,225 @@
   "app.name": {
     "en": "Visual Novel Engine",
     "uk": "Візуальна Новела",
-    "ru": "Визуальная Новелла",
     "pl": "Silnik Powieści Wizualnej"
   },
   "menu.save": {
-    "en": "Save",
-    "uk": "Зберегти",
-    "ru": "Сохранить",
-    "pl": "Zapisz"
+    "en": "Save", "uk": "Зберегти", "pl": "Zapisz"
   },
   "menu.load": {
-    "en": "Load",
-    "uk": "Завантажити",
-    "ru": "Загрузить",
-    "pl": "Wczytaj"
+    "en": "Load", "uk": "Завантажити", "pl": "Wczytaj"
   },
   "menu.settings": {
-    "en": "Settings",
-    "uk": "Налаштування",
-    "ru": "Настройки",
-    "pl": "Ustawienia"
+    "en": "Settings", "uk": "Налаштування", "pl": "Ustawienia"
   },
   "menu.home": {
-    "en": "Home",
-    "uk": "Головна",
-    "ru": "Главная",
-    "pl": "Strona główna"
+    "en": "Home", "uk": "Головна", "pl": "Strona główna"
   },
   "menu.inventory": {
-    "en": "Inventory",
-    "uk": "Інвентар",
-    "ru": "Инвентарь",
-    "pl": "Ekwipunek"
+    "en": "Inventory", "uk": "Інвентар", "pl": "Ekwipunek"
   },
   "menu.close": {
-    "en": "Close menu",
-    "uk": "Закрити меню",
-    "ru": "Закрыть меню",
-    "pl": "Zamknij menu"
+    "en": "Close menu", "uk": "Закрити меню", "pl": "Zamknij menu"
   },
   "menu.back": {
-    "en": "Back",
-    "uk": "Назад",
-    "ru": "Назад",
-    "pl": "Wstecz"
+    "en": "Back", "uk": "Назад", "pl": "Wstecz"
   },
   "save.title": {
-    "en": "Save Game",
-    "uk": "Зберегти Гру",
-    "ru": "Сохранить Игру",
-    "pl": "Zapisz Grę"
+    "en": "Save Game", "uk": "Зберегти Гру", "pl": "Zapisz Grę"
   },
   "load.title": {
-    "en": "Load Game",
-    "uk": "Завантажити Гру",
-    "ru": "Загрузить Игру",
-    "pl": "Wczytaj Grę"
+    "en": "Load Game", "uk": "Завантажити Гру", "pl": "Wczytaj Grę"
   },
   "save.slot": {
-    "en": "Slot",
-    "uk": "Слот",
-    "ru": "Слот",
-    "pl": "Slot"
+    "en": "Slot", "uk": "Слот", "pl": "Slot"
   },
   "save.empty": {
-    "en": "Empty Slot",
-    "uk": "Порожній Слот",
-    "ru": "Пустой Слот",
-    "pl": "Pusty Slot"
+    "en": "Empty Slot", "uk": "Порожній Слот", "pl": "Pusty Slot"
   },
   "save.autosave": {
-    "en": "Auto-Save",
-    "uk": "Автозбереження",
-    "ru": "Автосохранение",
-    "pl": "Autozapis"
+    "en": "Auto-Save", "uk": "Автозбереження", "pl": "Autozapis"
   },
   "save.manual": {
-    "en": "Manual Saves",
-    "uk": "Ручні Збереження",
-    "ru": "Ручные Сохранения",
-    "pl": "Ręczne Zapisy"
+    "en": "Manual Saves", "uk": "Ручні Збереження", "pl": "Ręczne Zapisy"
   },
   "save.button": {
-    "en": "Save",
-    "uk": "Зберегти",
-    "ru": "Сохранить",
-    "pl": "Zapisz"
+    "en": "Save", "uk": "Зберегти", "pl": "Zapisz"
   },
   "save.overwrite": {
-    "en": "Overwrite",
-    "uk": "Перезаписати",
-    "ru": "Перезаписать",
-    "pl": "Nadpisz"
+    "en": "Overwrite", "uk": "Перезаписати", "pl": "Nadpisz"
   },
   "save.saveHere": {
-    "en": "Save Here",
-    "uk": "Зберегти Тут",
-    "ru": "Сохранить Здесь",
-    "pl": "Zapisz Tutaj"
+    "en": "Save Here", "uk": "Зберегти Тут", "pl": "Zapisz Tutaj"
   },
   "save.delete": {
-    "en": "Delete",
-    "uk": "Видалити",
-    "ru": "Удалить",
-    "pl": "Usuń"
+    "en": "Delete", "uk": "Видалити", "pl": "Usuń"
   },
   "save.deleteConfirm": {
     "en": "Are you sure you want to delete this save?",
     "uk": "Ви впевнені, що хочете видалити це збереження?",
-    "ru": "Вы уверены, что хотите удалить это сохранение?",
     "pl": "Czy na pewno chcesz usunąć ten zapis?"
   },
   "save.success": {
-    "en": "Game saved successfully",
-    "uk": "Гру успішно збережено",
-    "ru": "Игра успешно сохранена",
-    "pl": "Gra zapisana pomyślnie"
+    "en": "Game saved successfully", "uk": "Гру успішно збережено", "pl": "Gra zapisana pomyślnie"
   },
   "save.loadSuccess": {
-    "en": "Game loaded successfully",
-    "uk": "Гру успішно завантажено",
-    "ru": "Игра успешно загружена",
-    "pl": "Gra wczytana pomyślnie"
+    "en": "Game loaded successfully", "uk": "Гру успішно завантажено", "pl": "Gra wczytana pomyślnie"
   },
   "save.error": {
-    "en": "Failed to save game",
-    "uk": "Не вдалося зберегти гру",
-    "ru": "Не удалось сохранить игру",
-    "pl": "Nie udało się zapisać gry"
+    "en": "Failed to save game", "uk": "Не вдалося зберегти гру", "pl": "Nie udało się zapisać gry"
   },
   "save.noData": {
-    "en": "No save data",
-    "uk": "Немає даних збереження",
-    "ru": "Нет данных сохранения",
-    "pl": "Brak danych zapisu"
+    "en": "No save data", "uk": "Немає даних збереження", "pl": "Brak danych zapisu"
   },
   "inventory.title": {
-    "en": "Inventory",
-    "uk": "Інвентар",
-    "ru": "Инвентарь",
-    "pl": "Ekwipunek"
+    "en": "Inventory", "uk": "Інвентар", "pl": "Ekwipunek"
   },
   "inventory.empty": {
-    "en": "Your inventory is empty",
-    "uk": "Ваш інвентар порожній",
-    "ru": "Ваш инвентарь пуст",
-    "pl": "Twój ekwipunek jest pusty"
+    "en": "Your inventory is empty", "uk": "Ваш інвентар порожній", "pl": "Twój ekwipunek jest pusty"
   },
   "inventory.itemAcquired": {
-    "en": "Item Acquired",
-    "uk": "Предмет Отримано",
-    "ru": "Предмет Получен",
-    "pl": "Przedmiot Zdobyty"
+    "en": "Item Acquired", "uk": "Предмет Отримано", "pl": "Przedmiot Zdobyty"
   },
   "inventory.requiredItems": {
     "en": "You need certain items to interact with this",
     "uk": "Вам потрібні певні предмети для взаємодії",
-    "ru": "Вам нужны определенные предметы для взаимодействия",
     "pl": "Potrzebujesz określonych przedmiotów do interakcji"
   },
   "settings.title": {
-    "en": "Settings",
-    "uk": "Налаштування",
-    "ru": "Настройки",
-    "pl": "Ustawienia"
+    "en": "Settings", "uk": "Налаштування", "pl": "Ustawienia"
   },
   "settings.language": {
-    "en": "Language",
-    "uk": "Мова",
-    "ru": "Язык",
-    "pl": "Język"
+    "en": "Language", "uk": "Мова", "pl": "Język"
   },
   "settings.audio": {
-    "en": "Audio",
-    "uk": "Аудіо",
-    "ru": "Аудио",
-    "pl": "Dźwięk"
+    "en": "Audio", "uk": "Аудіо", "pl": "Dźwięk"
   },
   "settings.bgmVolume": {
-    "en": "Music Volume",
-    "uk": "Гучність Музики",
-    "ru": "Громкость Музыки",
-    "pl": "Głośność Muzyki"
+    "en": "Music Volume", "uk": "Гучність Музики", "pl": "Głośność Muzyki"
   },
   "settings.voiceVolume": {
-    "en": "Voice Volume",
-    "uk": "Гучність Голосу",
-    "ru": "Громкость Голоса",
-    "pl": "Głośność Głosu"
+    "en": "Voice Volume", "uk": "Гучність Голосу", "pl": "Głośność Głosu"
   },
   "settings.sfxVolume": {
-    "en": "Sound Effects",
-    "uk": "Звукові Ефекти",
-    "ru": "Звуковые Эффекты",
-    "pl": "Efekty Dźwiękowe"
+    "en": "Sound Effects", "uk": "Звукові Ефекти", "pl": "Efekty Dźwiękowe"
   },
   "settings.textSpeed": {
-    "en": "Text Speed",
-    "uk": "Швидкість Тексту",
-    "ru": "Скорость Текста",
-    "pl": "Prędkość Tekstu"
+    "en": "Text Speed", "uk": "Швидкість Тексту", "pl": "Prędkość Tekstu"
   },
   "settings.textSize": {
-    "en": "Text Size",
-    "uk": "Розмір Тексту",
-    "ru": "Размер Текста",
-    "pl": "Rozmiar Tekstu"
+    "en": "Text Size", "uk": "Розмір Тексту", "pl": "Rozmiar Tekstu"
   },
   "settings.autoPlay": {
-    "en": "Auto-Play",
-    "uk": "Автопрогравання",
-    "ru": "Автовоспроизведение",
-    "pl": "Autoodtwarzanie"
+    "en": "Auto-Play", "uk": "Автопрогравання", "pl": "Autoodtwarzanie"
   },
   "settings.darkMode": {
-    "en": "Dark Mode",
-    "uk": "Темний Режим",
-    "ru": "Темный Режим",
-    "pl": "Tryb Ciemny"
+    "en": "Dark Mode", "uk": "Темний Режим", "pl": "Tryb Ciemny"
   },
   "settings.small": {
-    "en": "Small",
-    "uk": "Малий",
-    "ru": "Маленький",
-    "pl": "Mały"
+    "en": "Small", "uk": "Малий", "pl": "Mały"
   },
   "settings.medium": {
-    "en": "Medium",
-    "uk": "Середній",
-    "ru": "Средний",
-    "pl": "Średni"
+    "en": "Medium", "uk": "Середній", "pl": "Średni"
   },
   "settings.large": {
-    "en": "Large",
-    "uk": "Великий",
-    "ru": "Большой",
-    "pl": "Duży"
+    "en": "Large", "uk": "Великий", "pl": "Duży"
   },
   "reader.loading": {
-    "en": "Loading story...",
-    "uk": "Завантаження історії...",
-    "ru": "Загрузка истории...",
-    "pl": "Ładowanie historii..."
+    "en": "Loading story...", "uk": "Завантаження історії...", "pl": "Ładowanie historii..."
   },
   "reader.tapToContinue": {
-    "en": "tap to continue",
-    "uk": "натисніть, щоб продовжити",
-    "ru": "нажмите, чтобы продолжить",
-    "pl": "dotknij, aby kontynuować"
+    "en": "tap to continue", "uk": "натисніть, щоб продовжити", "pl": "dotknij, aby kontynuować"
   },
   "reader.auto": {
-    "en": "Auto",
-    "uk": "Авто",
-    "ru": "Авто",
-    "pl": "Auto"
+    "en": "Auto", "uk": "Авто", "pl": "Auto"
   },
   "reader.log": {
-    "en": "Log",
-    "uk": "Журнал",
-    "ru": "Журнал",
-    "pl": "Dziennik"
+    "en": "Log", "uk": "Журнал", "pl": "Dziennik"
   },
   "reader.skip": {
-    "en": "Skip",
-    "uk": "Пропустити",
-    "ru": "Пропустить",
-    "pl": "Pomiń"
+    "en": "Skip", "uk": "Пропустити", "pl": "Pomiń"
   },
   "editor.title": {
-    "en": "Story Editor",
-    "uk": "Редактор Історії",
-    "ru": "Редактор Истории",
-    "pl": "Edytor Historii"
+    "en": "Story Editor", "uk": "Редактор Історії", "pl": "Edytor Historii"
   },
   "editor.sceneEditor": {
-    "en": "Scene Editor",
-    "uk": "Редактор Сцен",
-    "ru": "Редактор Сцен",
-    "pl": "Edytor Scen"
+    "en": "Scene Editor", "uk": "Редактор Сцен", "pl": "Edytor Scen"
   },
   "editor.save": {
-    "en": "Save",
-    "uk": "Зберегти",
-    "ru": "Сохранить",
-    "pl": "Zapisz"
+    "en": "Save", "uk": "Зберегти", "pl": "Zapisz"
   },
   "editor.saved": {
-    "en": "Saved",
-    "uk": "Збережено",
-    "ru": "Сохранено",
-    "pl": "Zapisano"
+    "en": "Saved", "uk": "Збережено", "pl": "Zapisano"
   },
   "editor.saveSuccess": {
     "en": "Scene saved successfully!",
     "uk": "Сцену успішно збережено!",
-    "ru": "Сцена успешно сохранена!",
     "pl": "Scena zapisana pomyślnie!"
   },
   "editor.saveError": {
-    "en": "Failed to save scene",
-    "uk": "Не вдалося зберегти сцену",
-    "ru": "Не удалось сохранить сцену",
-    "pl": "Nie udało się zapisać sceny"
+    "en": "Failed to save scene", "uk": "Не вдалося зберегти сцену", "pl": "Nie udało się zapisać sceny"
   },
   "editor.preview": {
-    "en": "Preview Story",
-    "uk": "Попередній Перегляд",
-    "ru": "Предпросмотр Истории",
-    "pl": "Podgląd Historii"
+    "en": "Preview Story", "uk": "Попередній Перегляд", "pl": "Podgląd Historii"
   },
   "editor.dialogueText": {
-    "en": "Dialogue Text",
-    "uk": "Текст Діалогу",
-    "ru": "Текст Диалога",
-    "pl": "Tekst Dialogu"
+    "en": "Dialogue Text", "uk": "Текст Діалогу", "pl": "Tekst Dialogu"
   },
   "editor.background": {
-    "en": "Background Image",
-    "uk": "Фонове Зображення",
-    "ru": "Фоновое Изображение",
-    "pl": "Obraz Tła"
+    "en": "Background Image", "uk": "Фонове Зображення", "pl": "Obraz Tła"
   },
   "editor.voice": {
-    "en": "Voice Audio",
-    "uk": "Голосове Аудіо",
-    "ru": "Голосовое Аудио",
-    "pl": "Dźwięk Głosu"
+    "en": "Voice Audio", "uk": "Голосове Аудіо", "pl": "Dźwięk Głosu"
   },
   "editor.music": {
-    "en": "Background Music",
-    "uk": "Фонова Музика",
-    "ru": "Фоновая Музыка",
-    "pl": "Muzyka Tła"
+    "en": "Background Music", "uk": "Фонова Музика", "pl": "Muzyka Tła"
   },
   "editor.choices": {
-    "en": "Choices",
-    "uk": "Вибори",
-    "ru": "Выборы",
-    "pl": "Wybory"
+    "en": "Choices", "uk": "Вибори", "pl": "Wybory"
   },
   "editor.addChoice": {
-    "en": "Add Choice",
-    "uk": "Додати Вибір",
-    "ru": "Добавить Выбор",
-    "pl": "Dodaj Wybór"
+    "en": "Add Choice", "uk": "Додати Вибір", "pl": "Dodaj Wybór"
   },
   "editor.addScene": {
-    "en": "Add New Scene",
-    "uk": "Додати Нову Сцену",
-    "ru": "Добавить Новую Сцену",
-    "pl": "Dodaj Nową Scenę"
+    "en": "Add New Scene", "uk": "Додати Нову Сцену", "pl": "Dodaj Nową Scenę"
   },
   "editor.deleteScene": {
-    "en": "Delete Scene",
-    "uk": "Видалити Сцену",
-    "ru": "Удалить Сцену",
-    "pl": "Usuń Scenę"
+    "en": "Delete Scene", "uk": "Видалити Сцену", "pl": "Usuń Scenę"
   },
   "editor.allScenes": {
-    "en": "All Scenes",
-    "uk": "Всі Сцени",
-    "ru": "Все Сцены",
-    "pl": "Wszystkie Sceny"
+    "en": "All Scenes", "uk": "Всі Сцени", "pl": "Wszystkie Sceny"
   },
   "common.cancel": {
-    "en": "Cancel",
-    "uk": "Скасувати",
-    "ru": "Отмена",
-    "pl": "Anuluj"
+    "en": "Cancel", "uk": "Скасувати", "pl": "Anuluj"
   },
   "common.ok": {
-    "en": "OK",
-    "uk": "ОК",
-    "ru": "ОК",
-    "pl": "OK"
+    "en": "OK", "uk": "ОК", "pl": "OK"
   },
   "common.yes": {
-    "en": "Yes",
-    "uk": "Так",
-    "ru": "Да",
-    "pl": "Tak"
+    "en": "Yes", "uk": "Так", "pl": "Tak"
   },
   "common.no": {
-    "en": "No",
-    "uk": "Ні",
-    "ru": "Нет",
-    "pl": "Nie"
+    "en": "No", "uk": "Ні", "pl": "Nie"
   },
   "common.error": {
-    "en": "Error",
-    "uk": "Помилка",
-    "ru": "Ошибка",
-    "pl": "Błąd"
+    "en": "Error", "uk": "Помилка", "pl": "Błąd"
   },
   "common.success": {
-    "en": "Success",
-    "uk": "Успіх",
-    "ru": "Успех",
-    "pl": "Sukces"
+    "en": "Success", "uk": "Успіх", "pl": "Sukces"
   },
   "common.loading": {
-    "en": "Loading...",
-    "uk": "Завантаження...",
-    "ru": "Загрузка...",
-    "pl": "Ładowanie..."
+    "en": "Loading...", "uk": "Завантаження...", "pl": "Ładowanie..."
   },
   "time.justNow": {
-    "en": "Just now",
-    "uk": "Щойно",
-    "ru": "Только что",
-    "pl": "Przed chwilą"
+    "en": "Just now", "uk": "Щойно", "pl": "Przed chwilą"
   },
   "time.minutesAgo": {
-    "en": "m ago",
-    "uk": "хв тому",
-    "ru": "мин назад",
-    "pl": "min temu"
+    "en": "m ago", "uk": "хв тому", "pl": "min temu"
   },
   "time.hoursAgo": {
-    "en": "h ago",
-    "uk": "год тому",
-    "ru": "ч назад",
-    "pl": "godz. temu"
+    "en": "h ago", "uk": "год тому", "pl": "godz. temu"
   },
   "time.daysAgo": {
-    "en": "d ago",
-    "uk": "дн тому",
-    "ru": "дн назад",
-    "pl": "dni temu"
+    "en": "d ago", "uk": "дн тому", "pl": "dni temu"
   }
 }

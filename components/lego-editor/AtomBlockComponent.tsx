@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { AtomBlock, getTextData, getCharacterData, getBackgroundData, getAudioData, getFXData } from '../../lib/atom-types';
+import { AtomBlock, getTextData, getCharacterData } from '../../lib/atom-types';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 
 type ComponentProps = {
@@ -39,6 +39,8 @@ const AtomBlockComponent: React.FC<ComponentProps> = ({ atom, isSelected, onPres
       onPress={onPress}
       activeOpacity={0.7}
       hitSlop={hitSlop}
+      accessibilityRole="button"
+      accessibilityLabel={`${atom.type.replace('_', ' ')}: ${getTextData(atom)?.content || getCharacterData(atom)?.characterId || atom.id}`}
       style={[
         styles.container,
         { borderColor: typeColor },
@@ -77,10 +79,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    boxShadow: '0px 1px 2px rgba(0,0,0,0.2)',
   },
   tabletContainer: {
     minWidth: 140,

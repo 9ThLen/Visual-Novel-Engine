@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, StyleSheet, useWindowDimensions, Text } from 'react-native';
+import { View, StyleSheet, Text, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   useSharedValue,
@@ -9,7 +9,7 @@ import {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { AtomBlock } from '../../lib/atom-types';
-import { canSnap, MoleculeBlock, calculateBounds, MoleculeType } from '../../lib/molecule-types';
+import { canSnap, MoleculeBlock, MoleculeType } from '../../lib/molecule-types';
 import AtomBlockComponent from './AtomBlockComponent';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 
@@ -21,7 +21,7 @@ type LegoCanvasProps = {
   sceneId?: string;
 };
 
-const SNAP_THRESHOLD = 20; // px
+const DEFAULT_SNAP_THRESHOLD = 20; // px (fallback)
 
 function getMoleculeTypeForAtom(atomType: string): MoleculeType {
   switch (atomType) {
@@ -45,10 +45,10 @@ function atomToMolecule(atom: AtomBlock): MoleculeBlock {
 }
 
 // Check if two atoms can magnetically snap
-function canAtomsSnap(atomA: AtomBlock, atomB: AtomBlock): boolean {
+function canAtomsSnap(atomA: AtomBlock, atomB: AtomBlock, threshold: number = DEFAULT_SNAP_THRESHOLD): boolean {
   const molA = atomToMolecule(atomA);
   const molB = atomToMolecule(atomB);
-  if (!canSnap(molA, molB, SNAP_THRESHOLD)) {
+  if (!canSnap(molA, molB, threshold)) {
     return false;
   }
 
@@ -75,7 +75,8 @@ function canAtomsSnap(atomA: AtomBlock, atomB: AtomBlock): boolean {
 // Calculate snapped position for dragged atom relative to target atom
 function calculateSnapPosition(
   draggedAtom: AtomBlock,
-  targetAtom: AtomBlock
+  targetAtom: AtomBlock,
+  threshold: number = DEFAULT_SNAP_THRESHOLD
 ): { x: number; y: number } {
   const draggedRight = draggedAtom.x + draggedAtom.width;
   const draggedBottom = draggedAtom.y + draggedAtom.height;
@@ -87,17 +88,17 @@ function calculateSnapPosition(
 
   const leftDist = Math.abs(draggedAtom.x - targetRight);
   const rightDist = Math.abs(draggedRight - targetAtom.x);
-  if (leftDist < SNAP_THRESHOLD) {
+  if (leftDist < threshold) {
     newX = targetRight;
-  } else if (rightDist < SNAP_THRESHOLD) {
+  } else if (rightDist < threshold) {
     newX = targetAtom.x - draggedAtom.width;
   }
 
   const topDist = Math.abs(draggedAtom.y - targetBottom);
   const bottomDist = Math.abs(draggedBottom - targetAtom.y);
-  if (topDist < SNAP_THRESHOLD) {
+  if (topDist < threshold) {
     newY = targetBottom;
-  } else if (bottomDist < SNAP_THRESHOLD) {
+  } else if (bottomDist < threshold) {
     newY = targetAtom.y - draggedAtom.height;
   }
 
@@ -148,9 +149,9 @@ const DraggableAtom: React.FC<{
     width: atom.width,
     height: atom.height,
     shadowColor: isDragging ? '#3B82F6' : '#000',
-    shadowOffset: { width: 0, height: isDragging ? 4 : 2 },
-    shadowOpacity: isDragging ? 0.6 : (isSelected ? 0.4 : 0.25),
-    shadowRadius: isDragging ? 10 : (isSelected ? 6 : 3.84),
+    boxShadow: isDragging
+      ? '0px 4px 10px rgba(59,130,246,0.6)'
+      : (isSelected ? '0px 2px 6px rgba(0,0,0,0.4)' : '0px 2px 4px rgba(0,0,0,0.25)'),
     elevation: isDragging ? 12 : (isSelected ? 8 : 5),
     transform: [{ scale: scale.value }],
     borderWidth: isDragging ? 2 : (isSelected ? 1 : 0),
@@ -168,6 +169,7 @@ const DraggableAtom: React.FC<{
 
   const panGesture = Gesture.Pan()
     .hitSlop(layout.isTablet ? 15 : 8)
+    .shouldCancelWhenOutside(false)
     .onBegin(() => {
       runOnJS(setIsDragging)(true);
       scale.value = withSpring(layout.isTablet ? 1.08 : 1.05);
@@ -179,7 +181,7 @@ const DraggableAtom: React.FC<{
       let newX = atom.x + event.translationX;
       let newY = atom.y + event.translationY;
 
-      // Coordinate clamping removed to allow dragging atoms 
+      // Coordinate clamping removed to allow dragging atoms
       // beyond canvas boundaries to reach sidebar drop zones
 
       const draggedAtom = { ...atom, x: newX, y: newY };
@@ -187,17 +189,17 @@ const DraggableAtom: React.FC<{
       for (let i = 0; i < allAtoms.length; i++) {
         if (i === index) continue;
         const otherAtom = allAtoms[i];
-        
+
         // Fast spatial check before expensive molecule construction
         const dx = Math.abs(newX - otherAtom.x);
         const dy = Math.abs(newY - otherAtom.y);
-        if (dx > draggedAtom.width + otherAtom.width + snapThreshold || 
+        if (dx > draggedAtom.width + otherAtom.width + snapThreshold ||
             dy > draggedAtom.height + otherAtom.height + snapThreshold) {
           continue;
         }
 
-        if (canAtomsSnap(draggedAtom, otherAtom)) {
-          const snapPos = calculateSnapPosition(draggedAtom, otherAtom);
+        if (canAtomsSnap(draggedAtom, otherAtom, snapThreshold)) {
+          const snapPos = calculateSnapPosition(draggedAtom, otherAtom, snapThreshold);
           const dist = Math.sqrt(
             Math.pow(newX - snapPos.x, 2) + Math.pow(newY - snapPos.y, 2)
           );
@@ -233,7 +235,7 @@ const DraggableAtom: React.FC<{
 
   return (
     <GestureDetector gesture={panGesture}>
-      <View style={[animatedStyle, { position: 'absolute' }]} testID={`atom-${atom.id}`}>
+      <View style={[animatedStyle, { position: 'absolute' }]} testID={`atom-${atom.id}`} accessibilityRole="button" accessibilityHint="Drag to reposition on canvas">
         <AtomBlockComponent
           atom={atom}
           isSelected={isSelected}
@@ -262,9 +264,7 @@ const LegoCanvas: React.FC<LegoCanvasProps> = ({
   const [canvasSize, setCanvasSize] = React.useState({ width: 0, height: 0 });
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
   const layout = useResponsiveLayout();
-  const { width } = useWindowDimensions();
 
-  const gridColumns = layout.gridColumns;
   const isTabletLandscape = layout.isTablet && layout.isLandscape;
 
   const activeSelectedId = selectedAtomId ?? internalSelectedId;
@@ -298,7 +298,7 @@ const LegoCanvas: React.FC<LegoCanvasProps> = ({
     }
   }, [onAtomSelect]);
 
-  const onCanvasLayout = (event: any) => {
+  const onCanvasLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     setCanvasSize({ width, height });
   };

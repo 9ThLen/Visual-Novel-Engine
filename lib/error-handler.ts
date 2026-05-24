@@ -24,12 +24,13 @@ export interface AppError {
   severity: ErrorSeverity;
   originalError?: Error;
   timestamp: number;
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
 }
 
 export class ErrorHandler {
-  private static errorListeners: Array<(error: AppError) => void> = [];
+  private static errorListeners: ((error: AppError) => void)[] = [];
   private static userAlertCallback?: (message: string, severity: ErrorSeverity) => void;
+  private static isHandlingError = false; // Prevent recursive error handling
 
   /**
    * Set a callback for showing errors to the user (e.g., React Native Alert)
@@ -64,7 +65,7 @@ export class ErrorHandler {
     originalError: Error | unknown,
     category: ErrorCategory = ErrorCategory.UNKNOWN,
     severity: ErrorSeverity = ErrorSeverity.MEDIUM,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ): AppError {
     // Convert unknown errors to proper Error objects for better debugging
     let normalizedError: Error | undefined;
@@ -109,7 +110,8 @@ export class ErrorHandler {
       try {
         listener(appError);
       } catch (err) {
-        if (__DEV__) console.error('Error in error listener:', err);
+        // Prevent recursive error handling — just log to console
+        if (__DEV__) console.error('[ErrorHandler] Error in listener:', err);
       }
     });
 
@@ -119,7 +121,8 @@ export class ErrorHandler {
         const userMessage = ErrorHandler.getUserMessage(appError);
         this.userAlertCallback(userMessage, severity);
       } catch (err) {
-        if (__DEV__) console.error('Error in user alert callback:', err);
+        // Prevent recursive error handling — just log to console
+        if (__DEV__) console.error('[ErrorHandler] Error in user alert callback:', err);
       }
     }
 
@@ -132,7 +135,7 @@ export class ErrorHandler {
   static handleStorageError(
     operation: string,
     error: unknown,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ): AppError {
     return this.handle(
       `Failed to ${operation}`,
@@ -148,7 +151,7 @@ export class ErrorHandler {
    */
   static handleValidationError(
     message: string,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ): AppError {
     return this.handle(
       message,
@@ -225,6 +228,5 @@ export async function retryAsync<T>(
       await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
     }
   }
-
-  throw new Error('Retry failed'); // Should never reach here
+  throw new Error('retryAsync: unexpected flow - all retries exhausted');
 }

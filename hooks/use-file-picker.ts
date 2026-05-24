@@ -1,12 +1,7 @@
-/**
- * Platform-aware file picker hook
- * Uses native pickers on mobile, web picker on web
- */
-
 import { Platform } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
-import { useState, useCallback } from 'react';
+import * as ExpoImagePicker from 'expo-image-picker';
+import * as ExpoDocumentPicker from 'expo-document-picker';
+import { useCallback } from 'react';
 
 export type FilePickerType = 'image' | 'audio';
 
@@ -17,19 +12,58 @@ export interface PickedFile {
   size?: number;
 }
 
+export interface ImagePickerAPI {
+  launchImageLibraryAsync(options: {
+    mediaTypes: string[];
+    quality: number;
+    allowsMultipleSelection: boolean;
+  }): Promise<{
+    canceled: boolean;
+    assets: {
+      uri: string;
+      fileName?: string | null;
+      type?: string;
+      fileSize?: number;
+    }[];
+  }>;
+}
+
+export interface DocumentPickerAPI {
+  getDocumentAsync(options: {
+    type: string;
+    copyToCacheDirectory: boolean;
+    multiple: boolean;
+  }): Promise<{
+    canceled: boolean;
+    assets: {
+      uri: string;
+      name?: string | null;
+      mimeType?: string;
+      size?: number;
+    }[];
+  }>;
+}
+
 export interface UseFilePickerOptions {
   type: FilePickerType;
   multiple?: boolean;
   maxSize?: number;
   onError?: (error: string) => void;
+  imagePicker?: ImagePickerAPI;
+  documentPicker?: DocumentPickerAPI;
 }
 
-export function useFilePicker({ type, multiple = false, maxSize, onError }: UseFilePickerOptions) {
-  const [isPickerVisible, setIsPickerVisible] = useState(false);
-
+export function useFilePicker({
+  type,
+  multiple = false,
+  maxSize,
+  onError,
+  imagePicker = ExpoImagePicker as unknown as ImagePickerAPI,
+  documentPicker = ExpoDocumentPicker as unknown as DocumentPickerAPI,
+}: UseFilePickerOptions) {
   const pickImage = useCallback(async (): Promise<PickedFile[]> => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const result = await imagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         quality: 1,
         allowsMultipleSelection: multiple,
@@ -42,7 +76,7 @@ export function useFilePicker({ type, multiple = false, maxSize, onError }: UseF
       return result.assets.map(asset => ({
         uri: asset.uri,
         name: asset.fileName ?? asset.uri.split('/').pop() ?? 'image',
-        type: asset.type === 'image' ? 'image/jpeg' : undefined,
+        type: asset.type && typeof asset.type === 'string' && asset.type.startsWith('image/') ? asset.type : asset.type,
         size: asset.fileSize,
       }));
     } catch (error) {
@@ -51,11 +85,11 @@ export function useFilePicker({ type, multiple = false, maxSize, onError }: UseF
       }
       return [];
     }
-  }, [multiple, onError]);
+  }, [multiple, onError, imagePicker]);
 
   const pickAudio = useCallback(async (): Promise<PickedFile[]> => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
+      const result = await documentPicker.getDocumentAsync({
         type: 'audio/*',
         copyToCacheDirectory: true,
         multiple,
@@ -77,7 +111,7 @@ export function useFilePicker({ type, multiple = false, maxSize, onError }: UseF
       }
       return [];
     }
-  }, [multiple, onError]);
+  }, [multiple, onError, documentPicker]);
 
   const pickFiles = useCallback(async (): Promise<PickedFile[]> => {
     if (type === 'image') {
@@ -87,31 +121,8 @@ export function useFilePicker({ type, multiple = false, maxSize, onError }: UseF
     }
   }, [type, pickImage, pickAudio]);
 
-  // For web, we'll use a different approach with WebFilePicker component
-  // This hook is primarily for native platforms
-  const openPicker = useCallback(() => {
-    if (Platform.OS === 'web') {
-      setIsPickerVisible(true);
-    } else {
-      pickFiles();
-    }
-  }, [pickFiles]);
-
-  const closePicker = useCallback(() => {
-    setIsPickerVisible(false);
-  }, []);
-
-  const handleWebFiles = useCallback((files: PickedFile[]) => {
-    setIsPickerVisible(false);
-    return files;
-  }, []);
-
   return {
     pickFiles,
-    openPicker,
-    closePicker,
-    handleWebFiles,
-    isPickerVisible,
     isWeb: Platform.OS === 'web',
   };
 }

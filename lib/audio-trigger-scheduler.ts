@@ -8,32 +8,32 @@
  */
 
 import type { AudioTrigger, AudioTriggerType, AudioLibraryItem } from './audio-types';
-import { AudioPlayerService } from './audio-player-service';
-import { AudioLibraryService } from './audio-library-service';
+import type { IAudioPlayerService, IAudioLibraryService } from './audio-interfaces';
+import { ErrorHandler, ErrorCategory, ErrorSeverity } from './error-handler';
 
-/** Derive a unique track ID from type and trigger ID */
 function buildTrackId(type: AudioLibraryItem['type'], triggerId: string): string {
     return `${type}_${triggerId}`;
 }
 
+interface PendingTrigger {
+    timeout: ReturnType<typeof setTimeout>;
+    resolve: () => void;
+}
+
 export class AudioTriggerScheduler {
-    private triggerTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+    private triggerTimeouts = new Map<string, PendingTrigger>();
 
     constructor(
-        private player: AudioPlayerService,
-        private library: AudioLibraryService,
+        private player: IAudioPlayerService,
+        private library: IAudioLibraryService,
     ) { }
 
-    /**
-     * Execute a single audio trigger.
-     */
     async executeTrigger(
         trigger: AudioTrigger,
-        _context?: { sceneId?: string },
     ): Promise<void> {
 const audioItem = this.library.get(trigger.audioId);
         if (!audioItem) {
-          if (__DEV__) console.warn(`[AudioTriggerScheduler] Audio item not found: ${trigger.audioId}`);
+          ErrorHandler.handle(`Audio item not found: ${trigger.audioId}`, undefined, ErrorCategory.MEDIA, ErrorSeverity.LOW);
           return;
         }
 
@@ -41,14 +41,12 @@ const audioItem = this.library.get(trigger.audioId);
         const volume = trigger.volume ?? audioItem.volume ?? 1;
         const loop = trigger.loop ?? audioItem.loop ?? false;
 
-        // Stop previous audio of the same type if requested
         if (trigger.stopPrevious) {
             await this.stopByType(audioItem.type, trigger.fadeOut);
         }
 
-        // Apply delay if specified
         if (trigger.delay && trigger.delay > 0) {
-            await new Promise<void>((resolve, reject) => {
+            await new Promise<void>((resolve) => {
                 const timeoutId = setTimeout(async () => {
                     try {
                         await this.player.play(trackId, audioItem.uri, {
@@ -58,14 +56,13 @@ const audioItem = this.library.get(trigger.audioId);
                             metadata: { audioId: trigger.audioId, triggerId: trigger.id },
                         });
                         this.triggerTimeouts.delete(trigger.id);
-                        resolve();
                     } catch (err) {
-                        this.triggerTimeouts.delete(trigger.id);
-                        reject(err);
+                        ErrorHandler.handle('Audio playback failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW);
                     }
+                    resolve();
                 }, trigger.delay);
 
-                this.triggerTimeouts.set(trigger.id, timeoutId);
+                this.triggerTimeouts.set(trigger.id, { timeout: timeoutId, resolve });
             });
         } else {
             await this.player.play(trackId, audioItem.uri, {
@@ -77,43 +74,40 @@ const audioItem = this.library.get(trigger.audioId);
         }
     }
 
-    /**
-     * Execute multiple triggers filtered by type.
-     */
     async executeTriggersByType(
         triggers: AudioTrigger[],
         triggerType: AudioTriggerType,
-        context?: { sceneId?: string },
     ): Promise<void> {
         const matching = triggers.filter((t) => t.triggerType === triggerType);
-        await Promise.all(matching.map((t) => this.executeTrigger(t, context)));
+        await Promise.allSettled(
+            matching.map((t) => this.executeTrigger(t).catch((err) => {
+                ErrorHandler.handle(`Audio trigger failed: ${t.id}`, err, ErrorCategory.MEDIA, ErrorSeverity.LOW);
+            }))
+        );
     }
 
-    /**
-     * Process a batch of triggers concurrently.
-     */
     async processTriggers(triggers: AudioTrigger[]): Promise<void> {
         if (!triggers || triggers.length === 0) return;
-        await Promise.all(triggers.map((t) => this.executeTrigger(t)));
+        await Promise.allSettled(triggers.map((t) =>
+            this.executeTrigger(t).catch((err) => {
+                ErrorHandler.handle('Audio trigger failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW);
+            })
+        ));
     }
 
-    /**
-     * Cancel a pending (delayed) trigger.
-     */
     cancelTrigger(triggerId: string): void {
-        const timeout = this.triggerTimeouts.get(triggerId);
-        if (timeout) {
-            clearTimeout(timeout);
+        const entry = this.triggerTimeouts.get(triggerId);
+        if (entry) {
+            clearTimeout(entry.timeout);
+            entry.resolve();
             this.triggerTimeouts.delete(triggerId);
         }
     }
 
-    /**
-     * Cancel all pending triggers.
-     */
     cancelAllTriggers(): void {
-        for (const timeout of this.triggerTimeouts.values()) {
-            clearTimeout(timeout);
+        for (const entry of this.triggerTimeouts.values()) {
+            clearTimeout(entry.timeout);
+            entry.resolve();
         }
         this.triggerTimeouts.clear();
     }
@@ -142,7 +136,7 @@ const audioItem = this.library.get(trigger.audioId);
     /**
      * Get playback state for active tracks by looking up their metadata.
      */
-    getPlaybackStates(): Array<{
+    getPlaybackStates(): {
         trackId: string;
         audioId: string;
         isPlaying: boolean;
@@ -150,8 +144,8 @@ const audioItem = this.library.get(trigger.audioId);
         loop: boolean;
         startTime: number;
         triggerId?: string;
-    }> {
-        const states: Array<{
+    }[] {
+        const states: {
             trackId: string;
             audioId: string;
             isPlaying: boolean;
@@ -159,7 +153,7 @@ const audioItem = this.library.get(trigger.audioId);
             loop: boolean;
             startTime: number;
             triggerId?: string;
-        }> = [];
+        }[] = [];
 
         for (const track of this.player.getAllActiveTracks()) {
             const audioId = track.metadata?.audioId ?? '';

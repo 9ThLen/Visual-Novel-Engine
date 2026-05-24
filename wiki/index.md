@@ -1,6 +1,6 @@
 # Wiki Index
 # Wiki Index
-Last updated: 2026-05-08
+Last updated: 2026-05-17
 
 ## Про Visual Novel Engine
 
@@ -46,24 +46,29 @@ Last updated: 2026-05-08
 ### Технічна архітектура
 
 **UI/UX:**
-- Бежева кольорова тема (світла/темна теми)
+- Темна тема за замовчуванням (editor-first), тепла світла тема (parchment)
+- OKLCH кольорова система для перцептуально рівномірних шкал
+- 5 рівнів surface elevation через luminance stepping
+- Багатошарова система тіней (multi-layer shadows)
 - Тактильний відгук (haptic feedback) на всіх взаємодіях
 - Система звукових ефектів з коректною деградацією
 - Адаптивний дизайн для телефонів та планшетів
-- Відповідність стандартам доступності WCAG AA
+- Відповідність стандартам доступності WCAG AA (targeting AAA)
+- `prefers-reduced-motion` підтримка
+- Мінімальний розмір тouch targets: 44×44px (WCAG 2.5.8)
 
 **LEGO-система (технічна реалізація):**
 - **Типи:** `lib/atom-types.ts`, `lib/molecule-types.ts`, `lib/scene-types.ts`, `lib/story-graph-types.ts`
-- **Сховище:** `stores/scene-store.ts` (Zustand)
+- **Сховище:** `stores/use-app-store.ts` (Zustand, включає legoScenes)
 - **UI компоненти:** `components/lego-editor/AtomBlockComponent.tsx`, `LegoCanvas.tsx`, `TimelineEditor.tsx`, `StoryGraph.tsx`
 - **Міграція:** `lib/legacy-migration.ts` для переходу зі старої системи
 - **Тести:** 49 (атоми) + 13 (молекули) + 1 (інтеграційний) = 63 тести
 
 **Управління станом:**
-- React Context API для глобального стану
-- Zustand для LEGO-системи (scene-store)
+- Zustand для глобального стану (use-app-store, theme-store)
 - AsyncStorage для персистентності
-- Окремі контексти для історій, інвентаря, i18n, допомоги
+- React Context видалено для i18n, inventory (замінено на Zustand)
+- ThemeProvider використовує Zustand store замість useState
 
 **Ключові технології:**
 - **Роутинг:** Expo Router 6
@@ -77,7 +82,18 @@ Last updated: 2026-05-08
 ---
 
 ## Останні звіти
-- [[testing-plan-2026-05-09|План тестування 2026-05-09]] ⭐ **НОВЕ**
+- [[2026-05-24-session-report|Робота 2026-05-24 — Повна інтеграція нового редактора на основі Stitch MCP]] ⭐ **НОВЕ**
+- [[editor-redesign-2026-05-23|Редизайн редактора 2026-05-23 — Event System, 11 етапів]] ⭐ **НОВЕ**
+- [[refactoring-2026-05-18-stage2|Рефакторинг 2026-05-18 — Етап 2: Context → Zustand]]
+- [[T2-hook-tests-2026-05-18|T2 — Тести для хуків 2026-05-18 — 62 нових тести]]
+- [[bug-report-2026-05-16|Звіт про баги 2026-05-16 — 81 проблема, 5 критичних]]
+- [[code-analysis-report-2026-05-16|Повний аналіз коду 2026-05-16 — 5 критичних багів, оцінка 4/10]]
+- [[2026-05-17-session-report|Робота 2026-05-17 — i18n, DI, Консолідація даних]] ⭐ **НОВЕ**
+- [[2026-05-16-session-report|Робота 2026-05-16 — Prop Drilling → Context, Zustand селектори, Code Quality Fixes]]
+- [[2026-05-13-session-report|Робота 2026-05-13 — Навігація, Безпека, Аудіо-тести]]
+- [[2026-05-12-code-audit|Аудит коду 2026-05-12 — 25 проблем, план виправлень]]
+- [[2026-05-12-session-report|Звіт сесії 2026-05-12 — аналіз проекту та перевірка TODO]]
+- [[testing-plan-2026-05-09|План тестування 2026-05-09]]
 - [[runtime-fixes-2026-05-09|Виправлення runtime-помилок 2026-05-09]]
 - [[next-session-plan-2026-05-10|План на сесію 2026-05-10]]
 - [[next-session-plan-2026-05-09|План на сесію 2026-05-09]]
@@ -94,6 +110,14 @@ Last updated: 2026-05-08
 - [[SCHEMA|Схема даних]]
 
 ## Fixes & Updates
+- [[fixes-2026-05-16-round5|Виправлення коду 2026-05-16 (раунд 5) — безпека, конфігурація]] ⭐ **НОВЕ**
+- [[fixes-2026-05-16-round4|Виправлення коду 2026-05-16 (раунд 4) — подвійний стейт]]
+- [[editor-unification-2026-05-16|Об'єднання систем редагування — Lego єдина система]]
+- [[fixes-2026-05-16-round2|Виправлення коду 2026-05-16 (раунд 2)]]
+- [[fixes-2026-05-16|Виправлення коду 2026-05-16 (раунд 1)]]
+- [[CHANGELOG_2026_05_17|Журнал змін — 17 травня 2026]] ⭐ **НОВЕ**
+- [[CHANGELOG_2026_05_16|Журнал змін — 16 травня 2026]]
+- [[CHANGELOG_2026_05_13|Журнал змін — 13 травня 2026]]
 - [[vitest-config-copy-removal-2026-05-09|Видалення дубліката vitest.config copy.ts (2026-05-09)]] ⭐ **НОВЕ**
 - [[PNPM_WINDOWS_CMD_WRAPPERS_FIX|Виправлення pnpm на Windows — .cmd wrappers (2026-05-09)]]
 - [[runtime-fixes-2026-05-09|Виправлення runtime-помилок (2026-05-09)]]
@@ -104,7 +128,7 @@ Last updated: 2026-05-08
   - Відсутній babel-плагін Reanimated (білий екран)
   - Переміщено lego-editor.tsx у app/tabs/
   - Видалено застарілі unstable_settings з _layout.tsx
-  - 219/219 тестів, бандли без помилок
+  - **337/337 тестів**, бандли без помилок
 - [[FIXES_2026_05_06|Оптимізація продуктивності та тести (2026-05-06)]]
   - Context optimization (useCallback/useMemo)
   - AudioManager memory leak fixes
@@ -125,6 +149,13 @@ Last updated: 2026-05-08
 - [[runtime-fixes-2026-05-09|Виправлення runtime-помилок]]
 - [[next-session-plan-2026-05-10|План на наступну сесію]]
 - [[lego-block-system-plan-2026-05-07|План LEGO-системи]]
+- [[code-analysis-report-2026-05-16|Аналіз коду 2026-05-16]]
 - [[code-analysis-report-2026-05-07|Аналіз коду]]
 - [[audit-report-2026-05-07|Аудит проекту]]
 - [[design/lego-block-system-design.html|Дизайн прототип LEGO-системи]]
+- [[design-system-update-2026-05-18|Оновлення дизайн-системи 2026-05-18]]
+- [[refactoring-2026-05-18-stage2|Рефакторинг 2026-05-18 — Етап 2: Context → Zustand]]
+
+## Мобільна оптимізація (2026-06-09)
+- [[audit-report-2026-06-09-mobile|Аудит мобільної версії]]
+- [[fixes-2026-06-09-mobile|Виправлення мобільної версії]]

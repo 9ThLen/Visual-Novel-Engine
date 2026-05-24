@@ -3,22 +3,77 @@
  * Manages per-story audio libraries and trigger-based playback
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AudioLibraryItem, StoryWithAudio } from './audio-types';
-
-const AUDIO_LIBRARY_KEY = 'audio_libraries';
+import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
+import { useAppStore } from '@/stores/use-app-store';
+import { generateId } from './id-utils';
+import type { LibraryAsset } from './media-library-service';
 
 /**
  * Get audio library for a story
  */
 export async function getAudioLibrary(storyId: string): Promise<AudioLibraryItem[]> {
   try {
-    const data = await AsyncStorage.getItem(`${AUDIO_LIBRARY_KEY}_${storyId}`);
-    return data ? JSON.parse(data) : [];
+    return useAppStore.getState().audioLibraries[storyId] || [];
   } catch (error) {
-    if (__DEV__) console.error('Failed to get audio library:', error);
+    ErrorHandler.handle('Failed to get audio library', error, ErrorCategory.STORAGE);
     return [];
   }
+}
+
+function inferAudioItemType(name: string): AudioLibraryItem['type'] {
+  const normalizedName = name.toLowerCase();
+  if (normalizedName.includes('voice')) {
+    return 'voice';
+  }
+
+  if (normalizedName.includes('music') || normalizedName.includes('theme') || normalizedName.includes('bgm')) {
+    return 'music';
+  }
+
+  return 'sfx';
+}
+
+function mediaAssetToAudioItem(asset: LibraryAsset): AudioLibraryItem | null {
+  if (asset.type !== 'audio') {
+    return null;
+  }
+
+  return {
+    id: asset.id,
+    name: asset.name,
+    uri: asset.uri,
+    type: inferAudioItemType(asset.name),
+    loop: false,
+    volume: 1,
+    createdAt: asset.addedAt,
+    tags: [],
+  };
+}
+
+export function buildPlaybackAudioLibraryItems(
+  storyLibrary: AudioLibraryItem[],
+  mediaLibrary: LibraryAsset[]
+): AudioLibraryItem[] {
+  const merged = new Map<string, AudioLibraryItem>();
+
+  for (const asset of mediaLibrary) {
+    const item = mediaAssetToAudioItem(asset);
+    if (item) {
+      merged.set(item.id, item);
+    }
+  }
+
+  for (const item of storyLibrary) {
+    merged.set(item.id, item);
+  }
+
+  return Array.from(merged.values());
+}
+
+export async function getPlaybackAudioLibrary(storyId: string): Promise<AudioLibraryItem[]> {
+  const storyLibrary = await getAudioLibrary(storyId);
+  return buildPlaybackAudioLibraryItems(storyLibrary, useAppStore.getState().mediaLibrary);
 }
 
 /**
@@ -29,12 +84,9 @@ export async function saveAudioLibrary(
   library: AudioLibraryItem[]
 ): Promise<void> {
   try {
-    await AsyncStorage.setItem(
-      `${AUDIO_LIBRARY_KEY}_${storyId}`,
-      JSON.stringify(library)
-    );
+    useAppStore.getState().setAudioLibrary(storyId, library);
   } catch (error) {
-    if (__DEV__) console.error('Failed to save audio library:', error);
+    ErrorHandler.handle('Failed to save audio library', error, ErrorCategory.STORAGE);
     throw error;
   }
 }
@@ -51,16 +103,16 @@ export async function addAudioToLibrary(
 
     const newItem: AudioLibraryItem = {
       ...item,
-      id: `audio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: generateId('audio', 9),
       createdAt: Date.now(),
     };
 
-    library.push(newItem);
-    await saveAudioLibrary(storyId, library);
+    const updated = [...library, newItem];
+    await saveAudioLibrary(storyId, updated);
 
     return newItem;
   } catch (error) {
-    if (__DEV__) console.error('Failed to add audio to library:', error);
+    ErrorHandler.handle('Failed to add audio to library', error, ErrorCategory.STORAGE);
     throw error;
   }
 }
@@ -78,13 +130,13 @@ export async function updateAudioInLibrary(
     const index = library.findIndex((item) => item.id === audioId);
 
     if (index === -1) {
-      throw new Error('Audio item not found');
+      throw ErrorHandler.handleValidationError('Audio item not found in library');
     }
 
-    library[index] = { ...library[index], ...updates };
-    await saveAudioLibrary(storyId, library);
+    const updated = library.map((item, i) => i === index ? { ...item, ...updates } : item);
+    await saveAudioLibrary(storyId, updated);
   } catch (error) {
-    if (__DEV__) console.error('Failed to update audio in library:', error);
+    ErrorHandler.handle('Failed to update audio in library', error, ErrorCategory.STORAGE);
     throw error;
   }
 }
@@ -101,7 +153,7 @@ export async function deleteAudioFromLibrary(
     const filtered = library.filter((item) => item.id !== audioId);
     await saveAudioLibrary(storyId, filtered);
   } catch (error) {
-    if (__DEV__) console.error('Failed to delete audio from library:', error);
+    ErrorHandler.handle('Failed to delete audio from library', error, ErrorCategory.STORAGE);
     throw error;
   }
 }
@@ -125,7 +177,7 @@ export async function searchAudioLibrary(
       return nameMatch || tagMatch;
     });
   } catch (error) {
-    if (__DEV__) console.error('Failed to search audio library:', error);
+    ErrorHandler.handle('Failed to search audio library', error, ErrorCategory.STORAGE);
     return [];
   }
 }
@@ -141,7 +193,7 @@ export async function getAudioByType(
     const library = await getAudioLibrary(storyId);
     return library.filter((item) => item.type === type);
   } catch (error) {
-    if (__DEV__) console.error('Failed to get audio by type:', error);
+    ErrorHandler.handle('Failed to get audio by type', error, ErrorCategory.STORAGE);
     return [];
   }
 }
@@ -164,13 +216,13 @@ export async function importAudioLibrary(
     // Regenerate IDs for imported items
     const importedItems = newItems.map((item) => ({
       ...item,
-      id: `audio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: generateId('audio', 9),
       createdAt: Date.now(),
     }));
 
     await saveAudioLibrary(targetStoryId, [...targetLibrary, ...importedItems]);
   } catch (error) {
-    if (__DEV__) console.error('Failed to import audio library:', error);
+    ErrorHandler.handle('Failed to import audio library', error, ErrorCategory.STORAGE);
     throw error;
   }
 }
@@ -183,7 +235,7 @@ export async function exportAudioLibrary(storyId: string): Promise<string> {
     const library = await getAudioLibrary(storyId);
     return JSON.stringify(library, null, 2);
   } catch (error) {
-    if (__DEV__) console.error('Failed to export audio library:', error);
+    ErrorHandler.handle('Failed to export audio library', error, ErrorCategory.STORAGE);
     throw error;
   }
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,56 +7,121 @@ import {
   Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
-import { useStory } from '@/lib/story-context';
+import { useStoryState, useStoryActions } from '@/lib/story-hooks';
 import { useColors } from '@/hooks/use-colors';
 import { SaveSlot } from '@/lib/types';
-import { useI18n } from '@/lib/i18n-context';
-import { Button } from '@/components/ui/Button';
+import { useI18n } from '@/lib/i18n';
+import { Button } from '@/components/ui';
+
+function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
+  slot: SaveSlot; colors: ReturnType<typeof useColors>; t: (key: string) => string;
+  onLoad: (id: string) => void; onDelete: (id: string) => void;
+}) {
+  const slotId = 'autosave';
+  return (
+    <View style={[{ backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, marginBottom: 12, borderWidth: 1, overflow: 'hidden' }]}>
+      {slot.thumbnailUri ? (
+        <View className="relative">
+          <Image source={{ uri: slot.thumbnailUri }} className="w-full h-28"
+            style={{ backgroundColor: colors.background }} resizeMode="cover" />
+          <View className="absolute bottom-0 left-0 right-0 h-15 bg-black/60" />
+          <View className="absolute bottom-2 left-2 right-2">
+            <Text className="text-white text-xs font-semibold">
+              {new Date(slot.timestamp).toLocaleDateString()}
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <View className="h-28 items-center justify-center" style={{ backgroundColor: colors.background }}>
+          <Text style={{ fontSize: 48, opacity: 0.3 }}>💾</Text>
+        </View>
+      )}
+      <View className="p-3">
+        <View className="gap-1.5 mb-3">
+          <Text style={[{ color: colors.foreground }, { fontSize: 14, fontWeight: 'bold' }]} numberOfLines={1}>
+            {slot.storyTitle || slot.storyId}
+          </Text>
+          {slot.sceneText ? (
+            <Text style={[{ color: colors.muted }, { fontSize: 12, lineHeight: 16 }]} numberOfLines={2}>{slot.sceneText}</Text>
+          ) : null}
+          <Text style={[{ color: colors.primary }, { fontSize: 12, fontWeight: '600' }]}>
+            📍 {slot.sceneName || slot.sceneId}
+          </Text>
+        </View>
+        <View className="flex-row gap-2">
+          <Button variant="primary" size="sm" onPress={() => onLoad(slotId)} className="flex-1">
+            📂 Load
+          </Button>
+          <Button variant="outline" size="sm" onPress={() => onDelete(slotId)}
+            style={{ borderColor: colors.error }} textStyle={{ color: colors.error }}>
+            🗑
+          </Button>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export default function SaveLoadScreen() {
   const router = useRouter();
+  useFocusEffect(
+    useCallback(() => {
+      void stopReaderPlayback();
+      return () => {
+        void stopReaderPlayback();
+      };
+    }, []),
+  );
   const colors = useColors();
-  const { saveSlots, saveGame, loadGame, deleteGame, currentStory, playbackState } = useStory();
+  const { saveSlots, currentStory, playbackState } = useStoryState();
+  const { saveGame, loadGame, deleteSaveSlot } = useStoryActions();
   const [activeTab, setActiveTab] = useState<'save' | 'load'>('load');
   const { t } = useI18n();
 
-  const handleSaveToSlot = async (slotId: string) => {
+  const handleSaveToSlot = useCallback(async (slotId: string) => {
     if (!currentStory || !playbackState) {
       Alert.alert(t('common.error'), 'No active story to save');
       return;
     }
+    try {
+      await saveGame(slotId);
+      Alert.alert(t('common.success'), t('save.success'));
+    } catch {
+      Alert.alert(t('common.error'), t('common.error'));
+    }
+  }, [currentStory, playbackState, saveGame, t]);
 
-    await saveGame(slotId);
-    Alert.alert(t('common.success'), t('save.success'));
-  };
-
-  const handleLoadFromSlot = async (slotId: string) => {
+  const handleLoadFromSlot = useCallback(async (slotId: string) => {
     const slot = saveSlots.find((s) => s.id === slotId);
     if (!slot) return;
 
-    await loadGame(slotId);
-    Alert.alert(t('common.success'), t('save.loadSuccess'));
+    try {
+      await loadGame(slotId);
+      Alert.alert(t('common.success'), t('save.loadSuccess'));
+      router.replace({
+        pathname: '/reader',
+        params: { storyId: slot.storyId, resume: '1' },
+      });
+    } catch {
+      Alert.alert(t('common.error'), t('common.error'));
+    }
+  }, [saveSlots, loadGame, router, t]);
 
-    // Navigate to reader with the correct storyId to ensure UI stays in sync
-    router.replace({
-      pathname: '/reader',
-      params: { storyId: slot.storyId },
-    });
-  };
-
-  const handleDeleteSlot = (slotId: string) => {
+  const handleDeleteSlot = useCallback((slotId: string) => {
     Alert.alert(t('save.delete'), t('save.deleteConfirm'), [
       { text: t('common.cancel'), style: 'cancel' },
       {
         text: t('save.delete'),
         style: 'destructive',
-        onPress: () => deleteGame(slotId),
+        onPress: () => deleteSaveSlot(slotId),
       },
     ]);
-  };
+  }, [deleteSaveSlot, t]);
 
-  const formatDate = (timestamp: number) => {
+  const formatDate = useCallback((timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -74,182 +139,106 @@ export default function SaveLoadScreen() {
       day: 'numeric',
       year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
     });
-  };
+  }, [t]);
 
-  const renderSaveSlot = ({ item, index }: { item: SaveSlot | null; index: number }) => {
+  const renderSaveSlot = useCallback(({ item, index }: { item: SaveSlot | null; index: number }) => {
     const slotId = `slot-${index + 1}`;
     const isEmpty = item === null;
 
     return (
-      <View
-        style={{
-          backgroundColor: colors.surface,
-          borderRadius: 12,
-          marginBottom: 12,
-          borderWidth: 1,
-          borderColor: colors.border,
-          overflow: 'hidden',
-        }}
-      >
-        {/* Thumbnail Preview */}
+      <View style={[{ backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, marginBottom: 12, borderWidth: 1, overflow: 'hidden' }]}>
         {!isEmpty && item.thumbnailUri ? (
-          <View style={{ position: 'relative' }}>
+          <View className="relative">
             <Image
               source={{ uri: item.thumbnailUri }}
-              style={{
-                width: '100%',
-                height: 120,
-                backgroundColor: colors.background,
-              }}
+              className="w-full h-28"
+              style={{ backgroundColor: colors.background }}
               resizeMode="cover"
             />
-            {/* Gradient overlay */}
+            <View className="absolute bottom-0 left-0 right-0 h-15 bg-black/60" />
             <View
-              style={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                right: 0,
-                height: 60,
-                backgroundColor: 'rgba(0,0,0,0.6)',
-              }}
-            />
-            {/* Slot number badge */}
-            <View
-              style={{
-                position: 'absolute',
-                top: 8,
-                left: 8,
-                backgroundColor: colors.primary,
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderRadius: 6,
-              }}
+              className="absolute top-2 left-2 rounded-lg px-2.5 py-1"
+              style={{ backgroundColor: colors.primary }}
             >
-              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>
+              <Text className="text-white text-xs font-bold">
                 #{index + 1}
               </Text>
             </View>
-            {/* Timestamp */}
-            <View
-              style={{
-                position: 'absolute',
-                bottom: 8,
-                left: 8,
-                right: 8,
-              }}
-            >
-              <Text
-                style={{
-                  color: '#fff',
-                  fontSize: 11,
-                  fontWeight: '600',
-                }}
-              >
+            <View className="absolute bottom-2 left-2 right-2">
+              <Text className="text-white text-xs font-semibold">
                 {formatDate(item.timestamp)}
               </Text>
             </View>
           </View>
         ) : (
           <View
-            style={{
-              height: 120,
-              backgroundColor: colors.background,
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
+            className="h-28 items-center justify-center"
+            style={{ backgroundColor: colors.background }}
           >
             <Text style={{ fontSize: 48, opacity: 0.3 }}>💾</Text>
-            <Text
-              style={{
-                fontSize: 13,
-                color: colors.muted,
-                marginTop: 8,
-                fontWeight: '600',
-              }}
-            >
+            <Text style={[{ color: colors.muted }, { fontSize: 14, marginTop: 8, fontWeight: '600' }]}>
               {t('save.empty')} {index + 1}
             </Text>
           </View>
         )}
 
-        {/* Content */}
-        <View style={{ padding: 12 }}>
+        <View className="p-3">
           {!isEmpty ? (
-            <View style={{ gap: 6, marginBottom: 12 }}>
-              {/* Story title */}
+            <View className="gap-1.5 mb-3">
               <Text
-                style={{
-                  fontSize: 15,
-                  fontWeight: '700',
-                  color: colors.foreground,
-                }}
+                style={[{ color: colors.foreground }, { fontSize: 14, fontWeight: 'bold' }]}
                 numberOfLines={1}
               >
                 {item.storyTitle || item.storyId}
               </Text>
-
-              {/* Scene preview text */}
-              {item.sceneText && (
+              {item.sceneText ? (
                 <Text
-                  style={{
-                    fontSize: 12,
-                    color: colors.muted,
-                    lineHeight: 16,
-                  }}
+                  style={[{ color: colors.muted }, { fontSize: 12, lineHeight: 16 }]}
                   numberOfLines={2}
                 >
                   {item.sceneText}
                 </Text>
-              )}
-
-              {/* Scene ID */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '600' }}>
+              ) : null}
+              <View className="flex-row items-center gap-1">
+                <Text style={[{ color: colors.primary }, { fontSize: 12, fontWeight: '600' }]}>
                   📍 {item.sceneName || item.sceneId}
                 </Text>
-                <Text style={{ fontSize: 11, color: colors.muted }}>
-                  • {item.choicesMade.length} choices
+                <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>
+                  • {item.choicesMade?.length ?? 0} choices
                 </Text>
               </View>
             </View>
           ) : (
-            <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center' }}>
+            <View className="mb-3">
+              <Text style={[{ color: colors.muted }, { fontSize: 12, textAlign: 'center' }]}>
                 {t('save.noData')}
               </Text>
             </View>
           )}
 
-          {/* Action Buttons */}
-          <View
-            style={{
-              flexDirection: 'row',
-              gap: 8,
-            }}
-          >
+          <View className="flex-row gap-2">
             {activeTab === 'save' && (
               <Button
                 variant="primary"
                 size="sm"
                 onPress={() => handleSaveToSlot(slotId)}
-                style={{ flex: 1 }}
+                className="flex-1"
+                accessibilityLabel={isEmpty ? `Save to slot ${index + 1}` : `Overwrite slot ${index + 1}`}
               >
                 💾 {isEmpty ? t('save.saveHere') : t('save.overwrite')}
               </Button>
             )}
-
             {activeTab === 'load' && !isEmpty && (
               <Button
                 variant="primary"
                 size="sm"
                 onPress={() => handleLoadFromSlot(slotId)}
-                style={{ flex: 1 }}
+                className="flex-1"
+                accessibilityLabel={`Load slot ${index + 1}`}
               >
                 📂 Load
               </Button>
             )}
-
             {!isEmpty && (
               <Button
                 variant="outline"
@@ -257,6 +246,7 @@ export default function SaveLoadScreen() {
                 onPress={() => handleDeleteSlot(slotId)}
                 style={{ borderColor: colors.error }}
                 textStyle={{ color: colors.error }}
+                accessibilityLabel={`Delete slot ${index + 1}`}
               >
                 🗑
               </Button>
@@ -265,57 +255,39 @@ export default function SaveLoadScreen() {
         </View>
       </View>
     );
-  };
+  }, [activeTab, colors, t, formatDate, handleSaveToSlot, handleLoadFromSlot, handleDeleteSlot]);
 
-  // Create array of 10 slots (filled or empty)
-  const slots: (SaveSlot | null)[] = Array.from({ length: 10 }, (_, i) => {
-    return saveSlots.find((s) => s.id === `slot-${i + 1}`) || null;
-  });
+  const slots = useMemo<(SaveSlot | null)[]>(
+    () => Array.from({ length: 10 }, (_, i) =>
+      saveSlots.find((s) => s.id === `slot-${i + 1}`) || null
+    ),
+    [saveSlots]
+  );
 
-  // Get autosave slot
   const autoSaveSlot = saveSlots.find((s) => s.id === 'autosave');
+
+  const renderSlot = useCallback(
+    ({ item, index }: { item: SaveSlot | null; index: number }) => renderSaveSlot({ item, index }),
+    [renderSaveSlot]
+  );
 
   return (
     <ScreenContainer className="p-4">
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 20,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 28,
-            fontWeight: '700',
-            color: colors.foreground,
-          }}
-        >
+      <View className="flex-row justify-between items-center mb-5">
+        <Text style={[{ color: colors.foreground }, { fontSize: 24, fontWeight: 'bold' }]}>
           {activeTab === 'save' ? t('save.title') : t('load.title')}
         </Text>
-        <Button
-          variant="ghost"
-          size="sm"
-          onPress={() => router.back()}
-        >
+        <Button variant="ghost" size="sm" onPress={() => router.back()}>
           {t('menu.back')}
         </Button>
       </View>
 
-      {/* Tab Buttons */}
-      <View
-        style={{
-          flexDirection: 'row',
-          gap: 8,
-          marginBottom: 16,
-        }}
-      >
+      <View className="flex-row gap-2 mb-4">
         <Button
           variant={activeTab === 'load' ? 'primary' : 'secondary'}
           size="sm"
           onPress={() => setActiveTab('load')}
-          style={{ flex: 1 }}
+          className="flex-1"
         >
           {t('menu.load')}
         </Button>
@@ -323,49 +295,34 @@ export default function SaveLoadScreen() {
           variant={activeTab === 'save' ? 'primary' : 'secondary'}
           size="sm"
           onPress={() => setActiveTab('save')}
-          style={{ flex: 1 }}
+          className="flex-1"
         >
           {t('menu.save')}
         </Button>
       </View>
 
-      {/* Auto-save slot (only in load tab) */}
       {activeTab === 'load' && autoSaveSlot && (
-        <View style={{ marginBottom: 16 }}>
-          <Text
-            style={{
-              fontSize: 12,
-              fontWeight: '600',
-              color: colors.muted,
-              marginBottom: 8,
-              textTransform: 'uppercase',
-              letterSpacing: 0.5,
-            }}
-          >
+        <View className="mb-4">
+          <Text style={[{ color: colors.muted }, { fontSize: 12, fontWeight: '600', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 }]}>
             ⚡ {t('save.autosave')}
           </Text>
-          {renderSaveSlot({ item: autoSaveSlot, index: -1 })}
+          <AutoSaveSlot
+            slot={autoSaveSlot}
+            colors={colors}
+            t={t}
+            onLoad={handleLoadFromSlot}
+            onDelete={handleDeleteSlot}
+          />
         </View>
       )}
 
-      {/* Manual saves header */}
-      <Text
-        style={{
-          fontSize: 12,
-          fontWeight: '600',
-          color: colors.muted,
-          marginBottom: 8,
-          textTransform: 'uppercase',
-          letterSpacing: 0.5,
-        }}
-      >
+      <Text style={[{ color: colors.muted }, { fontSize: 12, fontWeight: '600', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 }]}>
         💾 {t('save.manual')}
       </Text>
 
-      {/* Save Slots List */}
       <FlatList
         data={slots}
-        renderItem={({ item, index }) => renderSaveSlot({ item, index })}
+        renderItem={renderSlot}
         keyExtractor={(_, index) => `slot-${index}`}
         scrollEnabled={true}
         contentContainerStyle={{ paddingBottom: 20 }}

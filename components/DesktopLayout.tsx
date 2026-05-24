@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, useWindowDimensions, Platform } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-import { getWebLayout, getResponsiveValues } from '@/lib/responsive';
+import { isWeb, isWebDesktop } from '@/lib/web-utils';
+import { getWebLayout } from '@/lib/responsive';
 import { WebSidebar } from './WebSidebar';
 import { WebTopBar } from './WebTopBar';
 
@@ -10,7 +11,7 @@ interface DesktopLayoutProps {
   showSidebar?: boolean;
   showTopBar?: boolean;
   topBarTitle?: string;
-  topBarBreadcrumbs?: Array<{ label: string; path?: string }>;
+  topBarBreadcrumbs?: { label: string; path?: string }[];
   topBarActions?: React.ReactNode;
 }
 
@@ -23,11 +24,10 @@ export function DesktopLayout({
   topBarActions,
 }: DesktopLayoutProps) {
   const colors = useColors();
-  const { isWebDesktop } = getResponsiveValues();
-  const layout = getWebLayout();
+  const dims = useWindowDimensions();
+  const layout = getWebLayout(dims);
 
-  // Only use desktop layout on web desktop
-  if (Platform.OS !== 'web' || !isWebDesktop) {
+  if (!isWeb() || !isWebDesktop()) {
     return <>{children}</>;
   }
 
@@ -62,18 +62,18 @@ export function DesktopLayout({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    flexDirection: 'row' as 'row',
-    ...(Platform.OS === 'web' && { height: '100vh' as any }),
-    overflow: 'hidden' as any,
+    flexDirection: 'row',
+    height: Platform.OS === 'web' ? ('100vh' as unknown as number) : '100%',
+    overflow: 'hidden',
   },
   main: {
     flex: 1,
-    flexDirection: 'column' as 'column',
-    overflow: 'hidden' as any,
+    flexDirection: 'column',
+    overflow: 'hidden',
   },
   content: {
     flex: 1,
-    ...(Platform.OS === 'web' && { overflow: 'auto' as any }),
+    overflow: Platform.OS === 'web' ? ('auto' as unknown as 'hidden') : 'hidden',
   },
 });
 

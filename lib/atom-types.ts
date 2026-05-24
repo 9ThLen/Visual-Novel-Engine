@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { generateId } from './id-utils';
 
 // Атоми — найменші блоки з одним елементом
 export type AtomType =
@@ -89,7 +90,7 @@ export const backgroundAtomSchema = z.object({
 export const audioAtomSchema = z.object({
   uri: z.string().min(1, 'Audio file is required'),
   loop: z.boolean().default(false),
-  volume: z.number().min(0).max(100).default(80),
+  volume: z.number().min(0).max(1).default(0.8),
   type: z.enum(['music', 'sfx', 'voice']).default('sfx'),
 });
 
@@ -106,19 +107,30 @@ export type AudioAtomData = z.infer<typeof audioAtomSchema>;
 export type FXAtomData = z.infer<typeof fxAtomSchema>;
 
 // Функція створення атома
-export function createAtom(type: AtomType, overrides?: Partial<AtomData>): AtomBlock {
-  const defaults: Record<AtomType, any> = {
-    text_atom: { content: '', duration: 2000 },
-    character_atom: { characterId: '', position: 'center', expression: 'neutral', entrance: 'fade_in' },
-    background_atom: { uri: '', transition: 'fade' },
-    audio_atom: { uri: '', loop: false, volume: 80, type: 'sfx' },
-    fx_atom: { effectType: 'particles', intensity: 50, duration: 3000 },
+type AtomCreatorData<T extends AtomType> =
+  T extends 'text_atom' ? TextAtomData :
+  T extends 'character_atom' ? CharacterAtomData :
+  T extends 'background_atom' ? BackgroundAtomData :
+  T extends 'audio_atom' ? AudioAtomData :
+  T extends 'fx_atom' ? FXAtomData : never;
+
+type AtomCreatorDefaults = {
+  [K in AtomType]: AtomCreatorData<K>;
+};
+
+export function createAtom<T extends AtomType>(type: T, overrides?: Partial<AtomCreatorData<T>>): AtomBlock {
+  const defaults: AtomCreatorDefaults = {
+    text_atom: { content: ' ', duration: 2000 } as AtomCreatorData<'text_atom'>,
+    character_atom: { characterId: ' ', position: 'center', expression: 'neutral', entrance: 'fade_in' } as AtomCreatorData<'character_atom'>,
+    background_atom: { uri: ' ', transition: 'fade' } as AtomCreatorData<'background_atom'>,
+    audio_atom: { uri: ' ', loop: false, volume: 0.8, type: 'sfx' } as AtomCreatorData<'audio_atom'>,
+    fx_atom: { effectType: 'particles', intensity: 50, duration: 3000 } as AtomCreatorData<'fx_atom'>,
   };
 
   return {
-    id: `atom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    id: generateId('atom'),
     type,
-    data: { ...defaults[type], ...overrides },
+    data: { ...defaults[type], ...overrides } as AtomData,
     x: 0,
     y: 0,
     width: 120,

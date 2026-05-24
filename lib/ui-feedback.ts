@@ -1,28 +1,51 @@
-/**
- * UI Feedback System
- * Haptic feedback and sound effects for interactions
- */
-
 import * as Haptics from 'expo-haptics';
-import { Audio } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import type { AudioPlayer } from 'expo-audio';
 import { Platform } from 'react-native';
+import { Asset } from 'expo-asset';
 
-// Sound cache
-const soundCache: Record<string, Audio.Sound> = {};
-
-// Static require map — Metro resolves these at build time, so files must exist.
-// All paths point to assets/sounds/ which contains the actual audio files.
-const SOUND_FILES: Record<string, any> = {
+const soundModules: Record<string, number> = {
   click:   require('../assets/sounds/button-press.ogg'),
   whoosh:  require('../assets/sounds/button-press.ogg'),
   success: require('../assets/sounds/success_action.wav'),
   error:   require('../assets/sounds/error.wav'),
 };
 
-/**
- * Play haptic feedback
- */
-export async function playHaptic(
+const assetUriCache = new Map<string | number, string>();
+const activePlayers: AudioPlayer[] = [];
+const MAX_PLAYERS = 8;
+
+let audioInitAttempted = false;
+
+async function ensureAudioMode(): Promise<void> {
+  if (audioInitAttempted) return;
+  audioInitAttempted = true;
+  try {
+    await setAudioModeAsync({ playsInSilentMode: true });
+  } catch (e) { if (__DEV__) console.debug('Audio mode init failed:', e); }
+}
+
+async function resolveAssetUri(module: string | number): Promise<string | null> {
+  if (typeof module === 'string') return module;
+  const cached = assetUriCache.get(module);
+  if (cached) return cached;
+  try {
+    const asset = Asset.fromModule(module);
+    if (!asset.localUri) await asset.downloadAsync();
+    const uri = asset.localUri ?? asset.uri ?? null;
+    if (uri) assetUriCache.set(module, uri);
+    return uri;
+  } catch (e) { if (__DEV__) console.debug('Asset URI resolve failed:', e); return null; }
+}
+
+function evictOldestPlayer(): void {
+  while (activePlayers.length >= MAX_PLAYERS) {
+    const player = activePlayers.shift();
+    if (player) player.remove();
+  }
+}
+
+async function playHaptic(
   type: 'light' | 'medium' | 'heavy' | 'selection' = 'light'
 ) {
   if (Platform.OS === 'web') return;
@@ -43,54 +66,39 @@ export async function playHaptic(
         break;
     }
   } catch (error) {
-    // Haptics not supported on device - graceful degradation
     if (__DEV__) console.debug('Haptics not supported:', error);
   }
 }
 
-/**
- * Play UI sound effect
- */
-export async function playSound(
+async function playSound(
   soundName: 'click' | 'success' | 'error' | 'whoosh',
   volume: number = 0.3
 ) {
-  // expo-av Audio.Sound is not supported on web
   if (Platform.OS === 'web') return;
 
+  const soundModule = soundModules[soundName];
+  if (!soundModule) {
+    if (__DEV__) console.debug(`Sound not available: ${soundName}`);
+    return;
+  }
+
   try {
-    // Check if sound file exists
-    const soundFile = SOUND_FILES[soundName];
-    if (!soundFile) {
-      // Sound file not available - silent fail (graceful degradation)
-      if (__DEV__) console.debug(`Sound not available: ${soundName}`);
-      return;
-    }
+    await ensureAudioMode();
 
-    // Check if sound is already loaded
-    if (soundCache[soundName]) {
-      await soundCache[soundName].setPositionAsync(0);
-      await soundCache[soundName].setVolumeAsync(volume);
-      await soundCache[soundName].playAsync();
-      return;
-    }
+    const uri = await resolveAssetUri(soundModule);
+    if (!uri) return;
 
-    // Load and play sound
-    const { sound } = await Audio.Sound.createAsync(
-      soundFile,
-      { volume, shouldPlay: true }
-    );
+    evictOldestPlayer();
 
-    soundCache[soundName] = sound;
+    const player = createAudioPlayer(uri);
+    player.volume = Math.max(0, Math.min(1, volume));
+    activePlayers.push(player);
+    player.play();
   } catch (error) {
-    // Sound playback failed - silent fail (graceful degradation)
     if (__DEV__) console.debug(`Sound playback failed: ${soundName}`, error);
   }
 }
 
-/**
- * Combined feedback for button press
- */
 export async function buttonFeedback() {
   await Promise.all([
     playHaptic('light'),
@@ -98,46 +106,30 @@ export async function buttonFeedback() {
   ]);
 }
 
-/**
- * Feedback for successful action
- */
-export async function successFeedback() {
+async function successFeedback() {
   await Promise.all([
     playHaptic('medium'),
     playSound('success', 0.3),
   ]);
 }
 
-/**
- * Feedback for error
- */
-export async function errorFeedback() {
+async function errorFeedback() {
   await Promise.all([
     playHaptic('heavy'),
     playSound('error', 0.3),
   ]);
 }
 
-/**
- * Feedback for transitions
- */
-export async function transitionFeedback() {
+async function transitionFeedback() {
   await Promise.all([
     playHaptic('light'),
     playSound('whoosh', 0.25),
   ]);
 }
 
-/**
- * Cleanup sound cache
- */
-export async function cleanupSounds() {
-  for (const sound of Object.values(soundCache)) {
-    try {
-      await sound.unloadAsync();
-    } catch (error) {
-      if (__DEV__) console.debug('Failed to unload sound:', error);
-    }
+async function cleanupSounds() {
+  for (const player of activePlayers) {
+    try { player.remove(); } catch {}
   }
-  Object.keys(soundCache).forEach(key => delete soundCache[key]);
+  activePlayers.length = 0;
 }

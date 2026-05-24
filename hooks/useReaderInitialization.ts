@@ -1,20 +1,37 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useStory } from '@/lib/story-context';
-import { Story, PlaybackState } from '@/lib/types';
+import { useStoryState, useStoryActions } from '@/lib/story-hooks';
+import { resolveRuntimeCurrentScene } from '@/lib/runtime-story';
+import { resolveCanonicalStartSceneId } from '@/lib/scene-operations';
+import { useAppStore } from '@/stores/use-app-store';
+import type { PlaybackState, Story } from '@/lib/types';
 import demoStory from '@/assets/demo-story.json';
+import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
+import { shouldReusePlaybackState } from '@/lib/reader-launch';
 
-export function useReaderInitialization(storyIdParam?: string | string[]) {
-  const { stories, currentStory, playbackState, setCurrentStory, updatePlaybackState } = useStory();
+export function useReaderInitialization(
+  storyIdParam?: string | string[],
+  options?: { resumeExisting?: boolean },
+) {
+  const { stories, currentStory, playbackState, scenesByStory, sceneRecordsByStory } = useStoryState();
+  const storiesMetadata = useAppStore((s) => s.storiesMetadata);
+  const { setCurrentStory, updatePlaybackState } = useStoryActions();
   const [isLoading, setIsLoading] = useState(true);
   const initRequestIdRef = useRef(0);
+  const resumeExisting = options?.resumeExisting ?? false;
+  // Safety timeout: force loading to resolve after 10s even if initialization hangs
+  const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentScene = useMemo(() => {
     if (!currentStory || !playbackState || playbackState.storyId !== currentStory.id) return null;
-    return currentStory.scenes[playbackState.currentSceneId] || null;
-  }, [currentStory, playbackState]);
+
+    return resolveRuntimeCurrentScene(
+      { scenesByStory, sceneRecordsByStory },
+      playbackState
+    );
+  }, [currentStory, playbackState, sceneRecordsByStory, scenesByStory]);
 
   const stateRef = useRef({ currentStory, playbackState });
-  
+
   useEffect(() => {
     stateRef.current = { currentStory, playbackState };
   }, [currentStory, playbackState]);
@@ -34,7 +51,9 @@ export function useReaderInitialization(storyIdParam?: string | string[]) {
       }
 
       if (!selectedStoryId) {
-        selectedStoryId = (demoStory as unknown as Story).id;
+        const demoMetadata = (demoStory as unknown as Story);
+        if (!demoMetadata?.id) throw new Error('Demo story has no id');
+        selectedStoryId = demoMetadata.id;
         const hasDemo = stories.some(s => s.id === selectedStoryId);
         if (!hasDemo) {
           if (__DEV__) console.warn('Demo story metadata missing from context. Attempting to load anyway...');
@@ -49,14 +68,25 @@ export function useReaderInitialization(storyIdParam?: string | string[]) {
 
       if (requestId !== initRequestIdRef.current) return;
 
-      if (stateRef.current.playbackState && stateRef.current.playbackState.storyId === selectedStoryId) {
+      if (shouldReusePlaybackState(stateRef.current.playbackState, selectedStoryId, resumeExisting)) {
+        setIsLoading(false);
         return;
       }
 
+      if (requestId !== initRequestIdRef.current) return;
+
       const metadata = stories.find((s) => s.id === selectedStoryId) || (demoStory as unknown as Story);
+      const startSceneId = resolveCanonicalStartSceneId(
+        {
+          storiesMetadata,
+          sceneRecordsByStory,
+        },
+        metadata.id,
+        metadata.startSceneId
+      ) || metadata.startSceneId;
       const newPlaybackState: PlaybackState = {
         storyId: metadata.id,
-        currentSceneId: metadata.startSceneId,
+        currentSceneId: startSceneId,
         isPlaying: true,
         currentDialogueIndex: 0,
         choicesMade: [],
@@ -65,13 +95,26 @@ export function useReaderInitialization(storyIdParam?: string | string[]) {
 
     } catch (error) {
       if (requestId !== initRequestIdRef.current) return;
-      if (__DEV__) console.error('Failed to initialize reader:', error);
-      setIsLoading(false);
+      ErrorHandler.handle('Failed to initialize reader', error, ErrorCategory.STORAGE);
+    } finally {
+      if (requestId === initRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, [storyIdParam, stories, setCurrentStory, updatePlaybackState]);
+  }, [resumeExisting, storyIdParam, stories, storiesMetadata, sceneRecordsByStory, setCurrentStory, updatePlaybackState]);
 
   useEffect(() => {
+    safetyTimerRef.current = setTimeout(() => {
+      safetyTimerRef.current = null;
+      setIsLoading(false);
+    }, 10_000);
     initializeReader();
+    return () => {
+      if (safetyTimerRef.current) {
+        clearTimeout(safetyTimerRef.current);
+        safetyTimerRef.current = null;
+      }
+    };
   }, [initializeReader]);
 
   // Synchronize loading state: only resolve loading when we have a valid synchronized scene

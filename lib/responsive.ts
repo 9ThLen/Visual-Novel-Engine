@@ -1,21 +1,22 @@
-import { Dimensions, Platform } from 'react-native';
+import { Platform } from 'react-native';
 
-// Web breakpoints
+export interface ScreenDimensions {
+  width: number;
+  height: number;
+  isWeb?: boolean;
+}
+
 export const BREAKPOINTS = {
   mobile: 768,
   tablet: 1024,
   desktop: 1280,
 } as const;
 
-export const getResponsiveValues = () => {
-  const { width, height } = Dimensions.get('window');
-
-  // Determine if device is tablet (width > 600dp is typical tablet threshold)
-  const isTablet = width > 600;
+export function getResponsiveValues(dims: ScreenDimensions) {
+  const { width, height, isWeb = Platform.OS === 'web' } = dims;
+  const isTablet = width >= BREAKPOINTS.mobile || (width >= 600 && height >= 600);
   const isLandscape = width > height;
-  const isWeb = Platform.OS === 'web';
 
-  // Web-specific breakpoints
   const isWebMobile = isWeb && width < BREAKPOINTS.mobile;
   const isWebTablet = isWeb && width >= BREAKPOINTS.mobile && width < BREAKPOINTS.tablet;
   const isWebDesktop = isWeb && width >= BREAKPOINTS.tablet;
@@ -27,18 +28,17 @@ export const getResponsiveValues = () => {
     isTablet,
     isLandscape,
     isWeb,
-    isNative: Platform.OS !== 'web',
-    // Web-specific
+    isNative: !isWeb,
     isWebMobile,
     isWebTablet,
     isWebDesktop,
     isWebLargeDesktop,
   };
-};
+}
 
-export const getResponsiveSpacing = () => {
-  const { isTablet } = getResponsiveValues();
-  
+export function getResponsiveSpacing(dims: ScreenDimensions) {
+  const { isTablet } = getResponsiveValues(dims);
+
   return {
     xs: isTablet ? 12 : 8,
     sm: isTablet ? 16 : 12,
@@ -46,11 +46,11 @@ export const getResponsiveSpacing = () => {
     lg: isTablet ? 28 : 20,
     xl: isTablet ? 36 : 28,
   };
-};
+}
 
-export const getResponsiveFontSize = () => {
-  const { isTablet } = getResponsiveValues();
-  
+export function getResponsiveFontSize(dims: ScreenDimensions) {
+  const { isTablet } = getResponsiveValues(dims);
+
   return {
     xs: isTablet ? 13 : 11,
     sm: isTablet ? 14 : 12,
@@ -59,13 +59,12 @@ export const getResponsiveFontSize = () => {
     xl: isTablet ? 28 : 24,
     xxl: isTablet ? 36 : 28,
   };
-};
+}
 
-export const getReaderLayout = () => {
-  const { width, height, isTablet, isLandscape } = getResponsiveValues();
-  
+export function getReaderLayout(dims: ScreenDimensions) {
+  const { width, height, isTablet, isLandscape } = getResponsiveValues(dims);
+
   if (isLandscape) {
-    // Landscape: split screen
     return {
       backgroundHeight: height,
       backgroundWidth: width * 0.65,
@@ -74,7 +73,6 @@ export const getReaderLayout = () => {
       dialoguePosition: 'right' as const,
     };
   } else if (isTablet) {
-    // Tablet portrait: more space
     return {
       backgroundHeight: height * 0.65,
       backgroundWidth: width,
@@ -83,7 +81,6 @@ export const getReaderLayout = () => {
       dialoguePosition: 'bottom' as const,
     };
   } else {
-    // Phone portrait: standard
     return {
       backgroundHeight: height * 0.6,
       backgroundWidth: width,
@@ -92,35 +89,34 @@ export const getReaderLayout = () => {
       dialoguePosition: 'bottom' as const,
     };
   }
-};
+}
 
-export const getGridColumns = () => {
-  const { width, isTablet } = getResponsiveValues();
-  
-  if (isTablet && width > 1000) {
-    return 3;
+export function getGridColumns(dims: ScreenDimensions) {
+  const { width, isTablet } = getResponsiveValues(dims);
+
+  if (isTablet && width >= BREAKPOINTS.tablet) {
+    return 4;
   } else if (isTablet) {
-    return 2;
+    return 3;
   } else {
-    return 1;
+    return 2;
   }
-};
+}
 
-export const getMaxContentWidth = () => {
-  const { width, isTablet } = getResponsiveValues();
+export function getMaxContentWidth(dims: ScreenDimensions) {
+  const { width, isTablet } = getResponsiveValues(dims);
 
-  if (isTablet && width > 1000) {
+  if (isTablet && width > BREAKPOINTS.tablet) {
     return 900;
   } else if (isTablet) {
     return 600;
   } else {
-    return width - 32; // Full width minus padding
+    return width - 32;
   }
-};
+}
 
-// Web-specific layout configuration
-export const getWebLayout = () => {
-  const { width, isWebDesktop, isWebTablet, isWebMobile } = getResponsiveValues();
+export function getWebLayout(dims: ScreenDimensions) {
+  const { width, isWebDesktop, isWebTablet, isWebMobile } = getResponsiveValues(dims);
 
   if (isWebDesktop) {
     return {
@@ -129,14 +125,14 @@ export const getWebLayout = () => {
       gridColumns: width > 1400 ? 3 : 2,
       showSidebar: true,
       showTopBar: true,
-      editorLayout: 'split' as const, // split-screen for editor
+      editorLayout: 'split' as const,
     };
   } else if (isWebTablet) {
     return {
       sidebarWidth: 200,
       contentMaxWidth: 900,
       gridColumns: 2,
-      showSidebar: false, // collapsible
+      showSidebar: false,
       showTopBar: true,
       editorLayout: 'stacked' as const,
     };
@@ -150,4 +146,4 @@ export const getWebLayout = () => {
       editorLayout: 'stacked' as const,
     };
   }
-};
+}

@@ -22,32 +22,35 @@ import {
   View,
   Text,
   Pressable,
-  Animated,
-
-  Platform,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from 'react-native-reanimated';
 import { Image } from 'expo-image';
+import { cn } from '@/lib/utils';
 import { useColors } from '@/hooks/use-colors';
 import { StoryScene, Choice, UserSettings } from '@/lib/types';
+import type { CharacterPosition } from '@/lib/character-types';
 import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
 import { DialogueHistory, HistoryEntry } from './dialogue-history';
 import { SplashScreenComponent } from './SplashScreen';
-import { resolveAssetUri, getBundledAsset } from '@/lib/asset-resolver';
-import { BackgroundEffectsManager } from './effects/BackgroundEffectsManager';
+import { CharacterDisplay } from './CharacterDisplay';
+import { useTypewriter } from '@/hooks/useTypewriter';
+import { useSceneImages } from '@/hooks/useSceneImages';
+import { enhancedAudioManager } from '@/lib/audio-manager-enhanced';
+import { isReaderAudioSessionActive } from '@/lib/reader-audio-session';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function extractSpeaker(text: string): { speaker: string | null; body: string } {
   // Support "Name: dialogue…" format
-  const match = text.match(/^([A-Za-zА-Яа-яҐґЄєІіЇї\u4e00-\u9fff]{1,24})\s*:\s*([\s\S]+)$/);
+  const match = text.match(/^([A-Za-zА-Яа-яҐґЄєІіЇї\u4e00-\u9fff][\w \u00c0-\u024f'.-]{0,30}?)\s*:\s*([\s\S]+)$/);
   if (match) return { speaker: match[1], body: match[2] };
   return { speaker: null, body: text };
-}
-
-// Speed mapping: 0=slow (60ms/char) → 1=fast (12ms/char)
-function charDelayMs(textSpeed: number): number {
-  return Math.round(60 - textSpeed * 48);
 }
 
 // Auto-play delay after full text appears
@@ -61,7 +64,10 @@ interface Props {
   onChoiceSelect: (choice: Choice) => void;
   isLoading?: boolean;
   settings?: Partial<UserSettings>;
+  onHistoryVisibleChange?: (visible: boolean) => void;
 }
+
+const DIALOGUE_MARGIN_BOTTOM = 28;
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -71,10 +77,12 @@ export function StoryReaderResponsive({
   onChoiceSelect,
   isLoading = false,
   settings = {},
+  onHistoryVisibleChange,
 }: Props) {
   const colors = useColors();
-  const layout = getReaderLayout();
-  const fontSize = getResponsiveFontSize();
+  const dims = useWindowDimensions();
+  const layout = getReaderLayout(dims);
+  const fontSize = getResponsiveFontSize(dims);
 
   const {
     textSpeed = 0.5,
@@ -86,69 +94,24 @@ export function StoryReaderResponsive({
   const pages = useMemo(() => scene.text.split('\n\n').filter(Boolean), [scene.text]);
 
   const [pageIndex, setPageIndex] = useState(0);
-  const [displayedText, setDisplayedText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
 
-// Resolved asset URIs
-  const [bgSource, setBgSource] = useState<null | { uri: string }>(null);
-  const [resolvedCharUris, setResolvedCharUris] = useState<Record<string, { uri: string }>>({});
-
-  // Resolve background image URI when scene changes
-  useEffect(() => {
-    let mounted = true;
-    const bgUri = scene.backgroundImageUri;
-
-    if (!bgUri) {
-      setBgSource(null);
-    } else {
-      // Try direct bundled asset first
-      const bundledAsset = getBundledAsset(bgUri);
-      if (bundledAsset) {
-        console.log('[StoryReader] Using bundled asset for:', bgUri);
-        setBgSource(bundledAsset);
-      } else {
-        resolveAssetUri(bgUri).then((uri) => {
-          if (mounted && uri) {
-            console.log(`[StoryReader] Background: ${bgUri} ->`, uri);
-            // If it's a string (URI), wrap it in { uri: ... }
-            // If it's already an object or number (bundled), use as is
-            setBgSource(typeof uri === 'string' ? { uri } : uri);
-          }
-        }).catch((err) => {
-          console.log('[StoryReader] Resolver failed:', err);
-        });
-      }
-    }
-
-    scene.characters.forEach((char) => {
-      resolveAssetUri(char.imageUri).then((uri) => {
-        if (mounted && uri) {
-          const source = typeof uri === 'string' ? { uri } : uri;
-          console.log(`[StoryReader] Character ${char.name}: ${char.imageUri} ->`, uri);
-          setResolvedCharUris((prev) => ({ ...prev, [char.id]: source }));
-        }
-      }).catch(err => {
-        console.error(`[StoryReader] Failed to resolve char ${char.name}:`, err);
-      });
-    });
-
-    return () => {
-      mounted = false;
-    };
-  }, [scene.id]); // Only depend on scene.id to avoid re-renders
+  const { bgSource, resolvedCharUris } = useSceneImages(scene);
 
   // ── History ─────────────────────────────────────────────────────────────
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+    onHistoryVisibleChange?.(showHistory);
+  }, [showHistory, onHistoryVisibleChange]);
 
   // ── Auto-play ───────────────────────────────────────────────────────────
   const [autoPlayActive, setAutoPlayActive] = useState(autoPlay);
   const autoPlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Animations ──────────────────────────────────────────────────────────
-  const sceneOpacity = useRef(new Animated.Value(1)).current;
-  const dialogueSlide = useRef(new Animated.Value(0)).current;
-  const bgScale = useRef(new Animated.Value(1)).current;
+  const sceneOpacity = useSharedValue(1);
+  const bgScale = useSharedValue(1);
 
   // ── Skip turbo mode ─────────────────────────────────────────────────────
   const [turbo, setTurbo] = useState(false);
@@ -157,44 +120,15 @@ export function StoryReaderResponsive({
   // ── Splash screen state ─────────────────────────────────────────────────
   const [showSplash, setShowSplash] = useState(false);
   const [uiVisible, setUiVisible] = useState(true);
-  const uiOpacity = useRef(new Animated.Value(1)).current;
+  const uiOpacity = useSharedValue(1);
 
   // ── Typewriter ──────────────────────────────────────────────────────────
-  const typewriterRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const currentTarget = useRef('');
-
-  const startTypewriter = useCallback((text: string) => {
-    if (typewriterRef.current) clearInterval(typewriterRef.current);
-    currentTarget.current = text;
-    setDisplayedText('');
-    setIsTyping(true);
-    let idx = 0;
-    const delay = charDelayMs(textSpeed);
-
-    typewriterRef.current = setInterval(() => {
-      idx++;
-      setDisplayedText(text.slice(0, idx));
-      if (idx >= text.length) {
-        clearInterval(typewriterRef.current!);
-        typewriterRef.current = null;
-        setIsTyping(false);
-      }
-    }, delay);
-  }, [textSpeed]);
-
-  const completeTypewriter = useCallback(() => {
-    if (typewriterRef.current) {
-      clearInterval(typewriterRef.current);
-      typewriterRef.current = null;
-    }
-    setDisplayedText(currentTarget.current);
-    setIsTyping(false);
-  }, []);
+  const { displayedText, isTyping, startTypewriter, completeTypewriter } = useTypewriter(textSpeed);
+  const textCompleteFiredRef = useRef<string | null>(null);
 
   // ── Scene change — fade in ───────────────────────────────────────────────
   useEffect(() => {
     setPageIndex(0);
-    setDisplayedText('');
 
     // Check if scene has splash screen
     if (scene.splashScreen?.splash) {
@@ -202,26 +136,35 @@ export function StoryReaderResponsive({
       setUiVisible(false);
       // Don't return - let background load in parallel
     } else {
-      // Entrance animation
-      sceneOpacity.setValue(0);
-      dialogueSlide.setValue(40);
-      bgScale.setValue(1.04);
+      sceneOpacity.value = 0;
+      bgScale.value = 1.04;
 
-      Animated.parallel([
-        Animated.timing(sceneOpacity, { toValue: 1, duration: 380, useNativeDriver: true }),
-        Animated.spring(dialogueSlide, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }),
-        Animated.timing(bgScale, { toValue: 1, duration: 700, useNativeDriver: true }),
-      ]).start();
+      sceneOpacity.value = withTiming(1, { duration: 380 });
+      bgScale.value = withTiming(1, { duration: 700 });
     }
-  }, [scene.id]);
+  }, [scene.id, scene.splashScreen?.splash, sceneOpacity, bgScale]);
 
-  // ── Start typewriter when page changes ──────────────────────────────────
   useEffect(() => {
     const { body } = extractSpeaker(pages[pageIndex] ?? '');
     startTypewriter(body);
-  }, [pageIndex, pages]);
+  }, [pageIndex, pages, startTypewriter]);
 
-  // ── Push to history when page fully shown ───────────────────────────────
+  useEffect(() => {
+    textCompleteFiredRef.current = null;
+  }, [scene.id]);
+
+  useEffect(() => {
+    if (isTyping || !scene.audioTriggers?.length || !isReaderAudioSessionActive()) return;
+
+    const key = `${scene.id}-${pageIndex}`;
+    if (textCompleteFiredRef.current === key) return;
+    textCompleteFiredRef.current = key;
+
+    enhancedAudioManager
+      .executeTriggersByType(scene.audioTriggers, 'text_complete')
+      .catch(() => {});
+  }, [isTyping, scene.id, scene.audioTriggers, pageIndex]);
+
   useEffect(() => {
     if (isTyping) return;
     const raw = pages[pageIndex] ?? '';
@@ -231,12 +174,12 @@ export function StoryReaderResponsive({
       if (last?.text === body) return h;
       return [...h, { id: `${scene.id}-${pageIndex}-${Date.now()}`, speaker: speaker ?? undefined, text: body, sceneId: scene.id }];
     });
-  }, [isTyping, pageIndex, scene.id]);
+  }, [isTyping, pageIndex, scene.id, pages]);
 
-  // ── Auto-advance (Scene-level) ───────────────────────────────────────────
+  // ── Auto-advance (Scene-level) ──────────────────────────────────────────
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
-    
+
     if (uiVisible && !isTyping && scene.autoAdvance?.enabled && scene.autoAdvance.nextSceneId) {
       const delay = scene.autoAdvance.delay || 3000;
       timer = setTimeout(() => {
@@ -250,11 +193,11 @@ export function StoryReaderResponsive({
         }
       }, delay);
     }
-    
-    return () => { if (timer) clearTimeout(timer); };
-  }, [uiVisible, isTyping, scene.id, scene.autoAdvance]);
 
-  // ── Auto-play (Page-level) ───────────────────────────────────────────────
+    return () => { if (timer) clearTimeout(timer); };
+  }, [uiVisible, isTyping, scene.id, scene.autoAdvance, scene.choices, onChoiceSelect, onContinue]);
+
+  // ── Auto-play (Page-level) ────────────────────────────────────────────
   const isLastPage = pageIndex === pages.length - 1;
 
   useEffect(() => {
@@ -273,14 +216,14 @@ export function StoryReaderResponsive({
     return () => { if (autoPlayTimer.current) clearTimeout(autoPlayTimer.current); };
   }, [autoPlayActive, isTyping, isLastPage, scene.choices.length, onContinue]);
 
-  // ── Turbo skip ───────────────────────────────────────────────────────────
+  // ── Turbo skip ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!turbo) {
       if (turboInterval.current) clearInterval(turboInterval.current);
       return;
     }
     turboInterval.current = setInterval(() => {
-      if (typewriterRef.current) {
+      if (isTyping) {
         completeTypewriter();
       } else if (!isLastPage) {
         setPageIndex((p) => p + 1);
@@ -291,16 +234,9 @@ export function StoryReaderResponsive({
       }
     }, 180);
     return () => { if (turboInterval.current) clearInterval(turboInterval.current); };
-  }, [turbo, isLastPage, scene.choices.length, onContinue]);
+  }, [turbo, isTyping, isLastPage, scene.choices.length, onContinue, completeTypewriter]);
 
-  // ── Cleanup ──────────────────────────────────────────────────────────────
-  useEffect(() => () => {
-    if (typewriterRef.current) clearInterval(typewriterRef.current);
-    if (autoPlayTimer.current) clearTimeout(autoPlayTimer.current);
-    if (turboInterval.current) clearInterval(turboInterval.current);
-  }, []);
-
-  // ── Tap handler ──────────────────────────────────────────────────────────
+  // ── Tap handler ────────────────────────────────────────────────────────
   const handleTap = () => {
     if (isLoading) return;
     if (isTyping) { completeTypewriter(); return; }
@@ -308,55 +244,60 @@ export function StoryReaderResponsive({
     if (scene.choices.length === 0) onContinue();
   };
 
-  // ── Font size from settings ───────────────────────────────────────────────
+  // ── Font size from settings ────────────────────────────────────────────
   const dialogueFontSize =
     textSize === 'small' ? fontSize.sm :
     textSize === 'large' ? fontSize.lg :
     fontSize.md;
 
-  // ── Speaker ───────────────────────────────────────────────────────────────
+  // ── Speaker ────────────────────────────────────────────────────────────
   const { speaker } = extractSpeaker(pages[pageIndex] ?? '');
 
-  // ── Splash handlers ───────────────────────────────────────────────────────
+  // ── Splash handlers ────────────────────────────────────────────────────
   const handleSplashComplete = useCallback(() => {
     setShowSplash(false);
     setUiVisible(true);
 
-    // Start normal scene entrance animation
-    sceneOpacity.setValue(0);
-    dialogueSlide.setValue(40);
-    bgScale.setValue(1.04);
+    sceneOpacity.value = 0;
+    bgScale.value = 1.04;
 
-    Animated.parallel([
-      Animated.timing(sceneOpacity, { toValue: 1, duration: 380, useNativeDriver: true }),
-      Animated.spring(dialogueSlide, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }),
-      Animated.timing(bgScale, { toValue: 1, duration: 700, useNativeDriver: true }),
-    ]).start();
-  }, []);
+    sceneOpacity.value = withTiming(1, { duration: 380 });
+    bgScale.value = withTiming(1, { duration: 700 });
+  }, [bgScale, sceneOpacity]);
 
   const handleUIHidden = useCallback(() => {
-    Animated.timing(uiOpacity, {
-      toValue: 0,
+    uiOpacity.value = withTiming(0, {
       duration: scene.splashScreen?.uiHideTransition?.duration || 500,
-      useNativeDriver: true,
-    }).start();
-  }, [scene.splashScreen]);
+    });
+  }, [scene.splashScreen, uiOpacity]);
 
   const handleUIShown = useCallback(() => {
-    Animated.timing(uiOpacity, {
-      toValue: 1,
+    uiOpacity.value = withTiming(1, {
       duration: scene.splashScreen?.uiShowTransition?.duration || 500,
-      useNativeDriver: true,
-    }).start();
-  }, [scene.splashScreen]);
+    });
+  }, [scene.splashScreen, uiOpacity]);
 
-  // ── UI ────────────────────────────────────────────────────────────────────
+  // ── Animated styles ─────────────────────────────────────────────────────
+  const bgAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: sceneOpacity.value,
+    transform: [{ scale: bgScale.value }],
+  }));
+
+  const charactersAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: sceneOpacity.value * uiOpacity.value,
+  }));
+
+  const dialogueAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: sceneOpacity.value * uiOpacity.value,
+  }));
+
+  // ── UI ──────────────────────────────────────────────────────────────────
   const isPortrait = layout.dialoguePosition === 'bottom';
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
+    <View className="flex-1 bg-black" style={{ overflow: 'hidden' }}>
 
-      {/* ── Splash Screen ─────────────────────────────────────────────────── */}
+      {/* ── Splash Screen ──────────────────────────────────────────────── */}
       {showSplash && scene.splashScreen?.splash && (
         <SplashScreenComponent
           splash={scene.splashScreen.splash}
@@ -368,16 +309,9 @@ export function StoryReaderResponsive({
         />
       )}
 
-      {/* ── Background ────────────────────────────────────────────────────── */}
+      {/* ── Background ────────────────────────────────────────────────── */}
       <Animated.View
-        style={[
-          StyleSheet.absoluteFillObject,
-          { 
-            opacity: uiVisible ? sceneOpacity : 0, 
-            transform: [{ scale: bgScale }],
-            backgroundColor: '#000', // Ensure black base during transitions
-          },
-        ]}
+        style={[StyleSheet.absoluteFillObject, bgAnimatedStyle]}
       >
         {bgSource ? (
           <Image
@@ -386,31 +320,27 @@ export function StoryReaderResponsive({
             contentFit="cover"
             cachePolicy="memory-disk"
             onLoad={() => {}}
-            onError={(err) => console.error('[StoryReader] Background load error:', err)}
+            onError={(err) => { if (__DEV__) console.error('[StoryReader] Background load error:', err); }}
             placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
             transition={300}
           />
         ) : (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1a1a2e' }]} />
         )}
-        
-        {/* ── Background Effects ─────────────────────────────────────────── */}
-        {uiVisible && (
-          <BackgroundEffectsManager effects={scene.backgroundEffects || []} />
-        )}
+
       </Animated.View>
 
-      {/* ── Characters ────────────────────────────────────────────────────── */}
-      {uiVisible && scene.characters.length > 0 && (
+      {/* ── Characters ────────────────────────────────────────────────── */}
+      {uiVisible && Object.keys(resolvedCharUris).length > 0 && (
         <Animated.View
           style={[
             StyleSheet.absoluteFillObject,
+            charactersAnimatedStyle,
             {
               flexDirection: 'row',
               justifyContent: 'center',
               alignItems: 'flex-end',
               paddingBottom: isPortrait ? layout.dialogueHeight - 20 : 0,
-              opacity: Animated.multiply(sceneOpacity, uiOpacity),
             },
           ]}
           pointerEvents="none"
@@ -418,17 +348,23 @@ export function StoryReaderResponsive({
           {scene.characters.map((char) => {
             const charSource = resolvedCharUris[char.id];
             if (!charSource) return null;
+            const uri = typeof charSource === 'string' ? charSource : (charSource as { uri: string }).uri;
             return (
-              <Image
+              <CharacterDisplay
                 key={char.id}
-                source={charSource}
-                style={{
-                  height: layout.backgroundHeight * 0.78,
-                  width: layout.backgroundHeight * 0.45,
-                  marginHorizontal: -16,
+                instance={{
+                  id: char.id,
+                  characterId: char.id,
+                  spriteId: '',
+                  position: 'center' as CharacterPosition,
+                  zIndex: 0,
+                  animatedOpacity: new (require('react-native').Animated.Value)(1),
+                  animatedTranslateX: new (require('react-native').Animated.Value)(0),
+                  animatedTranslateY: new (require('react-native').Animated.Value)(0),
+                  animatedScale: new (require('react-native').Animated.Value)(1),
                 }}
-                contentFit="contain"
-                cachePolicy="memory-disk"
+                spriteUri={uri}
+                dialogueTop={isPortrait ? dims.height - layout.dialogueHeight : undefined}
               />
             );
           })}
@@ -436,192 +372,176 @@ export function StoryReaderResponsive({
       )}
 
 
-      {/* ── Main tappable area ────────────────────────────────────────────── */}
+      {/* ── Main tappable area ────────────────────────────────────────── */}
       {uiVisible && (
         <Pressable
           style={{ flex: 1 }}
           onPress={handleTap}
           disabled={isLoading}
+          accessible={true}
+          accessibilityRole="button"
+          accessibilityLabel="Continue reading"
+          accessibilityHint="Tap to advance text or make a choice"
         />
       )}
 
-      {/* ── Top controls ──────────────────────────────────────────────────── */}
+      {/* ── Top controls ───────────────────────────────────────────────── */}
       {uiVisible && (
         <View
-          style={{
-            position: 'absolute',
-            top: 48,
-            right: 16,
-            flexDirection: 'row',
-            gap: 8,
-          }}
+          className="absolute right-4 top-12 flex-row gap-2"
           pointerEvents="box-none"
         >
-        <ControlButton
-          label={autoPlayActive ? '⏸ Auto' : '▶ Auto'}
-          active={autoPlayActive}
-          onPress={() => setAutoPlayActive((a) => !a)}
-          colors={colors}
-        />
-        <ControlButton
-          label="📖 Log"
-          onPress={() => setShowHistory(true)}
-          colors={colors}
-        />
-      </View>
+          <ControlButton
+            label={autoPlayActive ? '⏸ Auto' : '▶ Auto'}
+            active={autoPlayActive}
+            onPress={() => setAutoPlayActive((a) => !a)}
+            colors={colors}
+            accessibilityLabel={autoPlayActive ? 'Stop auto-play' : 'Start auto-play'}
+          />
+          <ControlButton
+            label="📖 Log"
+            onPress={() => setShowHistory(true)}
+            colors={colors}
+            accessibilityLabel="Open dialogue history"
+          />
+        </View>
       )}
 
-      {/* ── Dialogue box ──────────────────────────────────────────────────── */}
+      {/* ── Dialogue box ──────────────────────────────────────────────── */}
       {uiVisible && (
         <Animated.View
-          style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            transform: [{ translateY: dialogueSlide }],
-            opacity: Animated.multiply(sceneOpacity, uiOpacity),
-          }}
+          style={[
+            {
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+            },
+            dialogueAnimatedStyle,
+          ]}
           pointerEvents="box-none"
         >
-        <View
-          style={{
-            margin: 12,
-            marginBottom: Platform.OS === 'web' ? 16 : 28,
-            borderRadius: 16,
-            backgroundColor: colors.dialogueBg ?? 'rgba(15,14,23,0.88)',
-            borderWidth: 1,
-            borderColor: colors.border,
-            overflow: 'hidden',
-          }}
-        >
-          {/* Speaker nameplate */}
-          {speaker ? (
-            <View
-              style={{
-                alignSelf: 'flex-start',
-                backgroundColor: colors.nameBg ?? colors.primary,
-                paddingHorizontal: 14,
-                paddingVertical: 5,
-                borderBottomRightRadius: 10,
-                borderTopLeftRadius: 14,
-              }}
-            >
-              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }}>
-                {speaker}
-              </Text>
-            </View>
-          ) : null}
-
-          <View style={{ padding: 16, minHeight: 80 }}>
-            <Text
-              style={{
-                fontSize: dialogueFontSize,
-                lineHeight: dialogueFontSize * 1.65,
-                color: colors.foreground,
-                fontWeight: '400',
-              }}
-            >
-              {displayedText}
-              {isTyping && (
-                <Text style={{ color: colors.primary, opacity: 0.8 }}>█</Text>
-              )}
-            </Text>
-          </View>
-
-          {/* Choices */}
-          {isLastPage && !isTyping && scene.choices.length > 0 && (
-            <View style={{ padding: 12, paddingTop: 4, gap: 8 }}>
-              {scene.choices.map((choice) => (
-                <Pressable
-                  key={choice.id}
-                  style={({ pressed }: { pressed: boolean }) => ({
-                    backgroundColor: colors.choiceBg ?? 'rgba(124,58,237,0.12)',
-                    borderWidth: 1,
-                    borderColor: colors.choiceBorder ?? colors.primary,
-                    borderRadius: 10,
-                    paddingVertical: 11,
-                    paddingHorizontal: 16,
-                    opacity: pressed ? 0.75 : 1,
-                  })}
-                  onPress={() => onChoiceSelect(choice)}
-                >
-                  <Text
-                    style={{
-                      color: colors.foreground,
-                      fontSize: fontSize.sm,
-                      fontWeight: '500',
-                      textAlign: 'center',
-                    }}
-                    numberOfLines={3}
-                  >
-                    {choice.text}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-
-          {/* Bottom bar: page indicator + skip */}
-          <View
+          <View className="mx-3 mb-7 rounded-2xl border overflow-hidden"
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              paddingHorizontal: 16,
-              paddingBottom: 12,
-              paddingTop: 4,
+              backgroundColor: colors.dialogueBg ?? 'rgba(15, 14, 23, 0.92)',
+              borderColor: colors.border,
+              marginBottom: DIALOGUE_MARGIN_BOTTOM,
             }}
           >
-            {/* Page dots */}
-            {pages.length > 1 ? (
-              <View style={{ flexDirection: 'row', gap: 4 }}>
-                {pages.map((_, i) => (
-                  <View
-                    key={i}
-                    style={{
-                      width: i === pageIndex ? 16 : 6,
-                      height: 6,
-                      borderRadius: 3,
-                      backgroundColor: i === pageIndex ? colors.primary : colors.border,
-                    }}
-                  />
+            {/* Speaker nameplate */}
+            {speaker ? (
+              <View
+                className="self-start px-3.5 py-1 rounded-br-lg rounded-tl-xl"
+                style={{
+                  backgroundColor: colors.nameBg ?? colors.primary,
+                }}
+              >
+                <Text className="text-white text-xs font-bold tracking-wider">
+                  {speaker}
+                </Text>
+              </View>
+            ) : null}
+
+            <View className="p-4 min-h-[80]">
+              <Text
+                style={{
+                  fontSize: dialogueFontSize,
+                  lineHeight: dialogueFontSize * 1.65,
+                  color: colors.foreground,
+                  fontWeight: '400',
+                }}
+              >
+                {displayedText}
+                {isTyping && (
+                  <Text style={{ color: colors.primary, opacity: 0.8 }}>█</Text>
+                )}
+              </Text>
+            </View>
+
+            {/* Choices */}
+            {isLastPage && !isTyping && scene.choices.length > 0 && (
+              <View className="px-3 pt-1 pb-3 gap-2">
+                {scene.choices.map((choice) => (
+                  <Pressable
+                    key={choice.id}
+                    style={({ pressed }) => ({
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      paddingVertical: 10,
+                      paddingHorizontal: 16,
+                      backgroundColor: colors.choiceBg ?? 'rgba(124,58,237,0.12)',
+                      borderColor: colors.choiceBorder ?? colors.primary,
+                      opacity: pressed ? 0.75 : 1,
+                    })}
+                    onPress={() => onChoiceSelect(choice)}
+                    accessibilityRole="button"
+                    accessibilityLabel={choice.text}
+                  >
+                    <Text
+                      className="text-center font-medium leading-5"
+                      style={{
+                        color: colors.foreground,
+                        fontSize: fontSize.sm,
+                      }}
+                      numberOfLines={3}
+                    >
+                      {choice.text}
+                    </Text>
+                  </Pressable>
                 ))}
               </View>
-            ) : <View />}
+            )}
 
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              {/* Skip / fast-forward button */}
-              {!isTyping && !isLastPage && (
-                <Text style={{ color: colors.muted, fontSize: 11 }}>tap to continue ▼</Text>
-              )}
-              {isLastPage && !isTyping && scene.choices.length === 0 && (
-                <Text style={{ color: colors.muted, fontSize: 11 }}>tap to continue ▼</Text>
-              )}
-              <Pressable
-                onPressIn={() => setTurbo(true)}
-                onPressOut={() => setTurbo(false)}
-                style={({ pressed }: { pressed: boolean }) => ({
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  borderRadius: 6,
-                  backgroundColor: turbo ? colors.primary : 'transparent',
-                  borderWidth: 1,
-                  borderColor: turbo ? colors.primary : colors.border,
-                  opacity: pressed ? 0.8 : 1,
-                })}
-              >
-                <Text style={{ color: turbo ? '#fff' : colors.muted, fontSize: 11, fontWeight: '600' }}>
-                  ⏩ Skip
-                </Text>
-              </Pressable>
+            {/* Bottom bar: page indicator + skip */}
+            <View className="flex-row items-center justify-between px-4 pb-3 pt-1">
+              {/* Page dots */}
+              {pages.length > 1 ? (
+                <View className="flex-row gap-1">
+                  {pages.map((_, i) => (
+                    <View
+                      key={`dot-${i}`}
+                      className={cn('rounded-full', i === pageIndex ? 'w-4 h-1.5' : 'w-1.5 h-1.5')}
+                      style={{
+                        backgroundColor: i === pageIndex ? colors.primary : colors.border,
+                      }}
+                    />
+                  ))}
+                </View>
+              ) : <View />}
+
+              <View className="flex-row gap-2 items-center">
+                {/* Skip / fast-forward button */}
+                {!isTyping && !isLastPage && (
+                  <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>tap to continue ▼</Text>
+                )}
+                {isLastPage && !isTyping && scene.choices.length === 0 && (
+                  <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>tap to continue ▼</Text>
+                )}
+                <Pressable
+                  style={{
+                    borderRadius: 6,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderWidth: 1,
+                    borderColor: turbo ? colors.primary : colors.border,
+                    backgroundColor: turbo ? colors.primary : 'transparent',
+                  }}
+                  onPressIn={() => setTurbo(true)}
+                  onPressOut={() => setTurbo(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel={turbo ? 'Stop skip' : 'Skip text'}
+                >
+                  <Text className={cn('text-xs font-semibold', turbo ? 'text-white' : 'text-muted')}>
+                    ⏩ Skip
+                  </Text>
+                </Pressable>
+              </View>
             </View>
           </View>
-        </View>
-      </Animated.View>
+        </Animated.View>
       )}
 
-      {/* ── Dialogue history drawer ────────────────────────────────────────── */}
+      {/* ── Dialogue history drawer ───────────────────────────────────── */}
       <DialogueHistory
         visible={showHistory}
         entries={history}
@@ -638,15 +558,17 @@ function ControlButton({
   active = false,
   onPress,
   colors,
+  accessibilityLabel,
 }: {
   label: string;
   active?: boolean;
   onPress: () => void;
   colors: ReturnType<typeof useColors>;
+  accessibilityLabel?: string;
 }) {
   return (
     <Pressable
-      style={({ pressed }: { pressed: boolean }) => ({
+      style={{
         paddingHorizontal: 10,
         paddingVertical: 6,
         borderRadius: 8,
@@ -655,9 +577,10 @@ function ControlButton({
           : 'rgba(0,0,0,0.45)',
         borderWidth: 1,
         borderColor: active ? colors.primary : 'rgba(255,255,255,0.18)',
-        opacity: pressed ? 0.75 : 1,
-      })}
+      }}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
     >
       <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{label}</Text>
     </Pressable>
