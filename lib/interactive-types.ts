@@ -1,18 +1,7 @@
 /**
- * Interactive Objects and Inventory System Types
- * Types for clickable objects, actions, and inventory management
+ * Interactive Objects Types
+ * Types for clickable objects and actions
  */
-
-// ── Item (Inventory) ──────────────────────────────────────────────────────
-
-export interface InventoryItem {
-  id: string;
-  name: string;
-  description: string;
-  iconUri: string;
-  category?: string; // e.g., "key", "document", "tool"
-  metadata?: Record<string, any>; // Custom data
-}
 
 // ── Interactive Object Actions ────────────────────────────────────────────
 
@@ -20,8 +9,6 @@ export type InteractiveActionType =
   | 'dialogue'
   | 'scene_transition'
   | 'play_audio'
-  | 'add_item'
-  | 'remove_item'
   | 'show_image'
   | 'trigger_event';
 
@@ -44,17 +31,6 @@ export interface PlayAudioAction {
   loop?: boolean;
 }
 
-export interface AddItemAction {
-  type: 'add_item';
-  item: InventoryItem;
-  showNotification?: boolean;
-}
-
-export interface RemoveItemAction {
-  type: 'remove_item';
-  itemId: string;
-}
-
 export interface ShowImageAction {
   type: 'show_image';
   imageUri: string;
@@ -64,20 +40,15 @@ export interface ShowImageAction {
 export interface TriggerEventAction {
   type: 'trigger_event';
   eventId: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
 }
 
 export type InteractiveAction =
   | DialogueAction
   | SceneTransitionAction
   | PlayAudioAction
-  | AddItemAction
-  | RemoveItemAction
   | ShowImageAction
-  | TriggerEventAction
-  | { type: 'item'; itemId: string; itemName?: string; action: 'add' | 'remove' }
-  | { type: 'scene'; targetSceneId: string }
-  | { type: 'sound'; soundUri: string };
+  | TriggerEventAction;
 
 // ── Interactive Object ────────────────────────────────────────────────────
 
@@ -93,12 +64,6 @@ export interface InteractiveObject {
   name?: string; // For editor display
   label?: string; // Alternative to name
   position?: InteractiveObjectPosition;
-
-  // Flattened position (alternative to position object)
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
 
   // Visual representation
   imageUri?: string; // Optional image overlay
@@ -123,13 +88,6 @@ export interface InteractiveObject {
 export interface InteractiveScene {
   id: string;
   interactiveObjects: InteractiveObject[];
-}
-
-// ── Inventory State ───────────────────────────────────────────────────────
-
-export interface InventoryState {
-  items: InventoryItem[];
-  maxSlots?: number; // Optional inventory limit
 }
 
 // ── Interaction Event ─────────────────────────────────────────────────────
@@ -169,31 +127,6 @@ export const INTERACTIVE_PRESETS: InteractiveObjectPreset[] = [
     },
   },
   {
-    id: 'item_pickup',
-    name: 'Item Pickup',
-    description: 'Collectible item that adds to inventory',
-    template: {
-      name: 'Item',
-      position: { x: 45, y: 60, width: 10, height: 10 },
-      highlightOnHover: true,
-      actions: [
-        {
-          type: 'add_item',
-          item: {
-            id: '',
-            name: 'Item',
-            description: 'A collectible item',
-            iconUri: '',
-          },
-          showNotification: true,
-        },
-      ],
-      oneTimeOnly: true,
-      pulseAnimation: true,
-      glowColor: '#FFD700',
-    },
-  },
-  {
     id: 'dialogue_trigger',
     name: 'Dialogue Trigger',
     description: 'Object that shows dialogue when clicked',
@@ -228,28 +161,6 @@ export const INTERACTIVE_PRESETS: InteractiveObjectPreset[] = [
       ],
     },
   },
-  {
-    id: 'locked_door',
-    name: 'Locked Door',
-    description: 'Door that requires a key item',
-    template: {
-      name: 'Locked Door',
-      position: { x: 40, y: 30, width: 20, height: 40 },
-      highlightOnHover: true,
-      requiredItems: ['key_item_id'],
-      actions: [
-        {
-          type: 'dialogue',
-          text: 'The door is locked. You need a key.',
-        },
-        {
-          type: 'scene_transition',
-          targetSceneId: '',
-          transition: 'fade',
-        },
-      ],
-    },
-  },
 ];
 
 // ── Helper Types ──────────────────────────────────────────────────────────
@@ -257,7 +168,5 @@ export const INTERACTIVE_PRESETS: InteractiveObjectPreset[] = [
 export interface InteractionResult {
   success: boolean;
   message?: string;
-  itemsAdded?: InventoryItem[];
-  itemsRemoved?: string[];
   sceneTransition?: string;
 }

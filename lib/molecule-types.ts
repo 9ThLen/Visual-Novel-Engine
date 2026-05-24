@@ -1,15 +1,14 @@
 import { z } from 'zod';
-import { AtomBlock, AtomType } from './atom-types';
+import { AtomBlock, AtomType, textAtomSchema, characterAtomSchema, backgroundAtomSchema, audioAtomSchema, fxAtomSchema } from './atom-types';
+import { generateId } from './id-utils';
 
-// 5 molecule types for visual novel engine
 export type MoleculeType = 
-  | 'dialogue_molecule'   // Dialogue scene with text + character atoms
-  | 'choice_molecule'     // Choice menu with multiple text options
-  | 'scene_molecule'      // Scene transition with background + FX atoms
-  | 'character_molecule'  // Character setup with character + audio atoms
-  | 'audio_molecule';     // Audio playback with audio + background atoms
+  | 'dialogue_molecule'
+  | 'choice_molecule'
+  | 'scene_molecule'
+  | 'character_molecule'
+  | 'audio_molecule';
 
-// Bounding box for molecule position/size
 export interface Bounds {
   x: number;
   y: number;
@@ -17,7 +16,6 @@ export interface Bounds {
   height: number;
 }
 
-// Molecule block containing multiple atoms
 export interface MoleculeBlock {
   id: string;
   type: MoleculeType;
@@ -25,11 +23,37 @@ export interface MoleculeBlock {
   bounds: Bounds;
 }
 
-// Zod v4 schema for molecule validation
+const atomTypeEnum = z.enum(['text_atom', 'character_atom', 'background_atom', 'audio_atom', 'fx_atom']);
+
+const snapPointSchema = z.object({
+  side: z.enum(['top', 'bottom', 'left', 'right']),
+  offset: z.number().min(0).max(1),
+  compatibleTypes: z.array(atomTypeEnum),
+});
+
+const atomDataSchema = z.union([
+  textAtomSchema,
+  characterAtomSchema,
+  backgroundAtomSchema,
+  audioAtomSchema,
+  fxAtomSchema,
+]);
+
+const atomBlockSchema = z.object({
+  id: z.string().min(1),
+  type: atomTypeEnum,
+  data: atomDataSchema as z.ZodTypeAny,
+  x: z.number(),
+  y: z.number(),
+  width: z.number().min(0),
+  height: z.number().min(0),
+  snapPoints: z.array(snapPointSchema),
+});
+
 export const moleculeSchema = z.object({
   id: z.string().min(1, 'Molecule ID is required'),
   type: z.enum(['dialogue_molecule', 'choice_molecule', 'scene_molecule', 'character_molecule', 'audio_molecule']),
-  atoms: z.array(z.any()).min(1, 'Molecule must contain at least one atom'),
+  atoms: z.array(atomBlockSchema).min(1, 'Molecule must contain at least one atom'),
   bounds: z.object({
     x: z.number(),
     y: z.number(),
@@ -163,7 +187,7 @@ export function createMolecule(type: MoleculeType, atoms: AtomBlock[]): Molecule
   const bounds = calculateBounds(atoms);
 
   // Generate unique ID and build molecule object
-  const id = `molecule_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const id = generateId('molecule');
   const molecule = { id, type, atoms, bounds };
 
   // Validate with Zod schema

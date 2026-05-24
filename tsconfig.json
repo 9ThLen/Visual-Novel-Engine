@@ -7,35 +7,34 @@
       "DOM",
       "ESNext"
     ],
-    "module": "preserve",
-    "moduleDetection": "force",
+    "module": "esnext",
     "moduleResolution": "bundler",
-    "customConditions": [
-      "react-native"
-    ],
     "noEmit": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "target": "ESNext",
     "strict": true,
-    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
-    "preserveSymlinks": true,
+    "types": [
+      "react"
+    ],
+    "typeRoots": [
+      "./node_modules/@types"
+    ],
     "paths": {
       "@/*": [
         "./*"
-      ],
-      "@shared/*": [
-        "./shared/*"
       ]
-    }
+    },
+    "ignoreDeprecations": "5.0"
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
-    "nativewind-env.d.ts"
+    "nativewind-env.d.ts",
+    "global.d.ts"
   ],
   "exclude": [
     "node_modules",
@@ -45,4 +44,5 @@
     "android",
     "ios"
   ],
+  "extends": "expo/tsconfig.base"
 }

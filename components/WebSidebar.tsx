@@ -4,9 +4,10 @@
  */
 
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { useColors } from '@/hooks/use-colors';
+import { isWeb } from '@/lib/web-utils';
 import { getWebLayout } from '@/lib/responsive';
 
 interface NavItem {
@@ -30,15 +31,15 @@ export function WebSidebar({ visible = true }: WebSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const colors = useColors();
-  const layout = getWebLayout();
+  const dims = useWindowDimensions();
+  const layout = getWebLayout(dims);
 
-  // Only render on web desktop
-  if (Platform.OS !== 'web' || !visible) {
+  if (!isWeb() || !visible) {
     return null;
   }
 
   const handleNavigate = (path: string) => {
-    router.push(path as any);
+    router.push(path as import('expo-router').Href);
   };
 
   return (
@@ -69,7 +70,7 @@ export function WebSidebar({ visible = true }: WebSidebarProps) {
             <Pressable
               key={item.id}
               onPress={() => handleNavigate(item.path)}
-              style={({ pressed, hovered }: any) => [
+              style={({ pressed, hovered }: { pressed: boolean; hovered: boolean }) => [
                 styles.navItem,
                 {
                   backgroundColor: isActive

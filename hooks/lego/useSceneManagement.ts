@@ -1,27 +1,21 @@
-import React from 'react';
-import { useSceneStore } from '@/stores/scene-store';
-import { createScene } from '@/lib/scene-types';
-import type { Scene } from '@/lib/scene-types';
+import { useLegoStore, selectLegoScenes, selectLegoActiveScene, selectLegoActiveSceneId } from '@/stores/use-lego-store';
+import { createLegoScene } from '@/lib/lego-types';
+import type { LegoScene } from '@/lib/lego-types';
 import type { AtomBlock } from '@/lib/atom-types';
 
 export function useSceneManagement() {
-  const scenes = useSceneStore((s) => s.scenes);
-  const addScene = useSceneStore((s) => s.addScene);
-  const setActiveScene = useSceneStore((s) => s.setActiveScene);
-  const activeSceneId = useSceneStore((s) => s.activeSceneId);
-  const addElement = useSceneStore((s) => s.addElement);
-  const updateElement = useSceneStore((s) => s.updateElement);
-  const batchUpdateElements = useSceneStore((s) => s.batchUpdateElements);
+  const scenes = useLegoStore(selectLegoScenes);
+  const addScene = useLegoStore((s) => s.addLegoScene);
+  const setActiveScene = useLegoStore((s) => s.setLegoActiveScene);
+  const activeSceneId = useLegoStore(selectLegoActiveSceneId);
+  const addElement = useLegoStore((s) => s.addLegoElement);
+  const updateElement = useLegoStore((s) => s.updateLegoElement);
+  const batchUpdateElements = useLegoStore((s) => s.batchUpdateLegoElements);
 
-  const activeScene = scenes.find((s: Scene) => s.id === activeSceneId);
-
-  const existingIds = React.useMemo(() => 
-    new Set(activeScene?.elements.map((e) => e.id) || []), 
-    [activeScene?.elements]
-  );
+  const activeScene = useLegoStore(selectLegoActiveScene);
 
   const handleAddScene = () => {
-    const newScene = createScene(`Scene ${scenes.length + 1}`);
+    const newScene = createLegoScene(`Scene ${scenes.length + 1}`);
     addScene(newScene);
     setActiveScene(newScene.id);
   };

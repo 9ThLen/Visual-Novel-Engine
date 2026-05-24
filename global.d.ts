@@ -1,6 +1,35 @@
-/**
- * Global type declarations for React Native / Expo environment
- */
+declare module '*.png' {
+  const value: number;
+  export default value;
+}
 
-// __DEV__ is injected by Metro bundler in React Native
+declare module '*.jpg' {
+  const value: number;
+  export default value;
+}
+
+declare module '*.mp3' {
+  const value: number;
+  export default value;
+}
+
+declare module '*.ogg' {
+  const value: number;
+  export default value;
+}
+
+declare module '*.wav' {
+  const value: number;
+  export default value;
+}
+
 declare const __DEV__: boolean;
+
+declare interface Buffer extends Uint8Array {
+  toString(encoding?: string): string;
+}
+
+declare const Buffer: {
+  from(data: string, encoding?: string): Buffer;
+  from(data: Uint8Array): Buffer;
+};

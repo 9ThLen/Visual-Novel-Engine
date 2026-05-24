@@ -59,10 +59,10 @@ const darkColors = {
   primaryLight: '#E5B299',
   primaryDark: '#C17A5C',
   
-  // Background - Deep Brown
-  background: '#2A2318',
-  surface: '#3D3226',
-  surfaceElevated: '#4A3F32',
+  // Background - Deep Blue
+  background: '#0f1419',
+  surface: '#151b23',
+  surfaceElevated: '#1c2430',
   
   // Text
   foreground: '#F5F1E8',
@@ -70,8 +70,8 @@ const darkColors = {
   muted: '#9B8B7E',
   
   // Borders & Dividers
-  border: '#4A3F32',
-  borderLight: '#5A4D3E',
+  border: '#1e2a3a',
+  borderLight: '#253344',
   
   // Semantic Colors
   success: '#8FB87F',
@@ -89,7 +89,7 @@ const darkColors = {
   scrim: 'rgba(0, 0, 0, 0.6)',
   
   // Dialogue Box
-  dialogueBg: 'rgba(61, 50, 38, 0.95)',
+  dialogueBg: 'oklch(22% 0.08 250 / 0.92)',
   nameBg: '#D89A7F',
   
   // Choice Buttons

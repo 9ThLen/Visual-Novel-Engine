@@ -1,107 +1,27 @@
-# Visual Novel Engine 📖✨
+# Visual Novel Engine
 
-A powerful, cross-platform visual novel engine built with React Native and Expo. Create, edit, and play interactive branching stories with rich media support, multilingual capabilities, and a beautiful beige-themed UI.
+Кросплатформовий конструктор візуальних новел на базі Expo, React Native і Zustand. Поточний milestone зосереджений на стабільному editor/runtime циклі: canonical `SceneRecord + TimelineStep`, узгоджених save/load flows, StoryFlow і reader без implicit legacy розсинхрону.
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![Platform](https://img.shields.io/badge/platform-iOS%20%7C%20Android%20%7C%20Web-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
-## 🌟 Key Features
+## Current Architecture
 
-### 📝 Professional Story Editor
-- **Visual Node Editor** - Drag-and-drop interface for creating story graphs
-- **Scene Editor** - Rich text editor with media integration
-- **Branching Narratives** - Create complex choice-based storylines
-- **Real-time Preview** - Test your story instantly
-- **Auto-save** - Never lose your work
-- **Media Library** - Organize images and audio files
+- **Canonical scene contract** — `SceneRecord + TimelineStep` є єдиним steady-state contract для editor, preview, reader і StoryFlow
+- **State management** — app state живе в `useAppStore`, editor draft у `useEditorStore`; нові production flows не покладаються на React Context як на source of truth
+- **Runtime reconstruction** — preview, reader, autosave і manual save/load працюють через centralized runtime helpers
+- **Story flow** — graph nodes, positions, start-scene state і connections походять з canonical scene records
+- **Compatibility boundary** — `Story` / `StoryScene` лишаються лише для explicit import/export або migration scenarios
 
-### 🎮 Immersive Story Reader
-- **Typewriter Effect** - Smooth text animation for dialogue
-- **Character Sprites** - Display character images with positioning
-- **Background Images** - Set the scene with custom backgrounds
-- **Background Music** - Add atmosphere with audio tracks
-- **Voice Acting** - Support for character voice lines
-- **Choice System** - Player decisions that affect the story
-- **Auto-play Mode** - Automatic dialogue progression
-- **Responsive Layout** - Optimized for phones and tablets
+## Main User Flow
 
-### 💾 Advanced Save System
-- **10 Manual Save Slots** - Multiple save files per story
-- **Auto-save** - Automatic progress saving on scene changes
-- **Rich Metadata** - Thumbnails, timestamps, scene info, play time
-- **Quick Load** - Resume from any save point
-- **Save Management** - Delete and organize saves
-- **Preview Cards** - Visual save slot cards with scene thumbnails
-
-### 🎨 Interactive Features
-- **Clickable Objects** - Add interactive elements to scenes
-- **Inventory System** - Collect and use items
-- **Conditional Actions** - Objects that require specific items
-- **Percentage-based Positioning** - Responsive object placement
-- **Multiple Action Types:**
-  - Show dialogue
-  - Transition to scenes
-  - Play audio
-  - Add/remove items
-  - Display images
-  - Trigger custom events
-- **5 Ready-to-use Templates** for common interactive objects
-
-### 🎬 Splash Screens & Transitions
-- **Image Splashes** - Display title cards and chapter screens
-- **Video Splashes** - Play intro videos
-- **Animated Backgrounds** - Dynamic scene transitions
-- **4 Ready-to-use Templates:**
-  - Dramatic Reveal (slow fade, 5s)
-  - Quick Flash (fast transition, 1s)
-  - Cinematic (medium pace, 3s)
-  - Emotional Moment (gentle fade, 4s)
-- **Customizable Timing** - Control fade in/out duration
-
-### 🌍 Multilingual Support
-- **4 Languages Built-in:**
-  - 🇬🇧 English
-  - 🇺🇦 Ukrainian (Українська)
-  - 🇷🇺 Russian (Русский)
-  - 🇵🇱 Polish (Polski)
-- **80+ Translated UI Elements**
-- **Language Selector** with flag icons
-- **Persistent Language Preference**
-- **Fallback Strategy** - Graceful handling of missing translations
-- **Easy to Add More Languages** - JSON-based translation system
-
-### 🎨 Beautiful UI/UX Design
-- **Beige Color Palette** - Warm, comfortable reading experience
-  - Light mode: Soft beige (#F5F1E8) with terracotta accents (#C17A5C)
-  - Dark mode: Deep brown (#2A2318) with warm terracotta (#D89A7F)
-- **Light & Dark Modes** - Automatic theme switching
-- **Haptic Feedback** - Tactile response on all button interactions
-- **Smooth Animations** - Polished transitions and effects
-  - Button press: Scale animation (0.96x) with glow effect
-  - Scene transitions: 380ms fade with slide
-  - Modal appearances: Spring animation
-- **Universal Button Component** - 5 variants (primary, secondary, outline, ghost, danger)
-- **Responsive Design** - Works on all screen sizes
-- **Accessibility** - WCAG AA compliant contrast ratios
-- **Touch Targets** - Minimum 44x44 points for all interactive elements
-
-### ❓ Interactive Help System
-- **Help Mode** - Toggle with ? button to explain all UI elements
-- **Contextual Tooltips** - Detailed explanations for every feature
-- **Animated Highlighting** - Pulsing glow on interactive elements
-- **Guided Tours** - Step-by-step walkthroughs:
-  - Getting Started (4 steps)
-  - Story Creation (3 steps)
-  - Adding Media (3 steps)
-- **First-time Guide** - Welcome tutorial for new users
-- **5 Categories:**
-  - 📖 Story - Story management and editing
-  - 🎨 Media - Images, audio, and effects
-  - 🧭 Navigation - App navigation and controls
-  - ⚙️ Settings - Preferences and configuration
-  - ⚡ Advanced - Interactive objects and splash screens
-- **20+ Help Items** - Comprehensive coverage of all features
+1. Відкрити Home і перейти в `editor.tsx`
+2. Створити історію або відкрити існуючу
+3. Редагувати сцену через `scene-editor.tsx` і `SceneComposer`
+4. Перевірити структуру через `scene-manager` і `story-flow`
+5. Запустити preview / `play` / `reader`
+6. Використати autosave або manual save/load на тому ж canonical data path
 
 ## 🚀 Getting Started
 
@@ -201,10 +121,10 @@ pnpm start
    - Tap the "Edit" button on the home screen
    - Tap "+ New" to create a story
 
-2. **Add Scenes**
+2. **Create the Initial Canonical Story**
    - Enter a story title
    - Tap "Create Story"
-   - Edit the default scene or add new ones
+   - The app creates story metadata plus a persisted start scene in canonical form
 
 3. **Add Media**
    - Tap background/audio buttons to add media
@@ -214,19 +134,20 @@ pnpm start
    - Add choice buttons to create branching paths
    - Link choices to different scenes
 
-5. **Preview Your Story**
-   - Tap the preview button to test
-   - Make adjustments as needed
+5. **Preview and Play**
+   - Use Preview for scene-level validation
+   - Use Story Flow for graph-level edits
+   - Use Play/Reader to test the runtime path
 
-### Using the Node Editor
+### Managing Story Flow
 
-The node editor provides a visual overview of your story structure:
+`StoryFlowScreen` provides the visual overview of your story structure:
 
-- **Nodes** represent scenes
-- **Lines** show connections between scenes
-- **Drag** to rearrange nodes
-- **Tap** to edit a scene
-- **Connect** nodes to create story flow
+- **Nodes** represent canonical scene records
+- **Lines** represent persisted scene connections
+- **Drag** updates persisted `flowX/flowY`
+- **Set Start** synchronizes start-scene metadata and runtime entry
+- **Play** tests the same graph the runtime uses
 
 ### Adding Interactive Objects
 
@@ -342,9 +263,10 @@ visual-novel-engine/
 ├── app/                      # Expo Router screens
 │   ├── (tabs)/              # Tab navigation
 │   │   └── index.tsx        # Home screen
-│   ├── editor.tsx           # Story list editor
-│   ├── node-editor.tsx      # Visual graph editor
-│   ├── scene-editor.tsx     # Scene detail editor
+│   ├── editor.tsx           # Story list and creation entry point
+│   ├── scene-editor.tsx     # Canonical scene editor route
+│   ├── scene-manager.tsx    # Scene list / CRUD route
+│   ├── story-flow.tsx       # Story graph route
 │   ├── reader.tsx           # Story reader
 │   ├── settings.tsx         # Settings screen
 │   └── save-load.tsx        # Save/Load screen
@@ -362,17 +284,15 @@ visual-novel-engine/
 │   ├── InventoryUI.tsx      # Inventory modal
 │   └── LanguageSelector.tsx # Language picker
 ├── lib/                     # Core logic
-│   ├── story-context.tsx    # Story state management
-│   ├── inventory-context.tsx # Inventory system
-│   ├── i18n-context.tsx     # Internationalization
-│   ├── help-system-context.tsx # Help system state
-│   ├── help-system-types.ts # Help content database
-│   ├── ui-feedback.ts       # Haptic & sound feedback
-│   ├── types.ts             # TypeScript types
-│   ├── splash-types.ts      # Splash screen types
-│   ├── interactive-types.ts # Interactive object types
-│   ├── translations.json    # UI translations
+│   ├── runtime-story.ts     # Canonical runtime reconstruction
+│   ├── canonical-scene.ts   # Canonical scene selectors/helpers
+│   ├── scene-operations.ts  # Scene CRUD/start-scene invariants
+│   ├── story-flow-graph.ts  # Derived graph helpers for StoryFlow
+│   ├── types.ts             # Legacy compatibility types
 │   └── ...                  # Other utilities
+├── stores/
+│   ├── use-app-store.ts     # Main app state
+│   └── use-editor-store.ts  # Scene draft state
 ├── assets/                  # Static assets
 │   ├── demo-story.json      # Example story
 │   └── ...                  # Images, fonts, etc.
@@ -394,20 +314,21 @@ visual-novel-engine/
 | Build Tool | Expo | 54 |
 | Language | TypeScript | 5.9 |
 | Styling | NativeWind (Tailwind CSS) | 4 |
-| State Management | React Context API | - |
+| State Management | Zustand | 5.x |
 | Storage | AsyncStorage | 2.2 |
 | Navigation | Expo Router | 6 |
-| Animations | React Native Animated | - |
+|| Animations | react-native-reanimated | 4.1 |
 | Audio | expo-av | 16.0 |
 | Images | expo-image | 3.0 |
 | Haptics | expo-haptics | 15.0 |
 
 ## 📚 Documentation
 
-- [Design System](./DESIGN_SYSTEM.md) - Color palette, typography, spacing
-- [UI/UX Improvements](./UI_UX_IMPROVEMENTS.md) - Interaction patterns, animations
-- [Help System](./HELP_SYSTEM.md) - Complete help system documentation
-- [Build Readiness Report](./BUILD_READINESS_REPORT.md) - Pre-build checklist
+- [[Wiki Index|wiki/index]] — Full project documentation (Obsidian vault)
+- [[Design System|wiki/design-system-update-2026-05-18]] — OKLCH color system, elevation, accessibility
+- [docs/SCENE-MODEL-CONTRACT.md](file:///d:/Programs/D/visual_novel_engine/docs/SCENE-MODEL-CONTRACT.md) — Canonical scene contract
+- [[Architecture Reference|wiki/architecture-reference]] — Current architecture reference
+- [[Tasks Backlog|wiki/tasks-backlog]] — 41 tasks, ~200-300 hours remaining
 
 ## 🤝 Contributing
 

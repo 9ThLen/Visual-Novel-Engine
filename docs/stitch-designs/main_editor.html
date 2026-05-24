@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NovaScript Editor - Visual Novel Architect</title>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface": "#111224",
+                        "tertiary-fixed-dim": "#ffb688",
+                        "surface-container-lowest": "#0b0c1f",
+                        "secondary": "#c2c3eb",
+                        "on-secondary-fixed-variant": "#424465",
+                        "on-primary-fixed-variant": "#4f00d0",
+                        "on-primary-container": "#fcf6ff",
+                        "on-primary": "#370096",
+                        "surface-tint": "#cdbdff",
+                        "surface-container-highest": "#323347",
+                        "on-background": "#e1e0fb",
+                        "on-secondary-fixed": "#161837",
+                        "tertiary-fixed": "#ffdbc7",
+                        "surface-container-high": "#27283c",
+                        "inverse-surface": "#e1e0fb",
+                        "on-primary-fixed": "#20005f",
+                        "background": "#111224",
+                        "secondary-fixed-dim": "#c2c3eb",
+                        "primary-fixed": "#e8deff",
+                        "on-secondary": "#2c2e4d",
+                        "surface-container": "#1d1e31",
+                        "on-tertiary-container": "#fff7f4",
+                        "surface-container-low": "#191a2d",
+                        "on-surface": "#e1e0fb",
+                        "on-surface-variant": "#cac3d8",
+                        "surface-variant": "#323347",
+                        "surface-dim": "#111224",
+                        "secondary-container": "#444668",
+                        "tertiary-container": "#b55800",
+                        "on-error-container": "#ffdad6",
+                        "primary-fixed-dim": "#cdbdff",
+                        "on-tertiary-fixed": "#311300",
+                        "outline-variant": "#494455",
+                        "on-secondary-container": "#b4b5dd",
+                        "error": "#ffb4ab",
+                        "error-container": "#93000a",
+                        "on-tertiary": "#512400",
+                        "on-error": "#690005",
+                        "primary": "#cdbdff",
+                        "secondary-fixed": "#e0e0ff",
+                        "on-tertiary-fixed-variant": "#733600",
+                        "inverse-primary": "#6833ea",
+                        "primary-container": "#7c4dff",
+                        "surface-bright": "#37374c",
+                        "tertiary": "#ffb688",
+                        "outline": "#948ea1",
+                        "inverse-on-surface": "#2e2f43",
+                        "border-brand": "#2e3050"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "container-padding": "24px",
+                        "inspector-width": "280px",
+                        "unit": "4px",
+                        "gutter": "16px",
+                        "sidebar-width": "320px",
+                        "left-panel": "280px",
+                        "right-panel": "300px"
+                    },
+                    "fontFamily": {
+                        "display-lg": ["Hanken Grotesk"],
+                        "label-md": ["Hanken Grotesk"],
+                        "headline-sm": ["Hanken Grotesk"],
+                        "body-md": ["Hanken Grotesk"],
+                        "body-lg": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "code-sm": ["monospace"]
+                    },
+                    "fontSize": {
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "code-sm": ["12px", {"lineHeight": "18px", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Hanken Grotesk', sans-serif;
+            background-color: #111224;
+            color: #e1e0fb;
+            overflow: hidden;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #2e3050;
+            border-radius: 10px;
+        }
+        .narrative-block-connector {
+            background-image: radial-gradient(#2e3050 1px, transparent 1px);
+            background-size: 8px 8px;
+            width: 2px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden bg-surface">
+<!-- Top Navigation Anchor (Based on Shared Components JSON) -->
+<header class="flex justify-between items-center w-full px-4 h-16 bg-surface-container border-b border-outline-variant z-50">
+<div class="flex items-center gap-4">
+<span class="font-headline-md text-headline-md font-bold text-primary">NovaScript Editor</span>
+<nav class="hidden md:flex items-center gap-6 ml-8">
+<a class="text-primary font-bold border-b-2 border-primary pb-1 font-label-md text-label-md" href="#">Chapter 1: The Arrival</a>
+</nav>
+</div>
+<div class="flex items-center gap-3">
+<button class="material-symbols-outlined text-on-surface-variant p-2 hover:bg-surface-container-high rounded transition-colors">undo</button>
+<button class="material-symbols-outlined text-on-surface-variant p-2 hover:bg-surface-container-high rounded transition-colors">redo</button>
+<div class="h-6 w-px bg-outline-variant mx-2"></div>
+<button class="px-4 py-2 border border-outline-variant text-on-surface font-label-md text-label-md rounded-lg hover:bg-surface-container-high transition-colors">Save</button>
+<button class="px-6 py-2 bg-primary-container text-on-primary-container font-label-md text-label-md font-bold rounded-lg hover:opacity-90 active:scale-95 transition-all">Preview</button>
+</div>
+</header>
+<main class="flex flex-1 overflow-hidden">
+<!-- LEFT PANEL: Block Library -->
+<aside class="w-[280px] flex flex-col bg-surface-container-low border-r border-border-brand h-full">
+<div class="p-4 border-b border-border-brand">
+<div class="flex items-center justify-between mb-4">
+<span class="font-headline-sm text-headline-sm text-on-surface">Library</span>
+<span class="font-label-md text-label-md text-on-surface-variant">v1.0.4</span>
+</div>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+<input class="w-full bg-surface-container border border-border-brand rounded-lg py-2 pl-10 pr-4 text-body-md font-body-md focus:ring-1 focus:ring-primary focus:outline-none transition-all" placeholder="Search blocks..." type="text"/>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-3">
+<!-- Draggable Cards Mapping -->
+<div class="p-3 bg-surface border-l-4 border-[#50c878] rounded-lg hover:translate-x-1 transition-transform cursor-grab active:cursor-grabbing shadow-sm">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-sm text-[#50c878]">landscape</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Background</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">Change the scene background image.</p>
+</div>
+<div class="p-3 bg-surface border-l-4 border-[#f5a623] rounded-lg hover:translate-x-1 transition-transform cursor-grab shadow-sm">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-sm text-[#f5a623]">person</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Character</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">Add or update character sprites.</p>
+</div>
+<div class="p-3 bg-secondary-container border-l-4 border-[#9b59b6] rounded-lg translate-x-1 shadow-sm">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-sm text-[#9b59b6]">chat_bubble</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Dialogue</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">Narrator or character speech lines.</p>
+</div>
+<div class="p-3 bg-surface border-l-4 border-[#7c5bf5] rounded-lg hover:translate-x-1 transition-transform cursor-grab shadow-sm">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-sm text-[#7c5bf5]">notes</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Text</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">Full-screen narration or UI text.</p>
+</div>
+<div class="p-3 bg-surface border-l-4 border-[#e91e63] rounded-lg hover:translate-x-1 transition-transform cursor-grab shadow-sm">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-sm text-[#e91e63]">list</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Choice</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">Branching narrative decisions.</p>
+</div>
+<div class="p-3 bg-surface border-l-4 border-[#ffd93d] rounded-lg hover:translate-x-1 transition-transform cursor-grab shadow-sm">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-sm text-[#ffd93d]">flare</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Effect</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">Visual filters and screen shakes.</p>
+</div>
+<div class="p-3 bg-surface border-l-4 border-[#ff6b6b] rounded-lg hover:translate-x-1 transition-transform cursor-grab shadow-sm">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-sm text-[#ff6b6b]">music_note</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Music</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">BGM tracks with looping options.</p>
+</div>
+<div class="p-3 bg-surface border-l-4 border-[#ef5350] rounded-lg hover:translate-x-1 transition-transform cursor-grab shadow-sm">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-sm text-[#ef5350]">volume_up</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Sound</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">SFX trigger for one-shot audio.</p>
+</div>
+<div class="p-3 bg-surface border-l-4 border-[#00bcd4] rounded-lg hover:translate-x-1 transition-transform cursor-grab shadow-sm">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-sm text-[#00bcd4]">ads_click</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Interactive Object</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">Clickable hotspots in the scene.</p>
+</div>
+<div class="p-3 bg-surface border-l-4 border-[#009688] rounded-lg hover:translate-x-1 transition-transform cursor-grab shadow-sm">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-sm text-[#009688]">videocam</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Camera</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">Pan, zoom, and focus control.</p>
+</div>
+<div class="p-3 bg-surface border-l-4 border-[#8bc34a] rounded-lg hover:translate-x-1 transition-transform cursor-grab shadow-sm">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-sm text-[#8bc34a]">variables</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Variable</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">Flag updates and logic checks.</p>
+</div>
+<div class="p-3 bg-surface border-l-4 border-[#3f51b5] rounded-lg hover:translate-x-1 transition-transform cursor-grab shadow-sm">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-sm text-[#3f51b5]">movie_filter</span>
+<span class="font-label-md text-label-md font-bold text-on-surface">Transition</span>
+</div>
+<p class="text-[10px] text-on-surface-variant leading-tight">Crossfades, wipes, and slides.</p>
+</div>
+</div>
+<div class="p-4 bg-surface-container-lowest">
+<button class="w-full py-3 bg-secondary-container text-on-secondary-container font-label-md text-label-md rounded-lg flex items-center justify-center gap-2 hover:bg-surface-variant transition-colors">
+<span class="material-symbols-outlined text-sm">add</span>
+                    Add Asset
+                </button>
+</div>
+</aside>
+<!-- CENTER PANEL: Script Canvas (Timeline) -->
+<section class="flex-1 flex flex-col bg-surface relative overflow-hidden">
+<div class="h-14 border-b border-border-brand flex items-center px-12 bg-surface/50 backdrop-blur-sm z-10">
+<div class="flex items-center gap-3 flex-1">
+<span class="material-symbols-outlined text-primary text-sm">edit</span>
+<input class="bg-transparent border-none focus:ring-0 font-headline-sm text-headline-sm text-on-surface p-0 w-full" type="text" value="The Hidden Path"/>
+</div>
+<div class="flex gap-2">
+<span class="px-2 py-1 bg-surface-container rounded text-[10px] font-bold text-on-surface-variant tracking-wider uppercase">Dirty</span>
+</div>
+</div>
+<!-- Vertical Timeline Canvas -->
+<div class="flex-1 overflow-y-auto custom-scrollbar px-12 py-8 bg-surface-container-lowest/30">
+<div class="max-w-2xl mx-auto flex flex-col items-center">
+<!-- Connection Line Start -->
+<div class="h-8 narrative-block-connector"></div>
+<!-- Block 1: Background -->
+<div class="w-full bg-surface border border-border-brand border-l-4 border-[#50c878] rounded-xl p-4 flex gap-4 items-start relative group shadow-lg">
+<div class="material-symbols-outlined absolute -left-10 top-1/2 -translate-y-1/2 text-on-surface-variant cursor-grab opacity-0 group-hover:opacity-100 transition-opacity">drag_indicator</div>
+<div class="w-24 h-16 rounded overflow-hidden flex-shrink-0 border border-border-brand">
+<img alt="Mysterious deep forest with rays of light" class="w-full h-full object-cover" data-alt="A lush, dense forest scene at twilight with volumetric sunbeams filtering through ancient towering trees. The lighting is ethereal and atmospheric, featuring deep emerald greens and misty blues. The visual style is cinematic and detailed, matching a professional visual novel background plate with high-fidelity textures and a serene, mystical mood." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBRaZRq9ACceB8i7yyKWq7rYLevGFy47HAcyw36bZEceQJH6MOa0bAw6nXnid3NZvqFbx2vEtY1LudPiorxBt3480Ss2w898q71FQdLxNf8OrNKIptF3W3JuR855cRzAL5ryr3Ai2MAkddmq5d2lbBbjbETTIqOu1fv9pUtnNR0fGgT_9cyFzzYWX9GC0L_68Xa_2_ugvZt52apJ_tYEFXgev_Q1ugIbSd1UptekGRfylgXUhU8TnHEOVHEIw8Qu63b8Pgeeakp9Lw"/>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start mb-2">
+<span class="font-label-md text-label-md text-[#50c878] font-bold uppercase tracking-widest">Background</span>
+<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="material-symbols-outlined text-sm p-1 hover:bg-surface-variant rounded">content_copy</button>
+<button class="material-symbols-outlined text-sm p-1 hover:bg-surface-variant rounded text-error">delete</button>
+</div>
+</div>
+<h4 class="text-on-surface font-body-lg text-body-lg">Forest_Path_Morning.webp</h4>
+</div>
+</div>
+<div class="h-10 narrative-block-connector"></div>
+<!-- Block 2: Character -->
+<div class="w-full bg-surface border border-border-brand border-l-4 border-[#f5a623] rounded-xl p-4 flex gap-4 items-start relative group shadow-lg">
+<div class="material-symbols-outlined absolute -left-10 top-1/2 -translate-y-1/2 text-on-surface-variant cursor-grab opacity-0 group-hover:opacity-100 transition-opacity">drag_indicator</div>
+<div class="w-16 h-16 rounded-full overflow-hidden flex-shrink-0 border-2 border-[#f5a623] p-1 bg-surface-variant">
+<img alt="Alice character portrait" class="w-full h-full object-cover" data-alt="A high-quality 2D anime-style character portrait of a young woman named Alice with flowing silver hair and intelligent violet eyes. She is wearing a modern fantasy explorer outfit with leather accents and soft fabric textures. The lighting is soft and flattering, emphasizing a friendly yet curious expression against a clean, flat-colored circular background designed for UI representation." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCICgKxiopVBcjCOlo3wnRCPZf98UFRj_1zKH-fz6RmUwdtVsk0SEZ5nAo0N4mRn095XB-aUb5c78pFwNxMKIfjWjSqKEsSN3Pz1eTGf_8wXolXiQS9i8SsetB13O6vki65TJZkV0Lhlt3Y5MYiJ7uWbk6EppsQkw4odnIX4rsIkWnupVkiJpN4O2azXmGF235vUCNbN4sTfJC832lQ80dwZMB5a2pP-DgR4i8PVft4LwsojkGCtta1sSr1YalYhmQBDuVzvmadn5A"/>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start mb-2">
+<span class="font-label-md text-label-md text-[#f5a623] font-bold uppercase tracking-widest">Character</span>
+<div class="flex gap-1">
+<button class="material-symbols-outlined text-sm p-1">content_copy</button>
+<button class="material-symbols-outlined text-sm p-1 text-error">delete</button>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-on-surface font-body-lg text-body-lg font-bold">Alice</span>
+<span class="px-2 py-0.5 bg-surface-variant rounded text-[10px] text-on-surface-variant">Entrance: Fade In</span>
+</div>
+</div>
+</div>
+<div class="h-10 narrative-block-connector"></div>
+<!-- Block 3: Dialogue (Active State) -->
+<div class="w-full bg-surface-container border border-primary border-l-4 border-[#9b59b6] rounded-xl p-5 flex gap-4 items-start relative group shadow-[0_4px_12px_rgba(0,0,0,0.4)] ring-1 ring-primary/30">
+<div class="material-symbols-outlined absolute -left-10 top-1/2 -translate-y-1/2 text-on-surface-variant cursor-grab">drag_indicator</div>
+<div class="flex-1">
+<div class="flex justify-between items-start mb-2">
+<div class="flex items-center gap-2">
+<span class="font-label-md text-label-md text-[#9b59b6] font-bold uppercase tracking-widest">Dialogue</span>
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+</div>
+<div class="flex gap-1">
+<button class="material-symbols-outlined text-sm p-1">content_copy</button>
+<button class="material-symbols-outlined text-sm p-1 text-error">delete</button>
+</div>
+</div>
+<div class="space-y-1">
+<p class="text-[#9b59b6] font-label-md text-label-md font-bold">Alice</p>
+<p class="text-on-surface font-body-lg text-body-lg italic leading-relaxed">"Hello... Is there anyone out here? I thought I saw a shadow moving behind those trees."</p>
+</div>
+</div>
+</div>
+<div class="h-10 narrative-block-connector"></div>
+<!-- Block 4: Text -->
+<div class="w-full bg-surface border border-border-brand border-l-4 border-[#7c5bf5] rounded-xl p-4 flex gap-4 items-start relative group shadow-lg">
+<div class="flex-1">
+<div class="flex justify-between items-start mb-2">
+<span class="font-label-md text-label-md text-[#7c5bf5] font-bold uppercase tracking-widest">Text</span>
+<div class="flex gap-1">
+<button class="material-symbols-outlined text-sm p-1">content_copy</button>
+<button class="material-symbols-outlined text-sm p-1 text-error">delete</button>
+</div>
+</div>
+<p class="text-on-surface-variant font-body-md text-body-md">The forest remains eerily silent, the only sound being the crunch of dry leaves under Alice's boots.</p>
+</div>
+</div>
+<div class="h-10 narrative-block-connector"></div>
+<!-- Block 5: Choice -->
+<div class="w-full bg-surface border border-border-brand border-l-4 border-[#e91e63] rounded-xl p-4 flex flex-col gap-4 relative group shadow-lg">
+<div class="flex justify-between items-start">
+<span class="font-label-md text-label-md text-[#e91e63] font-bold uppercase tracking-widest">Choice</span>
+<div class="flex gap-1">
+<button class="material-symbols-outlined text-sm p-1">content_copy</button>
+<button class="material-symbols-outlined text-sm p-1 text-error">delete</button>
+</div>
+</div>
+<div class="grid grid-cols-1 gap-2">
+<div class="p-3 bg-surface-container border border-border-brand rounded-lg flex items-center justify-between group/opt hover:border-primary transition-colors cursor-pointer">
+<span class="text-body-md font-body-md text-on-surface">Call out louder</span>
+<span class="material-symbols-outlined text-sm text-on-surface-variant group-hover/opt:text-primary transition-colors">arrow_forward</span>
+</div>
+<div class="p-3 bg-surface-container border border-border-brand rounded-lg flex items-center justify-between group/opt hover:border-primary transition-colors cursor-pointer">
+<span class="text-body-md font-body-md text-on-surface">Hide behind a tree</span>
+<span class="material-symbols-outlined text-sm text-on-surface-variant group-hover/opt:text-primary transition-colors">arrow_forward</span>
+</div>
+</div>
+</div>
+<!-- Connection Line End -->
+<div class="h-12 narrative-block-connector"></div>
+<button class="w-10 h-10 rounded-full bg-surface-container border border-border-brand flex items-center justify-center text-primary-container hover:scale-110 transition-transform active:scale-95">
+<span class="material-symbols-outlined">add</span>
+</button>
+<div class="h-20"></div>
+</div>
+</div>
+<!-- Mini Preview (Bottom NavBar Rule) -->
+<div class="fixed bottom-0 right-0 z-50 p-4 bg-surface-container-highest/90 backdrop-blur-md border-t border-l border-border-brand shadow-lg rounded-tl-xl w-[300px]">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary text-sm">aspect_ratio</span>
+<span class="font-label-md text-label-md font-bold text-tertiary">Mini Preview</span>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant text-sm hover:text-on-surface">open_in_full</button>
+</div>
+<div class="aspect-video w-full bg-black rounded-lg relative overflow-hidden group cursor-pointer">
+<img alt="Mini preview scene" class="w-full h-full object-cover opacity-60" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAhlpTWjLsl9rHf8YiWwk5klugHLI5fedeYHCwkbSUVXWf5cokhFAI9Bu1Rd1ilnpzm8XFNvdzwhKO2S4DP6DeIkjabaYgfSoO3qmQy26cvIHWhXAQTUpxvPcCm815C_znzQp_xQQ4GI-G_TzJyBx6QRBC4Cd18g0HJiBKzzToWNrA-02NHn7wHtPVJcxfOtiOlV887l9mCP5DCijxucnypnPRtK0iIpcrtkIPyzIVHkr4pe8qsEjZG-DKmx0NDvTsTohVFuXTlLiU"/>
+<div class="absolute inset-0 flex items-center justify-center">
+<img alt="Character in preview" class="h-4/5 translate-y-2" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDA4QibU3Rp8-WL_m1JE_MmwU6GHTFNzzWEC_LP5h-wSPbjg4YOfHU8IekbUx9_6kBErMNie8NyCBpk_npcmLrv4ucweHbhO1k4Btr7eg01om2oZLJR-cEWMQuVoZFGAEtNJIJrd07IMa2V0yCLVYfRukMiNDHCOo1ai6tju0ZHg-5jbjF43OTBHUP2MRoQROmnwXDbSixdR3IqDxnaN1PTaHRw5Ta7KKFpMYLT5-uYfs4rbyflC19vJ3OVBYXWgJx_1RtUp2SQUFk"/>
+</div>
+<div class="absolute bottom-2 left-2 right-2 p-2 bg-surface/80 rounded border border-white/10">
+<p class="text-[8px] text-[#9b59b6] font-bold">Alice</p>
+<p class="text-[10px] text-white line-clamp-1">"Hello... Is there anyone out here?"</p>
+</div>
+<div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-3xl">play_circle</span>
+</div>
+</div>
+</div>
+</section>
+<!-- RIGHT PANEL: Inspector -->
+<aside class="w-[300px] flex flex-col bg-surface-container-low border-l border-border-brand h-full">
+<header class="p-4 border-b border-border-brand flex justify-between items-center bg-surface-container">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[#9b59b6] text-sm">chat_bubble</span>
+<span class="font-headline-sm text-headline-sm text-on-surface">Dialogue Block</span>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant text-sm">help</button>
+</header>
+<div class="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-6">
+<!-- Speaker Dropdown -->
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant block uppercase tracking-wider">Speaker</label>
+<div class="relative">
+<select class="w-full bg-surface-container border border-border-brand rounded-lg py-2 px-3 text-body-md font-body-md text-on-surface appearance-none focus:ring-1 focus:ring-primary focus:outline-none">
+<option>Alice</option>
+<option>Narrator</option>
+<option>Unknown Voice</option>
+<option>Add New...</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+</div>
+</div>
+<!-- Sprite Selector -->
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant block uppercase tracking-wider">Sprite Pose</label>
+<div class="grid grid-cols-4 gap-2">
+<div class="aspect-square bg-surface-container border-2 border-primary rounded-lg overflow-hidden p-1 cursor-pointer">
+<img alt="Sprite pose normal" class="w-full h-full" data-alt="A stylized 2D portrait of Alice with a neutral yet smiling expression, silver hair, and purple eyes. High-key lighting, professional illustration style for a visual novel interface, vibrant flat colors." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDw3wPskVkaPBeHI0Ik4fU9z01UimDmdd6j2zmc9LBe23H_kpiYjH0uv4NcVFco66XxKmNiXKVq7QNbU_wePU3Lx4B6gQZaZLE1Sv8FX2BCPVYrXSxD3mMPBPCKLblxZpWFyklFGbnzRulFTmbY-6cRtpUjoPA9H8MJqSdavp1ac9tzp7fXc9JRgSCcR19f2GFdheP3-R46TPUYPPOw0nA4FUcltRbr94UV2yVlo_H2XC1d_3edMLz4OShKsD7DQowaeFS964fm_BY"/>
+</div>
+<div class="aspect-square bg-surface-container border border-border-brand rounded-lg overflow-hidden p-1 hover:border-primary/50 transition-colors cursor-pointer opacity-60">
+<img alt="Sprite pose surprised" class="w-full h-full" data-alt="A stylized 2D portrait of Alice with a surprised expression, eyes wide, and mouth slightly open. Silver hair, purple eyes, cinematic soft lighting, clean vector art style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAVTUQ2QAktBWret9NHkZVwT5m3t67ZpIDyJC-EGn3RqaLvwVlfZATeoXCUErqUmawAKMQOVLK4ovU3YgbyrqoS4y3L2PpbJKXidwKE9Lw1gefBqNjkz6RsEwYs4agKw56zL9rRmsPnLQDyY7VbPIU4uuz-h22y3dbFfzbtwg_ptWKNxsX9MJMNMwQKIBADZqKtNTYtlhvqFxR_nhKbUBN9Sucmib7MosKZXIO2TRjNIXwZ1N3AJGqBpCjkyqAZIS40k-UeDpX3uyg"/>
+</div>
+<div class="aspect-square bg-surface-container border border-border-brand rounded-lg overflow-hidden p-1 hover:border-primary/50 transition-colors cursor-pointer opacity-60">
+<img alt="Sprite pose sad" class="w-full h-full" data-alt="A stylized 2D portrait of Alice with a somber, sad expression, looking down slightly. Muted cool lighting, professional 2D game asset style, crisp linework." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBFLEFNsy_FZ0z-sGIKjHND_dvQaO2nh0d81V28eM3meE2GgcMAySGc2Kfl_3B9ztvkv9NG3l-0OTJ52aWM1eLtwhyhU7lZSjDj1zr1z2xUOrdF73NmTNQOvXK9Y0LCHkwVNVetgLaW690Ip5HRSokwsz67fn4RFpA1LmBLsr0JXfZTwu5KeH1THyGaPj53jpY7rE_DNAhVKosPw6PDlrudkSXfzYn8zclQYqIBc-GzF5wXZW_k08ml-vSgtCIcYslAwxYbk5MI8ww"/>
+</div>
+<div class="aspect-square bg-surface-container border border-border-brand rounded-lg flex items-center justify-center cursor-pointer hover:bg-surface-variant">
+<span class="material-symbols-outlined text-on-surface-variant">add</span>
+</div>
+</div>
+</div>
+<!-- Dialogue Textarea -->
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant block uppercase tracking-wider">Dialogue Text</label>
+<textarea class="w-full bg-surface-container border border-border-brand rounded-lg p-3 text-body-md font-body-md text-on-surface focus:ring-1 focus:ring-primary focus:outline-none resize-none" rows="4">"Hello... Is there anyone out here? I thought I saw a shadow moving behind those trees."</textarea>
+</div>
+<!-- Typewriter Speed Slider -->
+<div class="space-y-2">
+<div class="flex justify-between items-center">
+<label class="font-label-md text-label-md text-on-surface-variant block uppercase tracking-wider">Typewriter Speed</label>
+<span class="font-code-sm text-code-sm text-primary">0.05s</span>
+</div>
+<input class="w-full h-1 bg-surface-container rounded-lg appearance-none cursor-pointer accent-primary" type="range"/>
+</div>
+<!-- Anchor Radio Buttons -->
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant block uppercase tracking-wider">Text Alignment</label>
+<div class="flex bg-surface-container rounded-lg border border-border-brand p-1">
+<button class="flex-1 py-1 flex items-center justify-center rounded bg-primary-container text-on-primary-container">
+<span class="material-symbols-outlined text-sm">format_align_left</span>
+</button>
+<button class="flex-1 py-1 flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-variant">
+<span class="material-symbols-outlined text-sm">format_align_center</span>
+</button>
+<button class="flex-1 py-1 flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-variant">
+<span class="material-symbols-outlined text-sm">format_align_right</span>
+</button>
+</div>
+</div>
+<!-- Numerical Inputs -->
+<div class="grid grid-cols-2 gap-4">
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant block uppercase tracking-wider">Delay</label>
+<div class="relative">
+<input class="w-full bg-surface-container border border-border-brand rounded-lg py-2 px-3 text-body-md font-body-md text-on-surface focus:ring-1 focus:ring-primary focus:outline-none" type="number" value="0.2"/>
+<span class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-on-surface-variant">sec</span>
+</div>
+</div>
+<div class="space-y-2">
+<label class="font-label-md text-label-md text-on-surface-variant block uppercase tracking-wider">Duration</label>
+<div class="relative">
+<input class="w-full bg-surface-container border border-border-brand rounded-lg py-2 px-3 text-body-md font-body-md text-on-surface focus:ring-1 focus:ring-primary focus:outline-none" type="number" value="1.5"/>
+<span class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-on-surface-variant">sec</span>
+</div>
+</div>
+</div>
+</div>
+<footer class="p-4 bg-surface-container-low border-t border-border-brand grid grid-cols-2 gap-3">
+<button class="px-4 py-3 border border-border-brand text-on-surface font-label-md text-label-md rounded-lg flex items-center justify-center gap-2 hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-sm">content_copy</span>
+                    Duplicate
+                </button>
+<button class="px-4 py-3 bg-error-container/20 border border-error/30 text-error font-label-md text-label-md rounded-lg flex items-center justify-center gap-2 hover:bg-error-container/30 transition-colors">
+<span class="material-symbols-outlined text-sm">delete</span>
+                    Delete
+                </button>
+</footer>
+</aside>
+</main>
+<script>
+        // Simple micro-interactions
+        document.querySelectorAll('input[type="range"]').forEach(slider => {
+            slider.addEventListener('input', function() {
+                const valueLabel = this.closest('.space-y-2').querySelector('.font-code-sm');
+                if (valueLabel) {
+                    valueLabel.textContent = this.value / 100 + 's';
+                }
+            });
+        });
+
+        // Toggle focus state animation on block click
+        document.querySelectorAll('.narrative-block').forEach(block => {
+            block.addEventListener('click', function() {
+                document.querySelectorAll('.narrative-block').forEach(b => {
+                    b.classList.remove('ring-1', 'ring-primary/30', 'bg-surface-container');
+                    b.classList.add('bg-surface');
+                });
+                this.classList.add('ring-1', 'ring-primary/30', 'bg-surface-container');
+                this.classList.remove('bg-surface');
+            });
+        });
+    </script>
+</body></html>

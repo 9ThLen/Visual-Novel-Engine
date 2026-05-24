@@ -4,10 +4,10 @@
 
 import type { SplashScreenConfig } from './splash-types';
 import type { InteractiveObject } from './interactive-types';
-import type { BackgroundEffect } from './background-effects-types';
-import type { Block } from './block-types';
 import type { AudioLibraryItem, AudioTrigger } from './audio-types';
+import type { CharacterSprite } from './character-types';
 
+/** @see assets/demo-story-advanced.json for example values */
 /**
  * Represents a single choice option in a scene
  */
@@ -17,38 +17,40 @@ export interface Choice {
   nextSceneId: string;
 }
 
-import type { CharacterSprite } from './character-types';
-
 /**
- * Represents a single scene/node in the story
+ * Legacy compatibility-only scene shape.
+ *
+ * Deprecated for new editor/runtime work. New scene logic should use
+ * `SceneRecord + TimelineStep` and convert through the centralized adapter
+ * only when a compatibility representation is still required.
  */
 export interface StoryScene {
   id: string;
   text: string;
   backgroundImageUri?: string | null;
   characters: CharacterSprite[];
-  /** @deprecated Use audioTriggers instead */
   voiceAudioUri?: string | null;
   choices: Choice[];
-  /** @deprecated Use audioTriggers instead */
   musicUri?: string | null;
   splashScreen?: SplashScreenConfig;
   interactiveObjects?: InteractiveObject[];
-  backgroundEffects?: BackgroundEffect[];
-  animatedBackground?: unknown; // Compatibility for demo stories — use type guard before use
   autoAdvance?: {
     enabled: boolean;
     delay: number;
     nextSceneId: string;
   };
   // Block-based content for the scene (can contain text, images, audio, etc.)
-  blocks?: Block[];
+  // Note: Block system removed, kept as unknown[] for backward compatibility
+  blocks?: unknown[];
   // Audio triggers for enhanced audio system
   audioTriggers?: AudioTrigger[];
 }
 
 /**
- * Represents the complete story structure
+ * Legacy compatibility-only story structure.
+ *
+ * Deprecated for new persistence work. Keep for reader compatibility until the
+ * canonical scene model migration is complete.
  */
 export interface Story {
   id: string;
@@ -70,7 +72,7 @@ export interface SaveSlot {
   id: string;
   storyId: string;
   sceneId: string;
-  choicesMade: Array<{ sceneId: string; choiceId: string }>;
+  choicesMade: { sceneId: string; choiceId: string }[];
   timestamp: number;
   sceneName?: string;
   thumbnailUri?: string;
@@ -89,7 +91,6 @@ export interface UserSettings {
   textSpeed: number; // 0-1 (slow to fast)
   textSize: 'small' | 'medium' | 'large';
   autoPlay: boolean;
-  darkMode: boolean;
 }
 
 /**
@@ -100,29 +101,6 @@ export interface PlaybackState {
   currentSceneId: string;
   isPlaying: boolean;
   currentDialogueIndex: number; // Reserved for future feature: step-by-step dialogue display
-  choicesMade: Array<{ sceneId: string; choiceId: string }>;
+  choicesMade: { sceneId: string; choiceId: string }[];
 }
 
-/**
- * Represents an asset (image or audio file)
- */
-export interface Asset {
-  id: string;
-  type: 'image' | 'audio';
-  uri: string;
-  name: string;
-  size: number;
-  createdAt: number;
-}
-
-/**
- * Represents the app state
- */
-export interface AppState {
-  stories: Story[];
-  currentStory: Story | null;
-  playbackState: PlaybackState | null;
-  saveSlots: SaveSlot[];
-  settings: UserSettings;
-  assets: Asset[];
-}

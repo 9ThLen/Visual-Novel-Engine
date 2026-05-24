@@ -3,6 +3,7 @@
  */
 
 import { Story, StoryScene, Choice } from './types';
+import type { CharacterSprite } from './character-types';
 
 /**
  * Validation errors
@@ -110,20 +111,37 @@ export class StoryValidator {
     }
 
     // Validate characters array
-    const characters = Array.isArray(data.characters) ? data.characters : [];
-    if (characters.length > 50) {
+    const rawCharacters = Array.isArray(data.characters) ? data.characters : [];
+    if (rawCharacters.length > 50) {
       throw new ValidationError(`Too many characters (max 50) for scene ${sceneId}`, 'characters');
     }
+    const characters: CharacterSprite[] = rawCharacters.map((c: any) => {
+      if (c && typeof c === 'object' && c.id && c.uri) {
+        return {
+          id: this.sanitizeString(String(c.id)),
+          name: c.name ? this.sanitizeString(String(c.name)) : this.sanitizeString(String(c.id)),
+          uri: this.validateUri(c.uri) || '',
+          createdAt: typeof c.createdAt === 'number' ? c.createdAt : Date.now(),
+        };
+      }
+      const str = this.sanitizeString(String(c));
+      return {
+        id: str || `char_${Date.now()}`,
+        name: str || 'Unknown',
+        uri: '',
+        createdAt: Date.now(),
+      };
+    });
 
     return {
       id: data.id,
       text: this.sanitizeText(data.text),
-      characters: characters.map((c: any) => this.sanitizeString(String(c))),
+      characters,
       backgroundImageUri: this.validateUri(data.backgroundImageUri),
       voiceAudioUri: this.validateUri(data.voiceAudioUri),
       musicUri: this.validateUri(data.musicUri),
       choices: validatedChoices,
-      splashScreen: data.splashScreen ? (typeof data.splashScreen === 'string' ? { imageUri: data.splashScreen, type: 'image' as const } : data.splashScreen) : undefined,
+      splashScreen: data.splashScreen ? (typeof data.splashScreen === 'object' ? data.splashScreen : undefined) : undefined,
       interactiveObjects: Array.isArray(data.interactiveObjects) ? data.interactiveObjects : [],
       blocks: data.blocks, // TODO: Add validation for blocks (complex Block system)
     };
@@ -149,14 +167,15 @@ export class StoryValidator {
       throw new ValidationError(`Choice text is too long (max 500 characters) for scene ${sceneId}`, 'choice.text');
     }
 
-    if (!data.targetSceneId || typeof data.targetSceneId !== 'string') {
+    const nextSceneId = data.targetSceneId || data.nextSceneId;
+    if (!nextSceneId || typeof nextSceneId !== 'string') {
       throw new ValidationError(`Invalid targetSceneId for choice in scene ${sceneId}`, 'choice.targetSceneId');
     }
 
     return {
       id: data.id,
       text: this.sanitizeText(data.text),
-      nextSceneId: data.targetSceneId || data.nextSceneId,
+      nextSceneId,
     };
   }
 
@@ -205,8 +224,7 @@ export class StoryValidator {
 
     const trimmed = uri.trim();
 
-    // Block dangerous protocols
-    const dangerousProtocols = ['javascript:', 'data:', 'vbscript:', 'file:'];
+    const dangerousProtocols = ['javascript:', 'data:', 'vbscript:'];
     const lowerUri = trimmed.toLowerCase();
 
     for (const protocol of dangerousProtocols) {

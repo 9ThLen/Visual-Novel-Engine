@@ -56,9 +56,10 @@ const encodeState = (value: string) => {
   if (typeof globalThis.btoa === "function") {
     return globalThis.btoa(value);
   }
-  const BufferImpl = (globalThis as Record<string, any>).Buffer;
+  const BufferImpl = (globalThis as Record<string, unknown>).Buffer;
   if (BufferImpl) {
-    return BufferImpl.from(value, "utf-8").toString("base64");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (BufferImpl as any).from(value, "utf-8").toString("base64");
   }
   return value;
 };
@@ -114,7 +115,7 @@ export async function startOAuthLogin(): Promise<string | null> {
 
   const supported = await Linking.canOpenURL(loginUrl);
   if (!supported) {
-    console.warn("[OAuth] Cannot open login URL: URL scheme not supported");
+    if (__DEV__) console.warn("[OAuth] Cannot open login URL: URL scheme not supported");
     // 可考虑抛出错误或返回错误状态，让调用方处理
     return null;
   }
@@ -122,7 +123,7 @@ export async function startOAuthLogin(): Promise<string | null> {
   try {
     await Linking.openURL(loginUrl);
   } catch (error) {
-    console.error("[OAuth] Failed to open login URL:", error);
+    if (__DEV__) console.error("[OAuth] Failed to open login URL:", error);
     // 可考虑抛出错误让调用方处理
   }
 

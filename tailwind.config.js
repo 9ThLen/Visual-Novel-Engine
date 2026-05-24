@@ -24,6 +24,9 @@ module.exports = {
       colors: tailwindColors,
     },
   },
+  corePlugins: {
+    aspectRatio: true,
+  },
   plugins: [
     plugin(({ addVariant }) => {
       addVariant("light", ':root:not([data-theme="dark"]) &');

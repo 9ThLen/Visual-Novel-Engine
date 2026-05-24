@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Animated } from 'react-native';
 
 export type TabType = 'canvas' | 'timeline';
@@ -6,13 +6,19 @@ export type TabType = 'canvas' | 'timeline';
 export function useLegoTabs() {
   const [activeTab, setActiveTab] = useState<TabType>('canvas');
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const isMountedRef = useRef(true);
 
-  const switchTab = (tab: TabType) => {
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
+
+  const switchTab = useCallback((tab: TabType) => {
     Animated.timing(fadeAnim, {
       toValue: 0,
       duration: 150,
       useNativeDriver: true,
     }).start(() => {
+      if (!isMountedRef.current) return;
       setActiveTab(tab);
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -20,7 +26,7 @@ export function useLegoTabs() {
         useNativeDriver: true,
       }).start();
     });
-  };
+  }, [fadeAnim]);
 
   return {
     activeTab,

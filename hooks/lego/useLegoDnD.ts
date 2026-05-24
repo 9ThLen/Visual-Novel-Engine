@@ -1,27 +1,31 @@
-import { useCallback } from 'react';
-import { useSceneStore } from '@/stores/scene-store';
-import * as Haptics from 'expo-haptics';
-import type { Scene } from '@/lib/scene-types';
+import { useCallback, useRef } from 'react';
+import { Platform } from 'react-native';
+import { useLegoStore, selectLegoScenes } from '@/stores/use-lego-store';
+import type { LegoScene } from '@/lib/lego-types';
 
 export function useLegoDnD() {
-  const scenes = useSceneStore((s) => s.scenes);
-  const addElement = useSceneStore((s) => s.addElement);
-  const removeElement = useSceneStore((s) => s.removeElement);
+  const scenes = useLegoStore(selectLegoScenes);
+  const scenesRef = useRef(scenes);
+  scenesRef.current = scenes;
+  const addElement = useLegoStore((s) => s.addLegoElement);
+  const removeElement = useLegoStore((s) => s.removeLegoElement);
 
   const handleSceneDrop = useCallback(
     (targetSceneId: string, data: { elementId: string; sourceSceneId: string }) => {
-      if (data.sourceSceneId === targetSceneId) return; // Same scene, ignore
-      // Find element in source scene
-      const sourceScene = scenes.find((s: Scene) => s.id === data.sourceSceneId);
+      const latestScenes = scenesRef.current;
+      if (data.sourceSceneId === targetSceneId) return;
+      const sourceScene = latestScenes.find((s: LegoScene) => s.id === data.sourceSceneId);
       const element = sourceScene?.elements.find((e) => e.id === data.elementId);
       if (!element || !sourceScene) return;
-      // Move element: add to target, remove from source
       addElement(targetSceneId, element);
       removeElement(data.sourceSceneId, data.elementId);
-      // Haptic feedback
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (Platform.OS !== 'web') {
+        import('expo-haptics').then((Haptics) => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }).catch(() => {});
+      }
     },
-    [scenes, addElement, removeElement]
+    [addElement, removeElement]
   );
 
   return {

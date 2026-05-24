@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Visual Novel Editor - Block Library</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-container": "#b4b5dd",
+                        "on-primary-fixed": "#20005f",
+                        "primary-container": "#7c4dff",
+                        "on-primary-fixed-variant": "#4f00d0",
+                        "secondary-container": "#444668",
+                        "surface-variant": "#323347",
+                        "tertiary": "#ffb688",
+                        "surface-dim": "#111224",
+                        "on-surface-variant": "#cac3d8",
+                        "surface-container-highest": "#323347",
+                        "on-secondary": "#2c2e4d",
+                        "secondary": "#c2c3eb",
+                        "on-error-container": "#ffdad6",
+                        "surface-container": "#1d1e31",
+                        "on-tertiary": "#512400",
+                        "outline-variant": "#494455",
+                        "on-tertiary-fixed": "#311300",
+                        "surface-container-low": "#191a2d",
+                        "on-background": "#e1e0fb",
+                        "on-primary-container": "#fcf6ff",
+                        "on-tertiary-fixed-variant": "#733600",
+                        "on-tertiary-container": "#fff7f4",
+                        "error-container": "#93000a",
+                        "inverse-on-surface": "#2e2f43",
+                        "inverse-surface": "#e1e0fb",
+                        "tertiary-fixed": "#ffdbc7",
+                        "primary-fixed-dim": "#cdbdff",
+                        "tertiary-fixed-dim": "#ffb688",
+                        "surface-container-high": "#27283c",
+                        "primary-fixed": "#e8deff",
+                        "outline": "#948ea1",
+                        "error": "#ffb4ab",
+                        "secondary-fixed": "#e0e0ff",
+                        "on-error": "#690005",
+                        "surface": "#111224",
+                        "inverse-primary": "#6833ea",
+                        "secondary-fixed-dim": "#c2c3eb",
+                        "surface-tint": "#cdbdff",
+                        "on-secondary-fixed-variant": "#424465",
+                        "surface-container-lowest": "#0b0c1f",
+                        "primary": "#cdbdff",
+                        "on-secondary-fixed": "#161837",
+                        "tertiary-container": "#b55800",
+                        "surface-bright": "#37374c",
+                        "on-primary": "#370096",
+                        "background": "#111224",
+                        "on-surface": "#e1e0fb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "inspector-width": "280px",
+                        "unit": "4px",
+                        "sidebar-width": "320px",
+                        "gutter": "16px",
+                        "container-padding": "24px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Hanken Grotesk"],
+                        "display-lg": ["Hanken Grotesk"],
+                        "code-sm": ["monospace"],
+                        "body-md": ["Hanken Grotesk"],
+                        "body-lg": ["Hanken Grotesk"],
+                        "headline-sm": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "code-sm": ["12px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Hanken Grotesk', sans-serif;
+            background-color: #111224;
+            color: #e1e0fb;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #111224;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #323347;
+            border-radius: 10px;
+        }
+        .block-card {
+            border: 1px solid #2e3050;
+            transition: all 0.2s ease;
+        }
+        .block-card:hover {
+            background-color: #37374c;
+            border-color: #494455;
+        }
+        .block-card.active {
+            border-color: #7c4dff;
+            background-color: #1d1e31;
+        }
+        .drag-handle {
+            cursor: grab;
+        }
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="flex h-screen overflow-hidden">
+<!-- Left Project Navigator (Shared Component Guidance) -->
+<aside class="hidden md:flex flex-col pt-4 gap-2 w-sidebar-width h-full left-0 fixed bg-surface-container border-r border-outline-variant transition-all duration-150">
+<div class="px-container-padding mb-6">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Project Navigator</h2>
+</div>
+<nav class="flex flex-col gap-1">
+<a class="flex items-center gap-4 px-6 py-3 text-primary font-bold border-r-2 border-primary bg-surface-container-high transition-all duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="library_add">library_add</span>
+<span class="font-label-md text-label-md">Block Library</span>
+</a>
+<a class="flex items-center gap-4 px-6 py-3 text-on-surface-variant hover:bg-surface-container-high transition-all duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="account_tree">account_tree</span>
+<span class="font-label-md text-label-md">Narrative Flow</span>
+</a>
+<a class="flex items-center gap-4 px-6 py-3 text-on-surface-variant hover:bg-surface-container-high transition-all duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="folder_open">folder_open</span>
+<span class="font-label-md text-label-md">Project Assets</span>
+</a>
+<a class="flex items-center gap-4 px-6 py-3 text-on-surface-variant hover:bg-surface-container-high transition-all duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="data_object">data_object</span>
+<span class="font-label-md text-label-md">Variables</span>
+</a>
+<a class="flex items-center gap-4 px-6 py-3 text-on-surface-variant hover:bg-surface-container-high transition-all duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="movie_edit">movie_edit</span>
+<span class="font-label-md text-label-md">Export Settings</span>
+</a>
+</nav>
+</aside>
+<!-- Main Workspace -->
+<main class="flex-1 ml-[320px] mr-[280px] h-full flex flex-col bg-surface-dim relative">
+<!-- Top App Bar (Shared Component Guidance) -->
+<header class="w-full top-0 sticky flex justify-between items-center px-container-padding h-16 bg-surface border-b border-outline-variant transition-colors duration-200">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary" data-icon="menu">menu</span>
+<h1 class="font-headline-md text-headline-md font-bold text-primary">New Scene: The Gathering</h1>
+</div>
+<button class="px-6 py-2 bg-primary-container text-on-primary-container rounded-lg font-label-md text-label-md hover:opacity-90 transition-opacity">
+                Save
+            </button>
+</header>
+<!-- Script Canvas Area -->
+<section class="flex-1 overflow-y-auto custom-scrollbar px-12 py-8">
+<div class="max-w-3xl mx-auto flex flex-col gap-3">
+<!-- Example of placed blocks on canvas -->
+<div class="p-4 bg-surface-container rounded-lg border-l-4 border-[#50c878] flex items-start gap-4 shadow-sm">
+<span class="material-symbols-outlined text-on-surface-variant opacity-50" data-icon="drag_indicator">drag_indicator</span>
+<div>
+<span class="font-label-md text-label-md text-[#50c878] uppercase">Background</span>
+<p class="font-body-lg text-body-lg mt-1 text-on-surface">The Sun-Drenched Library - 16:00 PM</p>
+</div>
+</div>
+<div class="p-4 bg-surface-container rounded-lg border-l-4 border-[#9b59b6] flex items-start gap-4 shadow-sm">
+<span class="material-symbols-outlined text-on-surface-variant opacity-50" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<span class="font-label-md text-label-md text-[#9b59b6] uppercase">Dialogue</span>
+<p class="font-body-md text-body-md mt-1 italic text-on-surface-variant">Elena sighs as she looks at the shelf.</p>
+<p class="font-body-lg text-body-lg mt-2 text-on-surface">"I never thought I'd find it here, after all these years of searching..."</p>
+</div>
+</div>
+<!-- Empty state visual placeholder -->
+<div class="border-2 border-dashed border-outline-variant rounded-xl h-32 flex items-center justify-center text-on-surface-variant opacity-40">
+<p class="font-label-md text-label-md">Drag a block here to continue the narrative</p>
+</div>
+</div>
+</section>
+<!-- Bottom Navigation (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 h-16 bg-surface-container-lowest border-t border-outline-variant shadow-lg flex justify-around items-center">
+<div class="flex flex-col items-center justify-center text-primary scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined" data-icon="edit_note">edit_note</span>
+<span class="font-label-md text-label-md">Canvas</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<span class="font-label-md text-label-md">Timeline</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined" data-icon="play_circle">play_circle</span>
+<span class="font-label-md text-label-md">Preview</span>
+</div>
+</nav>
+</main>
+<!-- Block Library Panel (The Task Core) -->
+<aside class="fixed right-0 top-0 w-[280px] h-full bg-surface-container border-l border-outline-variant flex flex-col overflow-hidden z-40">
+<div class="p-4 flex flex-col gap-4 border-b border-outline-variant">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Block Library</h3>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg" data-icon="search">search</span>
+<input class="w-full bg-surface-container-low border border-outline-variant rounded-lg py-2 pl-10 pr-4 font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary-container transition-colors" placeholder="Search blocks..." type="text"/>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-2">
+<!-- Category: Visuals -->
+<div class="mb-2">
+<span class="font-label-md text-label-md text-on-surface-variant/60 uppercase px-2 mb-2 block">Visuals</span>
+<div class="block-card rounded-lg p-3 mb-2 flex items-start gap-3 bg-surface-container-low border-l-4 border-[#50c878]">
+<span class="material-symbols-outlined drag-handle text-on-surface-variant/40" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[#50c878] text-sm" data-icon="image">image</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">Background</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant leading-tight">Set the scene backdrop</p>
+</div>
+</div>
+<div class="block-card rounded-lg p-3 mb-2 flex items-start gap-3 bg-surface-container-low border-l-4 border-[#f5a623]">
+<span class="material-symbols-outlined drag-handle text-on-surface-variant/40" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[#f5a623] text-sm" data-icon="person">person</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">Character</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant leading-tight">Add or move characters</p>
+</div>
+</div>
+<div class="block-card rounded-lg p-3 mb-2 flex items-start gap-3 bg-surface-container-low border-l-4 border-[#3f51b5]">
+<span class="material-symbols-outlined drag-handle text-on-surface-variant/40" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[#3f51b5] text-sm" data-icon="texture">texture</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">Transition</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant leading-tight">Fade, crossfade, or swipe</p>
+</div>
+</div>
+</div>
+<!-- Category: Text -->
+<div class="mb-2">
+<span class="font-label-md text-label-md text-on-surface-variant/60 uppercase px-2 mb-2 block">Narrative</span>
+<div class="block-card active rounded-lg p-3 mb-2 flex items-start gap-3 bg-surface-container-low border-l-4 border-[#9b59b6]">
+<span class="material-symbols-outlined drag-handle text-on-surface-variant/40" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[#9b59b6] text-sm" data-icon="chat_bubble">chat_bubble</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">Dialogue</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant leading-tight">Character speech bubbles</p>
+</div>
+</div>
+<div class="block-card rounded-lg p-3 mb-2 flex items-start gap-3 bg-surface-container-low border-l-4 border-[#7c5bf5]">
+<span class="material-symbols-outlined drag-handle text-on-surface-variant/40" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[#7c5bf5] text-sm" data-icon="article">article</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">Narration</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant leading-tight">Full-screen narration text</p>
+</div>
+</div>
+<div class="block-card rounded-lg p-3 mb-2 flex items-start gap-3 bg-surface-container-low border-l-4 border-[#e91e63]">
+<span class="material-symbols-outlined drag-handle text-on-surface-variant/40" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[#e91e63] text-sm" data-icon="account_tree">account_tree</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">Choice</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant leading-tight">Branching story paths</p>
+</div>
+</div>
+</div>
+<!-- Category: Audio -->
+<div class="mb-2">
+<span class="font-label-md text-label-md text-on-surface-variant/60 uppercase px-2 mb-2 block">Audio</span>
+<div class="block-card rounded-lg p-3 mb-2 flex items-start gap-3 bg-surface-container-low border-l-4 border-[#ff6b6b]">
+<span class="material-symbols-outlined drag-handle text-on-surface-variant/40" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[#ff6b6b] text-sm" data-icon="music_note">music_note</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">Music</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant leading-tight">Ambient background tracks</p>
+</div>
+</div>
+<div class="block-card rounded-lg p-3 mb-2 flex items-start gap-3 bg-surface-container-low border-l-4 border-[#ef5350]">
+<span class="material-symbols-outlined drag-handle text-on-surface-variant/40" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[#ef5350] text-sm" data-icon="volume_up">volume_up</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">Sound</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant leading-tight">One-shot sound effects</p>
+</div>
+</div>
+</div>
+<!-- Category: Cinematic & Logic -->
+<div class="mb-2">
+<span class="font-label-md text-label-md text-on-surface-variant/60 uppercase px-2 mb-2 block">Cinematic &amp; Logic</span>
+<div class="block-card rounded-lg p-3 mb-2 flex items-start gap-3 bg-surface-container-low border-l-4 border-[#009688]">
+<span class="material-symbols-outlined drag-handle text-on-surface-variant/40" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[#009688] text-sm" data-icon="videocam">videocam</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">Camera</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant leading-tight">Zoom, pan, or shake effects</p>
+</div>
+</div>
+<div class="block-card rounded-lg p-3 mb-2 flex items-start gap-3 bg-surface-container-low border-l-4 border-[#ffd93d]">
+<span class="material-symbols-outlined drag-handle text-on-surface-variant/40" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[#ffd93d] text-sm" data-icon="auto_fix_high">auto_fix_high</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">Effect</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant leading-tight">Visual filters and particles</p>
+</div>
+</div>
+<div class="block-card rounded-lg p-3 mb-2 flex items-start gap-3 bg-surface-container-low border-l-4 border-[#8bc34a]">
+<span class="material-symbols-outlined drag-handle text-on-surface-variant/40" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[#8bc34a] text-sm" data-icon="variable">variables</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">Variable</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant leading-tight">Flags and score tracking</p>
+</div>
+</div>
+<div class="block-card rounded-lg p-3 mb-2 flex items-start gap-3 bg-surface-container-low border-l-4 border-[#00bcd4]">
+<span class="material-symbols-outlined drag-handle text-on-surface-variant/40" data-icon="drag_indicator">drag_indicator</span>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[#00bcd4] text-sm" data-icon="touch_app">touch_app</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">Object</span>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant leading-tight">Clickable scene elements</p>
+</div>
+</div>
+</div>
+</div>
+</aside>
+<script>
+        // Simple micro-interaction for card selection
+        document.querySelectorAll('.block-card').forEach(card => {
+            card.addEventListener('click', () => {
+                document.querySelectorAll('.block-card').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+            });
+        });
+
+        // Atmospheric fade-in for UI elements
+        window.addEventListener('load', () => {
+            document.body.style.opacity = '0';
+            document.body.style.transition = 'opacity 0.5s ease-in-out';
+            setTimeout(() => {
+                document.body.style.opacity = '1';
+            }, 100);
+        });
+    </script>
+</body></html>

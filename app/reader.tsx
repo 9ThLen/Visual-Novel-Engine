@@ -1,34 +1,54 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
 import { StoryReaderResponsive } from '@/components/story-reader-responsive';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
-import { InventoryUI } from '@/components/InventoryUI';
 import { ReaderMenu } from '@/components/ReaderMenu';
-import { useStory } from '@/lib/story-context';
+import { useStoryState } from '@/lib/story-hooks';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 import { Choice, PlaybackState } from '@/lib/types';
 import { enhancedAudioManager as audioManager } from '@/lib/audio-manager-enhanced';
-import { resolveAssetUri } from '@/lib/asset-resolver';
-import { useReaderAudio } from '@/hooks/useReaderAudio';
+import { resolvePlayableAssetUri } from '@/lib/asset-resolver';
+import { useReaderAudio, stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { useReaderInitialization } from '@/hooks/useReaderInitialization';
+import { buttonFeedback } from '@/lib/ui-feedback';
+import { parseResumeExisting } from '@/lib/reader-launch';
+
+function useReaderRouteParams(): { storyId: string | null; resumeExisting: boolean } {
+  const { storyId, resume } = useLocalSearchParams();
+  return {
+    storyId: Array.isArray(storyId) ? storyId[0] : storyId ?? null,
+    resumeExisting: parseResumeExisting(resume),
+  };
+}
 
 export default function ReaderScreen() {
   const router = useRouter();
   const colors = useColors();
-  const { storyId } = useLocalSearchParams();
-  const { settings } = useStory();
+  const { storyId, resumeExisting } = useReaderRouteParams();
+  const { settings } = useStoryState();
   const [showMenu, setShowMenu] = useState(false);
-  const [showInventory, setShowInventory] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [objDialogue, setObjDialogue] = useState<{ text: string; speaker?: string } | null>(null);
+  const { t } = useI18n();
 
-  const { isLoading, currentScene, story, playbackState, updatePlaybackState } = useReaderInitialization(storyId);
+  const { isLoading, currentScene, story, playbackState, updatePlaybackState } = useReaderInitialization(
+    storyId ?? undefined,
+    { resumeExisting },
+  );
 
-  // Use the extracted audio hook
-  useReaderAudio(currentScene, settings);
+  useReaderAudio(story?.id ?? storyId ?? undefined, currentScene, settings, {
+    blockedByOverlay: showMenu || historyOpen,
+  });
 
-  const navigateToScene = (sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
-    if (!story) return;
+  useEffect(() => {
+    setObjDialogue(null);
+  }, [playbackState?.currentSceneId]);
+
+  const navigateToScene = useCallback((sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
+    if (!story || !playbackState) return;
     const nextScene = story.scenes[sceneId];
     if (!nextScene) return;
     const updated: PlaybackState = {
@@ -39,7 +59,7 @@ export default function ReaderScreen() {
       choicesMade: choicesMade || playbackState?.choicesMade || [],
     };
     updatePlaybackState(updated);
-  };
+  }, [story, playbackState, updatePlaybackState]);
 
   const handleContinue = (targetSceneId?: string) => {
     if (isLoading || !story || !playbackState) return;
@@ -59,12 +79,17 @@ export default function ReaderScreen() {
     if (nextSceneId) {
       navigateToScene(nextSceneId);
     } else {
-      router.back();
+      void stopReaderPlayback(audioManager);
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/tabs');
+      }
     }
   };
 
   const handleChoiceSelect = (choice: Choice) => {
-    if (isLoading || !playbackState) return;
+    if (isLoading || !playbackState || !choice.nextSceneId) return;
     const updatedChoices = [
       ...playbackState.choicesMade,
       { sceneId: playbackState.currentSceneId, choiceId: choice.id },
@@ -77,42 +102,45 @@ export default function ReaderScreen() {
   };
 
   const handleObjectDialogue = (text: string, speaker?: string) => {
-    // TODO: Show dialogue overlay
+    setObjDialogue({ text, speaker });
   };
 
   const sfxPoolIndexRef = React.useRef(0);
   const MAX_SFX_TRACKS = 5;
 
   const handleObjectPlayAudio = (audioUri: string, volume?: number, loop?: boolean) => {
-    resolveAssetUri(audioUri).then((uri) => {
+    resolvePlayableAssetUri(audioUri).then((uri) => {
       if (uri) {
         sfxPoolIndexRef.current = (sfxPoolIndexRef.current + 1) % MAX_SFX_TRACKS;
         const trackId = `sfx_object_${sfxPoolIndexRef.current}`;
         audioManager.play(trackId, uri, { volume: volume ?? 0.7, loop: loop ?? false });
       }
-    }).catch(() => {
-      // Silent fail for missing audio
-    });
+    }).catch(() => {});
   };
 
-  if (isLoading || !story || !currentScene || (playbackState && playbackState.storyId !== story.id)) {
+  if (isLoading || !story || !currentScene) {
+    const timedOut = !isLoading && (!story || !currentScene);
     return (
-      <ScreenContainer className="items-center justify-center">
-        <Text style={{ color: colors.foreground, fontSize: 16 }}>Loading story...</Text>
+      <ScreenContainer className="items-center justify-center gap-4">
+        <Text style={{ color: colors.foreground, fontSize: 16 }}>
+          {timedOut ? t('reader.notFound') : t('reader.loading')}
+        </Text>
+        {(timedOut || !isLoading) && (
+          <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
+            <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>{t('menu.back')}</Text>
+          </Pressable>
+        )}
       </ScreenContainer>
     );
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
-      {/* Floating menu extracted component */}
       <ReaderMenu
         visible={showMenu}
         onClose={() => setShowMenu(false)}
-        onOpenInventory={() => setShowInventory(true)}
       />
 
-      {/* Menu button */}
       <Pressable
         style={({ pressed }) => ({
           position: 'absolute',
@@ -127,7 +155,12 @@ export default function ReaderScreen() {
           borderColor: 'rgba(255,255,255,0.18)',
           opacity: pressed ? 0.8 : 1,
         })}
-        onPress={() => setShowMenu(!showMenu)}
+        onPress={() => {
+          buttonFeedback();
+          setShowMenu(!showMenu);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={showMenu ? 'Close reader menu' : 'Open reader menu'}
       >
         <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>☰</Text>
       </Pressable>
@@ -138,6 +171,7 @@ export default function ReaderScreen() {
         onChoiceSelect={handleChoiceSelect}
         isLoading={isLoading}
         settings={settings}
+        onHistoryVisibleChange={setHistoryOpen}
       />
 
       {currentScene?.interactiveObjects && currentScene.interactiveObjects.length > 0 && (
@@ -149,10 +183,34 @@ export default function ReaderScreen() {
         />
       )}
 
-      <InventoryUI
-        visible={showInventory}
-        onClose={() => setShowInventory(false)}
-      />
+      {objDialogue && (
+        <Pressable
+          style={{
+            position: 'absolute', inset: 0, justifyContent: 'center', alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 100,
+          }}
+          onPress={() => setObjDialogue(null)}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss object dialogue"
+        >
+          <View
+            style={{
+              backgroundColor: colors.dialogueBg ?? 'rgba(15,14,23,0.92)',
+              borderRadius: 16, padding: 20, marginHorizontal: 32, maxWidth: 400,
+              borderWidth: 1, borderColor: colors.border,
+            }}
+          >
+            {objDialogue.speaker && (
+              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700', marginBottom: 6 }}>
+                {objDialogue.speaker}
+              </Text>
+            )}
+            <Text style={{ color: colors.foreground, fontSize: 16, lineHeight: 24 }}>
+              {objDialogue.text}
+            </Text>
+          </View>
+        </Pressable>
+      )}
     </View>
   );
 }

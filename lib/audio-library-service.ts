@@ -5,8 +5,9 @@
  */
 
 import type { AudioLibraryItem } from './audio-types';
+import type { IAudioLibraryService } from './audio-interfaces';
 
-export class AudioLibraryService {
+export class AudioLibraryService implements IAudioLibraryService {
     private library = new Map<string, AudioLibraryItem>();
 
     /** Load (replace) the entire library */

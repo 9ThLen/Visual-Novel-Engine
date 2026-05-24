@@ -1,310 +1,202 @@
-import React, { useState } from 'react';
+/**
+ * app/editor.tsx — Project Editor Main Screen
+ *
+ * Shows project metadata (title, description, tags) and scenes list.
+ * User can create/edit/delete scenes, navigate to scene editor or story flow.
+ */
+
+import React, { useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  FlatList,
-  Alert,
-  TextInput,
+  View, Text, TextInput, Pressable, ScrollView, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
-import { useStory } from '@/lib/story-context';
+import { useStoryState, useStoryActions } from '@/lib/story-hooks';
 import { useColors } from '@/hooks/use-colors';
-import { Story } from '@/lib/types';
+import { useI18n } from '@/lib/i18n';
 import { StoryMetadata } from '@/lib/story-domain';
-import { Button } from '@/components/ui/Button';
-import { DesktopLayout } from '@/components/DesktopLayout';
-import { TopBarAction } from '@/components/WebTopBar';
-import { useKeyboardShortcuts, COMMON_SHORTCUTS } from '@/hooks/use-keyboard-shortcuts';
-import { getResponsiveValues, getWebLayout } from '@/lib/responsive';
+import { Button } from '@/components/ui';
 
 export default function EditorScreen() {
   const router = useRouter();
   const colors = useColors();
-  const { stories, addStory, deleteStory } = useStory();
-  const [newStoryTitle, setNewStoryTitle] = useState('');
+  const { t } = useI18n();
+  const { storiesMetadata } = useStoryState();
+  const { createStory, deleteStory } = useStoryActions();
+
   const [showNewStoryForm, setShowNewStoryForm] = useState(false);
-  const { isWebDesktop } = getResponsiveValues();
-  const layout = getWebLayout();
+  const [newStoryTitle, setNewStoryTitle] = useState('');
 
-  // Keyboard shortcuts
-  useKeyboardShortcuts({
-    shortcuts: {
-      new: {
-        ...COMMON_SHORTCUTS.new,
-        handler: () => setShowNewStoryForm(true),
-      },
-    },
-    enabled: true,
-  });
-
-  const handleCreateStory = async () => {
+  const handleCreateStory = useCallback(async () => {
     if (!newStoryTitle.trim()) {
-      Alert.alert('Error', 'Please enter a story title');
+      Alert.alert(t('common.error'), t('editor.pleaseEnterTitle'));
       return;
     }
 
-    const newStory: Story = {
-      id: `story-${Date.now()}`,
-      title: newStoryTitle,
-      description: 'A new story',
-      author: 'Author',
-      startSceneId: 'scene_1',
-      scenes: {
-        scene_1: {
-          id: 'scene_1',
-          text: 'Your story begins here...',
-          backgroundImageUri: undefined,
-          characters: [],
-          voiceAudioUri: undefined,
-          choices: [],
-          musicUri: undefined,
-        },
-      },
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-
     try {
-      await addStory(newStory);
+      const created = createStory(newStoryTitle.trim());
       setNewStoryTitle('');
       setShowNewStoryForm(false);
-
       // Navigate to scene editor
       router.push({
-        pathname: '../scene-editor',
-        params: { storyId: newStory.id, sceneId: 'scene_1' },
-      });
+        pathname: '/scene-editor',
+        params: { storyId: created.storyId, sceneId: created.sceneId },
+      } as never);
     } catch {
-      Alert.alert('Error', 'Failed to create story');
+      Alert.alert(t('common.error'), t('editor.createFailed'));
     }
-  };
+  }, [newStoryTitle, createStory, router, t]);
 
-  const handleEditStory = (story: StoryMetadata) => {
+  const handleEditStory = useCallback((story: StoryMetadata) => {
+    // Open scene manager instead of directly opening editor
     router.push({
-      pathname: '../scene-editor',
-      params: { storyId: story.id, sceneId: story.startSceneId },
-    });
-  };
-
-  const handleOpenNodeEditor = (story: StoryMetadata) => {
-    router.push({
-      pathname: '../node-editor',
+      pathname: '/scene-manager',
       params: { storyId: story.id },
-    });
-  };
+    } as never);
+  }, [router]);
 
-  const handleDeleteStory = (storyId: string) => {
-    Alert.alert('Delete Story', 'Are you sure you want to delete this story?', [
-      { text: 'Cancel', style: 'cancel' },
+  const handleStoryFlow = useCallback((storyId: string) => {
+    router.push({ pathname: '/story-flow', params: { storyId } } as never);
+  }, [router]);
+
+  const handleDeleteStory = useCallback((storyId: string) => {
+    Alert.alert(t('editor.deleteTitle'), t('editor.deleteConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('common.delete'),
         style: 'destructive',
         onPress: async () => {
           try {
             await deleteStory(storyId);
-            Alert.alert('Success', 'Story deleted');
           } catch {
-            Alert.alert('Error', 'Failed to delete story');
+            Alert.alert(t('common.error'), 'Failed to delete story');
           }
         },
       },
     ]);
-  };
-
-  const renderStoryCard = ({ item }: { item: StoryMetadata }) => (
-    <View
-      style={{
-        backgroundColor: colors.surface,
-        borderRadius: 12,
-        padding: 12,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: colors.border,
-      }}
-    >
-      <View style={{ gap: 8 }}>
-        <Text
-          style={{
-            fontSize: 16,
-            fontWeight: '600',
-            color: colors.foreground,
-          }}
-        >
-          {item.title}
-        </Text>
-        <Text
-          style={{
-            fontSize: 12,
-            color: colors.muted,
-          }}
-        >
-          {item.sceneCount} scenes
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 12, marginTop: 12, justifyContent: 'center' }}>
-          <Button
-            variant="primary"
-            size="base"
-            style={{ minWidth: 120 }}
-            onPress={() => handleEditStory(item)}
-          >
-            ✏️ Edit
-          </Button>
-          <Button
-            variant="danger"
-            size="base"
-            style={{ minWidth: 120 }}
-            onPress={() => handleDeleteStory(item.id)}
-          >
-            🗑 Delete
-          </Button>
-        </View>
-      </View>
-    </View>
-  );
-
-  const topBarActions = isWebDesktop ? (
-    <>
-      <TopBarAction
-        icon="+"
-        label="New Story"
-        onPress={() => setShowNewStoryForm(!showNewStoryForm)}
-        shortcut="Ctrl+N"
-        variant="primary"
-      />
-    </>
-  ) : null;
+  }, [deleteStory, t]);
 
   return (
-    <DesktopLayout
-      showSidebar={isWebDesktop}
-      showTopBar={isWebDesktop}
-      topBarTitle="Story Editor"
-      topBarActions={topBarActions}
-    >
-      <ScreenContainer className="p-4">
-
-        {!isWebDesktop && (
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 20,
-            }}
+    <ScreenContainer>
+      <View style={{ padding: 16 }}>
+        {/* Header */}
+        <View style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}>
+          <Text style={{ fontSize: 22, fontWeight: '700', color: colors.foreground }}>
+            {t('editor.title')}
+          </Text>
+          <Button
+            variant="primary"
+            size="sm"
+            onPress={() => setShowNewStoryForm(!showNewStoryForm)}
           >
-            <Text
-              style={{
-                fontSize: 28,
-                fontWeight: '700',
-                color: colors.foreground,
-              }}
-            >
-              Editor
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <Button
-                variant="primary"
-                size="sm"
-                onPress={() => setShowNewStoryForm(!showNewStoryForm)}
-              >
-                {showNewStoryForm ? 'Cancel' : '+ New'}
-              </Button>
-            </View>
-          </View>
-        )}
+            {showNewStoryForm ? t('common.cancel') : '+ New Story'}
+          </Button>
+        </View>
 
+        {/* New story form */}
         {showNewStoryForm && (
-          <View
-            style={{
-              backgroundColor: colors.surface,
-              borderRadius: 12,
-              padding: 12,
-              marginBottom: 16,
-              borderWidth: 1,
-              borderColor: colors.border,
-              gap: 8,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: '600',
-                color: colors.foreground,
-              }}
-            >
-              Story Title
+          <View style={{
+            backgroundColor: colors.surface,
+            borderRadius: 12,
+            padding: 16,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.foreground, marginBottom: 8 }}>
+              {t('editor.pleaseEnterTitle')}
             </Text>
             <TextInput
-              style={{
-                backgroundColor: colors.background,
-                borderRadius: 6,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: 10,
-                color: colors.foreground,
-                fontSize: 14,
-              }}
-              placeholder="Enter story title"
-              placeholderTextColor={colors.muted}
               value={newStoryTitle}
               onChangeText={setNewStoryTitle}
+              placeholder="Story title..."
+              placeholderTextColor={colors.muted}
+              style={{
+                backgroundColor: colors.background,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 14,
+                color: colors.foreground,
+                marginBottom: 8,
+              }}
             />
-            <Button
-              variant="primary"
-              size="base"
-              fullWidth
-              onPress={handleCreateStory}
-            >
-              Create Story
+            <Button variant="primary" size="base" onPress={handleCreateStory}>
+              {t('home.createStory')}
             </Button>
           </View>
         )}
 
-        {stories.length === 0 ? (
-          <View
-            style={{
-              flex: 1,
-              justifyContent: 'center',
-              alignItems: 'center',
-              gap: 16,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 16,
-                color: colors.muted,
-                textAlign: 'center',
-              }}
-            >
-              No stories yet. Create one to get started!
+        {/* Stories list */}
+        {storiesMetadata.length === 0 ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
+            <Text style={{ fontSize: 16, color: colors.muted, marginBottom: 16 }}>
+              No stories yet. Create your first story!
             </Text>
           </View>
         ) : (
-          <View
-            style={{
-              flexDirection: isWebDesktop ? 'row' : 'column',
-              flexWrap: isWebDesktop ? 'wrap' : 'nowrap',
-              gap: 12,
-            }}
-          >
-            {stories.map((item) => (
+          <ScrollView>
+            {storiesMetadata.map((story) => (
               <View
-                key={item.id}
-                style={[
-                  isWebDesktop
-                    ? layout.gridColumns === 3
-                      ? { width: '33.333%', paddingHorizontal: 4 }
-                      : { width: '50%', paddingHorizontal: 4 }
-                    : { width: '100%' }
-                ]}
+                key={story.id}
+                style={{
+                  backgroundColor: colors.surface,
+                  borderRadius: 12,
+                  padding: 16,
+                  marginBottom: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
               >
-                {renderStoryCard({ item })}
+                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>
+                  {story.title}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+                  {story.sceneCount} scenes · Updated {new Date(story.updatedAt).toLocaleDateString()}
+                </Text>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onPress={() => handleEditStory(story)}
+                  >
+                    ✏️ Edit
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onPress={() => handleStoryFlow(story.id)}
+                  >
+                    🗺 Flow
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onPress={() => router.push({ pathname: '/play', params: { storyId: story.id } } as never)}
+                  >
+                    ▶ Play
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onPress={() => handleDeleteStory(story.id)}
+                  >
+                    🗑 Delete
+                  </Button>
+                </View>
               </View>
             ))}
-          </View>
+          </ScrollView>
         )}
-      </ScreenContainer>
-    </DesktopLayout>
+      </View>
+    </ScreenContainer>
   );
 }

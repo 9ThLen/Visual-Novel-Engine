@@ -4,16 +4,17 @@
  */
 
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useColors } from '@/hooks/use-colors';
+import { isWeb } from '@/lib/web-utils';
 import { LanguageSelector } from './LanguageSelector';
 import { ShortcutHint } from './ShortcutHint';
 
 interface WebTopBarProps {
   title?: string;
   showBreadcrumbs?: boolean;
-  breadcrumbs?: Array<{ label: string; path?: string }>;
+  breadcrumbs?: { label: string; path?: string }[];
   actions?: React.ReactNode;
 }
 
@@ -26,10 +27,7 @@ export function WebTopBar({
   const router = useRouter();
   const colors = useColors();
 
-  // Only render on web
-  if (Platform.OS !== 'web') {
-    return null;
-  }
+  if (!isWeb()) return null;
 
   return (
     <View
@@ -49,8 +47,8 @@ export function WebTopBar({
               <React.Fragment key={index}>
                 {crumb.path ? (
                   <Pressable
-                    onPress={() => router.push(crumb.path as any)}
-                    style={({ hovered }: any) => ({
+                    onPress={() => router.push(crumb.path as import('expo-router').Href)}
+                    style={({ hovered }: { pressed: boolean; hovered: boolean }) => ({
                       opacity: hovered ? 0.7 : 1,
                     })}
                   >
@@ -109,7 +107,7 @@ export function TopBarAction({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed, hovered }: any) => [
+      style={({ pressed, hovered }: { pressed: boolean; hovered: boolean }) => [
         styles.action,
         {
           backgroundColor:

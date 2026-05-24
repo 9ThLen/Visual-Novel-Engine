@@ -1,8 +1,3 @@
-/**
- * Character Animation Manager
- * Manages character animations and screen effects
- */
-
 import { Animated, Easing } from 'react-native';
 import type {
   CharacterInstance,
@@ -11,42 +6,60 @@ import type {
   CharacterTransition,
 } from './character-types';
 
-export interface AnimatedCharacterInstance extends CharacterInstance {
+export type AnimatedCharacterInstance = CharacterInstance & {
   animatedOpacity: Animated.Value;
   animatedTranslateX: Animated.Value;
   animatedTranslateY: Animated.Value;
   animatedScale: Animated.Value;
-}
+};
 
-// ── Position Mapping ──────────────────────────────────────────────────────
+const OPACITY_SLIDE_SHOW_RATIO = 0.6;
+const OPACITY_ZOOM_SHOW_RATIO = 0.7;
+const OPACITY_SLIDE_HIDE_RATIO = 0.8;
+const ZOOM_INITIAL_SCALE = 0.5;
+const ZOOM_EXIT_SCALE = 0.5;
+const SHAKE_AMPLITUDE = 10;
+const SHAKE_STEP_DURATION = 50;
+const SHAKE_DECAY_FACTORS = [1, 1, 0.7, 0.7, 0.3];
+const SHAKE_STEP_COUNT = 6;
 
 export function getPositionOffset(position: CharacterPosition): number {
   switch (position) {
     case 'far-left':
-      return -0.35; // 35% from left edge
+      return -0.35;
     case 'left':
-      return -0.2; // 20% from left edge
+      return -0.2;
     case 'center':
       return 0;
     case 'right':
-      return 0.2; // 20% from right edge
+      return 0.2;
     case 'far-right':
-      return 0.35; // 35% from right edge
+      return 0.35;
     default:
       return 0;
   }
 }
 
-// ── Animation Factory ─────────────────────────────────────────────────────
+function createShakeSequence(
+  value: Animated.Value,
+  targets: number[],
+  stepDuration: number,
+): Animated.CompositeAnimation {
+  return Animated.sequence(
+    targets.map((target) =>
+      Animated.timing(value, { toValue: target, duration: stepDuration, useNativeDriver: true }),
+    ),
+  );
+}
 
 export function createCharacterAnimation(
   instance: AnimatedCharacterInstance,
   action: CharacterAction,
-  screenWidth: number
+  screenWidth: number,
 ): Animated.CompositeAnimation | null {
   const transition = action.animation?.transition || 'fade';
-  const duration = action.animation?.duration || 300;
-  const delay = action.animation?.delay || 0;
+  const duration = action.animation?.duration ?? 300;
+  const delay = action.animation?.delay ?? 0;
 
   const targetOpacity = action.opacity ?? instance.opacity ?? 1;
   const targetScale = action.scale ?? instance.scale ?? 1;
@@ -55,7 +68,6 @@ export function createCharacterAnimation(
 
   switch (transition) {
     case 'instant':
-      // No animation, just set values
       instance.animatedOpacity.setValue(targetOpacity);
       instance.animatedTranslateX.setValue(targetX);
       instance.animatedScale.setValue(targetScale);
@@ -65,113 +77,50 @@ export function createCharacterAnimation(
       return Animated.sequence([
         Animated.delay(delay),
         Animated.parallel([
-          Animated.timing(instance.animatedOpacity, {
-            toValue: targetOpacity,
-            duration,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(instance.animatedTranslateX, {
-            toValue: targetX,
-            duration,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
+          Animated.timing(instance.animatedOpacity, { toValue: targetOpacity, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(instance.animatedTranslateX, { toValue: targetX, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         ]),
       ]);
 
     case 'slide':
-      // Start from off-screen
-      const startX =
-        action.type === 'show'
-          ? targetX + (targetX < 0 ? -screenWidth : screenWidth)
-          : instance.animatedTranslateX;
-
       if (action.type === 'show') {
-        instance.animatedTranslateX.setValue(startX as number);
+        const startX = targetX + (targetX < 0 ? -screenWidth : screenWidth);
+        instance.animatedTranslateX.setValue(startX);
         instance.animatedOpacity.setValue(0);
       }
 
       return Animated.sequence([
         Animated.delay(delay),
         Animated.parallel([
-          Animated.timing(instance.animatedTranslateX, {
-            toValue: targetX,
-            duration,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.timing(instance.animatedOpacity, {
-            toValue: targetOpacity,
-            duration: duration * 0.6,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
+          Animated.timing(instance.animatedTranslateX, { toValue: targetX, duration, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          Animated.timing(instance.animatedOpacity, { toValue: targetOpacity, duration: duration * OPACITY_SLIDE_SHOW_RATIO, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         ]),
       ]);
 
     case 'zoom':
-      // Start small and zoom in
       if (action.type === 'show') {
-        instance.animatedScale.setValue(0.5);
+        instance.animatedScale.setValue(ZOOM_INITIAL_SCALE);
         instance.animatedOpacity.setValue(0);
       }
 
       return Animated.sequence([
         Animated.delay(delay),
         Animated.parallel([
-          Animated.spring(instance.animatedScale, {
-            toValue: targetScale,
-            tension: 50,
-            friction: 7,
-            useNativeDriver: true,
-          }),
-          Animated.timing(instance.animatedOpacity, {
-            toValue: targetOpacity,
-            duration: duration * 0.7,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(instance.animatedTranslateX, {
-            toValue: targetX,
-            duration,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: true,
-          }),
+          Animated.spring(instance.animatedScale, { toValue: targetScale, tension: 50, friction: 7, useNativeDriver: true }),
+          Animated.timing(instance.animatedOpacity, { toValue: targetOpacity, duration: duration * OPACITY_ZOOM_SHOW_RATIO, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(instance.animatedTranslateX, { toValue: targetX, duration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
         ]),
       ]);
 
     case 'shake':
-      // Shake animation (for emphasis)
       return Animated.sequence([
         Animated.delay(delay),
-        Animated.sequence([
-          Animated.timing(instance.animatedTranslateX, {
-            toValue: targetX - 10,
-            duration: 50,
-            useNativeDriver: true,
-          }),
-          Animated.timing(instance.animatedTranslateX, {
-            toValue: targetX + 10,
-            duration: 50,
-            useNativeDriver: true,
-          }),
-          Animated.timing(instance.animatedTranslateX, {
-            toValue: targetX - 10,
-            duration: 50,
-            useNativeDriver: true,
-          }),
-          Animated.timing(instance.animatedTranslateX, {
-            toValue: targetX + 10,
-            duration: 50,
-            useNativeDriver: true,
-          }),
-          Animated.timing(instance.animatedTranslateX, {
-            toValue: targetX,
-            duration: 50,
-            useNativeDriver: true,
-          }),
-        ]),
+        createShakeSequence(
+          instance.animatedTranslateX,
+          [targetX - SHAKE_AMPLITUDE, targetX + SHAKE_AMPLITUDE,
+           targetX - SHAKE_AMPLITUDE, targetX + SHAKE_AMPLITUDE, targetX],
+          SHAKE_STEP_DURATION,
+        ),
       ]);
 
     default:
@@ -179,107 +128,44 @@ export function createCharacterAnimation(
   }
 }
 
-// ── Screen Shake Effect ───────────────────────────────────────────────────
-
 export function createScreenShakeAnimation(
   shakeValue: Animated.Value,
-  intensity: number = 10,
-  duration: number = 300
+  intensity: number = SHAKE_AMPLITUDE,
+  duration: number = 300,
 ): Animated.CompositeAnimation {
-  return Animated.sequence([
-    Animated.timing(shakeValue, {
-      toValue: intensity,
-      duration: duration / 6,
-      useNativeDriver: true,
-    }),
-    Animated.timing(shakeValue, {
-      toValue: -intensity,
-      duration: duration / 6,
-      useNativeDriver: true,
-    }),
-    Animated.timing(shakeValue, {
-      toValue: intensity * 0.7,
-      duration: duration / 6,
-      useNativeDriver: true,
-    }),
-    Animated.timing(shakeValue, {
-      toValue: -intensity * 0.7,
-      duration: duration / 6,
-      useNativeDriver: true,
-    }),
-    Animated.timing(shakeValue, {
-      toValue: intensity * 0.3,
-      duration: duration / 6,
-      useNativeDriver: true,
-    }),
-    Animated.timing(shakeValue, {
-      toValue: 0,
-      duration: duration / 6,
-      useNativeDriver: true,
-    }),
-  ]);
+  const stepDuration = duration / SHAKE_STEP_COUNT;
+  const targets = SHAKE_DECAY_FACTORS.map((f, i) => intensity * f * (i % 2 === 0 ? 1 : -1));
+  return createShakeSequence(shakeValue, [...targets, 0], stepDuration);
 }
-
-// ── Hide Animation ────────────────────────────────────────────────────────
 
 export function createHideAnimation(
   instance: AnimatedCharacterInstance,
   transition: CharacterTransition = 'fade',
-  duration: number = 300
+  duration: number = 300,
+  screenWidth: number,
 ): Animated.CompositeAnimation {
   switch (transition) {
     case 'instant':
       instance.animatedOpacity.setValue(0);
-      return Animated.timing(instance.animatedOpacity, {
-        toValue: 0,
-        duration: 0,
-        useNativeDriver: true,
-      });
+      return Animated.timing(instance.animatedOpacity, { toValue: 0, duration: 0, useNativeDriver: true });
 
     case 'slide':
-      const currentX = (instance.animatedTranslateX as any)._value || 0;
-      const exitX = currentX + (currentX < 0 ? -500 : 500);
       return Animated.parallel([
-        Animated.timing(instance.animatedTranslateX, {
-          toValue: exitX,
-          duration,
-          easing: Easing.in(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(instance.animatedOpacity, {
-          toValue: 0,
-          duration: duration * 0.8,
-          useNativeDriver: true,
-        }),
+        Animated.timing(instance.animatedTranslateX, { toValue: screenWidth, duration, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(instance.animatedOpacity, { toValue: 0, duration: duration * OPACITY_SLIDE_HIDE_RATIO, useNativeDriver: true }),
       ]);
 
     case 'zoom':
       return Animated.parallel([
-        Animated.timing(instance.animatedScale, {
-          toValue: 0.5,
-          duration,
-          easing: Easing.in(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(instance.animatedOpacity, {
-          toValue: 0,
-          duration,
-          useNativeDriver: true,
-        }),
+        Animated.timing(instance.animatedScale, { toValue: ZOOM_EXIT_SCALE, duration, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+        Animated.timing(instance.animatedOpacity, { toValue: 0, duration, useNativeDriver: true }),
       ]);
 
     case 'fade':
     default:
-      return Animated.timing(instance.animatedOpacity, {
-        toValue: 0,
-        duration,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      });
+      return Animated.timing(instance.animatedOpacity, { toValue: 0, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true });
   }
 }
-
-// ── Initialize Animated Instance ──────────────────────────────────────────
 
 export function createAnimatedInstance(
   instance: CharacterInstance,

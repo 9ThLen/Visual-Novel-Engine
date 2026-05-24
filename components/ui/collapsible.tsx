@@ -1,7 +1,7 @@
 import { PropsWithChildren, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
-import { IconSymbol } from "@/components/ui/icon-symbol";
+import { IconSymbol } from "./icon-symbol";
 import { useColors } from "@/hooks/use-colors";
 
 export function Collapsible({ children, title }: PropsWithChildren & { title: string }) {
@@ -9,7 +9,7 @@ export function Collapsible({ children, title }: PropsWithChildren & { title: st
   const colors = useColors();
 
   return (
-    <View className="bg-background">
+    <View style={{ backgroundColor: colors.background }}>
       <TouchableOpacity
         className="flex-row items-center gap-1.5"
         onPress={() => setIsOpen((value) => !value)}
@@ -22,7 +22,7 @@ export function Collapsible({ children, title }: PropsWithChildren & { title: st
           color={colors.icon}
           style={{ transform: [{ rotate: isOpen ? "90deg" : "0deg" }] }}
         />
-        <Text className="text-base font-semibold text-foreground">{title}</Text>
+        <Text style={[{ color: colors.foreground }, { fontSize: 16, fontWeight: '600' }]}>{title}</Text>
       </TouchableOpacity>
       {isOpen && <View className="mt-1.5 ml-6">{children}</View>}
     </View>

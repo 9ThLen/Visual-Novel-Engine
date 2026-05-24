@@ -38,12 +38,11 @@ export function useKeyboardShortcuts({
     shortcutsRef.current = shortcuts;
   }, [shortcuts]);
 
-  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+  const handleKeyDown = useCallback((event: Event) => {
     if (!enabled) return;
+    const kbEvent = event as unknown as KeyboardEvent;
+    const key = kbEvent.key.toLowerCase();
 
-    const key = event.key.toLowerCase();
-
-    // Check each registered shortcut
     for (const [id, config] of Object.entries(shortcutsRef.current)) {
       const {
         key: shortcutKey,
@@ -54,18 +53,16 @@ export function useKeyboardShortcuts({
         preventDefault = true,
       } = config;
 
-      // Check if key matches
       if (key !== shortcutKey.toLowerCase()) continue;
 
-      // Check modifiers
-      const ctrlPressed = ctrl ? isModifierKey(event) : !event.ctrlKey && !event.metaKey;
-      const shiftPressed = shift ? event.shiftKey : !event.shiftKey;
-      const altPressed = alt ? event.altKey : !event.altKey;
+      const ctrlPressed = ctrl ? isModifierKey(kbEvent) : !kbEvent.ctrlKey && !kbEvent.metaKey;
+      const shiftPressed = shift ? kbEvent.shiftKey : !kbEvent.shiftKey;
+      const altPressed = alt ? kbEvent.altKey : !kbEvent.altKey;
 
       if (ctrlPressed && shiftPressed && altPressed) {
         if (preventDefault) {
-          event.preventDefault();
-          event.stopPropagation();
+          kbEvent.preventDefault();
+          kbEvent.stopPropagation();
         }
         handler();
         break;
@@ -74,15 +71,15 @@ export function useKeyboardShortcuts({
   }, [enabled]);
 
   useEffect(() => {
-    // Only register on web
     if (Platform.OS !== 'web') return;
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
     if (!enabled) return;
 
     const target = scope === 'global' ? window : document;
-    target.addEventListener('keydown', handleKeyDown as any);
-
+    const listener = handleKeyDown as unknown as EventListener;
+    target.addEventListener('keydown', listener);
     return () => {
-      target.removeEventListener('keydown', handleKeyDown as any);
+      target.removeEventListener('keydown', listener);
     };
   }, [handleKeyDown, enabled, scope]);
 

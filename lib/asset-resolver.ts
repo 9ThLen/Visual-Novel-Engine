@@ -4,9 +4,40 @@
  */
 
 import * as FileSystem from 'expo-file-system/legacy';
+import { Asset } from 'expo-asset';
+import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
+import { resolveLibraryAssetUri } from './media-library-service';
+
+const uriCache = new Map<string, Promise<string | number | null>>();
+const playableUriCache = new Map<string, Promise<string | null>>();
+const modulePlayableCache = new Map<number, string>();
+const URI_CACHE_MAX_SIZE = 100;
+
+// ── Path traversal prevention ────────────────────────────────────────────────
+
+/** Characters that are not allowed in file names */
+const DANGEROUS_FILENAME_CHARS = /[<>:"|?*\x00-\x1f]/;
+
+/** Check if a path contains directory traversal attempts */
+function isPathSafe(path: string): boolean {
+  if (path.includes('..')) return false;
+  if (path.includes('\0')) return false;
+  const filename = path.split('/').pop() || '';
+  if (DANGEROUS_FILENAME_CHARS.test(filename)) return false;
+  return true;
+}
+
+function setCacheEntry(key: string, value: Promise<string | number | null>): void {
+  if (uriCache.size >= URI_CACHE_MAX_SIZE) {
+    // Evict oldest entry (first inserted)
+    const firstKey = uriCache.keys().next().value;
+    if (firstKey !== undefined) uriCache.delete(firstKey);
+  }
+  uriCache.set(key, value);
+}
 
 // Bundled assets mapping - maps asset IDs to actual asset locations
-const BUNDLED_ASSETS: Record<string, any> = {
+const BUNDLED_ASSETS: Record<string, number> = {
   // Background assets - full paths
   'assets/background/bg-ancient-library.png': require('../assets/background/bg-ancient-library.png'),
   'assets/background/bg-grand-hall.png': require('../assets/background/bg-grand-hall.png'),
@@ -55,7 +86,7 @@ const BUNDLED_ASSETS: Record<string, any> = {
 /**
  * Get a bundled asset by ID
  */
-export function getBundledAsset(assetId: string): any {
+export function getBundledAsset(assetId: string): number | null {
   if (!assetId) return null;
 
   const cleaned = assetId.replace('bundle://', '');
@@ -79,59 +110,77 @@ export function getBundledAsset(assetId: string): any {
  * Handles both local files and external URIs
  * Returns a string URI or a numeric asset ID that can be used with expo-image or audio players
  */
-export async function resolveAssetUri(uri: string | undefined): Promise<any> {
+export async function resolveAssetUri(uri: string | undefined): Promise<string | number | null> {
   if (!uri) return null;
 
+  const cached = uriCache.get(uri);
+  if (cached) return cached;
+
+  const promise = resolveUri(uri);
+  setCacheEntry(uri, promise);
+  return promise;
+}
+
+async function resolveUri(uri: string): Promise<string | number | null> {
   try {
-    // ALWAYS try to find in bundled assets first, regardless of prefix
-    const bundled = getBundledAsset(uri);
-    if (bundled) {
-      return bundled;
+    // Path traversal check for file paths
+    if (!isPathSafe(uri)) {
+      if (__DEV__) console.warn('[AssetResolver] Blocked unsafe path:', uri);
+      return null;
     }
 
-    // Blob and data URIs are valid sources — return directly
-    if (uri.startsWith('blob:') || uri.startsWith('data:')) {
+    // ALWAYS try to find in bundled assets first, regardless of prefix
+    const bundled = getBundledAsset(uri);
+    if (bundled) return bundled;
+
+    const libraryUri = resolveLibraryAssetUri(uri);
+    if (libraryUri && libraryUri !== uri) {
+      return resolveUri(libraryUri);
+    }
+
+    // Blob URIs are safe (created by the browser/runtime)
+    if (uri.startsWith('blob:')) return uri;
+
+    // data: URIs — only allow safe media types (image, audio, video)
+    if (uri.startsWith('data:')) {
+      const lowerUri = uri.toLowerCase();
+      const safeDataPrefixes = [
+        'data:image/',
+        'data:audio/',
+        'data:video/',
+        'data:font/',
+        'data:application/octet-stream',
+      ];
+      const isSafe = safeDataPrefixes.some(p => lowerUri.startsWith(p));
+      if (!isSafe) {
+        if (__DEV__) console.warn('[AssetResolver] Blocked unsafe data URI:', uri.slice(0, 80));
+        return null;
+      }
       return uri;
     }
 
     // If it already looks like a valid file URI, verify it exists
     if (uri.startsWith('file://') || uri.startsWith('/')) {
-      // For media-library paths, try to verify but trust them even if check fails
       const isMediaLibraryPath = uri.includes('media-library');
-
       try {
         const info = await FileSystem.getInfoAsync(uri);
-        if (info.exists) {
-          if (__DEV__) console.log('[AssetResolver] File verified:', uri);
-          return uri;
-        }
+        if (info.exists) return uri;
       } catch {
         // getInfoAsync can fail on web — fall through
       }
-
-      // Trust media-library paths even if getInfoAsync failed (common on web/OPFS)
-      if (isMediaLibraryPath) {
-        if (__DEV__) console.log('[AssetResolver] Trusting media-library path:', uri);
-        return uri;
-      }
+      if (isMediaLibraryPath) return uri;
     }
 
     // Check if it's an http(s) URI
-    if (uri.startsWith('http://') || uri.startsWith('https://')) {
-      return uri;
-    }
+    if (uri.startsWith('http://') || uri.startsWith('https://')) return uri;
 
     // Try as a relative path from the document directory
     if (FileSystem.documentDirectory) {
       const docPath = `${FileSystem.documentDirectory}${uri}`;
       try {
         const docInfo = await FileSystem.getInfoAsync(docPath);
-        if (docInfo.exists) {
-          return docPath;
-        }
-      } catch {
-        // Continue
-      }
+        if (docInfo.exists) return docPath;
+      } catch { /* continue */ }
     }
 
     // Try as a relative path from the caches directory
@@ -139,28 +188,71 @@ export async function resolveAssetUri(uri: string | undefined): Promise<any> {
       const cachePath = `${FileSystem.cacheDirectory}${uri}`;
       try {
         const cacheInfo = await FileSystem.getInfoAsync(cachePath);
-        if (cacheInfo.exists) {
-          return cachePath;
-        }
-      } catch {
-        // Cache path doesn't exist, continue
-      }
+        if (cacheInfo.exists) return cachePath;
+      } catch { /* continue */ }
     }
 
-    // If it looks like an asset path (assets/...), return it as-is
-    if (uri.startsWith('assets/')) {
-      return uri;
-    }
+    if (uri.startsWith('assets/')) return uri;
 
-    // Fallback: return the URI as-is rather than losing it entirely.
-    // The Image / Audio component will handle load errors gracefully.
     if (__DEV__) console.warn('[AssetResolver] Could not verify URI, using as-is:', uri);
     return uri;
   } catch (error) {
-    if (__DEV__) console.error('[AssetResolver] Error resolving asset URI:', uri, error);
-    // Return the URI anyway so the component can attempt to load it
+    ErrorHandler.handle('Error resolving asset URI', error, ErrorCategory.MEDIA, ErrorSeverity.LOW, { uri });
     return uri;
   }
+}
+
+/**
+ * Resolve a URI to a string playable by expo-audio (createAudioPlayer).
+ * Bundled require() modules are converted via Asset.fromModule.
+ */
+export async function resolvePlayableAssetUri(uri: string | undefined): Promise<string | null> {
+  if (!uri) return null;
+
+  const cached = playableUriCache.get(uri);
+  if (cached) return cached;
+
+  const promise = resolvePlayableUri(uri);
+  if (playableUriCache.size >= URI_CACHE_MAX_SIZE) {
+    const firstKey = playableUriCache.keys().next().value;
+    if (firstKey !== undefined) playableUriCache.delete(firstKey);
+  }
+  playableUriCache.set(uri, promise);
+  return promise;
+}
+
+async function resolvePlayableUri(uri: string): Promise<string | null> {
+  try {
+    const resolved = await resolveAssetUri(uri);
+    if (resolved === null) return null;
+    if (typeof resolved === 'string') return resolved;
+    return moduleIdToPlayableUri(resolved);
+  } catch (error) {
+    ErrorHandler.handle('Error resolving playable asset URI', error, ErrorCategory.MEDIA, ErrorSeverity.LOW, { uri });
+    return null;
+  }
+}
+
+async function moduleIdToPlayableUri(moduleId: number): Promise<string | null> {
+  const cached = modulePlayableCache.get(moduleId);
+  if (cached) return cached;
+
+  try {
+    const asset = Asset.fromModule(moduleId);
+    if (!asset.localUri) await asset.downloadAsync();
+    const playable = asset.localUri ?? asset.uri ?? null;
+    if (playable) modulePlayableCache.set(moduleId, playable);
+    return playable;
+  } catch (error) {
+    ErrorHandler.handle('Failed to resolve bundled module for playback', error, ErrorCategory.MEDIA, ErrorSeverity.LOW);
+    return null;
+  }
+}
+
+export function clearUriCache(): void {
+  uriCache.clear();
+  playableUriCache.clear();
+  modulePlayableCache.clear();
 }
 
 /**
@@ -172,7 +264,8 @@ export async function copyAssetToPermanentStorage(
 ): Promise<string> {
   try {
     const filename = sourceUri.split('/').pop() || 'asset';
-    const ext = filename.match(/\.[^.]+$/) ? '' : (assetType === 'image' ? '.png' : '.mp3');
+    const extMap: Record<string, string> = { image: '.png', audio: '.mp3', video: '.mp4' };
+    const ext = filename.match(/\.[^.]+$/) ? '' : (extMap[assetType] || '.bin');
     const targetPath = `${FileSystem.documentDirectory}media-library/${assetType}s/${filename}${ext}`;
 
     const dirPath = `${FileSystem.documentDirectory}media-library/${assetType}s/`;
@@ -186,7 +279,7 @@ export async function copyAssetToPermanentStorage(
     await FileSystem.copyAsync({ from: sourceUri, to: targetPath });
     return targetPath;
   } catch (error) {
-    if (__DEV__) console.error('[AssetResolver] Failed to copy asset:', error);
+    ErrorHandler.handle('Failed to copy asset', error, ErrorCategory.MEDIA, ErrorSeverity.LOW, { sourceUri });
     // Return original if copy fails
     return sourceUri;
   }

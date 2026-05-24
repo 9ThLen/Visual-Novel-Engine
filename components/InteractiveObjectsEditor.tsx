@@ -13,12 +13,11 @@ import {
   Alert,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-import type {
-  InteractiveObject,
-  InteractiveAction,
-  InteractiveObjectPosition,
+import {
+  type InteractiveObject,
+  type InteractiveObjectPosition,
+  INTERACTIVE_PRESETS,
 } from '@/lib/interactive-types';
-import { INTERACTIVE_PRESETS } from '@/lib/interactive-types';
 
 interface Props {
   objects: InteractiveObject[];
@@ -216,7 +215,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                           color: selectedObjectId === obj.id ? '#fff' : colors.muted,
                         }}
                       >
-                        {obj.actions.length} action(s)
+                        {obj.actions?.length ?? 0} action(s)
                       </Text>
                     </View>
                     <Pressable
@@ -348,7 +347,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                 </Text>
                 {selectedObject.actions.map((action, index) => (
                   <View
-                    key={index}
+                    key={`action-${index}`}
                     style={{
                       backgroundColor: colors.surface,
                       borderRadius: 6,

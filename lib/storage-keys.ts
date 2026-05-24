@@ -14,24 +14,25 @@ const PREFIX = 'vne_'; // Visual Novel Engine
 export const STORAGE_KEYS = {
   // Stories
   STORIES: `${PREFIX}stories`,
-  
+
   // Audio libraries (per story)
   AUDIO_LIBRARY: (storyId: string) => `${PREFIX}audio_library_${storyId}`,
-  
+
   // Block tree
   BLOCK_TREE: `${PREFIX}block_tree`,
-  
+
   // Save slots
   SAVE_SLOTS: `${PREFIX}save_slots`,
-  
+
   // User settings
   SETTINGS: `${PREFIX}settings`,
-  
+
   // Character library
   CHARACTER_LIBRARY: `${PREFIX}character_library`,
-  
+
   // Scene data (per story)
   SCENES: (storyId: string) => `${PREFIX}scenes_${storyId}`,
+
 } as const;
 
 /**
@@ -50,7 +51,7 @@ export function getAllStorageKeys(): string[] {
     STORAGE_KEYS.SETTINGS,
     STORAGE_KEYS.CHARACTER_LIBRARY,
   ];
-  
+
   // Note: Dynamic keys (audio library, scenes) need to be handled separately
   return keys;
 }

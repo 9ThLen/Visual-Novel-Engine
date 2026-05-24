@@ -4,8 +4,7 @@
  */
 
 import { Platform, Dimensions } from 'react-native';
-
-// ── Platform Detection ─────────────────────────────────────────────────────
+import { getResponsiveValues } from './responsive';
 
 /**
  * Check if running on web platform
@@ -20,7 +19,7 @@ export function isWeb(): boolean {
 export function isWebDesktop(): boolean {
   if (!isWeb()) return false;
   const { width } = Dimensions.get('window');
-  return width > 1024;
+  return getResponsiveValues({ width, height: 0, isWeb: true }).isWebDesktop;
 }
 
 /**
@@ -29,7 +28,7 @@ export function isWebDesktop(): boolean {
 export function isWebMobile(): boolean {
   if (!isWeb()) return false;
   const { width } = Dimensions.get('window');
-  return width < 768;
+  return getResponsiveValues({ width, height: 0, isWeb: true }).isWebMobile;
 }
 
 /**
@@ -38,36 +37,31 @@ export function isWebMobile(): boolean {
 export function isWebTablet(): boolean {
   if (!isWeb()) return false;
   const { width } = Dimensions.get('window');
-  return width >= 768 && width <= 1024;
+  return getResponsiveValues({ width, height: 0, isWeb: true }).isWebTablet;
 }
 
 // ── Keyboard Helpers ───────────────────────────────────────────────────────
 
-/**
- * Check if the modifier key (Cmd on Mac, Ctrl on Windows/Linux) is pressed
- */
-export function isModifierKey(event: KeyboardEvent): boolean {
-  // On Mac, use metaKey (Cmd), on Windows/Linux use ctrlKey
-  const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
-  return isMac ? event.metaKey : event.ctrlKey;
+function isMacOS(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const uad = (navigator as Navigator & { userAgentData?: { platform: string } }).userAgentData;
+  return uad?.platform
+    ? uad.platform === 'macOS'
+    : /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
 }
 
-/**
- * Get the modifier key symbol for display (⌘ on Mac, Ctrl on Windows/Linux)
- */
+export function isModifierKey(event: KeyboardEvent): boolean {
+  return isMacOS() ? event.metaKey : event.ctrlKey;
+}
+
 export function getModifierKeySymbol(): string {
   if (typeof navigator === 'undefined') return 'Ctrl';
-  const isMac = /Mac/.test(navigator.platform);
-  return isMac ? '⌘' : 'Ctrl';
+  return isMacOS() ? '⌘' : 'Ctrl';
 }
 
-/**
- * Format keyboard shortcut for display
- * @example formatShortcut('s') => 'Ctrl+S' or '⌘S'
- */
 export function formatShortcut(key: string, useShift = false): string {
   const modifier = getModifierKeySymbol();
-  const shift = useShift ? '+Shift' : '';
+  const shift = useShift ? '⇧' : '';
   const separator = modifier === '⌘' ? '' : '+';
   return `${modifier}${shift}${separator}${key.toUpperCase()}`;
 }

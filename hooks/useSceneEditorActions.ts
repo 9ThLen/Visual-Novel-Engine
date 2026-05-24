@@ -4,17 +4,18 @@ import { useRouter } from 'expo-router';
 import { Story, StoryScene, Choice } from '@/lib/types';
 import { SplashScreenConfig } from '@/lib/splash-types';
 import { InteractiveObject } from '@/lib/interactive-types';
-import * as storyContextEnhanced from '@/lib/story-context-enhanced';
-import { Block } from '@/lib/block-types';
+import { useAppStore, selectStoryScenes } from '@/stores/use-app-store';
+import { useLegoStore, selectLegoSceneById, selectLegoActiveScene } from '@/stores/use-lego-store';
+import { extractAudioUrisFromLegoElements } from '@/lib/lego-scene-export';
+import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
 
 interface SceneSaveData {
   sceneText: string;
   backgroundUri: string;
   voiceUri: string;
   musicUri: string;
-  splashConfig: SplashScreenConfig;
+  splashConfig?: SplashScreenConfig;
   interactiveObjects: InteractiveObject[];
-  sceneRoot: { children: Block[] };
 }
 
 export function useSceneEditorActions(
@@ -26,34 +27,41 @@ export function useSceneEditorActions(
   const router = useRouter();
 
   const handleSaveScene = useCallback(async (data: SceneSaveData) => {
-    if (!currentStory || !scene) return;
+    if (!currentStory || !scene) return null;
+    let updatedScene: StoryScene | undefined;
     try {
-      const blocksToSave: Block[] | undefined = data.sceneRoot?.children?.length > 0 ?
-        data.sceneRoot.children.map((block: Block) => ({
-          ...block,
-          x: block.x ?? undefined,
-          y: block.y ?? undefined,
-        })) : undefined;
+      const storyScenes = selectStoryScenes(currentStory.id)(useAppStore.getState());
+      const latestScene = storyScenes[scene.id] ?? scene;
 
-      const updatedScene: StoryScene = {
-        ...scene,
+      const legoState = useLegoStore.getState();
+      const legoScene =
+        selectLegoSceneById(scene.id)(legoState) ?? selectLegoActiveScene(legoState);
+      const legoAudio = legoScene
+        ? extractAudioUrisFromLegoElements(legoScene.elements)
+        : {};
+
+      updatedScene = {
+        ...latestScene,
         text: data.sceneText,
         backgroundImageUri: data.backgroundUri || undefined,
-        voiceAudioUri: data.voiceUri || undefined,
-        musicUri: data.musicUri || undefined,
+        voiceAudioUri: data.voiceUri || legoAudio.voiceUri || undefined,
+        musicUri: data.musicUri || legoAudio.musicUri || undefined,
         splashScreen: data.splashConfig,
         interactiveObjects: data.interactiveObjects.length > 0 ? data.interactiveObjects : undefined,
-        blocks: blocksToSave,
       };
-      await storyContextEnhanced.updateScene(currentStory.id, updatedScene);
-      
-      skipNextReloadRef.current = true;
-      await loadStories();
-      Alert.alert('Saved', 'Scene saved successfully!');
-      return updatedScene;
-    } catch { 
-      Alert.alert('Error', 'Failed to save scene'); 
+      await useAppStore.getState().saveScene(currentStory.id, updatedScene!);
+    } catch {
+      Alert.alert('Error', 'Failed to save scene');
+      return null;
     }
+    skipNextReloadRef.current = true;
+    try {
+      await loadStories();
+    } catch {
+      ErrorHandler.handle('Scene saved but reload failed', undefined, ErrorCategory.STORAGE, ErrorSeverity.LOW);
+    }
+    Alert.alert('Saved', 'Scene saved successfully!');
+    return updatedScene ?? null;
   }, [currentStory, scene, loadStories, skipNextReloadRef]);
 
   const handleAddScene = useCallback(async (sceneList: string[], setSceneList: (list: string[]) => void) => {
@@ -64,7 +72,7 @@ export function useSceneEditorActions(
       characters: [], voiceAudioUri: undefined, choices: [], musicUri: undefined,
     };
     try {
-      await storyContextEnhanced.addScene(currentStory.id, newScene);
+      await useAppStore.getState().saveScene(currentStory.id, newScene);
       setSceneList([...sceneList, newSceneId]);
       await loadStories();
       Alert.alert('Created', `Scene "${newSceneId}" added.`);
@@ -82,7 +90,7 @@ export function useSceneEditorActions(
         text: 'Delete', style: 'destructive',
         onPress: async () => {
           try {
-            await storyContextEnhanced.deleteScene(currentStory.id, sceneIdToDelete);
+            await useAppStore.getState().deleteScene(currentStory.id, sceneIdToDelete);
             setSceneList(sceneList.filter((s) => s !== sceneIdToDelete));
             await loadStories();
             if (scene?.id === sceneIdToDelete) router.back();
@@ -104,8 +112,10 @@ export function useSceneEditorActions(
       nextSceneId: target,
     };
     try {
-      const updated: StoryScene = { ...scene, choices: [...scene.choices, newChoice] };
-      await storyContextEnhanced.updateScene(currentStory.id, updated);
+      const storyScenes = selectStoryScenes(currentStory.id)(useAppStore.getState());
+      const latestScene = storyScenes[scene.id] ?? scene;
+      const updated: StoryScene = { ...latestScene, choices: [...latestScene.choices, newChoice] };
+      await useAppStore.getState().saveScene(currentStory.id, updated);
       setScene(updated);
       return true;
     } catch { 
@@ -117,7 +127,7 @@ export function useSceneEditorActions(
   const handleDeleteChoice = useCallback(async (choiceId: string, setScene: (s: StoryScene) => void) => {
     if (!currentStory || !scene) return;
     try {
-      await storyContextEnhanced.deleteChoice(currentStory.id, scene.id, choiceId);
+      await useAppStore.getState().deleteChoice(currentStory.id, scene.id, choiceId);
       setScene({ ...scene, choices: scene.choices.filter((c) => c.id !== choiceId) });
     } catch { Alert.alert('Error', 'Failed to delete choice'); }
   }, [currentStory, scene]);

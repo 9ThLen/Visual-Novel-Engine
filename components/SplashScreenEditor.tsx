@@ -4,13 +4,12 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, Pressable, TextInput, ScrollView, Alert } from 'react-native';
+import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useColors } from '@/hooks/use-colors';
-import type { SplashScreenConfig, SplashScreen } from '@/lib/splash-types';
-import { SPLASH_PRESETS } from '@/lib/splash-types';
-import { addAssetToLibrary } from './media-library';
+import { type SplashScreenConfig, type SplashScreen, SPLASH_PRESETS } from '@/lib/splash-types';
+import { addAssetToLibrary } from '@/lib/media-library-service';
 
 interface Props {
   config?: SplashScreenConfig;

@@ -2,24 +2,35 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useColors } from '@/hooks/use-colors';
+import { stopReaderPlayback } from '@/hooks/useReaderAudio';
+import { buttonFeedback } from '@/lib/ui-feedback';
 
 interface ReaderMenuProps {
   visible: boolean;
   onClose: () => void;
-  onOpenInventory: () => void;
 }
 
-export function ReaderMenu({ visible, onClose, onOpenInventory }: ReaderMenuProps) {
+export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
   const router = useRouter();
   const colors = useColors();
 
   if (!visible) return null;
 
+  const leaveReader = () => {
+    onClose();
+    void stopReaderPlayback();
+  };
+
   const menuItems = [
-    { label: '💾 Save / Load', action: () => { onClose(); router.push('../save-load'); } },
-    { label: '🎒 Inventory', action: () => { onClose(); onOpenInventory(); } },
-    { label: '⚙️ Settings', action: () => { onClose(); router.push('../settings'); } },
-    { label: '🏠 Home', action: () => router.back() },
+    { label: '💾 Save / Load', action: () => { leaveReader(); router.push('../save-load'); } },
+    { label: '⚙️ Settings', action: () => { leaveReader(); router.push('../settings'); } },
+    {
+      label: '🏠 Home',
+      action: () => {
+        leaveReader();
+        router.replace('/tabs');
+      },
+    },
     { label: '✕ Close menu', action: onClose },
   ];
 
@@ -33,7 +44,7 @@ export function ReaderMenu({ visible, onClose, onOpenInventory }: ReaderMenuProp
         style={[
           styles.menuContainer,
           {
-            backgroundColor: colors.surface,
+            backgroundColor: colors.dialogueBg ?? 'rgba(15, 14, 23, 0.95)',
             borderColor: colors.border,
           },
         ]}
@@ -41,11 +52,14 @@ export function ReaderMenu({ visible, onClose, onOpenInventory }: ReaderMenuProp
         {menuItems.map((item) => (
           <Pressable
             key={item.label}
-            style={({ pressed }) => [
-              styles.menuItem,
-              { backgroundColor: pressed ? colors.background : 'transparent' },
-            ]}
-            onPress={item.action}
+              style={({ pressed }) => [
+                styles.menuItem,
+                { backgroundColor: pressed ? colors.hover : colors.surfaceElevated },
+              ]}
+            onPress={() => {
+              buttonFeedback();
+              item.action();
+            }}
           >
             <Text style={[styles.menuItemText, { color: colors.foreground }]}>
               {item.label}
@@ -77,10 +91,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     width: 320,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
     elevation: 8,
   },
   menuItem: {

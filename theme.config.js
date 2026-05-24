@@ -1,43 +1,144 @@
+/**
+ * Theme Configuration — Visual Novel Engine
+ *
+ * Color system supports:
+ * - Light/Dark mode via NativeWind
+ * - Reader theme (warm beige/brown for reading comfort)
+ * - Editor theme (dark indigo/purple for creative work)
+ * - LEGO block colors for visual block identification
+ *
+ * All colors use OKLCH color space for perceptual uniformity.
+ * Format: oklch(L% C H) where L=lightness, C=chroma, H=hue
+ *
+ * Design tokens follow Tailwind CSS naming convention.
+ * All colors are defined as { light: string, dark: string } pairs.
+ * NOTE: Keys use kebab-case, matching CSS custom property convention.
+ */
+
 /** @type {const} */
 const themeColors = {
-  // Primary - Warm Terracotta
-  primary:    { light: '#C17A5C', dark: '#D89A7F' },
+  // ═══════════════════════════════════════════════════════════════
+  // CORE BRAND COLORS
+  // ═══════════════════════════════════════════════════════════════
 
-  // Backgrounds - Soft Beige / Deep Brown
-  background: { light: '#F5F1E8', dark: '#2A2318' },
-  surface:    { light: '#FFFFFF', dark: '#3D3226' },
-  surfaceElevated: { light: '#FDFCF9', dark: '#4A3F32' },
+  // Primary — Purple accent (creative, storytelling)
+  primary:        { light: 'oklch(58% 0.23 280)', dark: 'oklch(65% 0.20 280)' },
+  'primary-hover':  { light: 'oklch(65% 0.20 280)', dark: 'oklch(72% 0.18 280)' },
+  'primary-active': { light: 'oklch(50% 0.25 280)', dark: 'oklch(58% 0.23 280)' },
 
-  // Text
-  foreground: { light: '#3D3226', dark: '#F5F1E8' },
-  foregroundSecondary: { light: '#6B5D4F', dark: '#D4CFC3' },
-  muted:      { light: '#9B8B7E', dark: '#9B8B7E' },
+  // Backgrounds
+  background: { light: 'oklch(96% 0.01 80)', dark: 'oklch(12% 0.03 250)' },
+
+  // Surface elevation levels (luminance stepping)
+  surface:        { light: 'oklch(98% 0.005 80)', dark: 'oklch(28% 0.06 250)' },
+  'surface-elevated': { light: 'oklch(99% 0.003 80)', dark: 'oklch(32% 0.06 250)' },
+  'surface-1':       { light: 'oklch(100% 0 0)', dark: 'oklch(34% 0.06 250)' },
+  'surface-2':       { light: 'oklch(100% 0 0)', dark: 'oklch(36% 0.06 250)' },
+  'surface-3':       { light: 'oklch(100% 0 0)', dark: 'oklch(38% 0.06 250)' },
+
+  // Foreground (text)
+  foreground:          { light: 'oklch(22% 0.02 80)', dark: 'oklch(92% 0.01 280)' },
+  'foreground-secondary': { light: 'oklch(42% 0.02 80)', dark: 'oklch(68% 0.02 280)' },
+  'foreground-tertiary':  { light: 'oklch(58% 0.02 80)', dark: 'oklch(52% 0.02 280)' },
+  'foreground-disabled':  { light: 'oklch(72% 0.01 80)', dark: 'oklch(40% 0.02 280)' },
+  'foreground-inverse':   { light: 'oklch(96% 0.01 80)', dark: 'oklch(16% 0.02 280)' },
+  'foreground-on-primary': { light: 'oklch(98% 0 0)', dark: 'oklch(98% 0 0)' },
+  muted:               { light: 'oklch(58% 0.02 80)', dark: 'oklch(52% 0.02 280)' },
 
   // Borders
-  border:     { light: '#E5DFD3', dark: '#4A3F32' },
-  borderLight: { light: '#F0EBE0', dark: '#5A4D3E' },
+  border:       { light: 'oklch(88% 0.01 80)', dark: 'oklch(35% 0.06 250)' },
+  'border-subtle': { light: 'oklch(92% 0.01 80)', dark: 'oklch(30% 0.05 250)' },
+  'border-strong': { light: 'oklch(80% 0.02 80)', dark: 'oklch(42% 0.06 250)' },
+  'border-light':  { light: 'oklch(92% 0.01 80)', dark: 'oklch(35% 0.06 250)' },
 
-  // Semantic Colors
-  success:    { light: '#7FA66F', dark: '#8FB87F' },
-  warning:    { light: '#D4A574', dark: '#E5B299' },
-  error:      { light: '#C17A5C', dark: '#D89A7F' },
-  info:       { light: '#8FA8B8', dark: '#9FB8C8' },
+  // ═══════════════════════════════════════════════════════════════
+  // SEMANTIC COLORS
+  // ═══════════════════════════════════════════════════════════════
 
-  // Interactive States
-  hover:      { light: 'rgba(193, 122, 92, 0.08)', dark: 'rgba(216, 154, 127, 0.12)' },
-  pressed:    { light: 'rgba(193, 122, 92, 0.16)', dark: 'rgba(216, 154, 127, 0.20)' },
-  focus:      { light: 'rgba(193, 122, 92, 0.24)', dark: 'rgba(216, 154, 127, 0.28)' },
+  success: { light: 'oklch(55% 0.16 155)', dark: 'oklch(72% 0.18 155)' },
+  warning: { light: 'oklch(65% 0.15 80)',  dark: 'oklch(78% 0.15 80)' },
+  danger:  { light: 'oklch(55% 0.18 25)',  dark: 'oklch(68% 0.18 25)' },
+  error:   { light: 'oklch(55% 0.18 25)',  dark: 'oklch(68% 0.18 25)' },
+  info:    { light: 'oklch(55% 0.15 250)', dark: 'oklch(70% 0.15 250)' },
 
-  // Overlays
-  overlay:    { light: 'rgba(61, 50, 38, 0.6)', dark: 'rgba(42, 35, 24, 0.8)' },
-  scrim:      { light: 'rgba(0, 0, 0, 0.32)', dark: 'rgba(0, 0, 0, 0.6)' },
+  // Semantic background variants
+  'success-bg': { light: 'oklch(95% 0.04 155)', dark: 'oklch(25% 0.06 155)' },
+  'warning-bg': { light: 'oklch(95% 0.04 80)',  dark: 'oklch(25% 0.06 80)' },
+  'danger-bg':  { light: 'oklch(95% 0.04 25)',  dark: 'oklch(22% 0.06 25)' },
+  'info-bg':    { light: 'oklch(95% 0.04 250)', dark: 'oklch(22% 0.06 250)' },
 
-  // VN-specific tokens
-  dialogueBg: { light: 'rgba(253, 252, 249, 0.95)', dark: 'rgba(61, 50, 38, 0.95)' },
-  nameBg:     { light: '#C17A5C', dark: '#D89A7F' },
-  nameText:   { light: '#FFFFFF', dark: '#FFFFFF' },
-  choiceBg:   { light: 'rgba(193, 122, 92, 0.08)', dark: 'rgba(216, 154, 127, 0.12)' },
-  choiceBorder: { light: '#C17A5C', dark: '#D89A7F' },
+  // ═══════════════════════════════════════════════════════════════
+  // LEGO BLOCK COLORS — For visual block identification in editor
+  // Dark mode: desaturated by ~15-25% to prevent eye strain
+  // ═══════════════════════════════════════════════════════════════
+
+  'lego-dialogue':    { light: 'oklch(50% 0.20 280)', dark: 'oklch(62% 0.18 280)' },  // Purple — Text/Dialogue
+  'lego-character':   { light: 'oklch(60% 0.14 80)',  dark: 'oklch(72% 0.13 80)' },  // Amber — Character sprites
+  'lego-background':  { light: 'oklch(50% 0.14 155)', dark: 'oklch(65% 0.12 155)' },  // Emerald — Backgrounds
+  'lego-audio':       { light: 'oklch(52% 0.16 25)',  dark: 'oklch(62% 0.15 25)' },  // Red — Music/Audio
+  'lego-fx':          { light: 'oklch(65% 0.14 95)',  dark: 'oklch(78% 0.12 95)' },  // Yellow — Visual effects
+  'lego-choice':      { light: 'oklch(52% 0.16 250)', dark: 'oklch(65% 0.14 250)' },  // Blue — Player choices
+  'lego-condition':   { light: 'oklch(58% 0.14 50)',  dark: 'oklch(68% 0.12 50)' },  // Orange — Conditions
+  'lego-variable':    { light: 'oklch(55% 0.12 210)', dark: 'oklch(72% 0.10 210)' },  // Cyan — Variables
+  'lego-loop':        { light: 'oklch(52% 0.16 300)', dark: 'oklch(65% 0.14 300)' },  // Violet — Loops
+  'lego-transition':  { light: 'oklch(50% 0.18 310)', dark: 'oklch(60% 0.16 310)' },  // Magenta — Transitions
+
+  // ═══════════════════════════════════════════════════════════════
+  // INTERACTIVE STATES
+  // ═══════════════════════════════════════════════════════════════
+
+  hover:   { light: 'rgba(124, 91, 245, 0.06)', dark: 'rgba(124, 91, 245, 0.10)' },
+  pressed: { light: 'rgba(124, 91, 245, 0.12)', dark: 'rgba(124, 91, 245, 0.18)' },
+  focus:   { light: 'rgba(124, 91, 245, 0.20)', dark: 'rgba(124, 91, 245, 0.28)' },
+  selected: { light: 'rgba(124, 91, 245, 0.10)', dark: 'rgba(124, 91, 245, 0.15)' },
+
+  // ═══════════════════════════════════════════════════════════════
+  // OVERLAYS & SCRIMS
+  // ═══════════════════════════════════════════════════════════════
+
+  overlay:   { light: 'rgba(0, 0, 0, 0.50)', dark: 'rgba(0, 0, 0, 0.75)' },
+  scrim:     { light: 'rgba(0, 0, 0, 0.40)', dark: 'rgba(0, 0, 0, 0.60)' },
+  backdrop:  { light: 'rgba(0, 0, 0, 0.70)', dark: 'rgba(0, 0, 0, 0.85)' },
+
+  // ═══════════════════════════════════════════════════════════════
+  // VN-SPECIFIC TOKENS — Reader UI
+  // ═══════════════════════════════════════════════════════════════
+
+  // rgba/hex — React Native StyleSheet does not parse oklch()
+  'dialogue-bg':    { light: 'rgba(253, 252, 249, 0.95)', dark: 'rgba(15, 14, 23, 0.92)' },
+  'name-bg':        { light: '#7c5bf5', dark: '#9d7aff' },
+  'name-text':      { light: '#ffffff', dark: '#ffffff' },
+  'choice-bg':      { light: 'rgba(124, 58, 237, 0.08)', dark: 'rgba(124, 58, 237, 0.12)' },
+  'choice-border':  { light: '#7c5bf5', dark: '#9d7aff' },
+  'choice-hover':   { light: 'rgba(124, 58, 237, 0.12)', dark: 'rgba(124, 58, 237, 0.18)' },
+
+  // ═══════════════════════════════════════════════════════════════
+  // EDITOR-SPECIFIC TOKENS
+  // ═══════════════════════════════════════════════════════════════
+
+  'editor-canvas':  { light: 'oklch(94% 0.01 80)', dark: 'oklch(10% 0.02 280)' },
+  'editor-grid':    { light: 'oklch(88% 0.01 80)', dark: 'oklch(22% 0.02 280)' },
+  'editor-toolbar': { light: 'oklch(98% 0.005 80)', dark: 'oklch(21% 0.02 280)' },
+  'editor-panel':   { light: 'oklch(99% 0.003 80)', dark: 'oklch(19% 0.02 280)' },
+  'editor-ruler':   { light: 'oklch(90% 0.01 80)', dark: 'oklch(26% 0.02 280)' },
+
+  // ═══════════════════════════════════════════════════════════════
+  // SHADOWS (for web/NativeWind)
+  // ═══════════════════════════════════════════════════════════════
+
+  'shadow-xs':  { light: '0 1px 2px oklch(0% 0 0 / 0.06)', dark: '0 1px 2px oklch(0% 0 0 / 0.15)' },
+  'shadow-sm':  { light: '0 1px 3px oklch(0% 0 0 / 0.08), 0 1px 2px oklch(0% 0 0 / 0.04)', dark: '0 1px 3px oklch(0% 0 0 / 0.20), 0 1px 2px oklch(0% 0 0 / 0.12)' },
+  'shadow-md':  { light: '0 4px 8px oklch(0% 0 0 / 0.10), 0 2px 4px oklch(0% 0 0 / 0.06)', dark: '0 4px 8px oklch(0% 0 0 / 0.25), 0 2px 4px oklch(0% 0 0 / 0.15)' },
+  'shadow-lg':  { light: '0 8px 16px oklch(0% 0 0 / 0.12), 0 4px 8px oklch(0% 0 0 / 0.08)', dark: '0 8px 16px oklch(0% 0 0 / 0.30), 0 4px 8px oklch(0% 0 0 / 0.20)' },
+  'shadow-xl':  { light: '0 16px 32px oklch(0% 0 0 / 0.15), 0 8px 16px oklch(0% 0 0 / 0.10)', dark: '0 16px 32px oklch(0% 0 0 / 0.35), 0 8px 16px oklch(0% 0 0 / 0.25)' },
+  'shadow-glow': { light: '0 0 16px oklch(58% 0.23 280 / 0.15), 0 0 8px oklch(58% 0.23 280 / 0.08)', dark: '0 0 16px oklch(58% 0.23 280 / 0.25), 0 0 8px oklch(58% 0.23 280 / 0.15)' },
+
+  // ═══════════════════════════════════════════════════════════════
+  // EDITOR SURFACE TOKENS (Stitch design system)
+  // ═══════════════════════════════════════════════════════════════
+
+  'surface-container': { light: 'oklch(97% 0.005 80)', dark: 'oklch(17% 0.04 250)' },
+  secondary:          { light: 'oklch(60% 0.14 200)', dark: 'oklch(72% 0.13 200)' },
 };
 
 module.exports = { themeColors };

@@ -1,50 +1,64 @@
 import { useEffect, useRef } from 'react';
-import { Story, PlaybackState, SaveSlot } from '../lib/types';
-import { StoryDomain } from '../lib/story-domain';
+import type { PlaybackState, SaveSlot } from '../lib/types';
+import { buildRuntimeSaveSlot } from '../lib/runtime-story';
+import type { RuntimeStoryStateSnapshot } from '../lib/runtime-story';
 
 interface AutoSaveProps {
   playbackState: PlaybackState | null;
-  currentStory: Story | null;
-  saveSlots: SaveSlot[];
+  runtimeSnapshot: RuntimeStoryStateSnapshot;
   onAutoSave: (newSlot: SaveSlot) => Promise<void>;
   enabled: boolean;
 }
 
 export function useAutoSave({
   playbackState,
-  currentStory,
-  saveSlots,
+  runtimeSnapshot,
   onAutoSave,
   enabled
 }: AutoSaveProps) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onAutoSaveRef = useRef(onAutoSave);
+  const runtimeSnapshotRef = useRef(runtimeSnapshot);
+  const playbackStateRef = useRef(playbackState);
+  onAutoSaveRef.current = onAutoSave;
+  runtimeSnapshotRef.current = runtimeSnapshot;
+  playbackStateRef.current = playbackState;
 
   useEffect(() => {
-    if (!enabled || !playbackState || !currentStory || !playbackState.isPlaying) {
+    if (!enabled || !playbackState || !playbackState.isPlaying) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       return;
     }
 
-    // Debounce auto-save (e.g., 2000ms to be less aggressive than the previous 500ms)
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
 
-    timeoutRef.current = setTimeout(async () => {
-      const currentScene = currentStory.scenes[playbackState.currentSceneId];
-      const newSlot = StoryDomain.createSaveSlot(
-        'autosave',
-        currentStory,
-        playbackState,
-        currentScene
-      );
+    timeoutRef.current = setTimeout(() => {
+      const snapshot = runtimeSnapshotRef.current;
+      const state = playbackStateRef.current;
+      if (!state) return;
 
-      await onAutoSave(newSlot);
+      const newSlot = buildRuntimeSaveSlot(
+        'autosave',
+        snapshot,
+        state
+      );
+      if (!newSlot) return;
+
+      onAutoSaveRef.current(newSlot).catch((err) => {
+        if (__DEV__) console.error('[AutoSave] Save failed:', err);
+      });
     }, 2000);
 
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
     };
-  }, [playbackState, currentStory, onAutoSave, enabled]);
+  }, [playbackState?.currentSceneId, playbackState?.isPlaying, playbackState?.currentDialogueIndex, playbackState?.choicesMade, enabled]);
 }
