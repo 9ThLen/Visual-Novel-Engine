@@ -28,6 +28,7 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { MiniPreview } from './MiniPreview';
 import { SceneSelector } from './SceneSelector';
 import { getPhoneComposerPanel } from '@/lib/mobile-composer-layout';
+import { useEditorShortcuts, useKeyboardShortcuts, COMMON_SHORTCUTS } from '@/hooks/use-keyboard-shortcuts';
 
 interface SceneComposerProps {
   storyId: string;
@@ -72,6 +73,27 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
   React.useEffect(() => {
     hydrateSceneDraft(initialSceneDraft);
   }, [hydrateSceneDraft, initialSceneDraft]);
+
+  useEditorShortcuts({
+    onUndo: undo,
+    onRedo: redo,
+    onDuplicate: selectedBlockId ? () => duplicateBlock(selectedBlockId) : undefined,
+    onDelete: selectedBlockId ? () => setPendingDeleteId(selectedBlockId) : undefined,
+  });
+
+  useKeyboardShortcuts({
+    shortcuts: {
+      redo_shiftz: { key: 'z', ctrl: true, shift: true, handler: redo },
+      save: { ...COMMON_SHORTCUTS.save, handler: handleSave },
+      preview: { ...COMMON_SHORTCUTS.preview, handler: handlePreview },
+      escape: { ...COMMON_SHORTCUTS.escape, handler: () => selectBlock(null) },
+      delete_backspace: { key: 'backspace', handler: () => selectedBlockId && setPendingDeleteId(selectedBlockId) },
+      focus_search: {
+        key: 'a', ctrl: true,
+        handler: () => document.querySelector<HTMLInputElement>('[data-search-input]')?.focus(),
+      },
+    },
+  });
 
   const handleBlockSelect = useCallback((stepId: string | null) => {
     selectBlock(stepId);
