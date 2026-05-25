@@ -24,6 +24,7 @@ interface EditorStore {
   showBlockLibrary: boolean;
   panelWidths: { left: number; right: number };
   blockSearchQuery: string;
+  isSaving: boolean;
 
   // Undo/Redo (internal — not persisted)
   _undoStack: TimelineStep[][];
@@ -48,6 +49,7 @@ interface EditorStore {
   setShowBlockLibrary: (show: boolean) => void;
   setPanelWidths: (left: number, right: number) => void;
   setBlockSearchQuery: (query: string) => void;
+  setIsSaving: (saving: boolean) => void;
   searchBlocks: (query: string) => TimelineStep[];
   clearTimeline: () => void;
   loadTimeline: (steps: TimelineStep[]) => void;
@@ -65,6 +67,7 @@ const initialState: Omit<EditorStore, '_undoStack' | '_redoStack' | 'setScene' |
   showBlockLibrary: true,
   panelWidths: { left: 280, right: 300 },
   blockSearchQuery: '',
+  isSaving: false,
 };
 
 export const useEditorStore = create<EditorStore>()((set, get) => ({
@@ -216,6 +219,7 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
   setShowBlockLibrary: (show) => set({ showBlockLibrary: show }),
   setPanelWidths: (left, right) => set({ panelWidths: { left, right } }),
   setBlockSearchQuery: (query) => set({ blockSearchQuery: query }),
+  setIsSaving: (saving) => set({ isSaving: saving }),
 
   searchBlocks: (query) => {
     const state = get();
