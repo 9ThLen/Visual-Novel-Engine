@@ -5,10 +5,12 @@
  * Collapsible, positioned at bottom of editor.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
+import { Image } from 'expo-image';
 import { useColors } from '@/hooks/use-colors';
 import { BLOCK_TYPE_INFO, type TimelineStep } from '@/lib/engine/types';
+import { resolveAssetUri } from '@/lib/asset-resolver';
 
 interface MiniPreviewProps {
   timeline: TimelineStep[];
@@ -64,16 +66,7 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
           position: 'relative',
         }}>
           {sceneState.backgroundAssetId ? (
-            <View style={{
-              flex: 1,
-              backgroundColor: colors.primary + '20',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <Text style={{ fontSize: 10, color: colors.muted }}>
-                🖼 {sceneState.backgroundAssetId}
-              </Text>
-            </View>
+            <ResolvedMiniBackground assetId={sceneState.backgroundAssetId} />
           ) : (
             <View style={{
               flex: 1,
@@ -90,7 +83,7 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
               key={i}
               style={{
                 position: 'absolute',
-                left: getPositionPercent(char.position),
+                left: `${getPositionPercent(char.position)}%`,
                 bottom: 10,
                 width: 40,
                 height: 60,
@@ -98,6 +91,7 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
                 borderRadius: 4,
                 alignItems: 'center',
                 justifyContent: 'center',
+                transform: [{ translateX: -20 }],
               }}
             >
               <Text style={{ fontSize: 8, color: colors.muted }}>
@@ -127,6 +121,56 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
         </View>
       </View>
     </View>
+  );
+}
+
+function ResolvedMiniBackground({ assetId }: { assetId: string }) {
+  const colors = useColors();
+  const [source, setSource] = useState<number | { uri: string } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    resolveAssetUri(assetId)
+      .then((resolved) => {
+        if (!active || !resolved) {
+          if (active) setSource(null);
+          return;
+        }
+        setSource(typeof resolved === 'number' ? resolved : { uri: resolved });
+      })
+      .catch(() => {
+        if (active) setSource(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [assetId]);
+
+  if (!source) {
+    return (
+      <View style={{
+        flex: 1,
+        backgroundColor: colors.primary + '20',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+        <Text style={{ fontSize: 10, color: colors.muted }}>
+          Loading...
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={source}
+      style={{ flex: 1 }}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      transition={150}
+    />
   );
 }
 

@@ -3,10 +3,11 @@
  * Shows properties for all 12 block types.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { BLOCK_TYPE_INFO, type TimelineStep } from '@/lib/engine/types';
+import { getBlockEmptyFields } from '@/lib/editor/block-validation';
 import { AssetPicker } from './modals/AssetPicker';
 
 interface Props {
@@ -22,6 +23,8 @@ export function PropertiesPanel({ block, onUpdate, onDelete, onDuplicate, onClos
   const info = BLOCK_TYPE_INFO[block.blockType];
   const data = block.data as any;
   const upd = (field: string, value: any) => onUpdate({ data: { ...data, [field]: value } });
+
+  const missingFields = useMemo(() => new Set(getBlockEmptyFields(block.blockType, data)), [block.blockType, data]);
 
   const [picker, setPicker] = useState<{ visible: boolean; category: string; onSelect: (id: string) => void }>({ visible: false, category: 'backgrounds', onSelect: () => {} });
 
@@ -54,7 +57,7 @@ export function PropertiesPanel({ block, onUpdate, onDelete, onDuplicate, onClos
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
-        {renderForm(block, data, upd, colors, openPicker, renderAssetField)}
+        {renderForm(block, data, upd, colors, missingFields, openPicker, renderAssetField)}
       </ScrollView>
 
       {picker.visible && (
@@ -78,12 +81,15 @@ export function PropertiesPanel({ block, onUpdate, onDelete, onDuplicate, onClos
   );
 }
 
-const S = (c: any) => ({ backgroundColor: c.background, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: c.foreground });
+const S = (c: any, error?: boolean) => ({ backgroundColor: c.background, borderWidth: 1, borderColor: error ? (c.error || '#ff6b6b') : c.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: c.foreground });
 
-function Field({ label, children, colors }: { label: string; children: React.ReactNode; colors: any }) {
+function Field({ label, children, colors, error }: { label: string; children: React.ReactNode; colors: any; error?: boolean }) {
   return (
     <View style={{ marginBottom: 12 }}>
-      <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, color: colors.muted, marginBottom: 6 }}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+        <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, color: error ? (colors.error || '#ff6b6b') : colors.muted }}>{label}</Text>
+        {error && <Text style={{ fontSize: 9, color: colors.error || '#ff6b6b', fontWeight: '600' }}>REQUIRED</Text>}
+      </View>
       {children}
     </View>
   );
@@ -116,18 +122,18 @@ function Toggle({ label, value, onChange, colors }: { label: string; value: bool
   );
 }
 
-function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => void, colors: any, openPicker?: (category: string, current: string | null, onChange: (id: string) => void) => void, assetField?: (label: string, category: string, value: string | null, onChange: (v: string) => void) => React.ReactNode) {
+function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => void, colors: any, missingFields: Set<string>, openPicker?: (category: string, current: string | null, onChange: (id: string) => void) => void, assetField?: (label: string, category: string, value: string | null, onChange: (v: string) => void) => React.ReactNode) {
   switch (block.blockType) {
     case 'background':
       return (<>
-        {assetField ? assetField('Asset', 'backgrounds', data.assetId, v => upd('assetId', v)) : <Field label="Asset" colors={colors}><TextInput value={data.assetId || ''} onChangeText={v => upd('assetId', v)} placeholder="Select background..." placeholderTextColor={colors.muted} style={S(colors)} /></Field>}
+        {assetField ? assetField('Asset', 'backgrounds', data.assetId, v => upd('assetId', v)) : <Field label="Asset" colors={colors} error={missingFields.has('Asset')}><TextInput value={data.assetId || ''} onChangeText={v => upd('assetId', v)} placeholder="Select background..." placeholderTextColor={colors.muted} style={S(colors, missingFields.has('Asset'))} /></Field>}
         <Field label="Transition" colors={colors}><OptBtns options={['fade','dissolve','instant','wipe']} value={data.transition} onChange={v => upd('transition', v)} colors={colors} /></Field>
         <Field label="Duration (ms)" colors={colors}><TextInput value={String(data.duration || 500)} onChangeText={v => upd('duration', parseInt(v)||500)} placeholder="500" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
       </>);
 
     case 'character':
       return (<>
-        {assetField ? assetField('Character', 'characters', data.characterId, v => upd('characterId', v)) : <Field label="Character" colors={colors}><TextInput value={data.characterId || ''} onChangeText={v => upd('characterId', v)} placeholder="Select character..." placeholderTextColor={colors.muted} style={S(colors)} /></Field>}
+        {assetField ? assetField('Character', 'characters', data.characterId, v => upd('characterId', v)) : <Field label="Character" colors={colors} error={missingFields.has('Character')}><TextInput value={data.characterId || ''} onChangeText={v => upd('characterId', v)} placeholder="Select character..." placeholderTextColor={colors.muted} style={S(colors, missingFields.has('Character'))} /></Field>}
         {assetField ? assetField('Sprite', 'sprites', data.spriteId, v => upd('spriteId', v)) : <Field label="Sprite" colors={colors}><TextInput value={data.spriteId || ''} onChangeText={v => upd('spriteId', v)} placeholder="Select sprite..." placeholderTextColor={colors.muted} style={S(colors)} /></Field>}
         <Field label="Position" colors={colors}><OptBtns options={['far-left','left','center','right','far-right']} value={data.position} onChange={v => upd('position', v)} colors={colors} /></Field>
         <Field label="Entrance" colors={colors}><OptBtns options={['instant','fade','slide-left','slide-right','zoom']} value={data.transition} onChange={v => upd('transition', v)} colors={colors} /></Field>
@@ -137,7 +143,7 @@ function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => 
 
     case 'text':
       return (<>
-        <Field label="Content" colors={colors}><TextInput value={data.content || ''} onChangeText={v => upd('content', v)} placeholder="Enter narration text..." placeholderTextColor={colors.muted} multiline numberOfLines={4} style={[S(colors), { minHeight: 80, textAlignVertical: 'top' }]} /></Field>
+        <Field label="Content" colors={colors} error={missingFields.has('Content')}><TextInput value={data.content || ''} onChangeText={v => upd('content', v)} placeholder="Enter narration text..." placeholderTextColor={colors.muted} multiline numberOfLines={4} style={[S(colors, missingFields.has('Content')), { minHeight: 80, textAlignVertical: 'top' }]} /></Field>
         <Field label="Anchor To" colors={colors}><OptBtns options={['background','character']} value={data.anchorTo} onChange={v => upd('anchorTo', v)} colors={colors} /></Field>
         <Field label="Typewriter Speed (0-1)" colors={colors}><TextInput value={String(data.typewriterSpeed || 0.5)} onChangeText={v => upd('typewriterSpeed', parseFloat(v)||0.5)} placeholder="0.5" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
       </>);
@@ -182,7 +188,7 @@ function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => 
 
     case 'music':
       return (<>
-        {assetField ? assetField('Asset', 'music', data.assetId, v => upd('assetId', v)) : <Field label="Asset" colors={colors}><TextInput value={data.assetId || ''} onChangeText={v => upd('assetId', v)} placeholder="Select music..." placeholderTextColor={colors.muted} style={S(colors)} /></Field>}
+        {assetField ? assetField('Asset', 'music', data.assetId, v => upd('assetId', v)) : <Field label="Asset" colors={colors} error={missingFields.has('Asset')}><TextInput value={data.assetId || ''} onChangeText={v => upd('assetId', v)} placeholder="Select music..." placeholderTextColor={colors.muted} style={S(colors, missingFields.has('Asset'))} /></Field>}
         <Field label="Action" colors={colors}><OptBtns options={['play','stop','pause','fade']} value={data.action} onChange={v => upd('action', v)} colors={colors} /></Field>
         <Field label="Volume (0-100)" colors={colors}><TextInput value={String(Math.round((data.volume||0.8)*100))} onChangeText={v => upd('volume', (parseInt(v)||80)/100)} placeholder="80" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
         <Toggle label="Loop" value={!!data.loop} onChange={v => upd('loop', v)} colors={colors} />
@@ -191,7 +197,7 @@ function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => 
 
     case 'sound':
       return (<>
-        {assetField ? assetField('Asset', 'sfx', data.assetId, v => upd('assetId', v)) : <Field label="Asset" colors={colors}><TextInput value={data.assetId || ''} onChangeText={v => upd('assetId', v)} placeholder="Select sound..." placeholderTextColor={colors.muted} style={S(colors)} /></Field>}
+        {assetField ? assetField('Asset', 'sfx', data.assetId, v => upd('assetId', v)) : <Field label="Asset" colors={colors} error={missingFields.has('Asset')}><TextInput value={data.assetId || ''} onChangeText={v => upd('assetId', v)} placeholder="Select sound..." placeholderTextColor={colors.muted} style={S(colors, missingFields.has('Asset'))} /></Field>}
         <Field label="Action" colors={colors}><OptBtns options={['play','stop']} value={data.action} onChange={v => upd('action', v)} colors={colors} /></Field>
         <Field label="Volume (0-100)" colors={colors}><TextInput value={String(Math.round((data.volume||0.8)*100))} onChangeText={v => upd('volume', (parseInt(v)||80)/100)} placeholder="80" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
         <Toggle label="Loop" value={!!data.loop} onChange={v => upd('loop', v)} colors={colors} />
@@ -200,7 +206,7 @@ function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => 
 
     case 'interactive_object':
       return (<>
-        <Field label="Object Name" colors={colors}><TextInput value={data.name || ''} onChangeText={v => upd('name', v)} placeholder="Enter object name..." placeholderTextColor={colors.muted} style={S(colors)} /></Field>
+        <Field label="Object Name" colors={colors} error={missingFields.has('Object Name')}><TextInput value={data.name || ''} onChangeText={v => upd('name', v)} placeholder="Enter object name..." placeholderTextColor={colors.muted} style={S(colors, missingFields.has('Object Name'))} /></Field>
         {assetField ? assetField('Sprite', 'sprites', data.assetId, v => upd('assetId', v)) : <Field label="Sprite" colors={colors}><TextInput value={data.assetId || ''} onChangeText={v => upd('assetId', v)} placeholder="Select sprite..." placeholderTextColor={colors.muted} style={S(colors)} /></Field>}
         <Field label="Position X (%)" colors={colors}><TextInput value={String(data.position?.x ?? 50)} onChangeText={v => upd('position', { ...(data.position||{}), x: parseInt(v)||0 })} placeholder="50" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
         <Field label="Position Y (%)" colors={colors}><TextInput value={String(data.position?.y ?? 50)} onChangeText={v => upd('position', { ...(data.position||{}), y: parseInt(v)||0 })} placeholder="50" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
@@ -220,7 +226,7 @@ function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => 
 
     case 'variable':
       return (<>
-        <Field label="Variable Name" colors={colors}><TextInput value={data.variableName || ''} onChangeText={v => upd('variableName', v)} placeholder="Enter variable name..." placeholderTextColor={colors.muted} style={S(colors)} /></Field>
+        <Field label="Variable Name" colors={colors} error={missingFields.has('Variable Name')}><TextInput value={data.variableName || ''} onChangeText={v => upd('variableName', v)} placeholder="Enter variable name..." placeholderTextColor={colors.muted} style={S(colors, missingFields.has('Variable Name'))} /></Field>
         <Field label="Operation" colors={colors}><OptBtns options={['set','add','subtract','multiply','toggle']} value={data.operation} onChange={v => upd('operation', v)} colors={colors} /></Field>
         {data.operation === 'toggle' ? (
           <Toggle label="Value" value={data.value === true || data.value === 'true'} onChange={v => upd('value', v)} colors={colors} />

@@ -56,7 +56,7 @@ interface EditorStore {
   reset: () => void;
 }
 
-const initialState: Omit<EditorStore, '_undoStack' | '_redoStack' | 'setScene' | 'hydrateSceneDraft' | 'setSceneName' | 'addBlock' | 'removeBlock' | 'updateBlock' | 'moveBlock' | 'duplicateBlock' | 'toggleBlockCollapsed' | 'toggleBlockEnabled' | 'selectBlock' | 'undo' | 'redo' | 'setViewMode' | 'setShowMiniPreview' | 'setShowBlockLibrary' | 'setPanelWidths' | 'setBlockSearchQuery' | 'searchBlocks' | 'clearTimeline' | 'loadTimeline' | 'reset'> = {
+const initialState: Omit<EditorStore, '_undoStack' | '_redoStack' | 'setScene' | 'hydrateSceneDraft' | 'setSceneName' | 'addBlock' | 'removeBlock' | 'updateBlock' | 'moveBlock' | 'duplicateBlock' | 'toggleBlockCollapsed' | 'toggleBlockEnabled' | 'selectBlock' | 'undo' | 'redo' | 'setViewMode' | 'setShowMiniPreview' | 'setShowBlockLibrary' | 'setPanelWidths' | 'setBlockSearchQuery' | 'setIsSaving' | 'searchBlocks' | 'clearTimeline' | 'loadTimeline' | 'reset'> = {
   sceneId: null,
   sceneName: '',
   timeline: [],
