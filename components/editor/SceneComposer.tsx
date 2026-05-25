@@ -192,6 +192,16 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
           )}
         </View>
 
+      {/* Undo/Redo bar for phone */}
+      <View style={{ flexDirection: 'row', justifyContent: 'center', paddingVertical: 8, gap: 24, borderTopWidth: 1, borderTopColor: colors.border }}>
+        <Pressable onPress={undo} disabled={!canUndo} style={{ opacity: canUndo ? 1 : 0.3, padding: 8 }}>
+          <Text style={{ color: colors.primary, fontSize: 16 }}>↩</Text>
+        </Pressable>
+        <Pressable onPress={redo} disabled={!canRedo} style={{ opacity: canRedo ? 1 : 0.3, padding: 8 }}>
+          <Text style={{ color: colors.primary, fontSize: 16 }}>↪</Text>
+        </Pressable>
+      </View>
+
       <SceneSelector
         visible={showSceneSelector}
         onClose={handleSceneSelectorClose}
@@ -222,6 +232,14 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
         <Pressable onPress={handleSave} style={{ padding: 8 }}>
           <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>{isDirty ? '💾*' : '💾'}</Text>
         </Pressable>
+        <View style={{ flexDirection: 'row', gap: 8, marginRight: 12 }}>
+          <Pressable onPress={undo} disabled={!canUndo} style={{ opacity: canUndo ? 1 : 0.3, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.foreground, fontSize: 12 }}>↩ Undo</Text>
+          </Pressable>
+          <Pressable onPress={redo} disabled={!canRedo} style={{ opacity: canRedo ? 1 : 0.3, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.foreground, fontSize: 12 }}>↪ Redo</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={{ flexDirection: 'row', flex: 1, overflow: 'hidden' }}>
