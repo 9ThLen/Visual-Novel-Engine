@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useStoryState, useStoryActions } from '@/lib/story-hooks';
 import { resolveRuntimeCurrentScene } from '@/lib/runtime-story';
+import { getCanonicalSceneRecordFromState } from '@/lib/canonical-scene';
 import { resolveCanonicalStartSceneId } from '@/lib/scene-operations';
 import { useAppStore } from '@/stores/use-app-store';
 import type { PlaybackState, Story } from '@/lib/types';
+import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import demoStory from '@/assets/demo-story.json';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 import { shouldReusePlaybackState } from '@/lib/reader-launch';
@@ -21,6 +23,7 @@ export function useReaderInitialization(
   // Safety timeout: force loading to resolve after 10s even if initialization hangs
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /** @deprecated Use sceneRecord/timeline instead */
   const currentScene = useMemo(() => {
     if (!currentStory || !playbackState || playbackState.storyId !== currentStory.id) return null;
 
@@ -29,6 +32,19 @@ export function useReaderInitialization(
       playbackState
     );
   }, [currentStory, playbackState, sceneRecordsByStory, scenesByStory]);
+
+  const currentSceneRecord: SceneRecord | null = useMemo(() => {
+    if (!currentStory || !playbackState) return null;
+    return getCanonicalSceneRecordFromState(
+      { scenesByStory, sceneRecordsByStory },
+      playbackState.storyId,
+      playbackState.currentSceneId,
+    ) ?? null;
+  }, [currentStory, playbackState, sceneRecordsByStory, scenesByStory]);
+
+  const currentTimeline: TimelineStep[] = useMemo(() => {
+    return currentSceneRecord?.timeline ?? [];
+  }, [currentSceneRecord]);
 
   const stateRef = useRef({ currentStory, playbackState });
 
@@ -124,5 +140,5 @@ export function useReaderInitialization(
     }
   }, [currentScene, currentStory, playbackState]);
 
-  return { isLoading, currentScene, story: currentStory, playbackState, updatePlaybackState };
+  return { isLoading, currentScene, sceneRecord: currentSceneRecord, timeline: currentTimeline, story: currentStory, playbackState, updatePlaybackState };
 }

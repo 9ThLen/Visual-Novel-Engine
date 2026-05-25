@@ -1,6 +1,7 @@
 import demoStory from '@/assets/demo-story.json';
 import type { CanonicalSceneStateSnapshot } from '@/lib/canonical-scene';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
+/** @deprecated Use direct TimelineStep[] access via useSceneExecutor */
 import { sceneRecordToStoryScene } from '@/lib/scene-record-adapter';
 import { StoryDomain } from '@/lib/story-domain';
 import type { PlaybackState, SaveSlot, Story, StoryScene } from '@/lib/types';

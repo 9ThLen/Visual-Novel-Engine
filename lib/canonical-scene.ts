@@ -1,4 +1,4 @@
-import { sceneRecordToStoryScene, storySceneToSceneRecordDraft } from '@/lib/scene-record-adapter';
+import { storySceneToSceneRecordDraft, sceneRecordToStoryScene } from '@/lib/scene-record-adapter';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { StoryScene } from '@/lib/types';
 
