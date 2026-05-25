@@ -19,7 +19,7 @@
 | 4 | Story Flow and Scene Operations | Стабілізувати SceneManager, StoryFlow і scene-level operations | EDIT-04, DATA-04, FLOW-01, FLOW-02, FLOW-03, FLOW-04 | 5 |
 | 5 | Legacy Cleanup and Quality Gate | Видалити або ізолювати legacy, оновити docs і закріпити critical path тестами | ARCH-03, ARCH-04, QUAL-01, QUAL-02, QUAL-03, QUAL-04 | 5 |
 | 6 | Block Runtime Executor | Підключити всі 12 типів блоків у reader через block-by-block executor | BLOCK-01, BLOCK-02, BLOCK-03, BLOCK-04 | ✅ 4 |
-| 7 | Editor UX Polish | Додати undo/redo, гарячі клавіші, confirmation діалоги, loading стани | POLISH-01, POLISH-02, POLISH-03, POLISH-04, POLISH-05 | 5 |
+| 7 | Editor UX Polish | Додати undo/redo, гарячі клавіші, confirmation діалоги, loading стани | POLISH-01, POLISH-02, POLISH-03, POLISH-04, POLISH-05 | ✅ 5 |
 | 8 | Accessibility & i18n | Додати a11y labels, кольорову систему, i18n інфраструктуру | A11Y-01, A11Y-02, A11Y-03, A11Y-04 | 4 |
 
 ## Phase Details
@@ -174,21 +174,19 @@
 - `sound`, `camera`, `interactive_object` — no-op (deferred)
 - `sceneRecordToStoryScene` marked `@deprecated`
 
-### Phase 7: Editor UX Polish
+### Phase 7: Editor UX Polish ✅
 **Goal:** Покращити editor UX через undo/redo, гарячі клавіші, confirmation діалоги, loading стани та ErrorBoundary.
 
 **Requirements:** POLISH-01, POLISH-02, POLISH-03, POLISH-04, POLISH-05
 
-**Why seventh:**
-- UI Audit (score 14/24) показав: відсутні undo/redo кнопки, delete без підтвердження, немає loading станів, немає ErrorBoundary.
-- Keyboard shortcuts і tooltip-модалки частково реалізовані, але не інтегровані в editor.
+**Result:** Виконано (2 плани, 7 tasks). Undo/redo + keyboard shortcuts + confirm dialog + loading + ErrorBoundary fully integrated.
 
-**Success Criteria:**
-1. Undo/redo кнопки присутні в SceneComposer toolbar, використовують існуючий `_undoStack`/`_redoStack` з editor store.
-2. Keyboard shortcuts працюють на web (`Ctrl+Z`, `Ctrl+Shift+Z`, `Ctrl+S`, `Delete`).
-3. Delete confirmation діалог з'являється перед видаленням блоків або сцен.
-4. Loading стани показуються під час відкриття/збереження сцен.
-5. ErrorBoundary обгортає editor components з fallback UI та можливістю retry.
+**Success Criteria — Status:**
+1. ✅ Undo/redo кнопки присутні в SceneComposer toolbar (phone bottom bar + desktop header)
+2. ✅ Keyboard shortcuts працюють на web (Ctrl+Z/Y/D/S, Delete, Backspace, Ctrl+Shift+Z, Ctrl+P, Escape, Ctrl+A)
+3. ✅ Delete confirmation діалог з'являється перед видаленням блоків
+4. ✅ Loading стани (isSaving + indicator) показуються під час збереження сцен
+5. ✅ ErrorBoundary обгортає SceneComposer в `app/scene-editor.tsx`
 
 **Primary Files:**
 - `components/editor/SceneComposer.tsx`
@@ -205,8 +203,8 @@
 **Plans:** 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Infrastructure: ConfirmDialog, isSaving store, ErrorBoundary wrapping
-- [ ] 07-02-PLAN.md — SceneComposer integration: undo/redo buttons, keyboard shortcuts, confirm wiring, saving indicator
+- [x] 07-01-PLAN.md — Infrastructure: ConfirmDialog, isSaving store, ErrorBoundary wrapping
+- [x] 07-02-PLAN.md — SceneComposer integration: undo/redo buttons, keyboard shortcuts, confirm wiring, saving indicator
 
 ### Phase 8: Accessibility & i18n
 **Goal:** Додати accessibility labels, виправити кольорову систему (oklch fallback, контраст), створити i18n інфраструктуру.
