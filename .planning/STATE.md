@@ -9,10 +9,10 @@ See: `.planning/PROJECT.md` (updated 2026-05-24)
 
 ## Status
 
-- **Project status:** Phase 6 Block Runtime Executor виконано (3/3 плани); Phase 7 сплановано (2 плани)
-- **Current phase:** 7
-- **Current phase name:** Editor UX Polish
-- **Next expected command:** `/gsd-execute-phase` для Phase 7
+- **Project status:** Phase 6 та Phase 7 виконано; Phase 8 сплановано
+- **Current phase:** 8
+- **Current phase name:** Accessibility & i18n
+- **Next expected command:** `Phase 8` is defined in ROADMAP.md; needs discussion & planning before execution
 
 ## Active Decisions
 
@@ -38,7 +38,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-24)
 
 - **Roadmap phases:** 8
 - **Phase 1 requirements:** ARCH-01, ARCH-02, DATA-01
-- **Planning status:** Phases 1-6 executed; Phases 7-8 defined in ROADMAP; Phase 7 planned (2 plans); milestone archive pending
+- **Planning status:** Phases 1-7 executed; Phase 8 defined in ROADMAP; milestone archive pending
 
 ## Phase 6 Key Results
 
@@ -57,4 +57,14 @@ See: `.planning/PROJECT.md` (updated 2026-05-24)
 - `preview-step-state.ts` kept for test compat but unused in production
 
 ---
-*Last updated: 2026-05-25 — Phase 6 complete (Block Runtime Executor)*
+## Phase 7 Key Results
+
+- `components/ui/ConfirmDialog.tsx` — modal-based confirmation dialog with destructive mode
+- `stores/use-editor-store.ts` — `isSaving` flag + `setIsSaving` action for transient loading state
+- `app/scene-editor.tsx` — wrapped with `<ErrorBoundary>` for editor-specific error isolation
+- `components/editor/SceneComposer.tsx` — undo/redo buttons in phone bottom bar and desktop header, delete confirmation dialog, keyboard shortcuts (Ctrl+Z/Y/D/S, Delete, Backspace, etc.), saving indicator
+- Multiple commits with 3 plans + 1 plan of 5 tasks, all passing `npm run check`
+
+---
+
+*Last updated: 2026-05-25 — Phase 6 & 7 complete (Block Runtime Executor + Editor UX Polish)*
