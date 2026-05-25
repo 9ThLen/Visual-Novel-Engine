@@ -128,7 +128,7 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
           🧱 Block Library
         </Text>
         <TextInput
-          dataSet={{ searchInput: true }}
+          {...({ dataSet: { searchInput: true } } as any)}
           value={query}
           onChangeText={setQuery}
           placeholder="Search blocks..."

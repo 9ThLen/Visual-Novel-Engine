@@ -45,7 +45,7 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
   const isPhone = layout.deviceType === 'phone';
 
   const {
-    sceneName, timeline, isDirty, selectedBlockId,
+    sceneName, timeline, isDirty, isSaving, selectedBlockId,
     addBlock, removeBlock, updateBlock, moveBlock, duplicateBlock, toggleBlockCollapsed,
     undo, redo, selectBlock, setSceneName, hydrateSceneDraft, setIsSaving,
   } = useEditorStore();
@@ -75,27 +75,6 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
   React.useEffect(() => {
     hydrateSceneDraft(initialSceneDraft);
   }, [hydrateSceneDraft, initialSceneDraft]);
-
-  useEditorShortcuts({
-    onUndo: undo,
-    onRedo: redo,
-    onDuplicate: selectedBlockId ? () => duplicateBlock(selectedBlockId) : undefined,
-    onDelete: selectedBlockId ? () => setPendingDeleteId(selectedBlockId) : undefined,
-  });
-
-  useKeyboardShortcuts({
-    shortcuts: {
-      redo_shiftz: { key: 'z', ctrl: true, shift: true, handler: redo },
-      save: { ...COMMON_SHORTCUTS.save, handler: handleSave },
-      preview: { ...COMMON_SHORTCUTS.preview, handler: handlePreview },
-      escape: { ...COMMON_SHORTCUTS.escape, handler: () => selectBlock(null) },
-      delete_backspace: { key: 'backspace', handler: () => selectedBlockId && setPendingDeleteId(selectedBlockId) },
-      focus_search: {
-        key: 'a', ctrl: true,
-        handler: () => document.querySelector<HTMLInputElement>('[data-search-input]')?.focus(),
-      },
-    },
-  });
 
   const handleBlockSelect = useCallback((stepId: string | null) => {
     selectBlock(stepId);
@@ -167,6 +146,27 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
     if (pendingDeleteId) removeBlock(pendingDeleteId);
     setPendingDeleteId(null);
   }, [pendingDeleteId, removeBlock]);
+
+  useEditorShortcuts({
+    onUndo: undo,
+    onRedo: redo,
+    onDuplicate: selectedBlockId ? () => duplicateBlock(selectedBlockId) : undefined,
+    onDelete: selectedBlockId ? () => setPendingDeleteId(selectedBlockId) : undefined,
+  });
+
+  useKeyboardShortcuts({
+    shortcuts: {
+      redo_shiftz: { key: 'z', ctrl: true, shift: true, handler: redo },
+      save: { ...COMMON_SHORTCUTS.save, handler: handleSave },
+      preview: { ...COMMON_SHORTCUTS.preview, handler: handlePreview },
+      escape: { ...COMMON_SHORTCUTS.escape, handler: () => selectBlock(null) },
+      delete_backspace: { key: 'backspace', handler: () => selectedBlockId && setPendingDeleteId(selectedBlockId) },
+      focus_search: {
+        key: 'a', ctrl: true,
+        handler: () => document.querySelector<HTMLInputElement>('[data-search-input]')?.focus(),
+      },
+    },
+  });
 
   // Phone layout
   if (isPhone) {
