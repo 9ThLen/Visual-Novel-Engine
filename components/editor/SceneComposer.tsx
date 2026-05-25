@@ -29,6 +29,7 @@ import { MiniPreview } from './MiniPreview';
 import { SceneSelector } from './SceneSelector';
 import { getPhoneComposerPanel } from '@/lib/mobile-composer-layout';
 import { useEditorShortcuts, useKeyboardShortcuts, COMMON_SHORTCUTS } from '@/hooks/use-keyboard-shortcuts';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface SceneComposerProps {
   storyId: string;
@@ -46,7 +47,7 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
   const {
     sceneName, timeline, isDirty, selectedBlockId,
     addBlock, removeBlock, updateBlock, moveBlock, duplicateBlock, toggleBlockCollapsed,
-    undo, redo, selectBlock, setSceneName, hydrateSceneDraft,
+    undo, redo, selectBlock, setSceneName, hydrateSceneDraft, setIsSaving,
   } = useEditorStore();
 
   const selectedBlock = useEditorStore(selectSelectedBlock);
@@ -58,6 +59,7 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
   const [showProperties, setShowProperties] = useState(false);
   const [showMiniPreview, setShowMiniPreview] = useState(true);
   const [showSceneSelector, setShowSceneSelector] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const phonePanel = getPhoneComposerPanel({
     showBlockLibrary,
     showProperties,
@@ -116,6 +118,7 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
   }, [addBlock, isPhone]);
 
   const handleSave = useCallback(() => {
+    setIsSaving(true);
     const draft = {
       sceneId,
       sceneName,
@@ -128,7 +131,8 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
 
     useAppStore.getState().saveSceneRecord(record);
     useEditorStore.setState({ isDirty: false });
-  }, [storyId, sceneId, sceneName, timeline]);
+    setTimeout(() => setIsSaving(false), 500);
+  }, [storyId, sceneId, sceneName, timeline, setIsSaving]);
 
   const handlePreview = useCallback(() => {
     router.push({ pathname: '/preview', params: { storyId, sceneId } });
@@ -159,6 +163,11 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
     });
   }, [storyId]);
 
+  const handleDeleteConfirm = useCallback(() => {
+    if (pendingDeleteId) removeBlock(pendingDeleteId);
+    setPendingDeleteId(null);
+  }, [pendingDeleteId, removeBlock]);
+
   // Phone layout
   if (isPhone) {
     return (
@@ -177,7 +186,7 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
             placeholder="Scene name" placeholderTextColor={colors.muted}
           />
           <Pressable onPress={handleSave} style={{ padding: 8 }}>
-            <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>{isDirty ? '💾*' : '💾'}</Text>
+            <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>{isSaving ? '💾✓' : isDirty ? '💾*' : '💾'}</Text>
           </Pressable>
         </View>
 
@@ -202,13 +211,13 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
           )}
           {phonePanel === 'timeline' && (
             <View style={{ flex: 1 }}>
-              <TimelinePanel timeline={timeline} selectedBlockId={selectedBlockId} onBlockSelect={handleBlockSelect} onBlockAdd={handleAddBlock} onBlockRemove={removeBlock} onBlockMove={moveBlock} onBlockDuplicate={duplicateBlock} onBlockToggleCollapse={toggleBlockCollapsed} />
+              <TimelinePanel timeline={timeline} selectedBlockId={selectedBlockId} onBlockSelect={handleBlockSelect} onBlockAdd={handleAddBlock} onBlockRemove={(id: string) => setPendingDeleteId(id)} onBlockMove={moveBlock} onBlockDuplicate={duplicateBlock} onBlockToggleCollapse={toggleBlockCollapsed} />
             </View>
           )}
           {phonePanel === 'properties' && selectedBlock && (
             <View style={{ flex: 1, borderLeftWidth: 0, borderLeftColor: colors.border, backgroundColor: colors.surface }}>
               <ScrollView style={{ flex: 1 }}>
-                <PropertiesPanel block={selectedBlock} onUpdate={(u: Partial<TimelineStep>) => updateBlock(selectedBlock.id, u)} onDelete={() => removeBlock(selectedBlock.id)} onDuplicate={() => duplicateBlock(selectedBlock.id)} onClose={() => handleBlockSelect(null)} />
+                <PropertiesPanel block={selectedBlock} onUpdate={(u: Partial<TimelineStep>) => updateBlock(selectedBlock.id, u)} onDelete={() => setPendingDeleteId(selectedBlock.id)} onDuplicate={() => duplicateBlock(selectedBlock.id)} onClose={() => handleBlockSelect(null)} />
               </ScrollView>
             </View>
           )}
@@ -231,6 +240,16 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
         onConnectScenes={handleConnectScenes}
         storyScenes={storyScenes}
       />
+      <ConfirmDialog
+        visible={pendingDeleteId !== null}
+        title="Delete Block"
+        message="Are you sure you want to delete this block? This action can be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setPendingDeleteId(null)}
+        destructive
+      />
     </View>
   );
 }
@@ -252,7 +271,7 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
           placeholder="Scene name" placeholderTextColor={colors.muted}
         />
         <Pressable onPress={handleSave} style={{ padding: 8 }}>
-          <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>{isDirty ? '💾*' : '💾'}</Text>
+          <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>{isSaving ? '💾✓' : isDirty ? '💾*' : '💾'}</Text>
         </Pressable>
         <View style={{ flexDirection: 'row', gap: 8, marginRight: 12 }}>
           <Pressable onPress={undo} disabled={!canUndo} style={{ opacity: canUndo ? 1 : 0.3, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}>
@@ -267,12 +286,12 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
       <View style={{ flexDirection: 'row', flex: 1, overflow: 'hidden' }}>
         <BlockLibraryPanel onBlockTap={handleAddBlock} />
         <View style={{ flex: 1 }}>
-          <TimelinePanel timeline={timeline} selectedBlockId={selectedBlockId} onBlockSelect={handleBlockSelect} onBlockAdd={handleAddBlock} onBlockRemove={removeBlock} onBlockMove={moveBlock} onBlockDuplicate={duplicateBlock} onBlockToggleCollapse={toggleBlockCollapsed} />
+          <TimelinePanel timeline={timeline} selectedBlockId={selectedBlockId} onBlockSelect={handleBlockSelect} onBlockAdd={handleAddBlock} onBlockRemove={(id: string) => setPendingDeleteId(id)} onBlockMove={moveBlock} onBlockDuplicate={duplicateBlock} onBlockToggleCollapse={toggleBlockCollapsed} />
         </View>
         {selectedBlock && (
           <View style={{ width: 300, borderLeftWidth: 1, borderLeftColor: colors.border, backgroundColor: colors.surface }}>
             <ScrollView style={{ flex: 1 }}>
-              <PropertiesPanel block={selectedBlock} onUpdate={(u: Partial<TimelineStep>) => updateBlock(selectedBlock.id, u)} onDelete={() => removeBlock(selectedBlock.id)} onDuplicate={() => duplicateBlock(selectedBlock.id)} onClose={() => handleBlockSelect(null)} />
+              <PropertiesPanel block={selectedBlock} onUpdate={(u: Partial<TimelineStep>) => updateBlock(selectedBlock.id, u)} onDelete={() => setPendingDeleteId(selectedBlock.id)} onDuplicate={() => duplicateBlock(selectedBlock.id)} onClose={() => handleBlockSelect(null)} />
             </ScrollView>
           </View>
         )}
@@ -284,6 +303,16 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
         onSelectScene={handleSceneImport}
         onConnectScenes={handleConnectScenes}
         storyScenes={storyScenes}
+      />
+      <ConfirmDialog
+        visible={pendingDeleteId !== null}
+        title="Delete Block"
+        message="Are you sure you want to delete this block? This action can be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setPendingDeleteId(null)}
+        destructive
       />
     </View>
   );
