@@ -12,6 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
 import { useStoryState, useStoryActions } from '@/lib/story-hooks';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SceneComposer } from '@/components/editor/SceneComposer';
 import { createEditorSceneDraft } from '@/lib/editor-scene-draft';
 import { selectCanonicalSceneRecord, useAppStore } from '@/stores/use-app-store';
@@ -72,10 +73,12 @@ export default function SceneEditorScreen() {
   );
 
   return (
-    <SceneComposer
-      storyId={storyId}
-      sceneId={sceneId}
-      initialSceneDraft={initialSceneDraft}
-    />
+    <ErrorBoundary>
+      <SceneComposer
+        storyId={storyId}
+        sceneId={sceneId}
+        initialSceneDraft={initialSceneDraft}
+      />
+    </ErrorBoundary>
   );
 }
