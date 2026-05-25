@@ -16,6 +16,33 @@ import type { InteractiveAction, InteractiveObjectPosition } from '@/lib/interac
 import type { AudioTrigger } from '@/lib/audio-types';
 import type { Choice, StoryScene as LegacyStoryScene } from '@/lib/types';
 
+// ── Block Categories ────────────────────────────────────────────────────
+
+export type BlockCategory = 'scene' | 'dialogue' | 'media' | 'effects' | 'logic';
+
+export const BLOCK_CATEGORIES: { key: BlockCategory; label: string; icon: string }[] = [
+  { key: 'scene', label: 'Scene', icon: '🎬' },
+  { key: 'dialogue', label: 'Dialogue', icon: '💬' },
+  { key: 'media', label: 'Media', icon: '🎵' },
+  { key: 'effects', label: 'Effects', icon: '✨' },
+  { key: 'logic', label: 'Logic', icon: '⚙️' },
+];
+
+export const BLOCK_CATEGORY_MAP: Record<BlockType, BlockCategory> = {
+  background: 'scene',
+  character: 'scene',
+  interactive_object: 'scene',
+  text: 'dialogue',
+  dialogue: 'dialogue',
+  choice: 'dialogue',
+  music: 'media',
+  sound: 'media',
+  effect: 'effects',
+  camera: 'effects',
+  transition: 'effects',
+  variable: 'logic',
+};
+
 // ── Block Types (UI-level) ──────────────────────────────────────────────
 
 export type BlockType =
@@ -227,6 +254,7 @@ export interface SceneState {
   currentChoices: ChoiceOption[] | null;
   isTransitioning: boolean;
   transitionTarget: string | null;
+  currentStepIndex?: number;
 }
 
 export interface CharacterRuntimeState {

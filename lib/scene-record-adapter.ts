@@ -1,23 +1,7 @@
 import type { Choice, StoryScene } from '@/lib/types';
 import type { AudioTrigger } from '@/lib/audio-types';
 import type { ChoiceBlockData, SceneConnection, SceneRecord, SceneState, TimelineStep } from '@/lib/engine/types';
-
-function createEmptySceneState(): SceneState {
-  return {
-    backgroundAssetId: null,
-    backgroundTransition: 'fade',
-    characters: [],
-    activeEffects: [],
-    musicTrackId: null,
-    musicPlaying: false,
-    musicVolume: 1,
-    variables: {},
-    dialogueHistory: [],
-    currentChoices: null,
-    isTransitioning: false,
-    transitionTarget: null,
-  };
-}
+import { createEmptySceneState } from '@/lib/engine/conditionUtils';
 
 function getSceneRecordPrimaryText(sceneRecord: SceneRecord): string {
   for (const step of sceneRecord.timeline) {
