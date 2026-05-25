@@ -162,6 +162,7 @@ function createMusicTimelineStep(scene: StoryScene): TimelineStep | null {
   };
 }
 
+/** @deprecated Use useSceneExecutor with TimelineStep[] instead. This adapter loses 8/12 block types. */
 export function sceneRecordToStoryScene(sceneRecord: SceneRecord): StoryScene {
   return {
     id: sceneRecord.id,

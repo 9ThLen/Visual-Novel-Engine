@@ -34,7 +34,7 @@ export default function ReaderScreen() {
   const [objDialogue, setObjDialogue] = useState<{ text: string; speaker?: string } | null>(null);
   const { t } = useI18n();
 
-  const { isLoading, currentScene, story, playbackState, updatePlaybackState } = useReaderInitialization(
+  const { isLoading, currentScene, sceneRecord, timeline, story, playbackState, updatePlaybackState } = useReaderInitialization(
     storyId ?? undefined,
     { resumeExisting },
   );
@@ -49,8 +49,6 @@ export default function ReaderScreen() {
 
   const navigateToScene = useCallback((sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
     if (!story || !playbackState) return;
-    const nextScene = story.scenes[sceneId];
-    if (!nextScene) return;
     const updated: PlaybackState = {
       storyId: story.id,
       currentSceneId: sceneId,
@@ -61,23 +59,14 @@ export default function ReaderScreen() {
     updatePlaybackState(updated);
   }, [story, playbackState, updatePlaybackState]);
 
-  const handleContinue = (targetSceneId?: string) => {
-    if (isLoading || !story || !playbackState) return;
-
+  const handleTransition = (targetSceneId: string | null) => {
+    if (isLoading || !playbackState) return;
     if (targetSceneId) {
-      navigateToScene(targetSceneId);
-      return;
-    }
-
-    const currentSceneData = story.scenes[playbackState.currentSceneId];
-    if (currentSceneData?.autoAdvance?.enabled && currentSceneData.autoAdvance.nextSceneId) {
-      navigateToScene(currentSceneData.autoAdvance.nextSceneId);
-      return;
-    }
-
-    const nextSceneId = currentSceneData?.choices[0]?.nextSceneId;
-    if (nextSceneId) {
-      navigateToScene(nextSceneId);
+      const updatedChoices = [
+        ...playbackState.choicesMade,
+        { sceneId: playbackState.currentSceneId, choiceId: 'transition' },
+      ];
+      navigateToScene(targetSceneId, updatedChoices);
     } else {
       void stopReaderPlayback(audioManager);
       if (router.canGoBack()) {
@@ -86,15 +75,6 @@ export default function ReaderScreen() {
         router.replace('/tabs');
       }
     }
-  };
-
-  const handleChoiceSelect = (choice: Choice) => {
-    if (isLoading || !playbackState || !choice.nextSceneId) return;
-    const updatedChoices = [
-      ...playbackState.choicesMade,
-      { sceneId: playbackState.currentSceneId, choiceId: choice.id },
-    ];
-    navigateToScene(choice.nextSceneId, updatedChoices);
   };
 
   const handleObjectSceneTransition = (sceneId: string) => {
@@ -118,8 +98,8 @@ export default function ReaderScreen() {
     }).catch(() => {});
   };
 
-  if (isLoading || !story || !currentScene) {
-    const timedOut = !isLoading && (!story || !currentScene);
+  if (isLoading || !story || !timeline) {
+    const timedOut = !isLoading && (!story || !timeline);
     return (
       <ScreenContainer className="items-center justify-center gap-4">
         <Text style={{ color: colors.foreground, fontSize: 16 }}>
@@ -166,9 +146,8 @@ export default function ReaderScreen() {
       </Pressable>
 
       <StoryReaderResponsive
-        scene={currentScene}
-        onContinue={handleContinue}
-        onChoiceSelect={handleChoiceSelect}
+        timeline={timeline}
+        onTransition={handleTransition}
         isLoading={isLoading}
         settings={settings}
         onHistoryVisibleChange={setHistoryOpen}
