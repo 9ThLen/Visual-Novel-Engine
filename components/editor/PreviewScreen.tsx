@@ -1,15 +1,15 @@
-/**
- * components/editor/PreviewScreen.tsx — Full preview mode
- */
-
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
 import { useEditorStore } from '@/stores/use-editor-store';
 import { useAppStore } from '@/stores/use-app-store';
+import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
 import { resolvePreviewTimeline } from '@/lib/runtime-story';
+import { resolveAssetUri } from '@/lib/asset-resolver';
+import { AudioPlayerService } from '@/lib/audio-player-service';
 
 export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: string }) {
   const router = useRouter();
@@ -34,61 +34,66 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   );
   const timeline = previewTimeline.timeline;
 
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const { sceneState, currentStepIndex, isComplete, isTyping, advance, selectChoice } =
+    useSceneExecutor(timeline);
+
   const [displayedText, setDisplayedText] = useState('');
-  const [showChoices, setShowChoices] = useState(false);
-  const [sceneState, setSceneState] = useState({
-    background: null as string | null,
-    characters: [] as Array<{ id: string; sprite: string; position: string }>,
-    music: null as string | null,
-  });
+  const audioServiceRef = useRef(new AudioPlayerService());
+  const typewriterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const currentStep = timeline[currentStepIndex];
 
-  useEffect(() => {
-    if (!currentStep) return;
+  const currentText = useMemo(() => {
+    if (!currentStep) return '';
     const data = currentStep.data as any;
-
-    switch (currentStep.blockType) {
-      case 'background':
-        if (data.assetId) {
-          setSceneState((s) => ({ ...s, background: data.assetId }));
-        }
-        break;
-      case 'character':
-        if (data.characterId) {
-          setSceneState((s) => ({
-            ...s,
-            characters: [...s.characters, { id: data.characterId, sprite: data.spriteId, position: data.position }],
-          }));
-        }
-        break;
-      case 'text':
-        if (data.content) {
-          typewriteText(data.content, data.typewriterSpeed || 0.5);
-        }
-        break;
-      case 'dialogue':
-        if (data.entries?.length > 0) {
-          const entry = data.entries[0];
-          typewriteText(`${entry.characterId}: ${entry.text}`, 0.5);
-        }
-        break;
-      case 'choice':
-        if (data.options?.length > 0) {
-          setShowChoices(true);
-        }
-        break;
-      case 'music':
-        if (data.assetId && data.action === 'play') {
-          setSceneState((s) => ({ ...s, music: data.assetId }));
-        }
-        break;
+    if (currentStep.blockType === 'text') return data.content || '';
+    if (currentStep.blockType === 'dialogue') {
+      const entry = data.entries?.[data.currentEntryIndex ?? 0] ?? data.entries?.[0];
+      return entry ? `${entry.characterId}: ${entry.text}` : '';
     }
-  }, [currentStepIndex, currentStep]);
+    return '';
+  }, [currentStep]);
 
-  const typewriteText = (text: string, speed: number) => {
+  const [backgroundSource, setBackgroundSource] = useState<number | { uri: string } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!sceneState.backgroundAssetId) {
+      setBackgroundSource(null);
+      return () => { active = false; };
+    }
+    resolveAssetUri(sceneState.backgroundAssetId)
+      .then((resolved) => {
+        if (!active || !resolved) {
+          if (active) setBackgroundSource(null);
+          return;
+        }
+        setBackgroundSource(typeof resolved === 'number' ? resolved : { uri: resolved });
+      })
+      .catch(() => { if (active) setBackgroundSource(null); });
+    return () => { active = false; };
+  }, [sceneState.backgroundAssetId]);
+
+  const prevMusicTrackRef = useRef<string | null>(null);
+  useEffect(() => {
+    const currentTrack = sceneState.musicTrackId;
+    if (currentTrack && currentTrack !== prevMusicTrackRef.current) {
+      void audioServiceRef.current.play('preview-bgm', currentTrack, {
+        volume: typeof sceneState.musicVolume === 'number' ? sceneState.musicVolume : 0.8,
+        loop: true,
+      });
+    } else if (!currentTrack && prevMusicTrackRef.current) {
+      void audioServiceRef.current.stop('preview-bgm', 300);
+    }
+    prevMusicTrackRef.current = currentTrack;
+  }, [sceneState.musicTrackId, sceneState.musicVolume]);
+
+  const typewriteText = useCallback((text: string) => {
+    if (typewriterIntervalRef.current) {
+      clearInterval(typewriterIntervalRef.current);
+      typewriterIntervalRef.current = null;
+    }
+    if (!text) { setDisplayedText(''); return; }
     setDisplayedText('');
     let i = 0;
     const interval = setInterval(() => {
@@ -96,54 +101,71 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
       setDisplayedText(text.substring(0, i));
       if (i >= text.length) {
         clearInterval(interval);
+        typewriterIntervalRef.current = null;
       }
-    }, (1 - speed) * 50 + 20);
-  };
+    }, 30);
+    typewriterIntervalRef.current = interval;
+  }, []);
+
+  useEffect(() => {
+    if (currentText && (currentStep?.blockType === 'text' || currentStep?.blockType === 'dialogue')) {
+      typewriteText(currentText);
+    } else {
+      setDisplayedText('');
+    }
+  }, [currentStepIndex, currentText, currentStep, typewriteText]);
+
+  useEffect(() => {
+    return () => {
+      if (typewriterIntervalRef.current) {
+        clearInterval(typewriterIntervalRef.current);
+        typewriterIntervalRef.current = null;
+      }
+      void audioServiceRef.current.cleanup();
+    };
+  }, []);
 
   const handleAdvance = useCallback(() => {
-    if (showChoices) return;
-    if (currentStepIndex < timeline.length - 1) {
-      setCurrentStepIndex((i) => i + 1);
-    } else {
-      setIsPlaying(false);
-    }
-  }, [currentStepIndex, timeline.length, showChoices]);
+    advance();
+  }, [advance]);
 
-  const handleChoiceSelect = (targetSceneId: string | null) => {
-    setShowChoices(false);
-    if (targetSceneId) {
-      router.replace({
-        pathname: '/scene-editor',
-        params: { storyId, sceneId: targetSceneId },
-      });
-    }
-  };
+  const handleChoiceSelect = useCallback((optionId: string) => {
+    selectChoice(optionId);
+  }, [selectChoice]);
 
   const handleBack = useCallback(() => {
+    void audioServiceRef.current.cleanup();
     router.back();
   }, [router]);
 
   const surfaceContainer = (colors as any)['surface-container'] || colors.surface;
   const secondaryColor = (colors as any).secondary || colors.primary;
+  const showChoices = !!sceneState.currentChoices;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
-      {/* Scene background */}
       <View style={{
         flex: 1,
-        backgroundColor: sceneState.background ? colors.primary + '20' : '#111224',
+        backgroundColor: backgroundSource ? '#111224' : '#111224',
         alignItems: 'center',
         justifyContent: 'center',
       }}>
-        {sceneState.background ? (
+        {backgroundSource ? (
+          <Image
+            source={backgroundSource}
+            style={{ position: 'absolute', inset: 0 }}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={200}
+          />
+        ) : sceneState.backgroundAssetId ? (
           <Text style={{ fontSize: 14, color: colors.muted }}>
-            🖼 {sceneState.background}
+            Loading background...
           </Text>
         ) : (
           <Text style={{ fontSize: 14, color: colors.muted + '60' }}>No background</Text>
         )}
 
-        {/* Characters */}
         {sceneState.characters.map((char, i) => (
           <View
             key={i}
@@ -160,13 +182,12 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
             }}
           >
             <Text style={{ fontSize: 10, color: colors.muted }}>
-              {char.id}
+              {char.characterId}
             </Text>
           </View>
         ))}
       </View>
 
-      {/* Dialogue box */}
       {!showChoices && displayedText ? (
         <Pressable
           onPress={handleAdvance}
@@ -186,13 +207,12 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
             {displayedText}
           </Text>
           <Text style={{ fontSize: 10, color: colors.muted, marginTop: 8, textAlign: 'right' }}>
-            Tap to continue ▶
+            {isTyping ? 'Tap to speed up' : 'Tap to continue ▶'}
           </Text>
         </Pressable>
       ) : null}
 
-      {/* Choices */}
-      {showChoices && currentStep && currentStep.blockType === 'choice' ? (
+      {showChoices && sceneState.currentChoices ? (
         <View style={{
           position: 'absolute',
           bottom: insets.bottom + 20,
@@ -200,10 +220,10 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
           right: 20,
           gap: 8,
         }}>
-          {(currentStep.data as any).options?.map((opt: any, i: number) => (
+          {sceneState.currentChoices.map((opt) => (
             <Pressable
-              key={opt.id || i}
-              onPress={() => handleChoiceSelect(opt.targetSceneId)}
+              key={opt.id}
+              onPress={() => handleChoiceSelect(opt.id)}
               style={{
                 backgroundColor: surfaceContainer,
                 borderRadius: 10,
@@ -214,14 +234,36 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
               }}
             >
               <Text style={{ fontSize: 14, color: colors.foreground, fontWeight: '500' }}>
-                {opt.text || `Choice ${i + 1}`}
+                {opt.text || `Choice ${opt.id}`}
               </Text>
             </Pressable>
           ))}
         </View>
       ) : null}
 
-      {/* Top controls */}
+      {isComplete && (
+        <View style={{
+          position: 'absolute',
+          bottom: insets.bottom + 20,
+          left: 20,
+          right: 20,
+        }}>
+          <Pressable
+            onPress={handleBack}
+            style={{
+              backgroundColor: surfaceContainer,
+              borderRadius: 12,
+              padding: 16,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ fontSize: 14, color: colors.foreground }}>
+              Scene complete — tap to exit preview
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
       <View style={{
         position: 'absolute',
         top: insets.top,
@@ -236,24 +278,9 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
         <Pressable onPress={handleBack} style={{ padding: 8 }}>
           <Text style={{ color: '#fff', fontSize: 14 }}>← Back</Text>
         </Pressable>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Pressable
-            onPress={() => setIsPlaying(!isPlaying)}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: 8,
-              backgroundColor: colors.primary,
-            }}
-          >
-            <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
-              {isPlaying ? '⏸ Pause' : '▶ Play'}
-            </Text>
-          </Pressable>
-          <Text style={{ color: '#fff', fontSize: 12, alignSelf: 'center' }}>
-            {currentStepIndex + 1}/{timeline.length}
-          </Text>
-        </View>
+        <Text style={{ color: '#fff', fontSize: 12, alignSelf: 'center' }}>
+          {currentStepIndex + 1}/{timeline.length}
+        </Text>
       </View>
     </View>
   );

@@ -64,6 +64,7 @@ export function buildRuntimeSceneSnapshot(
   return null;
 }
 
+/** @deprecated Build RuntimeSceneSnapshot via buildRuntimeSceneSnapshot directly */
 export function buildCompatibilityRuntimeSceneSnapshot(
   snapshot: RuntimeSceneStateSnapshot,
   storyId: string,
@@ -86,6 +87,7 @@ export function buildCompatibilityRuntimeSceneSnapshot(
   };
 }
 
+/** @deprecated Use sceneRecordsByStory/sceneRecordsByStory[storyId]?.[sceneId] directly */
 function getRuntimeSceneIds(snapshot: RuntimeStoryStateSnapshot, storyId: string): string[] {
   return Object.keys(snapshot.sceneRecordsByStory[storyId] || {});
 }
@@ -172,6 +174,7 @@ export function buildRuntimeLoadSnapshot(
   };
 }
 
+/** @deprecated Use SceneRecord + useSceneExecutor directly */
 export function resolveRuntimeCurrentScene(
   snapshot: RuntimeSceneStateSnapshot,
   playbackState: PlaybackState | null
