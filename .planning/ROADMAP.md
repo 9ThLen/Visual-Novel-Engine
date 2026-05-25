@@ -3,8 +3,8 @@
 **Created:** 2026-05-24
 **Project:** Visual Novel Engine Refresh
 **Roadmap Type:** Brownfield refactor and stabilization
-**Total v1 Requirements:** 23
-**Mapped Requirements:** 23
+**Total v1 Requirements:** 36
+**Mapped Requirements:** 36
 **Unmapped Requirements:** 0
 
 ## Roadmap Summary
@@ -18,6 +18,9 @@
 | 3 | Runtime and Persistence Alignment | Узгодити persisted data, preview, reader і autosave | DATA-02, DATA-03, PLAY-01, PLAY-02, PLAY-03 | 5 |
 | 4 | Story Flow and Scene Operations | Стабілізувати SceneManager, StoryFlow і scene-level operations | EDIT-04, DATA-04, FLOW-01, FLOW-02, FLOW-03, FLOW-04 | 5 |
 | 5 | Legacy Cleanup and Quality Gate | Видалити або ізолювати legacy, оновити docs і закріпити critical path тестами | ARCH-03, ARCH-04, QUAL-01, QUAL-02, QUAL-03, QUAL-04 | 5 |
+| 6 | Block Runtime Executor | Підключити всі 12 типів блоків у reader через block-by-block executor | BLOCK-01, BLOCK-02, BLOCK-03, BLOCK-04 | ✅ 4 |
+| 7 | Editor UX Polish | Додати undo/redo, гарячі клавіші, confirmation діалоги, loading стани | POLISH-01, POLISH-02, POLISH-03, POLISH-04, POLISH-05 | 5 |
+| 8 | Accessibility & i18n | Додати a11y labels, кольорову систему, i18n інфраструктуру | A11Y-01, A11Y-02, A11Y-03, A11Y-04 | 4 |
 
 ## Phase Details
 
@@ -146,6 +149,91 @@
 **Notes:**
 - Видалення legacy має йти тільки після підтвердження, що canonical path закриває потрібну поведінку.
 
+### Phase 6: Block Runtime Executor ✅
+**Goal:** Підключити всі 12 типів блоків у reader через block-by-block executor замість lossy `sceneRecordToStoryScene`.
+
+**Requirements:** BLOCK-01, BLOCK-02, BLOCK-03, BLOCK-04
+
+**Result:** Виконано (3/3 плани). Block-by-block executor працює в reader і PreviewScreen.
+
+**Success Criteria — Status:**
+1. ✅ `useSceneExecutor` hook виконує всі 12 типів блоків (6 halt+, 6 auto-exec)
+2. ✅ Reader показує Background, Character, Text/Dialogue, Choice, Variable, Music, Transition, Effect
+3. ✅ SceneState.variables доступні всьому executor; conditions перевіряються по variables
+4. ✅ PreviewScreen використовує той самий `useSceneExecutor` без дублювання логіки
+
+**Primary Files:**
+- `lib/engine/useSceneExecutor.ts`
+- `lib/engine/conditionUtils.ts`
+- `components/story-reader-responsive.tsx`
+- `components/editor/PreviewScreen.tsx`
+- `hooks/useReaderInitialization.ts`
+- `app/reader.tsx`
+
+**Notes:**
+- `sound`, `camera`, `interactive_object` — no-op (deferred)
+- `sceneRecordToStoryScene` marked `@deprecated`
+
+### Phase 7: Editor UX Polish
+**Goal:** Покращити editor UX через undo/redo, гарячі клавіші, confirmation діалоги, loading стани та ErrorBoundary.
+
+**Requirements:** POLISH-01, POLISH-02, POLISH-03, POLISH-04, POLISH-05
+
+**Why seventh:**
+- UI Audit (score 14/24) показав: відсутні undo/redo кнопки, delete без підтвердження, немає loading станів, немає ErrorBoundary.
+- Keyboard shortcuts і tooltip-модалки частково реалізовані, але не інтегровані в editor.
+
+**Success Criteria:**
+1. Undo/redo кнопки присутні в SceneComposer toolbar, використовують існуючий `_undoStack`/`_redoStack` з editor store.
+2. Keyboard shortcuts працюють на web (`Ctrl+Z`, `Ctrl+Shift+Z`, `Ctrl+S`, `Delete`).
+3. Delete confirmation діалог з'являється перед видаленням блоків або сцен.
+4. Loading стани показуються під час відкриття/збереження сцен.
+5. ErrorBoundary обгортає editor components з fallback UI та можливістю retry.
+
+**Primary Files:**
+- `components/editor/SceneComposer.tsx`
+- `components/editor/BlockLibraryPanel.tsx`
+- `hooks/use-keyboard-shortcuts.ts`
+- `components/ui/ConfirmDialog.tsx`
+- `components/ErrorBoundary.tsx`
+
+**Notes:**
+- Undo/redo store infrastructure вже готова (спайк 002 підтвердив).
+- Keyboard shortcuts hook готовий за адресою `hooks/use-keyboard-shortcuts.ts` (existing, with `useEditorShortcuts` + `useKeyboardShortcuts`).
+- `BlockEditor.tsx` не існує в codebase — замість нього використовується BlockLibraryPanel.
+
+**Plans:** 2 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Infrastructure: ConfirmDialog, isSaving store, ErrorBoundary wrapping
+- [ ] 07-02-PLAN.md — SceneComposer integration: undo/redo buttons, keyboard shortcuts, confirm wiring, saving indicator
+
+### Phase 8: Accessibility & i18n
+**Goal:** Додати accessibility labels, виправити кольорову систему (oklch fallback, контраст), створити i18n інфраструктуру.
+
+**Requirements:** A11Y-01, A11Y-02, A11Y-03, A11Y-04
+
+**Why eighth:**
+- UI Audit виявив: жодних accessibility labels, 10+ hardcoded `#fff`/`#000` без токенів, emoji-only buttons недоступні.
+- Це фінальний шар якості перед додаванням нових product features.
+
+**Success Criteria:**
+1. Всі інтерактивні елементи мають `accessibilityLabel` та `accessibilityRole`.
+2. Кольорова система використовує токени RuntimePalette замість hardcoded hex; oklch fallback працює в старих браузерах.
+3. i18n ключі визначені для основних UI текстів (editor toolbar, block labels, confirmation messages).
+4. Мінімальний contrast ratio 4.5:1 для тексту дотримано.
+
+**Primary Files:**
+- `components/**/*.tsx`
+- `lib/engine/types.ts` (RuntimePalette)
+- `lib/i18n/keys.ts`
+- `lib/i18n/uk.ts`
+- `lib/i18n/en.ts`
+
+**Notes:**
+- Виправлення контрасту має найвищий пріоритет серед a11y задач.
+- i18n — це тільки інфраструктура в цій фазі; фактичний переклад не обов'язковий.
+
 ## Execution Rules
 
 1. Не змішувати refactor-фікси між фазами, якщо вони не є блокером поточної фази.
@@ -166,4 +254,4 @@
 
 ---
 *Roadmap created: 2026-05-24*
-*Last updated: 2026-05-24 after initial roadmap definition*
+*Last updated: 2026-05-25 — added Phase 6 (Block Runtime Executor), Phase 7 (Editor UX Polish), Phase 8 (Accessibility & i18n)*
