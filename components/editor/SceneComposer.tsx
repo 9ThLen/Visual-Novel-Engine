@@ -27,6 +27,7 @@ import { TimelinePanel } from './TimelinePanel';
 import { PropertiesPanel } from './PropertiesPanel';
 import { MiniPreview } from './MiniPreview';
 import { SceneSelector } from './SceneSelector';
+import { getPhoneComposerPanel } from '@/lib/mobile-composer-layout';
 
 interface SceneComposerProps {
   storyId: string;
@@ -56,6 +57,11 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
   const [showProperties, setShowProperties] = useState(false);
   const [showMiniPreview, setShowMiniPreview] = useState(true);
   const [showSceneSelector, setShowSceneSelector] = useState(false);
+  const phonePanel = getPhoneComposerPanel({
+    showBlockLibrary,
+    showProperties,
+    hasSelectedBlock: Boolean(selectedBlock),
+  });
 
   // Get scenes from app store for connection mode
   const storyScenes = Object.values(sceneRecordsByStory[storyId] || {}).map((record) => ({
@@ -69,15 +75,22 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
 
   const handleBlockSelect = useCallback((stepId: string | null) => {
     selectBlock(stepId);
-    if (isPhone && stepId) {
-      setShowProperties(true);
-      setShowBlockLibrary(false);
+    if (isPhone) {
+      if (stepId) {
+        setShowProperties(true);
+        setShowBlockLibrary(false);
+      } else {
+        setShowProperties(false);
+      }
     }
   }, [selectBlock, isPhone]);
 
   const handleAddBlock = useCallback((blockType: BlockType) => {
     addBlock(blockType);
-    if (isPhone) setShowBlockLibrary(false);
+    if (isPhone) {
+      setShowBlockLibrary(false);
+      setShowProperties(false);
+    }
   }, [addBlock, isPhone]);
 
   const handleSave = useCallback(() => {
@@ -161,17 +174,17 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
           </Pressable>
         </View>
 
-        <View style={{ flexDirection: 'row', flex: 1 }}>
-          {showBlockLibrary && (
+        <View style={{ flex: 1 }}>
+          {phonePanel === 'blocks' && (
             <BlockLibraryPanel onBlockTap={handleAddBlock} />
           )}
-          {(!showBlockLibrary || isPhone) && (
+          {phonePanel === 'timeline' && (
             <View style={{ flex: 1 }}>
               <TimelinePanel timeline={timeline} selectedBlockId={selectedBlockId} onBlockSelect={handleBlockSelect} onBlockAdd={handleAddBlock} onBlockRemove={removeBlock} onBlockMove={moveBlock} onBlockDuplicate={duplicateBlock} onBlockToggleCollapse={toggleBlockCollapsed} />
             </View>
           )}
-          {selectedBlock && (
-            <View style={{ width: 300, borderLeftWidth: 1, borderLeftColor: colors.border, backgroundColor: colors.surface }}>
+          {phonePanel === 'properties' && selectedBlock && (
+            <View style={{ flex: 1, borderLeftWidth: 0, borderLeftColor: colors.border, backgroundColor: colors.surface }}>
               <ScrollView style={{ flex: 1 }}>
                 <PropertiesPanel block={selectedBlock} onUpdate={(u: Partial<TimelineStep>) => updateBlock(selectedBlock.id, u)} onDelete={() => removeBlock(selectedBlock.id)} onDuplicate={() => duplicateBlock(selectedBlock.id)} onClose={() => handleBlockSelect(null)} />
               </ScrollView>

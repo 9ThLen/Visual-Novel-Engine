@@ -4,13 +4,17 @@
  * Renders the timeline as a vertical list of colored blocks.
  * Each block has: colored left border, header with icon+label+actions,
  * content preview, and connectors between blocks.
- * Supports drag-and-drop reordering.
+ * Supports drag-and-drop reordering via react-native-reanimated-dnd.
  */
 
 import React, { useCallback } from 'react';
-import { View, Text, ScrollView, Pressable, FlatList } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DropProvider, SortableItem, useSortableList } from 'react-native-reanimated-dnd';
 import { useColors } from '@/hooks/use-colors';
 import { BLOCK_TYPE_INFO, type TimelineStep, type BlockType } from '@/lib/engine/types';
+import { isBlockComplete } from '@/lib/editor/block-validation';
 
 interface TimelinePanelProps {
   timeline: TimelineStep[];
@@ -23,6 +27,8 @@ interface TimelinePanelProps {
   onBlockToggleCollapse: (stepId: string) => void;
 }
 
+const ESTIMATED_BLOCK_HEIGHT = 80;
+
 export function TimelinePanel({
   timeline,
   selectedBlockId,
@@ -30,254 +36,23 @@ export function TimelinePanel({
   onBlockRemove,
   onBlockDuplicate,
   onBlockToggleCollapse,
+  onBlockMove,
 }: TimelinePanelProps) {
   const colors = useColors();
 
-  const renderBlock = useCallback(({ item: step, index }: { item: TimelineStep; index: number }) => {
-    const info = BLOCK_TYPE_INFO[step.blockType];
-    const isSelected = step.id === selectedBlockId;
+  const list = useSortableList({
+    data: timeline.map(t => ({ ...t, id: t.id })),
+    enableDynamicHeights: true,
+    estimatedItemHeight: ESTIMATED_BLOCK_HEIGHT,
+    itemKeyExtractor: (item) => item.id,
+  });
 
-    return (
-      <View>
-        {/* Connector line (above block, except first) */}
-        {index > 0 && (
-          <View style={{
-            alignItems: 'center',
-            paddingVertical: 2,
-          }}>
-            <View style={{
-              width: 2,
-              height: 16,
-              backgroundColor: colors.border,
-              borderRadius: 1,
-            }} />
-          </View>
-        )}
-
-        {/* Block card */}
-        <Pressable
-          onPress={() => onBlockSelect(isSelected ? null : step.id)}
-          style={({ pressed }) => ({
-            marginHorizontal: 8,
-            marginVertical: 2,
-            borderRadius: 10,
-            backgroundColor: isSelected
-              ? (colors as any)['surface-2'] || colors.surface
-              : (colors as any)['surface-container'] || colors.surface,
-            borderLeftWidth: 4,
-            borderLeftColor: step.enabled ? info.color : colors.border,
-            borderWidth: isSelected ? 2 : 0,
-            borderColor: isSelected ? colors.primary : 'transparent',
-            opacity: step.enabled ? 1 : 0.5,
-            elevation: isSelected ? 4 : 1,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: isSelected ? 0.3 : 0.1,
-            shadowRadius: 3,
-            transform: [{ scale: pressed ? 0.98 : 1 }],
-          })}
-        >
-          {/* Block header */}
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 10,
-            paddingVertical: 8,
-          }}>
-            {/* Drag handle */}
-            <View style={{
-              width: 20,
-              alignItems: 'center',
-              marginRight: 6,
-            }}>
-              <View style={{
-                width: 12,
-                height: 12,
-                borderRadius: 6,
-                backgroundColor: info.color + '40',
-              }} />
-            </View>
-
-            {/* Icon */}
-            <View style={{
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              backgroundColor: info.bgColor,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 8,
-            }}>
-              <Text style={{ fontSize: 14 }}>{info.icon}</Text>
-            </View>
-
-            {/* Label */}
-            <View style={{ flex: 1 }}>
-              <Text style={{
-                fontSize: 13,
-                fontWeight: '700',
-                color: colors.foreground,
-              }}>
-                {info.label}
-              </Text>
-              {!step.collapsed && info.description && (
-                <Text style={{
-                  fontSize: 10,
-                  color: colors.muted,
-                  marginTop: 1,
-                }}>
-                  {getBlockPreviewText(step, info.label)}
-                </Text>
-              )}
-            </View>
-
-            {/* Actions (visible when selected) */}
-            {isSelected && (
-              <View style={{ flexDirection: 'row', gap: 4 }}>
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); onBlockToggleCollapse(step.id); }}
-                  style={{ padding: 4 }}
-                >
-                  <Text style={{ fontSize: 12, color: colors.muted }}>
-                    {step.collapsed ? '▼' : '▲'}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); onBlockDuplicate(step.id); }}
-                  style={{ padding: 4 }}
-                >
-                  <Text style={{ fontSize: 12, color: colors.muted }}>📋</Text>
-                </Pressable>
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); onBlockRemove(step.id); }}
-                  style={{ padding: 4 }}
-                >
-                  <Text style={{ fontSize: 12, color: colors.error || '#ff6b6b' }}>🗑</Text>
-                </Pressable>
-              </View>
-            )}
-          </View>
-
-          {/* Block content (when expanded) */}
-          {!step.collapsed && renderBlockContent(step, colors)}
-        </Pressable>
-      </View>
-    );
-  }, [selectedBlockId, colors, onBlockSelect, onBlockRemove, onBlockDuplicate, onBlockToggleCollapse]);
-
-  const renderBlockContent = (step: TimelineStep, colors: any) => {
-    const data = step.data;
-
-    // Render different content based on block type
-    switch (step.blockType) {
-      case 'text':
-        const textData = data as any;
-        return (
-          <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-            <Text style={{ fontSize: 12, color: colors['foreground-secondary'], fontStyle: 'italic' }}>
-              "{textData.content || 'Empty narration...'}"
-            </Text>
-          </View>
-        );
-
-      case 'dialogue':
-        const dialogueData = data as any;
-        return (
-          <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-            {dialogueData.entries?.map((entry: any, i: number) => (
-              <View key={entry.id || i} style={{ marginBottom: 4 }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.primary }}>
-                  {entry.characterId || 'Speaker'}:
-                </Text>
-                <Text style={{ fontSize: 12, color: colors.foreground }}>
-                  {entry.text || 'Empty dialogue...'}
-                </Text>
-              </View>
-            ))}
-          </View>
-        );
-
-      case 'character':
-        const charData = data as any;
-        return (
-          <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ fontSize: 11, color: colors.muted }}>Character:</Text>
-            <Text style={{ fontSize: 12, color: colors.foreground, fontWeight: '500' }}>
-              {charData.characterId || '(not selected)'}
-            </Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>|</Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>Position:</Text>
-            <Text style={{ fontSize: 12, color: colors.foreground }}>{charData.position}</Text>
-          </View>
-        );
-
-      case 'background':
-        const bgData = data as any;
-        return (
-          <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ fontSize: 11, color: colors.muted }}>Background:</Text>
-            <Text style={{ fontSize: 12, color: colors.foreground }}>
-              {bgData.assetId || '(not selected)'}
-            </Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>|</Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>Transition:</Text>
-            <Text style={{ fontSize: 12, color: colors.foreground }}>{bgData.transition}</Text>
-          </View>
-        );
-
-      case 'choice':
-        const choiceData = data as any;
-        return (
-          <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-            {choiceData.options?.map((opt: any, i: number) => (
-              <View key={opt.id || i} style={{
-                paddingVertical: 4,
-                paddingHorizontal: 8,
-                backgroundColor: colors.background,
-                borderRadius: 6,
-                marginBottom: 4,
-              }}>
-                <Text style={{ fontSize: 12, color: colors.foreground }}>
-                  {i + 1}. {opt.text || `Choice ${i + 1}`}
-                </Text>
-              </View>
-            ))}
-          </View>
-        );
-
-      case 'effect':
-        const effectData = data as any;
-        return (
-          <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ fontSize: 11, color: colors.muted }}>Effect:</Text>
-            <Text style={{ fontSize: 12, color: colors.foreground }}>{effectData.effectType}</Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>| Intensity:</Text>
-            <Text style={{ fontSize: 12, color: colors.foreground }}>{effectData.intensity}%</Text>
-          </View>
-        );
-
-      case 'music':
-      case 'sound':
-        const audioData = data as any;
-        return (
-          <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ fontSize: 11, color: colors.muted }}>Audio:</Text>
-            <Text style={{ fontSize: 12, color: colors.foreground }}>
-              {audioData.assetId || '(not selected)'}
-            </Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>| Vol:</Text>
-            <Text style={{ fontSize: 12, color: colors.foreground }}>{Math.round((audioData.volume || 0) * 100)}%</Text>
-          </View>
-        );
-
-      default:
-        return (
-          <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
-            <Text style={{ fontSize: 11, color: colors.muted }}>Configure in properties →</Text>
-          </View>
-        );
+  const handleDrop = useCallback((id: string, newPosition: number) => {
+    const oldIndex = timeline.findIndex(s => s.id === id);
+    if (oldIndex !== -1 && oldIndex !== newPosition) {
+      onBlockMove(oldIndex, newPosition);
     }
-  };
+  }, [timeline, onBlockMove]);
 
   if (timeline.length === 0) {
     return (
@@ -310,7 +85,6 @@ export function TimelinePanel({
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* Timeline header */}
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -337,19 +111,283 @@ export function TimelinePanel({
         </Text>
       </View>
 
-      {/* Block list */}
-      <FlatList
-        data={timeline}
-        renderItem={renderBlock}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingVertical: 12 }}
-        showsVerticalScrollIndicator={false}
-      />
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <DropProvider>
+          <Animated.ScrollView
+            ref={list.scrollViewRef}
+            onScroll={list.handleScroll}
+            onMomentumScrollEnd={list.handleScrollEnd}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingVertical: 12 }}
+          >
+            {timeline.map((step, index) => {
+              const info = BLOCK_TYPE_INFO[step.blockType];
+              const isSelected = step.id === selectedBlockId;
+
+              return (
+                <SortableItem
+                  key={step.id}
+                  data={step}
+                  {...list.getItemProps(step, index)}
+                  onDrop={handleDrop}
+                >
+                  <View>
+                    {index > 0 && (
+                      <View style={{
+                        alignItems: 'center',
+                        paddingVertical: 2,
+                      }}>
+                        <View style={{
+                          width: 2,
+                          height: 16,
+                          backgroundColor: colors.border,
+                          borderRadius: 1,
+                        }} />
+                      </View>
+                    )}
+
+                    <Pressable
+                      onPress={() => onBlockSelect(isSelected ? null : step.id)}
+                      style={({ pressed }) => ({
+                        marginHorizontal: 8,
+                        marginVertical: 2,
+                        borderRadius: 10,
+                        backgroundColor: isSelected
+                          ? (colors as any)['surface-2'] || colors.surface
+                          : (colors as any)['surface-container'] || colors.surface,
+                        borderLeftWidth: 4,
+                        borderLeftColor: step.enabled ? info.color : colors.border,
+                        borderWidth: isSelected ? 2 : 0,
+                        borderColor: isSelected ? colors.primary : 'transparent',
+                        opacity: step.enabled ? 1 : 0.5,
+                        elevation: isSelected ? 4 : 1,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 1 },
+                        shadowOpacity: isSelected ? 0.3 : 0.1,
+                        shadowRadius: 3,
+                        transform: [{ scale: pressed ? 0.98 : 1 }],
+                      })}
+                    >
+                      <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                      }}>
+                        <SortableItem.Handle>
+                          <View style={{
+                            width: 20,
+                            alignItems: 'center',
+                            marginRight: 6,
+                          }}>
+                            <View style={{
+                              width: 12,
+                              height: 12,
+                              borderRadius: 6,
+                              backgroundColor: info.color + '40',
+                            }} />
+                          </View>
+                        </SortableItem.Handle>
+
+                        <View style={{ position: 'relative' }}>
+                          <View style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            backgroundColor: info.bgColor,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginRight: 8,
+                          }}>
+                            <Text style={{ fontSize: 14 }}>{info.icon}</Text>
+                          </View>
+                          <View style={{
+                            position: 'absolute',
+                            top: -4,
+                            right: 4,
+                            width: 10,
+                            height: 10,
+                            borderRadius: 5,
+                            backgroundColor: isBlockComplete(step.blockType, step.data)
+                              ? '#22c55e'
+                              : '#f59e0b',
+                            borderWidth: 1.5,
+                            borderColor: colors.background,
+                          }} />
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                          <Text style={{
+                            fontSize: 13,
+                            fontWeight: '700',
+                            color: colors.foreground,
+                          }}>
+                            {info.label}
+                          </Text>
+                          {!step.collapsed && info.description && (
+                            <Text style={{
+                              fontSize: 10,
+                              color: colors.muted,
+                              marginTop: 1,
+                            }}>
+                              {getBlockPreviewText(step, info.label)}
+                            </Text>
+                          )}
+                        </View>
+
+                        {isSelected && (
+                          <View style={{ flexDirection: 'row', gap: 4 }}>
+                            <Pressable
+                              onPress={(e) => { e.stopPropagation(); onBlockToggleCollapse(step.id); }}
+                              style={{ padding: 4 }}
+                            >
+                              <Text style={{ fontSize: 12, color: colors.muted }}>
+                                {step.collapsed ? '▼' : '▲'}
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={(e) => { e.stopPropagation(); onBlockDuplicate(step.id); }}
+                              style={{ padding: 4 }}
+                            >
+                              <Text style={{ fontSize: 12, color: colors.muted }}>📋</Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={(e) => { e.stopPropagation(); onBlockRemove(step.id); }}
+                              style={{ padding: 4 }}
+                            >
+                              <Text style={{ fontSize: 12, color: colors.error || '#ff6b6b' }}>🗑</Text>
+                            </Pressable>
+                          </View>
+                        )}
+                      </View>
+
+                      {!step.collapsed && renderBlockContent(step, colors)}
+                    </Pressable>
+                  </View>
+                </SortableItem>
+              );
+            })}
+          </Animated.ScrollView>
+        </DropProvider>
+      </GestureHandlerRootView>
     </View>
   );
 }
 
-// Helper to get preview text for a block
+const renderBlockContent = (step: TimelineStep, colors: any) => {
+  const data = step.data;
+
+  switch (step.blockType) {
+    case 'text':
+      const textData = data as any;
+      return (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+          <Text style={{ fontSize: 12, color: colors['foreground-secondary'], fontStyle: 'italic' }}>
+            "{textData.content || 'Empty narration...'}"
+          </Text>
+        </View>
+      );
+
+    case 'dialogue':
+      const dialogueData = data as any;
+      return (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+          {dialogueData.entries?.map((entry: any, i: number) => (
+            <View key={entry.id || i} style={{ marginBottom: 4 }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.primary }}>
+                {entry.characterId || 'Speaker'}:
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.foreground }}>
+                {entry.text || 'Empty dialogue...'}
+              </Text>
+            </View>
+          ))}
+        </View>
+      );
+
+    case 'character':
+      const charData = data as any;
+      return (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Character:</Text>
+          <Text style={{ fontSize: 12, color: colors.foreground, fontWeight: '500' }}>
+            {charData.characterId || '(not selected)'}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>|</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Position:</Text>
+          <Text style={{ fontSize: 12, color: colors.foreground }}>{charData.position}</Text>
+        </View>
+      );
+
+    case 'background':
+      const bgData = data as any;
+      return (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Background:</Text>
+          <Text style={{ fontSize: 12, color: colors.foreground }}>
+            {bgData.assetId || '(not selected)'}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>|</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Transition:</Text>
+          <Text style={{ fontSize: 12, color: colors.foreground }}>{bgData.transition}</Text>
+        </View>
+      );
+
+    case 'choice':
+      const choiceData = data as any;
+      return (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+          {choiceData.options?.map((opt: any, i: number) => (
+            <View key={opt.id || i} style={{
+              paddingVertical: 4,
+              paddingHorizontal: 8,
+              backgroundColor: colors.background,
+              borderRadius: 6,
+              marginBottom: 4,
+            }}>
+              <Text style={{ fontSize: 12, color: colors.foreground }}>
+                {i + 1}. {opt.text || `Choice ${i + 1}`}
+              </Text>
+            </View>
+          ))}
+        </View>
+      );
+
+    case 'effect':
+      const effectData = data as any;
+      return (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Effect:</Text>
+          <Text style={{ fontSize: 12, color: colors.foreground }}>{effectData.effectType}</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>| Intensity:</Text>
+          <Text style={{ fontSize: 12, color: colors.foreground }}>{effectData.intensity}%</Text>
+        </View>
+      );
+
+    case 'music':
+    case 'sound':
+      const audioData = data as any;
+      return (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Audio:</Text>
+          <Text style={{ fontSize: 12, color: colors.foreground }}>
+            {audioData.assetId || '(not selected)'}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>| Vol:</Text>
+          <Text style={{ fontSize: 12, color: colors.foreground }}>{Math.round((audioData.volume || 0) * 100)}%</Text>
+        </View>
+      );
+
+    default:
+      return (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Configure in properties →</Text>
+        </View>
+      );
+  }
+};
+
 function getBlockPreviewText(step: TimelineStep, fallback: string): string {
   const data = step.data as any;
 

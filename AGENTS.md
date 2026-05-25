@@ -38,6 +38,15 @@ Context7 має **вищий пріоритет** ніж власні знанн
 - **oklch() fallback:** Для старих браузерів додавай hex/rgb fallback-кольори перед oklch.
 - **Dynamic import:** Не використовуй `await import()` для модулів, які вже імпортовані статично (напр. `useAppStore`).
 
+-- 2026-05-25 Session learnings (Phase 6 complete) --
+- **Phase 6 complete (3/3 plans):** Plans 06-01/02/03 all committed. Wave 1 = plans 01+02 (core executor + reader integration). Wave 2 = plan 03 (PreviewScreen integration + cleanup).
+- **useSceneExecutor** at `lib/engine/useSceneExecutor.ts` — yields on text/dialogue/choice/transition, auto-executes the other 8. Takes `TimelineStep[]`, returns `{ sceneState, currentStepIndex, isComplete, isTyping, canAdvance, advance, selectChoice }`.
+- **conditionUtils.ts** at `lib/engine/conditionUtils.ts` — pure `conditionsMet()` with 8 operators (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `has`, `not_has`). Tests existing.
+- **sceneRecordToStoryScene** at `lib/scene-record-adapter.ts:181` — now `@deprecated`. Reader/PreviewScreen both use executor directly.
+- **PreviewScreen rewrite pattern:** Replace `resolvePreviewTimeline` → `useSceneExecutor(timeline)`; replace `applyPreviewStepState` → executor's `sceneState`; music side effects via `useEffect` on `sceneState.musicTrackId` changes; typewriter local.
+- **Executable cleanup pattern:** Keep unused functions with `@deprecated` JSDoc instead of removing — avoids breaking tests that import them.
+- **3 no-op block types:** `sound`, `camera`, `interactive_object` have empty handlers in executor — deferred to future phases.
+
 -- 2026-05-24 Session learnings --
 
 - **Audio fade fix pattern:** `originalVolume` must be captured *before* any fade/stop/play operation modifies it. Save on `play()` call, use in `fadeOut`/`fadeIn` generation.

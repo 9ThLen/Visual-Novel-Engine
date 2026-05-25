@@ -1,39 +1,116 @@
 /**
- * components/editor/BlockLibraryPanel.tsx — Left panel with draggable block types
+ * components/editor/BlockLibraryPanel.tsx — Left panel with categorized block types
  *
- * Shows all 12 block types with color-coded borders, icons, labels.
- * Searchable. On tap, adds block to timeline.
+ * Groups the 12 block types by category (Scene / Dialogue / Media / Effects / Logic).
+ * Sorted by frequency of use within each category.
+ * Searchable. Long press shows tooltip. Tap adds block to timeline.
  */
 
-import React, { useState, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-import { BLOCK_TYPE_INFO, type BlockType } from '@/lib/engine/types';
+import { BLOCK_TYPE_INFO, BLOCK_CATEGORIES, BLOCK_CATEGORY_MAP, type BlockCategory, type BlockType, type BlockTypeInfo } from '@/lib/engine/types';
 
 interface BlockLibraryPanelProps {
   onBlockTap: (blockType: BlockType) => void;
 }
 
+// Priority order within each category (most frequent first)
+const CATEGORY_BLOCK_ORDER: Record<BlockCategory, BlockType[]> = {
+  scene: ['character', 'background', 'interactive_object'],
+  dialogue: ['dialogue', 'text', 'choice'],
+  media: ['music', 'sound'],
+  effects: ['effect', 'transition', 'camera'],
+  logic: ['variable'],
+};
+
 export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
   const colors = useColors();
   const [query, setQuery] = useState('');
+  const [tooltip, setTooltip] = useState<{ info: BlockTypeInfo; x: number; y: number } | null>(null);
 
-  const filteredBlocks = useMemo(() => {
-    const all = Object.values(BLOCK_TYPE_INFO);
-    if (!query.trim()) return all;
+  const filteredByQuery = useMemo(() => {
+    if (!query.trim()) return null;
     const q = query.toLowerCase();
-    return all.filter(
+    return Object.values(BLOCK_TYPE_INFO).filter(
       b => b.label.toLowerCase().includes(q) || b.description.toLowerCase().includes(q)
     );
   }, [query]);
 
-  const handleSearch = (text: string) => {
-    setQuery(text);
+  const groupedBlocks = useMemo(() => {
+    if (filteredByQuery) return null;
+
+    return BLOCK_CATEGORIES.map(cat => {
+      const blocks = CATEGORY_BLOCK_ORDER[cat.key]
+        .map(type => BLOCK_TYPE_INFO[type])
+        .filter(Boolean);
+      return { ...cat, blocks };
+    }).filter(cat => cat.blocks.length > 0);
+  }, [filteredByQuery]);
+
+  const showTooltip = (info: BlockTypeInfo) => {
+    setTooltip({ info, x: 0, y: 0 });
   };
+
+  const renderBlockItem = (blockInfo: BlockTypeInfo) => (
+    <Pressable
+      key={blockInfo.type}
+      onPress={() => onBlockTap(blockInfo.type)}
+      onLongPress={() => showTooltip(blockInfo)}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        marginHorizontal: 6,
+        marginVertical: 2,
+        borderRadius: 8,
+        backgroundColor: pressed ? (colors.hover || '#ffffff10') : 'transparent',
+        borderLeftWidth: 4,
+        borderLeftColor: blockInfo.color,
+      })}
+    >
+      <View style={{
+        width: 36,
+        height: 36,
+        borderRadius: 8,
+        backgroundColor: blockInfo.bgColor,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 10,
+      }}>
+        <Text style={{ fontSize: 18 }}>{blockInfo.icon}</Text>
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <Text style={{
+          fontSize: 14,
+          fontWeight: '600',
+          color: colors.foreground,
+        }}>
+          {blockInfo.label}
+        </Text>
+        <Text style={{
+          fontSize: 11,
+          color: colors.muted,
+          marginTop: 1,
+        }}>
+          {blockInfo.description}
+        </Text>
+      </View>
+
+      <Text style={{
+        fontSize: 16,
+        color: colors.primary,
+        opacity: 0.6,
+      }}>
+        +
+      </Text>
+    </Pressable>
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      {/* Header */}
       <View style={{
         paddingHorizontal: 12,
         paddingVertical: 10,
@@ -52,7 +129,7 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
         </Text>
         <TextInput
           value={query}
-          onChangeText={handleSearch}
+          onChangeText={setQuery}
           placeholder="Search blocks..."
           placeholderTextColor={colors.muted}
           style={{
@@ -68,77 +145,105 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
         />
       </View>
 
-      {/* Block list */}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingVertical: 8 }}
         showsVerticalScrollIndicator={false}
       >
-        {filteredBlocks.length === 0 ? (
-          <View style={{ padding: 20, alignItems: 'center' }}>
-            <Text style={{ color: colors.muted, fontSize: 13 }}>No blocks found</Text>
-          </View>
-        ) : (
-          filteredBlocks.map((blockInfo) => (
-            <Pressable
-              key={blockInfo.type}
-              onPress={() => onBlockTap(blockInfo.type)}
-              style={({ pressed }) => ({
+        {filteredByQuery ? (
+          filteredByQuery.length === 0 ? (
+            <View style={{ padding: 20, alignItems: 'center' }}>
+              <Text style={{ color: colors.muted, fontSize: 13 }}>No blocks found</Text>
+            </View>
+          ) : (
+            filteredByQuery.map(renderBlockItem)
+          )
+        ) : groupedBlocks ? (
+          groupedBlocks.map(category => (
+            <View key={category.key}>
+              <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 paddingHorizontal: 12,
-                paddingVertical: 10,
-                marginHorizontal: 6,
-                marginVertical: 2,
-                borderRadius: 8,
-                backgroundColor: pressed ? (colors.hover || '#ffffff10') : 'transparent',
-                borderLeftWidth: 4,
-                borderLeftColor: blockInfo.color,
-              })}
-            >
-              {/* Icon */}
-              <View style={{
-                width: 36,
-                height: 36,
-                borderRadius: 8,
-                backgroundColor: blockInfo.bgColor,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginRight: 10,
+                paddingVertical: 6,
+                marginTop: 4,
               }}>
-                <Text style={{ fontSize: 18 }}>{blockInfo.icon}</Text>
-              </View>
-
-              {/* Label + Description */}
-              <View style={{ flex: 1 }}>
-                <Text style={{
-                  fontSize: 14,
-                  fontWeight: '600',
-                  color: colors.foreground,
-                }}>
-                  {blockInfo.label}
-                </Text>
+                <Text style={{ fontSize: 12, marginRight: 4 }}>{category.icon}</Text>
                 <Text style={{
                   fontSize: 11,
+                  fontWeight: '700',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
                   color: colors.muted,
-                  marginTop: 1,
                 }}>
-                  {blockInfo.description}
+                  {category.label}
                 </Text>
               </View>
+              {category.blocks.map(renderBlockItem)}
+            </View>
+          ))
+        ) : null}
+      </ScrollView>
 
-              {/* Add indicator */}
+      {tooltip && (
+        <Modal transparent animationType="fade" onRequestClose={() => setTooltip(null)}>
+          <Pressable
+            style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' }}
+            onPress={() => setTooltip(null)}
+          >
+            <View style={{
+              backgroundColor: colors.surface,
+              borderRadius: 12,
+              padding: 20,
+              marginHorizontal: 40,
+              maxWidth: 300,
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}>
+              <View style={{
+                width: 48,
+                height: 48,
+                borderRadius: 12,
+                backgroundColor: tooltip.info.bgColor,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 12,
+              }}>
+                <Text style={{ fontSize: 24 }}>{tooltip.info.icon}</Text>
+              </View>
               <Text style={{
                 fontSize: 16,
-                color: colors.primary,
-                opacity: 0.6,
+                fontWeight: '700',
+                color: colors.foreground,
+                marginBottom: 4,
               }}>
-                +
+                {tooltip.info.label}
               </Text>
-            </Pressable>
-          ))
-        )}
-      </ScrollView>
+              <Text style={{
+                fontSize: 13,
+                color: colors.muted,
+                textAlign: 'center',
+                lineHeight: 18,
+              }}>
+                {tooltip.info.description}
+              </Text>
+              <Pressable
+                onPress={() => { onBlockTap(tooltip.info.type); setTooltip(null); }}
+                style={{
+                  marginTop: 16,
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                  borderRadius: 8,
+                  backgroundColor: tooltip.info.color,
+                }}
+              >
+                <Text style={{ fontSize: 13, color: '#fff', fontWeight: '600' }}>Add Block</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+      )}
     </View>
   );
 }

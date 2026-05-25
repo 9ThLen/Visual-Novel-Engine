@@ -5,14 +5,14 @@
 See: `.planning/PROJECT.md` (updated 2026-05-24)
 
 **Core value:** Автор має мати змогу надійно створювати, зберігати, відкривати і програвати сцени візуальної новели без втрати даних і без розриву між редактором та runtime.
-**Current focus:** Phase 5 execution completed with green automated verification; manual smoke rerun remains blocked by the current sandbox
+**Current focus:** ROADMAP розширено фазами 6-8 (Block Runtime Executor, Editor UX Polish, Accessibility & i18n)
 
 ## Status
 
-- **Project status:** Phase 5 execution completed; automated gate passed and manual QA is pending an unrestricted Expo environment
-- **Current phase:** 5
-- **Current phase name:** Legacy Cleanup and Quality Gate
-- **Next expected command:** `/gsd-complete-milestone` after external manual QA rerun or blocker acceptance
+- **Project status:** Phase 6 Block Runtime Executor виконано (3/3 плани); Phase 7 сплановано (2 плани)
+- **Current phase:** 7
+- **Current phase name:** Editor UX Polish
+- **Next expected command:** `/gsd-execute-phase` для Phase 7
 
 ## Active Decisions
 
@@ -36,9 +36,25 @@ See: `.planning/PROJECT.md` (updated 2026-05-24)
 
 ## Planning Snapshot
 
-- **Roadmap phases:** 5
+- **Roadmap phases:** 8
 - **Phase 1 requirements:** ARCH-01, ARCH-02, DATA-01
-- **Planning status:** Phases 1-5 executed; Phase 5 summaries and verification pack recorded
+- **Planning status:** Phases 1-6 executed; Phases 7-8 defined in ROADMAP; Phase 7 planned (2 plans); milestone archive pending
+
+## Phase 6 Key Results
+
+- `lib/engine/useSceneExecutor.ts` + `lib/engine/conditionUtils.ts` — core executor with all 12 block types
+- `components/story-reader-responsive.tsx` — accepts `timeline` prop, uses executor when provided
+- `hooks/useReaderInitialization.ts` — returns `timeline` + `sceneRecord` alongside deprecated `currentScene`
+- `app/reader.tsx` — uses `onTransition` callback, passes `timeline` to reader
+- `components/editor/PreviewScreen.tsx` — rewritten to use executor instead of manual step management
+- `lib/scene-record-adapter.ts:sceneRecordToStoryScene` — marked `@deprecated`
+- `lib/runtime-story.ts` — legacy functions marked `@deprecated`
+
+## Known Risks (updated)
+
+- Executor's `sound`, `camera`, `interactive_object` block types are no-op — full implementation deferred
+- Typewriter effect in PreviewScreen is local, not synced with executor's auto-typing toggle
+- `preview-step-state.ts` kept for test compat but unused in production
 
 ---
-*Last updated: 2026-05-24 after Phase 5 verification*
+*Last updated: 2026-05-25 — Phase 6 complete (Block Runtime Executor)*

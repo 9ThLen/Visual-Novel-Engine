@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
 import { useAppStore } from '@/stores/use-app-store';
 import { addAssetToLibrary } from '@/lib/media-library-service';
-import { resolveAssetUri } from '@/lib/asset-resolver';
+import { resolveAssetUri, resolvePlayableAssetUri } from '@/lib/asset-resolver';
 import type { LibraryAsset } from '@/lib/media-library-service';
 
 type AssetCategory = 'backgrounds' | 'characters' | 'sprites' | 'music' | 'sfx' | 'voice' | 'ui';
@@ -58,7 +58,10 @@ export function AssetPicker({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    return () => { playerRef.current?.pause(); };
+    return () => {
+      playerRef.current?.pause();
+      playerRef.current?.remove();
+    };
   }, [playerRef]);
 
   const playAudio = useCallback(async (asset: LibraryAsset) => {
@@ -71,7 +74,12 @@ export function AssetPicker({
         setPreviewAudioId(null);
         return;
       }
-      const player = createAudioPlayer(asset.uri);
+      const playableUri = await resolvePlayableAssetUri(asset.uri);
+      if (!playableUri) {
+        setPreviewAudioId(null);
+        return;
+      }
+      const player = createAudioPlayer(playableUri);
       playerRef.current = player;
       setPreviewAudioId(asset.id);
       player.play();
@@ -243,7 +251,13 @@ export function AssetPicker({
             {CATEGORIES.map((cat) => (
               <Pressable
                 key={cat.key}
-                onPress={() => { setActiveCategory(cat.key); setPreviewAudioId(null); playerRef.current?.pause(); playerRef.current = null; }}
+                onPress={() => {
+                  setActiveCategory(cat.key);
+                  setPreviewAudioId(null);
+                  playerRef.current?.pause();
+                  playerRef.current?.remove();
+                  playerRef.current = null;
+                }}
                 style={{
                   paddingHorizontal: 12,
                   paddingVertical: 6,

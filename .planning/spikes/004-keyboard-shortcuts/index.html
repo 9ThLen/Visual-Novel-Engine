@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spike 004: Keyboard Shortcuts Demo</title>
+<style>
+  body { font-family: -apple-system, sans-serif; background: #0f0e17; color: #eee; display: flex; justify-content: center; padding: 40px; }
+  #app { max-width: 600px; width: 100%; }
+  h1 { font-size: 20px; margin-bottom: 8px; color: #7c3aed; }
+  .shortcut-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 20px 0; }
+  .shortcut-item { background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.2); border-radius: 8px; padding: 12px; }
+  .key-combo { font-size: 12px; color: #7c3aed; font-weight: 700; font-family: monospace; background: rgba(124,58,237,0.15); padding: 2px 8px; border-radius: 4px; }
+  .action-name { font-size: 13px; margin-top: 4px; }
+  #log { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; min-height: 200px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; margin-top: 12px; }
+  .log-line { padding: 3px 0; color: rgba(255,255,255,0.7); }
+  .log-line.highlight { color: #22c55e; font-weight: 600; }
+  #status-bar { display: flex; gap: 12px; margin: 12px 0; align-items: center; }
+  .badge { background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.3); border-radius: 6px; padding: 4px 10px; font-size: 11px; }
+  .note { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 12px; }
+  hr { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 16px 0; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>⌨ Keyboard Shortcuts</h1>
+  <p style="color: rgba(255,255,255,0.5); font-size: 13px;">Press any shortcut to test. The log shows each action.</p>
+
+  <div id="status-bar">
+    <span class="badge">Last: <span id="last-action">—</span></span>
+    <span class="badge">Selected: <span id="selected-block">none</span></span>
+  </div>
+
+  <div class="shortcut-grid">
+    <div class="shortcut-item"><div><span class="key-combo">Ctrl+Z</span></div><div class="action-name">↩ Undo</div></div>
+    <div class="shortcut-item"><div><span class="key-combo">Ctrl+Shift+Z</span> or <span class="key-combo">Ctrl+Y</span></div><div class="action-name">↪ Redo</div></div>
+    <div class="shortcut-item"><div><span class="key-combo">Delete</span> or <span class="key-combo">Backspace</span></div><div class="action-name">🗑 Delete Block</div></div>
+    <div class="shortcut-item"><div><span class="key-combo">Ctrl+D</span></div><div class="action-name">📋 Duplicate Block</div></div>
+    <div class="shortcut-item"><div><span class="key-combo">Ctrl+S</span></div><div class="action-name">💾 Save Scene</div></div>
+    <div class="shortcut-item"><div><span class="key-combo">Escape</span></div><div class="action-name">✕ Deselect / Close Panel</div></div>
+    <div class="shortcut-item"><div><span class="key-combo">Ctrl+P</span></div><div class="action-name">▶ Preview</div></div>
+    <div class="shortcut-item"><div><span class="key-combo">Ctrl+A</span></div><div class="action-name">🔍 Focus Search</div></div>
+  </div>
+
+  <hr>
+
+  <p style="font-size: 13px; color: rgba(255,255,255,0.6);">Shortcut map (React hook structure):</p>
+  <pre id="code-preview" style="background: rgba(0,0,0,0.4); border-radius: 8px; padding: 16px; font-size: 11px; line-height: 1.6; overflow-x: auto; margin: 8px 0;"></pre>
+
+  <div id="log"><span style="color:rgba(255,255,255,0.3)">Press a shortcut to see it logged...</span></div>
+
+  <p class="note">⚠ Platform check: <code>Platform.OS === 'web'</code> — shortcuts only fire on web/desktop.<br>
+  Meta/Cmd key is supported for macOS compatibility.</p>
+</div>
+
+<script>
+// ── State (simulates editor store) ──
+let state = {
+  selectedBlockId: 'block_001',
+  isDirty: false,
+  timelineLength: 5,
+};
+
+// ── Action handlers ──
+const actions = {
+  'Ctrl+Z': () => { log('↩ Undo (Ctrl+Z)'); state.timelineLength = Math.max(0, state.timelineLength - 1); updateUI(); },
+  'Ctrl+Shift+Z': () => { log('↪ Redo (Ctrl+Shift+Z)'); state.timelineLength = Math.min(20, state.timelineLength + 1); updateUI(); },
+  'Ctrl+Y': () => { log('↪ Redo (Ctrl+Y)'); state.timelineLength = Math.min(20, state.timelineLength + 1); updateUI(); },
+  'Delete': () => { if (state.selectedBlockId) { log('🗑 Delete block'); state.selectedBlockId = null; updateUI(); } },
+  'Backspace': () => { if (state.selectedBlockId) { log('🗑 Delete block (Backspace)'); state.selectedBlockId = null; updateUI(); } },
+  'Ctrl+D': () => { if (state.selectedBlockId) { log('📋 Duplicate block'); state.timelineLength++; updateUI(); } },
+  'Ctrl+S': () => { log('💾 Save scene — would persist'); state.isDirty = false; updateUI(); },
+  'Escape': () => { log('✕ Deselect / Close panel'); state.selectedBlockId = null; updateUI(); },
+  'Ctrl+P': () => { log('▶ Preview — would navigate to preview'); },
+  'Ctrl+A': () => { log('🔍 Focus search input'); },
+};
+
+// ── Shortcut engine ──
+function normalizeKey(e) {
+  const parts = [];
+  if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
+  if (e.shiftKey) parts.push('Shift');
+  if (e.altKey) parts.push('Alt');
+  // Normalize key names
+  let key = e.key;
+  if (key === 'Control' || key === 'Shift' || key === 'Alt' || key === 'Meta') return null;
+  if (key === ' ') key = 'Space';
+  if (key.length === 1) key = key.toUpperCase();
+  parts.push(key);
+  return parts.join('+');
+}
+
+document.addEventListener('keydown', (e) => {
+  const combo = normalizeKey(e);
+  if (!combo) return;
+
+  const action = actions[combo];
+  if (action) {
+    e.preventDefault();
+    e.stopPropagation();
+    action();
+    document.getElementById('last-action').textContent = combo;
+  } else {
+    // Log unhandled shortcuts for debugging
+    console.log(`[Shortcuts] Unhandled: ${combo}`);
+  }
+});
+
+// ── Log & UI ──
+function log(msg) {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = 'log-line highlight';
+  const ts = new Date().toLocaleTimeString();
+  line.textContent = `[${ts}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateUI() {
+  document.getElementById('selected-block').textContent = state.selectedBlockId || 'none';
+}
+
+// ── Show the code structure ──
+const codeSnippet = `const SHORTCUTS: Record<string, () => void> = {
+  'Ctrl+Z':           undo,
+  'Ctrl+Shift+Z':     redo,
+  'Ctrl+Y':           redo,
+  'Delete':           () => selectedBlockId && removeBlock(selectedBlockId),
+  'Backspace':        () => selectedBlockId && removeBlock(selectedBlockId),
+  'Ctrl+D':           () => selectedBlockId && duplicateBlock(selectedBlockId),
+  'Ctrl+S':           handleSave,
+  'Escape':           () => selectBlock(null),
+  'Ctrl+P':           handlePreview,
+  'Ctrl+A':           () => searchInputRef.current?.focus(),
+};`;
+
+document.getElementById('code-preview').textContent = codeSnippet;
+updateUI();
+
+// Initial log
+log('✅ Keyboard shortcuts loaded. Try pressing keys.');
+</script>
+</body>
+</html>
