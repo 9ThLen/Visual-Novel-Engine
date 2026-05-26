@@ -1,8 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, StyleSheet, Animated, Easing } from 'react-native';
+import { Image, StyleSheet, Animated, Easing, Platform } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import type { SplashScreen, UITransition } from '@/lib/splash-types';
 import { resolveAssetUri } from '@/lib/asset-resolver';
+import { useColors } from '@/hooks/use-colors';
+import {
+  getPointerEventsStyle,
+  shouldUseNativeDriverForPlatform,
+} from '@/lib/react-native-web-interop';
 
 interface Props {
   splash: SplashScreen;
@@ -21,9 +26,11 @@ export function SplashScreenComponent({
   onUIHidden,
   onUIShown,
 }: Props) {
+  const colors = useColors();
   const splashOpacity = useRef(new Animated.Value(0)).current;
   const [isPlaying, setIsPlaying] = useState(true);
   const [resolvedUri, setResolvedUri] = useState<string | null>(null);
+  const useNativeDriver = shouldUseNativeDriverForPlatform(Platform.OS);
 
   // Only create video player for video/animation types
   const isVideo = splash.type === 'video' || splash.type === 'animation';
@@ -72,7 +79,7 @@ export function SplashScreenComponent({
         toValue: 1,
         duration: fadeIn,
         easing: getEasing(uiHideTransition?.easing),
-        useNativeDriver: true,
+        useNativeDriver,
       }).start(() => {
         onUIHiddenRef.current?.();
       });
@@ -82,7 +89,7 @@ export function SplashScreenComponent({
           toValue: 0,
           duration: fadeOut,
           easing: getEasing(uiShowTransition?.easing),
-          useNativeDriver: true,
+          useNativeDriver,
         }).start(() => {
           setIsPlaying(false);
           onUIShownRef.current?.();
@@ -92,7 +99,7 @@ export function SplashScreenComponent({
 
       return () => clearTimeout(hideTimer);
     }
-  }, [resolvedUri, splash.fadeIn, splash.fadeOut, splash.duration, uiHideTransition?.easing, uiShowTransition?.easing, splashOpacity, isVideo, player]);
+  }, [resolvedUri, splash.fadeIn, splash.fadeOut, splash.duration, uiHideTransition?.easing, uiShowTransition?.easing, splashOpacity, isVideo, player, useNativeDriver]);
 
   const getEasing = (type?: string) => {
     switch (type) {
@@ -109,7 +116,9 @@ export function SplashScreenComponent({
   const source = typeof resolvedUri === 'string' ? { uri: resolvedUri } : resolvedUri;
 
   return (
-    <Animated.View style={[styles.container, { opacity: splashOpacity }]} pointerEvents="none">
+    <Animated.View
+      style={[styles.container, { opacity: splashOpacity, backgroundColor: colors.background }, getPointerEventsStyle('none')]}
+    >
       {splash.type === 'image' && (
         <Image source={source} style={styles.media} resizeMode="cover" />
       )}
@@ -123,7 +132,7 @@ export function SplashScreenComponent({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: 9999, backgroundColor: '#000',
+    zIndex: 9999,
   },
   media: { width: '100%', height: '100%' },
 });
