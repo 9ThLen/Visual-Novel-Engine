@@ -12,6 +12,7 @@ import {
   View, Text, Pressable, ScrollView, TextInput, Modal, FlatList,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { type BlockType } from '@/lib/engine/types';
 
@@ -245,6 +246,7 @@ export function SceneSelector({
   storyScenes = [],
 }: SceneSelectorProps) {
   const colors = useColors();
+  const { t } = useI18n();
   const { deviceType } = useResponsiveLayout();
   const isPhone = deviceType === 'phone';
   const [searchQuery, setSearchQuery] = useState('');
@@ -317,7 +319,7 @@ export function SceneSelector({
           paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12,
           borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface,
         }}>
-          <Pressable onPress={onClose} style={{ padding: 8 }}>
+          <Pressable onPress={onClose} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel={t('a11y.closePanel')}>
             <Text style={{ color: colors.primary, fontSize: 16 }}>✕</Text>
           </Pressable>
           <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: '700' }}>
@@ -342,8 +344,8 @@ export function SceneSelector({
               {' → '}
               <Text style={{ fontWeight: '600' }}>{connectFrom.output}</Text>
             </Text>
-            <Pressable onPress={handleCancelConnect} style={{ padding: 4 }}>
-              <Text style={{ color: colors.danger, fontSize: 13 }}>Cancel</Text>
+            <Pressable onPress={handleCancelConnect} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+              <Text style={{ color: colors.danger, fontSize: 13 }}>{t('common.cancel')}</Text>
             </Pressable>
           </View>
         )}
@@ -375,6 +377,8 @@ export function SceneSelector({
             <Pressable
               key={cat.key}
               onPress={() => setSelectedCategory(cat.key)}
+              accessibilityRole="button"
+              accessibilityLabel={cat.label}
               style={{
                 paddingHorizontal: 14, paddingVertical: 8, marginHorizontal: 4,
                 borderRadius: 20,
@@ -383,7 +387,7 @@ export function SceneSelector({
               }}
             >
               <Text style={{
-                color: selectedCategory === cat.key ? '#ffffff' : colors.foreground,
+                color: selectedCategory === cat.key ? colors['text-inverse'] ?? '#ffffff' : colors.foreground,
                 fontSize: 13, fontWeight: '500',
               }}>
                 {cat.icon} {cat.label}
@@ -412,6 +416,8 @@ export function SceneSelector({
             <Pressable
               onPress={() => handleSelectTemplate(item)}
               onLongPress={() => !connectMode && storyScenes.length > 0 && handleStartConnect(item.id, item.outputs[0])}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.icon} ${item.name}`}
               style={{
                 flexDirection: isPhone ? 'column' : 'row',
                 alignItems: isPhone ? 'stretch' : 'center',
@@ -455,16 +461,16 @@ export function SceneSelector({
                 </View>
                 {/* Input/Output ports */}
                 <View style={{ flexDirection: 'row', marginTop: 6, gap: 8, flexWrap: 'wrap' }}>
-                  {item.inputs.map((input) => (
-                    <Text key={input} style={{ fontSize: 10, color: colors.success || '#50c878' }}>
-                      ▼ {input}
-                    </Text>
-                  ))}
-                  {item.outputs.map((output) => (
-                    <Text key={output} style={{ fontSize: 10, color: colors.warning || '#ff9800' }}>
-                      ▶ {output}
-                    </Text>
-                  ))}
+                      {item.inputs.map((input) => (
+                        <Text key={input} style={{ fontSize: 10, color: colors.success }}>
+                          ▼ {input}
+                        </Text>
+                      ))}
+                      {item.outputs.map((output) => (
+                        <Text key={output} style={{ fontSize: 10, color: colors.warning }}>
+                          ▶ {output}
+                        </Text>
+                      ))}
                 </View>
               </View>
 
@@ -480,6 +486,8 @@ export function SceneSelector({
                     borderRadius: 6, backgroundColor: colors.surface,
                     borderWidth: 1, borderColor: colors.border,
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('editor.selectBlockType')}
                 >
                   <Text style={{ fontSize: 12 }}>🔗</Text>
                 </Pressable>
@@ -518,9 +526,11 @@ export function SceneSelector({
                 borderRadius: 8, backgroundColor: colors.primary,
                 alignSelf: isPhone ? 'stretch' : 'auto',
               }}
+              accessibilityRole="button"
+              accessibilityLabel={t('editor.addBlock')}
             >
-              <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '600' }}>
-                Import Scene
+              <Text style={{ color: colors['text-inverse'] ?? '#ffffff', fontSize: 14, fontWeight: '600' }}>
+                {t('editor.addBlock')}
               </Text>
             </Pressable>
           </View>
@@ -535,7 +545,7 @@ export function SceneSelector({
           }}>
             <Text style={{ color: colors.muted, fontSize: 13 }}>
               Tap a scene to connect, or{' '}
-              <Text style={{ color: colors.primary }} onPress={handleCancelConnect}>cancel</Text>
+              <Text style={{ color: colors.primary }} onPress={handleCancelConnect} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>cancel</Text>
             </Text>
           </View>
         )}

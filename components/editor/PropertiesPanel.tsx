@@ -9,6 +9,7 @@ import { useColors } from '@/hooks/use-colors';
 import { BLOCK_TYPE_INFO, type TimelineStep } from '@/lib/engine/types';
 import { getBlockEmptyFields } from '@/lib/editor/block-validation';
 import { AssetPicker } from './modals/AssetPicker';
+import { useI18n } from '@/lib/i18n';
 
 interface Props {
   block: TimelineStep;
@@ -20,6 +21,7 @@ interface Props {
 
 export function PropertiesPanel({ block, onUpdate, onDelete, onDuplicate, onClose }: Props) {
   const colors = useColors();
+  const { t } = useI18n();
   const info = BLOCK_TYPE_INFO[block.blockType];
   const data = block.data as any;
   const upd = (field: string, value: any) => onUpdate({ data: { ...data, [field]: value } });
@@ -36,8 +38,13 @@ export function PropertiesPanel({ block, onUpdate, onDelete, onDuplicate, onClos
     <Field label={label} colors={colors}>
       <View style={{ flexDirection: 'row', gap: 6 }}>
         <TextInput value={value || ''} onChangeText={onChange} placeholder={`Select ${category}...`} placeholderTextColor={colors.muted} style={[S(colors), { flex: 1 }]} />
-        <Pressable onPress={() => openPicker(category, value, onChange)} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.primary }}>
-          <Text style={{ fontSize: 12, color: '#fff', fontWeight: '600' }}>Browse</Text>
+        <Pressable
+          onPress={() => openPicker(category, value, onChange)}
+          style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.primary }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.search')}
+        >
+          <Text style={{ fontSize: 12, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>{t('common.search')}</Text>
         </Pressable>
       </View>
     </Field>
@@ -51,13 +58,13 @@ export function PropertiesPanel({ block, onUpdate, onDelete, onDuplicate, onClos
           <Text style={{ fontSize: 16, marginRight: 6 }}>{info.icon}</Text>
           <Text style={{ fontSize: 14, fontWeight: '700', color: colors.foreground }}>{info.label}</Text>
         </View>
-        <Pressable onPress={onClose} style={{ padding: 4 }}>
+        <Pressable onPress={onClose} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('a11y.closePanel')}>
           <Text style={{ fontSize: 14, color: colors.muted }}>✕</Text>
         </Pressable>
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
-        {renderForm(block, data, upd, colors, missingFields, openPicker, renderAssetField)}
+        {renderForm(block, data, upd, colors, missingFields, t, openPicker, renderAssetField)}
       </ScrollView>
 
       {picker.visible && (
@@ -70,25 +77,25 @@ export function PropertiesPanel({ block, onUpdate, onDelete, onDuplicate, onClos
       )}
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
-        <Pressable onPress={onDuplicate} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
-          <Text style={{ fontSize: 12, color: colors.foreground, fontWeight: '600' }}>📋 Duplicate</Text>
+        <Pressable onPress={onDuplicate} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }} accessibilityRole="button" accessibilityLabel={t('common.duplicate')}>
+          <Text style={{ fontSize: 12, color: colors.foreground, fontWeight: '600' }}>📋 {t('common.duplicate')}</Text>
         </Pressable>
-        <Pressable onPress={onDelete} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: (colors.error || '#ff6b6b') + '20' }}>
-          <Text style={{ fontSize: 12, color: colors.error || '#ff6b6b', fontWeight: '600' }}>🗑 Delete</Text>
+        <Pressable onPress={onDelete} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: `${colors.error}20` }} accessibilityRole="button" accessibilityLabel={t('common.delete')}>
+          <Text style={{ fontSize: 12, color: colors.error, fontWeight: '600' }}>🗑 {t('common.delete')}</Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
-const S = (c: any, error?: boolean) => ({ backgroundColor: c.background, borderWidth: 1, borderColor: error ? (c.error || '#ff6b6b') : c.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: c.foreground });
+const S = (c: any, error?: boolean) => ({ backgroundColor: c.background, borderWidth: 1, borderColor: error ? c.error : c.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: c.foreground });
 
 function Field({ label, children, colors, error }: { label: string; children: React.ReactNode; colors: any; error?: boolean }) {
   return (
     <View style={{ marginBottom: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-        <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, color: error ? (colors.error || '#ff6b6b') : colors.muted }}>{label}</Text>
-        {error && <Text style={{ fontSize: 9, color: colors.error || '#ff6b6b', fontWeight: '600' }}>REQUIRED</Text>}
+        <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, color: error ? colors.error : colors.muted }}>{label}</Text>
+        {error && <Text style={{ fontSize: 9, color: colors.error, fontWeight: '600' }}>REQUIRED</Text>}
       </View>
       {children}
     </View>
@@ -99,30 +106,33 @@ function OptBtns({ options, value, onChange, colors }: { options: string[]; valu
   return (
     <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
       {options.map(o => (
-        <Pressable key={o} onPress={() => onChange(o)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, backgroundColor: value === o ? colors.primary : colors.background, borderWidth: 1, borderColor: value === o ? colors.primary : colors.border }}>
-          <Text style={{ fontSize: 11, color: value === o ? '#fff' : colors.foreground, fontWeight: '500' }}>{o}</Text>
+        <Pressable key={o} onPress={() => onChange(o)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, backgroundColor: value === o ? colors.primary : colors.background, borderWidth: 1, borderColor: value === o ? colors.primary : colors.border }}
+          accessibilityRole="button" accessibilityLabel={o}>
+          <Text style={{ fontSize: 11, color: value === o ? colors['text-inverse'] ?? '#fff' : colors.foreground, fontWeight: '500' }}>{o}</Text>
         </Pressable>
       ))}
     </View>
   );
 }
 
-function Toggle({ label, value, onChange, colors }: { label: string; value: boolean; onChange: (v: boolean) => void; colors: any }) {
+function Toggle({ label, value, onChange, colors, t: tFn }: { label: string; value: boolean; onChange: (v: boolean) => void; colors: any; t: (key: string) => string }) {
   return (
     <Field label={label} colors={colors}>
       <View style={{ flexDirection: 'row', gap: 6 }}>
-        <Pressable onPress={() => onChange(true)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, backgroundColor: value ? colors.primary : colors.background, borderWidth: 1, borderColor: value ? colors.primary : colors.border }}>
-          <Text style={{ fontSize: 11, color: value ? '#fff' : colors.foreground, fontWeight: '500' }}>Yes</Text>
+        <Pressable onPress={() => onChange(true)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, backgroundColor: value ? colors.primary : colors.background, borderWidth: 1, borderColor: value ? colors.primary : colors.border }}
+          accessibilityRole="button" accessibilityLabel={tFn('common.yes')}>
+          <Text style={{ fontSize: 11, color: value ? colors['text-inverse'] ?? '#fff' : colors.foreground, fontWeight: '500' }}>{tFn('common.yes')}</Text>
         </Pressable>
-        <Pressable onPress={() => onChange(false)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, backgroundColor: !value ? colors.primary : colors.background, borderWidth: 1, borderColor: !value ? colors.primary : colors.border }}>
-          <Text style={{ fontSize: 11, color: !value ? '#fff' : colors.foreground, fontWeight: '500' }}>No</Text>
+        <Pressable onPress={() => onChange(false)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, backgroundColor: !value ? colors.primary : colors.background, borderWidth: 1, borderColor: !value ? colors.primary : colors.border }}
+          accessibilityRole="button" accessibilityLabel={tFn('common.no')}>
+          <Text style={{ fontSize: 11, color: !value ? colors['text-inverse'] ?? '#fff' : colors.foreground, fontWeight: '500' }}>{tFn('common.no')}</Text>
         </Pressable>
       </View>
     </Field>
   );
 }
 
-function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => void, colors: any, missingFields: Set<string>, openPicker?: (category: string, current: string | null, onChange: (id: string) => void) => void, assetField?: (label: string, category: string, value: string | null, onChange: (v: string) => void) => React.ReactNode) {
+function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => void, colors: any, missingFields: Set<string>, t: (key: string) => string, openPicker?: (category: string, current: string | null, onChange: (id: string) => void) => void, assetField?: (label: string, category: string, value: string | null, onChange: (v: string) => void) => React.ReactNode) {
   switch (block.blockType) {
     case 'background':
       return (<>
@@ -157,7 +167,8 @@ function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => 
             <Field label="Text" colors={colors}><TextInput value={entry.text || ''} onChangeText={v => { const e = [...data.entries]; e[i] = { ...entry, text: v }; upd('entries', e); }} placeholder="Enter dialogue..." placeholderTextColor={colors.muted} multiline numberOfLines={3} style={[S(colors), { minHeight: 60, textAlignVertical: 'top' }]} /></Field>
           </View>
         ))}
-        <Pressable onPress={() => upd('entries', [...(data.entries||[]), { id: `e_${Date.now()}`, characterId: '', spriteId: '', text: '' }])} style={{ paddingVertical: 8, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' }}>
+        <Pressable onPress={() => upd('entries', [...(data.entries||[]), { id: `e_${Date.now()}`, characterId: '', spriteId: '', text: '' }])} style={{ paddingVertical: 8, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' }}
+          accessibilityRole="button" accessibilityLabel={t('editor.dialogueText')}>
           <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600' }}>+ Add Speaker</Text>
         </Pressable>
       </>);
@@ -172,7 +183,8 @@ function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => 
           </View>
         ))}
         {(data.options?.length || 0) < 20 && (
-          <Pressable onPress={() => upd('options', [...(data.options||[]), { id: `c_${Date.now()}`, text: '', targetSceneId: null }])} style={{ paddingVertical: 8, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' }}>
+          <Pressable onPress={() => upd('options', [...(data.options||[]), { id: `c_${Date.now()}`, text: '', targetSceneId: null }])} style={{ paddingVertical: 8, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' }}
+            accessibilityRole="button" accessibilityLabel={t('editor.addChoice')}>
             <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600' }}>+ Add Choice</Text>
           </Pressable>
         )}
@@ -191,7 +203,7 @@ function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => 
         {assetField ? assetField('Asset', 'music', data.assetId, v => upd('assetId', v)) : <Field label="Asset" colors={colors} error={missingFields.has('Asset')}><TextInput value={data.assetId || ''} onChangeText={v => upd('assetId', v)} placeholder="Select music..." placeholderTextColor={colors.muted} style={S(colors, missingFields.has('Asset'))} /></Field>}
         <Field label="Action" colors={colors}><OptBtns options={['play','stop','pause','fade']} value={data.action} onChange={v => upd('action', v)} colors={colors} /></Field>
         <Field label="Volume (0-100)" colors={colors}><TextInput value={String(Math.round((data.volume||0.8)*100))} onChangeText={v => upd('volume', (parseInt(v)||80)/100)} placeholder="80" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
-        <Toggle label="Loop" value={!!data.loop} onChange={v => upd('loop', v)} colors={colors} />
+        <Toggle t={t} label="Loop" value={!!data.loop} onChange={v => upd('loop', v)} colors={colors} />
         <Field label="Fade Duration (ms)" colors={colors}><TextInput value={String(data.fadeDuration || 1000)} onChangeText={v => upd('fadeDuration', parseInt(v)||1000)} placeholder="1000" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
       </>);
 
@@ -200,7 +212,7 @@ function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => 
         {assetField ? assetField('Asset', 'sfx', data.assetId, v => upd('assetId', v)) : <Field label="Asset" colors={colors} error={missingFields.has('Asset')}><TextInput value={data.assetId || ''} onChangeText={v => upd('assetId', v)} placeholder="Select sound..." placeholderTextColor={colors.muted} style={S(colors, missingFields.has('Asset'))} /></Field>}
         <Field label="Action" colors={colors}><OptBtns options={['play','stop']} value={data.action} onChange={v => upd('action', v)} colors={colors} /></Field>
         <Field label="Volume (0-100)" colors={colors}><TextInput value={String(Math.round((data.volume||0.8)*100))} onChangeText={v => upd('volume', (parseInt(v)||80)/100)} placeholder="80" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
-        <Toggle label="Loop" value={!!data.loop} onChange={v => upd('loop', v)} colors={colors} />
+        <Toggle t={t} label="Loop" value={!!data.loop} onChange={v => upd('loop', v)} colors={colors} />
         <Field label="Pitch Variation (0-100)" colors={colors}><TextInput value={String(Math.round((data.pitchVariation||0)*100))} onChangeText={v => upd('pitchVariation', (parseInt(v)||0)/100)} placeholder="0" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
       </>);
 
@@ -212,8 +224,8 @@ function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => 
         <Field label="Position Y (%)" colors={colors}><TextInput value={String(data.position?.y ?? 50)} onChangeText={v => upd('position', { ...(data.position||{}), y: parseInt(v)||0 })} placeholder="50" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
         <Field label="Width (%)" colors={colors}><TextInput value={String(data.position?.width ?? 10)} onChangeText={v => upd('position', { ...(data.position||{}), width: parseInt(v)||10 })} placeholder="10" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
         <Field label="Height (%)" colors={colors}><TextInput value={String(data.position?.height ?? 10)} onChangeText={v => upd('position', { ...(data.position||{}), height: parseInt(v)||10 })} placeholder="10" placeholderTextColor={colors.muted} keyboardType="numeric" style={S(colors)} /></Field>
-        <Toggle label="Pulse Animation" value={!!data.pulseAnimation} onChange={v => upd('pulseAnimation', v)} colors={colors} />
-        <Toggle label="One Time Only" value={!!data.oneTimeOnly} onChange={v => upd('oneTimeOnly', v)} colors={colors} />
+        <Toggle t={t} label="Pulse Animation" value={!!data.pulseAnimation} onChange={v => upd('pulseAnimation', v)} colors={colors} />
+        <Toggle t={t} label="One Time Only" value={!!data.oneTimeOnly} onChange={v => upd('oneTimeOnly', v)} colors={colors} />
       </>);
 
     case 'camera':
@@ -229,7 +241,7 @@ function renderForm(block: TimelineStep, data: any, upd: (f: string, v: any) => 
         <Field label="Variable Name" colors={colors} error={missingFields.has('Variable Name')}><TextInput value={data.variableName || ''} onChangeText={v => upd('variableName', v)} placeholder="Enter variable name..." placeholderTextColor={colors.muted} style={S(colors, missingFields.has('Variable Name'))} /></Field>
         <Field label="Operation" colors={colors}><OptBtns options={['set','add','subtract','multiply','toggle']} value={data.operation} onChange={v => upd('operation', v)} colors={colors} /></Field>
         {data.operation === 'toggle' ? (
-          <Toggle label="Value" value={data.value === true || data.value === 'true'} onChange={v => upd('value', v)} colors={colors} />
+          <Toggle t={t} label="Value" value={data.value === true || data.value === 'true'} onChange={v => upd('value', v)} colors={colors} />
         ) : (
           <Field label="Value" colors={colors}><TextInput value={String(data.value ?? '')} onChangeText={v => upd('value', v === '' ? v : isNaN(Number(v)) ? v : Number(v))} placeholder="Enter value..." placeholderTextColor={colors.muted} style={S(colors)} /></Field>
         )}
