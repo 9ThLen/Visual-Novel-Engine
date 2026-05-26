@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+current_phase: 8
+current_phase_name: Accessibility & i18n
+status: unknown
+last_updated: "2026-05-26T16:30:00.000Z"
+progress:
+  total_phases: 9
+  completed_phases: 8
+  total_plans: 19
+  completed_plans: 19
+  percent: 89
+---
+
 # STATE
 
 ## Project Reference
@@ -9,10 +25,10 @@ See: `.planning/PROJECT.md` (updated 2026-05-24)
 
 ## Status
 
-- **Project status:** Phase 6 та Phase 7 виконано; Phase 8 сплановано (3 детальні плани)
+- **Project status:** Phase 6 та Phase 7 виконано; Phase 8 частково виконано (08-01, 08-03 завершено; 08-02 в роботі)
 - **Current phase:** 8
 - **Current phase name:** Accessibility & i18n
-- **Next expected command:** `/gsd-execute-phase 08-01-PLAN.md` — execute Wave 1: infrastructure (text-inverse fix, i18n keys, ErrorBoundary cleanup)
+- **Next expected command:** `/gsd-execute-phase 08-02-PLAN.md` — execute remaining Wave 2: Editor/UI a11y (08-02 changes are in working tree, need committing/fixing)
 
 ## Active Decisions
 
@@ -80,4 +96,16 @@ See: `.planning/PROJECT.md` (updated 2026-05-24)
 
 ---
 
-*Last updated: 2026-05-26 — Phase 6 & 7 complete; Phase 8 planned (3 plans in 2 waves)*
+## Phase 8 Plan 03: Reader/App Color Tokenization & Contrast Audit
+
+- **Plan file:** 08-03-PLAN.md
+- **Commits:**
+  - `1e9c18f4` — feat(08-03): replace hardcoded colors in Reader components with RuntimePalette tokens
+  - `e95c9286` — feat(08-03): replace hardcoded SplashScreen bg with RuntimePalette token
+- **Files modified:** components/dialogue-history.tsx, components/story-reader-responsive.tsx, components/SplashScreen.tsx
+- **Key result:** Reader panel bg now uses colors.surface; ControlButton text uses colors['text-inverse']; SplashScreen uses colors.background; light-theme contrast audit produced with 8 combinations evaluated (4 pass AA normal, all 8 pass AA large)
+- **Pre-existing issue:** 08-02 changes (primarily in PropertiesPanel.tsx, BlockLibraryPanel.tsx, PlayMode.tsx, etc.) remain uncommitted in working tree with TypeScript errors
+
+---
+
+*Last updated: 2026-05-26 — Phase 6 & 7 complete; Phase 8: 08-01 + 08-03 complete, 08-02 pending (uncommitted changes in working tree)*
