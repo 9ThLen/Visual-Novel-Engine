@@ -10,6 +10,7 @@ import {
   Image,
   Animated,
   StyleSheet,
+  Platform,
   useWindowDimensions,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
@@ -18,6 +19,10 @@ import type {
   InteractiveObject,
   InteractiveAction,
 } from '@/lib/interactive-types';
+import {
+  getPointerEventsStyle,
+  shouldUseNativeDriverForPlatform,
+} from '@/lib/react-native-web-interop';
 
 interface Props {
   objects: InteractiveObject[];
@@ -84,7 +89,7 @@ export function InteractiveObjectsLayer({
   };
 
   return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+    <View style={[StyleSheet.absoluteFillObject, getPointerEventsStyle('box-none')]}>
       {objects.map((object) => (
         <InteractiveObjectView
           key={object.id}
@@ -110,6 +115,7 @@ function InteractiveObjectView({ object, onPress, isClicked }: ObjectViewProps) 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const useNativeDriver = shouldUseNativeDriverForPlatform(Platform.OS);
 
   // Pulse animation
   useEffect(() => {
@@ -119,19 +125,19 @@ function InteractiveObjectView({ object, onPress, isClicked }: ObjectViewProps) 
           Animated.timing(pulseAnim, {
             toValue: 1.1,
             duration: 800,
-            useNativeDriver: true,
+            useNativeDriver,
           }),
           Animated.timing(pulseAnim, {
             toValue: 1,
             duration: 800,
-            useNativeDriver: true,
+            useNativeDriver,
           }),
         ])
       );
       pulse.start();
       return () => pulse.stop();
     }
-  }, [object.pulseAnimation, isClicked, pulseAnim]);
+  }, [object.pulseAnimation, isClicked, pulseAnim, useNativeDriver]);
 
   // Glow animation
   useEffect(() => {
@@ -141,19 +147,19 @@ function InteractiveObjectView({ object, onPress, isClicked }: ObjectViewProps) 
           Animated.timing(glowAnim, {
             toValue: 1,
             duration: 1000,
-            useNativeDriver: true,
+            useNativeDriver,
           }),
           Animated.timing(glowAnim, {
             toValue: 0,
             duration: 1000,
-            useNativeDriver: true,
+            useNativeDriver,
           }),
         ])
       );
       glow.start();
       return () => glow.stop();
     }
-  }, [object.glowColor, isClicked, glowAnim]);
+  }, [object.glowColor, isClicked, glowAnim, useNativeDriver]);
 
   // Don't render if one-time and already clicked
   if (object.oneTimeOnly && isClicked) {

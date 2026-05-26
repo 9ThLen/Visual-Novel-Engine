@@ -115,7 +115,7 @@ export default function ReaderScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ReaderMenu
         visible={showMenu}
         onClose={() => setShowMenu(false)}
@@ -127,12 +127,12 @@ export default function ReaderScreen() {
           top: 48,
           left: 16,
           zIndex: showMenu ? 99 : 50,
-          backgroundColor: 'rgba(0,0,0,0.45)',
+          backgroundColor: colors.backdrop ?? 'rgba(0,0,0,0.45)',
           paddingHorizontal: 12,
           paddingVertical: 7,
           borderRadius: 8,
           borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.18)',
+          borderColor: colors.border,
           opacity: pressed ? 0.8 : 1,
         })}
         onPress={() => {
@@ -140,9 +140,9 @@ export default function ReaderScreen() {
           setShowMenu(!showMenu);
         }}
         accessibilityRole="button"
-        accessibilityLabel={showMenu ? 'Close reader menu' : 'Open reader menu'}
+        accessibilityLabel={showMenu ? t('menu.closeReader') : t('menu.openReader')}
       >
-        <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>☰</Text>
+        <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 14, fontWeight: '600' }}>☰</Text>
       </Pressable>
 
       <StoryReaderResponsive
@@ -166,11 +166,11 @@ export default function ReaderScreen() {
         <Pressable
           style={{
             position: 'absolute', inset: 0, justifyContent: 'center', alignItems: 'center',
-            backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 100,
+            backgroundColor: colors.backdrop ?? 'rgba(0,0,0,0.55)', zIndex: 100,
           }}
           onPress={() => setObjDialogue(null)}
           accessibilityRole="button"
-          accessibilityLabel="Dismiss object dialogue"
+          accessibilityLabel={t('reader.dismissObjectDialogue')}
         >
           <View
             style={{

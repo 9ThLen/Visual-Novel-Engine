@@ -49,6 +49,9 @@ app-example
 *.swo
 *~
 
+# Codex artifacts
+.codex/
+
 # Logs
 logs
 *.log
@@ -63,4 +66,4 @@ Thumbs.db
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
-D:\\.pnpm-store\
+D:/.pnpm-store/

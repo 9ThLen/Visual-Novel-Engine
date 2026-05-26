@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  View, Text, Pressable, Animated, Dimensions,
+  View, Text, Pressable, Animated, Dimensions, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +15,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useAppStore } from '@/stores/use-app-store';
 import { Button } from '@/components/ui';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
+import { shouldUseNativeDriverForPlatform } from '@/lib/react-native-web-interop';
 
 interface PlayModeProps {
   storyId: string;
@@ -49,6 +50,7 @@ export function PlayMode({ storyId }: PlayModeProps) {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const useNativeDriver = shouldUseNativeDriverForPlatform(Platform.OS);
 
   // Find start scene
   const getStartScene = useCallback((): SceneRecord | null => {
@@ -66,8 +68,8 @@ export function PlayMode({ storyId }: PlayModeProps) {
     setDialogueText('');
     setSpeakerName('');
     setShowChoices(false);
-    Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
-  }, [getStartScene, fadeAnim]);
+    Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver }).start();
+  }, [getStartScene, fadeAnim, useNativeDriver]);
 
   // Process current step
   const processStep = useCallback((scene: PlayScene) => {
@@ -136,7 +138,7 @@ export function PlayMode({ storyId }: PlayModeProps) {
         Animated.timing(fadeAnim, {
           toValue: 0,
           duration: duration * 500,
-          useNativeDriver: true,
+          useNativeDriver,
         }).start(() => {
           fadeAnim.setValue(1);
           processStep({ ...scene, currentStepIndex: nextIndex });
@@ -151,7 +153,7 @@ export function PlayMode({ storyId }: PlayModeProps) {
         }, 500);
         break;
     }
-  }, [storyRecords, fadeAnim]);
+  }, [storyRecords, fadeAnim, useNativeDriver]);
 
   // Auto-start processing when scene changes
   useEffect(() => {

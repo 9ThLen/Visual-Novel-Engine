@@ -14,7 +14,7 @@ interface Props {
 
 export function LanguageSelector({ style }: Props) {
   const colors = useColors();
-  const { language, setLanguage, languages } = useI18n();
+  const { language, setLanguage, languages, t } = useI18n();
 
   const handleLanguageChange = async (lang: Language) => {
     await setLanguage(lang);
@@ -39,6 +39,9 @@ export function LanguageSelector({ style }: Props) {
               },
             ]}
             onPress={() => handleLanguageChange(lang.code)}
+            accessibilityRole="button"
+            accessibilityLabel={`${t('settings.language')}: ${lang.nativeName}`}
+            accessibilityState={{ selected: language === lang.code }}
           >
             <Text style={styles.flag}>{lang.flag}</Text>
           </Pressable>

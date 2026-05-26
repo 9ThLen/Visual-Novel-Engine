@@ -17,7 +17,9 @@ import { useI18n } from '@/lib/i18n';
 import { Button } from '@/components/ui';
 
 function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
-  slot: SaveSlot; colors: ReturnType<typeof useColors>; t: (key: string) => string;
+  slot: SaveSlot;
+  colors: ReturnType<typeof useColors>;
+  t: (key: string, params?: Record<string, string | number>, fallback?: string) => string;
   onLoad: (id: string) => void; onDelete: (id: string) => void;
 }) {
   const slotId = 'autosave';
@@ -27,9 +29,12 @@ function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
         <View className="relative">
           <Image source={{ uri: slot.thumbnailUri }} className="w-full h-28"
             style={{ backgroundColor: colors.background }} resizeMode="cover" />
-          <View className="absolute bottom-0 left-0 right-0 h-15 bg-black/60" />
+          <View
+            className="absolute bottom-0 left-0 right-0 h-15"
+            style={{ backgroundColor: colors.backdrop ?? 'rgba(0,0,0,0.6)' }}
+          />
           <View className="absolute bottom-2 left-2 right-2">
-            <Text className="text-white text-xs font-semibold">
+            <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 12, fontWeight: '600' }}>
               {new Date(slot.timestamp).toLocaleDateString()}
             </Text>
           </View>
@@ -52,11 +57,23 @@ function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
           </Text>
         </View>
         <View className="flex-row gap-2">
-          <Button variant="primary" size="sm" onPress={() => onLoad(slotId)} className="flex-1">
-            📂 Load
+          <Button
+            variant="primary"
+            size="sm"
+            onPress={() => onLoad(slotId)}
+            className="flex-1"
+            accessibilityLabel={t('save.loadSlotLabel', { slot: 'Auto-Save' })}
+          >
+            📂 {t('save.loadButton')}
           </Button>
-          <Button variant="outline" size="sm" onPress={() => onDelete(slotId)}
-            style={{ borderColor: colors.error }} textStyle={{ color: colors.error }}>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={() => onDelete(slotId)}
+            style={{ borderColor: colors.error }}
+            textStyle={{ color: colors.error }}
+            accessibilityLabel={t('save.deleteSlotLabel', { slot: 'Auto-Save' })}
+          >
             🗑
           </Button>
         </View>
@@ -79,11 +96,11 @@ export default function SaveLoadScreen() {
   const { saveSlots, currentStory, playbackState } = useStoryState();
   const { saveGame, loadGame, deleteSaveSlot } = useStoryActions();
   const [activeTab, setActiveTab] = useState<'save' | 'load'>('load');
-  const { t } = useI18n();
+  const { t, language } = useI18n();
 
   const handleSaveToSlot = useCallback(async (slotId: string) => {
     if (!currentStory || !playbackState) {
-      Alert.alert(t('common.error'), 'No active story to save');
+      Alert.alert(t('common.error'), t('save.noActiveStory'));
       return;
     }
     try {
@@ -134,12 +151,12 @@ export default function SaveLoadScreen() {
     if (diffHours < 24) return `${diffHours}${t('time.hoursAgo')}`;
     if (diffDays < 7) return `${diffDays}${t('time.daysAgo')}`;
 
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString(language, {
       month: 'short',
       day: 'numeric',
       year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
     });
-  }, [t]);
+  }, [language, t]);
 
   const renderSaveSlot = useCallback(({ item, index }: { item: SaveSlot | null; index: number }) => {
     const slotId = `slot-${index + 1}`;
@@ -155,17 +172,20 @@ export default function SaveLoadScreen() {
               style={{ backgroundColor: colors.background }}
               resizeMode="cover"
             />
-            <View className="absolute bottom-0 left-0 right-0 h-15 bg-black/60" />
+            <View
+              className="absolute bottom-0 left-0 right-0 h-15"
+              style={{ backgroundColor: colors.backdrop ?? 'rgba(0,0,0,0.6)' }}
+            />
             <View
               className="absolute top-2 left-2 rounded-lg px-2.5 py-1"
               style={{ backgroundColor: colors.primary }}
             >
-              <Text className="text-white text-xs font-bold">
+              <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 12, fontWeight: '700' }}>
                 #{index + 1}
               </Text>
             </View>
             <View className="absolute bottom-2 left-2 right-2">
-              <Text className="text-white text-xs font-semibold">
+              <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 12, fontWeight: '600' }}>
                 {formatDate(item.timestamp)}
               </Text>
             </View>
@@ -204,7 +224,7 @@ export default function SaveLoadScreen() {
                   📍 {item.sceneName || item.sceneId}
                 </Text>
                 <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>
-                  • {item.choicesMade?.length ?? 0} choices
+                  • {t('save.slotChoiceCount', { count: item.choicesMade?.length ?? 0 })}
                 </Text>
               </View>
             </View>
@@ -223,7 +243,9 @@ export default function SaveLoadScreen() {
                 size="sm"
                 onPress={() => handleSaveToSlot(slotId)}
                 className="flex-1"
-                accessibilityLabel={isEmpty ? `Save to slot ${index + 1}` : `Overwrite slot ${index + 1}`}
+                accessibilityLabel={isEmpty
+                  ? t('save.saveSlotLabel', { slot: index + 1 })
+                  : t('save.overwriteSlotLabel', { slot: index + 1 })}
               >
                 💾 {isEmpty ? t('save.saveHere') : t('save.overwrite')}
               </Button>
@@ -234,9 +256,9 @@ export default function SaveLoadScreen() {
                 size="sm"
                 onPress={() => handleLoadFromSlot(slotId)}
                 className="flex-1"
-                accessibilityLabel={`Load slot ${index + 1}`}
+                accessibilityLabel={t('save.loadSlotLabel', { slot: index + 1 })}
               >
-                📂 Load
+                📂 {t('save.loadButton')}
               </Button>
             )}
             {!isEmpty && (
@@ -246,7 +268,7 @@ export default function SaveLoadScreen() {
                 onPress={() => handleDeleteSlot(slotId)}
                 style={{ borderColor: colors.error }}
                 textStyle={{ color: colors.error }}
-                accessibilityLabel={`Delete slot ${index + 1}`}
+                accessibilityLabel={t('save.deleteSlotLabel', { slot: index + 1 })}
               >
                 🗑
               </Button>
@@ -277,7 +299,12 @@ export default function SaveLoadScreen() {
         <Text style={[{ color: colors.foreground }, { fontSize: 24, fontWeight: 'bold' }]}>
           {activeTab === 'save' ? t('save.title') : t('load.title')}
         </Text>
-        <Button variant="ghost" size="sm" onPress={() => router.back()}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onPress={() => router.back()}
+          accessibilityLabel={t('menu.back')}
+        >
           {t('menu.back')}
         </Button>
       </View>
@@ -288,6 +315,7 @@ export default function SaveLoadScreen() {
           size="sm"
           onPress={() => setActiveTab('load')}
           className="flex-1"
+          accessibilityLabel={t('menu.load')}
         >
           {t('menu.load')}
         </Button>
@@ -296,6 +324,7 @@ export default function SaveLoadScreen() {
           size="sm"
           onPress={() => setActiveTab('save')}
           className="flex-1"
+          accessibilityLabel={t('menu.save')}
         >
           {t('menu.save')}
         </Button>

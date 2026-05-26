@@ -1,93 +1,45 @@
-# Довідник архітектури Visual Novel Engine
+# Architecture Reference
 
-**Оновлено:** 2026-05-24  
-**Призначення:** короткий current-state reference для active production architecture
+Last updated: 2026-05-26
 
-## 1. Канонічна модель
+## Core Contract
 
-- `SceneRecord + TimelineStep` — єдиний steady-state contract для editor, preview, reader, save/load і StoryFlow
-- `Story` і `StoryScene` — compatibility-only типи для import/export та контрольованих migration boundary
-- `storiesMetadata.startSceneId` — canonical source of truth для стартової сцени
+The active scene contract is `SceneRecord + TimelineStep`.
 
-Ключові файли:
-- `lib/engine/types.ts`
-- `lib/canonical-scene.ts`
-- `lib/scene-operations.ts`
-- `docs/SCENE-MODEL-CONTRACT.md`
+- `SceneRecord` stores scene identity, metadata, timeline content, graph position, and connections.
+- `TimelineStep` stores executable scene events.
+- `Story` and `StoryScene` are compatibility shapes, not the normal source of truth.
 
-## 2. Основні шари
+## Main Layers
 
-### App State
+- Routes: `app/` contains Expo Router screens for home, editor, scene editor, story flow, preview, reader, settings, and save/load.
+- Editor UI: `components/editor/` contains `SceneComposer`, timeline, properties, preview, story flow, and editor modals.
+- Runtime: `lib/engine/` contains `useSceneExecutor`, event factories, engine types, and condition evaluation.
+- App state: `stores/use-app-store.ts` owns persisted story metadata, scene records, saves, and app settings.
+- Editor draft state: `stores/use-editor-store.ts` owns in-memory editing state.
+- Persistence: `lib/persistent-storage.ts` chooses web or native storage.
+- Theme: `constants/theme-colors.json`, `lib/theme-variables.ts`, `lib/theme-nativewind.ts`, `theme.config.js`, and `tailwind.config.js`.
 
-- `stores/use-app-store.ts` — persisted app state, story metadata, canonical scene records, save/load, scene operations
-- `stores/use-editor-store.ts` — in-memory draft state для поточної сцени
+## Runtime Flow
 
-### Canonical Helpers
+1. A screen resolves the active story and scene.
+2. Canonical scene records provide the timeline.
+3. `useSceneExecutor` applies automatic steps and yields on text, dialogue, choice, and transition.
+4. Reader and preview consume the executor state instead of reconstructing their own scene state.
+5. Save/load stores runtime snapshots against canonical story and scene ids.
 
-- `lib/runtime-story.ts` — runtime snapshot, preview timeline, save/load helpers
-- `lib/story-flow-graph.ts` — derived nodes/edges для StoryFlow
-- `lib/editor-scene-draft.ts` — hydration/save helpers для editor draft
-- `lib/scene-record-adapter.ts` — explicit compatibility adapter, не primary production path
+## Editor Flow
 
-### UI Routes
+1. The editor opens or creates a story through `useAppStore`.
+2. The scene editor hydrates a draft from the canonical scene record.
+3. `SceneComposer` edits timeline steps through `useEditorStore`.
+4. Save writes the canonical scene record back to `useAppStore`.
+5. Story flow updates graph position, connections, and start scene metadata.
 
-- `app/editor.tsx` — список історій і canonical story creation entry point
-- `app/scene-editor.tsx` — scene editor route
-- `app/scene-manager.tsx` — scene CRUD route
-- `app/story-flow.tsx` — graph route
-- `app/reader.tsx` — runtime reader
-- `app/save-load.tsx` — manual save/load
+## Compatibility Rules
 
-## 3. Поточний data flow
-
-### Story Creation
-
-1. `editor.tsx` викликає canonical story creation path
-2. Store створює `storiesMetadata` + persisted start scene record
-3. Route відкриває `scene-editor.tsx` для нової canonical сцени
-
-### Scene Editing
-
-1. `scene-editor.tsx` читає canonical scene record
-2. `SceneComposer` гідрує `useEditorStore`
-3. Save йде назад у `useAppStore.saveSceneRecord(...)`
-4. Metadata, graph position і connections не губляться
-
-### Runtime / Preview / Save
-
-1. Preview читає persisted canonical scene через `runtime-story.ts`
-2. Reader ініціалізується через canonical start-scene resolution
-3. Autosave і manual save/load будують runtime snapshots з canonical data
-
-### Story Flow
-
-1. `StoryFlowScreen` отримує derived graph з `story-flow-graph.ts`
-2. Node positions зберігаються в `flowX/flowY`
-3. Connections проходять через store actions
-4. Start-scene sync іде через `scene-operations.ts`
-
-## 4. Compatibility Boundary
-
-Compatibility шар лишається лише тут:
-- legacy import/export flows у `lib/story-hooks.ts`
-- adapter conversion у `lib/scene-record-adapter.ts`
-- контрольований migration path у `use-app-store.ts`
-
-Що не є більше primary architecture:
-- React Context як source of truth для stories/runtime
-- Node Editor як основний graph editor
-- implicit fallback із runtime/editor selectors у legacy `StoryScene`
-
-## 5. Verification Focus
-
-Critical-path verification для поточного milestone:
-- create -> open -> edit -> save -> reopen
-- preview -> play -> autosave -> manual save/load
-- scene CRUD -> StoryFlow drag/connect/remove -> set start
-
-Актуальні phase artifacts:
-- `.planning/phases/01-canonical-scene-model/*`
-- `.planning/phases/02-editor-load-save-stability/*`
-- `.planning/phases/03-runtime-and-persistence-alignment/*`
-- `.planning/phases/04-story-flow-and-scene-operations/*`
-- `.planning/phases/05-legacy-cleanup-and-quality-gate/*`
+- Keep legacy conversion in `lib/scene-record-adapter.ts`.
+- Do not duplicate conversion logic in screens or components.
+- Do not write new React Context state sources.
+- Do not read legacy scene collections before canonical records when canonical data is available.
+- Keep import/export and migration code explicit.

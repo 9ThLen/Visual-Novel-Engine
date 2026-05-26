@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import {
   createEditorSceneDraft,
+  createSceneRecordFromEditorDraft,
   shouldHydrateEditorSceneDraft,
 } from '@/lib/editor-scene-draft';
 
@@ -59,12 +60,11 @@ describe('editor-scene-draft', () => {
 
     const draft = createEditorSceneDraft(sceneRecord);
 
-    expect(draft).toEqual({
-      sceneId: 'scene-1',
-      sceneName: 'Opening Scene',
-      timeline: sceneRecord.timeline,
-    });
+    expect(draft.sceneId).toBe('scene-1');
+    expect(draft.sceneName).toBe('Opening Scene');
     expect(draft.timeline).not.toBe(sceneRecord.timeline);
+    expect(draft.timeline.some((step) => step.blockType === 'background')).toBe(true);
+    expect(draft.timeline.some((step) => step.id === sceneRecord.timeline[0]?.id)).toBe(true);
   });
 
   it('derives a stable fallback name for canonical scenes without a title', () => {
@@ -73,6 +73,50 @@ describe('editor-scene-draft', () => {
     const draft = createEditorSceneDraft(sceneRecord);
 
     expect(draft.sceneName).toBe('Untitled Scene');
+  });
+
+  it('adds a default background block when a scene draft has no timeline blocks', () => {
+    const draft = createEditorSceneDraft(makeSceneRecord({ timeline: [] }));
+
+    expect(draft.timeline).toHaveLength(1);
+    expect(draft.timeline[0]?.blockType).toBe('background');
+  });
+
+  it('collapses duplicate background blocks to a single background step', () => {
+    const sceneRecord = makeSceneRecord({
+      timeline: [
+        {
+          id: 'bg-1',
+          blockType: 'background',
+          data: { assetId: null, transition: 'fade', duration: 500 },
+          collapsed: false,
+          enabled: true,
+        },
+        makeTimelineStep({ id: 'text-1' }),
+        {
+          id: 'bg-2',
+          blockType: 'background',
+          data: { assetId: null, transition: 'fade', duration: 500 },
+          collapsed: false,
+          enabled: true,
+        },
+      ],
+    });
+
+    const draft = createEditorSceneDraft(sceneRecord);
+
+    expect(draft.timeline.filter((step) => step.blockType === 'background')).toHaveLength(1);
+  });
+
+  it('creates a scene record with a default background block', () => {
+    const record = createSceneRecordFromEditorDraft('story-1', {
+      sceneId: 'scene-new',
+      sceneName: 'New Scene',
+      timeline: [],
+    });
+
+    expect(record.timeline).toHaveLength(1);
+    expect(record.timeline[0]?.blockType).toBe('background');
   });
 
   it('hydrates when switching to another scene id', () => {

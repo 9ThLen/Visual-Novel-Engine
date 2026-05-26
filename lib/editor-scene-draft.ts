@@ -1,5 +1,6 @@
 import { updateSceneRecordPreservingMeta } from '@/lib/canonical-scene';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
+import { createBackgroundStep } from '@/lib/engine/event-factory';
 
 export interface EditorSceneDraft {
   sceneId: string;
@@ -23,6 +24,29 @@ function normalizeSceneName(sceneName?: string | null): string {
   return trimmed && trimmed.length > 0 ? trimmed : 'Untitled Scene';
 }
 
+export function normalizeEditorTimeline(timeline: TimelineStep[]): TimelineStep[] {
+  const normalizedTimeline: TimelineStep[] = [];
+  let backgroundStep: TimelineStep | null = null;
+
+  for (const step of timeline) {
+    if (step.blockType === 'background') {
+      if (!backgroundStep) {
+        backgroundStep = step;
+        normalizedTimeline.push(step);
+      }
+      continue;
+    }
+
+    normalizedTimeline.push(step);
+  }
+
+  if (backgroundStep) {
+    return normalizedTimeline;
+  }
+
+  return [createBackgroundStep(), ...normalizedTimeline];
+}
+
 export function createEditorSceneDraft(
   sceneRecord?: Pick<SceneRecord, 'id' | 'name' | 'timeline'> | null,
   fallbackSceneId?: string
@@ -30,7 +54,7 @@ export function createEditorSceneDraft(
   return {
     sceneId: sceneRecord?.id ?? fallbackSceneId ?? '',
     sceneName: normalizeSceneName(sceneRecord?.name),
-    timeline: [...(sceneRecord?.timeline ?? [])],
+    timeline: normalizeEditorTimeline([...(sceneRecord?.timeline ?? [])]),
   };
 }
 
@@ -40,7 +64,7 @@ export function applyEditorDraftToSceneRecord(
 ): SceneRecord {
   return updateSceneRecordPreservingMeta(existingRecord, {
     name: normalizeSceneName(draft.sceneName),
-    timeline: [...draft.timeline],
+    timeline: normalizeEditorTimeline([...draft.timeline]),
   });
 }
 
@@ -56,7 +80,7 @@ export function createSceneRecordFromEditorDraft(
     name: normalizeSceneName(draft.sceneName),
     description: '',
     tags: [],
-    timeline: [...draft.timeline],
+    timeline: normalizeEditorTimeline([...draft.timeline]),
     sceneState: {
       backgroundAssetId: null,
       backgroundTransition: 'fade',

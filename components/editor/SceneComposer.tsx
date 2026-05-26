@@ -14,14 +14,13 @@ import {
 } from '@/stores/use-editor-store';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { useColors } from '@/hooks/use-colors';
-import { selectCanonicalSceneRecord, useAppStore } from '@/stores/use-app-store';
+import { useAppStore } from '@/stores/use-app-store';
 import { Button } from '@/components/ui';
 import { type BlockType, type TimelineStep } from '@/lib/engine/types';
 import {
-  applyEditorDraftToSceneRecord,
-  createSceneRecordFromEditorDraft,
   type EditorSceneDraft,
 } from '@/lib/editor-scene-draft';
+import { resolveSceneRecordForSave } from '@/lib/editor-scene-save';
 import { BlockLibraryPanel } from './BlockLibraryPanel';
 import { TimelinePanel } from './TimelinePanel';
 import { PropertiesPanel } from './PropertiesPanel';
@@ -30,6 +29,7 @@ import { SceneSelector } from './SceneSelector';
 import { getPhoneComposerPanel } from '@/lib/mobile-composer-layout';
 import { useEditorShortcuts, useKeyboardShortcuts, COMMON_SHORTCUTS } from '@/hooks/use-keyboard-shortcuts';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useI18n } from '@/lib/i18n';
 
 interface SceneComposerProps {
   storyId: string;
@@ -40,6 +40,7 @@ interface SceneComposerProps {
 export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComposerProps) {
   const router = useRouter();
   const colors = useColors();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
   const isPhone = layout.deviceType === 'phone';
@@ -103,12 +104,10 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
       sceneName,
       timeline,
     };
-    const existingRecord = useAppStore(s => selectCanonicalSceneRecord(storyId, sceneId)(s));
-    const record = existingRecord
-      ? applyEditorDraftToSceneRecord(existingRecord, draft)
-      : createSceneRecordFromEditorDraft(storyId, draft);
+    const appState = useAppStore.getState();
+    const record = resolveSceneRecordForSave(appState, storyId, sceneId, draft);
 
-    useAppStore.getState().saveSceneRecord(record);
+    appState.saveSceneRecord(record);
     useEditorStore.setState({ isDirty: false });
     setTimeout(() => setIsSaving(false), 500);
   }, [storyId, sceneId, sceneName, timeline, setIsSaving]);
@@ -177,31 +176,42 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
           paddingHorizontal: 12, paddingTop: insets.top + 8, paddingBottom: 8,
           borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface,
         }}>
-          <Pressable onPress={handleBack} style={{ padding: 8 }}>
-            <Text style={{ color: colors.primary, fontSize: 16 }}>←</Text>
+          <Pressable onPress={handleBack} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
+            <Text style={{ color: colors.primary, fontSize: 16 }}>Back</Text>
           </Pressable>
           <TextInput
             value={sceneName} onChangeText={setSceneName}
             style={{ flex: 1, color: colors.foreground, fontSize: 16, fontWeight: '600', textAlign: 'center', paddingHorizontal: 8 }}
-            placeholder="Scene name" placeholderTextColor={colors.muted}
+            placeholder={t('editor.sceneName')} placeholderTextColor={colors.muted}
+            accessibilityLabel={t('editor.sceneName')}
           />
-          <Pressable onPress={handleSave} style={{ padding: 8 }}>
-            <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>{isSaving ? '💾✓' : isDirty ? '💾*' : '💾'}</Text>
+          <Pressable onPress={handleSave} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel={t('editor.save')}>
+            <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>{isSaving ? 'Saving…' : isDirty ? 'Save*' : 'Saved'}</Text>
           </Pressable>
         </View>
 
         <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
-          <Pressable onPress={() => { setShowBlockLibrary(true); setShowProperties(false); }} style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}>
-            <Text style={{ color: showBlockLibrary ? colors.primary : colors.muted, fontSize: 12, fontWeight: '600' }}>🧱 Blocks</Text>
+          <Pressable
+            onPress={() => { setShowBlockLibrary(true); setShowProperties(false); }}
+            style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
+            accessibilityRole="button"
+            accessibilityLabel={t('editor.blocks')}
+          >
+            <Text style={{ color: showBlockLibrary ? colors.primary : colors.muted, fontSize: 12, fontWeight: '600' }}>{t('editor.blocks')}</Text>
           </Pressable>
-          <Pressable onPress={() => { setShowBlockLibrary(false); setShowProperties(false); }} style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}>
-            <Text style={{ color: !showBlockLibrary && !showProperties ? colors.primary : colors.muted, fontSize: 12, fontWeight: '600' }}>📝 Timeline</Text>
+          <Pressable
+            onPress={() => { setShowBlockLibrary(false); setShowProperties(false); }}
+            style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
+            accessibilityRole="button"
+            accessibilityLabel={t('editor.timeline')}
+          >
+            <Text style={{ color: !showBlockLibrary && !showProperties ? colors.primary : colors.muted, fontSize: 12, fontWeight: '600' }}>{t('editor.timeline')}</Text>
           </Pressable>
-          <Pressable onPress={handlePreview} style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}>
-            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>▶ Preview</Text>
+          <Pressable onPress={handlePreview} style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }} accessibilityRole="button" accessibilityLabel={t('editor.preview')}>
+            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>{t('editor.preview')}</Text>
           </Pressable>
-          <Pressable onPress={handleSceneSelectorOpen} style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}>
-            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>📚 Scenes</Text>
+          <Pressable onPress={handleSceneSelectorOpen} style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }} accessibilityRole="button" accessibilityLabel={t('editor.scenes')}>
+            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>{t('editor.scenes')}</Text>
           </Pressable>
         </View>
 
@@ -225,11 +235,11 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
 
       {/* Undo/Redo bar for phone */}
       <View style={{ flexDirection: 'row', justifyContent: 'center', paddingVertical: 8, gap: 24, borderTopWidth: 1, borderTopColor: colors.border }}>
-        <Pressable onPress={undo} disabled={!canUndo} style={{ opacity: canUndo ? 1 : 0.3, padding: 8 }}>
-          <Text style={{ color: colors.primary, fontSize: 16 }}>↩</Text>
+        <Pressable onPress={undo} disabled={!canUndo} style={{ opacity: canUndo ? 1 : 0.3, padding: 8 }} accessibilityRole="button" accessibilityLabel={t('editor.undo')}>
+          <Text style={{ color: colors.primary, fontSize: 16 }}>{t('editor.undo')}</Text>
         </Pressable>
-        <Pressable onPress={redo} disabled={!canRedo} style={{ opacity: canRedo ? 1 : 0.3, padding: 8 }}>
-          <Text style={{ color: colors.primary, fontSize: 16 }}>↪</Text>
+        <Pressable onPress={redo} disabled={!canRedo} style={{ opacity: canRedo ? 1 : 0.3, padding: 8 }} accessibilityRole="button" accessibilityLabel={t('editor.redo')}>
+          <Text style={{ color: colors.primary, fontSize: 16 }}>{t('editor.redo')}</Text>
         </Pressable>
       </View>
 
@@ -242,10 +252,8 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
       />
       <ConfirmDialog
         visible={pendingDeleteId !== null}
-        title="Delete Block"
-        message="Are you sure you want to delete this block? This action can be undone."
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        title={t('editor.confirmDeleteBlockTitle')}
+        message={t('editor.confirmDeleteBlockMessage')}
         onConfirm={handleDeleteConfirm}
         onCancel={() => setPendingDeleteId(null)}
         destructive
@@ -262,23 +270,24 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
         paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8,
         borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface,
       }}>
-        <Pressable onPress={handleBack} style={{ padding: 8 }}>
-          <Text style={{ color: colors.primary, fontSize: 16 }}>← Back</Text>
+        <Pressable onPress={handleBack} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
+          <Text style={{ color: colors.primary, fontSize: 16 }}>{t('menu.back')}</Text>
         </Pressable>
         <TextInput
           value={sceneName} onChangeText={setSceneName}
           style={{ flex: 1, color: colors.foreground, fontSize: 16, fontWeight: '600', textAlign: 'center', paddingHorizontal: 8 }}
-          placeholder="Scene name" placeholderTextColor={colors.muted}
+          placeholder={t('editor.sceneName')} placeholderTextColor={colors.muted}
+          accessibilityLabel={t('editor.sceneName')}
         />
-        <Pressable onPress={handleSave} style={{ padding: 8 }}>
-          <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>{isSaving ? '💾✓' : isDirty ? '💾*' : '💾'}</Text>
+        <Pressable onPress={handleSave} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel={t('editor.save')}>
+          <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>{isSaving ? 'Saving…' : isDirty ? 'Save*' : 'Saved'}</Text>
         </Pressable>
         <View style={{ flexDirection: 'row', gap: 8, marginRight: 12 }}>
-          <Pressable onPress={undo} disabled={!canUndo} style={{ opacity: canUndo ? 1 : 0.3, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}>
-            <Text style={{ color: colors.foreground, fontSize: 12 }}>↩ Undo</Text>
+          <Pressable onPress={undo} disabled={!canUndo} style={{ opacity: canUndo ? 1 : 0.3, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: colors.border }} accessibilityRole="button" accessibilityLabel={t('editor.undo')}>
+            <Text style={{ color: colors.foreground, fontSize: 12 }}>{t('editor.undo')}</Text>
           </Pressable>
-          <Pressable onPress={redo} disabled={!canRedo} style={{ opacity: canRedo ? 1 : 0.3, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}>
-            <Text style={{ color: colors.foreground, fontSize: 12 }}>↪ Redo</Text>
+          <Pressable onPress={redo} disabled={!canRedo} style={{ opacity: canRedo ? 1 : 0.3, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: colors.border }} accessibilityRole="button" accessibilityLabel={t('editor.redo')}>
+            <Text style={{ color: colors.foreground, fontSize: 12 }}>{t('editor.redo')}</Text>
           </Pressable>
         </View>
       </View>
@@ -306,10 +315,8 @@ export function SceneComposer({ storyId, sceneId, initialSceneDraft }: SceneComp
       />
       <ConfirmDialog
         visible={pendingDeleteId !== null}
-        title="Delete Block"
-        message="Are you sure you want to delete this block? This action can be undone."
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        title={t('editor.confirmDeleteBlockTitle')}
+        message={t('editor.confirmDeleteBlockMessage')}
         onConfirm={handleDeleteConfirm}
         onCancel={() => setPendingDeleteId(null)}
         destructive

@@ -231,7 +231,9 @@ export function useSceneExecutor(
 
     if (isTyping) {
       setIsTyping(false);
-      setCanAdvance(false);
+      // Reader UI finishes visible typing separately, so the next tap still needs
+      // to be accepted as a real advance for this halted text/dialogue step.
+      setCanAdvance(true);
       advanceGuardRef.current = false;
       return;
     }

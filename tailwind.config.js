@@ -1,16 +1,8 @@
 const { themeColors } = require("./theme.config");
 const plugin = require("tailwindcss/plugin");
+const { buildTailwindThemeColors } = require("./lib/build-tailwind-theme-colors");
 
-const tailwindColors = Object.fromEntries(
-  Object.entries(themeColors).map(([name, swatch]) => [
-    name,
-    {
-      DEFAULT: `var(--color-${name})`,
-      light: swatch.light,
-      dark: swatch.dark,
-    },
-  ]),
-);
+const tailwindColors = buildTailwindThemeColors(themeColors);
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {

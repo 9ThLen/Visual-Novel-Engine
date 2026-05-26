@@ -1,7 +1,0 @@
-{
-	"nodes":[
-		{"id":"314a4443c8cda067","x":100,"y":-220,"width":720,"height":760,"type":"file","file":"audit-report-2026-05-07.md"},
-		{"id":"2336d59288045aa4","x":-677,"y":-382,"width":537,"height":582,"type":"file","file":"CHANGELOG_2026_05_09.md"}
-	],
-	"edges":[]
-}

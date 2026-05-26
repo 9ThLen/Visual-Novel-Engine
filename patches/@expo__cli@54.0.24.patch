@@ -1,0 +1,18 @@
+diff --git a/build/src/api/rest/cache/FileSystemResponseCache.js b/build/src/api/rest/cache/FileSystemResponseCache.js
+index 920f329..be478e9 100644
+--- a/build/src/api/rest/cache/FileSystemResponseCache.js
++++ b/build/src/api/rest/cache/FileSystemResponseCache.js
+@@ -115,10 +115,9 @@ class FileSystemResponseCache {
+             // Create response body stream
+             let responseBody;
+             if (empty) {
+-                responseBody = _nodestream().Readable.toWeb(_nodestream().Readable.from(Buffer.alloc(0)));
+-            } else {
+-                const bodyBuffer = await _nodefs().default.promises.readFile(paths.body);
+-                responseBody = _nodestream().Readable.toWeb(_nodestream().Readable.from(bodyBuffer));
++                responseBody = Buffer.alloc(0);
++            } else {
++                responseBody = await _nodefs().default.promises.readFile(paths.body);
+             }
+             return {
+                 body: responseBody,

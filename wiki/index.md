@@ -1,161 +1,31 @@
 # Wiki Index
-# Wiki Index
-Last updated: 2026-05-17
 
-## Про Visual Novel Engine
+Last updated: 2026-05-26
 
-**Тип:** Крос-платформений мобільний/web застосунок  
-**Фреймворк:** React Native + Expo 54  
-**Мова:** TypeScript 5.7.2  
-**Статус:** Готовий до розробки, активно розвивається
+## Active Wiki Pages
 
-### Що це таке
+- `overview.md` - current project overview.
+- `architecture-reference.md` - high-level architecture and important boundaries.
+- `SCHEMA.md` - wiki maintenance rules.
+- `README.md` - wiki entry point and cleanup policy.
 
-Потужний рушій візуальних новел, який дозволяє створювати, редагувати та відтворювати інтерактивні історії з розгалуженим сюжетом. Поєднує професійні інструменти авторингу з імерсивним досвідом читання в одному крос-платформному застосунку.
+## Active Repository Docs
 
-### Основні можливості
+- `README.md` - project setup, architecture, commands, and development rules.
+- `DESIGN_SYSTEM.md` - current theme and UI token notes.
+- `docs/SCENE-MODEL-CONTRACT.md` - canonical scene model contract.
+- `docs/WEB_DEPLOYMENT.md` - web export and GitHub Pages deployment guide.
+- `docs/research/vn-engine-features-and-pain-points.md` - retained product research.
 
-**Створення історій:**
-- Візуальний редактор на основі вузлів (node-based) для картування потоку історії
-- Багатий редактор сцен з інтеграцією медіа
-- Система розгалуженого сюжету з вибором гравця
-- Перегляд та тестування в реальному часі
+## Removed From Active Docs
 
-**LEGO-система (НОВЕ!):**
-- **Атоми** — примітивні блоки (діалог, вибір, фон, музика, звук, голос)
-- **Молекули** — складові блоки з атомів (послідовність діалогів, ланцюжок виборів)
-- **Сцени** — таймлайн з молекул та атомів
-- **Граф сюжету** — візуалізація зв'язків між сценами
-- **Drag-and-drop** — перетягування з магнітним притягуванням
-- Три режими редагування: Canvas | Timeline | Graph
+The following categories are intentionally no longer kept as active documentation:
 
-**Читання історій:**
-- Ефект друкарської машинки для тексту
-- Спрайти персонажів з позиціонуванням
-- Фонові зображення та музика
-- Підтримка озвучення
-- Система збережень (10 слотів + автозбереження)
+- Dated session reports and fix reports.
+- Old implementation plans.
+- Old changelog fragments.
+- Empty placeholder pages.
+- Generated logs and screenshots.
+- Tool environments such as `wiki/.venv`.
 
-**Розширені функції:**
-- **Інтерактивні об'єкти** — клікабельні елементи в сценах з різними типами дій
-- **Інвентар** — збір предметів та умовні взаємодії
-- **Екрани-заставки** — зображення/відео переходи між сценами
-- **Багатомовність** — українська, англійська, російська з легким розширенням
-- **Система допомоги** — контекстні підказки та навчальні тури
-
-### Технічна архітектура
-
-**UI/UX:**
-- Темна тема за замовчуванням (editor-first), тепла світла тема (parchment)
-- OKLCH кольорова система для перцептуально рівномірних шкал
-- 5 рівнів surface elevation через luminance stepping
-- Багатошарова система тіней (multi-layer shadows)
-- Тактильний відгук (haptic feedback) на всіх взаємодіях
-- Система звукових ефектів з коректною деградацією
-- Адаптивний дизайн для телефонів та планшетів
-- Відповідність стандартам доступності WCAG AA (targeting AAA)
-- `prefers-reduced-motion` підтримка
-- Мінімальний розмір тouch targets: 44×44px (WCAG 2.5.8)
-
-**LEGO-система (технічна реалізація):**
-- **Типи:** `lib/atom-types.ts`, `lib/molecule-types.ts`, `lib/scene-types.ts`, `lib/story-graph-types.ts`
-- **Сховище:** `stores/use-app-store.ts` (Zustand, включає legoScenes)
-- **UI компоненти:** `components/lego-editor/AtomBlockComponent.tsx`, `LegoCanvas.tsx`, `TimelineEditor.tsx`, `StoryGraph.tsx`
-- **Міграція:** `lib/legacy-migration.ts` для переходу зі старої системи
-- **Тести:** 49 (атоми) + 13 (молекули) + 1 (інтеграційний) = 63 тести
-
-**Управління станом:**
-- Zustand для глобального стану (use-app-store, theme-store)
-- AsyncStorage для персистентності
-- React Context видалено для i18n, inventory (замінено на Zustand)
-- ThemeProvider використовує Zustand store замість useState
-
-**Ключові технології:**
-- **Роутинг:** Expo Router 6
-- **Стилізація:** NativeWind 4 (Tailwind CSS)
-- **Аудіо:** expo-av
-- **Тактильність:** expo-haptics
-- **Зображення:** expo-image
-- **Валідація:** Zod v4
-- **Тести:** Vitest 2.1.9
-
----
-
-## Останні звіти
-- [[2026-05-24-session-report|Робота 2026-05-24 — Повна інтеграція нового редактора на основі Stitch MCP]] ⭐ **НОВЕ**
-- [[editor-redesign-2026-05-23|Редизайн редактора 2026-05-23 — Event System, 11 етапів]] ⭐ **НОВЕ**
-- [[refactoring-2026-05-18-stage2|Рефакторинг 2026-05-18 — Етап 2: Context → Zustand]]
-- [[T2-hook-tests-2026-05-18|T2 — Тести для хуків 2026-05-18 — 62 нових тести]]
-- [[bug-report-2026-05-16|Звіт про баги 2026-05-16 — 81 проблема, 5 критичних]]
-- [[code-analysis-report-2026-05-16|Повний аналіз коду 2026-05-16 — 5 критичних багів, оцінка 4/10]]
-- [[2026-05-17-session-report|Робота 2026-05-17 — i18n, DI, Консолідація даних]] ⭐ **НОВЕ**
-- [[2026-05-16-session-report|Робота 2026-05-16 — Prop Drilling → Context, Zustand селектори, Code Quality Fixes]]
-- [[2026-05-13-session-report|Робота 2026-05-13 — Навігація, Безпека, Аудіо-тести]]
-- [[2026-05-12-code-audit|Аудит коду 2026-05-12 — 25 проблем, план виправлень]]
-- [[2026-05-12-session-report|Звіт сесії 2026-05-12 — аналіз проекту та перевірка TODO]]
-- [[testing-plan-2026-05-09|План тестування 2026-05-09]]
-- [[runtime-fixes-2026-05-09|Виправлення runtime-помилок 2026-05-09]]
-- [[next-session-plan-2026-05-10|План на сесію 2026-05-10]]
-- [[next-session-plan-2026-05-09|План на сесію 2026-05-09]]
-- [[lego-block-system-plan-2026-05-07|План реалізації LEGO-системи 2026-05-07]]
-- [[code-analysis-report-2026-05-07|Звіт глибокого аналізу коду 2026-05-07]]
-- [[audit-report-2026-05-07|Звіт про аудит 2026-05-07]]
-- [[PLAN_2026_05_07|План роботи 2026-05-07]]
-- [[DEV_SERVER_FIX_2026_05_07|Виправлення Dev Server 2026-05-07]]
-
-## Документація
-- [[architecture-reference|Довідник архітектури (усі файли проекту)]]
-- [[overview|Огляд проекту Visual Novel Engine]]
-- [[README|README проекту]]
-- [[SCHEMA|Схема даних]]
-
-## Fixes & Updates
-- [[fixes-2026-05-16-round5|Виправлення коду 2026-05-16 (раунд 5) — безпека, конфігурація]] ⭐ **НОВЕ**
-- [[fixes-2026-05-16-round4|Виправлення коду 2026-05-16 (раунд 4) — подвійний стейт]]
-- [[editor-unification-2026-05-16|Об'єднання систем редагування — Lego єдина система]]
-- [[fixes-2026-05-16-round2|Виправлення коду 2026-05-16 (раунд 2)]]
-- [[fixes-2026-05-16|Виправлення коду 2026-05-16 (раунд 1)]]
-- [[CHANGELOG_2026_05_17|Журнал змін — 17 травня 2026]] ⭐ **НОВЕ**
-- [[CHANGELOG_2026_05_16|Журнал змін — 16 травня 2026]]
-- [[CHANGELOG_2026_05_13|Журнал змін — 13 травня 2026]]
-- [[vitest-config-copy-removal-2026-05-09|Видалення дубліката vitest.config copy.ts (2026-05-09)]] ⭐ **НОВЕ**
-- [[PNPM_WINDOWS_CMD_WRAPPERS_FIX|Виправлення pnpm на Windows — .cmd wrappers (2026-05-09)]]
-- [[runtime-fixes-2026-05-09|Виправлення runtime-помилок (2026-05-09)]]
-  - 6 подвійних ком у AsyncStorage.setItem()
-  - Подвійні номери рядків у story-context.tsx
-  - Відсутній useState для isInitialized
-  - Зламаний симлінк expo-asset (pnpm на WSL)
-  - Відсутній babel-плагін Reanimated (білий екран)
-  - Переміщено lego-editor.tsx у app/tabs/
-  - Видалено застарілі unstable_settings з _layout.tsx
-  - **337/337 тестів**, бандли без помилок
-- [[FIXES_2026_05_06|Оптимізація продуктивності та тести (2026-05-06)]]
-  - Context optimization (useCallback/useMemo)
-  - AudioManager memory leak fixes
-  - Type safety improvements (any → unknown)
-  - Test infrastructure (vitest setup, 7 passing tests)
-- [[FIXES_2026_04_17|Повне очищення та виправлення (2026-04-17)]]
-  - HelpSystemProvider context setup
-  - Removed debug files and console.log
-  - Fixed memory leaks in useEffect
-  - Fixed deprecated APIs
-  - Fixed infinite loops (audio/updates)
-  - Asset resolver improvements
-
-## Activity Log
-- [[log|Журнал подій розробки]]
-
-## Пов'язані сторінки
-- [[runtime-fixes-2026-05-09|Виправлення runtime-помилок]]
-- [[next-session-plan-2026-05-10|План на наступну сесію]]
-- [[lego-block-system-plan-2026-05-07|План LEGO-системи]]
-- [[code-analysis-report-2026-05-16|Аналіз коду 2026-05-16]]
-- [[code-analysis-report-2026-05-07|Аналіз коду]]
-- [[audit-report-2026-05-07|Аудит проекту]]
-- [[design/lego-block-system-design.html|Дизайн прототип LEGO-системи]]
-- [[design-system-update-2026-05-18|Оновлення дизайн-системи 2026-05-18]]
-- [[refactoring-2026-05-18-stage2|Рефакторинг 2026-05-18 — Етап 2: Context → Zustand]]
-
-## Мобільна оптимізація (2026-06-09)
-- [[audit-report-2026-06-09-mobile|Аудит мобільної версії]]
-- [[fixes-2026-06-09-mobile|Виправлення мобільної версії]]
+Git history remains the source for those historical artifacts.

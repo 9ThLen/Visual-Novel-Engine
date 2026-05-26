@@ -55,7 +55,9 @@ export default function SettingsScreen() {
           value={value}
           onValueChange={onValueChange}
           trackColor={{ false: colors.border, true: colors.primary }}
-          thumbColor="#fff"
+          thumbColor={colors.surface}
+          accessibilityRole="switch"
+          accessibilityLabel={label}
         />
       </View>
     </View>
@@ -118,6 +120,7 @@ export default function SettingsScreen() {
         minimumTrackTintColor={colors.primary}
         maximumTrackTintColor={colors.border}
         thumbTintColor={colors.primary}
+        accessibilityLabel={label}
       />
     </View>
   );
@@ -133,6 +136,7 @@ export default function SettingsScreen() {
           variant="primary"
           size="sm"
           onPress={() => router.back()}
+          accessibilityLabel={t('common.close')}
         >
           {t('common.ok')}
         </Button>
@@ -158,7 +162,7 @@ export default function SettingsScreen() {
         </Section>
 
         {/* Text */}
-        <Section title="✏️  Text">
+        <Section title={`✏️  ${t('settings.textSection')}`}>
           <SliderRow label={t('settings.textSpeed')} emoji="⚡" value={settings.textSpeed}
             onValueChange={(v) => updateSettings({ textSpeed: v })} />
           <Divider />
@@ -181,8 +185,10 @@ export default function SettingsScreen() {
                     opacity: pressed ? 0.8 : 1,
                   })}
                   onPress={() => updateSettings({ textSize: size })}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('settings.textSize')}
                 >
-                  <Text style={{ color: settings.textSize === size ? '#fff' : colors.foreground, fontSize: 13, fontWeight: '600', textTransform: 'capitalize' }}>
+                  <Text style={{ color: settings.textSize === size ? (colors['text-inverse'] ?? '#fff') : colors.foreground, fontSize: 13, fontWeight: '600', textTransform: 'capitalize' }}>
                     {t(`settings.${size}`)}
                   </Text>
                 </Pressable>
@@ -192,21 +198,21 @@ export default function SettingsScreen() {
         </Section>
 
         {/* Playback */}
-        <Section title="▶️  Playback">
+        <Section title={`▶️  ${t('settings.playbackSection')}`}>
           <ToggleRow
             label={t('settings.autoPlay')}
             emoji="⏯"
             value={settings.autoPlay}
             onValueChange={(v) => updateSettings({ autoPlay: v })}
-            description="Automatically advance dialogue"
+            description={t('settings.autoPlayDescription')}
           />
         </Section>
 
         {/* About */}
-        <Section title="ℹ️  About">
+        <Section title={`ℹ️  ${t('settings.aboutSection')}`}>
           <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 20 }}>
             {t('app.name')} v1.0.0{'\n'}
-            A cross-platform app for reading and creating branching visual novels.
+            {t('settings.aboutDescription')}
           </Text>
         </Section>
 

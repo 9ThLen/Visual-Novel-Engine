@@ -498,6 +498,81 @@ html, body {
   .interactive {
     transition: none;
   }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* Web route transitions: native browser API with reduced-motion fallback. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-view-transition="nav-forward"]::view-transition-old(root) {
+  animation-name: app-nav-forward-out;
+}
+
+[data-view-transition="nav-forward"]::view-transition-new(root) {
+  animation-name: app-nav-forward-in;
+}
+
+[data-view-transition="surface-shift"]::view-transition-old(root) {
+  animation-name: app-surface-fade-out;
+}
+
+[data-view-transition="surface-shift"]::view-transition-new(root) {
+  animation-name: app-surface-fade-in;
+}
+
+@keyframes app-nav-forward-out {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-12px) scale(0.995);
+  }
+}
+
+@keyframes app-nav-forward-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes app-surface-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes app-surface-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
 }
 
 /* Text truncation */

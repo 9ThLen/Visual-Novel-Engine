@@ -194,6 +194,6 @@ describe('use-app-store scene operations', () => {
       storyId: 'story-new',
       isStart: true,
     });
-    expect(seed.sceneRecord.timeline.length).toBeGreaterThan(0);
+    expect(seed.sceneRecord.timeline.filter((step) => step.blockType === 'background')).toHaveLength(1);
   });
 });

@@ -6,9 +6,13 @@ import { create } from 'zustand';
 import type { TimelineStep, BlockType } from '@/lib/engine/types';
 import { createBlockStep, duplicateStep } from '@/lib/engine/event-factory';
 import { BLOCK_TYPE_INFO } from '@/lib/engine/types';
-import { type EditorSceneDraft, shouldHydrateEditorSceneDraft } from '@/lib/editor-scene-draft';
+import { normalizeEditorTimeline, type EditorSceneDraft, shouldHydrateEditorSceneDraft } from '@/lib/editor-scene-draft';
 
 const MAX_UNDO_HISTORY = 100;
+
+function getSingleBackgroundStep(timeline: TimelineStep[]): TimelineStep | undefined {
+  return timeline.find((step) => step.blockType === 'background');
+}
 
 interface EditorStore {
   // Scene state
@@ -76,7 +80,7 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
   _redoStack: [],
 
   setScene: (sceneId, sceneName, timeline) => set({
-    sceneId, sceneName, timeline, isDirty: false, _undoStack: [], _redoStack: [],
+    sceneId, sceneName, timeline: normalizeEditorTimeline(timeline), isDirty: false, _undoStack: [], _redoStack: [],
   }),
 
   hydrateSceneDraft: (draft) => {
@@ -100,7 +104,7 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
     set({
       sceneId: draft.sceneId,
       sceneName: draft.sceneName,
-      timeline: draft.timeline,
+      timeline: normalizeEditorTimeline(draft.timeline),
       isDirty: false,
       selectedBlockId: null,
       _undoStack: [],
@@ -112,6 +116,14 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
 
   addBlock: (blockType, index) => {
     const state = get();
+    if (blockType === 'background') {
+      const existingBackground = getSingleBackgroundStep(state.timeline);
+      if (existingBackground) {
+        set({ selectedBlockId: existingBackground.id });
+        return;
+      }
+    }
+
     const newStep = createBlockStep(blockType);
     const newTimeline = [...state.timeline];
     if (index !== undefined && index >= 0 && index <= newTimeline.length) {
@@ -130,8 +142,13 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
 
   removeBlock: (stepId) => {
     const state = get();
+    const stepToRemove = state.timeline.find((step) => step.id === stepId);
+    if (stepToRemove?.blockType === 'background' && state.timeline.filter((step) => step.blockType === 'background').length <= 1) {
+      return;
+    }
+
     set({
-      timeline: state.timeline.filter(s => s.id !== stepId),
+      timeline: normalizeEditorTimeline(state.timeline.filter(s => s.id !== stepId)),
       isDirty: true,
       selectedBlockId: state.selectedBlockId === stepId ? null : state.selectedBlockId,
       _undoStack: [...state._undoStack.slice(-MAX_UNDO_HISTORY), state.timeline],
@@ -142,7 +159,7 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
   updateBlock: (stepId, updates) => {
     const state = get();
     set({
-      timeline: state.timeline.map(s => s.id === stepId ? { ...s, ...updates } : s),
+      timeline: normalizeEditorTimeline(state.timeline.map(s => s.id === stepId ? { ...s, ...updates } : s)),
       isDirty: true,
       _undoStack: [...state._undoStack.slice(-MAX_UNDO_HISTORY), state.timeline],
       _redoStack: [],
@@ -155,7 +172,7 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
     const [moved] = newTimeline.splice(fromIndex, 1);
     newTimeline.splice(toIndex, 0, moved);
     set({
-      timeline: newTimeline, isDirty: true,
+      timeline: normalizeEditorTimeline(newTimeline), isDirty: true,
       _undoStack: [...state._undoStack.slice(-MAX_UNDO_HISTORY), state.timeline],
       _redoStack: [],
     });
@@ -165,11 +182,15 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
     const state = get();
     const idx = state.timeline.findIndex(s => s.id === stepId);
     if (idx === -1) return;
+    if (state.timeline[idx]?.blockType === 'background') {
+      set({ selectedBlockId: stepId });
+      return;
+    }
     const dup = duplicateStep(state.timeline[idx]);
     const newTimeline = [...state.timeline];
     newTimeline.splice(idx + 1, 0, dup);
     set({
-      timeline: newTimeline, isDirty: true, selectedBlockId: dup.id,
+      timeline: normalizeEditorTimeline(newTimeline), isDirty: true, selectedBlockId: dup.id,
       _undoStack: [...state._undoStack.slice(-MAX_UNDO_HISTORY), state.timeline],
       _redoStack: [],
     });
@@ -234,13 +255,13 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
   clearTimeline: () => {
     const state = get();
     set({
-      timeline: [], isDirty: true, selectedBlockId: null,
+      timeline: normalizeEditorTimeline([]), isDirty: true, selectedBlockId: null,
       _undoStack: [...state._undoStack.slice(-MAX_UNDO_HISTORY), state.timeline],
       _redoStack: [],
     });
   },
 
-  loadTimeline: (steps) => set({ timeline: steps, isDirty: false, _undoStack: [], _redoStack: [] }),
+  loadTimeline: (steps) => set({ timeline: normalizeEditorTimeline(steps), isDirty: false, _undoStack: [], _redoStack: [] }),
 
   reset: () => set({ ...initialState, _undoStack: [], _redoStack: [] }),
 }));
