@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 8
-current_phase_name: Accessibility & i18n
-status: unknown
+current_phase: 9
+current_phase_name: Web Runtime Stabilization & UAT
+status: planned
 last_updated: "2026-05-26T16:30:00.000Z"
 progress:
   total_phases: 9
@@ -25,10 +25,10 @@ See: `.planning/PROJECT.md` (updated 2026-05-24)
 
 ## Status
 
-- **Project status:** Phase 6 та Phase 7 виконано; Phase 8 частково виконано (08-01, 08-03 завершено; 08-02 в роботі)
-- **Current phase:** 8
-- **Current phase name:** Accessibility & i18n
-- **Next expected command:** `/gsd-execute-phase 08-02-PLAN.md` — execute remaining Wave 2: Editor/UI a11y (08-02 changes are in working tree, need committing/fixing)
+- **Project status:** Phase 6 та Phase 7 виконано; Phase 8 виконано (3/3 плани)
+- **Current phase:** 9
+- **Current phase name:** Web Runtime Stabilization & UAT
+- **Next expected command:** Phase 9 execution
 
 ## Active Decisions
 
@@ -85,14 +85,31 @@ See: `.planning/PROJECT.md` (updated 2026-05-24)
 
 ---
 
-## Phase 8 Planning Results
+---
 
-- **3 detailed plans created** (08-01, 08-02, 08-03) in 2 waves
-- RESEARCH.md completed with key findings: `text-inverse` alias bug, ~40+ hardcoded hex instances, ~30 new i18n keys
-- **Wave 1** (08-01): Infrastructure — fix `text-inverse` alias in `buildRuntimePalette()`, add i18n keys, cleanup ErrorBoundary API
-- **Wave 2** (08-02 + 08-03 in parallel): Editor/UI a11y + color tokenization for 15 components + Reader/App color cleanup + contrast audit
-- **Key research discovery:** `colors['text-inverse']` always returns `undefined` — missing alias in `buildRuntimePalette()`; must fix before any color replacement work
-- Plans committed: `de58bb32`
+## Phase 8 Key Results
+
+Phase 8 (Accessibility & i18n): 3/3 plans executed, all complete.
+
+### 08-01 — Infrastructure
+- **text-inverse alias fixed:** Added `'text-inverse': base['foreground-on-primary']` to `buildRuntimePalette()` in `lib/_core/theme.ts`
+- **i18n keys added:** ~30 new keys (editor toolbar, a11y verbs, settings, save/load, common, reader) across EN/UK/PL dictionaries in `lib/translations.ts`
+- **ErrorBoundary API cleaned:** Removed `colors` prop from public `ErrorBoundaryProps`; component now uses `useColors()` internally
+
+### 08-02 — Editor & UI: a11y + Color Tokenization
+- **5 editor main panels** tokenized (PropertiesPanel, SceneSelector, PreviewScreen, TimelinePanel, BlockLibraryPanel)
+- **8 editor modals/sub-components** tokenized (AssetPicker, CharacterCreator, SaveSceneDialog, StoryFlowScreen, SceneManager, MediaPickerRow, SceneEditorForm, SceneEditorHeader)
+- **2 UI components** tokenized (Button, ConfirmDialog)
+- All interactive elements got `accessibilityRole` + `accessibilityLabel` via `t()`
+
+### 08-03 — Reader & App: Color Tokenization + Contrast
+- **Reader components tokenized:** `dialogue-history.tsx` uses `colors.surface` instead of hardcoded constants; `story-reader-responsive.tsx` uses `colors.background` + `colors['text-inverse']`
+- **SplashScreen tokenized:** Replaced hardcoded `#000` with `colors.background`
+- **Lego editor:** Verified no `#fff`/`#000` in UI chrome — left untouched per D-01
+- **Contrast audit:** 8 critical foreground/background combinations evaluated; 4/8 pass 4.5:1 AA for normal text, all 8 pass AA for large text
+
+### Key Research Discovery
+- `colors['text-inverse']` always returned `undefined` — missing alias in `buildRuntimePalette()`. Fixed as first task.`
 
 ---
 
@@ -108,4 +125,4 @@ See: `.planning/PROJECT.md` (updated 2026-05-24)
 
 ---
 
-*Last updated: 2026-05-26 — Phase 6 & 7 complete; Phase 8: 08-01 + 08-03 complete, 08-02 pending (uncommitted changes in working tree)*
+*Last updated: 2026-05-26 — Phase 8 complete (Accessibility & i18n); next: Phase 9*
