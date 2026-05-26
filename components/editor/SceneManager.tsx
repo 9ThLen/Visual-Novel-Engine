@@ -16,6 +16,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 import { useAppStore } from '@/stores/use-app-store';
 import { useEditorStore } from '@/stores/use-editor-store';
 import { Button } from '@/components/ui';
@@ -49,6 +50,7 @@ function createManagedSceneRecord(
 export function SceneManager({ storyId }: SceneManagerProps) {
   const router = useRouter();
   const colors = useColors();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
 
   const storiesMetadata = useAppStore((s) => s.storiesMetadata);
@@ -177,7 +179,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
         borderBottomColor: colors.border,
         backgroundColor: colors.surface,
       }}>
-        <Pressable onPress={() => router.back()} style={{ padding: 8 }}>
+        <Pressable onPress={() => router.back()} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
           <Text style={{ color: colors.primary, fontSize: 18 }}>←</Text>
         </Pressable>
         <View style={{ flex: 1, marginHorizontal: 12 }}>
@@ -282,7 +284,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
                 padding: 16,
                 marginBottom: 12,
                 borderWidth: 1,
-                borderColor: scene.isStart ? colors.success || '#50c878' : colors.border,
+                borderColor: scene.isStart ? colors.success : colors.border,
               }}
             >
               {/* Scene header */}
@@ -291,13 +293,13 @@ export function SceneManager({ storyId }: SceneManagerProps) {
                   <Text style={{
                     fontSize: 10,
                     fontWeight: '700',
-                    color: colors.success || '#50c878',
+                    color: colors.success,
                     marginRight: 8,
                     paddingHorizontal: 6,
                     paddingVertical: 2,
                     borderRadius: 4,
                     borderWidth: 1,
-                    borderColor: colors.success || '#50c878',
+                    borderColor: colors.success,
                   }}>
                     START
                   </Text>

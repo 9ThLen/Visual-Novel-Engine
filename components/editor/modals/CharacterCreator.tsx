@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 import { useAppStore } from '@/stores/use-app-store';
 import { generateId } from '@/lib/id-utils';
 import type { Character } from '@/lib/character-types';
@@ -40,6 +41,7 @@ export function CharacterCreator({
   editCharacter,
 }: CharacterCreatorProps) {
   const colors = useColors();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const characterLibraries = useAppStore((s) => s.characterLibraries);
 
@@ -89,7 +91,7 @@ export function CharacterCreator({
     >
       <View style={{
         flex: 1,
-        backgroundColor: colors.backdrop || 'rgba(0,0,0,0.7)',
+        backgroundColor: colors.backdrop,
         justifyContent: 'center',
         alignItems: 'center',
         paddingTop: insets.top,
@@ -116,7 +118,7 @@ export function CharacterCreator({
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>
               {editCharacter ? 'Edit Character' : 'Create Character'}
             </Text>
-            <Pressable onPress={onClose} style={{ padding: 4 }}>
+            <Pressable onPress={onClose} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('a11y.closePanel')}>
               <Text style={{ fontSize: 16, color: colors.muted }}>✕</Text>
             </Pressable>
           </View>
@@ -169,6 +171,8 @@ export function CharacterCreator({
                       borderWidth: selectedColor === color ? 3 : 0,
                       borderColor: colors.foreground,
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t('editor.selectAsset')} ${color}`}
                   />
                 ))}
               </View>
@@ -195,11 +199,13 @@ export function CharacterCreator({
                       borderWidth: 1,
                       borderColor: voice === opt.key ? colors.primary : colors.border,
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={opt.label}
                   >
                     <Text style={{
                       fontSize: 12,
                       fontWeight: '600',
-                      color: voice === opt.key ? '#fff' : colors.foreground,
+                      color: voice === opt.key ? colors['text-inverse'] ?? '#fff' : colors.foreground,
                     }}>
                       {opt.label}
                     </Text>
@@ -234,6 +240,8 @@ export function CharacterCreator({
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t('editor.dialogueText')} ${i + 1}`}
                   >
                     {spriteSlots[i] ? (
                       <Text style={{ fontSize: 10, color: colors.foreground }}>
@@ -267,9 +275,11 @@ export function CharacterCreator({
                 borderWidth: 1,
                 borderColor: colors.border,
               }}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.cancel')}
             >
               <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>
-                Cancel
+                {t('common.cancel')}
               </Text>
             </Pressable>
             <Pressable
@@ -281,8 +291,10 @@ export function CharacterCreator({
                 borderRadius: 8,
                 backgroundColor: name.trim() ? colors.primary : colors.border,
               }}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.save')}
             >
-              <Text style={{ fontSize: 13, color: '#fff', fontWeight: '600' }}>
+              <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>
                 {editCharacter ? 'Save Changes' : 'Create Character'}
               </Text>
             </Pressable>

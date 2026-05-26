@@ -12,9 +12,14 @@ import {
   ActivityIndicator,
   ViewStyle,
   TextStyle,
+  Platform,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { buttonFeedback } from '@/lib/ui-feedback';
+import {
+  getButtonOverlayPointerEventsStyle,
+  shouldUseNativeDriver,
+} from '@/lib/button-platform';
 
 type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 type ButtonSize = 'sm' | 'base' | 'lg';
@@ -55,6 +60,9 @@ export function Button({
   const colors = useColors();
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
+  const useNativeDriver = shouldUseNativeDriver(Platform.OS);
+  const derivedAccessibilityLabel =
+    accessibilityLabel ?? (typeof children === 'string' ? children : undefined);
 
   const handlePressIn = () => {
     if (disabled || loading) return;
@@ -62,7 +70,7 @@ export function Button({
     // Scale down animation
     Animated.spring(scaleAnim, {
       toValue: 0.96,
-      useNativeDriver: true,
+      useNativeDriver,
       tension: 300,
       friction: 10,
     }).start();
@@ -71,7 +79,7 @@ export function Button({
     Animated.timing(glowAnim, {
       toValue: 1,
       duration: 150,
-      useNativeDriver: true,
+      useNativeDriver,
     }).start();
 
     // Haptic feedback
@@ -84,7 +92,7 @@ export function Button({
     // Scale back
     Animated.spring(scaleAnim, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver,
       tension: 300,
       friction: 10,
     }).start();
@@ -93,7 +101,7 @@ export function Button({
     Animated.timing(glowAnim, {
       toValue: 0,
       duration: 200,
-      useNativeDriver: true,
+      useNativeDriver,
     }).start();
   };
 
@@ -134,7 +142,7 @@ export function Button({
         return {
           backgroundColor: colors.primary,
           borderWidth: 0,
-          textColor: '#FFFFFF',
+          textColor: colors['text-inverse'] ?? '#FFFFFF',
         };
       case 'secondary':
         return {
@@ -160,7 +168,7 @@ export function Button({
         return {
           backgroundColor: colors.error,
           borderWidth: 0,
-          textColor: '#FFFFFF',
+          textColor: colors['text-inverse'] ?? '#FFFFFF',
         };
     }
   };
@@ -176,8 +184,9 @@ export function Button({
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={isDisabled}
-        accessibilityLabel={accessibilityLabel}
+        accessibilityLabel={derivedAccessibilityLabel}
         accessibilityRole={accessibilityRole}
+        accessibilityState={{ disabled: isDisabled, busy: loading }}
         className={className}
         style={[
           styles.button,
@@ -202,8 +211,9 @@ export function Button({
               }),
               borderRadius: sizeStyles[size].borderRadius,
             },
+            getButtonOverlayPointerEventsStyle(),
           ]}
-          pointerEvents="none"
+          pointerEvents={undefined}
         />
 
         {/* Content */}
