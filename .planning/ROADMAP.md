@@ -20,7 +20,7 @@
 | 5 | Legacy Cleanup and Quality Gate | Видалити або ізолювати legacy, оновити docs і закріпити critical path тестами | ARCH-03, ARCH-04, QUAL-01, QUAL-02, QUAL-03, QUAL-04 | 5 |
 | 6 | Block Runtime Executor | Підключити всі 12 типів блоків у reader через block-by-block executor | BLOCK-01, BLOCK-02, BLOCK-03, BLOCK-04 | ✅ 4 |
 | 7 | Editor UX Polish | Додати undo/redo, гарячі клавіші, confirmation діалоги, loading стани | POLISH-01, POLISH-02, POLISH-03, POLISH-04, POLISH-05 | ✅ 5 |
-| 8 | Accessibility & i18n | Додати a11y labels, кольорову систему, i18n інфраструктуру | A11Y-01, A11Y-02, A11Y-03, A11Y-04 | 4 |
+| 8 | Accessibility & i18n | 1/3 | In Progress|  |
 | 9 | Web Runtime Stabilization & UAT | Прибрати web runtime помилки, закрити web-only warnings і прогнати smoke/UAT по критичних сценаріях | QUAL-02, QUAL-03, QUAL-04 | 5 |
 
 ## Phase Details
@@ -222,12 +222,12 @@ Plans:
 3. i18n ключі визначені для основних UI текстів (editor toolbar, block labels, confirmation messages).
 4. Мінімальний contrast ratio 4.5:1 для тексту дотримано.
 
-**Plans:** 3 plans
+**Plans:** 3/3 plans executed
 
 Plans:
-- [ ] 08-01-PLAN.md — Infrastructure: text-inverse alias fix, i18n keys, ErrorBoundary cleanup
-- [ ] 08-02-PLAN.md — Editor & UI: a11y labels + color tokenization for 15 editor/UI components
-- [ ] 08-03-PLAN.md — Reader & App: color tokenization + Lego minimal fixes + contrast audit
+- [x] 08-01-PLAN.md — Infrastructure: text-inverse alias fix, i18n keys, ErrorBoundary cleanup
+- [x] 08-02-PLAN.md — Editor & UI: a11y labels + color tokenization for 15 editor/UI components
+- [x] 08-03-PLAN.md — Reader & App: color tokenization + Lego minimal fixes + contrast audit
 
 **Primary Files:**
 - `components/**/*.tsx`
