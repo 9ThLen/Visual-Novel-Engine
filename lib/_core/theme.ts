@@ -1,10 +1,10 @@
 import { Platform } from "react-native";
 
-import themeConfig from "@/theme.config";
+import themeColors from "@/constants/theme-colors.json";
 
 export type ColorScheme = "light" | "dark";
 
-export const ThemeColors = themeConfig.themeColors;
+export const ThemeColors = themeColors;
 
 type ThemeColorTokens = typeof ThemeColors;
 type ThemeColorName = keyof ThemeColorTokens;
@@ -130,6 +130,7 @@ function buildRuntimePalette(scheme: ColorScheme): RuntimePalette {
     // Legacy aliases
     muted: base['foreground-tertiary'],
     error: base.danger,
+    'text-inverse': base['foreground-on-primary'] || base['foreground-inverse'] || '#FFFFFF',
     surfaceElevated: base['surface-1'],
     // VN Reader
     dialogueBg: x('dialogue-bg'),
