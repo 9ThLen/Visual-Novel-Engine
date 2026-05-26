@@ -21,6 +21,7 @@
 | 6 | Block Runtime Executor | Підключити всі 12 типів блоків у reader через block-by-block executor | BLOCK-01, BLOCK-02, BLOCK-03, BLOCK-04 | ✅ 4 |
 | 7 | Editor UX Polish | Додати undo/redo, гарячі клавіші, confirmation діалоги, loading стани | POLISH-01, POLISH-02, POLISH-03, POLISH-04, POLISH-05 | ✅ 5 |
 | 8 | Accessibility & i18n | Додати a11y labels, кольорову систему, i18n інфраструктуру | A11Y-01, A11Y-02, A11Y-03, A11Y-04 | 4 |
+| 9 | Web Runtime Stabilization & UAT | Прибрати web runtime помилки, закрити web-only warnings і прогнати smoke/UAT по критичних сценаріях | QUAL-02, QUAL-03, QUAL-04 | 5 |
 
 ## Phase Details
 
@@ -221,6 +222,13 @@ Plans:
 3. i18n ключі визначені для основних UI текстів (editor toolbar, block labels, confirmation messages).
 4. Мінімальний contrast ratio 4.5:1 для тексту дотримано.
 
+**Plans:** 3 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Infrastructure: text-inverse alias fix, i18n keys, ErrorBoundary cleanup
+- [ ] 08-02-PLAN.md — Editor & UI: a11y labels + color tokenization for 15 editor/UI components
+- [ ] 08-03-PLAN.md — Reader & App: color tokenization + Lego minimal fixes + contrast audit
+
 **Primary Files:**
 - `components/**/*.tsx`
 - `lib/engine/types.ts` (RuntimePalette)
@@ -231,6 +239,41 @@ Plans:
 **Notes:**
 - Виправлення контрасту має найвищий пріоритет серед a11y задач.
 - i18n — це тільки інфраструктура в цій фазі; фактичний переклад не обов'язковий.
+
+### Phase 9: Web Runtime Stabilization & UAT
+**Goal:** Прибрати залишкові web runtime помилки, ізолювати web-only попередження та закрити ручний smoke/UAT для основних сценаріїв після останніх стабілізаційних змін.
+
+**Requirements:** QUAL-02, QUAL-03, QUAL-04
+
+**Why ninth:**
+- Після завершення основних продуктних фаз застосунок уже рендериться на web, але консоль усе ще містить реальні runtime-помилки, які маскують нові регресії.
+- Потрібна окрема стабілізаційна фаза, щоб не змішувати web bootstrap fixes із Phase 8 theme/i18n cleanup.
+- Без чистого web smoke неможливо якісно закрити UAT для `tabs`, `settings`, `reader`, `editor`, `preview` і `save/load`.
+
+**Success Criteria:**
+1. Помилка `[getThemeColors] TypeError: Cannot destructure property 'exportedColors' of 'undefined' as it is undefined` більше не відтворюється на свіжому web launch.
+2. Відомі web-only попередження або усунені, або зведені до документованого мінімуму без блокування smoke-сценаріїв.
+3. Критичні web-маршрути `tabs`, `settings`, `reader`, `editor`, `preview`, `save/load` проходять ручний smoke без нових runtime blockers.
+4. Для кожного знайденого дефекту є або кодовий фікс із regression coverage, або явно задокументоване відкладення з причиною.
+5. Verification pack містить актуальні команди, console findings і фінальний UAT status.
+
+**Primary Files:**
+- `app/_layout.tsx`
+- `lib/theme-provider.tsx`
+- `stores/theme-store.ts`
+- `lib/theme-nativewind.ts`
+- `lib/_core/theme.ts`
+- `components/ui/Button.tsx`
+- `components/dialogue-history.tsx`
+- `components/story-reader-responsive.tsx`
+- `app/settings.tsx`
+- `app/reader.tsx`
+- `app/save-load.tsx`
+
+**Notes:**
+- Будь-який web-only fix має мінімізувати ризик регресії на native.
+- Перед змінами в runtime/bootstrap бажано мати вузький regression test або точну reproduction note.
+- Якщо browser smoke блокується sandbox/tooling-обмеженням, Phase 9 можна закривати через code-level verification + локальний handoff checklist замість in-agent web UAT.
 
 ## Execution Rules
 
@@ -252,4 +295,4 @@ Plans:
 
 ---
 *Roadmap created: 2026-05-24*
-*Last updated: 2026-05-25 — added Phase 6 (Block Runtime Executor), Phase 7 (Editor UX Polish), Phase 8 (Accessibility & i18n)*
+*Last updated: 2026-05-26 — Phase 9 closeout + Phase 8 plans: 3 plans (text-inverse fix, editor/UI a11y+colors, reader/app colors+contrast)*
