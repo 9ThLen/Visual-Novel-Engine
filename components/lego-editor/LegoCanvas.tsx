@@ -12,6 +12,7 @@ import { AtomBlock } from '../../lib/atom-types';
 import { canSnap, MoleculeBlock, MoleculeType } from '../../lib/molecule-types';
 import AtomBlockComponent from './AtomBlockComponent';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
+import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 
 type LegoCanvasProps = {
   atoms: AtomBlock[];
@@ -243,7 +244,7 @@ const DraggableAtom: React.FC<{
         />
         {/* Cross-scene drag indicator badge */}
         {isDragging && sceneId && (
-          <View style={styles.dragBadge} pointerEvents="none">
+          <View style={[styles.dragBadge, getPointerEventsStyle('none')]}>
             <Text style={styles.dragBadgeText}>
               ↗ drop on scene
             </Text>
@@ -317,7 +318,7 @@ const LegoCanvas: React.FC<LegoCanvasProps> = ({
     <View style={canvasStyle} onLayout={onCanvasLayout} onStartShouldSetResponder={() => true} onResponderRelease={handleCanvasPress}>
       {/* Empty state */}
       {atoms.length === 0 && (
-        <View style={styles.emptyState} pointerEvents="none">
+        <View style={[styles.emptyState, getPointerEventsStyle('none')]}>
           <Text style={[styles.emptyStateText, !layout.isTablet && styles.emptyStateTextPhone]}>
             🧩 Додайте атоми на canvas{'\n'}або перетягніть їх між сценами
           </Text>

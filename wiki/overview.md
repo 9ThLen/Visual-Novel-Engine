@@ -1,103 +1,34 @@
-# Visual Novel Engine - Project Overview
+# Project Overview
 
-**Type:** Cross-platform mobile/web application
-**Framework:** React Native + Expo 54
-**Language:** TypeScript 5.9
-**Status:** Production-ready, actively developed
+Visual Novel Engine is a cross-platform visual novel editor and reader for web, Android, and iOS. It is built with Expo, React Native, TypeScript, Zustand, NativeWind, and Vitest.
 
-## What It Is
+## Current Product Shape
 
-A comprehensive visual novel engine that enables creators to build, edit, and play interactive branching narrative stories. Combines professional authoring tools with an immersive reading experience, all in a single cross-platform application.
+- Home screen for story selection and initialization.
+- Editor flow for scene composition, story flow, preview, manuscript editing, and save/load.
+- Reader flow for playback with text, dialogue, choices, backgrounds, characters, audio, and persistence.
+- Bundled demo story and sample media assets for local development.
 
-## Core Capabilities
+## Current Technical Shape
 
-### Story Creation
-- Visual node-based editor for mapping story flow
-- Rich scene editor with media integration
-- Branching narrative system with player choices
-- Real-time preview and testing
+- Canonical scene data is `SceneRecord + TimelineStep`.
+- `useSceneExecutor` executes timeline steps for preview and reader flows.
+- Zustand stores own app and editor state.
+- `createPersistentStorage()` abstracts web and native persistence.
+- NativeWind and generated theme variables provide styling.
+- Compatibility with old `StoryScene` data is isolated behind adapter code.
 
-### Story Reading
-- Typewriter text effects
-- Character sprites with positioning
-- Background images and music
-- Voice acting support
-- Save/load system (10 slots + auto-save)
+## What Is Not Current
 
-### Advanced Features
-- **Interactive Objects** - Clickable elements in scenes with multiple action types
-- **Inventory System** - Item collection and conditional interactions
-- **Splash Screens** - Image/video transitions between scenes
-- **Multilingual** - English, Ukrainian, Russian with easy extensibility
-- **Help System** - Contextual tooltips and guided tours
+- Old Atom/Molecule plans are historical only.
+- Old session reports and dated fix plans are not active project docs.
+- Python virtual environments, generated logs, build output, and tool lockfiles do not belong in the wiki.
 
-## Technical Architecture
+## Source Of Truth
 
-### UI/UX
-- Beige color theme (light/dark modes)
-- Haptic feedback on all interactions
-- Sound effects system with graceful degradation
-- Responsive design for phones and tablets
-- WCAG AA accessibility compliance
-
-### State Management
-- React Context API for global state
-- AsyncStorage for persistence
-- Separate contexts for stories, inventory, i18n, help
-
-### Key Technologies
-- **Routing:** Expo Router 6
-- **Styling:** NativeWind 4 (Tailwind CSS)
-- **Audio:** expo-av
-- **Haptics:** expo-haptics
-- **Images:** expo-image
-
-## Project Structure
-
-```
-app/                    # Screens (Expo Router)
-components/             # React components
-lib/                    # Core logic and contexts
-assets/                 # Media files
-wiki/                   # Knowledge base (this)
-```
-
-## Current State
-
-- ✅ All core features implemented
-- ✅ TypeScript compilation: 0 errors
-- ✅ ESLint: 0 errors, 46 warnings (non-blocking)
-- ✅ Comprehensive demo story with full asset library
-- ✅ Production build in progress (EAS Build)
-- ✅ GitHub repository published
-
-## Key Files
-
-- `README.md` - Full feature documentation
-- `lib/types.ts` - Core TypeScript types
-- `lib/story-context.tsx` - Story state management
-- `assets/demo-story-advanced.json` - Comprehensive demo
-
-## Development Context
-
-Built collaboratively with Claude Sonnet 4. Recent work focused on:
-- Production readiness (error fixes, build prep)
-- UI sound effects integration
-- Advanced demo story creation
-- Complete asset library (backgrounds, characters, audio)
-
-## Related Pages
-
-- [Story Engine](entities/story-engine.md) - Core narrative system
-- [Save System](entities/save-system.md) - Persistence layer
-- [Interactive Objects](entities/interactive-objects.md) - Clickable scene elements
-- [Inventory System](entities/inventory-system.md) - Item management
-
----
-
-**Created:** 2026-04-13
-**Last Updated:** 2026-04-13
-**Sources:** README.md, project structure, recent development session
-
-## Пов'язані сторінки
-- [[audit-report-2026-05-07|Звіт про аудит 2026-05-07]]
+- Project setup: `README.md`
+- Scene model: `docs/SCENE-MODEL-CONTRACT.md`
+- Runtime executor: `lib/engine/useSceneExecutor.ts`
+- App state: `stores/use-app-store.ts`
+- Editor state: `stores/use-editor-store.ts`
+- Theme tokens: `constants/theme-colors.json`

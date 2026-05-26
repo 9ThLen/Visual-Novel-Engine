@@ -1,4 +1,5 @@
 import { storySceneToSceneRecordDraft } from '@/lib/scene-record-adapter';
+import { normalizeEditorTimeline } from '@/lib/editor-scene-draft';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
 import type { StoryScene } from '@/lib/types';
@@ -133,14 +134,16 @@ export function createCanonicalStorySeed(
   }
 ): CanonicalStorySeed {
   const timestamp = options.now ?? Date.now();
+  const baseSceneRecord = storySceneToSceneRecordDraft(options.storyId, {
+    id: options.sceneId,
+    text: 'Your story begins here...',
+    characters: [],
+    choices: [],
+    musicUri: null,
+  });
   const sceneRecord = {
-    ...storySceneToSceneRecordDraft(options.storyId, {
-      id: options.sceneId,
-      text: 'Your story begins here...',
-      characters: [],
-      choices: [],
-      musicUri: null,
-    }),
+    ...baseSceneRecord,
+    timeline: normalizeEditorTimeline(baseSceneRecord.timeline),
     createdAt: timestamp,
     updatedAt: timestamp,
     isStart: true,

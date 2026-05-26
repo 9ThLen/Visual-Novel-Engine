@@ -1,8 +1,12 @@
-import { View, type ViewProps } from "react-native";
+import { Platform, View, type ViewProps } from "react-native";
 import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/use-colors";
 
 import { cn } from "@/lib/utils";
+import {
+  getScreenContainerWrapperClassNames,
+  getScreenContainerWrapperStyles,
+} from "@/lib/screen-container-platform";
 
 export interface ScreenContainerProps extends ViewProps {
   /**
@@ -49,16 +53,22 @@ export function ScreenContainer({
   ...props
 }: ScreenContainerProps) {
   const colors = useColors();
+  const wrapperClassNames = getScreenContainerWrapperClassNames({
+    platformOS: Platform.OS,
+    containerClassName,
+    safeAreaClassName,
+  });
+  const wrapperStyles = getScreenContainerWrapperStyles();
   return (
     <View
-      className={cn("flex-1", containerClassName)}
-      style={{ backgroundColor: colors.background }}
+      className={wrapperClassNames.containerClassName}
+      style={[wrapperStyles.containerStyle, { backgroundColor: colors.background }]}
       {...props}
     >
       <SafeAreaView
         edges={edges}
-        className={cn("flex-1", safeAreaClassName)}
-        style={style}
+        className={wrapperClassNames.safeAreaClassName}
+        style={[wrapperStyles.safeAreaStyle, style]}
       >
         <View className={cn("flex-1", className)}>{children}</View>
       </SafeAreaView>

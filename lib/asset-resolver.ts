@@ -5,7 +5,9 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
+import { Platform } from 'react-native';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
+import { getBrowserSafeAudioUri } from './audio-web-source';
 import { resolveLibraryAssetUri } from './media-library-service';
 
 const uriCache = new Map<string, Promise<string | number | null>>();
@@ -225,7 +227,12 @@ async function resolvePlayableUri(uri: string): Promise<string | null> {
   try {
     const resolved = await resolveAssetUri(uri);
     if (resolved === null) return null;
-    if (typeof resolved === 'string') return resolved;
+    if (typeof resolved === 'string') {
+      if (Platform.OS === 'web') {
+        return getBrowserSafeAudioUri(resolved);
+      }
+      return resolved;
+    }
     return moduleIdToPlayableUri(resolved);
   } catch (error) {
     ErrorHandler.handle('Error resolving playable asset URI', error, ErrorCategory.MEDIA, ErrorSeverity.LOW, { uri });

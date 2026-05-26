@@ -1,38 +1,38 @@
 # Scene Model Contract
 
-## Canonical model
+## Canonical Model
 
-Canonical model: `SceneRecord`
+`SceneRecord + TimelineStep` is the persisted scene contract.
 
-- The canonical persisted scene contract is `SceneRecord + TimelineStep`.
-- All new editor, persistence and story reconstruction logic must read canonical scene data first.
-- `SceneRecord` owns timeline content, scene metadata, graph positioning and scene-to-scene connections.
+- `SceneRecord` owns scene metadata, timeline content, graph position, and scene-to-scene connections.
+- `TimelineStep` owns executable scene events such as text, dialogue, choice, transition, background, character, audio, variable, effect, camera, and interactive object steps.
+- New editor, preview, reader, save/load, and story-flow code should read canonical scene records first.
 
-## Compatibility model
+## Runtime Execution
 
-Compatibility model: `StoryScene`
+- `lib/engine/useSceneExecutor.ts` is the runtime hook for timeline playback.
+- The executor yields on text, dialogue, choice, and transition steps.
+- Non-yielding steps are applied automatically to `sceneState`.
+- Choice conditions use `lib/engine/conditionUtils.ts`.
 
-- `StoryScene` remains a temporary compatibility representation for legacy reader-facing flows.
-- `StoryScene` is not the source of truth for new scene edits.
-- Any compatibility conversion must route through `lib/scene-record-adapter.ts`.
+## Compatibility Boundary
 
-## Allowed conversions
+`Story` and `StoryScene` remain compatibility types for import/export and migration scenarios.
 
-- `SceneRecord -> StoryScene` for legacy reader or export paths that still require the old structure.
-- `StoryScene -> SceneRecord draft` for transitional migration or compatibility fallback when only legacy scene data exists.
-- Canonical selectors may fall back to a compatibility conversion only when no canonical record exists yet.
+Allowed conversions:
 
-## Disallowed access patterns
+- `SceneRecord -> StoryScene` only when a legacy reader/export shape is required.
+- `StoryScene -> SceneRecord` only for migration or fallback when canonical scene data is missing.
 
-- Do not read from `scenesByStory` first when canonical scene records are available.
-- Do not duplicate scene-shape conversion logic across hooks, store selectors and components.
-- Do not overwrite canonical scene metadata by rebuilding records from scratch during generic save helpers.
-- Do not introduce new uncontrolled dual-write behavior between `sceneRecordsByStory` and `scenesByStory`.
+Rules:
 
-## Phase boundaries
+- Route conversions through `lib/scene-record-adapter.ts`.
+- Do not duplicate conversion logic in components, hooks, or stores.
+- Do not rebuild canonical scene metadata from legacy scene shapes during normal saves.
+- Do not introduce uncontrolled dual-write behavior between canonical and legacy scene collections.
 
-- Phase 1 defines the canonical contract, the adapter boundary and canonical store access helpers.
-- Phase 2 repairs editor load/save lifecycle on top of the canonical scene model.
-- Phase 3 aligns story reconstruction, preview, reader and persistence around canonical-first access.
-- Phase 4 stabilizes SceneManager, StoryFlow and scene-level operations.
-- Phase 5 removes or isolates legacy flows and updates public documentation.
+## State Ownership
+
+- Persisted app state lives in `stores/use-app-store.ts`.
+- Editor draft state lives in `stores/use-editor-store.ts`.
+- New state should use Zustand directly, not React Context.

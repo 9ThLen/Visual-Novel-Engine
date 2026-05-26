@@ -3,8 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { useEffect } from 'react';
 import { createPersistentStorage } from '@/lib/persistent-storage';
 import { Appearance, useColorScheme as useSystemColorScheme } from 'react-native';
-import { colorScheme as nativewindColorScheme } from 'nativewind';
 import { SchemeColors, type ColorScheme } from '@/constants/theme';
+import { getNativewindColorSchemeController } from '@/lib/theme-nativewind';
 
 const STORAGE_KEY = 'vne_theme';
 
@@ -16,7 +16,9 @@ interface ThemeState {
 
 function applyColorScheme(scheme: ColorScheme) {
   if (!scheme) return;
-  nativewindColorScheme.set(scheme);
+  getNativewindColorSchemeController({
+    isWeb: typeof document !== 'undefined',
+  })?.set(scheme);
   try {
     if (Appearance?.setColorScheme) {
       Appearance.setColorScheme(scheme);

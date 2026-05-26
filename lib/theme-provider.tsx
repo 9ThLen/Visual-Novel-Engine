@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import { View } from 'react-native';
-import { vars } from 'nativewind';
-import { Colors, SchemeColors } from '@/constants/theme';
+import { Platform, View } from 'react-native';
+import { Colors } from '@/constants/theme';
 import { useThemeStore , useThemeInit } from '@/stores/theme-store';
 import type { ColorScheme } from '@/constants/theme';
+import { createThemeVariables } from '@/lib/theme-variables';
+import { getNativewindVarsFactory } from '@/lib/theme-nativewind';
 
 export type { ColorScheme };
 
@@ -27,15 +28,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const themeVariables = useMemo(
     () =>
-      vars(
-        Object.fromEntries(
-          Object.entries(SchemeColors[colorScheme]).map(([token, value]) => [
-            `color-${token}`,
-            value,
-          ])
-        )
-      ),
-    [colorScheme],
+      createThemeVariables({
+        isWeb: Platform.OS === 'web',
+        palette: scheme,
+        varsFactory: getNativewindVarsFactory({
+          isWeb: Platform.OS === 'web',
+        }),
+      }),
+    [scheme],
   );
 
   return (

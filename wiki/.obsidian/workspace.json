@@ -23,8 +23,19 @@
                   "icon": "lucide-folder-closed",
                   "title": "Файловый менеджер"
                 }
+              },
+              {
+                "id": "06070fb5676c1149",
+                "type": "leaf",
+                "state": {
+                  "type": "graph",
+                  "state": {},
+                  "icon": "lucide-git-fork",
+                  "title": "Граф"
+                }
               }
-            ]
+            ],
+            "currentTab": 1
           }
         ],
         "direction": "vertical"
@@ -168,13 +179,12 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "SCHEMA.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Структура SCHEMA"
+              "title": "Структура"
             }
           }
         ]
@@ -189,7 +199,6 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "SCHEMA.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -199,7 +208,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Обратные ссылки для SCHEMA"
+              "title": "Обратные ссылки"
             }
           }
         ]
@@ -219,10 +228,13 @@
       "bases:Создать новую базу": false
     }
   },
-  "active": "file-explorer",
+  "active": "06070fb5676c1149",
   "lastOpenFiles": [
-    "README.md",
+    "index.md",
+    "overview.md",
     "SCHEMA.md",
+    "README.md",
+    "architecture-reference.md",
     "2026-05-17-session-report.md",
     "2026-05-12-code-audit.md",
     "sanitize-security.md",
@@ -233,7 +245,6 @@
     "next-session-plan-2026-05-08.md",
     "log.md",
     "Без названия.canvas",
-    "architecture-reference.md",
     "vitest-config-copy-removal-2026-05-09.md",
     "PNPM_WINDOWS_CMD_WRAPPERS_FIX.md",
     "tablet-adaptation-plan-stage5.md",
@@ -247,9 +258,7 @@
     "CHANGELOG_2026_05_09.md",
     "audit-report-2026-05-07.md",
     "wiki/index.md",
-    "entities/save-system.md",
     "wiki",
-    "design/lego-block-system-design.html.md",
     "design"
   ]
 }

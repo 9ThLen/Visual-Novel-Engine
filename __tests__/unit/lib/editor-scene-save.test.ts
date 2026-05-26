@@ -1,39 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
-import {
-  applyEditorDraftToSceneRecord,
-  createEditorSceneDraft,
-  type EditorSceneDraft,
-} from '@/lib/editor-scene-draft';
+import type { SceneRecord } from '@/lib/engine/types';
+import type { EditorSceneDraft } from '@/lib/editor-scene-draft';
+import { resolveSceneRecordForSave } from '@/lib/editor-scene-save';
 
-function makeTimelineStep(
-  id: string,
-  content: string,
-  overrides: Partial<TimelineStep> = {}
-): TimelineStep {
-  return {
-    id,
-    blockType: 'text',
-    data: {
-      content,
-      typewriterSpeed: 0.5,
-      anchorTo: 'background',
-    },
-    collapsed: false,
-    enabled: true,
-    ...overrides,
-  };
-}
-
-function makeSceneRecord(overrides: Partial<SceneRecord> = {}): SceneRecord {
+function makeExistingRecord(): SceneRecord {
+  const now = 1000;
   return {
     id: 'scene-1',
     storyId: 'story-1',
-    name: 'Original Scene',
-    description: 'Metadata description',
-    tags: ['intro'],
-    timeline: [makeTimelineStep('step-1', 'Original text')],
+    name: 'Old Name',
+    description: 'kept',
+    tags: ['tag'],
+    timeline: [],
     sceneState: {
       backgroundAssetId: null,
       backgroundTransition: 'fade',
@@ -48,49 +27,69 @@ function makeSceneRecord(overrides: Partial<SceneRecord> = {}): SceneRecord {
       isTransitioning: false,
       transitionTarget: null,
     },
-    flowX: 120,
-    flowY: 240,
-    connections: [{ targetSceneId: 'scene-2', outputPort: 'next' }],
+    flowX: 11,
+    flowY: 22,
+    connections: [],
     isStart: true,
-    createdAt: 100,
-    updatedAt: 100,
-    ...overrides,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
-describe('editor-scene-save', () => {
-  it('merges editor draft content into an existing canonical record without wiping metadata', () => {
-    const existingRecord = makeSceneRecord();
-    const draft: EditorSceneDraft = {
-      sceneId: 'scene-1',
-      sceneName: 'Updated Scene',
-      timeline: [makeTimelineStep('step-2', 'Updated text')],
-    };
+function makeDraft(): EditorSceneDraft {
+  return {
+    sceneId: 'scene-1',
+    sceneName: 'Updated Name',
+    timeline: [
+      {
+        id: 'step-1',
+        blockType: 'text',
+        data: { content: 'Hello', typewriterSpeed: 0.5, anchorTo: 'background' },
+        enabled: true,
+        collapsed: false,
+      },
+    ],
+  };
+}
 
-    const updatedRecord = applyEditorDraftToSceneRecord(existingRecord, draft);
+describe('resolveSceneRecordForSave', () => {
+  it('updates an existing canonical scene record while preserving metadata', () => {
+    const existingRecord = makeExistingRecord();
+    const record = resolveSceneRecordForSave(
+      {
+        sceneRecordsByStory: {
+          'story-1': {
+            'scene-1': existingRecord,
+          },
+        },
+      },
+      'story-1',
+      'scene-1',
+      makeDraft(),
+    );
 
-    expect(updatedRecord.name).toBe('Updated Scene');
-    expect(updatedRecord.timeline).toEqual(draft.timeline);
-    expect(updatedRecord.connections).toEqual(existingRecord.connections);
-    expect(updatedRecord.flowX).toBe(120);
-    expect(updatedRecord.flowY).toBe(240);
-    expect(updatedRecord.isStart).toBe(true);
-    expect(updatedRecord.createdAt).toBe(100);
+    expect(record.name).toBe('Updated Name');
+    expect(record.timeline.map((step) => step.blockType)).toEqual(['background', 'text']);
+    expect(record.timeline.some((step) => step.id === 'step-1')).toBe(true);
+    expect(record.createdAt).toBe(existingRecord.createdAt);
+    expect(record.flowX).toBe(existingRecord.flowX);
+    expect(record.isStart).toBe(true);
   });
 
-  it('reopens the saved scene with the updated name and timeline', () => {
-    const existingRecord = makeSceneRecord();
-    const draft: EditorSceneDraft = {
-      sceneId: 'scene-1',
-      sceneName: 'Saved Scene',
-      timeline: [makeTimelineStep('step-3', 'Saved text')],
-    };
+  it('creates a new scene record when the scene does not exist yet', () => {
+    const record = resolveSceneRecordForSave(
+      {
+        sceneRecordsByStory: {},
+      },
+      'story-1',
+      'scene-1',
+      makeDraft(),
+    );
 
-    const updatedRecord = applyEditorDraftToSceneRecord(existingRecord, draft);
-    const reopenedDraft = createEditorSceneDraft(updatedRecord);
-
-    expect(reopenedDraft.sceneId).toBe('scene-1');
-    expect(reopenedDraft.sceneName).toBe('Saved Scene');
-    expect(reopenedDraft.timeline).toEqual(draft.timeline);
+    expect(record.id).toBe('scene-1');
+    expect(record.storyId).toBe('story-1');
+    expect(record.name).toBe('Updated Name');
+    expect(record.timeline.map((step) => step.blockType)).toEqual(['background', 'text']);
+    expect(record.timeline.some((step) => step.id === 'step-1')).toBe(true);
   });
 });

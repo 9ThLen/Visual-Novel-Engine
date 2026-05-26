@@ -1,4 +1,6 @@
-import { Pressable } from 'react-native';
-import { remapProps } from 'nativewind';
+import { Platform, Pressable } from 'react-native';
+import { getNativewindRemapProps } from '@/lib/theme-nativewind';
 
-remapProps(Pressable, { className: false });
+getNativewindRemapProps({
+  isWeb: Platform.OS === 'web',
+})?.(Pressable, { className: false });

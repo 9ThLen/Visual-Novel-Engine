@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, Animated, useWindowDimensions } from 'react-native';
 import type { AnimatedCharacterInstance } from '@/lib/character-animator';
+import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 
 interface Props {
   instance: AnimatedCharacterInstance;
@@ -23,8 +24,8 @@ export const CharacterDisplay = React.memo(function CharacterDisplay({ instance,
           { scale: instance.animatedScale },
         ],
         zIndex: instance.zIndex || 0,
+        ...getPointerEventsStyle('none'),
       }}
-      pointerEvents="none"
     >
       <Image
         source={spriteUri ? { uri: spriteUri } : { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' }}
