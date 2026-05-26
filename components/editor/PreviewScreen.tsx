@@ -10,10 +10,12 @@ import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
 import { resolvePreviewTimeline } from '@/lib/runtime-story';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 import { AudioPlayerService } from '@/lib/audio-player-service';
+import { useI18n } from '@/lib/i18n';
 
 export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: string }) {
   const router = useRouter();
   const colors = useColors();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const editorSceneId = useEditorStore((s) => s.sceneId);
   const editorTimeline = useEditorStore((s) => s.timeline);
@@ -143,10 +145,10 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const showChoices = !!sceneState.currentChoices;
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={{
         flex: 1,
-        backgroundColor: backgroundSource ? '#111224' : '#111224',
+        backgroundColor: colors['surface-1'] ?? colors.background,
         alignItems: 'center',
         justifyContent: 'center',
       }}>
@@ -160,10 +162,10 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
           />
         ) : sceneState.backgroundAssetId ? (
           <Text style={{ fontSize: 14, color: colors.muted }}>
-            Loading background...
+            {t('editor.loadingBackground')}
           </Text>
         ) : (
-          <Text style={{ fontSize: 14, color: colors.muted + '60' }}>No background</Text>
+          <Text style={{ fontSize: 14, color: `${colors.muted}99` }}>{t('editor.noBackground')}</Text>
         )}
 
         {sceneState.characters.map((char, i) => (
@@ -202,12 +204,14 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
             borderTopColor: colors.primary,
             padding: 16,
           }}
+          accessibilityRole="button"
+          accessibilityLabel={t('reader.continueReading')}
         >
           <Text style={{ fontSize: 15, color: colors.foreground, lineHeight: 22 }}>
             {displayedText}
           </Text>
           <Text style={{ fontSize: 10, color: colors.muted, marginTop: 8, textAlign: 'right' }}>
-            {isTyping ? 'Tap to speed up' : 'Tap to continue ▶'}
+            {isTyping ? t('reader.tapToSpeedUp') : `${t('reader.tapToContinue')} ▶`}
           </Text>
         </Pressable>
       ) : null}
@@ -232,6 +236,8 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
                 padding: 14,
                 alignItems: 'center',
               }}
+              accessibilityRole="button"
+              accessibilityLabel={t('reader.choiceLabel', { text: opt.text || opt.id })}
             >
               <Text style={{ fontSize: 14, color: colors.foreground, fontWeight: '500' }}>
                 {opt.text || `Choice ${opt.id}`}
@@ -256,6 +262,8 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
               padding: 16,
               alignItems: 'center',
             }}
+            accessibilityRole="button"
+            accessibilityLabel={t('menu.back')}
           >
             <Text style={{ fontSize: 14, color: colors.foreground }}>
               Scene complete — tap to exit preview
@@ -275,10 +283,10 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
         paddingHorizontal: 16,
         paddingVertical: 8,
       }}>
-        <Pressable onPress={handleBack} style={{ padding: 8 }}>
-          <Text style={{ color: '#fff', fontSize: 14 }}>← Back</Text>
+        <Pressable onPress={handleBack} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
+          <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 14 }}>← {t('menu.back')}</Text>
         </Pressable>
-        <Text style={{ color: '#fff', fontSize: 12, alignSelf: 'center' }}>
+        <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 12, alignSelf: 'center' }}>
           {currentStepIndex + 1}/{timeline.length}
         </Text>
       </View>

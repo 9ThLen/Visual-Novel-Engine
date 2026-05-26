@@ -10,6 +10,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { BLOCK_TYPE_INFO, BLOCK_CATEGORIES, BLOCK_CATEGORY_MAP, type BlockCategory, type BlockType, type BlockTypeInfo } from '@/lib/engine/types';
+import { useI18n } from '@/lib/i18n';
 
 interface BlockLibraryPanelProps {
   onBlockTap: (blockType: BlockType) => void;
@@ -26,6 +27,7 @@ const CATEGORY_BLOCK_ORDER: Record<BlockCategory, BlockType[]> = {
 
 export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
   const colors = useColors();
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [tooltip, setTooltip] = useState<{ info: BlockTypeInfo; x: number; y: number } | null>(null);
 
@@ -33,9 +35,11 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
     if (!query.trim()) return null;
     const q = query.toLowerCase();
     return Object.values(BLOCK_TYPE_INFO).filter(
-      b => b.label.toLowerCase().includes(q) || b.description.toLowerCase().includes(q)
+      b =>
+        t(`editor.block.${b.type}`, undefined, b.label).toLowerCase().includes(q) ||
+        b.description.toLowerCase().includes(q)
     );
-  }, [query]);
+  }, [query, t]);
 
   const groupedBlocks = useMemo(() => {
     if (filteredByQuery) return null;
@@ -69,6 +73,8 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
         borderLeftWidth: 4,
         borderLeftColor: blockInfo.color,
       })}
+      accessibilityRole="button"
+      accessibilityLabel={t(`editor.block.${blockInfo.type}`, undefined, blockInfo.label)}
     >
       <View style={{
         width: 36,
@@ -88,7 +94,7 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
           fontWeight: '600',
           color: colors.foreground,
         }}>
-          {blockInfo.label}
+          {t(`editor.block.${blockInfo.type}`, undefined, blockInfo.label)}
         </Text>
         <Text style={{
           fontSize: 11,
@@ -125,14 +131,15 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
           color: colors['foreground-tertiary'] || colors.muted,
           marginBottom: 8,
         }}>
-          🧱 Block Library
+          🧱 {t('editor.blockLibrary')}
         </Text>
         <TextInput
           {...({ dataSet: { searchInput: true } } as any)}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search blocks..."
+          placeholder={t('editor.searchBlocks')}
           placeholderTextColor={colors.muted}
+          accessibilityLabel={t('editor.searchBlocks')}
           style={{
             backgroundColor: colors.background,
             borderWidth: 1,
@@ -154,7 +161,7 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
         {filteredByQuery ? (
           filteredByQuery.length === 0 ? (
             <View style={{ padding: 20, alignItems: 'center' }}>
-              <Text style={{ color: colors.muted, fontSize: 13 }}>No blocks found</Text>
+              <Text style={{ color: colors.muted, fontSize: 13 }}>{t('editor.noBlocksFound')}</Text>
             </View>
           ) : (
             filteredByQuery.map(renderBlockItem)
@@ -191,6 +198,8 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
           <Pressable
             style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' }}
             onPress={() => setTooltip(null)}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.close')}
           >
             <View style={{
               backgroundColor: colors.surface,
@@ -238,8 +247,10 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
                   borderRadius: 8,
                   backgroundColor: tooltip.info.color,
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={t('editor.addBlock')}
               >
-                <Text style={{ fontSize: 13, color: '#fff', fontWeight: '600' }}>Add Block</Text>
+                <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>{t('editor.addBlock')}</Text>
               </Pressable>
             </View>
           </Pressable>

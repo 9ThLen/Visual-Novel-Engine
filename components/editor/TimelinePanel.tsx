@@ -9,12 +9,13 @@
 
 import React, { useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import Animated from 'react-native-reanimated';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { DropProvider, SortableItem, useSortableList } from 'react-native-reanimated-dnd';
+import { Sortable, SortableItem, type SortableRenderItemProps } from 'react-native-reanimated-dnd';
 import { useColors } from '@/hooks/use-colors';
 import { BLOCK_TYPE_INFO, type TimelineStep, type BlockType } from '@/lib/engine/types';
 import { isBlockComplete } from '@/lib/editor/block-validation';
+import { useI18n } from '@/lib/i18n';
+import { createTimelineSortableProps } from '@/lib/editor/timeline-sortable';
+import { getTimelineItemLayout } from '@/lib/editor/timeline-item-layout';
 
 interface TimelinePanelProps {
   timeline: TimelineStep[];
@@ -39,20 +40,13 @@ export function TimelinePanel({
   onBlockMove,
 }: TimelinePanelProps) {
   const colors = useColors();
+  const { t } = useI18n();
 
-  const list = useSortableList({
-    data: timeline.map(t => ({ ...t, id: t.id })),
-    enableDynamicHeights: true,
-    estimatedItemHeight: ESTIMATED_BLOCK_HEIGHT,
-    itemKeyExtractor: (item) => item.id,
-  });
-
-  const handleDrop = useCallback((id: string, newPosition: number) => {
-    const oldIndex = timeline.findIndex(s => s.id === id);
-    if (oldIndex !== -1 && oldIndex !== newPosition) {
-      onBlockMove(oldIndex, newPosition);
+  const handleMove = useCallback((_: string, fromIndex: number, toIndex: number) => {
+    if (fromIndex !== toIndex) {
+      onBlockMove(fromIndex, toIndex);
     }
-  }, [timeline, onBlockMove]);
+  }, [onBlockMove]);
 
   if (timeline.length === 0) {
     return (
@@ -69,7 +63,7 @@ export function TimelinePanel({
           color: colors.foreground,
           marginBottom: 4,
         }}>
-          No blocks yet
+          {t('editor.noBlocksYet')}
         </Text>
         <Text style={{
           fontSize: 13,
@@ -77,7 +71,7 @@ export function TimelinePanel({
           textAlign: 'center',
           maxWidth: 280,
         }}>
-          Add blocks from the Block Library to build your scene timeline
+          {t('editor.addBlocksHint')}
         </Text>
       </View>
     );
@@ -101,7 +95,7 @@ export function TimelinePanel({
           letterSpacing: 0.5,
           color: colors['foreground-tertiary'] || colors.muted,
         }}>
-          📝 Timeline
+          📝 {t('editor.timeline')}
         </Text>
         <Text style={{
           fontSize: 11,
@@ -111,28 +105,24 @@ export function TimelinePanel({
         </Text>
       </View>
 
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <DropProvider>
-          <Animated.ScrollView
-            ref={list.scrollViewRef}
-            onScroll={list.handleScroll}
-            onMomentumScrollEnd={list.handleScrollEnd}
-            scrollEventThrottle={16}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingVertical: 12 }}
-          >
-            {timeline.map((step, index) => {
+      <View style={{ flex: 1, paddingVertical: 12 }}>
+        <Sortable
+          {...createTimelineSortableProps(timeline)}
+          itemKeyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingBottom: 12 }}
+          renderItem={({ item: step, index, ...sortableItemProps }: SortableRenderItemProps<TimelineStep>) => {
               const info = BLOCK_TYPE_INFO[step.blockType];
               const isSelected = step.id === selectedBlockId;
+              const layout = getTimelineItemLayout(index);
 
               return (
                 <SortableItem
                   key={step.id}
                   data={step}
-                  {...list.getItemProps(step, index)}
-                  onDrop={handleDrop}
+                  {...sortableItemProps}
+                  onMove={handleMove}
                 >
-                  <View>
+                  <View style={layout.containerStyle}>
                     {index > 0 && (
                       <View style={{
                         alignItems: 'center',
@@ -140,18 +130,16 @@ export function TimelinePanel({
                       }}>
                         <View style={{
                           width: 2,
-                          height: 16,
+                          height: layout.connectorStyle.height,
                           backgroundColor: colors.border,
                           borderRadius: 1,
                         }} />
                       </View>
                     )}
 
-                    <Pressable
-                      onPress={() => onBlockSelect(isSelected ? null : step.id)}
-                      style={({ pressed }) => ({
-                        marginHorizontal: 8,
-                        marginVertical: 2,
+                    <View
+                      style={{
+                        ...layout.cardStyle,
                         borderRadius: 10,
                         backgroundColor: isSelected
                           ? (colors as any)['surface-2'] || colors.surface
@@ -166,8 +154,7 @@ export function TimelinePanel({
                         shadowOffset: { width: 0, height: 1 },
                         shadowOpacity: isSelected ? 0.3 : 0.1,
                         shadowRadius: 3,
-                        transform: [{ scale: pressed ? 0.98 : 1 }],
-                      })}
+                      }}
                     >
                       <View style={{
                         flexDirection: 'row',
@@ -178,6 +165,7 @@ export function TimelinePanel({
                         <SortableItem.Handle>
                           <View style={{
                             width: 20,
+                            paddingVertical: 10,
                             alignItems: 'center',
                             marginRight: 6,
                           }}>
@@ -190,57 +178,71 @@ export function TimelinePanel({
                           </View>
                         </SortableItem.Handle>
 
-                        <View style={{ position: 'relative' }}>
-                          <View style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 6,
-                            backgroundColor: info.bgColor,
+                        <Pressable
+                          onPress={() => onBlockSelect(isSelected ? null : step.id)}
+                          style={({ pressed }) => ({
+                            flex: 1,
+                            flexDirection: 'row',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            marginRight: 8,
-                          }}>
-                            <Text style={{ fontSize: 14 }}>{info.icon}</Text>
-                          </View>
-                          <View style={{
-                            position: 'absolute',
-                            top: -4,
-                            right: 4,
-                            width: 10,
-                            height: 10,
-                            borderRadius: 5,
-                            backgroundColor: isBlockComplete(step.blockType, step.data)
-                              ? '#22c55e'
-                              : '#f59e0b',
-                            borderWidth: 1.5,
-                            borderColor: colors.background,
-                          }} />
-                        </View>
-
-                        <View style={{ flex: 1 }}>
-                          <Text style={{
-                            fontSize: 13,
-                            fontWeight: '700',
-                            color: colors.foreground,
-                          }}>
-                            {info.label}
-                          </Text>
-                          {!step.collapsed && info.description && (
-                            <Text style={{
-                              fontSize: 10,
-                              color: colors.muted,
-                              marginTop: 1,
+                            transform: [{ scale: pressed ? 0.98 : 1 }],
+                          })}
+                          accessibilityRole="button"
+                          accessibilityLabel={t(`editor.block.${step.blockType}`, undefined, info.label)}
+                        >
+                          <View style={{ position: 'relative' }}>
+                            <View style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: 6,
+                              backgroundColor: info.bgColor,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginRight: 8,
                             }}>
-                              {getBlockPreviewText(step, info.label)}
+                              <Text style={{ fontSize: 14 }}>{info.icon}</Text>
+                            </View>
+                            <View style={{
+                              position: 'absolute',
+                              top: -4,
+                              right: 4,
+                              width: 10,
+                              height: 10,
+                              borderRadius: 5,
+                              backgroundColor: isBlockComplete(step.blockType, step.data)
+                                ? colors.success
+                                : colors.warning,
+                              borderWidth: 1.5,
+                              borderColor: colors.background,
+                            }} />
+                          </View>
+
+                          <View style={{ flex: 1 }}>
+                            <Text style={{
+                              fontSize: 13,
+                              fontWeight: '700',
+                              color: colors.foreground,
+                            }}>
+                              {t(`editor.block.${step.blockType}`, undefined, info.label)}
                             </Text>
-                          )}
-                        </View>
+                            {!step.collapsed && info.description && (
+                              <Text style={{
+                                fontSize: 10,
+                                color: colors.muted,
+                                marginTop: 1,
+                              }}>
+                                {getBlockPreviewText(step, info.label)}
+                              </Text>
+                            )}
+                          </View>
+                        </Pressable>
 
                         {isSelected && (
                           <View style={{ flexDirection: 'row', gap: 4 }}>
                             <Pressable
                               onPress={(e) => { e.stopPropagation(); onBlockToggleCollapse(step.id); }}
                               style={{ padding: 4 }}
+                              accessibilityRole="button"
+                              accessibilityLabel={step.collapsed ? `${t('editor.blockActions')} expand` : `${t('editor.blockActions')} collapse`}
                             >
                               <Text style={{ fontSize: 12, color: colors.muted }}>
                                 {step.collapsed ? '▼' : '▲'}
@@ -249,28 +251,31 @@ export function TimelinePanel({
                             <Pressable
                               onPress={(e) => { e.stopPropagation(); onBlockDuplicate(step.id); }}
                               style={{ padding: 4 }}
+                              accessibilityRole="button"
+                              accessibilityLabel={t('common.duplicate')}
                             >
                               <Text style={{ fontSize: 12, color: colors.muted }}>📋</Text>
                             </Pressable>
                             <Pressable
                               onPress={(e) => { e.stopPropagation(); onBlockRemove(step.id); }}
                               style={{ padding: 4 }}
+                              accessibilityRole="button"
+                              accessibilityLabel={t('common.delete')}
                             >
-                              <Text style={{ fontSize: 12, color: colors.error || '#ff6b6b' }}>🗑</Text>
+                              <Text style={{ fontSize: 12, color: colors.error }}>🗑</Text>
                             </Pressable>
                           </View>
                         )}
                       </View>
 
                       {!step.collapsed && renderBlockContent(step, colors)}
-                    </Pressable>
+                    </View>
                   </View>
                 </SortableItem>
               );
-            })}
-          </Animated.ScrollView>
-        </DropProvider>
-      </GestureHandlerRootView>
+            }}
+        />
+      </View>
     </View>
   );
 }
