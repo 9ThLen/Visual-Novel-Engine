@@ -45,6 +45,13 @@ import { useTypewriter } from '@/hooks/useTypewriter';
 import { useSceneImages } from '@/hooks/useSceneImages';
 import { enhancedAudioManager } from '@/lib/audio-manager-enhanced';
 import { isReaderAudioSessionActive } from '@/lib/reader-audio-session';
+import { useI18n } from '@/lib/i18n';
+import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
+import { getChoiceTransitionTarget } from '@/lib/story-reader-choice';
+import {
+  getStoryReaderContainerStyle,
+  getStoryReaderSpeakerTextStyle,
+} from '@/lib/story-reader-platform';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -89,6 +96,7 @@ export function StoryReaderResponsive({
   onHistoryVisibleChange,
 }: Props) {
   const colors = useColors();
+  const { t } = useI18n();
   const dims = useWindowDimensions();
   const layout = getReaderLayout(dims);
   const fontSize = getResponsiveFontSize(dims);
@@ -365,9 +373,11 @@ export function StoryReaderResponsive({
 
   // ── UI ──────────────────────────────────────────────────────────────────
   const isPortrait = layout.dialoguePosition === 'bottom';
+  const readerContainerStyle = getStoryReaderContainerStyle();
+  const speakerTextStyle = getStoryReaderSpeakerTextStyle();
 
   return (
-    <View className="flex-1 bg-black" style={{ overflow: 'hidden' }}>
+    <View className="flex-1" style={readerContainerStyle}>
 
       {/* ── Splash Screen ──────────────────────────────────────────────── */}
       {!usingExecutor && showSplash && scene?.splashScreen?.splash && (
@@ -397,7 +407,7 @@ export function StoryReaderResponsive({
             transition={300}
           />
         ) : (
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1a1a2e' }]} />
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.background }]} />
         )}
 
       </Animated.View>
@@ -413,9 +423,9 @@ export function StoryReaderResponsive({
               justifyContent: 'center',
               alignItems: 'flex-end',
               paddingBottom: isPortrait ? layout.dialogueHeight - 20 : 0,
+              ...getPointerEventsStyle('none'),
             },
           ]}
-          pointerEvents="none"
         >
           {(usingExecutor ? executor.sceneState.characters : (scene?.characters ?? [])).map((char: any) => {
             const charId = usingExecutor ? (char as { characterId: string }).characterId : (char as { id: string }).id;
@@ -453,7 +463,7 @@ export function StoryReaderResponsive({
           disabled={isLoading}
           accessible={true}
           accessibilityRole="button"
-          accessibilityLabel="Continue reading"
+          accessibilityLabel={t('reader.continueReading')}
           accessibilityHint="Tap to advance text or make a choice"
         />
       )}
@@ -462,20 +472,20 @@ export function StoryReaderResponsive({
       {uiVisible && (
         <View
           className="absolute right-4 top-12 flex-row gap-2"
-          pointerEvents="box-none"
+          style={getPointerEventsStyle('box-none')}
         >
           <ControlButton
-            label={autoPlayActive ? '⏸ Auto' : '▶ Auto'}
+            label={autoPlayActive ? `⏸ ${t('reader.auto')}` : `▶ ${t('reader.auto')}`}
             active={autoPlayActive}
             onPress={() => setAutoPlayActive((a) => !a)}
             colors={colors}
-            accessibilityLabel={autoPlayActive ? 'Stop auto-play' : 'Start auto-play'}
+            accessibilityLabel={autoPlayActive ? t('reader.stopAuto') : t('reader.startAuto')}
           />
           <ControlButton
-            label="📖 Log"
+            label={`📖 ${t('reader.log')}`}
             onPress={() => setShowHistory(true)}
             colors={colors}
-            accessibilityLabel="Open dialogue history"
+            accessibilityLabel={t('reader.openHistory')}
           />
         </View>
       )}
@@ -491,8 +501,8 @@ export function StoryReaderResponsive({
               right: 0,
             },
             dialogueAnimatedStyle,
+            getPointerEventsStyle('box-none'),
           ]}
-          pointerEvents="box-none"
         >
           <View className="mx-3 mb-7 rounded-2xl border overflow-hidden"
             style={{
@@ -509,7 +519,10 @@ export function StoryReaderResponsive({
                   backgroundColor: colors.nameBg ?? colors.primary,
                 }}
               >
-                <Text className="text-white text-xs font-bold tracking-wider">
+                <Text
+                  className="text-xs font-bold tracking-wider"
+                  style={speakerTextStyle}
+                >
                   {speaker}
                 </Text>
               </View>
@@ -549,13 +562,13 @@ export function StoryReaderResponsive({
                     onPress={() => {
                       if (usingExecutor) {
                         executor.selectChoice(choice.id);
-                        onTransition?.(choice.targetSceneId ?? null);
+                        onTransition?.(getChoiceTransitionTarget(choice));
                       } else {
                         onChoiceSelect?.(choice);
                       }
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={choice.text}
+                    accessibilityLabel={t('reader.choiceLabel', { text: choice.text })}
                   >
                     <Text
                       className="text-center font-medium leading-5"
@@ -592,10 +605,10 @@ export function StoryReaderResponsive({
               <View className="flex-row gap-2 items-center">
                 {/* Skip / fast-forward button */}
                 {!isTyping && !_isLastPage && (
-                  <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>tap to continue ▼</Text>
+                  <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>{t('reader.tapToContinue')} ▼</Text>
                 )}
                 {_isLastPage && !isTyping && !hasChoices && !usingExecutor && (
-                  <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>tap to continue ▼</Text>
+                  <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>{t('reader.tapToContinue')} ▼</Text>
                 )}
                 <Pressable
                   style={{
@@ -609,10 +622,13 @@ export function StoryReaderResponsive({
                   onPressIn={() => setTurbo(true)}
                   onPressOut={() => setTurbo(false)}
                   accessibilityRole="button"
-                  accessibilityLabel={turbo ? 'Stop skip' : 'Skip text'}
+                  accessibilityLabel={t('reader.skipText')}
                 >
-                  <Text className={cn('text-xs font-semibold', turbo ? 'text-white' : 'text-muted')}>
-                    ⏩ Skip
+                  <Text
+                    className="text-xs font-semibold"
+                    style={{ color: turbo ? (colors['text-inverse'] ?? '#ffffff') : colors.muted }}
+                  >
+                    ⏩ {t('reader.skip')}
                   </Text>
                 </Pressable>
               </View>
@@ -662,7 +678,7 @@ function ControlButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
     >
-      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 12, fontWeight: '600' }}>{label}</Text>
     </Pressable>
   );
 }

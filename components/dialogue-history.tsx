@@ -5,15 +5,16 @@ import {
   Pressable,
   FlatList,
   Animated,
+  Platform,
   useWindowDimensions,
   StyleSheet,
-  useColorScheme,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-
-/** Solid panel — RN StyleSheet does not parse oklch(); rgba dialogue-bg is too transparent here. */
-const HISTORY_PANEL_BG = '#0F0E17';
-const HISTORY_PANEL_BG_LIGHT = '#FDFCF9';
+import { useI18n } from '@/lib/i18n';
+import {
+  getPointerEventsStyle,
+  shouldUseNativeDriverForPlatform,
+} from '@/lib/react-native-web-interop';
 
 export interface HistoryEntry {
   id: string;
@@ -30,20 +31,21 @@ interface Props {
 
 export function DialogueHistory({ visible, entries, onClose }: Props) {
   const colors = useColors();
-  const colorScheme = useColorScheme();
+  const { t } = useI18n();
   const slideAnim = useRef(new Animated.Value(0)).current;
   const { height } = useWindowDimensions();
   const panelHeight = height * 0.72;
-  const panelBg = colorScheme === 'light' ? HISTORY_PANEL_BG_LIGHT : HISTORY_PANEL_BG;
+  const panelBg = colors.surface;
+  const useNativeDriver = shouldUseNativeDriverForPlatform(Platform.OS);
 
   useEffect(() => {
     Animated.spring(slideAnim, {
       toValue: visible ? 1 : 0,
-      useNativeDriver: true,
+      useNativeDriver,
       tension: 65,
       friction: 11,
     }).start();
-  }, [visible, slideAnim]);
+  }, [visible, slideAnim, useNativeDriver]);
 
   const sheetTranslateY = slideAnim.interpolate({
     inputRange: [0, 1],
@@ -74,10 +76,18 @@ export function DialogueHistory({ visible, entries, onClose }: Props) {
   if (!visible) return null;
 
   return (
-    <View style={[StyleSheet.absoluteFillObject, { zIndex: 200 }]} pointerEvents="auto">
+    <View
+      style={[
+        StyleSheet.absoluteFillObject,
+        { zIndex: 200 },
+        getPointerEventsStyle('auto'),
+      ]}
+    >
       <Pressable
-        style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.72)' }]}
+        style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.backdrop ?? 'rgba(0,0,0,0.72)' }]}
         onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.close')}
       />
 
       <Animated.View
@@ -123,11 +133,13 @@ export function DialogueHistory({ visible, entries, onClose }: Props) {
             }}
           />
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground, marginTop: 12 }}>
-            Dialogue History
+            {t('reader.log')}
           </Text>
           <Pressable
             onPress={onClose}
             style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, marginTop: 12 })}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.close')}
           >
             <Text style={{ fontSize: 22, color: colors.muted }}>✕</Text>
           </Pressable>
@@ -135,7 +147,7 @@ export function DialogueHistory({ visible, entries, onClose }: Props) {
 
         {entries.length === 0 ? (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: panelBg }}>
-            <Text style={{ color: colors.muted, fontSize: 14 }}>No history yet.</Text>
+            <Text style={{ color: colors.muted, fontSize: 14 }}>{t('reader.noHistory')}</Text>
           </View>
         ) : (
           <FlatList
