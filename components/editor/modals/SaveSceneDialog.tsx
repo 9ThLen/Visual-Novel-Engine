@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 import { useAppStore } from '@/stores/use-app-store';
 import type { ProjectScene } from '@/lib/engine/types';
 
@@ -29,6 +30,7 @@ export function SaveSceneDialog({
   initialDescription = '',
 }: SaveSceneDialogProps) {
   const colors = useColors();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
 
   const [name, setName] = useState(initialName);
@@ -60,7 +62,7 @@ export function SaveSceneDialog({
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={{
         flex: 1,
-        backgroundColor: colors.backdrop || 'rgba(0,0,0,0.7)',
+        backgroundColor: colors.backdrop,
         justifyContent: 'center',
         alignItems: 'center',
       }}>
@@ -84,7 +86,7 @@ export function SaveSceneDialog({
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>
               Save Scene
             </Text>
-            <Pressable onPress={onClose} style={{ padding: 4 }}>
+            <Pressable onPress={onClose} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('a11y.closePanel')}>
               <Text style={{ fontSize: 16, color: colors.muted }}>✕</Text>
             </Pressable>
           </View>
@@ -168,6 +170,8 @@ export function SaveSceneDialog({
                       alignItems: 'center',
                       gap: 4,
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t('common.delete')} ${tag}`}
                   >
                     <Text style={{ fontSize: 11, color: colors.primary }}>{tag}</Text>
                     <Text style={{ fontSize: 10, color: colors.primary }}>✕</Text>
@@ -201,8 +205,10 @@ export function SaveSceneDialog({
                     borderRadius: 8,
                     backgroundColor: colors.primary,
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('editor.addChoice')}
                 >
-                  <Text style={{ fontSize: 12, color: '#fff', fontWeight: '600' }}>Add</Text>
+                  <Text style={{ fontSize: 12, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>{t('editor.addChoice')}</Text>
                 </Pressable>
               </View>
             </View>
@@ -227,8 +233,10 @@ export function SaveSceneDialog({
                 borderWidth: 1,
                 borderColor: colors.border,
               }}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.cancel')}
             >
-              <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>Cancel</Text>
+              <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>{t('common.cancel')}</Text>
             </Pressable>
             <Pressable
               onPress={handleSave}
@@ -239,8 +247,10 @@ export function SaveSceneDialog({
                 borderRadius: 8,
                 backgroundColor: name.trim() ? colors.primary : colors.border,
               }}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.save')}
             >
-              <Text style={{ fontSize: 13, color: '#fff', fontWeight: '600' }}>Save Scene</Text>
+              <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>{t('common.save')}</Text>
             </Pressable>
           </View>
         </View>
@@ -260,6 +270,7 @@ interface LoadSceneDialogProps {
 
 export function LoadSceneDialog({ visible, onClose, onLoad, scenes }: LoadSceneDialogProps) {
   const colors = useColors();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -275,7 +286,7 @@ export function LoadSceneDialog({ visible, onClose, onLoad, scenes }: LoadSceneD
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={{
         flex: 1,
-        backgroundColor: colors.backdrop || 'rgba(0,0,0,0.7)',
+        backgroundColor: colors.backdrop,
         justifyContent: 'center',
         alignItems: 'center',
       }}>
@@ -300,7 +311,7 @@ export function LoadSceneDialog({ visible, onClose, onLoad, scenes }: LoadSceneD
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>
               Load Scene
             </Text>
-            <Pressable onPress={onClose} style={{ padding: 4 }}>
+            <Pressable onPress={onClose} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('a11y.closePanel')}>
               <Text style={{ fontSize: 16, color: colors.muted }}>✕</Text>
             </Pressable>
           </View>
@@ -341,6 +352,8 @@ export function LoadSceneDialog({ visible, onClose, onLoad, scenes }: LoadSceneD
                   borderWidth: 1,
                   borderColor: colors.border,
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={item.name}
               >
                 <Text style={{ fontSize: 14, fontWeight: '600', color: colors.foreground }}>
                   {item.name}
@@ -379,8 +392,10 @@ export function LoadSceneDialog({ visible, onClose, onLoad, scenes }: LoadSceneD
                 borderWidth: 1,
                 borderColor: colors.border,
               }}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.cancel')}
             >
-              <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>Cancel</Text>
+              <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>{t('common.cancel')}</Text>
             </Pressable>
           </View>
         </View>

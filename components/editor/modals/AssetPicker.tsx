@@ -18,6 +18,7 @@ import { useAppStore } from '@/stores/use-app-store';
 import { addAssetToLibrary } from '@/lib/media-library-service';
 import { resolveAssetUri, resolvePlayableAssetUri } from '@/lib/asset-resolver';
 import type { LibraryAsset } from '@/lib/media-library-service';
+import { useI18n } from '@/lib/i18n';
 
 type AssetCategory = 'backgrounds' | 'characters' | 'sprites' | 'music' | 'sfx' | 'voice' | 'ui';
 
@@ -47,6 +48,7 @@ export function AssetPicker({
   multiSelect = false,
 }: AssetPickerProps) {
   const colors = useColors();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const mediaLibrary = useAppStore((s) => s.mediaLibrary);
   const [previewAudioId, setPreviewAudioId] = useState<string | null>(null);
@@ -187,7 +189,7 @@ export function AssetPicker({
     >
       <View style={{
         flex: 1,
-        backgroundColor: colors.backdrop || 'rgba(0,0,0,0.7)',
+        backgroundColor: colors.backdrop,
         justifyContent: 'center',
         alignItems: 'center',
       }}>
@@ -215,9 +217,9 @@ export function AssetPicker({
             borderBottomColor: colors.border,
           }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>
-              Select Asset
+              {t('editor.selectAsset')}
             </Text>
-            <Pressable onPress={onClose} style={{ padding: 4 }}>
+            <Pressable onPress={onClose} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('common.close')}>
               <Text style={{ fontSize: 16, color: colors.muted }}>✕</Text>
             </Pressable>
           </View>
@@ -227,8 +229,9 @@ export function AssetPicker({
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search assets..."
+              placeholder={t('editor.searchAssets')}
               placeholderTextColor={colors.muted}
+              accessibilityLabel={t('editor.searchAssets')}
               style={{
                 backgroundColor: colors.background,
                 borderWidth: 1,
@@ -265,11 +268,13 @@ export function AssetPicker({
                   borderRadius: 8,
                   backgroundColor: activeCategory === cat.key ? colors.primary : colors.background,
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={cat.label}
               >
                 <Text style={{
                   fontSize: 12,
                   fontWeight: '600',
-                  color: activeCategory === cat.key ? '#fff' : colors.foreground,
+                  color: activeCategory === cat.key ? colors['text-inverse'] ?? '#fff' : colors.foreground,
                 }}>
                   {cat.icon} {cat.label}
                 </Text>
@@ -299,6 +304,8 @@ export function AssetPicker({
                     borderColor: isSelected ? colors.primary : colors.border,
                     backgroundColor: colors.background,
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={item.name || item.id}
                 >
                   {item.type === 'image' ? (
                     (() => {
@@ -327,6 +334,8 @@ export function AssetPicker({
                         justifyContent: 'center',
                         backgroundColor: colors.surface,
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel={isPlaying ? 'Stop preview' : 'Preview audio'}
                     >
                       <Text style={{ fontSize: 32 }}>{isPlaying ? '⏹' : '▶️'}</Text>
                       <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
@@ -359,8 +368,10 @@ export function AssetPicker({
                       borderRadius: 8,
                       backgroundColor: colors.primary,
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('editor.selectAsset')}
                   >
-                    <Text style={{ fontSize: 13, color: '#fff', fontWeight: '600' }}>
+                    <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>
                       🖼 Gallery
                     </Text>
                   </Pressable>
@@ -373,6 +384,8 @@ export function AssetPicker({
                       borderWidth: 1,
                       borderColor: colors.border,
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('editor.selectAsset')}
                   >
                     <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>
                       📁 Files
@@ -403,8 +416,10 @@ export function AssetPicker({
                   borderRadius: 8,
                   backgroundColor: colors.primary,
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={t('editor.selectAsset')}
               >
-                <Text style={{ fontSize: 13, color: '#fff', fontWeight: '600' }}>
+                <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>
                   🖼 Gallery
                 </Text>
               </Pressable>
@@ -418,6 +433,8 @@ export function AssetPicker({
                   borderWidth: 1,
                   borderColor: colors.border,
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={t('editor.selectAsset')}
               >
                 <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>
                   📁 Files
@@ -434,9 +451,11 @@ export function AssetPicker({
                   borderWidth: 1,
                   borderColor: colors.border,
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.cancel')}
               >
                 <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>
-                  Cancel
+                  {t('common.cancel')}
                 </Text>
               </Pressable>
               {multiSelect && selectedIds.size > 0 && (
@@ -448,8 +467,10 @@ export function AssetPicker({
                     borderRadius: 8,
                     backgroundColor: colors.primary,
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.confirm')}
                 >
-                  <Text style={{ fontSize: 13, color: '#fff', fontWeight: '600' }}>
+                  <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>
                     Select ({selectedIds.size})
                   </Text>
                 </Pressable>

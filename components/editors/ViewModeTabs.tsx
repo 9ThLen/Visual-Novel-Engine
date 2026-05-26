@@ -12,7 +12,10 @@ interface ViewModeTabsProps {
 export function ViewModeTabs({ viewMode, setViewMode, className }: ViewModeTabsProps) {
   const colors = useColors();
   return (
-    <View className={cn('flex-row bg-surface rounded-lg p-0.5', className)}>
+    <View
+      className={cn('flex-row rounded-lg p-0.5', className)}
+      style={{ backgroundColor: colors.surface }}
+    >
       <Pressable
         style={({ pressed }) => ({
           flex: 1, paddingVertical: 8, borderRadius: 6, alignItems: 'center',

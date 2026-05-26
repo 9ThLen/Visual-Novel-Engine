@@ -8,6 +8,7 @@
 import React from 'react';
 import { View, Text, Pressable, Modal } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 
 interface ConfirmDialogProps {
   visible: boolean;
@@ -24,13 +25,16 @@ export function ConfirmDialog({
   visible,
   title,
   message,
-  confirmLabel = 'Delete',
-  cancelLabel = 'Cancel',
+  confirmLabel,
+  cancelLabel,
   onConfirm,
   onCancel,
   destructive = true,
 }: ConfirmDialogProps) {
   const colors = useColors();
+  const { t } = useI18n();
+  const resolvedConfirmLabel = confirmLabel ?? t(destructive ? 'common.delete' : 'common.confirm');
+  const resolvedCancelLabel = cancelLabel ?? t('common.cancel');
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
@@ -70,14 +74,18 @@ export function ConfirmDialog({
             <Pressable
               onPress={onCancel}
               style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+              accessibilityRole="button"
+              accessibilityLabel={resolvedCancelLabel}
             >
-              <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>{cancelLabel}</Text>
+              <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>{resolvedCancelLabel}</Text>
             </Pressable>
             <Pressable
               onPress={onConfirm}
               style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8, backgroundColor: destructive ? (colors.error || '#ff6b6b') : colors.primary }}
+              accessibilityRole="button"
+              accessibilityLabel={resolvedConfirmLabel}
             >
-              <Text style={{ fontSize: 13, color: '#fff', fontWeight: '600' }}>{confirmLabel}</Text>
+              <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>{resolvedConfirmLabel}</Text>
             </Pressable>
           </View>
         </View>

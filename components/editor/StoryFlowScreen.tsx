@@ -18,6 +18,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { useAppStore } from '@/stores/use-app-store';
 import { useEditorStore } from '@/stores/use-editor-store';
@@ -37,6 +38,7 @@ const GRID_SIZE = 24;
 export function StoryFlowScreen({ storyId }: { storyId: string }) {
   const router = useRouter();
   const colors = useColors();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const { deviceType } = useResponsiveLayout();
   const isPhone = deviceType === 'phone';
@@ -313,7 +315,7 @@ export function StoryFlowScreen({ storyId }: { storyId: string }) {
         gap: isPhone ? 12 : 16,
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Pressable onPress={() => router.back()} style={{ padding: 8, marginRight: 8 }}>
+          <Pressable onPress={() => router.back()} style={{ padding: 8, marginRight: 8 }} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
             <Text style={{ color: colors.primary, fontSize: 18 }}>←</Text>
           </Pressable>
           <View style={{ flexShrink: 1 }}>
@@ -354,8 +356,8 @@ export function StoryFlowScreen({ storyId }: { storyId: string }) {
               {nodes.find((n) => n.id === connectFromId)?.name}
             </Text>
           </Text>
-          <Pressable onPress={() => { setConnectMode(false); setConnectFromId(null); }}>
-            <Text style={{ color: colors.danger, fontSize: 12 }}>Cancel</Text>
+          <Pressable onPress={() => { setConnectMode(false); setConnectFromId(null); }} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+            <Text style={{ color: colors.danger, fontSize: 12 }}>{t('common.cancel')}</Text>
           </Pressable>
         </View>
       )}
@@ -389,6 +391,8 @@ export function StoryFlowScreen({ storyId }: { storyId: string }) {
                 key={node.id}
                 onPress={() => handleNodePress(node.id)}
                 onLongPress={() => handleNodeLongPress(node.id)}
+                accessibilityRole="button"
+                accessibilityLabel={node.name}
                 style={{
                   position: 'absolute',
                   left: node.x,
@@ -401,7 +405,7 @@ export function StoryFlowScreen({ storyId }: { storyId: string }) {
                   borderRadius: 12,
                   borderWidth: node.isStart ? 2 : selectedNodeId === node.id ? 2 : 1,
                   borderColor: node.isStart
-                    ? colors.success || '#50c878'
+                    ? colors.success
                     : selectedNodeId === node.id
                       ? colors.primary
                       : colors.border,
@@ -420,12 +424,12 @@ export function StoryFlowScreen({ storyId }: { storyId: string }) {
                     position: 'absolute',
                     top: -8,
                     left: 8,
-                    backgroundColor: colors.success || '#50c878',
+                    backgroundColor: colors.success,
                     paddingHorizontal: 6,
                     paddingVertical: 1,
                     borderRadius: 4,
                   }}>
-                    <Text style={{ fontSize: 9, color: '#fff', fontWeight: '700' }}>START</Text>
+                    <Text style={{ fontSize: 9, color: colors['text-inverse'] ?? '#fff', fontWeight: '700' }}>START</Text>
                   </View>
                 )}
 
@@ -471,7 +475,7 @@ export function StoryFlowScreen({ storyId }: { storyId: string }) {
                   width: 12,
                   height: 12,
                   borderRadius: 6,
-                  backgroundColor: colors.success || '#50c878',
+                  backgroundColor: colors.success,
                   borderWidth: 2,
                   borderColor: colors.surface,
                 }} />

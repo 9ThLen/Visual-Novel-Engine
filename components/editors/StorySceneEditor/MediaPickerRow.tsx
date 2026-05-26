@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 
 interface MediaPickerRowProps {
   label: string;
@@ -20,6 +21,7 @@ export function MediaPickerRow({
   isImage = false,
 }: MediaPickerRowProps) {
   const colors = useColors();
+  const { t } = useI18n();
   return (
     <View className="mb-4">
       <Text style={[{ color: colors.muted }, { fontSize: 12, fontWeight: '600', marginBottom: 6 }]}>{label}</Text>
@@ -45,8 +47,10 @@ export function MediaPickerRow({
             marginRight: 8, alignItems: 'center', justifyContent: 'center',
             opacity: pressed ? 0.8 : 1,
           })}
+          accessibilityRole="button"
+          accessibilityLabel={label}
         >
-          <Text style={[{ color: '#fff' }, { fontSize: 14, fontWeight: '600' }]}>
+          <Text style={[{ color: colors['text-inverse'] ?? '#fff' }, { fontSize: 14, fontWeight: '600' }]}>
             {isImage ? '📂 Pick Image' : '🎤 Pick Audio'}
           </Text>
         </Pressable>
@@ -60,6 +64,8 @@ export function MediaPickerRow({
             marginRight: value ? 8 : 0,
             opacity: pressed ? 0.8 : 1,
           })}
+          accessibilityRole="button"
+          accessibilityLabel={t('editor.selectAsset')}
         >
           <Text style={[{ color: colors.foreground }, { fontSize: 14, fontWeight: '600' }]}>🗂 Library</Text>
         </Pressable>
@@ -72,6 +78,8 @@ export function MediaPickerRow({
               borderWidth: 1, borderColor: colors.error,
               opacity: pressed ? 0.8 : 1,
             })}
+            accessibilityRole="button"
+            accessibilityLabel={`${t('common.delete')} ${label}`}
           >
             <Text style={[{ color: colors.error }, { fontSize: 16, fontWeight: '600' }]}>✕</Text>
           </Pressable>

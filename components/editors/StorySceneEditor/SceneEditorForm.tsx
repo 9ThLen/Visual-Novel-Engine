@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TextInput, Pressable, ScrollView } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 import { SplashScreenEditor } from '@/components/SplashScreenEditor';
 import { InteractiveObjectsEditor } from '@/components/InteractiveObjectsEditor';
 import { ChoiceEditor } from './ChoiceEditor';
@@ -71,6 +72,7 @@ export function SceneEditorForm({
   onSave,
 }: SceneEditorFormProps) {
   const colors = useColors();
+  const { t } = useI18n();
 
   return (
     <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" className="flex-1">
@@ -147,7 +149,7 @@ export function SceneEditorForm({
                   onLongPress={() => onSceneDelete(first)}
                 >
                   <Text
-                    style={[{ color: currentSceneId === first ? '#fff' : colors.foreground }, { fontSize: 12, fontWeight: currentSceneId === first ? 'bold' : 'normal' }]}
+                    style={[{ color: currentSceneId === first ? colors['text-inverse'] ?? '#fff' : colors.foreground }, { fontSize: 12, fontWeight: currentSceneId === first ? 'bold' : 'normal' }]}
                     numberOfLines={1}
                   >
                     {first}
@@ -164,7 +166,7 @@ export function SceneEditorForm({
                     onLongPress={() => onSceneDelete(second)}
                   >
                     <Text
-                      style={[{ color: currentSceneId === second ? '#fff' : colors.foreground }, { fontSize: 12, fontWeight: currentSceneId === second ? 'bold' : 'normal' }]}
+                      style={[{ color: currentSceneId === second ? colors['text-inverse'] ?? '#fff' : colors.foreground }, { fontSize: 12, fontWeight: currentSceneId === second ? 'bold' : 'normal' }]}
                       numberOfLines={1}
                     >
                       {second}
@@ -183,7 +185,7 @@ export function SceneEditorForm({
           })}
           onPress={onSceneAdd}
         >
-          <Text style={[{ color: '#fff' }, { fontSize: 14, fontWeight: '600', textAlign: 'center' }]}>+ Add New Scene</Text>
+          <Text style={[{ color: colors['text-inverse'] ?? '#fff' }, { fontSize: 14, fontWeight: '600', textAlign: 'center' }]}>+ Add New Scene</Text>
         </Pressable>
         <Text style={[{ color: colors.muted }, { fontSize: 10, textAlign: 'center', marginTop: 6 }]}>Long-press a scene to delete</Text>
       </View>
@@ -199,7 +201,7 @@ export function SceneEditorForm({
           onPress={onSave}
           disabled={!hasChanges}
         >
-          <Text style={[{ color: '#fff' }, { fontSize: 14, fontWeight: 'bold', textAlign: 'center' }]}>💾 Save Scene</Text>
+          <Text style={[{ color: colors['text-inverse'] ?? '#fff' }, { fontSize: 14, fontWeight: 'bold', textAlign: 'center' }]}>💾 Save Scene</Text>
         </Pressable>
       )}
     </ScrollView>
