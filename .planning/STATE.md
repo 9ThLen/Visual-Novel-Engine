@@ -9,10 +9,10 @@ See: `.planning/PROJECT.md` (updated 2026-05-24)
 
 ## Status
 
-- **Project status:** Phase 6 та Phase 7 виконано; Phase 8 сплановано
+- **Project status:** Phase 6 та Phase 7 виконано; Phase 8 сплановано (3 детальні плани)
 - **Current phase:** 8
 - **Current phase name:** Accessibility & i18n
-- **Next expected command:** `Phase 8` is defined in ROADMAP.md; needs discussion & planning before execution
+- **Next expected command:** `/gsd-execute-phase 08-01-PLAN.md` — execute Wave 1: infrastructure (text-inverse fix, i18n keys, ErrorBoundary cleanup)
 
 ## Active Decisions
 
@@ -67,4 +67,17 @@ See: `.planning/PROJECT.md` (updated 2026-05-24)
 
 ---
 
-*Last updated: 2026-05-25 — Phase 6 & 7 complete (Block Runtime Executor + Editor UX Polish)*
+---
+
+## Phase 8 Planning Results
+
+- **3 detailed plans created** (08-01, 08-02, 08-03) in 2 waves
+- RESEARCH.md completed with key findings: `text-inverse` alias bug, ~40+ hardcoded hex instances, ~30 new i18n keys
+- **Wave 1** (08-01): Infrastructure — fix `text-inverse` alias in `buildRuntimePalette()`, add i18n keys, cleanup ErrorBoundary API
+- **Wave 2** (08-02 + 08-03 in parallel): Editor/UI a11y + color tokenization for 15 components + Reader/App color cleanup + contrast audit
+- **Key research discovery:** `colors['text-inverse']` always returns `undefined` — missing alias in `buildRuntimePalette()`; must fix before any color replacement work
+- Plans committed: `de58bb32`
+
+---
+
+*Last updated: 2026-05-26 — Phase 6 & 7 complete; Phase 8 planned (3 plans in 2 waves)*
