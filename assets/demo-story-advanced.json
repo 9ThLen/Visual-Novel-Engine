@@ -3,32 +3,10 @@
   "title": "The Enchanted Museum",
   "description": "A comprehensive demo showcasing ALL engine features: splash screens, interactive objects, inventory, character sprites, voice acting, and multiple endings",
   "author": "Visual Novel Engine - Full Feature Demo",
-  "startSceneId": "splash_intro",
+  "startSceneId": "scene_1",
   "createdAt": 1744740000000,
   "updatedAt": 1744740000000,
   "scenes": {
-    "splash_intro": {
-      "id": "splash_intro",
-      "text": "",
-      "splashScreen": {
-        "type": "image",
-        "uri": "assets/splash-screens/splash-title.png",
-        "duration": 3000,
-        "fadeIn": 500,
-        "fadeOut": 500,
-        "showBefore": true
-      },
-      "backgroundImageUri": null,
-      "characters": [],
-      "voiceAudioUri": null,
-      "musicUri": null,
-      "choices": [],
-      "autoAdvance": {
-        "enabled": true,
-        "delay": 3500,
-        "nextSceneId": "scene_1"
-      }
-    },
     "scene_1": {
       "id": "scene_1",
       "text": "Welcome to the Enchanted Museum! You stand at the entrance of a mysterious building that appears only once every hundred years.\n\nLegend says that those who explore it thoroughly will discover ancient secrets and magical artifacts.\n\n[DEMO: This story demonstrates ALL engine features]",
@@ -640,7 +618,7 @@
         {
           "id": "choice_end_1",
           "text": "Return to beginning",
-          "nextSceneId": "splash_intro"
+          "nextSceneId": "scene_1"
         }
       ]
     }

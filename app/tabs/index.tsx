@@ -241,10 +241,6 @@ export default function HomeScreen() {
     if (width >= 760) return 2;
     return 1;
   }, [width]);
-  const totalScenes = useMemo(
-    () => storiesMetadata.reduce((sum, story) => sum + (story.sceneCount ?? 0), 0),
-    [storiesMetadata],
-  );
   const contentWidthStyle = useMemo(
     () => (Platform.OS === 'web' ? { width: '100%' as const, maxWidth: 1180, alignSelf: 'center' as const } : null),
     [],
@@ -288,10 +284,6 @@ export default function HomeScreen() {
             <View style={[styles.statCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.statValue, { color: colors.foreground }]}>{storiesMetadata.length}</Text>
               <Text style={[styles.statLabel, { color: colors.muted }]}>Stories</Text>
-            </View>
-            <View style={[styles.statCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Text style={[styles.statValue, { color: colors.foreground }]}>{totalScenes}</Text>
-              <Text style={[styles.statLabel, { color: colors.muted }]}>Scenes</Text>
             </View>
           </View>
         </View>
