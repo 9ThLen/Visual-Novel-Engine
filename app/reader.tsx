@@ -15,6 +15,7 @@ import { useReaderAudio, stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { useReaderInitialization } from '@/hooks/useReaderInitialization';
 import { buttonFeedback } from '@/lib/ui-feedback';
 import { parseResumeExisting } from '@/lib/reader-launch';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 function useReaderRouteParams(): { storyId: string | null; resumeExisting: boolean } {
   const { storyId, resume } = useLocalSearchParams();
@@ -49,6 +50,9 @@ export default function ReaderScreen() {
 
   const navigateToScene = useCallback((sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
     if (!story || !playbackState) return;
+    if (!story.scenes[sceneId]) {
+      return;
+    }
     const updated: PlaybackState = {
       storyId: story.id,
       currentSceneId: sceneId,
@@ -127,7 +131,7 @@ export default function ReaderScreen() {
           top: 48,
           left: 16,
           zIndex: showMenu ? 99 : 50,
-          backgroundColor: colors.backdrop ?? 'rgba(0,0,0,0.45)',
+          backgroundColor: colors.backdrop,
           paddingHorizontal: 12,
           paddingVertical: 7,
           borderRadius: 8,
@@ -142,7 +146,7 @@ export default function ReaderScreen() {
         accessibilityRole="button"
         accessibilityLabel={showMenu ? t('menu.closeReader') : t('menu.openReader')}
       >
-        <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 14, fontWeight: '600' }}>☰</Text>
+        <IconSymbol name="menu" size={18} color={colors['text-inverse']} />
       </Pressable>
 
       <StoryReaderResponsive
@@ -166,7 +170,7 @@ export default function ReaderScreen() {
         <Pressable
           style={{
             position: 'absolute', inset: 0, justifyContent: 'center', alignItems: 'center',
-            backgroundColor: colors.backdrop ?? 'rgba(0,0,0,0.55)', zIndex: 100,
+            backgroundColor: colors.backdrop, zIndex: 100,
           }}
           onPress={() => setObjDialogue(null)}
           accessibilityRole="button"
@@ -174,7 +178,7 @@ export default function ReaderScreen() {
         >
           <View
             style={{
-              backgroundColor: colors.dialogueBg ?? 'rgba(15,14,23,0.92)',
+              backgroundColor: colors.dialogueBg,
               borderRadius: 16, padding: 20, marginHorizontal: 32, maxWidth: 400,
               borderWidth: 1, borderColor: colors.border,
             }}
