@@ -80,96 +80,100 @@ export function useSceneExecutor(
 
     let nextState = { ...currentState };
 
-    switch (step.blockType) {
-      case 'background': {
-        const d = step.data as BackgroundBlockData;
-        nextState.backgroundAssetId = d.assetId ?? null;
-        nextState.backgroundTransition = d.transition;
-        break;
-      }
-      case 'character': {
-        const d = step.data as CharacterBlockData;
-        const existingIdx = nextState.characters.findIndex((c) => c.characterId === d.characterId);
-        const charState = {
-          characterId: d.characterId,
-          spriteId: d.spriteId,
-          position: d.position,
-          visible: true,
-          opacity: 1,
-          scale: 1,
-          zIndex: 1,
-        };
-        if (existingIdx >= 0) {
-          const nextChars = [...nextState.characters];
-          nextChars[existingIdx] = charState;
-          nextState.characters = nextChars;
-        } else {
-          nextState.characters = [...nextState.characters, charState];
+    try {
+      switch (step.blockType) {
+        case 'background': {
+          const d = step.data as BackgroundBlockData;
+          nextState.backgroundAssetId = d.assetId ?? null;
+          nextState.backgroundTransition = d.transition;
+          break;
         }
-        break;
-      }
-      case 'text':
-      case 'dialogue': {
-        if (step.blockType === 'dialogue') {
-          const d = step.data as DialogueBlockData;
-          const entry = d.entries?.[d.currentEntryIndex ?? 0];
-          if (entry) {
-            nextState.dialogueHistory = [
-              ...nextState.dialogueHistory,
-              {
-                characterId: entry.characterId,
-                characterName: entry.characterId,
-                text: entry.text,
-                timestamp: Date.now(),
-              },
-            ];
+        case 'character': {
+          const d = step.data as CharacterBlockData;
+          const existingIdx = nextState.characters.findIndex((c) => c.characterId === d.characterId);
+          const charState = {
+            characterId: d.characterId,
+            spriteId: d.spriteId,
+            position: d.position,
+            visible: true,
+            opacity: 1,
+            scale: 1,
+            zIndex: 1,
+          };
+          if (existingIdx >= 0) {
+            const nextChars = [...nextState.characters];
+            nextChars[existingIdx] = charState;
+            nextState.characters = nextChars;
+          } else {
+            nextState.characters = [...nextState.characters, charState];
           }
+          break;
         }
-        break;
+        case 'text':
+        case 'dialogue': {
+          if (step.blockType === 'dialogue') {
+            const d = step.data as DialogueBlockData;
+            const entry = d.entries?.[d.currentEntryIndex ?? 0];
+            if (entry) {
+              nextState.dialogueHistory = [
+                ...nextState.dialogueHistory,
+                {
+                  characterId: entry.characterId,
+                  characterName: entry.characterId,
+                  text: entry.text,
+                  timestamp: Date.now(),
+                },
+              ];
+            }
+          }
+          break;
+        }
+        case 'choice': {
+          // Choice always halts processing — steps after a choice in the same
+          // timeline are not executed. The caller must handle scene transitions.
+          nextState.currentChoices = (step.data as ChoiceBlockData).options ?? null;
+          break;
+        }
+        case 'effect': {
+          const d = step.data as EffectBlockData;
+          const now = Date.now();
+          nextState.activeEffects = [
+            ...nextState.activeEffects,
+            {
+              effectType: d.effectType,
+              target: d.target,
+              startTime: now,
+              endTime: now + d.duration * 1000,
+            },
+          ];
+          break;
+        }
+        case 'music': {
+          const d = step.data as MusicBlockData;
+          nextState.musicTrackId = d.assetId;
+          nextState.musicPlaying = d.action === 'play';
+          nextState.musicVolume = d.volume;
+          break;
+        }
+        case 'sound':
+          break;
+        case 'camera':
+          break;
+        case 'variable': {
+          const d = step.data as VariableBlockData;
+          nextState.variables = evaluateVariable(nextState.variables, d.variableName, d.operation, d.value);
+          break;
+        }
+        case 'transition': {
+          nextState.isTransitioning = true;
+          nextState.transitionTarget = (step.data as TransitionBlockData).targetSceneId;
+          break;
+        }
+        case 'interactive_object':
+          break;
       }
-      case 'choice': {
-        // Choice always halts processing — steps after a choice in the same
-        // timeline are not executed. The caller must handle scene transitions.
-        nextState.currentChoices = (step.data as ChoiceBlockData).options ?? null;
-        break;
-      }
-      case 'effect': {
-        const d = step.data as EffectBlockData;
-        const now = Date.now();
-        nextState.activeEffects = [
-          ...nextState.activeEffects,
-          {
-            effectType: d.effectType,
-            target: d.target,
-            startTime: now,
-            endTime: now + d.duration * 1000,
-          },
-        ];
-        break;
-      }
-      case 'music': {
-        const d = step.data as MusicBlockData;
-        nextState.musicTrackId = d.assetId;
-        nextState.musicPlaying = d.action === 'play';
-        nextState.musicVolume = d.volume;
-        break;
-      }
-      case 'sound':
-        break;
-      case 'camera':
-        break;
-      case 'variable': {
-        const d = step.data as VariableBlockData;
-        nextState.variables = evaluateVariable(nextState.variables, d.variableName, d.operation, d.value);
-        break;
-      }
-      case 'transition': {
-        nextState.isTransitioning = true;
-        nextState.transitionTarget = (step.data as TransitionBlockData).targetSceneId;
-        break;
-      }
-      case 'interactive_object':
-        break;
+    } catch {
+      return { nextState: currentState, result: 'continue' };
     }
 
     const yielding = YIELDING_BLOCK_TYPES.has(step.blockType);
