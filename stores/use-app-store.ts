@@ -11,17 +11,16 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { createPersistentStorage } from '@/lib/persistent-storage';
 import type { Language } from '@/lib/translations';
-import type { StoryMetadata } from '@/lib/story-domain';
-import type { StoryScene, SaveSlot, PlaybackState, Story, UserSettings } from '@/lib/types';
+import type { StoryScene, SaveSlot, PlaybackState, Story, UserSettings , Choice } from '@/lib/types';
 import type { SceneRecord, SceneConnection } from '@/lib/engine/types';
 import {
   buildCompatibilitySceneMapFromState,
   getCanonicalSceneRecordFromState,
   getCanonicalSceneRecordsForStoryFromState,
   updateSceneRecordPreservingMeta,
+  type SceneRecordContentUpdates,
 } from '@/lib/canonical-scene';
-import type { SceneRecordContentUpdates } from '@/lib/canonical-scene';
-import { StoryDomain } from '@/lib/story-domain';
+import { StoryDomain, type StoryMetadata } from '@/lib/story-domain';
 import { buildRuntimeLoadSnapshot, buildRuntimeSaveSlot } from '@/lib/runtime-story';
 import {
   applyCanonicalSceneDelete,
@@ -29,6 +28,7 @@ import {
   createCanonicalStorySeed,
   removeCanonicalConnection,
   syncCanonicalStartScene,
+  upsertCanonicalSceneFromLegacyScene,
 } from '@/lib/scene-operations';
 import type { Character } from '@/lib/character-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
@@ -38,7 +38,34 @@ import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 import { generateId } from '@/lib/id-utils';
 import { defaultUserSettings, normalizeUserSettings } from '@/lib/user-settings';
 
-import type { Choice } from '@/lib/types';
+function hasSceneRecords(records: Record<string, SceneRecord> | undefined): boolean {
+  return Object.keys(records || {}).length > 0;
+}
+
+function mergeSceneRecordsByStory(
+  hydratedLegacySceneRecords: Record<string, Record<string, SceneRecord>>,
+  currentSceneRecords: Record<string, Record<string, SceneRecord>>,
+  importedSceneRecords: Record<string, Record<string, SceneRecord>>
+): Record<string, Record<string, SceneRecord>> {
+  const storyIds = new Set([
+    ...Object.keys(hydratedLegacySceneRecords),
+    ...Object.keys(currentSceneRecords),
+    ...Object.keys(importedSceneRecords),
+  ]);
+
+  return Object.fromEntries(
+    [...storyIds].map((storyId) => {
+      const imported = importedSceneRecords[storyId];
+      const current = currentSceneRecords[storyId];
+      const hydratedLegacy = hydratedLegacySceneRecords[storyId];
+
+      if (hasSceneRecords(imported)) return [storyId, imported] as const;
+      if (hasSceneRecords(current)) return [storyId, current] as const;
+      return [storyId, hydratedLegacy || current || imported || {}] as const;
+    })
+  );
+}
+
 
 // ── Store shape ─────────────────────────────────────────────────────────────
 
@@ -143,7 +170,7 @@ export const useAppStore = create<AppState & AppActions>()(
           const stories: StoryMetadata[] = storiesJson ? JSON.parse(storiesJson) : [];
           const saveSlots: SaveSlot[] = saveSlotsJson ? JSON.parse(saveSlotsJson) : [];
           const settings: UserSettings | null = settingsJson ? JSON.parse(settingsJson) : null;
-          const language: Language = (['en', 'uk', 'pl'] as Language[]).includes(langJson as Language)
+          const language: Language = (['en', 'uk'] as Language[]).includes(langJson as Language)
             ? (langJson as Language)
             : 'en';
 
@@ -201,12 +228,27 @@ export const useAppStore = create<AppState & AppActions>()(
 
           // Merge with existing state — don't overwrite what persist already hydrated
           const current = get();
+          const hydratedLegacySceneRecords = Object.fromEntries(
+            Object.entries(current.scenesByStory || {})
+              .filter(([storyId]) => Object.keys(current.sceneRecordsByStory[storyId] || {}).length === 0)
+              .map(([storyId, legacyScenes]) => {
+                const metadata = current.storiesMetadata.find((story) => story.id === storyId);
+                return [
+                  storyId,
+                  buildCanonicalSceneRecordsFromLegacyScenes(storyId, legacyScenes, metadata?.startSceneId),
+                ] as const;
+              })
+          );
+          const mergedSceneRecordsByStory = mergeSceneRecordsByStory(
+            hydratedLegacySceneRecords,
+            current.sceneRecordsByStory,
+            sceneRecordsByStory
+          );
           set({
-            storiesMetadata: stories.length > 0 ? stories : current.storiesMetadata,
-            scenesByStory: Object.keys(scenesByStory).length > 0 ? scenesByStory : current.scenesByStory,
-            sceneRecordsByStory:
-              Object.keys(sceneRecordsByStory).length > 0 ? sceneRecordsByStory : current.sceneRecordsByStory,
-            saveSlots: saveSlots.length > 0 ? saveSlots : current.saveSlots,
+            storiesMetadata: stories.length > 0 && current.storiesMetadata.length === 0 ? stories : current.storiesMetadata,
+            scenesByStory: current.scenesByStory,
+            sceneRecordsByStory: mergedSceneRecordsByStory,
+            saveSlots: saveSlots.length > 0 && current.saveSlots.length === 0 ? saveSlots : current.saveSlots,
             settings: normalizeUserSettings(settings ?? current.settings),
             characterLibraries: Object.keys(characterLibraries).length > 0 ? characterLibraries : current.characterLibraries,
             language,
@@ -300,7 +342,6 @@ export const useAppStore = create<AppState & AppActions>()(
             storiesMetadata: exists
               ? s.storiesMetadata.map((m) => (m.id === story.id ? metadata : m))
               : [...s.storiesMetadata, metadata],
-            scenesByStory: { ...s.scenesByStory, [story.id]: story.scenes },
             sceneRecordsByStory: {
               ...s.sceneRecordsByStory,
               [story.id]: canonicalRecords,
@@ -327,59 +368,31 @@ export const useAppStore = create<AppState & AppActions>()(
         })),
 
       saveScene: (storyId, scene) =>
-        set((s) => ({
-          scenesByStory: {
-            ...s.scenesByStory,
-            [storyId]: {
-              ...(s.scenesByStory[storyId] || {}),
-              [scene.id]: scene,
-            },
-          },
-          storiesMetadata: s.storiesMetadata.map((m) =>
-            m.id === storyId ? { ...m, updatedAt: Date.now() } : m
-          ),
-        })),
+        set((s) => upsertCanonicalSceneFromLegacyScene(s, storyId, scene)),
 
       deleteScene: (storyId, sceneId) =>
-        set((s) => {
-          const storyScenes = { ...(s.scenesByStory[storyId] || {}) };
-          delete storyScenes[sceneId];
-          return {
-            scenesByStory: { ...s.scenesByStory, [storyId]: storyScenes },
-            storiesMetadata: s.storiesMetadata.map((m) =>
-              m.id === storyId
-                ? { ...m, updatedAt: Date.now(), sceneCount: Object.keys(storyScenes).length }
-                : m
-            ),
-          };
-        }),
+        set((s) => applyCanonicalSceneDelete(s, storyId, sceneId)),
 
       addChoice: (storyId, sceneId, choice) =>
         set((s) => {
-          const storyScenes = { ...(s.scenesByStory[storyId] || {}) };
+          const storyScenes = buildCompatibilitySceneMapFromState(s, storyId);
           const scene = storyScenes[sceneId];
           if (!scene) return {};
-          storyScenes[sceneId] = { ...scene, choices: [...scene.choices, choice] };
-          return {
-            scenesByStory: { ...s.scenesByStory, [storyId]: storyScenes },
-            storiesMetadata: s.storiesMetadata.map((m) =>
-              m.id === storyId ? { ...m, updatedAt: Date.now() } : m
-            ),
-          };
+          return upsertCanonicalSceneFromLegacyScene(s, storyId, {
+            ...scene,
+            choices: [...scene.choices, choice],
+          });
         }),
 
       deleteChoice: (storyId, sceneId, choiceId) =>
         set((s) => {
-          const storyScenes = { ...(s.scenesByStory[storyId] || {}) };
+          const storyScenes = buildCompatibilitySceneMapFromState(s, storyId);
           const scene = storyScenes[sceneId];
           if (!scene) return {};
-          storyScenes[sceneId] = { ...scene, choices: scene.choices.filter((c) => c.id !== choiceId) };
-          return {
-            scenesByStory: { ...s.scenesByStory, [storyId]: storyScenes },
-            storiesMetadata: s.storiesMetadata.map((m) =>
-              m.id === storyId ? { ...m, updatedAt: Date.now() } : m
-            ),
-          };
+          return upsertCanonicalSceneFromLegacyScene(s, storyId, {
+            ...scene,
+            choices: scene.choices.filter((c) => c.id !== choiceId),
+          });
         }),
 
       setLanguage: (lang) => set({ language: lang }),
@@ -469,7 +482,6 @@ export const useAppStore = create<AppState & AppActions>()(
       storage: createJSONStorage(createPersistentStorage),
       partialize: (state) => ({
         storiesMetadata: state.storiesMetadata,
-        scenesByStory: state.scenesByStory,
         sceneRecordsByStory: state.sceneRecordsByStory,
         currentStoryId: state.currentStoryId,
         playbackState: state.playbackState,
