@@ -172,7 +172,8 @@ export function useSceneExecutor(
         case 'interactive_object':
           break;
       }
-    } catch {
+    } catch (err) {
+      console.warn('[useSceneExecutor] executeStep: failed to process step', step.blockType, step.id, err);
       return { nextState: currentState, result: 'continue' };
     }
 
