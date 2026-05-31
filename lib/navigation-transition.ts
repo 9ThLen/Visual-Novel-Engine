@@ -26,9 +26,10 @@ export function navigateWithViewTransition(
 
   document.documentElement.dataset.viewTransition = transitionType;
   const transition = viewTransitionDocument.startViewTransition(() => {
-    startTransition(navigate);
+    startTransition(() => {
+      navigate();
+      delete document.documentElement.dataset.viewTransition;
+    });
   });
-  void transition.finished.finally(() => {
-    delete document.documentElement.dataset.viewTransition;
-  }).catch(() => undefined);
+  void transition.finished.catch(() => undefined);
 }
