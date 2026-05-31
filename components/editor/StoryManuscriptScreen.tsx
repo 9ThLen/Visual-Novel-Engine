@@ -36,6 +36,16 @@ export function StoryManuscriptScreen({
   const scrollViewRef = useRef<ScrollView>(null);
   const sceneOffsetsRef = useRef<Record<string, number>>({});
 
+  // Purge offset entries for removed scenes
+  useEffect(() => {
+    const currentSceneIds = new Set(sceneRecords.map((s) => s.id));
+    Object.keys(sceneOffsetsRef.current).forEach((key) => {
+      if (!currentSceneIds.has(key)) {
+        delete sceneOffsetsRef.current[key];
+      }
+    });
+  }, [sceneRecords]);
+
   const baseManuscript = useMemo(
     () => buildStoryManuscript(storyMetadata, sceneRecords),
     [sceneRecords, storyMetadata]
