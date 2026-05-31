@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { shouldUpsertBundledStory } from '@/lib/bundled-story-sync';
-import type { Story } from '@/lib/types';
+import type { Story } from '@/lib/scene-operations';
 
 const bundledStory: Story = {
   id: 'demo-story-001',
