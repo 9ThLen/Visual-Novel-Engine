@@ -11,11 +11,28 @@ import React, { useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Sortable, SortableItem, type SortableRenderItemProps } from 'react-native-reanimated-dnd';
 import { useColors } from '@/hooks/use-colors';
-import { BLOCK_TYPE_INFO, type TimelineStep, type BlockType } from '@/lib/engine/types';
+import {
+  BLOCK_TYPE_INFO,
+  type BackgroundBlockData,
+  type BlockType,
+  type CameraBlockData,
+  type CharacterBlockData,
+  type ChoiceBlockData,
+  type DialogueBlockData,
+  type EffectBlockData,
+  type InteractiveObjectBlockData,
+  type MusicBlockData,
+  type SoundBlockData,
+  type TimelineStep,
+  type TransitionBlockData,
+  type VariableBlockData,
+} from '@/lib/engine/types';
 import { isBlockComplete } from '@/lib/editor/block-validation';
 import { useI18n } from '@/lib/i18n';
 import { createTimelineSortableProps } from '@/lib/editor/timeline-sortable';
 import { getTimelineItemLayout } from '@/lib/editor/timeline-item-layout';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { getBlockIconName } from '@/lib/editor/block-icon';
 
 interface TimelinePanelProps {
   timeline: TimelineStep[];
@@ -27,8 +44,6 @@ interface TimelinePanelProps {
   onBlockDuplicate: (stepId: string) => void;
   onBlockToggleCollapse: (stepId: string) => void;
 }
-
-const ESTIMATED_BLOCK_HEIGHT = 80;
 
 export function TimelinePanel({
   timeline,
@@ -56,7 +71,7 @@ export function TimelinePanel({
         justifyContent: 'center',
         backgroundColor: colors.background,
       }}>
-        <Text style={{ fontSize: 48, marginBottom: 12 }}>🧩</Text>
+        <IconSymbol name="blocks" size={48} color={colors.primary} style={{ marginBottom: 12 }} />
         <Text style={{
           fontSize: 16,
           fontWeight: '600',
@@ -95,7 +110,7 @@ export function TimelinePanel({
           letterSpacing: 0.5,
           color: colors['foreground-tertiary'] || colors.muted,
         }}>
-          📝 {t('editor.timeline')}
+          {t('editor.timeline')}
         </Text>
         <Text style={{
           fontSize: 11,
@@ -142,8 +157,8 @@ export function TimelinePanel({
                         ...layout.cardStyle,
                         borderRadius: 10,
                         backgroundColor: isSelected
-                          ? (colors as any)['surface-2'] || colors.surface
-                          : (colors as any)['surface-container'] || colors.surface,
+                          ? colors['surface-2'] || colors.surface
+                          : colors['surface-container'] || colors.surface,
                         borderLeftWidth: 4,
                         borderLeftColor: step.enabled ? info.color : colors.border,
                         borderWidth: isSelected ? 2 : 0,
@@ -199,7 +214,7 @@ export function TimelinePanel({
                               justifyContent: 'center',
                               marginRight: 8,
                             }}>
-                              <Text style={{ fontSize: 14 }}>{info.icon}</Text>
+                              <IconSymbol name={getBlockIconName(step.blockType)} size={16} color={info.color} />
                             </View>
                             <View style={{
                               position: 'absolute',
@@ -226,9 +241,10 @@ export function TimelinePanel({
                             </Text>
                             {!step.collapsed && info.description && (
                               <Text style={{
-                                fontSize: 10,
+                                fontSize: 11,
+                                lineHeight: 15,
                                 color: colors.muted,
-                                marginTop: 1,
+                                marginTop: 4,
                               }}>
                                 {getBlockPreviewText(step, info.label)}
                               </Text>
@@ -244,9 +260,7 @@ export function TimelinePanel({
                               accessibilityRole="button"
                               accessibilityLabel={step.collapsed ? `${t('editor.blockActions')} expand` : `${t('editor.blockActions')} collapse`}
                             >
-                              <Text style={{ fontSize: 12, color: colors.muted }}>
-                                {step.collapsed ? '▼' : '▲'}
-                              </Text>
+                              <IconSymbol name={step.collapsed ? 'expand' : 'collapse'} size={16} color={colors.muted} />
                             </Pressable>
                             <Pressable
                               onPress={(e) => { e.stopPropagation(); onBlockDuplicate(step.id); }}
@@ -254,7 +268,7 @@ export function TimelinePanel({
                               accessibilityRole="button"
                               accessibilityLabel={t('common.duplicate')}
                             >
-                              <Text style={{ fontSize: 12, color: colors.muted }}>📋</Text>
+                              <IconSymbol name="duplicate" size={16} color={colors.muted} />
                             </Pressable>
                             <Pressable
                               onPress={(e) => { e.stopPropagation(); onBlockRemove(step.id); }}
@@ -262,7 +276,7 @@ export function TimelinePanel({
                               accessibilityRole="button"
                               accessibilityLabel={t('common.delete')}
                             >
-                              <Text style={{ fontSize: 12, color: colors.error }}>🗑</Text>
+                              <IconSymbol name="delete" size={16} color={colors.error} />
                             </Pressable>
                           </View>
                         )}
@@ -280,25 +294,26 @@ export function TimelinePanel({
   );
 }
 
-const renderBlockContent = (step: TimelineStep, colors: any) => {
+const renderBlockContent = (step: TimelineStep, colors: ReturnType<typeof useColors>) => {
   const data = step.data;
 
   switch (step.blockType) {
-    case 'text':
-      const textData = data as any;
+    case 'text': {
+      const textData = data as { content: string };
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
           <Text style={{ fontSize: 12, color: colors['foreground-secondary'], fontStyle: 'italic' }}>
-            "{textData.content || 'Empty narration...'}"
+            &quot;{textData.content || 'Empty narration...'}&quot;
           </Text>
         </View>
       );
+    }
 
-    case 'dialogue':
-      const dialogueData = data as any;
+    case 'dialogue': {
+      const dialogueData = data as DialogueBlockData;
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-          {dialogueData.entries?.map((entry: any, i: number) => (
+          {dialogueData.entries?.map((entry, i: number) => (
             <View key={entry.id || i} style={{ marginBottom: 4 }}>
               <Text style={{ fontSize: 11, fontWeight: '600', color: colors.primary }}>
                 {entry.characterId || 'Speaker'}:
@@ -310,9 +325,10 @@ const renderBlockContent = (step: TimelineStep, colors: any) => {
           ))}
         </View>
       );
+    }
 
-    case 'character':
-      const charData = data as any;
+    case 'character': {
+      const charData = data as CharacterBlockData;
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={{ fontSize: 11, color: colors.muted }}>Character:</Text>
@@ -324,9 +340,10 @@ const renderBlockContent = (step: TimelineStep, colors: any) => {
           <Text style={{ fontSize: 12, color: colors.foreground }}>{charData.position}</Text>
         </View>
       );
+    }
 
-    case 'background':
-      const bgData = data as any;
+    case 'background': {
+      const bgData = data as BackgroundBlockData;
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={{ fontSize: 11, color: colors.muted }}>Background:</Text>
@@ -338,12 +355,13 @@ const renderBlockContent = (step: TimelineStep, colors: any) => {
           <Text style={{ fontSize: 12, color: colors.foreground }}>{bgData.transition}</Text>
         </View>
       );
+    }
 
-    case 'choice':
-      const choiceData = data as any;
+    case 'choice': {
+      const choiceData = data as ChoiceBlockData;
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
-          {choiceData.options?.map((opt: any, i: number) => (
+          {choiceData.options?.map((opt, i: number) => (
             <View key={opt.id || i} style={{
               paddingVertical: 4,
               paddingHorizontal: 8,
@@ -358,9 +376,10 @@ const renderBlockContent = (step: TimelineStep, colors: any) => {
           ))}
         </View>
       );
+    }
 
-    case 'effect':
-      const effectData = data as any;
+    case 'effect': {
+      const effectData = data as EffectBlockData;
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={{ fontSize: 11, color: colors.muted }}>Effect:</Text>
@@ -369,10 +388,11 @@ const renderBlockContent = (step: TimelineStep, colors: any) => {
           <Text style={{ fontSize: 12, color: colors.foreground }}>{effectData.intensity}%</Text>
         </View>
       );
+    }
 
     case 'music':
-    case 'sound':
-      const audioData = data as any;
+    case 'sound': {
+      const audioData = data as MusicBlockData | SoundBlockData;
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={{ fontSize: 11, color: colors.muted }}>Audio:</Text>
@@ -383,6 +403,7 @@ const renderBlockContent = (step: TimelineStep, colors: any) => {
           <Text style={{ fontSize: 12, color: colors.foreground }}>{Math.round((audioData.volume || 0) * 100)}%</Text>
         </View>
       );
+    }
 
     default:
       return (
@@ -394,36 +415,41 @@ const renderBlockContent = (step: TimelineStep, colors: any) => {
 };
 
 function getBlockPreviewText(step: TimelineStep, fallback: string): string {
-  const data = step.data as any;
+  const data = step.data;
 
   switch (step.blockType) {
     case 'text':
-      return data.content ? `"${data.content.substring(0, 40)}${data.content.length > 40 ? '...' : ''}"` : 'Empty text';
+      return (data as { content: string }).content ? `"${(data as { content: string }).content.substring(0, 40)}${(data as { content: string }).content.length > 40 ? '...' : ''}"` : 'Empty text';
     case 'dialogue':
-      if (data.entries?.length > 0) {
-        const first = data.entries[0];
+      if ((data as DialogueBlockData).entries?.length > 0) {
+        const first = (data as DialogueBlockData).entries[0];
         return `${first.characterId || 'Speaker'}: ${first.text?.substring(0, 30) || 'Empty'}...`;
       }
       return 'No entries';
     case 'character':
-      return `${data.characterId || '(no character)'} — ${data.position}`;
+      const characterData = data as CharacterBlockData;
+      return `${characterData.characterId || '(no character)'} - ${characterData.position}`;
     case 'background':
-      return data.assetId || 'No background selected';
+      return (data as BackgroundBlockData).assetId || 'No background selected';
     case 'choice':
-      return `${data.options?.length || 0} options`;
+      return `${(data as ChoiceBlockData).options?.length || 0} options`;
     case 'effect':
-      return `${data.effectType} — intensity ${data.intensity}%`;
+      const effectData = data as EffectBlockData;
+      return `${effectData.effectType} - intensity ${effectData.intensity}%`;
     case 'music':
     case 'sound':
-      return data.assetId || 'No audio selected';
+      return (data as MusicBlockData | SoundBlockData).assetId || 'No audio selected';
     case 'camera':
-      return `${data.action} — ${data.duration}s`;
+      const cameraData = data as CameraBlockData;
+      return `${cameraData.action} - ${cameraData.duration}s`;
     case 'variable':
-      return `${data.variableName || 'var'} ${data.operation} ${data.value}`;
+      const variableData = data as VariableBlockData;
+      return `${variableData.variableName || 'var'} ${variableData.operation} ${variableData.value}`;
     case 'transition':
-      return data.targetSceneId ? `→ ${data.targetSceneId}` : 'End scene';
+      const transitionData = data as TransitionBlockData;
+      return transitionData.targetSceneId ? `-> ${transitionData.targetSceneId}` : 'End scene';
     case 'interactive_object':
-      return data.name || 'Unnamed object';
+      return (data as InteractiveObjectBlockData).name || 'Unnamed object';
     default:
       return fallback;
   }

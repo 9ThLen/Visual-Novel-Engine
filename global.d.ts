@@ -1,3 +1,5 @@
+/// <reference types="vitest/globals" />
+
 declare module '*.png' {
   const value: number;
   export default value;

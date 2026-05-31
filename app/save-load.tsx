@@ -14,7 +14,7 @@ import { useStoryState, useStoryActions } from '@/lib/story-hooks';
 import { useColors } from '@/hooks/use-colors';
 import { SaveSlot } from '@/lib/story-domain';
 import { useI18n } from '@/lib/i18n';
-import { Button } from '@/components/ui';
+import { Button, IconSymbol } from '@/components/ui';
 
 function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
   slot: SaveSlot;
@@ -31,17 +31,17 @@ function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
             style={{ backgroundColor: colors.background }} resizeMode="cover" />
           <View
             className="absolute bottom-0 left-0 right-0 h-15"
-            style={{ backgroundColor: colors.backdrop ?? 'rgba(0,0,0,0.6)' }}
+            style={{ backgroundColor: colors.backdrop }}
           />
           <View className="absolute bottom-2 left-2 right-2">
-            <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 12, fontWeight: '600' }}>
+            <Text style={{ color: colors['text-inverse'], fontSize: 12, fontWeight: '600' }}>
               {new Date(slot.timestamp).toLocaleDateString()}
             </Text>
           </View>
         </View>
       ) : (
         <View className="h-28 items-center justify-center" style={{ backgroundColor: colors.background }}>
-          <Text style={{ fontSize: 48, opacity: 0.3 }}>💾</Text>
+          <IconSymbol name="save" size={48} color={colors.muted} style={{ opacity: 0.3 }} />
         </View>
       )}
       <View className="p-3">
@@ -53,7 +53,7 @@ function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
             <Text style={[{ color: colors.muted }, { fontSize: 12, lineHeight: 16 }]} numberOfLines={2}>{slot.sceneText}</Text>
           ) : null}
           <Text style={[{ color: colors.primary }, { fontSize: 12, fontWeight: '600' }]}>
-            📍 {slot.sceneName || slot.sceneId}
+            {slot.sceneName || slot.sceneId}
           </Text>
         </View>
         <View className="flex-row gap-2">
@@ -63,8 +63,9 @@ function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
             onPress={() => onLoad(slotId)}
             className="flex-1"
             accessibilityLabel={t('save.loadSlotLabel', { slot: 'Auto-Save' })}
+            icon={<IconSymbol name="load" size={16} color={colors['text-inverse']} />}
           >
-            📂 {t('save.loadButton')}
+            {t('save.loadButton')}
           </Button>
           <Button
             variant="outline"
@@ -73,8 +74,9 @@ function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
             style={{ borderColor: colors.error }}
             textStyle={{ color: colors.error }}
             accessibilityLabel={t('save.deleteSlotLabel', { slot: 'Auto-Save' })}
+            icon={<IconSymbol name="delete" size={16} color={colors.error} />}
           >
-            🗑
+            {t('common.delete')}
           </Button>
         </View>
       </View>
@@ -174,18 +176,18 @@ export default function SaveLoadScreen() {
             />
             <View
               className="absolute bottom-0 left-0 right-0 h-15"
-              style={{ backgroundColor: colors.backdrop ?? 'rgba(0,0,0,0.6)' }}
+              style={{ backgroundColor: colors.backdrop }}
             />
             <View
               className="absolute top-2 left-2 rounded-lg px-2.5 py-1"
               style={{ backgroundColor: colors.primary }}
             >
-              <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 12, fontWeight: '700' }}>
+              <Text style={{ color: colors['text-inverse'], fontSize: 12, fontWeight: '700' }}>
                 #{index + 1}
               </Text>
             </View>
             <View className="absolute bottom-2 left-2 right-2">
-              <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 12, fontWeight: '600' }}>
+              <Text style={{ color: colors['text-inverse'], fontSize: 12, fontWeight: '600' }}>
                 {formatDate(item.timestamp)}
               </Text>
             </View>
@@ -195,7 +197,7 @@ export default function SaveLoadScreen() {
             className="h-28 items-center justify-center"
             style={{ backgroundColor: colors.background }}
           >
-            <Text style={{ fontSize: 48, opacity: 0.3 }}>💾</Text>
+            <IconSymbol name="save" size={48} color={colors.muted} style={{ opacity: 0.3 }} />
             <Text style={[{ color: colors.muted }, { fontSize: 14, marginTop: 8, fontWeight: '600' }]}>
               {t('save.empty')} {index + 1}
             </Text>
@@ -221,7 +223,7 @@ export default function SaveLoadScreen() {
               ) : null}
               <View className="flex-row items-center gap-1">
                 <Text style={[{ color: colors.primary }, { fontSize: 12, fontWeight: '600' }]}>
-                  📍 {item.sceneName || item.sceneId}
+                  {item.sceneName || item.sceneId}
                 </Text>
                 <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>
                   • {t('save.slotChoiceCount', { count: item.choicesMade?.length ?? 0 })}
@@ -246,8 +248,9 @@ export default function SaveLoadScreen() {
                 accessibilityLabel={isEmpty
                   ? t('save.saveSlotLabel', { slot: index + 1 })
                   : t('save.overwriteSlotLabel', { slot: index + 1 })}
+                icon={<IconSymbol name="save" size={16} color={colors['text-inverse']} />}
               >
-                💾 {isEmpty ? t('save.saveHere') : t('save.overwrite')}
+                {isEmpty ? t('save.saveHere') : t('save.overwrite')}
               </Button>
             )}
             {activeTab === 'load' && !isEmpty && (
@@ -257,8 +260,9 @@ export default function SaveLoadScreen() {
                 onPress={() => handleLoadFromSlot(slotId)}
                 className="flex-1"
                 accessibilityLabel={t('save.loadSlotLabel', { slot: index + 1 })}
+                icon={<IconSymbol name="load" size={16} color={colors['text-inverse']} />}
               >
-                📂 {t('save.loadButton')}
+                {t('save.loadButton')}
               </Button>
             )}
             {!isEmpty && (
@@ -269,8 +273,9 @@ export default function SaveLoadScreen() {
                 style={{ borderColor: colors.error }}
                 textStyle={{ color: colors.error }}
                 accessibilityLabel={t('save.deleteSlotLabel', { slot: index + 1 })}
+                icon={<IconSymbol name="delete" size={16} color={colors.error} />}
               >
-                🗑
+                {t('common.delete')}
               </Button>
             )}
           </View>
@@ -333,7 +338,7 @@ export default function SaveLoadScreen() {
       {activeTab === 'load' && autoSaveSlot && (
         <View className="mb-4">
           <Text style={[{ color: colors.muted }, { fontSize: 12, fontWeight: '600', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 }]}>
-            ⚡ {t('save.autosave')}
+            {t('save.autosave')}
           </Text>
           <AutoSaveSlot
             slot={autoSaveSlot}
@@ -346,7 +351,7 @@ export default function SaveLoadScreen() {
       )}
 
       <Text style={[{ color: colors.muted }, { fontSize: 12, fontWeight: '600', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 }]}>
-        💾 {t('save.manual')}
+        {t('save.manual')}
       </Text>
 
       <FlatList

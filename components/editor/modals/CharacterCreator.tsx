@@ -4,16 +4,16 @@
  * Form: name, color picker, voice selector, sprite upload slots.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View, Text, Pressable, TextInput, ScrollView, Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/lib/i18n';
-import { useAppStore } from '@/stores/use-app-store';
 import { generateId } from '@/lib/id-utils';
 import type { Character } from '@/lib/character-types';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 interface CharacterCreatorProps {
   visible: boolean;
@@ -22,17 +22,26 @@ interface CharacterCreatorProps {
   editCharacter?: Character | null;
 }
 
-const COLOR_PALETTE = [
-  '#ff6b6b', '#f5a623', '#ffd93d', '#50c878',
-  '#00bcd4', '#7c5bf5', '#e91e63', '#9e9e9e',
-  '#3f51b5', '#ff9800',
-];
+const COLOR_TOKEN_KEYS = [
+  'lego-audio',
+  'lego-character',
+  'lego-fx',
+  'lego-background',
+  'lego-choice',
+  'primary',
+  'danger',
+  'muted',
+  'info',
+  'warning',
+] as const;
 
 const VOICE_OPTIONS = [
-  { key: 'male', label: '♂ Male' },
-  { key: 'female', label: '♀ Female' },
-  { key: 'none', label: '— None' },
-];
+  { key: 'male', labelKey: 'character.voice.male' },
+  { key: 'female', labelKey: 'character.voice.female' },
+  { key: 'none', labelKey: 'character.voice.none' },
+] as const;
+
+type VoiceOptionKey = (typeof VOICE_OPTIONS)[number]['key'];
 
 export function CharacterCreator({
   visible,
@@ -43,13 +52,20 @@ export function CharacterCreator({
   const colors = useColors();
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
-  const characterLibraries = useAppStore((s) => s.characterLibraries);
+  const colorPalette = useMemo(
+    () => COLOR_TOKEN_KEYS.map((key) => ({ key, value: colors[key] ?? colors.primary })),
+    [colors]
+  );
+  const spriteById = useMemo(
+    () => new Map((editCharacter?.sprites ?? []).map((sprite) => [sprite.id, sprite])),
+    [editCharacter?.sprites]
+  );
 
   const [name, setName] = useState(editCharacter?.name || '');
   const [selectedColor, setSelectedColor] = useState(
-    editCharacter?.sprites?.[0]?.tags?.find((t) => t.startsWith('#')) || COLOR_PALETTE[0]
+    editCharacter?.sprites?.[0]?.tags?.find((item) => item.startsWith('#')) || colorPalette[0].value
   );
-  const [voice, setVoice] = useState<'male' | 'female' | 'none'>('none');
+  const [voice, setVoice] = useState<VoiceOptionKey>('none');
   const [spriteSlots, setSpriteSlots] = useState<string[]>(
     editCharacter?.sprites?.map((s) => s.id) || []
   );
@@ -62,10 +78,10 @@ export function CharacterCreator({
       name: name.trim(),
       sprites: spriteSlots.map((id, i) => ({
         id,
-        name: `Sprite ${i + 1}`,
-        uri: '',
+        name: spriteById.get(id)?.name || t('character.spriteSlotName', { number: i + 1 }),
+        uri: spriteById.get(id)?.uri || '',
         tags: [selectedColor],
-        createdAt: Date.now(),
+        createdAt: spriteById.get(id)?.createdAt || Date.now(),
       })),
       defaultSpriteId: spriteSlots[0] || undefined,
       createdAt: editCharacter?.createdAt || Date.now(),
@@ -75,7 +91,7 @@ export function CharacterCreator({
     onClose();
     // Reset form
     setName('');
-    setSelectedColor(COLOR_PALETTE[0]);
+    setSelectedColor(colorPalette[0].value);
     setVoice('none');
     setSpriteSlots([]);
   };
@@ -100,7 +116,7 @@ export function CharacterCreator({
         <View style={{
           width: '90%',
           maxWidth: 600,
-          backgroundColor: colors['surface-container'] || colors.surface,
+          backgroundColor: colors['surface-container'],
           borderRadius: 12,
           overflow: 'hidden',
           maxHeight: '85%',
@@ -116,10 +132,10 @@ export function CharacterCreator({
             borderBottomColor: colors.border,
           }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>
-              {editCharacter ? 'Edit Character' : 'Create Character'}
+              {editCharacter ? t('character.edit') : t('character.create')}
             </Text>
             <Pressable onPress={onClose} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('a11y.closePanel')}>
-              <Text style={{ fontSize: 16, color: colors.muted }}>✕</Text>
+              <IconSymbol name="close" size={18} color={colors.muted} />
             </Pressable>
           </View>
 
@@ -130,12 +146,12 @@ export function CharacterCreator({
                 fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
                 color: colors.muted, marginBottom: 6,
               }}>
-                Character Name
+                {t('character.name')}
               </Text>
               <TextInput
                 value={name}
                 onChangeText={setName}
-                placeholder="Enter character name..."
+                placeholder={t('character.namePlaceholder')}
                 placeholderTextColor={colors.muted}
                 style={{
                   backgroundColor: colors.background,
@@ -156,23 +172,23 @@ export function CharacterCreator({
                 fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
                 color: colors.muted, marginBottom: 6,
               }}>
-                Theme Color
+                {t('character.themeColor')}
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {COLOR_PALETTE.map((color) => (
+                {colorPalette.map(({ key, value }) => (
                   <Pressable
-                    key={color}
-                    onPress={() => setSelectedColor(color)}
+                    key={key}
+                    onPress={() => setSelectedColor(value)}
                     style={{
                       width: 36,
                       height: 36,
                       borderRadius: 18,
-                      backgroundColor: color,
-                      borderWidth: selectedColor === color ? 3 : 0,
+                      backgroundColor: value,
+                      borderWidth: selectedColor === value ? 3 : 0,
                       borderColor: colors.foreground,
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={`${t('editor.selectAsset')} ${color}`}
+                    accessibilityLabel={t('character.selectColor', { color: key })}
                   />
                 ))}
               </View>
@@ -184,13 +200,13 @@ export function CharacterCreator({
                 fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
                 color: colors.muted, marginBottom: 6,
               }}>
-                Voice
+                {t('character.voice')}
               </Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 {VOICE_OPTIONS.map((opt) => (
                   <Pressable
                     key={opt.key}
-                    onPress={() => setVoice(opt.key as any)}
+                    onPress={() => setVoice(opt.key)}
                     style={{
                       paddingHorizontal: 14,
                       paddingVertical: 8,
@@ -200,14 +216,14 @@ export function CharacterCreator({
                       borderColor: voice === opt.key ? colors.primary : colors.border,
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={opt.label}
+                    accessibilityLabel={t(opt.labelKey)}
                   >
                     <Text style={{
                       fontSize: 12,
                       fontWeight: '600',
-                      color: voice === opt.key ? colors['text-inverse'] ?? '#fff' : colors.foreground,
+                      color: voice === opt.key ? colors['text-inverse'] : colors.foreground,
                     }}>
-                      {opt.label}
+                      {t(opt.labelKey)}
                     </Text>
                   </Pressable>
                 ))}
@@ -220,15 +236,13 @@ export function CharacterCreator({
                 fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
                 color: colors.muted, marginBottom: 6,
               }}>
-                Sprites
+                {t('character.sprites')}
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {[0, 1, 2, 3].map((i) => (
                   <Pressable
                     key={i}
-                    onPress={() => {
-                      // TODO: Open sprite picker
-                    }}
+                    disabled
                     style={{
                       width: 100,
                       height: 120,
@@ -241,14 +255,18 @@ export function CharacterCreator({
                       justifyContent: 'center',
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={`${t('editor.dialogueText')} ${i + 1}`}
+                    accessibilityLabel={spriteSlots[i]
+                      ? t('character.spriteSlotLabel', { number: i + 1, name: spriteById.get(spriteSlots[i])?.name || t('character.spriteSlotName', { number: i + 1 }) })
+                      : t('character.spritePickerUnavailable', { number: i + 1 })}
                   >
                     {spriteSlots[i] ? (
                       <Text style={{ fontSize: 10, color: colors.foreground }}>
-                        {spriteIds[spriteSlots[i]] || 'Sprite'}
+                        {spriteById.get(spriteSlots[i])?.name || t('character.spriteSlotName', { number: i + 1 })}
                       </Text>
                     ) : (
-                      <Text style={{ fontSize: 20, color: colors.muted }}>+</Text>
+                      <Text style={{ fontSize: 11, color: colors.muted, textAlign: 'center', paddingHorizontal: 8 }}>
+                        {t('character.spritePickerSoon')}
+                      </Text>
                     )}
                   </Pressable>
                 ))}
@@ -294,8 +312,8 @@ export function CharacterCreator({
               accessibilityRole="button"
               accessibilityLabel={t('common.save')}
             >
-              <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>
-                {editCharacter ? 'Save Changes' : 'Create Character'}
+              <Text style={{ fontSize: 13, color: colors['text-inverse'], fontWeight: '600' }}>
+                {editCharacter ? t('character.saveChanges') : t('character.create')}
               </Text>
             </Pressable>
           </View>
@@ -304,6 +322,3 @@ export function CharacterCreator({
     </Modal>
   );
 }
-
-// Simple sprite ID → name mapping for UI
-const spriteIds: Record<string, string> = {};

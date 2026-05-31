@@ -8,13 +8,9 @@
  */
 
 import type { Language } from '@/lib/translations';
-import type { CharacterSprite } from '@/lib/character-types';
 import type { Character } from '@/lib/character-types';
-import type { AudioLibraryItem } from '@/lib/audio-types';
-import type { LibraryAsset } from '@/lib/media-library-service';
 import type { InteractiveAction, InteractiveObjectPosition } from '@/lib/interactive-types';
-import type { AudioTrigger } from '@/lib/audio-types';
-import type { Choice, StoryScene as LegacyStoryScene } from '@/lib/types';
+import type { StoryScene as LegacyStoryScene } from '@/lib/scene-operations';
 
 // ── Block Categories ────────────────────────────────────────────────────
 
@@ -231,7 +227,7 @@ export interface TransitionBlockData {
 
 // ── Conditions ────────────────────────────────────────────────────────────
 
-export type ConditionOperator = '==' | '!=' | '>' | '<' | '>=' | '<=' | 'contains' | 'isEmpty';
+export type ConditionOperator = '==' | '!=' | '>' | '<' | '>=' | '<=' | 'contains' | 'isEmpty' | 'has' | 'not_has';
 
 export interface Condition {
   variableName: string;
@@ -335,6 +331,17 @@ export interface ProjectVariable {
   type: 'string' | 'number' | 'boolean';
   defaultValue: string | number | boolean;
   category: string;
+}
+
+/**
+ * Represents the current playback state for the reader.
+ */
+export interface PlaybackState {
+  storyId: string;
+  currentSceneId: string;
+  isPlaying: boolean;
+  currentDialogueIndex: number;
+  choicesMade: { sceneId: string; choiceId: string }[];
 }
 
 // Alias for backward compatibility

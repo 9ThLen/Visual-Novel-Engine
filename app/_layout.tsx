@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/lib/theme-provider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { StoryAutoSave } from "@/lib/story-hooks";
 import { ReaderAudioRouteGuard } from "@/components/ReaderAudioRouteGuard";
+import { MigrationErrorBanner } from "@/components/MigrationErrorBanner";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 
@@ -17,10 +18,8 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   document.body.style.margin = '0';
 }
 
-// Lazy-load reanimated on web (it can crash if not properly polyfilled)
-try {
-  require("react-native-reanimated");
-} catch {}
+// Lazy-load reanimated after module setup; web can fail if it is not polyfilled.
+void import("react-native-reanimated").catch(() => {});
 
 export default function RootLayout() {
   // Hide the native splash screen once JS has mounted.
@@ -40,6 +39,7 @@ export default function RootLayout() {
         <ThemeProvider>
           <StoryAutoSave />
           <ReaderAudioRouteGuard />
+          <MigrationErrorBanner />
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="tabs" />
           </Stack>

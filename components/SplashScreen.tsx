@@ -34,7 +34,7 @@ export function SplashScreenComponent({
 
   // Only create video player for video/animation types
   const isVideo = splash.type === 'video' || splash.type === 'animation';
-  const player = isVideo ? useVideoPlayer(null) : null;
+  const player = useVideoPlayer(null);
 
   const onCompleteRef = useRef(onComplete);
   const onUIHiddenRef = useRef(onUIHidden);

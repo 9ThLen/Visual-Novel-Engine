@@ -17,7 +17,6 @@ export default function OAuthCallback() {
     state?: string;
     error?: string;
     sessionToken?: string;
-    user?: string;
   }>();
   const [status, setStatus] = useState<"processing" | "success" | "error">("processing");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -31,28 +30,24 @@ export default function OAuthCallback() {
           if (__DEV__) console.log("[OAuth] Session token found in params");
           await Auth.setSessionToken(params.sessionToken);
 
-          // Decode and store user info if available
-          if (params.user) {
-            try {
-              // Use atob for base64 decoding (works in both web and React Native)
-              const userJson =
-                typeof atob !== "undefined"
-                  ? atob(params.user)
-                  : Buffer.from(params.user, "base64").toString("utf-8");
-              const userData = JSON.parse(userJson);
-              const userInfo: Auth.User = {
-                id: userData.id,
-                openId: userData.openId,
-                name: userData.name,
-                email: userData.email,
-                loginMethod: userData.loginMethod,
-                lastSignedIn: new Date(userData.lastSignedIn || Date.now()),
+          // Fetch user info from backend using the trusted session token
+          try {
+            const apiUser = await Api.getMe();
+            if (apiUser) {
+              const authUserInfo: Auth.User = {
+                id: apiUser.id,
+                openId: apiUser.openId,
+                name: apiUser.name,
+                email: apiUser.email,
+                loginMethod: apiUser.loginMethod,
+                lastSignedIn: new Date(apiUser.lastSignedIn || Date.now()),
               };
-              await Auth.setUserInfo(userInfo);
-              if (__DEV__) console.log("[OAuth] User info stored:", userInfo);
-            } catch (err) {
-              if (__DEV__) console.error("[OAuth] Failed to parse user data:", err);
+              await Auth.setUserInfo(authUserInfo);
+              if (__DEV__) console.log("[OAuth] User info fetched from API:", authUserInfo);
             }
+          } catch (err) {
+            // Non-fatal: user info will be empty, session token is still valid
+            if (__DEV__) console.warn("[OAuth] Failed to fetch user info from API:", err);
           }
 
           setStatus("success");
@@ -187,7 +182,7 @@ export default function OAuthCallback() {
 
     handleCallback();
     return () => timeoutIds.forEach(clearTimeout);
-  }, [params.code, params.state, params.error, params.sessionToken, params.user, router]);
+  }, [params.code, params.state, params.error, params.sessionToken, router]);
 
   return (
     <SafeAreaView className="flex-1" edges={["top", "bottom", "left", "right"]}>

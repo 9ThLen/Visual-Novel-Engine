@@ -1,6 +1,11 @@
 const { themeColors } = require("./theme.config");
 const plugin = require("tailwindcss/plugin");
-const { buildTailwindThemeColors } = require("./lib/build-tailwind-theme-colors");
+
+function buildTailwindThemeColors(colors) {
+  return Object.fromEntries(
+    Object.keys(colors).map((name) => [name, `var(--color-${name})`]),
+  );
+}
 
 const tailwindColors = buildTailwindThemeColors(themeColors);
 

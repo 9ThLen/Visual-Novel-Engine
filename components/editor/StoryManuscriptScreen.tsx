@@ -12,6 +12,7 @@ import {
   moveStoryManuscriptSceneBlock,
   type StoryManuscriptBlock,
 } from '@/lib/editor/story-manuscript';
+import type { StoryManuscriptScene } from '@/lib/editor/story-manuscript-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
 import { useAppStore } from '@/stores/use-app-store';
@@ -64,7 +65,7 @@ export function StoryManuscriptScreen({
   const isDirty = useMemo(() => JSON.stringify(draft) !== baseSnapshot, [baseSnapshot, draft]);
   const useSidebarLayout = layout.screenWidth >= 960;
 
-  const updateScene = useCallback((sceneId: string, updater: (currentScene: typeof draft.scenes[number]) => typeof draft.scenes[number]) => {
+  const updateScene = useCallback((sceneId: string, updater: (currentScene: StoryManuscriptScene) => StoryManuscriptScene) => {
     setDraft((currentDraft) => ({
       ...currentDraft,
       scenes: currentDraft.scenes.map((scene) => (scene.sceneId === sceneId ? updater(scene) : scene)),

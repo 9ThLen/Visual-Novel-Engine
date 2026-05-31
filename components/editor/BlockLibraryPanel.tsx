@@ -9,16 +9,22 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-import { BLOCK_TYPE_INFO, BLOCK_CATEGORIES, BLOCK_CATEGORY_MAP, type BlockCategory, type BlockType, type BlockTypeInfo } from '@/lib/engine/types';
+import { BLOCK_TYPE_INFO, BLOCK_CATEGORIES, type BlockCategory, type BlockType, type BlockTypeInfo } from '@/lib/engine/types';
 import { useI18n } from '@/lib/i18n';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { getBlockCategoryIconName, getBlockIconName } from '@/lib/editor/block-icon';
 
 interface BlockLibraryPanelProps {
   onBlockTap: (blockType: BlockType) => void;
 }
 
+const searchInputDataSetProps = {
+  dataSet: { searchInput: true },
+} as { dataSet: { searchInput: boolean } };
+
 // Priority order within each category (most frequent first)
 const CATEGORY_BLOCK_ORDER: Record<BlockCategory, BlockType[]> = {
-  scene: ['character', 'background', 'interactive_object'],
+  scene: ['character', 'interactive_object'],
   dialogue: ['dialogue', 'text', 'choice'],
   media: ['music', 'sound'],
   effects: ['effect', 'transition', 'camera'],
@@ -69,7 +75,7 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
         marginHorizontal: 6,
         marginVertical: 2,
         borderRadius: 8,
-        backgroundColor: pressed ? (colors.hover || '#ffffff10') : 'transparent',
+        backgroundColor: pressed ? (colors.hover) : 'transparent',
         borderLeftWidth: 4,
         borderLeftColor: blockInfo.color,
       })}
@@ -85,7 +91,7 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
         justifyContent: 'center',
         marginRight: 10,
       }}>
-        <Text style={{ fontSize: 18 }}>{blockInfo.icon}</Text>
+        <IconSymbol name={getBlockIconName(blockInfo.type)} size={20} color={blockInfo.color} />
       </View>
 
       <View style={{ flex: 1 }}>
@@ -131,10 +137,10 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
           color: colors['foreground-tertiary'] || colors.muted,
           marginBottom: 8,
         }}>
-          🧱 {t('editor.blockLibrary')}
+          {t('editor.blockLibrary')}
         </Text>
         <TextInput
-          {...({ dataSet: { searchInput: true } } as any)}
+          {...searchInputDataSetProps}
           value={query}
           onChangeText={setQuery}
           placeholder={t('editor.searchBlocks')}
@@ -176,7 +182,7 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
                 paddingVertical: 6,
                 marginTop: 4,
               }}>
-                <Text style={{ fontSize: 12, marginRight: 4 }}>{category.icon}</Text>
+                <IconSymbol name={getBlockCategoryIconName(category.key)} size={14} color={colors.muted} style={{ marginRight: 4 }} />
                 <Text style={{
                   fontSize: 11,
                   fontWeight: '700',
@@ -220,7 +226,7 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
                 justifyContent: 'center',
                 marginBottom: 12,
               }}>
-                <Text style={{ fontSize: 24 }}>{tooltip.info.icon}</Text>
+                <IconSymbol name={getBlockIconName(tooltip.info.type)} size={24} color={tooltip.info.color} />
               </View>
               <Text style={{
                 fontSize: 16,
@@ -250,7 +256,7 @@ export function BlockLibraryPanel({ onBlockTap }: BlockLibraryPanelProps) {
                 accessibilityRole="button"
                 accessibilityLabel={t('editor.addBlock')}
               >
-                <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>{t('editor.addBlock')}</Text>
+                <Text style={{ fontSize: 13, color: colors['text-inverse'], fontWeight: '600' }}>{t('editor.addBlock')}</Text>
               </Pressable>
             </View>
           </Pressable>

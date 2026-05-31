@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
-import { StoryScene, UserSettings } from '../lib/types';
+import type { UserSettings } from '../lib/user-settings';
 import type { IAudioManager } from '../lib/audio-interfaces';
 import { enhancedAudioManager as defaultAudioManager } from '../lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '../lib/asset-resolver';
 import { getPlaybackAudioLibrary } from '../lib/audio-library';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from '../lib/error-handler';
+import type { MusicBlockData, SceneState, TimelineStep } from '../lib/engine/types';
+import type { AudioTrigger } from '../lib/audio-types';
 import {
   activateReaderAudioSession,
   deactivateReaderAudioSession,
@@ -15,7 +17,15 @@ import {
   suspendReaderAudioSession,
 } from '../lib/reader-audio-session';
 
-function buildAudioTriggerSignature(scene: StoryScene | null): string {
+type ReaderAudioScene = {
+  id: string;
+  timeline?: TimelineStep[];
+  musicUri?: string | null;
+  voiceAudioUri?: string | null;
+  audioTriggers?: AudioTrigger[];
+};
+
+function buildAudioTriggerSignature(scene: ReaderAudioScene | null): string {
   const triggers = scene?.audioTriggers;
   if (!triggers || triggers.length === 0) {
     return '';
@@ -38,6 +48,27 @@ function buildAudioTriggerSignature(scene: StoryScene | null): string {
     .join('|');
 }
 
+function getSceneStartMusicUri(scene: ReaderAudioScene | null): string | null {
+  const musicStep = scene?.timeline?.find(
+    (step: TimelineStep) => step.enabled && step.blockType === 'music',
+  );
+  if (!musicStep) return scene?.musicUri?.trim() || null;
+
+  const data = musicStep.data as MusicBlockData;
+  if (data.action !== 'play') return null;
+  return data.assetId?.trim() || null;
+}
+
+function resolveRuntimeMusicUri(
+  scene: ReaderAudioScene,
+  sceneState: SceneState | null | undefined,
+): string | null {
+  if (sceneState) {
+    return sceneState.musicPlaying ? sceneState.musicTrackId?.trim() || null : null;
+  }
+  return getSceneStartMusicUri(scene);
+}
+
 /** Stops all reader playback and disables the reader audio session. */
 export async function stopReaderPlayback(
   audioManager: IAudioManager = defaultAudioManager,
@@ -49,15 +80,17 @@ export async function stopReaderPlayback(
 
 export function useReaderAudio(
   storyId: string | null | undefined,
-  currentScene: StoryScene | null,
+  currentScene: ReaderAudioScene | null,
   settings: UserSettings,
   options?: {
     audioManager?: IAudioManager;
+    sceneState?: SceneState | null;
     /** True when reader menu, history log, or similar overlays block story audio. */
     blockedByOverlay?: boolean;
   },
 ) {
   const audioManager = options?.audioManager ?? defaultAudioManager;
+  const sceneState = options?.sceneState ?? null;
   const blockedByOverlay = options?.blockedByOverlay ?? false;
   const isFocused = useIsFocused();
   const audioTriggerSignature = buildAudioTriggerSignature(currentScene);
@@ -71,12 +104,13 @@ export function useReaderAudio(
   }, []);
 
   const applySceneAudio = useCallback(
-    (scene: StoryScene, sessionId: number) => {
+    (scene: ReaderAudioScene, runtimeState: SceneState | null, sessionId: number) => {
       const generation = ++sceneGenerationRef.current;
+      const musicUri = resolveRuntimeMusicUri(scene, runtimeState);
       logDebug('applySceneAudio', {
         storyId,
         sceneId: scene.id,
-        musicUri: scene.musicUri,
+        musicUri,
         voiceAudioUri: scene.voiceAudioUri,
         triggerCount: scene.audioTriggers?.length ?? 0,
         sessionId,
@@ -93,7 +127,7 @@ export function useReaderAudio(
         }
       }
 
-      const newMusicUri = scene.musicUri?.trim() || null;
+      const newMusicUri = musicUri;
 
       if (newMusicUri) {
         resolvePlayableAssetUri(newMusicUri).then((uri) => {
@@ -243,7 +277,7 @@ export function useReaderAudio(
 
     const sessionId = getReaderAudioSessionId() ?? activateReaderAudioSession();
 
-    applySceneAudio(currentScene, sessionId);
+    applySceneAudio(currentScene, sceneState, sessionId);
 
     return () => {
       sceneGenerationRef.current += 1;
@@ -252,7 +286,9 @@ export function useReaderAudio(
     blockedByOverlay,
     isFocused,
     currentScene?.id,
-    currentScene?.musicUri,
+    sceneState?.musicTrackId,
+    sceneState?.musicPlaying,
+    sceneState?.musicVolume,
     currentScene?.voiceAudioUri,
     audioTriggerSignature,
     applySceneAudio,

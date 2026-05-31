@@ -9,9 +9,11 @@ import { Platform } from 'react-native';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
 import { getBrowserSafeAudioUri } from './audio-web-source';
 import { resolveLibraryAssetUri } from './media-library-service';
+import { isSafeUri } from './story-validator';
 
 const uriCache = new Map<string, Promise<string | number | null>>();
 const playableUriCache = new Map<string, Promise<string | null>>();
+const moduleUriCache = new Map<number, string>();
 const modulePlayableCache = new Map<number, string>();
 const URI_CACHE_MAX_SIZE = 100;
 
@@ -125,6 +127,10 @@ export async function resolveAssetUri(uri: string | undefined): Promise<string |
 
 async function resolveUri(uri: string): Promise<string | number | null> {
   try {
+    if (!isSafeUri(uri)) {
+      ErrorHandler.handle('Blocked unsafe URI', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri });
+      return null;
+    }
     // Path traversal check for file paths
     if (!isPathSafe(uri)) {
       ErrorHandler.handle('Blocked unsafe path', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri });
@@ -133,7 +139,10 @@ async function resolveUri(uri: string): Promise<string | number | null> {
 
     // ALWAYS try to find in bundled assets first, regardless of prefix
     const bundled = getBundledAsset(uri);
-    if (bundled) return bundled;
+    if (bundled) {
+      if (Platform.OS === 'web') return bundled;
+      return moduleIdToUri(bundled);
+    }
 
     const libraryUri = resolveLibraryAssetUri(uri);
     if (libraryUri && libraryUri !== uri) {
@@ -244,14 +253,23 @@ async function moduleIdToPlayableUri(moduleId: number): Promise<string | null> {
   const cached = modulePlayableCache.get(moduleId);
   if (cached) return cached;
 
+  const playable = await moduleIdToUri(moduleId);
+  if (playable) modulePlayableCache.set(moduleId, playable);
+  return playable;
+}
+
+async function moduleIdToUri(moduleId: number): Promise<string | null> {
+  const cached = moduleUriCache.get(moduleId);
+  if (cached) return cached;
+
   try {
     const asset = Asset.fromModule(moduleId);
     if (!asset.localUri) await asset.downloadAsync();
-    const playable = asset.localUri ?? asset.uri ?? null;
-    if (playable) modulePlayableCache.set(moduleId, playable);
-    return playable;
+    const uri = asset.localUri ?? asset.uri ?? null;
+    if (uri) moduleUriCache.set(moduleId, uri);
+    return uri;
   } catch (error) {
-    ErrorHandler.handle('Failed to resolve bundled module for playback', error, ErrorCategory.MEDIA, ErrorSeverity.LOW);
+    ErrorHandler.handle('Failed to resolve bundled module URI', error, ErrorCategory.MEDIA, ErrorSeverity.LOW);
     return null;
   }
 }
@@ -259,6 +277,7 @@ async function moduleIdToPlayableUri(moduleId: number): Promise<string | null> {
 export function clearUriCache(): void {
   uriCache.clear();
   playableUriCache.clear();
+  moduleUriCache.clear();
   modulePlayableCache.clear();
 }
 

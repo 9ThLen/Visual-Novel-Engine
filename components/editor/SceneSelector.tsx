@@ -220,12 +220,12 @@ const TEMPLATE_SCENES: TemplateScene[] = [
 ];
 
 const CATEGORIES = [
-  { key: 'all', label: 'All', icon: '📋' },
-  { key: 'dialogue', label: 'Dialogue', icon: '💬' },
-  { key: 'choice', label: 'Choices', icon: '🔀' },
-  { key: 'action', label: 'Actions', icon: '🚶' },
-  { key: 'transition', label: 'Transitions', icon: '🎬' },
-  { key: 'cinematic', label: 'Cinematic', icon: '📷' },
+  { key: 'all', labelKey: 'editor.filterAll', icon: '📋' },
+  { key: 'dialogue', labelKey: 'editor.filterDialogue', icon: '💬' },
+  { key: 'choice', labelKey: 'editor.filterChoices', icon: '🔀' },
+  { key: 'action', labelKey: 'editor.filterAction', icon: '🚶' },
+  { key: 'transition', labelKey: 'editor.filterTransitions', icon: '🎬' },
+  { key: 'cinematic', labelKey: 'editor.filterCinematic', icon: '📷' },
 ] as const;
 
 // ── Props ───────────────────────────────────────────────────────────
@@ -301,11 +301,11 @@ export function SceneSelector({
 
   const getCategoryColor = (category: string): string => {
     const map: Record<string, string> = {
-      dialogue: '#9b59b6',
-      choice: '#e91e63',
-      action: '#ff9800',
-      transition: '#3f51b5',
-      cinematic: '#00bcd4',
+      dialogue: colors['lego-dialogue']!,
+      choice: colors['lego-choice']!,
+      action: colors['lego-character']!,
+      transition: colors['lego-transition']!,
+      cinematic: colors['lego-background']!,
     };
     return map[category] || colors.primary;
   };
@@ -323,7 +323,7 @@ export function SceneSelector({
             <Text style={{ color: colors.primary, fontSize: 16 }}>✕</Text>
           </Pressable>
           <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: '700' }}>
-            {connectMode ? '🔗 Select Target Scene' : '📚 Scene Templates'}
+            {connectMode ? `🔗 ${t('editor.sceneSelector.titleConnect')}` : `📚 ${t('editor.sceneSelector.title')}`}
           </Text>
           <View style={{ width: 32 }} />
         </View>
@@ -340,7 +340,7 @@ export function SceneSelector({
             gap: isPhone ? 8 : 12,
           }}>
             <Text style={{ color: colors.foreground, fontSize: 13 }}>
-              Connecting: <Text style={{ fontWeight: '600', color: colors.primary }}>{connectFrom.sceneId}</Text>
+              {t('editor.sceneSelector.connecting')}<Text style={{ fontWeight: '600', color: colors.primary }}>{connectFrom.sceneId}</Text>
               {' → '}
               <Text style={{ fontWeight: '600' }}>{connectFrom.output}</Text>
             </Text>
@@ -355,7 +355,7 @@ export function SceneSelector({
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search scenes..."
+            placeholder={t('editor.searchScenes')}
             placeholderTextColor={colors.muted}
             style={{
               backgroundColor: colors.surface,
@@ -378,7 +378,7 @@ export function SceneSelector({
               key={cat.key}
               onPress={() => setSelectedCategory(cat.key)}
               accessibilityRole="button"
-              accessibilityLabel={cat.label}
+              accessibilityLabel={t(cat.labelKey)}
               style={{
                 paddingHorizontal: 14, paddingVertical: 8, marginHorizontal: 4,
                 borderRadius: 20,
@@ -387,10 +387,10 @@ export function SceneSelector({
               }}
             >
               <Text style={{
-                color: selectedCategory === cat.key ? colors['text-inverse'] ?? '#ffffff' : colors.foreground,
+                color: selectedCategory === cat.key ? colors['text-inverse'] : colors.foreground,
                 fontSize: 13, fontWeight: '500',
               }}>
-                {cat.icon} {cat.label}
+                {cat.icon} {t(cat.labelKey)}
               </Text>
             </Pressable>
           ))}
@@ -479,24 +479,31 @@ export function SceneSelector({
                 <Pressable
                   onPress={() => handleStartConnect(item.id, item.outputs[0])}
                   style={{
-                    padding: 6,
+                    paddingHorizontal: 8,
+                    paddingVertical: 6,
                     marginLeft: isPhone ? 0 : 8,
                     marginTop: isPhone ? 12 : 0,
                     alignSelf: isPhone ? 'flex-end' : 'center',
                     borderRadius: 6, backgroundColor: colors.surface,
                     borderWidth: 1, borderColor: colors.border,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={t('editor.selectBlockType')}
+                  accessibilityLabel={t('sceneSelector.connectScene')}
                 >
                   <Text style={{ fontSize: 12 }}>🔗</Text>
+                  <Text style={{ fontSize: 12, color: colors.foreground, fontWeight: '600' }}>
+                    {t('sceneSelector.connect')}
+                  </Text>
                 </Pressable>
               )}
             </Pressable>
           )}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-              <Text style={{ color: colors.muted, fontSize: 14 }}>No scenes match your search</Text>
+              <Text style={{ color: colors.muted, fontSize: 14 }}>{t('editor.noMatchingScenes')}</Text>
             </View>
           }
         />
@@ -529,7 +536,7 @@ export function SceneSelector({
               accessibilityRole="button"
               accessibilityLabel={t('editor.addBlock')}
             >
-              <Text style={{ color: colors['text-inverse'] ?? '#ffffff', fontSize: 14, fontWeight: '600' }}>
+              <Text style={{ color: colors['text-inverse'], fontSize: 14, fontWeight: '600' }}>
                 {t('editor.addBlock')}
               </Text>
             </Pressable>
@@ -544,8 +551,8 @@ export function SceneSelector({
             alignItems: 'center',
           }}>
             <Text style={{ color: colors.muted, fontSize: 13 }}>
-              Tap a scene to connect, or{' '}
-              <Text style={{ color: colors.primary }} onPress={handleCancelConnect} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>cancel</Text>
+              {t('sceneSelector.tapTargetToConnect')}{' '}
+              <Text style={{ color: colors.primary }} onPress={handleCancelConnect} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>{t('common.cancel')}</Text>
             </Text>
           </View>
         )}

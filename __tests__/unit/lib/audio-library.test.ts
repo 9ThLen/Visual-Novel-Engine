@@ -1,15 +1,3 @@
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('@/stores/use-app-store', () => ({
-  useAppStore: {
-    getState: () => ({
-      mediaLibrary: [],
-      audioLibraries: {},
-      setAudioLibrary: vi.fn(),
-    }),
-  },
-}));
-
 import type { AudioLibraryItem } from '@/lib/audio-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import { buildPlaybackAudioLibraryItems } from '@/lib/audio-library';

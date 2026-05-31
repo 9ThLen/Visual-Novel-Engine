@@ -82,17 +82,19 @@ export type RuntimePalette = SchemePaletteItem & {
   surfaceElevated: string;
   muted: string;
   error: string;
+  'text-inverse': string;
+  'foreground-inverse': string;
   // VN Reader
-  dialogueBg?: string;
-  nameBg?: string;
-  nameText?: string;
-  choiceBg?: string;
-  choiceBorder?: string;
-  choiceHover?: string;
+  dialogueBg: string;
+  nameBg: string;
+  nameText: string;
+  choiceBg: string;
+  choiceBorder: string;
+  choiceHover: string;
   // Overlays
   overlay?: string;
   scrim?: string;
-  backdrop?: string;
+  backdrop: string;
   // Editor
   editorRuler?: string;
   // New editor tokens (Stitch design system)
@@ -111,8 +113,7 @@ export type RuntimePalette = SchemePaletteItem & {
   warning: string;
   danger: string;
   info: string;
-  // Allow bracket access for dynamic token names
-  [key: string]: string | undefined;
+  'shadow-color': string;
 };
 
 function buildRuntimePalette(scheme: ColorScheme): RuntimePalette {
@@ -130,27 +131,29 @@ function buildRuntimePalette(scheme: ColorScheme): RuntimePalette {
     // Legacy aliases
     muted: base['foreground-tertiary'],
     error: base.danger,
-    'text-inverse': base['foreground-on-primary'] || base['foreground-inverse'] || '#FFFFFF',
+    'text-inverse': base['foreground-on-primary'],
+    'foreground-inverse': base['foreground-inverse'],
     surfaceElevated: base['surface-1'],
     // VN Reader
-    dialogueBg: x('dialogue-bg'),
-    nameBg: x('name-bg'),
-    nameText: x('name-text'),
-    choiceBg: x('choice-bg'),
-    choiceBorder: x('choice-border'),
-    choiceHover: x('choice-hover'),
+    dialogueBg: x('dialogue-bg') || 'rgba(15,14,23,0.92)',
+    nameBg: x('name-bg') || 'rgba(15,14,23,0.95)',
+    nameText: x('name-text') || base.foreground,
+    choiceBg: x('choice-bg') || 'rgba(124,58,237,0.12)',
+    choiceBorder: x('choice-border') || base.primary,
+    choiceHover: x('choice-hover') || 'rgba(124,58,237,0.25)',
     // Overlays
     overlay: x('overlay'),
     scrim: x('scrim'),
-    backdrop: x('backdrop'),
+    backdrop: base.backdrop,
     // Editor
     editorRuler: x('editor-ruler'),
     // New editor tokens (Stitch design system)
     secondary: x('secondary') || base.primary,
-    hover: x('hover') || 'rgba(124,91,245,0.1)',
-    'surface-container': x('surface-container') || base.surface,
-    'surface-1': base['surface-1'] || base.surface,
-    'surface-2': base['surface-2'] || base.surface,
+    hover: base.hover,
+    'surface-container': base['surface-container'],
+    'surface-1': base['surface-1'],
+    'surface-2': base['surface-2'],
+    'shadow-color': base['shadow-color'],
   } as unknown as RuntimePalette;
 }
 

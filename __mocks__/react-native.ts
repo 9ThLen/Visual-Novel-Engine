@@ -1,0 +1,25 @@
+export const Platform = { OS: 'web' };
+export const NativeModules = {};
+export const DeviceInfo = {};
+export const Dimensions = { get: () => ({ width: 390, height: 844 }) };
+export const PixelRatio = { get: () => 2 };
+export const StyleSheet = { create: (s: any) => s };
+export const View = 'View';
+export const Text = 'Text';
+export const Pressable = 'Pressable';
+export const Image = 'Image';
+export const ScrollView = 'ScrollView';
+export const FlatList = 'FlatList';
+export const Modal = 'Modal';
+export const ActivityIndicator = 'ActivityIndicator';
+export const Alert = { alert: () => {} };
+export const AppState = { currentState: 'active', addEventListener: () => ({ remove: () => {} }) };
+export const Linking = { openURL: () => Promise.resolve(), addEventListener: () => ({ remove: () => {} }) };
+export const Appearance = { getColorScheme: () => 'light', addChangeListener: () => ({ remove: () => {} }) };
+export const StatusBar = { currentHeight: 24 };
+export const Keyboard = { addListener: () => ({ remove: () => {} }) };
+export const Animated = { View: 'Animated.View', Text: 'Animated.Text', timing: () => ({ start: () => {} }), Value: class { constructor(v: number) { this._value = v } _value: number; setValue(v: number) { this._value = v } } };
+export const Easing = { linear: (t: number) => t, ease: (t: number) => t };
+
+const mock = { Platform, NativeModules, StyleSheet };
+export default mock;

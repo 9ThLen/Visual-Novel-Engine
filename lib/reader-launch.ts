@@ -1,4 +1,4 @@
-import type { PlaybackState } from '@/lib/types';
+import type { PlaybackState } from '@/lib/engine/types';
 
 export function parseResumeExisting(value: string | string[] | undefined): boolean {
   const normalized = Array.isArray(value) ? value[0] : value;

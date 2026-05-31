@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
 import { Platform, View } from 'react-native';
-import { Colors } from '@/constants/theme';
+import { Colors, type ColorScheme } from '@/constants/theme';
 import { useThemeStore , useThemeInit } from '@/stores/theme-store';
-import type { ColorScheme } from '@/constants/theme';
 import { createThemeVariables } from '@/lib/theme-variables';
 import { getNativewindVarsFactory } from '@/lib/theme-nativewind';
 
@@ -22,7 +21,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useThemeInit();
 
   const colorScheme = useThemeStore((s) => s.colorScheme);
-  const setColorScheme = useThemeStore((s) => s.setColorScheme);
 
   const scheme = Colors[colorScheme];
 

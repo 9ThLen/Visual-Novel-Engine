@@ -1,4 +1,11 @@
-import type { UserSettings } from '@/lib/types';
+export interface UserSettings {
+  bgmVolume: number; // 0-1
+  voiceVolume: number; // 0-1
+  sfxVolume: number; // 0-1
+  textSpeed: number; // 0-1 (slow to fast)
+  textSize: 'small' | 'medium' | 'large';
+  autoPlay: boolean;
+}
 
 export const defaultUserSettings: UserSettings = {
   bgmVolume: 0.7,

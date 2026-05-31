@@ -3,6 +3,40 @@ import { getApiBaseUrl } from "@/constants/oauth";
 import * as Auth from "./auth";
 import { ErrorHandler, ErrorCategory } from "@/lib/error-handler";
 
+// ── Rate limiting ──
+
+const RATE_LIMIT = {
+  maxRequests: 20,
+  windowMs: 1_000,
+  maxPerEndpoint: 10,
+  endpointWindowMs: 1_000,
+};
+
+const requestLog: Array<{ time: number; endpoint: string }> = [];
+const endpointLog: Map<string, Array<number>> = new Map();
+
+function pruneLog(log: Array<number | { time: number; endpoint: string }>, windowMs: number, now: number) {
+  while (log.length > 0 && now - (typeof log[0] === 'number' ? log[0] : (log[0] as { time: number }).time) > windowMs) {
+    log.shift();
+  }
+}
+
+function isRateLimited(endpoint: string): boolean {
+  const now = Date.now();
+  pruneLog(requestLog, RATE_LIMIT.windowMs, now);
+  if (requestLog.length >= RATE_LIMIT.maxRequests) return true;
+  requestLog.push({ time: now, endpoint });
+  let epLog = endpointLog.get(endpoint);
+  if (!epLog) {
+    epLog = [];
+    endpointLog.set(endpoint, epLog);
+  }
+  pruneLog(epLog, RATE_LIMIT.endpointWindowMs, now);
+  if (epLog.length >= RATE_LIMIT.maxPerEndpoint) return true;
+  epLog.push(now);
+  return false;
+}
+
 interface ApiUser {
   id: number;
   openId: string;
@@ -13,6 +47,9 @@ interface ApiUser {
 }
 
 export async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  if (isRateLimited(endpoint)) {
+    throw new Error('Rate limit exceeded — try again later');
+  }
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...((options.headers as Record<string, string>) || {}),
@@ -57,7 +94,8 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
     // Check if Set-Cookie header is present (cookies are automatically handled in React Native)
     const setCookie = response.headers.get("Set-Cookie");
     if (setCookie && __DEV__) {
-      console.log("[API] Set-Cookie header received:", setCookie);
+      const sanitized = setCookie.replace(/=[^;]+/g, '=***');
+      console.log("[API] Set-Cookie header received:", sanitized);
     }
 
     if (!response.ok) {
@@ -100,6 +138,10 @@ export async function exchangeOAuthCode(
   state: string,
 ): Promise<{ sessionToken: string; user: ApiUser }> {
   if (__DEV__) console.log("[API] exchangeOAuthCode called");
+  const stateValid = await Auth.validateOAuthState(state);
+  if (!stateValid) {
+    throw new Error("OAuth state validation failed — possible CSRF attack, aborting exchange");
+  }
   // Use GET with query params
   const params = new URLSearchParams({ code, state });
   const endpoint = `/api/oauth/mobile?${params.toString()}`;

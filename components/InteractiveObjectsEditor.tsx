@@ -13,6 +13,8 @@ import {
   Alert,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import {
   type InteractiveObject,
   type InteractiveObjectPosition,
@@ -26,6 +28,7 @@ interface Props {
 
 export function InteractiveObjectsEditor({ objects, onChange }: Props) {
   const colors = useColors();
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
 
@@ -45,10 +48,10 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
   };
 
   const handleDeleteObject = (objectId: string) => {
-    Alert.alert('Delete Object', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('editor.objects.delete'), t('editor.objects.deleteConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('common.delete'),
         style: 'destructive',
         onPress: () => {
           onChange(objects.filter((obj) => obj.id !== objectId));
@@ -204,7 +207,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                           fontSize: 13,
                           fontWeight: '600',
                           color:
-                            selectedObjectId === obj.id ? '#fff' : colors.foreground,
+                             selectedObjectId === obj.id ? colors['text-inverse'] : colors.foreground,
                         }}
                       >
                         {obj.name}
@@ -212,7 +215,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                       <Text
                         style={{
                           fontSize: 11,
-                          color: selectedObjectId === obj.id ? '#fff' : colors.muted,
+                          color: selectedObjectId === obj.id ? colors['text-inverse'] : colors.muted,
                         }}
                       >
                         {obj.actions?.length ?? 0} action(s)
@@ -225,9 +228,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                         opacity: pressed ? 0.7 : 1,
                       })}
                     >
-                      <Text style={{ color: colors.error, fontSize: 13, fontWeight: '700' }}>
-                        🗑
-                      </Text>
+                      <IconSymbol name="delete" size={16} color={colors.error} />
                     </Pressable>
                   </Pressable>
                 ))}

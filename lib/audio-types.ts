@@ -3,7 +3,8 @@
  * Support for audio library and trigger-based playback
  */
 
-import type { Story, StoryScene } from './types';
+import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
+import type { StoryMetadata } from '@/lib/story-domain';
 
 /**
  * Audio trigger types
@@ -46,23 +47,26 @@ export interface AudioTrigger {
 }
 
 /**
- * Extended Story Scene with audio triggers
+ * Canonical scene audio data. Audio is carried by TimelineStep music/sound blocks,
+ * with optional trigger metadata for the trigger scheduler.
  */
-export interface StorySceneExtended extends Omit<StoryScene, 'musicUri' | 'voiceAudioUri'> {
-  // Audio triggers replace simple URIs
-  audioTriggers: AudioTrigger[];
-
-  musicUri?: string | null;
-  voiceAudioUri?: string | null;
+export interface StorySceneAudioTimeline extends Pick<SceneRecord, 'id' | 'storyId' | 'name'> {
+  timeline: TimelineStep[];
+  audioTriggers?: AudioTrigger[];
 }
 
 /**
- * Story with audio library
- * Extends the base Story type with audio support
+ * @deprecated Use StorySceneAudioTimeline. Kept for public API compatibility.
  */
-export interface StoryWithAudio extends Story {
-  scenes: Record<string, StorySceneExtended>;
-  // audioLibrary is now inherited from Story
+export type StorySceneExtended = StorySceneAudioTimeline;
+
+/**
+ * Canonical story with audio library and timeline-based scenes.
+ */
+export interface StoryWithAudio extends Omit<StoryMetadata, 'sceneCount'> {
+  sceneCount?: number;
+  scenes: Record<string, StorySceneAudioTimeline>;
+  audioLibrary?: AudioLibraryItem[];
 }
 
 /**

@@ -7,10 +7,10 @@ import { useColors } from '@/hooks/use-colors';
 import { useEditorStore } from '@/stores/use-editor-store';
 import { useAppStore } from '@/stores/use-app-store';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
-import { resolvePreviewTimeline } from '@/lib/runtime-story';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 import { AudioPlayerService } from '@/lib/audio-player-service';
 import { useI18n } from '@/lib/i18n';
+import { getTimelineDisplayPages } from '@/lib/reader-runtime';
 
 export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: string }) {
   const router = useRouter();
@@ -20,21 +20,17 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const editorSceneId = useEditorStore((s) => s.sceneId);
   const editorTimeline = useEditorStore((s) => s.timeline);
   const editorIsDirty = useEditorStore((s) => s.isDirty);
-  const scenesByStory = useAppStore((s) => s.scenesByStory);
   const sceneRecordsByStory = useAppStore((s) => s.sceneRecordsByStory);
 
-  const previewTimeline = useMemo(
-    () => resolvePreviewTimeline(
-      { scenesByStory, sceneRecordsByStory },
-      {
-        storyId,
-        sceneId,
-        draftTimeline: editorIsDirty && editorSceneId === sceneId ? editorTimeline : undefined,
+  const timeline = useMemo(
+    () => {
+      if (editorIsDirty && editorSceneId === sceneId) {
+        return editorTimeline;
       }
-    ),
-    [editorIsDirty, editorSceneId, editorTimeline, sceneId, sceneRecordsByStory, scenesByStory, storyId]
+      return sceneRecordsByStory[storyId]?.[sceneId]?.timeline ?? [];
+    },
+    [editorIsDirty, editorSceneId, editorTimeline, sceneId, sceneRecordsByStory, storyId]
   );
-  const timeline = previewTimeline.timeline;
 
   const { sceneState, currentStepIndex, isComplete, isTyping, advance, selectChoice } =
     useSceneExecutor(timeline);
@@ -46,14 +42,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const currentStep = timeline[currentStepIndex];
 
   const currentText = useMemo(() => {
-    if (!currentStep) return '';
-    const data = currentStep.data as any;
-    if (currentStep.blockType === 'text') return data.content || '';
-    if (currentStep.blockType === 'dialogue') {
-      const entry = data.entries?.[data.currentEntryIndex ?? 0] ?? data.entries?.[0];
-      return entry ? `${entry.characterId}: ${entry.text}` : '';
-    }
-    return '';
+    return getTimelineDisplayPages(currentStep)[0] ?? '';
   }, [currentStep]);
 
   const [backgroundSource, setBackgroundSource] = useState<number | { uri: string } | null>(null);
@@ -118,12 +107,13 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   }, [currentStepIndex, currentText, currentStep, typewriteText]);
 
   useEffect(() => {
+    const audioService = audioServiceRef.current;
     return () => {
       if (typewriterIntervalRef.current) {
         clearInterval(typewriterIntervalRef.current);
         typewriterIntervalRef.current = null;
       }
-      void audioServiceRef.current.cleanup();
+      void audioService.cleanup();
     };
   }, []);
 
@@ -140,8 +130,8 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
     router.back();
   }, [router]);
 
-  const surfaceContainer = (colors as any)['surface-container'] || colors.surface;
-  const secondaryColor = (colors as any).secondary || colors.primary;
+  const surfaceContainer = colors['surface-container'] || colors.surface;
+  const secondaryColor = colors.secondary || colors.primary;
   const showChoices = !!sceneState.currentChoices;
 
   return (
@@ -284,9 +274,9 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
         paddingVertical: 8,
       }}>
         <Pressable onPress={handleBack} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
-          <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 14 }}>← {t('menu.back')}</Text>
+          <Text style={{ color: colors['text-inverse'], fontSize: 14 }}>← {t('menu.back')}</Text>
         </Pressable>
-        <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 12, alignSelf: 'center' }}>
+        <Text style={{ color: colors['text-inverse'], fontSize: 12, alignSelf: 'center' }}>
           {currentStepIndex + 1}/{timeline.length}
         </Text>
       </View>

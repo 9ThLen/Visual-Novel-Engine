@@ -17,6 +17,7 @@ import { useI18n } from '@/lib/i18n';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import { useStoryActions, useStoryState } from '@/lib/story-hooks';
 import { StoryMetadata } from '@/lib/story-domain';
+import type { SceneRecord } from '@/lib/engine/types';
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short',
@@ -24,12 +25,23 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
 });
 
+function getPaperEditorSceneId(
+  story: StoryMetadata,
+  scenesById: Record<string, SceneRecord> | undefined,
+): string | null {
+  if (story.startSceneId && scenesById?.[story.startSceneId]) {
+    return story.startSceneId;
+  }
+  const scenes = Object.values(scenesById ?? {});
+  return scenes.find((scene) => scene.isStart)?.id ?? scenes[0]?.id ?? null;
+}
+
 export default function EditorScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const colors = useColors();
   const { t } = useI18n();
-  const { storiesMetadata } = useStoryState();
+  const { storiesMetadata, sceneRecordsByStory } = useStoryState();
   const { createStory, deleteStory } = useStoryActions();
 
   const [showNewStoryForm, setShowNewStoryForm] = useState(false);
@@ -57,7 +69,7 @@ export default function EditorScreen() {
       setNewStoryTitle('');
       setShowNewStoryForm(false);
       navigateWithViewTransition(() => router.push({
-        pathname: '/scene-editor',
+        pathname: '/document-editor',
         params: { storyId: created.storyId, sceneId: created.sceneId },
       } as never));
     } catch {
@@ -66,19 +78,16 @@ export default function EditorScreen() {
   }, [newStoryTitle, createStory, router, t]);
 
   const handleEditStory = useCallback((story: StoryMetadata) => {
+    const sceneId = getPaperEditorSceneId(story, sceneRecordsByStory[story.id]);
+    if (!sceneId) {
+      Alert.alert(t('common.error'), t('document.invalidRoute'));
+      return;
+    }
     navigateWithViewTransition(() => router.push({
-      pathname: '/scene-manager',
-      params: { storyId: story.id },
+      pathname: '/document-editor',
+      params: { storyId: story.id, sceneId },
     } as never));
-  }, [router]);
-
-  const handleStoryFlow = useCallback((storyId: string) => {
-    navigateWithViewTransition(() => router.push({ pathname: '/story-flow', params: { storyId } } as never));
-  }, [router]);
-
-  const handleManuscript = useCallback((storyId: string) => {
-    navigateWithViewTransition(() => router.push({ pathname: '/manuscript-editor', params: { storyId } } as never));
-  }, [router]);
+  }, [router, sceneRecordsByStory, t]);
 
   const handlePlay = useCallback((storyId: string) => {
     navigateWithViewTransition(() => router.push({ pathname: '/play', params: { storyId } } as never));
@@ -94,7 +103,7 @@ export default function EditorScreen() {
           try {
             await deleteStory(storyId);
           } catch {
-            Alert.alert(t('common.error'), 'Delete failed. Try again.');
+            Alert.alert(t('common.error'), t('editor.deleteFailed'));
           }
         },
       },
@@ -110,29 +119,29 @@ export default function EditorScreen() {
       >
         <View style={[styles.hero, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.heroCopy}>
-            <Text style={[styles.eyebrow, { color: colors.primary }]}>Creator Workspace</Text>
+            <Text style={[styles.eyebrow, { color: colors.primary }]}>{t('editor.creatorWorkspace')}</Text>
             <Text style={[styles.heroTitle, { color: colors.foreground }]}>{t('editor.title')}</Text>
             <Text style={[styles.heroSubtitle, { color: colors.muted }]}>
-              Manage stories, open scene tools, and jump into playtesting from one focused dashboard.
+              {t('editor.workspaceSubtitle')}
             </Text>
           </View>
           <Button
             variant="primary"
             size="base"
             onPress={() => setShowNewStoryForm(!showNewStoryForm)}
-            accessibilityLabel={showNewStoryForm ? t('common.cancel') : 'Create New Story'}
+            accessibilityLabel={showNewStoryForm ? t('common.cancel') : t('editor.createNew')}
           >
-            {showNewStoryForm ? t('common.cancel') : 'Create New Story'}
+            {showNewStoryForm ? t('common.cancel') : t('editor.createNew')}
           </Button>
 
           <View style={styles.statsRow}>
             <View style={[styles.statCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.statValue, { color: colors.foreground }]}>{storiesMetadata.length}</Text>
-              <Text style={[styles.statLabel, { color: colors.muted }]}>Stories</Text>
+              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('home.stories')}</Text>
             </View>
             <View style={[styles.statCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.statValue, { color: colors.foreground }]}>{totalScenes}</Text>
-              <Text style={[styles.statLabel, { color: colors.muted }]}>Scenes</Text>
+              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('editor.scenes')}</Text>
             </View>
           </View>
         </View>
@@ -145,7 +154,7 @@ export default function EditorScreen() {
             <TextInput
               value={newStoryTitle}
               onChangeText={setNewStoryTitle}
-              placeholder="Story title…"
+              placeholder={t('editor.storyTitlePlaceholder')}
               placeholderTextColor={colors.muted}
               accessibilityLabel={t('editor.pleaseEnterTitle')}
               style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
@@ -158,12 +167,12 @@ export default function EditorScreen() {
 
         {storiesMetadata.length === 0 ? (
           <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No Stories Yet</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t('home.noStories')}</Text>
             <Text style={[styles.emptyText, { color: colors.muted }]}>
-              Create a story, then add scenes and connect them into a playable flow.
+              {t('editor.emptyWorkspaceHint')}
             </Text>
             <Button variant="primary" size="base" onPress={() => setShowNewStoryForm(true)}>
-              Create First Story
+              {t('editor.createFirstStory')}
             </Button>
           </View>
         ) : (
@@ -181,24 +190,18 @@ export default function EditorScreen() {
                   {story.title}
                 </Text>
                 <Text style={[styles.storyMeta, { color: colors.muted }]}>
-                  {story.sceneCount} scenes · Updated {dateFormatter.format(new Date(story.updatedAt))}
+                  {t('editor.sceneCount', { count: story.sceneCount })} · {t('common.updated')} {dateFormatter.format(new Date(story.updatedAt))}
                 </Text>
 
                 <View style={styles.actionRow}>
                   <Button variant="primary" size="sm" onPress={() => handleEditStory(story)}>
-                    Edit
-                  </Button>
-                  <Button variant="secondary" size="sm" onPress={() => handleStoryFlow(story.id)}>
-                    Flow
-                  </Button>
-                  <Button variant="secondary" size="sm" onPress={() => handleManuscript(story.id)}>
-                    Manuscript
+                    {t('common.edit')}
                   </Button>
                   <Button variant="secondary" size="sm" onPress={() => handlePlay(story.id)}>
-                    Play
+                    {t('common.play')}
                   </Button>
                   <Button variant="ghost" size="sm" onPress={() => handleDeleteStory(story.id)}>
-                    Delete
+                    {t('common.delete')}
                   </Button>
                 </View>
               </View>

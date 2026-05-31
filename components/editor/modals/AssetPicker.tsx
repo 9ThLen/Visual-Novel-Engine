@@ -12,15 +12,14 @@ import {
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { createAudioPlayer } from 'expo-audio';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
 import { useAppStore } from '@/stores/use-app-store';
-import { addAssetToLibrary } from '@/lib/media-library-service';
+import { addAssetToLibrary, type LibraryAsset } from '@/lib/media-library-service';
 import { resolveAssetUri, resolvePlayableAssetUri } from '@/lib/asset-resolver';
-import type { LibraryAsset } from '@/lib/media-library-service';
 import { useI18n } from '@/lib/i18n';
+import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 
-type AssetCategory = 'backgrounds' | 'characters' | 'sprites' | 'music' | 'sfx' | 'voice' | 'ui';
+export type AssetCategory = 'backgrounds' | 'characters' | 'sprites' | 'music' | 'sfx' | 'voice' | 'ui';
 
 interface AssetPickerProps {
   visible: boolean;
@@ -30,14 +29,14 @@ interface AssetPickerProps {
   multiSelect?: boolean;
 }
 
-const CATEGORIES: { key: AssetCategory; label: string; icon: string }[] = [
-  { key: 'backgrounds', label: 'Backgrounds', icon: '🖼' },
-  { key: 'characters', label: 'Characters', icon: '👤' },
-  { key: 'sprites', label: 'Sprites', icon: '🎭' },
-  { key: 'music', label: 'Music', icon: '🎵' },
-  { key: 'sfx', label: 'SFX', icon: '🔊' },
-  { key: 'voice', label: 'Voice', icon: '🗣' },
-  { key: 'ui', label: 'UI', icon: '🎨' },
+const CATEGORIES: { key: AssetCategory; labelKey: string; icon: IconSymbolName }[] = [
+  { key: 'backgrounds', labelKey: 'asset.backgrounds', icon: 'image' },
+  { key: 'characters', labelKey: 'asset.characters', icon: 'character' },
+  { key: 'sprites', labelKey: 'asset.sprites', icon: 'sprites' },
+  { key: 'music', labelKey: 'asset.music', icon: 'music' },
+  { key: 'sfx', labelKey: 'asset.sfx', icon: 'sound' },
+  { key: 'voice', labelKey: 'asset.voice', icon: 'voice' },
+  { key: 'ui', labelKey: 'asset.ui', icon: 'palette' },
 ];
 
 export function AssetPicker({
@@ -49,7 +48,6 @@ export function AssetPicker({
 }: AssetPickerProps) {
   const colors = useColors();
   const { t } = useI18n();
-  const insets = useSafeAreaInsets();
   const mediaLibrary = useAppStore((s) => s.mediaLibrary);
   const [previewAudioId, setPreviewAudioId] = useState<string | null>(null);
   const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
@@ -178,8 +176,6 @@ export function AssetPicker({
 
   if (!visible) return null;
 
-  const isAudioCategory = ['music', 'sfx', 'voice'].includes(activeCategory);
-
   return (
     <Modal
       visible={visible}
@@ -197,11 +193,11 @@ export function AssetPicker({
           width: '90%',
           maxWidth: 800,
           maxHeight: '80%',
-          backgroundColor: colors['surface-container'] || colors.surface,
+          backgroundColor: colors['surface-container'],
           borderRadius: 12,
           overflow: 'hidden',
           elevation: 8,
-          shadowColor: '#000',
+          shadowColor: colors['shadow-color'],
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: 0.3,
           shadowRadius: 12,
@@ -220,7 +216,7 @@ export function AssetPicker({
               {t('editor.selectAsset')}
             </Text>
             <Pressable onPress={onClose} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('common.close')}>
-              <Text style={{ fontSize: 16, color: colors.muted }}>✕</Text>
+              <IconSymbol name="close" size={18} color={colors.muted} />
             </Pressable>
           </View>
 
@@ -269,15 +265,22 @@ export function AssetPicker({
                   backgroundColor: activeCategory === cat.key ? colors.primary : colors.background,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={cat.label}
+                accessibilityLabel={t(cat.labelKey)}
               >
-                <Text style={{
-                  fontSize: 12,
-                  fontWeight: '600',
-                  color: activeCategory === cat.key ? colors['text-inverse'] ?? '#fff' : colors.foreground,
-                }}>
-                  {cat.icon} {cat.label}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <IconSymbol
+                    name={cat.icon}
+                    size={14}
+                    color={activeCategory === cat.key ? colors['text-inverse'] : colors.foreground}
+                  />
+                  <Text style={{
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: activeCategory === cat.key ? colors['text-inverse'] : colors.foreground,
+                  }}>
+                    {t(cat.labelKey)}
+                  </Text>
+                </View>
               </Pressable>
             ))}
           </ScrollView>
@@ -335,11 +338,11 @@ export function AssetPicker({
                         backgroundColor: colors.surface,
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel={isPlaying ? 'Stop preview' : 'Preview audio'}
+                      accessibilityLabel={isPlaying ? t('asset.stopPreview') : t('asset.previewAudio')}
                     >
-                      <Text style={{ fontSize: 32 }}>{isPlaying ? '⏹' : '▶️'}</Text>
+                      <IconSymbol name={isPlaying ? 'stop' : 'play'} size={32} color={colors.primary} />
                       <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
-                        {isPlaying ? 'Stop' : 'Preview'}
+                        {isPlaying ? t('common.stop') : t('common.preview')}
                       </Text>
                     </Pressable>
                   )}
@@ -357,7 +360,7 @@ export function AssetPicker({
             ListEmptyComponent={
               <View style={{ padding: 40, alignItems: 'center' }}>
                 <Text style={{ fontSize: 14, color: colors.muted }}>
-                  No assets found
+                  {t('asset.noAssetsFound')}
                 </Text>
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
                   <Pressable
@@ -371,9 +374,10 @@ export function AssetPicker({
                     accessibilityRole="button"
                     accessibilityLabel={t('editor.selectAsset')}
                   >
-                    <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>
-                      🖼 Gallery
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <IconSymbol name="gallery" size={14} color={colors['text-inverse']} />
+                      <Text style={{ fontSize: 13, color: colors['text-inverse'], fontWeight: '600' }}>{t('asset.gallery')}</Text>
+                    </View>
                   </Pressable>
                   <Pressable
                     onPress={handlePickFromDevice}
@@ -387,9 +391,10 @@ export function AssetPicker({
                     accessibilityRole="button"
                     accessibilityLabel={t('editor.selectAsset')}
                   >
-                    <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>
-                      📁 Files
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <IconSymbol name="files" size={14} color={colors.foreground} />
+                      <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>{t('asset.files')}</Text>
+                    </View>
                   </Pressable>
                 </View>
               </View>
@@ -419,9 +424,10 @@ export function AssetPicker({
                 accessibilityRole="button"
                 accessibilityLabel={t('editor.selectAsset')}
               >
-                <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>
-                  🖼 Gallery
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <IconSymbol name="gallery" size={14} color={colors['text-inverse']} />
+                  <Text style={{ fontSize: 13, color: colors['text-inverse'], fontWeight: '600' }}>{t('asset.gallery')}</Text>
+                </View>
               </Pressable>
               <Pressable
                 onPress={handlePickFromDevice}
@@ -436,9 +442,10 @@ export function AssetPicker({
                 accessibilityRole="button"
                 accessibilityLabel={t('editor.selectAsset')}
               >
-                <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>
-                  📁 Files
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <IconSymbol name="files" size={14} color={colors.foreground} />
+                  <Text style={{ fontSize: 13, color: colors.foreground, fontWeight: '600' }}>{t('asset.files')}</Text>
+                </View>
               </Pressable>
             </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -470,8 +477,8 @@ export function AssetPicker({
                   accessibilityRole="button"
                   accessibilityLabel={t('common.confirm')}
                 >
-                  <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>
-                    Select ({selectedIds.size})
+                  <Text style={{ fontSize: 13, color: colors['text-inverse'], fontWeight: '600' }}>
+                    {t('common.select')} ({selectedIds.size})
                   </Text>
                 </Pressable>
               )}
@@ -481,20 +488,4 @@ export function AssetPicker({
       </View>
     </Modal>
   );
-}
-
-function getCategoryIcon(category: string): string {
-  switch (category) {
-    case 'image':
-    case 'background': return '🖼';
-    case 'character': return '👤';
-    case 'sprite': return '🎭';
-    case 'audio':
-    case 'music': return '🎵';
-    case 'sfx':
-    case 'sound': return '🔊';
-    case 'voice': return '🗣';
-    case 'ui': return '🎨';
-    default: return '📁';
-  }
 }

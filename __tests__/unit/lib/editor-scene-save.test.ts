@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import type { SceneRecord } from '@/lib/engine/types';
 import type { EditorSceneDraft } from '@/lib/editor-scene-draft';
 import { resolveSceneRecordForSave } from '@/lib/editor-scene-save';

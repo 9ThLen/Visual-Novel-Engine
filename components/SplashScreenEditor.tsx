@@ -4,12 +4,14 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
+import { Alert, View, Text, Pressable, TextInput, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useColors } from '@/hooks/use-colors';
 import { type SplashScreenConfig, type SplashScreen, SPLASH_PRESETS } from '@/lib/splash-types';
 import { addAssetToLibrary } from '@/lib/media-library-service';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { useI18n } from '@/lib/i18n';
 
 interface Props {
   config?: SplashScreenConfig;
@@ -18,13 +20,17 @@ interface Props {
 
 export function SplashScreenEditor({ config, onChange }: Props) {
   const colors = useColors();
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
 
   const splash = config?.splash;
 
   const handleToggle = () => {
     if (config) {
-      onChange(undefined);
+      Alert.alert(t('splash.removeTitle'), t('splash.removeMessage'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('splash.remove'), style: 'destructive', onPress: () => onChange(undefined) },
+      ]);
     } else {
       onChange(SPLASH_PRESETS[0].config);
     }
@@ -92,9 +98,12 @@ export function SplashScreenEditor({ config, onChange }: Props) {
           marginBottom: config ? 12 : 0,
         }}
       >
-        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.foreground }}>
-          🎬 Splash Screen
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <IconSymbol name="movie" size={16} color={colors.foreground} />
+          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.foreground }}>
+            Splash Screen
+          </Text>
+        </View>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           {config && (
             <Pressable
@@ -124,8 +133,8 @@ export function SplashScreenEditor({ config, onChange }: Props) {
             })}
             onPress={handleToggle}
           >
-            <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
-              {config ? 'Remove' : 'Add'}
+            <Text style={{ color: colors['text-inverse'], fontSize: 12, fontWeight: '600' }}>
+              {config ? t('splash.remove') : t('splash.add')}
             </Text>
           </Pressable>
         </View>
@@ -208,7 +217,7 @@ export function SplashScreenEditor({ config, onChange }: Props) {
                     }}
                     numberOfLines={1}
                   >
-                    {splash.uri ? splash.uri.split('/').pop() : 'No file selected'}
+                    {splash.uri ? splash.uri.split('/').pop() : t('editor.noFileSelected')}
                   </Text>
                 </View>
                 <Pressable
@@ -221,9 +230,12 @@ export function SplashScreenEditor({ config, onChange }: Props) {
                   })}
                   onPress={handlePickMedia}
                 >
-                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
-                    📂 Pick {splash.type === 'image' ? 'Image' : 'Video'}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <IconSymbol name="files" size={14} color={colors['text-inverse']} />
+                    <Text style={{ color: colors['text-inverse'], fontSize: 12, fontWeight: '600' }}>
+                      {splash.type === 'image' ? t('editor.pickImage') : 'Pick Video'}
+                    </Text>
+                  </View>
                 </Pressable>
               </View>
 
@@ -357,7 +369,7 @@ export function SplashScreenEditor({ config, onChange }: Props) {
                     }}
                   >
                     {splash.pauseOnSplash && (
-                      <Text style={{ color: '#fff', fontSize: 12 }}>✓</Text>
+                      <Text style={{ color: colors['text-inverse'], fontSize: 12 }}>✓</Text>
                     )}
                   </View>
                   <Text style={{ color: colors.foreground, fontSize: 13 }}>

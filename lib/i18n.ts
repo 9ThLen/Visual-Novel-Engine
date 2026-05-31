@@ -1,7 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useAppStore } from '../stores/use-app-store';
-import { allTranslations, SUPPORTED_LANGUAGES } from './translations';
-import type { Language, LanguageInfo } from './translations';
+import { allTranslations, SUPPORTED_LANGUAGES, type Language, type LanguageInfo } from './translations';
 
 export type { Language, LanguageInfo };
 

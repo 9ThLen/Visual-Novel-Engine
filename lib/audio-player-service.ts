@@ -4,8 +4,7 @@
  * No knowledge of library items, triggers, or domain concepts.
  */
 
-import { setAudioModeAsync, createAudioPlayer } from 'expo-audio';
-import type { AudioPlayer } from 'expo-audio';
+import { setAudioModeAsync, createAudioPlayer, type AudioPlayer } from 'expo-audio';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from './error-handler';
 import type { IAudioPlayerService } from './audio-interfaces';
 import { resolvePlayableAssetUri } from './asset-resolver';

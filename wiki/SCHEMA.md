@@ -4,11 +4,20 @@ This wiki is intentionally small. It should describe the current project, not pr
 
 ## Active Pages
 
-- `README.md` - wiki entry point and cleanup policy.
-- `index.md` - list of active docs.
-- `overview.md` - current product and technical summary.
-- `architecture-reference.md` - current architecture reference.
-- `SCHEMA.md` - this maintenance policy.
+| Page | Purpose |
+|---|---|
+| `README.md` | Wiki entry point and cleanup policy |
+| `index.md` | List of active docs |
+| `overview.md` | Project summary: features, tech stack, current state |
+| `architecture-reference.md` | Architecture layers, flows, directory structure |
+| `block-types-reference.md` | All 12 block types, data shapes, categories |
+| `components-reference.md` | Editor/reader/UI component catalog |
+| `hooks-reference.md` | Custom hooks reference |
+| `stores-reference.md` | Zustand stores: state shape, actions, selectors |
+| `audio-system.md` | Audio manager architecture, services, triggers |
+| `testing-guide.md` | Test structure, patterns, coverage, how to run |
+| `migration-guide.md` | Legacy-to-canonical migration paths |
+| `SCHEMA.md` | This maintenance policy |
 
 ## Page Rules
 

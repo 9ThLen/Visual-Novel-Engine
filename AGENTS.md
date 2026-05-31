@@ -54,3 +54,22 @@ Context7 має **вищий пріоритет** ніж власні знанн
 - **RuntimePalette index signature:** Always add `[key: string]: string | undefined` to RuntimePalette type so dynamic bracket access (e.g. `colors['surface-2']`) works without `as any`.
 - **BlockLibraryPanel is self-contained:** The panel manages its own search state internally. Do NOT pass `searchQuery`/`onSearchChange` props from parent — they are unused.
 - **SceneComposer dual layout:** Phone uses tab-based view switching (`showBlockLibrary`/`showProperties`); desktop shows all three panels side-by-side. Both branches must be implemented in the component.
+
+## Vitest Infrastructure (Session 2026-05-29)
+
+### Done
+- Removed `import { describe, expect, it, vi, ... } from 'vitest'` from all 41 test files (rely on `globals: true`) — fixes `require('vitest')` CJS rejection
+- `format: 'cjs'` in esbuild config is incompatible with `vi.mock()` (esbuild hoists `require()` above `vi.mock()` calls, registering mock too late). Replaced with Vite aliases + `Module._resolveFilename` overrides.
+- `__mocks__/` directory created for react-native, expo-*, @react-navigation/native, and project modules (stores, asset-resolver, audio-manager, audio-library)
+- `vitest.config.ts` has Vite resolve aliases for all mocked modules
+- `vitest.setup.ts` has `Module._resolveFilename` override that:
+  - Maps alias specifiers to mock file paths for CJS `require()` output
+  - Intercepts relative imports (`./`, `../`) that resolve to aliased project modules
+  - Transpiles `.ts`/`.tsx` via TypeScript Compiler API
+  - `mockExemptFiles` list prevents infinite loops + allows test files to use real implementations
+- All previously-failing test files now pass (3/3 audio-player-service, 15/15 use-reader-audio)
+- 35+ test files passing, 0 regressions
+
+### Remaining (pre-existing, not caused by mocking)
+- `__tests__/unit/lib/smoke.test.ts` (3 tests) — uses `await import()` which breaks with `format: 'cjs'`
+- `__tests__/unit/lib/theme-runtime.test.ts` (3 tests) — same `await import()` issue

@@ -9,18 +9,20 @@ import { useRouter, usePathname } from 'expo-router';
 import { useColors } from '@/hooks/use-colors';
 import { isWeb } from '@/lib/web-utils';
 import { getWebLayout } from '@/lib/responsive';
+import { useI18n } from '@/lib/i18n';
+import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 
 interface NavItem {
   id: string;
-  label: string;
-  icon: string;
+  labelKey: string;
+  icon: IconSymbolName;
   path: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'home', label: 'Home', icon: '🏠', path: '/tabs' },
-  { id: 'editor', label: 'Editor', icon: '✏️', path: '/editor' },
-  { id: 'settings', label: 'Settings', icon: '⚙️', path: '/settings' },
+  { id: 'home', labelKey: 'menu.home', icon: 'home', path: '/tabs' },
+  { id: 'editor', labelKey: 'editor.title', icon: 'editor', path: '/editor' },
+  { id: 'settings', labelKey: 'menu.settings', icon: 'settings', path: '/settings' },
 ];
 
 interface WebSidebarProps {
@@ -31,6 +33,7 @@ export function WebSidebar({ visible = true }: WebSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const colors = useColors();
+  const { t } = useI18n();
   const dims = useWindowDimensions();
   const layout = getWebLayout(dims);
 
@@ -55,7 +58,7 @@ export function WebSidebar({ visible = true }: WebSidebarProps) {
     >
       {/* Logo/Title */}
       <View style={styles.header}>
-        <Text style={[styles.logo, { color: colors.primary }]}>📖</Text>
+        <IconSymbol name="book.fill" size={28} color={colors.primary} />
         <Text style={[styles.title, { color: colors.foreground }]}>
           Visual Novel
         </Text>
@@ -82,7 +85,12 @@ export function WebSidebar({ visible = true }: WebSidebarProps) {
                 },
               ]}
             >
-              <Text style={styles.navIcon}>{item.icon}</Text>
+              <IconSymbol
+                name={item.icon}
+                size={20}
+                color={isActive ? colors.primary : colors.foreground}
+                style={styles.navIcon}
+              />
               <Text
                 style={[
                   styles.navLabel,
@@ -92,7 +100,7 @@ export function WebSidebar({ visible = true }: WebSidebarProps) {
                   },
                 ]}
               >
-                {item.label}
+                {t(item.labelKey)}
               </Text>
               {isActive && (
                 <View
@@ -131,9 +139,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
-  logo: {
-    fontSize: 28,
-  },
   title: {
     fontSize: 16,
     fontWeight: '700',
@@ -155,7 +160,7 @@ const styles = StyleSheet.create({
     cursor: 'pointer',
   },
   navIcon: {
-    fontSize: 20,
+    width: 20,
   },
   navLabel: {
     fontSize: 14,

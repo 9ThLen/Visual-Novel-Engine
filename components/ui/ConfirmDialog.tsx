@@ -40,14 +40,14 @@ export function ConfirmDialog({
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
       <View style={{
         flex: 1,
-        backgroundColor: colors.backdrop || 'rgba(0,0,0,0.7)',
+        backgroundColor: colors.backdrop,
         justifyContent: 'center',
         alignItems: 'center',
       }}>
         <View style={{
           width: '85%',
           maxWidth: 360,
-          backgroundColor: colors['surface-container'] || colors.surface,
+          backgroundColor: colors['surface-container'],
           borderRadius: 12,
           overflow: 'hidden',
         }}>
@@ -81,11 +81,11 @@ export function ConfirmDialog({
             </Pressable>
             <Pressable
               onPress={onConfirm}
-              style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8, backgroundColor: destructive ? (colors.error || '#ff6b6b') : colors.primary }}
+              style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8, backgroundColor: destructive ? colors.error : colors.primary }}
               accessibilityRole="button"
               accessibilityLabel={resolvedConfirmLabel}
             >
-              <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>{resolvedConfirmLabel}</Text>
+              <Text style={{ fontSize: 13, color: colors['text-inverse'], fontWeight: '600' }}>{resolvedConfirmLabel}</Text>
             </Pressable>
           </View>
         </View>

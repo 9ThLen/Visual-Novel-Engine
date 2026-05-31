@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { parseResumeExisting, shouldReusePlaybackState } from '@/lib/reader-launch';
 
 describe('reader-launch', () => {

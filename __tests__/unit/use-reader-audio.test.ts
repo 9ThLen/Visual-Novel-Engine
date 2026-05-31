@@ -1,54 +1,12 @@
-// @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-
-vi.mock('react-native', () => ({
-  Platform: { OS: 'web' },
-}));
-
-vi.mock('@react-navigation/native', () => ({
-  useFocusEffect: (callback: () => void | (() => void)) => {
-    const { useEffect } = require('react');
-    useEffect(() => callback(), [callback]);
-  },
-  useIsFocused: () => true,
-}));
-
-vi.mock('../../lib/audio-library', () => ({
-  getPlaybackAudioLibrary: vi.fn().mockResolvedValue([]),
-}));
-
-vi.mock('../../lib/audio-manager-enhanced', () => {
-  const mockAudioManager = {
-    initialize: vi.fn().mockResolvedValue(undefined),
-    setVolume: vi.fn().mockResolvedValue(undefined),
-    play: vi.fn().mockResolvedValue(undefined),
-    stop: vi.fn().mockResolvedValue(undefined),
-    stopAll: vi.fn().mockResolvedValue(undefined),
-    crossFade: vi.fn().mockResolvedValue(undefined),
-    cancelAllTriggers: vi.fn(),
-    getPlaybackState: vi.fn().mockReturnValue([]),
-    loadLibrary: vi.fn(),
-    executeTriggersByType: vi.fn().mockResolvedValue(undefined),
-    processTriggers: vi.fn().mockResolvedValue(undefined),
-    cleanup: vi.fn(),
-  };
-  return {
-    enhancedAudioManager: mockAudioManager,
-    audioManager: mockAudioManager,
-  };
-});
-
-vi.mock('../../lib/asset-resolver', () => ({
-  resolvePlayableAssetUri: vi.fn(),
-}));
 
 import { useReaderAudio } from '../../hooks/useReaderAudio';
 import { enhancedAudioManager } from '../../lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '../../lib/asset-resolver';
 import { getPlaybackAudioLibrary } from '../../lib/audio-library';
 import { deactivateReaderAudioSession } from '../../lib/reader-audio-session';
-import type { StoryScene, UserSettings } from '../../lib/types';
+import type { UserSettings } from '../../lib/user-settings';
+import type { StoryScene } from '../../lib/types';
 
 const STORY_ID = 'story-1';
 
@@ -108,7 +66,7 @@ describe('useReaderAudio', () => {
   describe('audio library', () => {
     it('should load story audio library on mount', async () => {
       const library = [{ id: 'a1', name: 'SFX', uri: 'sfx.mp3', type: 'sfx' as const, loop: false, volume: 1, tags: [], createdAt: 0 }];
-      vi.mocked(getPlaybackAudioLibrary).mockResolvedValue(library as any);
+      (getPlaybackAudioLibrary as any).mockResolvedValue(library);
 
       renderHook(() =>
         useReaderAudio(STORY_ID, createScene(), defaultSettings, { blockedByOverlay: false }),
@@ -132,7 +90,7 @@ describe('useReaderAudio', () => {
     });
 
     it('should crossfade BGM when scene has new music', async () => {
-      vi.mocked(resolvePlayableAssetUri).mockResolvedValue('/resolved/music.mp3');
+      (resolvePlayableAssetUri as any).mockResolvedValue('/resolved/music.mp3');
 
       renderHook(() =>
         useReaderAudio(STORY_ID, createScene({ musicUri: 'music.mp3' }), defaultSettings),
@@ -149,7 +107,7 @@ describe('useReaderAudio', () => {
     });
 
     it('should play bundled BGM when resolvePlayableAssetUri returns playable string', async () => {
-      vi.mocked(resolvePlayableAssetUri).mockResolvedValue('file:///bundled/music.mp3');
+      (resolvePlayableAssetUri as any).mockResolvedValue('file:///bundled/music.mp3');
 
       renderHook(() =>
         useReaderAudio(
@@ -168,7 +126,7 @@ describe('useReaderAudio', () => {
     });
 
     it('should play voice when scene has voice audio', async () => {
-      vi.mocked(resolvePlayableAssetUri).mockResolvedValue('/resolved/voice.mp3');
+      (resolvePlayableAssetUri as any).mockResolvedValue('/resolved/voice.mp3');
 
       renderHook(() =>
         useReaderAudio(STORY_ID, createScene({ voiceAudioUri: 'voice.mp3' }), defaultSettings),
@@ -185,7 +143,7 @@ describe('useReaderAudio', () => {
     it('should execute scene_start triggers when present', async () => {
       const triggers = [
         { id: 't1', audioId: 'a1', triggerType: 'scene_start' as const },
-      ] as any;
+      ];
 
       renderHook(() =>
         useReaderAudio(STORY_ID, createScene({ audioTriggers: triggers }), defaultSettings),
@@ -200,7 +158,7 @@ describe('useReaderAudio', () => {
     });
 
     it('should not re-run scene audio when trigger contents are unchanged', async () => {
-      vi.mocked(resolvePlayableAssetUri).mockResolvedValue('/resolved/music.mp3');
+      (resolvePlayableAssetUri as any).mockResolvedValue('/resolved/music.mp3');
 
       const { rerender } = renderHook(
         ({ scene }) => useReaderAudio(STORY_ID, scene, defaultSettings),
@@ -208,7 +166,7 @@ describe('useReaderAudio', () => {
           initialProps: {
             scene: createScene({
               musicUri: 'music.mp3',
-              audioTriggers: [{ id: 't1', audioId: 'a1', triggerType: 'scene_start' as const }] as any,
+              audioTriggers: [{ id: 't1', audioId: 'a1', triggerType: 'scene_start' as const }],
             }),
           },
         },
@@ -222,7 +180,7 @@ describe('useReaderAudio', () => {
       rerender({
         scene: createScene({
           musicUri: 'music.mp3',
-          audioTriggers: [{ id: 't1', audioId: 'a1', triggerType: 'scene_start' as const }] as any,
+          audioTriggers: [{ id: 't1', audioId: 'a1', triggerType: 'scene_start' as const }],
         }),
       });
 
@@ -246,7 +204,7 @@ describe('useReaderAudio', () => {
     });
 
     it('should adjust volume when same bgm track persists', async () => {
-      vi.mocked(resolvePlayableAssetUri).mockResolvedValue('/same-track.mp3');
+      (resolvePlayableAssetUri as any).mockResolvedValue('/same-track.mp3');
 
       const { rerender } = renderHook(
         ({ storyId, scene, settings }) => useReaderAudio(storyId, scene, settings),

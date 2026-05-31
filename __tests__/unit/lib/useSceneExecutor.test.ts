@@ -1,42 +1,12 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-
+﻿import { act, renderHook, waitFor } from '@testing-library/react';
 import type { TimelineStep } from '@/lib/engine/types';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
 
-function makeTextStep(id: string, content: string): TimelineStep {
-  return {
-    id,
-    blockType: 'text',
-    data: {
-      content,
-      typewriterSpeed: 0.5,
-      anchorTo: 'background',
-    },
-    collapsed: false,
-    enabled: true,
-  };
-}
-
-function makeTransitionStep(id: string, targetSceneId: string): TimelineStep {
-  return {
-    id,
-    blockType: 'transition',
-    data: {
-      targetSceneId,
-      transitionType: 'fade',
-      duration: 0.4,
-    },
-    collapsed: false,
-    enabled: true,
-  };
-}
-
 describe('useSceneExecutor', () => {
   it('stays advanceable after text typing is completed so the next tap can continue', async () => {
-    const timeline = [
-      makeTextStep('step-1', 'First line'),
-      makeTransitionStep('step-2', 'scene-2'),
+    const timeline: TimelineStep[] = [
+      { id: 'step-1', blockType: 'text', data: { content: 'First line', typewriterSpeed: 0.5, anchorTo: 'background' }, collapsed: false, enabled: true } as TimelineStep,
+      { id: 'step-2', blockType: 'transition', data: { targetSceneId: 'scene-2', transitionType: 'fade', duration: 0.4 }, collapsed: false, enabled: true } as TimelineStep,
     ];
 
     const { result } = renderHook(() => useSceneExecutor(timeline));
@@ -64,6 +34,131 @@ describe('useSceneExecutor', () => {
     await waitFor(() => {
       expect(result.current.sceneState.isTransitioning).toBe(true);
       expect(result.current.sceneState.transitionTarget).toBe('scene-2');
+    });
+  });
+
+  it('sets last choice variable and transition target when a choice is selected', async () => {
+    const timeline: TimelineStep[] = [
+      { id: 'choice-1', blockType: 'choice', data: { options: [
+        { id: 'choice-a', text: 'Go A', targetSceneId: 'scene-a' },
+        { id: 'choice-b', text: 'Go B', targetSceneId: null },
+      ] }, collapsed: false, enabled: true } as TimelineStep,
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.sceneState.currentChoices?.length).toBe(2);
+      expect(result.current.canAdvance).toBe(false);
+    });
+
+    act(() => {
+      result.current.selectChoice('choice-a');
+    });
+
+    await waitFor(() => {
+      expect(result.current.sceneState.currentChoices).toBeNull();
+      expect(result.current.sceneState.variables._last_choice).toBe('choice-a');
+      expect(result.current.sceneState.isTransitioning).toBe(true);
+      expect(result.current.sceneState.transitionTarget).toBe('scene-a');
+    });
+  });
+
+  it('halts on transition blocks and exposes the target scene', async () => {
+    const timeline: TimelineStep[] = [
+      { id: 'transition-1', blockType: 'transition', data: { targetSceneId: 'scene-2', transitionType: 'fade', duration: 0.4 }, collapsed: false, enabled: true } as TimelineStep,
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.currentStepIndex).toBe(0);
+      expect(result.current.canAdvance).toBe(true);
+      expect(result.current.sceneState.isTransitioning).toBe(true);
+      expect(result.current.sceneState.transitionTarget).toBe('scene-2');
+    });
+  });
+
+  it('skips disabled and condition-false steps', async () => {
+    const disabled = { id: 'disabled', blockType: 'text' as const, data: { content: 'Disabled', typewriterSpeed: 0.5, anchorTo: 'background' as const }, collapsed: false, enabled: false };
+    const conditionFalse: TimelineStep = {
+      id: 'condition-false', blockType: 'text', data: { content: 'Condition false', typewriterSpeed: 0.5, anchorTo: 'background' }, collapsed: false, enabled: true,
+      conditions: [{ variableName: 'flag', operator: '==', value: true }],
+    } as TimelineStep;
+    const visible = { id: 'visible', blockType: 'text' as const, data: { content: 'Visible', typewriterSpeed: 0.5, anchorTo: 'background' as const }, collapsed: false, enabled: true };
+    const timeline: TimelineStep[] = [disabled, conditionFalse, visible] as TimelineStep[];
+
+    const { result } = renderHook(() => useSceneExecutor(
+      timeline,
+      { initialVariables: { flag: false } },
+    ));
+
+    await waitFor(() => {
+      expect(result.current.currentStepIndex).toBe(2);
+      expect(result.current.isTyping).toBe(true);
+      expect(result.current.canAdvance).toBe(true);
+    });
+  });
+
+  it('resets when middle step data changes without changing first or last id', async () => {
+    const makeTimeline = (content: string): TimelineStep[] => [
+      { id: 'background-1', blockType: 'background', data: { assetId: 'bg-1', transition: 'fade', duration: 500 }, collapsed: false, enabled: true } as TimelineStep,
+      { id: 'text-1', blockType: 'text', data: { content, typewriterSpeed: 0.5, anchorTo: 'background' }, collapsed: false, enabled: true } as TimelineStep,
+      { id: 'transition-1', blockType: 'transition', data: { targetSceneId: 'scene-2', transitionType: 'fade', duration: 0.4 }, collapsed: false, enabled: true } as TimelineStep,
+    ];
+
+    const { result, rerender } = renderHook(
+      ({ timeline }) => useSceneExecutor(timeline),
+      { initialProps: { timeline: makeTimeline('Old text') } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.currentStepIndex).toBe(1);
+      expect(result.current.isTyping).toBe(true);
+    });
+
+    act(() => {
+      result.current.advance();
+    });
+    act(() => {
+      result.current.advance();
+    });
+
+    await waitFor(() => {
+      expect(result.current.sceneState.isTransitioning).toBe(true);
+    });
+
+    rerender({ timeline: makeTimeline('New text') });
+
+    await waitFor(() => {
+      expect(result.current.currentStepIndex).toBe(1);
+      expect(result.current.isTyping).toBe(true);
+      expect(result.current.sceneState.isTransitioning).toBe(false);
+    });
+  });
+
+  it('marks a final text-only timeline complete after typing and advancing past it', async () => {
+    const timeline: TimelineStep[] = [
+      { id: 'text-1', blockType: 'text', data: { content: 'The end', typewriterSpeed: 0.5, anchorTo: 'background' }, collapsed: false, enabled: true } as TimelineStep,
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.isTyping).toBe(true);
+      expect(result.current.isComplete).toBe(false);
+    });
+
+    act(() => {
+      result.current.advance();
+    });
+    act(() => {
+      result.current.advance();
+    });
+
+    await waitFor(() => {
+      expect(result.current.isComplete).toBe(true);
+      expect(result.current.canAdvance).toBe(false);
     });
   });
 });

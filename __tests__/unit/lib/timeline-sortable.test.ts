@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { createTimelineSortableProps } from '@/lib/editor/timeline-sortable';
 import type { TimelineStep } from '@/lib/engine/types';
 

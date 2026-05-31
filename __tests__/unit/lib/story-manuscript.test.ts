@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import type { SceneRecord } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
 import { buildStoryManuscript, createEmptyStoryManuscriptBlock } from '@/lib/editor/story-manuscript';

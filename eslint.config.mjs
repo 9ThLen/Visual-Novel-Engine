@@ -14,6 +14,14 @@ export default defineConfig([
     },
   },
   {
-    ignores: ["dist/*", "wiki/*", "tools/qa/*", "metro.config.cjs", "scripts/load-env.mjs"],
+    ignores: [
+      "node_modules/*",
+      ".expo/*",
+      "dist/*",
+      "wiki/*",
+      "tools/qa/*",
+      "metro.config.cjs",
+      "scripts/load-env.mjs",
+    ],
   },
 ]);

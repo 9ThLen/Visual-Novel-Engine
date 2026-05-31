@@ -16,7 +16,7 @@ import { ScreenContainer } from '@/components/screen-container';
 import { useStoryState, useStoryActions } from '@/lib/story-hooks';
 import { useAppStore } from '@/stores/use-app-store';
 import { getLibraryAssets, addAssetToLibrary } from '@/lib/media-library-service';
-import { Story } from '@/lib/types'; // TODO(phase-09): replace with canonical type
+import { Story } from '@/lib/scene-operations'; // TODO(phase-09): replace with canonical type
 import { StoryMetadata } from '@/lib/story-domain';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/lib/i18n';

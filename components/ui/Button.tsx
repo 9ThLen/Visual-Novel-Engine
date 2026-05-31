@@ -142,7 +142,7 @@ export function Button({
         return {
           backgroundColor: colors.primary,
           borderWidth: 0,
-          textColor: colors['text-inverse'] ?? '#FFFFFF',
+          textColor: colors['text-inverse'],
         };
       case 'secondary':
         return {
@@ -168,7 +168,7 @@ export function Button({
         return {
           backgroundColor: colors.error,
           borderWidth: 0,
-          textColor: colors['text-inverse'] ?? '#FFFFFF',
+          textColor: colors['text-inverse'],
         };
     }
   };
