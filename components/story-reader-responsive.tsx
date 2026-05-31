@@ -373,8 +373,8 @@ export function StoryReaderResponsive({
 
   // ── UI ──────────────────────────────────────────────────────────────────
   const isPortrait = layout.dialoguePosition === 'bottom';
-  const readerContainerStyle = getStoryReaderContainerStyle();
-  const speakerTextStyle = getStoryReaderSpeakerTextStyle();
+  const readerContainerStyle = getStoryReaderContainerStyle(colors);
+  const speakerTextStyle = getStoryReaderSpeakerTextStyle(colors);
 
   return (
     <View className="flex-1" style={readerContainerStyle}>
