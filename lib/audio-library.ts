@@ -3,7 +3,7 @@
  * Manages per-story audio libraries and trigger-based playback
  */
 
-import type { AudioLibraryItem, StoryWithAudio } from './audio-types';
+import type { AudioLibraryItem } from './audio-types';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 import { useAppStore } from '@/stores/use-app-store';
 import { generateId } from './id-utils';

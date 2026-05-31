@@ -106,30 +106,4 @@ export async function buttonFeedback() {
   ]);
 }
 
-async function successFeedback() {
-  await Promise.all([
-    playHaptic('medium'),
-    playSound('success', 0.3),
-  ]);
-}
 
-async function errorFeedback() {
-  await Promise.all([
-    playHaptic('heavy'),
-    playSound('error', 0.3),
-  ]);
-}
-
-async function transitionFeedback() {
-  await Promise.all([
-    playHaptic('light'),
-    playSound('whoosh', 0.25),
-  ]);
-}
-
-async function cleanupSounds() {
-  for (const player of activePlayers) {
-    try { player.remove(); } catch {}
-  }
-  activePlayers.length = 0;
-}

@@ -51,6 +51,7 @@ export function getApiBaseUrl(): string {
 
 export const SESSION_TOKEN_KEY = "app_session_token";
 export const USER_INFO_KEY = "manus-runtime-user-info";
+export const OAUTH_STATE_KEY = "oauth_state";
 
 const encodeState = (value: string) => {
   if (typeof globalThis.btoa === "function") {
@@ -79,9 +80,9 @@ export const getRedirectUri = () => {
   }
 };
 
-export const getLoginUrl = () => {
+export const getLoginUrl = (stateOverride?: string) => {
   const redirectUri = getRedirectUri();
-  const state = encodeState(redirectUri);
+  const state = stateOverride ?? encodeState(redirectUri);
 
   const url = new URL(`${OAUTH_PORTAL_URL}/app-auth`);
   url.searchParams.set("appId", APP_ID);
@@ -92,41 +93,4 @@ export const getLoginUrl = () => {
   return url.toString();
 };
 
-/**
- * Start OAuth login flow.
- *
- * On native platforms (iOS/Android), open the system browser directly so
- * the OAuth callback returns via deep link to the app.
- *
- * On web, this simply redirects to the login URL.
- *
- * @returns Always null, the callback is handled via deep link.
- */
-export async function startOAuthLogin(): Promise<string | null> {
-  const loginUrl = getLoginUrl();
 
-  if (ReactNative.Platform.OS === "web") {
-    // On web, just redirect
-    if (typeof window !== "undefined") {
-      window.location.href = loginUrl;
-    }
-    return null;
-  }
-
-  const supported = await Linking.canOpenURL(loginUrl);
-  if (!supported) {
-    if (__DEV__) console.warn("[OAuth] Cannot open login URL: URL scheme not supported");
-    // 可考虑抛出错误或返回错误状态，让调用方处理
-    return null;
-  }
-
-  try {
-    await Linking.openURL(loginUrl);
-  } catch (error) {
-    if (__DEV__) console.error("[OAuth] Failed to open login URL:", error);
-    // 可考虑抛出错误让调用方处理
-  }
-
-  // The OAuth callback will reopen the app via deep link.
-  return null;
-}

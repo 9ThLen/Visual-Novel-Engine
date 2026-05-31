@@ -1,15 +1,25 @@
 import { useState, useEffect } from 'react';
-import type { StoryScene } from '@/lib/types';
 import { resolveAssetUri, getBundledAsset } from '@/lib/asset-resolver';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 
 export type ImageSource = number | string | { uri: string };
 
-export function useSceneImages(scene: StoryScene) {
+export interface SceneImageState {
+  id: string;
+  backgroundImageUri?: string | null;
+  characters: {
+    id: string;
+    name: string;
+    uri?: string | null;
+    imageUri?: string | null;
+  }[];
+}
+
+export function useSceneImages(scene: SceneImageState) {
   const [bgSource, setBgSource] = useState<ImageSource | null>(null);
   const [resolvedCharUris, setResolvedCharUris] = useState<Record<string, ImageSource>>({});
   const characterDeps = scene.characters
-    .map((char) => `${char.id}:${(char as any).imageUri || char.uri || ''}`)
+    .map((char) => `${char.id}:${char.imageUri || char.uri || ''}`)
     .join('|');
 
   useEffect(() => {
@@ -35,7 +45,7 @@ export function useSceneImages(scene: StoryScene) {
     }
 
     scene.characters.forEach((char) => {
-      const charUri = (char as any).imageUri || char.uri;
+      const charUri = char.imageUri || char.uri;
       if (!charUri) return;
       const bundled = getBundledAsset(charUri);
       if (bundled) {

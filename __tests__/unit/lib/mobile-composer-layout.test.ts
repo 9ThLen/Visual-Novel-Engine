@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { getPhoneComposerPanel } from '@/lib/mobile-composer-layout';
 
 describe('getPhoneComposerPanel', () => {

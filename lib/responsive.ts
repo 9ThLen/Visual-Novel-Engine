@@ -116,7 +116,7 @@ export function getMaxContentWidth(dims: ScreenDimensions) {
 }
 
 export function getWebLayout(dims: ScreenDimensions) {
-  const { width, isWebDesktop, isWebTablet, isWebMobile } = getResponsiveValues(dims);
+  const { width, isWebDesktop, isWebTablet } = getResponsiveValues(dims);
 
   if (isWebDesktop) {
     return {

@@ -54,7 +54,10 @@ export function SceneManager({ storyId }: SceneManagerProps) {
   const sceneRecordsByStory = useAppStore((state) => state.sceneRecordsByStory);
 
   const story = storiesMetadata.find((metadata) => metadata.id === storyId);
-  const storyRecords = sceneRecordsByStory[storyId] || {};
+  const storyRecords = useMemo(
+    () => sceneRecordsByStory[storyId] || {},
+    [sceneRecordsByStory, storyId],
+  );
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showSceneSelector, setShowSceneSelector] = useState(false);
@@ -80,7 +83,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
 
   const openSceneEditor = useCallback((sceneId: string) => {
     navigateWithViewTransition(() => router.push({
-      pathname: '/scene-editor',
+      pathname: '/document-editor',
       params: { storyId, sceneId },
     } as never));
   }, [router, storyId]);
@@ -156,14 +159,6 @@ export function SceneManager({ storyId }: SceneManagerProps) {
     openSceneEditor(newId);
   }, [scenes.length, storyId, saveSceneRecord, openSceneEditor]);
 
-  const openManuscript = useCallback(() => {
-    navigateWithViewTransition(() => router.push({ pathname: '/manuscript-editor', params: { storyId } } as never));
-  }, [router, storyId]);
-
-  const openStoryFlow = useCallback(() => {
-    navigateWithViewTransition(() => router.push({ pathname: '/story-flow', params: { storyId } } as never));
-  }, [router, storyId]);
-
   const openPlay = useCallback(() => {
     navigateWithViewTransition(() => router.push({ pathname: '/play', params: { storyId } } as never));
   }, [router, storyId]);
@@ -204,7 +199,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
           <TextInput
             value={newSceneName}
             onChangeText={setNewSceneName}
-            placeholder="Scene name…"
+            placeholder={t('editor.sceneManager.namePlaceholder')}
             placeholderTextColor={colors.muted}
             accessibilityLabel="Scene Name"
             onSubmitEditing={handleCreateScene}
@@ -217,7 +212,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search scenes…"
+            placeholder={t('editor.sceneManager.searchPlaceholder')}
             placeholderTextColor={colors.muted}
             accessibilityLabel="Search Scenes"
             style={[
@@ -240,9 +235,6 @@ export function SceneManager({ storyId }: SceneManagerProps) {
           <>
             <Button variant="primary" size="sm" onPress={() => setShowNewSceneForm(true)}>
               New Scene
-            </Button>
-            <Button variant="secondary" size="sm" onPress={openManuscript}>
-              Manuscript
             </Button>
             <Button variant="secondary" size="sm" onPress={() => setShowSceneSelector(true)}>
               Templates
@@ -332,9 +324,6 @@ export function SceneManager({ storyId }: SceneManagerProps) {
           {scenes.length} scene{scenes.length !== 1 ? 's' : ''}
         </Text>
         <View style={styles.bottomActions}>
-          <Button variant="secondary" size="sm" onPress={openStoryFlow}>
-            Flow
-          </Button>
           <Button variant="primary" size="sm" onPress={openPlay}>
             Play
           </Button>

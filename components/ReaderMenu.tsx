@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import { useColors } from '@/hooks/use-colors';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { buttonFeedback } from '@/lib/ui-feedback';
+import { useI18n } from '@/lib/i18n';
+import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 
 interface ReaderMenuProps {
   visible: boolean;
@@ -13,6 +15,7 @@ interface ReaderMenuProps {
 export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
   const router = useRouter();
   const colors = useColors();
+  const { t } = useI18n();
 
   if (!visible) return null;
 
@@ -22,16 +25,17 @@ export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
   };
 
   const menuItems = [
-    { label: '💾 Save / Load', action: () => { leaveReader(); router.push('../save-load'); } },
-    { label: '⚙️ Settings', action: () => { leaveReader(); router.push('../settings'); } },
+    { label: t('reader.saveLoad'), icon: 'save' as IconSymbolName, action: () => { leaveReader(); router.push('../save-load'); } },
+    { label: t('menu.settings'), icon: 'settings' as IconSymbolName, action: () => { leaveReader(); router.push('../settings'); } },
     {
-      label: '🏠 Home',
+      label: t('menu.home'),
+      icon: 'home' as IconSymbolName,
       action: () => {
         leaveReader();
         router.replace('/tabs');
       },
     },
-    { label: '✕ Close menu', action: onClose },
+    { label: t('menu.close'), icon: 'close' as IconSymbolName, action: onClose },
   ];
 
   return (
@@ -44,7 +48,7 @@ export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
         style={[
           styles.menuContainer,
           {
-            backgroundColor: colors.dialogueBg ?? 'rgba(15, 14, 23, 0.95)',
+            backgroundColor: colors.dialogueBg,
             borderColor: colors.border,
           },
         ]}
@@ -61,6 +65,7 @@ export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
               item.action();
             }}
           >
+            <IconSymbol name={item.icon} size={18} color={colors.foreground} />
             <Text style={[styles.menuItemText, { color: colors.foreground }]}>
               {item.label}
             </Text>
@@ -94,6 +99,9 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     paddingVertical: 14,
     paddingHorizontal: 18,
     borderRadius: 10,

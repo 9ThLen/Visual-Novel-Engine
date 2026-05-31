@@ -1,5 +1,3 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-
 import { useEditorStore } from '@/stores/use-editor-store';
 
 function makeBackgroundStep(id: string) {

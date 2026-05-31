@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useStoryState, useStoryActions } from '@/lib/story-hooks';
-import { resolveRuntimeCurrentScene } from '@/lib/runtime-story';
-import { getCanonicalSceneRecordFromState } from '@/lib/canonical-scene';
+import { useStoryActions } from '@/lib/story-hooks';
 import { resolveCanonicalStartSceneId } from '@/lib/scene-operations';
 import { useAppStore } from '@/stores/use-app-store';
-import type { PlaybackState, Story } from '@/lib/types';
+import type { Story } from '@/lib/scene-operations';
+import type { PlaybackState } from '@/lib/engine/types';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import demoStory from '@/assets/demo-story.json';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
@@ -14,43 +13,35 @@ export function useReaderInitialization(
   storyIdParam?: string | string[],
   options?: { resumeExisting?: boolean },
 ) {
-  const { stories, currentStory, playbackState, scenesByStory, sceneRecordsByStory } = useStoryState();
   const storiesMetadata = useAppStore((s) => s.storiesMetadata);
+  const currentStoryId = useAppStore((s) => s.currentStoryId);
+  const playbackState = useAppStore((s) => s.playbackState);
+  const sceneRecordsByStory = useAppStore((s) => s.sceneRecordsByStory);
   const { setCurrentStory, updatePlaybackState } = useStoryActions();
+  const currentStoryMetadata = useMemo(
+    () => storiesMetadata.find((story) => story.id === currentStoryId) ?? null,
+    [currentStoryId, storiesMetadata],
+  );
   const [isLoading, setIsLoading] = useState(true);
   const initRequestIdRef = useRef(0);
   const resumeExisting = options?.resumeExisting ?? false;
   // Safety timeout: force loading to resolve after 10s even if initialization hangs
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /** @deprecated Use sceneRecord/timeline instead */
-  const currentScene = useMemo(() => {
-    if (!currentStory || !playbackState || playbackState.storyId !== currentStory.id) return null;
-
-    return resolveRuntimeCurrentScene(
-      { scenesByStory, sceneRecordsByStory },
-      playbackState
-    );
-  }, [currentStory, playbackState, sceneRecordsByStory, scenesByStory]);
-
   const currentSceneRecord: SceneRecord | null = useMemo(() => {
-    if (!currentStory || !playbackState) return null;
-    return getCanonicalSceneRecordFromState(
-      { scenesByStory, sceneRecordsByStory },
-      playbackState.storyId,
-      playbackState.currentSceneId,
-    ) ?? null;
-  }, [currentStory, playbackState, sceneRecordsByStory, scenesByStory]);
+    if (!currentStoryMetadata || !playbackState) return null;
+    return sceneRecordsByStory[playbackState.storyId]?.[playbackState.currentSceneId] ?? null;
+  }, [currentStoryMetadata, playbackState, sceneRecordsByStory]);
 
   const currentTimeline: TimelineStep[] = useMemo(() => {
     return currentSceneRecord?.timeline ?? [];
   }, [currentSceneRecord]);
 
-  const stateRef = useRef({ currentStory, playbackState });
+  const stateRef = useRef({ currentStoryId, playbackState });
 
   useEffect(() => {
-    stateRef.current = { currentStory, playbackState };
-  }, [currentStory, playbackState]);
+    stateRef.current = { currentStoryId, playbackState };
+  }, [currentStoryId, playbackState]);
 
   const initializeReader = useCallback(async () => {
     const requestId = ++initRequestIdRef.current;
@@ -60,7 +51,7 @@ export function useReaderInitialization(
       let selectedStoryId: string | null = null;
 
       if (storyIdParam && typeof storyIdParam === 'string') {
-        const metadata = stories.find((s) => s.id === storyIdParam);
+        const metadata = storiesMetadata.find((s) => s.id === storyIdParam);
         if (metadata) {
           selectedStoryId = metadata.id;
         }
@@ -70,7 +61,7 @@ export function useReaderInitialization(
         const demoMetadata = (demoStory as unknown as Story);
         if (!demoMetadata?.id) throw new Error('Demo story has no id');
         selectedStoryId = demoMetadata.id;
-        const hasDemo = stories.some(s => s.id === selectedStoryId);
+        const hasDemo = storiesMetadata.some(s => s.id === selectedStoryId);
         if (!hasDemo) {
           if (__DEV__) console.warn('Demo story metadata missing from context. Attempting to load anyway...');
         }
@@ -78,7 +69,7 @@ export function useReaderInitialization(
 
       if (requestId !== initRequestIdRef.current) return;
 
-      if (stateRef.current.currentStory?.id !== selectedStoryId) {
+      if (stateRef.current.currentStoryId !== selectedStoryId) {
         await setCurrentStory(selectedStoryId);
       }
 
@@ -91,7 +82,7 @@ export function useReaderInitialization(
 
       if (requestId !== initRequestIdRef.current) return;
 
-      const metadata = stories.find((s) => s.id === selectedStoryId) || (demoStory as unknown as Story);
+      const metadata = storiesMetadata.find((s) => s.id === selectedStoryId) || (demoStory as unknown as Story);
       const startSceneId = resolveCanonicalStartSceneId(
         {
           storiesMetadata,
@@ -117,7 +108,7 @@ export function useReaderInitialization(
         setIsLoading(false);
       }
     }
-  }, [resumeExisting, storyIdParam, stories, storiesMetadata, sceneRecordsByStory, setCurrentStory, updatePlaybackState]);
+  }, [resumeExisting, storyIdParam, storiesMetadata, sceneRecordsByStory, setCurrentStory, updatePlaybackState]);
 
   useEffect(() => {
     safetyTimerRef.current = setTimeout(() => {
@@ -135,10 +126,10 @@ export function useReaderInitialization(
 
   // Synchronize loading state: only resolve loading when we have a valid synchronized scene
   useEffect(() => {
-    if (currentScene && currentStory && playbackState?.storyId === currentStory.id) {
+    if (currentSceneRecord && currentStoryMetadata && playbackState?.storyId === currentStoryMetadata.id) {
       setIsLoading(false);
     }
-  }, [currentScene, currentStory, playbackState]);
+  }, [currentSceneRecord, currentStoryMetadata, playbackState]);
 
-  return { isLoading, currentScene, sceneRecord: currentSceneRecord, timeline: currentTimeline, story: currentStory, playbackState, updatePlaybackState };
+  return { isLoading, sceneRecord: currentSceneRecord, timeline: currentTimeline, story: currentStoryMetadata, playbackState, updatePlaybackState };
 }

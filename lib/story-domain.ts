@@ -1,4 +1,4 @@
-import { Story, StoryScene, PlaybackState, SaveSlot } from './types';
+import { PlaybackState } from './engine/types';
 
 export interface StoryMetadata {
   id: string;
@@ -12,20 +12,53 @@ export interface StoryMetadata {
   sceneCount: number;
 }
 
+export interface StoryMetadataInput extends Omit<StoryMetadata, 'sceneCount'> {
+  sceneCount?: number;
+  scenes?: Record<string, unknown>;
+  audioLibrary?: unknown;
+}
+
+export interface SaveSlotStoryInput {
+  id: string;
+  title: string;
+}
+
+export interface SaveSlotScenePreviewInput {
+  id: string;
+  text?: string;
+  backgroundImageUri?: string | null;
+}
+
+/**
+ * Represents a save game state.
+ */
+export interface SaveSlot {
+  id: string;
+  storyId: string;
+  sceneId: string;
+  choicesMade: { sceneId: string; choiceId: string }[];
+  timestamp: number;
+  sceneName?: string;
+  thumbnailUri?: string;
+  storyTitle?: string;
+  sceneText?: string;
+  playTime?: number;
+}
+
 export const StoryDomain = {
-  extractMetadata(story: Story): StoryMetadata {
+  extractMetadata(story: StoryMetadataInput): StoryMetadata {
     const { scenes, audioLibrary, ...metadata } = story;
     return {
       ...metadata,
-      sceneCount: Object.keys(scenes || {}).length
+      sceneCount: metadata.sceneCount ?? Object.keys(scenes || {}).length
     };
   },
 
   createSaveSlot(
     slotId: string,
-    story: Story,
+    story: SaveSlotStoryInput,
     playbackState: PlaybackState,
-    currentScene?: StoryScene
+    currentScene?: SaveSlotScenePreviewInput
   ): SaveSlot {
     // Extract first line of dialogue for preview - safe access
     const sceneText = currentScene?.text?.split('\n')[0]?.slice(0, 100) || '';

@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { normalizeUserSettings } from '@/lib/user-settings';
 
 describe('normalizeUserSettings', () => {

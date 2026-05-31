@@ -84,7 +84,7 @@ export function DialogueHistory({ visible, entries, onClose }: Props) {
       ]}
     >
       <Pressable
-        style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.backdrop ?? 'rgba(0,0,0,0.72)' }]}
+        style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.backdrop }]}
         onPress={onClose}
         accessibilityRole="button"
         accessibilityLabel={t('common.close')}

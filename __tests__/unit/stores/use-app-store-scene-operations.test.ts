@@ -1,10 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-
 import {
   applyCanonicalSceneDelete,
   createCanonicalStorySeed,
   removeCanonicalConnection,
   syncCanonicalStartScene,
+  upsertCanonicalSceneFromLegacyScene,
 } from '@/lib/scene-operations';
 
 function makeSceneRecord(overrides = {}) {
@@ -195,5 +194,53 @@ describe('use-app-store scene operations', () => {
       isStart: true,
     });
     expect(seed.sceneRecord.timeline.filter((step) => step.blockType === 'background')).toHaveLength(1);
+  });
+
+  it('upserts legacy scene edits into canonical records without writing legacy scene state', () => {
+    const updated = upsertCanonicalSceneFromLegacyScene(baseSnapshot, 'story-1', {
+      id: 'scene-1',
+      text: 'Updated text',
+      characters: [],
+      choices: [{ id: 'choice-1', text: 'Go', nextSceneId: 'scene-2' }],
+      musicUri: null,
+    });
+    const record = updated.sceneRecordsByStory['story-1']?.['scene-1'];
+
+    expect(record?.timeline.find((step) => step.blockType === 'text')?.data).toMatchObject({
+      content: 'Updated text',
+    });
+    expect(record?.connections).toEqual([
+      { targetSceneId: 'scene-2', outputPort: 'choice_0', label: 'Go' },
+    ]);
+    expect('scenesByStory' in updated).toBe(true);
+    expect((updated as typeof baseSnapshot).scenesByStory).toEqual({});
+  });
+
+  it('preserves canonical flow metadata when a legacy scene edit updates content', () => {
+    const snapshot = {
+      ...baseSnapshot,
+      sceneRecordsByStory: {
+        'story-1': {
+          'scene-1': makeSceneRecord({
+            flowX: 120,
+            flowY: 240,
+            createdAt: 10,
+          }),
+        },
+      },
+    };
+
+    const updated = upsertCanonicalSceneFromLegacyScene(snapshot, 'story-1', {
+      id: 'scene-1',
+      text: 'Changed',
+      characters: [],
+      choices: [],
+      musicUri: null,
+    });
+    const record = updated.sceneRecordsByStory['story-1']?.['scene-1'];
+
+    expect(record?.flowX).toBe(120);
+    expect(record?.flowY).toBe(240);
+    expect(record?.createdAt).toBe(10);
   });
 });

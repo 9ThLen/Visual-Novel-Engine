@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { getTimelineItemLayout } from '@/lib/editor/timeline-item-layout';
 
 describe('timeline-item-layout', () => {

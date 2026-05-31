@@ -1,25 +1,3 @@
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('expo-file-system/legacy', () => ({
-  default: {},
-  documentDirectory: 'file:///documents/',
-  getInfoAsync: vi.fn(),
-  makeDirectoryAsync: vi.fn(),
-  copyAsync: vi.fn(),
-  readAsStringAsync: vi.fn(),
-  writeAsStringAsync: vi.fn(),
-  EncodingType: { Base64: 'base64' },
-}));
-
-vi.mock('@/stores/use-app-store', () => ({
-  useAppStore: {
-    getState: () => ({
-      mediaLibrary: [],
-      setMediaLibrary: vi.fn(),
-    }),
-  },
-}));
-
 import type { LibraryAsset } from '@/lib/media-library-service';
 import { resolveLibraryAssetUri } from '@/lib/media-library-service';
 

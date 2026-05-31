@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { shouldUpsertBundledStory } from '@/lib/bundled-story-sync';
 import type { Story } from '@/lib/scene-operations';
 

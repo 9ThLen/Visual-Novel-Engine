@@ -1,8 +1,15 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import type { TimelineStep, SceneState, BackgroundBlockData, CharacterBlockData, DialogueBlockData, ChoiceBlockData, EffectBlockData, MusicBlockData, VariableBlockData, TransitionBlockData } from './types';
 import { createEmptySceneState, conditionsMet } from './conditionUtils';
 
 const YIELDING_BLOCK_TYPES = new Set(['text', 'dialogue', 'choice', 'transition']);
+
+interface ExecutorState {
+  sceneState: SceneState;
+  currentStepIndex: number;
+  isTyping: boolean;
+  canAdvance: boolean;
+}
 
 export interface UseSceneExecutorOptions {
   initialVariables?: Record<string, string | number | boolean>;
@@ -18,12 +25,18 @@ export interface UseSceneExecutorReturn {
   selectChoice: (optionId: string) => void;
 }
 
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 function evaluateVariable(
   variables: Record<string, string | number | boolean>,
   varName: string,
   operation: 'set' | 'add' | 'subtract' | 'multiply' | 'toggle',
   value: string | number | boolean,
 ): Record<string, string | number | boolean> {
+  if (RESERVED_KEYS.has(varName)) {
+    console.warn('[useSceneExecutor] attempted to set reserved variable key:', varName);
+    return variables;
+  }
   const next = { ...variables };
   const parsed = typeof value === 'string' && !isNaN(Number(value)) ? Number(value) : value;
 
@@ -51,13 +64,15 @@ export function useSceneExecutor(
   timeline: TimelineStep[],
   options?: UseSceneExecutorOptions,
 ): UseSceneExecutorReturn {
-  const [sceneState, setSceneState] = useState<SceneState>(() => ({
-    ...createEmptySceneState(),
-    variables: options?.initialVariables ?? {},
+  const [execState, setExecState] = useState<ExecutorState>(() => ({
+    sceneState: {
+      ...createEmptySceneState(),
+      variables: options?.initialVariables ?? {},
+    },
+    currentStepIndex: 0,
+    isTyping: false,
+    canAdvance: false,
   }));
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [isTyping, setIsTyping] = useState(false);
-  const [canAdvance, setCanAdvance] = useState(false);
 
   const internalIndexRef = useRef(0);
   const isHaltedRef = useRef(false);
@@ -68,6 +83,18 @@ export function useSceneExecutor(
   timelineRef.current = timeline;
   initialVariablesRef.current = options?.initialVariables;
 
+  const timelineKey = useMemo(
+    () => JSON.stringify(timeline.map((step) => ({
+      id: step.id,
+      blockType: step.blockType,
+      enabled: step.enabled,
+      conditions: step.conditions ?? null,
+      data: step.data,
+    }))),
+    [timeline],
+  );
+
+  const { sceneState, currentStepIndex, isTyping, canAdvance } = execState;
   const isComplete = internalIndexRef.current >= timeline.length;
 
   const executeStep = useCallback((step: TimelineStep, currentState: SceneState): { nextState: SceneState; result: 'continue' | 'halt' } => {
@@ -129,8 +156,6 @@ export function useSceneExecutor(
           break;
         }
         case 'choice': {
-          // Choice always halts processing — steps after a choice in the same
-          // timeline are not executed. The caller must handle scene transitions.
           nextState.currentChoices = (step.data as ChoiceBlockData).options ?? null;
           break;
         }
@@ -156,8 +181,10 @@ export function useSceneExecutor(
           break;
         }
         case 'sound':
+          if (__DEV__) console.warn('[useSceneExecutor] no-op block type: sound', step.id);
           break;
         case 'camera':
+          if (__DEV__) console.warn('[useSceneExecutor] no-op block type: camera', step.id);
           break;
         case 'variable': {
           const d = step.data as VariableBlockData;
@@ -170,6 +197,7 @@ export function useSceneExecutor(
           break;
         }
         case 'interactive_object':
+          if (__DEV__) console.warn('[useSceneExecutor] no-op block type: interactive_object', step.id);
           break;
       }
     } catch (err) {
@@ -183,11 +211,9 @@ export function useSceneExecutor(
 
   const processNext = useCallback(() => {
     const steps = timelineRef.current;
-    let halted = false;
-    let haltType: string | undefined;
 
-    setSceneState((prev) => {
-      let currentState = prev;
+    setExecState((prev) => {
+      let currentState: SceneState = { ...prev.sceneState, currentChoices: null };
       let idx = internalIndexRef.current;
 
       while (idx < steps.length) {
@@ -196,58 +222,59 @@ export function useSceneExecutor(
         currentState = nextState;
 
         if (result === 'halt') {
-          halted = true;
-          haltType = step.blockType;
           internalIndexRef.current = idx;
-          return currentState;
+          isHaltedRef.current = true;
+          const typing = step.blockType === 'text' || step.blockType === 'dialogue';
+          return {
+            ...prev,
+            sceneState: currentState,
+            currentStepIndex: idx,
+            isTyping: typing,
+            canAdvance: step.blockType !== 'choice',
+          };
         }
 
         idx++;
       }
 
       internalIndexRef.current = idx;
-      return currentState;
-    });
-
-    if (halted && haltType) {
-      isHaltedRef.current = true;
-      setCurrentStepIndex(internalIndexRef.current);
-      if (haltType === 'text' || haltType === 'dialogue') {
-        setIsTyping(true);
-        setCanAdvance(true);
-      } else {
-        setCanAdvance(haltType !== 'choice');
-      }
-    } else {
       isHaltedRef.current = false;
-      setCurrentStepIndex(internalIndexRef.current);
-      setCanAdvance(false);
-    }
+      return {
+        ...prev,
+        sceneState: currentState,
+        isTyping: false,
+        canAdvance: false,
+      };
+    });
   }, [executeStep]);
 
   useEffect(() => {
     internalIndexRef.current = 0;
     isHaltedRef.current = false;
     advanceGuardRef.current = false;
-    setSceneState({
-      ...createEmptySceneState(),
-      variables: initialVariablesRef.current ?? {},
+    setExecState({
+      sceneState: {
+        ...createEmptySceneState(),
+        variables: initialVariablesRef.current ?? {},
+      },
+      currentStepIndex: 0,
+      isTyping: false,
+      canAdvance: false,
     });
-    setCurrentStepIndex(0);
-    setIsTyping(false);
-    setCanAdvance(false);
-    processNext();
-  }, [timeline, processNext]);
+    try {
+      processNext();
+    } catch (e) {
+      console.warn('[useSceneExecutor] processNext error:', e);
+    }
+
+  }, [timelineKey, processNext]);
 
   const advance = useCallback(() => {
     if (advanceGuardRef.current) return;
     advanceGuardRef.current = true;
     try {
       if (isTyping) {
-        setIsTyping(false);
-        // Reader UI finishes visible typing separately, so the next tap still needs
-        // to be accepted as a real advance for this halted text/dialogue step.
-        setCanAdvance(true);
+        setExecState((prev) => ({ ...prev, isTyping: false, canAdvance: true }));
         return;
       }
 
@@ -260,9 +287,7 @@ export function useSceneExecutor(
       }
 
       isHaltedRef.current = false;
-      setSceneState((prev) => ({ ...prev, currentChoices: null }));
       internalIndexRef.current = internalIndexRef.current + 1;
-      setCurrentStepIndex(internalIndexRef.current);
       processNext();
     } finally {
       advanceGuardRef.current = false;
@@ -276,18 +301,20 @@ export function useSceneExecutor(
     const selected = currentChoices.find((o) => o.id === optionId);
     if (!selected) return;
 
-    setSceneState((prev) => ({
-      ...prev,
-      variables: evaluateVariable(prev.variables, '_last_choice', 'set', optionId),
-      currentChoices: null,
-      isTransitioning: true,
-      transitionTarget: selected.targetSceneId,
-    }));
-
     isHaltedRef.current = false;
-    setCanAdvance(false);
     internalIndexRef.current = internalIndexRef.current + 1;
-    setCurrentStepIndex(internalIndexRef.current);
+    setExecState((prev) => ({
+      ...prev,
+      sceneState: {
+        ...prev.sceneState,
+        variables: evaluateVariable(prev.sceneState.variables, '_last_choice', 'set', optionId),
+        currentChoices: null,
+        isTransitioning: true,
+        transitionTarget: selected.targetSceneId,
+      },
+      canAdvance: false,
+      currentStepIndex: internalIndexRef.current,
+    }));
   }, [sceneState.currentChoices]);
 
   return {

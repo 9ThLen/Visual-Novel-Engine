@@ -2,8 +2,33 @@
  * Security utilities for validating and sanitizing story data
  */
 
-import { Story, StoryScene, Choice } from './types';
+import type { Story, StoryScene, Choice } from '@/lib/scene-operations';
 import type { CharacterSprite } from './character-types';
+import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
+
+/**
+ * Unified URI safety check.
+ * Returns true for safe URIs, false for dangerous/invalid ones.
+ * Accepts http:, https:, file:, asset:, relative paths;
+ * rejects javascript:, data:, vbscript: protocols.
+ * Also rejects path traversal sequences.
+ */
+export function isSafeUri(uri: string): boolean {
+  if (!uri || typeof uri !== 'string') return false;
+  const trimmed = uri.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes('..')) return false;
+  if (trimmed.includes('\0')) return false;
+  const dangerousProtocols = ['javascript:', 'data:', 'vbscript:'];
+  const lowerUri = trimmed.toLowerCase();
+  for (const protocol of dangerousProtocols) {
+    if (lowerUri.startsWith(protocol)) return false;
+  }
+  const allowedPrefixes = ['http://', 'https://', '/', './', 'file://', 'asset://', 'assets/', 'blob:'];
+  const isAllowed = allowedPrefixes.some((p) => lowerUri.startsWith(p));
+  if (!isAllowed) return false;
+  return true;
+}
 
 /**
  * Validation errors
@@ -20,7 +45,9 @@ export class ValidationError extends Error {
  */
 export class StoryValidator {
   /**
-   * Validate imported story JSON
+   * Validate imported legacy story JSON.
+   *
+   * @deprecated Returns the legacy Story shape. Use importStory() for canonical SceneRecord output.
    */
   static validateStory(data: any): Story {
     if (!data || typeof data !== 'object') {
@@ -78,7 +105,9 @@ export class StoryValidator {
   }
 
   /**
-   * Validate a scene
+   * Validate a legacy scene.
+   *
+   * @deprecated Returns StoryScene. Canonical code should validate/import through importStory().
    */
   static validateScene(data: any, sceneId: string): StoryScene {
     if (!data || typeof data !== 'object') {
@@ -180,40 +209,18 @@ export class StoryValidator {
   }
 
   /**
-   * Check for circular references in scene graph
+   * Check for direct self-loops in scene graph (choice pointing to its own scene)
+   * Full-cycle detection is intentionally skipped — branching narratives commonly
+   * have convergent paths and "return to hub" patterns that are not bugs.
    */
   static checkCircularReferences(scenes: Record<string, StoryScene>, startSceneId: string): void {
-    const visited = new Set<string>();
-    const recursionStack = new Set<string>();
-
-    const dfs = (sceneId: string): boolean => {
-      if (!scenes[sceneId]) {
-        return false; // Dead end, not circular
-      }
-
-      if (recursionStack.has(sceneId)) {
-        throw new ValidationError(`Circular reference detected at scene ${sceneId}`, 'scenes');
-      }
-
-      if (visited.has(sceneId)) {
-        return false; // Already checked this path
-      }
-
-      visited.add(sceneId);
-      recursionStack.add(sceneId);
-
-      const scene = scenes[sceneId];
+    for (const [sceneId, scene] of Object.entries(scenes)) {
       for (const choice of scene.choices) {
-        if (dfs(choice.nextSceneId)) {
-          return true;
+        if (choice.nextSceneId === sceneId) {
+          throw new ValidationError(`Direct self-loop detected at scene ${sceneId}`, 'scenes');
         }
       }
-
-      recursionStack.delete(sceneId);
-      return false;
-    };
-
-    dfs(startSceneId);
+    }
   }
 
   /**
@@ -221,30 +228,10 @@ export class StoryValidator {
    */
   static validateUri(uri: string | undefined): string | undefined {
     if (!uri) return undefined;
-
     const trimmed = uri.trim();
-
-    const dangerousProtocols = ['javascript:', 'data:', 'vbscript:'];
-    const lowerUri = trimmed.toLowerCase();
-
-    for (const protocol of dangerousProtocols) {
-      if (lowerUri.startsWith(protocol)) {
-        throw new ValidationError(`Dangerous URI protocol detected: ${protocol}`, 'uri');
-      }
+    if (!isSafeUri(trimmed)) {
+      throw new ValidationError('Unsafe or invalid URI', 'uri');
     }
-
-    // Only allow http, https, and local file paths
-    if (
-      !lowerUri.startsWith('http://') &&
-      !lowerUri.startsWith('https://') &&
-      !lowerUri.startsWith('/') &&
-      !lowerUri.startsWith('./') &&
-      !lowerUri.startsWith('file://') &&
-      !lowerUri.startsWith('asset://')
-    ) {
-      throw new ValidationError('Invalid URI format', 'uri');
-    }
-
     return trimmed;
   }
 
@@ -254,17 +241,17 @@ export class StoryValidator {
   static sanitizeText(text: string): string {
     if (typeof text !== 'string') return '';
 
-    // Remove null bytes
     let sanitized = text.replace(/\0/g, '');
 
-    // Remove script tags
-    sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+    // Remove all HTML tags (not just script)
+    sanitized = sanitized.replace(/<[^>]*>/g, '');
 
     // Remove event handlers
     sanitized = sanitized.replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
 
-    // Remove javascript: protocol
+    // Remove javascript: and data: protocol
     sanitized = sanitized.replace(/javascript:/gi, '');
+    sanitized = sanitized.replace(/data:\s*text\/html/gi, '');
 
     return sanitized;
   }
@@ -274,7 +261,8 @@ export class StoryValidator {
    */
   static sanitizeString(str: string): string {
     if (typeof str !== 'string') return '';
-    return str.replace(/\0/g, '').trim();
+    const cleaned = str.replace(/\0/g, '').replace(/[\x00-\x1f\x7f]/g, '');
+    return cleaned.trim().slice(0, 5000);
   }
 }
 

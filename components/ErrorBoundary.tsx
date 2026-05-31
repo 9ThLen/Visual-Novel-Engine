@@ -145,7 +145,7 @@ class ErrorBoundaryInner extends Component<ErrorBoundaryInnerProps, State> {
             >
               <Text
                 style={{
-                  color: colors['text-inverse'] ?? '#fff',
+                  color: colors['text-inverse'],
                   fontSize: 16,
                   fontWeight: '600',
                 }}

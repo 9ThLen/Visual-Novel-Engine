@@ -3,7 +3,7 @@
 // Splits: use-lego-store.ts for Lego editor state, theme-store.ts for theme
 //
 // State slices:
-//   storiesMetadata, scenesByStory, currentStoryId, playbackState,
+//   storiesMetadata, sceneRecordsByStory, currentStoryId, playbackState,
 //   saveSlots, settings, audioLibraries, characterLibraries,
 //   language, mediaLibrary, isLoaded
 
@@ -11,24 +11,24 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { createPersistentStorage } from '@/lib/persistent-storage';
 import type { Language } from '@/lib/translations';
-import type { StoryScene, SaveSlot, PlaybackState, Story, UserSettings , Choice } from '@/lib/types';
+import type { Story } from '@/lib/scene-operations';
+import type { UserSettings } from '@/lib/user-settings';
+import type { SaveSlot, PlaybackState } from '@/lib/types';
 import type { SceneRecord, SceneConnection } from '@/lib/engine/types';
 import {
-  buildCompatibilitySceneMapFromState,
   getCanonicalSceneRecordFromState,
   getCanonicalSceneRecordsForStoryFromState,
   updateSceneRecordPreservingMeta,
   type SceneRecordContentUpdates,
-} from '@/lib/canonical-scene';
+} from '@/lib/scene-operations';
 import { StoryDomain, type StoryMetadata } from '@/lib/story-domain';
-import { buildRuntimeLoadSnapshot, buildRuntimeSaveSlot } from '@/lib/runtime-story';
+import { buildCanonicalLoadSnapshot, buildCanonicalSaveSlot } from '@/lib/reader-runtime';
 import {
   applyCanonicalSceneDelete,
   buildCanonicalSceneRecordsFromLegacyScenes,
   createCanonicalStorySeed,
   removeCanonicalConnection,
   syncCanonicalStartScene,
-  upsertCanonicalSceneFromLegacyScene,
 } from '@/lib/scene-operations';
 import type { Character } from '@/lib/character-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
@@ -43,12 +43,10 @@ function hasSceneRecords(records: Record<string, SceneRecord> | undefined): bool
 }
 
 function mergeSceneRecordsByStory(
-  hydratedLegacySceneRecords: Record<string, Record<string, SceneRecord>>,
   currentSceneRecords: Record<string, Record<string, SceneRecord>>,
   importedSceneRecords: Record<string, Record<string, SceneRecord>>
 ): Record<string, Record<string, SceneRecord>> {
   const storyIds = new Set([
-    ...Object.keys(hydratedLegacySceneRecords),
     ...Object.keys(currentSceneRecords),
     ...Object.keys(importedSceneRecords),
   ]);
@@ -57,11 +55,9 @@ function mergeSceneRecordsByStory(
     [...storyIds].map((storyId) => {
       const imported = importedSceneRecords[storyId];
       const current = currentSceneRecords[storyId];
-      const hydratedLegacy = hydratedLegacySceneRecords[storyId];
 
       if (hasSceneRecords(imported)) return [storyId, imported] as const;
-      if (hasSceneRecords(current)) return [storyId, current] as const;
-      return [storyId, hydratedLegacy || current || imported || {}] as const;
+      return [storyId, current || imported || {}] as const;
     })
   );
 }
@@ -71,7 +67,6 @@ function mergeSceneRecordsByStory(
 
 export interface AppState {
   storiesMetadata: StoryMetadata[];
-  scenesByStory: Record<string, Record<string, StoryScene>>;
   sceneRecordsByStory: Record<string, Record<string, SceneRecord>>;
   currentStoryId: string | null;
   playbackState: PlaybackState | null;
@@ -82,25 +77,25 @@ export interface AppState {
   language: Language;
   mediaLibrary: LibraryAsset[];
   isLoaded: boolean;
+  migrationError: string | null;
 }
 
 export interface AppActions {
   migrateFromLegacyKeys: () => Promise<void>;
+  clearMigrationError: () => void;
   loadCurrentStory: (storyId: string | null) => Promise<void>;
   updatePlaybackState: (state: PlaybackState | null) => void;
   saveGame: (slotId: string) => void;
-  loadGame: (slotId: string) => { story: Story; playbackState: PlaybackState } | null;
+  loadGame: (slotId: string) => { storyId: string; playbackState: PlaybackState } | null;
   deleteSaveSlot: (slotId: string) => void;
   syncAutoSave: (newSlot: SaveSlot) => void;
   updateSettings: (partial: Partial<UserSettings>) => void;
   createStory: (title: string) => { storyId: string; sceneId: string };
+  /** @deprecated Import stories through importStory(), which canonicalizes legacy Story data. */
   addStory: (story: Story) => void;
   deleteStory: (storyId: string) => void;
   updateStoryMetadata: (storyId: string, updates: Partial<StoryMetadata>) => void;
-  saveScene: (storyId: string, scene: StoryScene) => void;
   deleteScene: (storyId: string, sceneId: string) => void;
-  addChoice: (storyId: string, sceneId: string, choice: Choice) => void;
-  deleteChoice: (storyId: string, sceneId: string, choiceId: string) => void;
   setLanguage: (lang: Language) => void;
   setCharacterLibrary: (storyId: string, characters: Character[]) => void;
   setAudioLibrary: (storyId: string, items: AudioLibraryItem[]) => void;
@@ -133,7 +128,6 @@ export const useAppStore = create<AppState & AppActions>()(
     (set, get) => ({
       // ── Initial state ──
       storiesMetadata: [],
-      scenesByStory: {},
       sceneRecordsByStory: {},
       currentStoryId: null,
       playbackState: null,
@@ -144,6 +138,7 @@ export const useAppStore = create<AppState & AppActions>()(
       language: 'en',
       mediaLibrary: [],
       isLoaded: false,
+      migrationError: null,
 
       // ── Actions ──
 
@@ -204,7 +199,6 @@ export const useAppStore = create<AppState & AppActions>()(
             }
           }
 
-          let scenesByStory: Record<string, Record<string, StoryScene>> = {};
           let sceneRecordsByStory: Record<string, Record<string, SceneRecord>> = {};
           if (stories.length > 0) {
             const sceneEntries = await Promise.all(
@@ -213,13 +207,13 @@ export const useAppStore = create<AppState & AppActions>()(
                 return [s.id, json ? JSON.parse(json) : {}] as const;
               })
             );
-            scenesByStory = Object.fromEntries(sceneEntries);
+            const legacyScenesByStory = Object.fromEntries(sceneEntries);
             sceneRecordsByStory = Object.fromEntries(
               stories.map((story) => [
                 story.id,
                 buildCanonicalSceneRecordsFromLegacyScenes(
                   story.id,
-                  scenesByStory[story.id] || {},
+                  legacyScenesByStory[story.id] || {},
                   story.startSceneId
                 ),
               ])
@@ -228,25 +222,12 @@ export const useAppStore = create<AppState & AppActions>()(
 
           // Merge with existing state — don't overwrite what persist already hydrated
           const current = get();
-          const hydratedLegacySceneRecords = Object.fromEntries(
-            Object.entries(current.scenesByStory || {})
-              .filter(([storyId]) => Object.keys(current.sceneRecordsByStory[storyId] || {}).length === 0)
-              .map(([storyId, legacyScenes]) => {
-                const metadata = current.storiesMetadata.find((story) => story.id === storyId);
-                return [
-                  storyId,
-                  buildCanonicalSceneRecordsFromLegacyScenes(storyId, legacyScenes, metadata?.startSceneId),
-                ] as const;
-              })
-          );
           const mergedSceneRecordsByStory = mergeSceneRecordsByStory(
-            hydratedLegacySceneRecords,
             current.sceneRecordsByStory,
             sceneRecordsByStory
           );
           set({
             storiesMetadata: stories.length > 0 && current.storiesMetadata.length === 0 ? stories : current.storiesMetadata,
-            scenesByStory: current.scenesByStory,
             sceneRecordsByStory: mergedSceneRecordsByStory,
             saveSlots: saveSlots.length > 0 && current.saveSlots.length === 0 ? saveSlots : current.saveSlots,
             settings: normalizeUserSettings(settings ?? current.settings),
@@ -255,10 +236,13 @@ export const useAppStore = create<AppState & AppActions>()(
             isLoaded: true,
           });
         } catch (e) {
+          const message = e instanceof Error ? e.message : 'Unknown migration error';
           ErrorHandler.handle('AppStore migration failed', e, ErrorCategory.STORAGE);
-          set({ isLoaded: true });
+          set({ isLoaded: true, migrationError: message });
         }
       },
+
+      clearMigrationError: () => set({ migrationError: null }),
 
       loadCurrentStory: async (storyId) => {
         if (!storyId) {
@@ -273,11 +257,10 @@ export const useAppStore = create<AppState & AppActions>()(
       saveGame: (slotId) => {
         const state = get();
         if (!state.playbackState || !state.currentStoryId) return;
-        const newSlot = buildRuntimeSaveSlot(
+        const newSlot = buildCanonicalSaveSlot(
           slotId,
           {
             storiesMetadata: state.storiesMetadata,
-            scenesByStory: state.scenesByStory,
             sceneRecordsByStory: state.sceneRecordsByStory,
           },
           state.playbackState
@@ -292,10 +275,9 @@ export const useAppStore = create<AppState & AppActions>()(
         const slot = state.saveSlots.find((s) => s.id === slotId);
         if (!slot) return null;
 
-        return buildRuntimeLoadSnapshot(
+        return buildCanonicalLoadSnapshot(
           {
             storiesMetadata: state.storiesMetadata,
-            scenesByStory: state.scenesByStory,
             sceneRecordsByStory: state.sceneRecordsByStory,
           },
           slot
@@ -351,11 +333,9 @@ export const useAppStore = create<AppState & AppActions>()(
 
       deleteStory: (storyId) =>
         set((s) => {
-          const { [storyId]: _, ...rest } = s.scenesByStory;
           const { [storyId]: __, ...recordRest } = s.sceneRecordsByStory;
           return {
             storiesMetadata: s.storiesMetadata.filter((m) => m.id !== storyId),
-            scenesByStory: rest,
             sceneRecordsByStory: recordRest,
           };
         }),
@@ -367,33 +347,8 @@ export const useAppStore = create<AppState & AppActions>()(
           ),
         })),
 
-      saveScene: (storyId, scene) =>
-        set((s) => upsertCanonicalSceneFromLegacyScene(s, storyId, scene)),
-
       deleteScene: (storyId, sceneId) =>
         set((s) => applyCanonicalSceneDelete(s, storyId, sceneId)),
-
-      addChoice: (storyId, sceneId, choice) =>
-        set((s) => {
-          const storyScenes = buildCompatibilitySceneMapFromState(s, storyId);
-          const scene = storyScenes[sceneId];
-          if (!scene) return {};
-          return upsertCanonicalSceneFromLegacyScene(s, storyId, {
-            ...scene,
-            choices: [...scene.choices, choice],
-          });
-        }),
-
-      deleteChoice: (storyId, sceneId, choiceId) =>
-        set((s) => {
-          const storyScenes = buildCompatibilitySceneMapFromState(s, storyId);
-          const scene = storyScenes[sceneId];
-          if (!scene) return {};
-          return upsertCanonicalSceneFromLegacyScene(s, storyId, {
-            ...scene,
-            choices: scene.choices.filter((c) => c.id !== choiceId),
-          });
-        }),
 
       setLanguage: (lang) => set({ language: lang }),
 
@@ -492,22 +447,22 @@ export const useAppStore = create<AppState & AppActions>()(
         language: state.language,
         mediaLibrary: state.mediaLibrary,
       }),
-      onRehydrateStorage: () => {
-        return (state, error) => {
-          if (error && __DEV__) {
-            console.warn('[Persist] hydration error:', error);
+      onRehydrateStorage: __DEV__
+        ? () => {
+            return (state, error) => {
+              if (error) {
+                console.warn('[Persist] hydration error:', error);
+              }
+              if (state) {
+                console.log(`[Persist] hydrated ${state.storiesMetadata.length} stories`);
+              }
+            };
           }
-          if (__DEV__ && state) {
-            console.log(`[Persist] hydrated ${state.storiesMetadata.length} stories`);
-          }
-        };
-      },
+        : undefined,
     }
   )
 );
 
-export const selectStoryScenes = (storyId: string) => (state: AppState) =>
-  buildCompatibilitySceneMapFromState(state, storyId);
 export const selectStoryMetadata = (storyId: string) => (state: AppState) =>
   state.storiesMetadata.find((m) => m.id === storyId);
 export const selectCanonicalSceneRecord = (storyId: string, sceneId: string) => (state: AppState) =>

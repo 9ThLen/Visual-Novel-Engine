@@ -1,11 +1,18 @@
-import type { Story } from '@/lib/types';
-import type { SceneRecord } from '@/lib/engine/types';
-import { sceneRecordToStoryScene } from '@/lib/scene-record-adapter';
+import type { Story } from '@/lib/scene-operations';
+import type { MusicBlockData, SceneRecord } from '@/lib/engine/types';
 
 export interface BundledStorySyncSnapshot {
-  storiesMetadata: Array<{ id: string }>;
-  scenesByStory: Record<string, Record<string, { musicUri?: string | null }>>;
+  storiesMetadata: { id: string }[];
+  /** @deprecated Ignored. Kept so old tests/snapshots can pass extra state. */
+  scenesByStory?: Record<string, unknown>;
   sceneRecordsByStory: Record<string, Record<string, SceneRecord>>;
+}
+
+function getSceneRecordMusicUri(sceneRecord: SceneRecord): string | null {
+  const musicStep = sceneRecord.timeline.find((step) => step.enabled && step.blockType === 'music');
+  if (!musicStep) return null;
+  const data = musicStep.data as MusicBlockData;
+  return data.action === 'play' ? data.assetId ?? null : null;
 }
 
 export function shouldUpsertBundledStory(
@@ -29,11 +36,8 @@ export function shouldUpsertBundledStory(
     return true;
   }
 
-  const currentCanonicalScene = sceneRecordToStoryScene(canonicalRecord);
-  const currentLegacyScene = snapshot.scenesByStory[storyId]?.[startSceneId];
-
   const bundledMusicUri = bundledStartScene.musicUri ?? null;
-  const currentMusicUri = currentCanonicalScene.musicUri ?? currentLegacyScene?.musicUri ?? null;
+  const currentMusicUri = getSceneRecordMusicUri(canonicalRecord);
 
   return bundledMusicUri !== currentMusicUri;
 }

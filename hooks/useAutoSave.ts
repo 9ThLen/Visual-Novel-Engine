@@ -1,11 +1,10 @@
 import { useEffect, useRef } from 'react';
 import type { PlaybackState, SaveSlot } from '../lib/types';
-import { buildRuntimeSaveSlot } from '../lib/runtime-story';
-import type { RuntimeStoryStateSnapshot } from '../lib/runtime-story';
+import { buildCanonicalSaveSlot, type CanonicalRuntimeSnapshot } from '../lib/reader-runtime';
 
 interface AutoSaveProps {
   playbackState: PlaybackState | null;
-  runtimeSnapshot: RuntimeStoryStateSnapshot;
+  runtimeSnapshot: CanonicalRuntimeSnapshot;
   onAutoSave: (newSlot: SaveSlot) => Promise<void>;
   enabled: boolean;
 }
@@ -42,7 +41,7 @@ export function useAutoSave({
       const state = playbackStateRef.current;
       if (!state) return;
 
-      const newSlot = buildRuntimeSaveSlot(
+      const newSlot = buildCanonicalSaveSlot(
         'autosave',
         snapshot,
         state

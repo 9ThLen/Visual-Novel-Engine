@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
@@ -8,7 +8,7 @@ import { ReaderMenu } from '@/components/ReaderMenu';
 import { useStoryState } from '@/lib/story-hooks';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/lib/i18n';
-import { Choice, PlaybackState } from '@/lib/types';
+import type { PlaybackState, SceneState } from '@/lib/engine/types';
 import { enhancedAudioManager as audioManager } from '@/lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '@/lib/asset-resolver';
 import { useReaderAudio, stopReaderPlayback } from '@/hooks/useReaderAudio';
@@ -16,6 +16,7 @@ import { useReaderInitialization } from '@/hooks/useReaderInitialization';
 import { buttonFeedback } from '@/lib/ui-feedback';
 import { parseResumeExisting } from '@/lib/reader-launch';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { getTimelineInteractiveObjects } from '@/lib/reader-runtime';
 
 function useReaderRouteParams(): { storyId: string | null; resumeExisting: boolean } {
   const { storyId, resume } = useLocalSearchParams();
@@ -29,28 +30,36 @@ export default function ReaderScreen() {
   const router = useRouter();
   const colors = useColors();
   const { storyId, resumeExisting } = useReaderRouteParams();
-  const { settings } = useStoryState();
+  const { settings, sceneRecordsByStory } = useStoryState();
   const [showMenu, setShowMenu] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [readerSceneState, setReaderSceneState] = useState<SceneState | null>(null);
   const [objDialogue, setObjDialogue] = useState<{ text: string; speaker?: string } | null>(null);
+  const pendingChoiceRef = useRef<{ sceneId: string; choiceId: string; targetSceneId: string | null } | null>(null);
   const { t } = useI18n();
 
-  const { isLoading, currentScene, sceneRecord, timeline, story, playbackState, updatePlaybackState } = useReaderInitialization(
+  const { isLoading, sceneRecord, timeline, story, playbackState, updatePlaybackState } = useReaderInitialization(
     storyId ?? undefined,
     { resumeExisting },
   );
+  const interactiveObjects = React.useMemo(
+    () => getTimelineInteractiveObjects(timeline),
+    [timeline],
+  );
 
-  useReaderAudio(story?.id ?? storyId ?? undefined, currentScene, settings, {
+  useReaderAudio(story?.id ?? storyId ?? undefined, sceneRecord, settings, {
+    sceneState: readerSceneState,
     blockedByOverlay: showMenu || historyOpen,
   });
 
   useEffect(() => {
     setObjDialogue(null);
+    setReaderSceneState(null);
   }, [playbackState?.currentSceneId]);
 
   const navigateToScene = useCallback((sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
     if (!story || !playbackState) return;
-    if (!story.scenes[sceneId]) {
+    if (!sceneRecordsByStory[story.id]?.[sceneId]) {
       console.warn('[ReaderScreen] navigateToScene: target scene not found', sceneId);
       return;
     }
@@ -62,17 +71,25 @@ export default function ReaderScreen() {
       choicesMade: choicesMade || playbackState?.choicesMade || [],
     };
     updatePlaybackState(updated);
-  }, [story, playbackState, updatePlaybackState]);
+  }, [story, playbackState, sceneRecordsByStory, updatePlaybackState]);
 
   const handleTransition = (targetSceneId: string | null) => {
     if (isLoading || !playbackState) return;
+    const pendingChoice = pendingChoiceRef.current;
+    pendingChoiceRef.current = null;
+    const transitionChoice = pendingChoice
+      ? { sceneId: pendingChoice.sceneId, choiceId: pendingChoice.choiceId }
+      : { sceneId: playbackState.currentSceneId, choiceId: 'transition' };
+    const updatedChoices = [...playbackState.choicesMade, transitionChoice];
+
     if (targetSceneId) {
-      const updatedChoices = [
-        ...playbackState.choicesMade,
-        { sceneId: playbackState.currentSceneId, choiceId: 'transition' },
-      ];
       navigateToScene(targetSceneId, updatedChoices);
     } else {
+      updatePlaybackState({
+        ...playbackState,
+        isPlaying: false,
+        choicesMade: updatedChoices,
+      });
       void stopReaderPlayback(audioManager);
       if (router.canGoBack()) {
         router.back();
@@ -81,6 +98,10 @@ export default function ReaderScreen() {
       }
     }
   };
+
+  const handleExecutorChoiceSelect = useCallback((choice: { sceneId: string; choiceId: string; targetSceneId: string | null }) => {
+    pendingChoiceRef.current = choice;
+  }, []);
 
   const handleObjectSceneTransition = (sceneId: string) => {
     navigateToScene(sceneId);
@@ -151,16 +172,20 @@ export default function ReaderScreen() {
       </Pressable>
 
       <StoryReaderResponsive
+        sceneId={sceneRecord?.id ?? playbackState!.currentSceneId}
         timeline={timeline}
         onTransition={handleTransition}
+        onExecutorChoiceSelect={handleExecutorChoiceSelect}
+        onSceneStateChange={setReaderSceneState}
         isLoading={isLoading}
         settings={settings}
         onHistoryVisibleChange={setHistoryOpen}
+        routeOnExecutorComplete={true}
       />
 
-      {currentScene?.interactiveObjects && currentScene.interactiveObjects.length > 0 && (
+      {interactiveObjects.length > 0 && (
         <InteractiveObjectsLayer
-          objects={currentScene.interactiveObjects}
+          objects={interactiveObjects}
           onSceneTransition={handleObjectSceneTransition}
           onDialogue={handleObjectDialogue}
           onPlayAudio={handleObjectPlayAudio}

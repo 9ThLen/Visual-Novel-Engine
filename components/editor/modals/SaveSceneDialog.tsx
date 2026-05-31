@@ -6,11 +6,9 @@ import React, { useState } from 'react';
 import {
   View, Text, Pressable, TextInput, ScrollView, Modal, FlatList,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/lib/i18n';
-import { useAppStore } from '@/stores/use-app-store';
-import type { ProjectScene } from '@/lib/engine/types';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 // ── Save Dialog ────────────────────────────────────────────────────────────
 
@@ -31,7 +29,6 @@ export function SaveSceneDialog({
 }: SaveSceneDialogProps) {
   const colors = useColors();
   const { t } = useI18n();
-  const insets = useSafeAreaInsets();
 
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
@@ -69,7 +66,7 @@ export function SaveSceneDialog({
         <View style={{
           width: '90%',
           maxWidth: 500,
-          backgroundColor: colors['surface-container'] || colors.surface,
+          backgroundColor: colors['surface-container'],
           borderRadius: 12,
           overflow: 'hidden',
         }}>
@@ -84,10 +81,10 @@ export function SaveSceneDialog({
             borderBottomColor: colors.border,
           }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>
-              Save Scene
+              {t('editor.saveScene')}
             </Text>
             <Pressable onPress={onClose} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('a11y.closePanel')}>
-              <Text style={{ fontSize: 16, color: colors.muted }}>✕</Text>
+              <IconSymbol name="close" size={18} color={colors.muted} />
             </Pressable>
           </View>
 
@@ -98,12 +95,12 @@ export function SaveSceneDialog({
                 fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
                 color: colors.muted, marginBottom: 6,
               }}>
-                Scene Name
+                {t('editor.sceneName')}
               </Text>
               <TextInput
                 value={name}
                 onChangeText={setName}
-                placeholder="Enter scene name..."
+                placeholder={t('editor.sceneNamePlaceholder')}
                 placeholderTextColor={colors.muted}
                 style={{
                   backgroundColor: colors.background,
@@ -124,12 +121,12 @@ export function SaveSceneDialog({
                 fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
                 color: colors.muted, marginBottom: 6,
               }}>
-                Description
+                {t('common.description')}
               </Text>
               <TextInput
                 value={description}
                 onChangeText={setDescription}
-                placeholder="Optional description..."
+                placeholder={t('editor.optionalDescription')}
                 placeholderTextColor={colors.muted}
                 multiline
                 numberOfLines={3}
@@ -154,7 +151,7 @@ export function SaveSceneDialog({
                 fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
                 color: colors.muted, marginBottom: 6,
               }}>
-                Tags
+                {t('editor.tags')}
               </Text>
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                 {tags.map((tag) => (
@@ -174,7 +171,7 @@ export function SaveSceneDialog({
                     accessibilityLabel={`${t('common.delete')} ${tag}`}
                   >
                     <Text style={{ fontSize: 11, color: colors.primary }}>{tag}</Text>
-                    <Text style={{ fontSize: 10, color: colors.primary }}>✕</Text>
+                    <IconSymbol name="close" size={10} color={colors.primary} />
                   </Pressable>
                 ))}
               </View>
@@ -182,7 +179,7 @@ export function SaveSceneDialog({
                 <TextInput
                   value={tagInput}
                   onChangeText={setTagInput}
-                  placeholder="Add tag..."
+                  placeholder={t('editor.addTagPlaceholder')}
                   placeholderTextColor={colors.muted}
                   onSubmitEditing={handleAddTag}
                   style={{
@@ -206,9 +203,9 @@ export function SaveSceneDialog({
                     backgroundColor: colors.primary,
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={t('editor.addChoice')}
+                  accessibilityLabel={t('editor.addTag')}
                 >
-                  <Text style={{ fontSize: 12, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>{t('editor.addChoice')}</Text>
+                  <Text style={{ fontSize: 12, color: colors['text-inverse'], fontWeight: '600' }}>{t('editor.addTag')}</Text>
                 </Pressable>
               </View>
             </View>
@@ -250,7 +247,7 @@ export function SaveSceneDialog({
               accessibilityRole="button"
               accessibilityLabel={t('common.save')}
             >
-              <Text style={{ fontSize: 13, color: colors['text-inverse'] ?? '#fff', fontWeight: '600' }}>{t('common.save')}</Text>
+              <Text style={{ fontSize: 13, color: colors['text-inverse'], fontWeight: '600' }}>{t('common.save')}</Text>
             </Pressable>
           </View>
         </View>
@@ -265,13 +262,12 @@ interface LoadSceneDialogProps {
   visible: boolean;
   onClose: () => void;
   onLoad: (sceneId: string) => void;
-  scenes: Array<{ id: string; name: string; description?: string; updatedAt: number }>;
+  scenes: { id: string; name: string; description?: string; updatedAt: number }[];
 }
 
 export function LoadSceneDialog({ visible, onClose, onLoad, scenes }: LoadSceneDialogProps) {
   const colors = useColors();
   const { t } = useI18n();
-  const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredScenes = scenes.filter((s) => {
@@ -294,7 +290,7 @@ export function LoadSceneDialog({ visible, onClose, onLoad, scenes }: LoadSceneD
           width: '90%',
           maxWidth: 600,
           maxHeight: '70%',
-          backgroundColor: colors['surface-container'] || colors.surface,
+          backgroundColor: colors['surface-container'],
           borderRadius: 12,
           overflow: 'hidden',
         }}>
@@ -309,10 +305,10 @@ export function LoadSceneDialog({ visible, onClose, onLoad, scenes }: LoadSceneD
             borderBottomColor: colors.border,
           }}>
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>
-              Load Scene
+              {t('editor.loadScene')}
             </Text>
             <Pressable onPress={onClose} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('a11y.closePanel')}>
-              <Text style={{ fontSize: 16, color: colors.muted }}>✕</Text>
+              <IconSymbol name="close" size={18} color={colors.muted} />
             </Pressable>
           </View>
 
@@ -321,7 +317,7 @@ export function LoadSceneDialog({ visible, onClose, onLoad, scenes }: LoadSceneD
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search scenes..."
+              placeholder={t('editor.searchScenes')}
               placeholderTextColor={colors.muted}
               style={{
                 backgroundColor: colors.background,
@@ -364,13 +360,13 @@ export function LoadSceneDialog({ visible, onClose, onLoad, scenes }: LoadSceneD
                   </Text>
                 )}
                 <Text style={{ fontSize: 10, color: colors.muted, marginTop: 4 }}>
-                  Updated: {new Date(item.updatedAt).toLocaleDateString()}
+                  {t('common.updated')}: {new Date(item.updatedAt).toLocaleDateString()}
                 </Text>
               </Pressable>
             )}
             ListEmptyComponent={
               <View style={{ padding: 40, alignItems: 'center' }}>
-                <Text style={{ fontSize: 14, color: colors.muted }}>No scenes found</Text>
+                <Text style={{ fontSize: 14, color: colors.muted }}>{t('editor.noScenesFound')}</Text>
               </View>
             }
           />

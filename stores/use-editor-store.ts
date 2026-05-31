@@ -3,9 +3,8 @@
  */
 
 import { create } from 'zustand';
-import type { TimelineStep, BlockType } from '@/lib/engine/types';
+import { BLOCK_TYPE_INFO, type TimelineStep, type BlockType } from '@/lib/engine/types';
 import { createBlockStep, duplicateStep } from '@/lib/engine/event-factory';
-import { BLOCK_TYPE_INFO } from '@/lib/engine/types';
 import { normalizeEditorTimeline, type EditorSceneDraft, shouldHydrateEditorSceneDraft } from '@/lib/editor-scene-draft';
 
 const MAX_UNDO_HISTORY = 100;

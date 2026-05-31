@@ -3,6 +3,7 @@ import { Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 import type { StoryManuscriptBlock as StoryManuscriptBlockModel } from '@/lib/editor/story-manuscript';
 
 interface StoryManuscriptBlockProps {
@@ -25,6 +26,7 @@ function StoryManuscriptBlockComponent({
   onRemove,
 }: StoryManuscriptBlockProps) {
   const colors = useColors();
+  const { t } = useI18n();
 
   return (
     <View
@@ -47,17 +49,17 @@ function StoryManuscriptBlockComponent({
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase' }}>
             {block.kind === 'narration'
-              ? 'Narration'
+              ? t('manuscript.narration')
               : block.kind === 'dialogue'
-                ? 'Dialogue'
+                ? t('manuscript.dialogue')
                 : block.kind === 'choice_group'
-                  ? 'Choice Group'
+                  ? t('manuscript.choiceGroup')
                   : block.label}
           </Text>
           <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
             {block.kind === 'technical_marker'
-              ? 'Read-only technical block'
-              : 'Редагується прямо у manuscript view'}
+              ? t('manuscript.technicalBlock')
+              : t('manuscript.editable')}
           </Text>
         </View>
 
@@ -70,7 +72,7 @@ function StoryManuscriptBlockComponent({
           </Button>
           {block.kind !== 'technical_marker' && (
             <Button variant="ghost" size="sm" onPress={onRemove}>
-              Remove
+              {t('common.delete')}
             </Button>
           )}
         </View>
@@ -81,7 +83,7 @@ function StoryManuscriptBlockComponent({
           multiline
           value={block.content}
           onChangeText={(content) => onChange({ ...block, content })}
-          placeholder="Write narration..."
+          placeholder={t('manuscript.writeNarration')}
           placeholderTextColor={colors.muted}
           style={{
             minHeight: 120,
@@ -119,7 +121,7 @@ function StoryManuscriptBlockComponent({
                   nextEntries[index] = { ...entry, characterId };
                   onChange({ ...block, entries: nextEntries });
                 }}
-                placeholder="Speaker ID"
+                placeholder={t('manuscript.speakerId')}
                 placeholderTextColor={colors.muted}
                 style={{
                   borderBottomWidth: 1,
@@ -140,7 +142,7 @@ function StoryManuscriptBlockComponent({
                   nextEntries[index] = { ...entry, text };
                   onChange({ ...block, entries: nextEntries });
                 }}
-                placeholder="Dialogue line..."
+                placeholder={t('manuscript.dialogueLine')}
                 placeholderTextColor={colors.muted}
                 style={{
                   minHeight: 78,
@@ -162,7 +164,7 @@ function StoryManuscriptBlockComponent({
                   }}
                   disabled={block.entries.length <= 1}
                 >
-                  Remove Line
+                  {t('manuscript.removeLine')}
                 </Button>
               </View>
             </View>
@@ -186,7 +188,7 @@ function StoryManuscriptBlockComponent({
               })
             }
           >
-            + Add Dialogue Line
+            {t('manuscript.addDialogueLine')}
           </Button>
         </View>
       )}
@@ -205,7 +207,7 @@ function StoryManuscriptBlockComponent({
               }}
             >
               <Text style={{ fontSize: 11, color: colors.muted, fontWeight: '700', marginBottom: 8 }}>
-                Choice {index + 1}
+                {t('editor.properties.choice', { number: index + 1 })}
               </Text>
               <TextInput
                 value={option.text}
@@ -214,7 +216,7 @@ function StoryManuscriptBlockComponent({
                   nextOptions[index] = { ...option, text };
                   onChange({ ...block, options: nextOptions });
                 }}
-                placeholder="Choice text..."
+                placeholder={t('manuscript.choiceText')}
                 placeholderTextColor={colors.muted}
                 style={{
                   color: colors.foreground,
@@ -230,7 +232,7 @@ function StoryManuscriptBlockComponent({
                   nextOptions[index] = { ...option, targetSceneId: targetSceneId || null };
                   onChange({ ...block, options: nextOptions });
                 }}
-                placeholder="Target scene ID"
+                placeholder={t('manuscript.targetSceneId')}
                 placeholderTextColor={colors.muted}
                 style={{
                   borderTopWidth: 1,
@@ -252,7 +254,7 @@ function StoryManuscriptBlockComponent({
                   }}
                   disabled={block.options.length <= 1}
                 >
-                  Remove Choice
+                  {t('manuscript.removeChoice')}
                 </Button>
               </View>
             </View>
@@ -275,7 +277,7 @@ function StoryManuscriptBlockComponent({
               })
             }
           >
-            + Add Choice
+            {t('editor.properties.addChoice')}
           </Button>
         </View>
       )}

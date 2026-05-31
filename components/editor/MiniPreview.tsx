@@ -9,7 +9,12 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { useColors } from '@/hooks/use-colors';
-import { BLOCK_TYPE_INFO, type TimelineStep } from '@/lib/engine/types';
+import type {
+  BackgroundBlockData,
+  CharacterBlockData,
+  MusicBlockData,
+  TimelineStep,
+} from '@/lib/engine/types';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 
 interface MiniPreviewProps {
@@ -42,6 +47,7 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
       }}>
         <Text style={{
           fontSize: 11,
+          lineHeight: 15,
           fontWeight: '700',
           textTransform: 'uppercase',
           color: colors.muted,
@@ -73,7 +79,7 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
               alignItems: 'center',
               justifyContent: 'center',
             }}>
-              <Text style={{ fontSize: 10, color: colors.muted }}>No background</Text>
+              <Text style={{ fontSize: 11, lineHeight: 15, color: colors.muted }}>No background</Text>
             </View>
           )}
 
@@ -87,14 +93,14 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
                 bottom: 10,
                 width: 40,
                 height: 60,
-                backgroundColor: (colors.secondary || colors.primary) + '30',
-                borderRadius: 4,
+                backgroundColor: colors.secondary + '30',
+                borderRadius: 6,
                 alignItems: 'center',
                 justifyContent: 'center',
                 transform: [{ translateX: -20 }],
               }}
             >
-              <Text style={{ fontSize: 8, color: colors.muted }}>
+              <Text style={{ fontSize: 11, lineHeight: 14, color: colors.muted }}>
                 {char.characterId || '?'}
               </Text>
             </View>
@@ -107,14 +113,14 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
           paddingLeft: 8,
           justifyContent: 'center',
         }}>
-          <Text style={{ fontSize: 10, color: colors.foreground, fontWeight: '600' }}>
+          <Text style={{ fontSize: 11, lineHeight: 15, color: colors.foreground, fontWeight: '600' }}>
             {sceneState.characters.length} character{sceneState.characters.length !== 1 ? 's' : ''}
           </Text>
-          <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+          <Text style={{ fontSize: 11, lineHeight: 15, color: colors.muted, marginTop: 4 }}>
             {timeline.length} block{timeline.length !== 1 ? 's' : ''}
           </Text>
           {sceneState.musicTrackId && (
-            <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+            <Text style={{ fontSize: 11, lineHeight: 15, color: colors.muted, marginTop: 4 }}>
               🎵 {sceneState.musicTrackId}
             </Text>
           )}
@@ -156,7 +162,7 @@ function ResolvedMiniBackground({ assetId }: { assetId: string }) {
         alignItems: 'center',
         justifyContent: 'center',
       }}>
-        <Text style={{ fontSize: 10, color: colors.muted }}>
+        <Text style={{ fontSize: 11, lineHeight: 15, color: colors.muted }}>
           Loading...
         </Text>
       </View>
@@ -178,7 +184,7 @@ function ResolvedMiniBackground({ assetId }: { assetId: string }) {
 
 interface MiniSceneState {
   backgroundAssetId: string | null;
-  characters: Array<{ characterId: string; position: string }>;
+  characters: { characterId: string; position: string }[];
   musicTrackId: string | null;
 }
 
@@ -191,13 +197,15 @@ function computeSceneState(timeline: TimelineStep[]): MiniSceneState {
 
   for (const step of timeline) {
     if (!step.enabled) continue;
-    const data = step.data as any;
 
     switch (step.blockType) {
-      case 'background':
+      case 'background': {
+        const data = step.data as BackgroundBlockData;
         if (data.assetId) state.backgroundAssetId = data.assetId;
         break;
-      case 'character':
+      }
+      case 'character': {
+        const data = step.data as CharacterBlockData;
         if (data.characterId) {
           state.characters.push({
             characterId: data.characterId,
@@ -205,11 +213,14 @@ function computeSceneState(timeline: TimelineStep[]): MiniSceneState {
           });
         }
         break;
-      case 'music':
+      }
+      case 'music': {
+        const data = step.data as MusicBlockData;
         if (data.assetId && data.action === 'play') {
           state.musicTrackId = data.assetId;
         }
         break;
+      }
     }
   }
 

@@ -1,4 +1,4 @@
-import { updateSceneRecordPreservingMeta } from '@/lib/canonical-scene';
+import { updateSceneRecordPreservingMeta } from '@/lib/scene-operations';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import { createBackgroundStep } from '@/lib/engine/event-factory';
 

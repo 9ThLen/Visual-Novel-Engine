@@ -19,7 +19,10 @@ export default function Root({ children }: PropsWithChildren) {
         */}
         <ScrollViewStyleReset />
 
-        {/* Add any additional <head> elements here (e.g. links, scripts) */}
+        <meta
+          httpEquiv="Content-Security-Policy"
+          content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; media-src 'self' blob: data: https:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:;"
+        />
       </head>
       <body>{children}</body>
     </html>

@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import {
   createEditorSceneDraft,

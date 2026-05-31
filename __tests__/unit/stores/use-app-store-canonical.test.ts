@@ -1,10 +1,8 @@
-import { describe, expect, it } from 'vitest';
-
 import {
   getCanonicalSceneRecordFromState,
   getCanonicalSceneRecordsForStoryFromState,
   updateSceneRecordPreservingMeta,
-} from '@/lib/canonical-scene';
+} from '@/lib/scene-operations';
 
 const baseState = {
   storiesMetadata: [

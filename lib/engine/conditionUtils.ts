@@ -1,5 +1,7 @@
 import type { Condition, SceneState } from './types';
 
+type VariableValue = string | number | boolean | string[];
+
 function toComparable(a: string | number | boolean, b: string | number | boolean): [string | number, string | number] {
   const na = Number(a);
   const nb = Number(b);
@@ -9,13 +11,13 @@ function toComparable(a: string | number | boolean, b: string | number | boolean
 
 export function conditionsMet(
   conditions: Condition[] | undefined,
-  variables: Record<string, string | number | boolean>,
+  variables: Record<string, VariableValue>,
 ): boolean {
   if (!conditions || conditions.length === 0) return true;
 
   return conditions.every((cond) => {
     const variableValue = variables[cond.variableName];
-    const [a, b] = toComparable(variableValue, cond.value);
+    const [a, b] = toComparable(variableValue as string | number | boolean, cond.value);
 
     switch (cond.operator) {
       case '==':
@@ -34,6 +36,10 @@ export function conditionsMet(
         return String(variableValue).includes(String(cond.value));
       case 'isEmpty':
         return variableValue === '' || variableValue === null || variableValue === undefined;
+      case 'has':
+        return Array.isArray(variableValue) && variableValue.includes(String(cond.value));
+      case 'not_has':
+        return !Array.isArray(variableValue) || !variableValue.includes(String(cond.value));
       default:
         return true;
     }

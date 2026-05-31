@@ -1,12 +1,9 @@
 // Fallback for using MaterialIcons on Android and web.
 
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { SymbolWeight, SymbolViewProps } from "expo-symbols";
+import { SymbolWeight } from "expo-symbols";
 import { ComponentProps } from "react";
 import { OpaqueColorValue, type StyleProp, type TextStyle } from "react-native";
-
-type IconMapping = Record<SymbolViewProps["name"], ComponentProps<typeof MaterialIcons>["name"]>;
-type IconSymbolName = keyof typeof MAPPING;
 
 /**
  * Add your SF Symbols to Material Icons mappings here.
@@ -18,7 +15,45 @@ const MAPPING = {
   "paperplane.fill": "send",
   "chevron.left.forwardslash.chevron.right": "code",
   "chevron.right": "chevron-right",
-} as IconMapping;
+  "book.fill": "menu-book",
+  home: "home",
+  editor: "edit",
+  settings: "settings",
+  document: "article",
+  manuscript: "auto-stories",
+  timeline: "account-tree",
+  blocks: "extension",
+  preview: "visibility",
+  save: "save",
+  load: "folder-open",
+  delete: "delete",
+  duplicate: "content-copy",
+  close: "close",
+  menu: "menu",
+  search: "search",
+  image: "image",
+  gallery: "photo-library",
+  files: "folder",
+  character: "person",
+  sprites: "theater-comedy",
+  music: "music-note",
+  sound: "volume-up",
+  voice: "record-voice-over",
+  palette: "palette",
+  play: "play-arrow",
+  stop: "stop",
+  location: "place",
+  lightning: "bolt",
+  add: "add",
+  undo: "undo",
+  redo: "redo",
+  collapse: "keyboard-arrow-up",
+  expand: "keyboard-arrow-down",
+  movie: "movie",
+  mic: "mic",
+} satisfies Record<string, ComponentProps<typeof MaterialIcons>["name"]>;
+
+export type IconSymbolName = keyof typeof MAPPING;
 
 /**
  * An icon component that uses native SF Symbols on iOS, and Material Icons on Android and web.

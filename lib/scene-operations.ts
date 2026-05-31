@@ -1,8 +1,101 @@
-import { storySceneToSceneRecordDraft } from '@/lib/scene-record-adapter';
 import { normalizeEditorTimeline } from '@/lib/editor-scene-draft';
-import type { SceneRecord } from '@/lib/engine/types';
+import type { SceneConnection, SceneRecord, TimelineStep } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
-import type { StoryScene } from '@/lib/types';
+import type { SplashScreenConfig } from '@/lib/splash-types';
+import type { InteractiveObject } from '@/lib/interactive-types';
+import type { AudioLibraryItem, AudioTrigger } from '@/lib/audio-types';
+import type { CharacterSprite } from '@/lib/character-types';
+
+/**
+ * @deprecated Legacy type — only used by buildCanonicalSceneRecordsFromLegacyScenes and upsertCanonicalSceneFromLegacyScene.
+ * TODO: remove once migrateFromLegacyKeys is removed (2026-Q3).
+ */
+export interface Choice {
+  id: string;
+  text: string;
+  nextSceneId: string;
+}
+
+/**
+ * @deprecated Legacy type — use SceneRecord + TimelineStep instead.
+ * TODO: remove once migrateFromLegacyKeys is removed (2026-Q3).
+ */
+export interface StoryScene {
+  id: string;
+  text: string;
+  backgroundImageUri?: string | null;
+  characters: CharacterSprite[];
+  voiceAudioUri?: string | null;
+  choices: Choice[];
+  musicUri?: string | null;
+  splashScreen?: SplashScreenConfig;
+  interactiveObjects?: InteractiveObject[];
+  autoAdvance?: {
+    enabled: boolean;
+    delay: number;
+    nextSceneId: string;
+  };
+  blocks?: TimelineStep[];
+  audioTriggers?: AudioTrigger[];
+}
+
+/**
+ * @deprecated Legacy type — use StoryMetadata + SceneRecord[] instead.
+ * TODO: remove once migrateFromLegacyKeys is removed (2026-Q3).
+ */
+export interface Story {
+  id: string;
+  title: string;
+  description?: string;
+  author?: string;
+  startSceneId: string;
+  scenes: Record<string, StoryScene>;
+  audioLibrary?: AudioLibraryItem[];
+  createdAt: number;
+  updatedAt: number;
+  thumbnailUri?: string;
+}
+import {
+  createBackgroundStep,
+  createChoiceStep,
+  createMusicStep,
+  createTextStep,
+} from '@/lib/engine/event-factory';
+
+export interface CanonicalSceneStateSnapshot {
+  sceneRecordsByStory: Record<string, Record<string, SceneRecord>>;
+}
+
+export type SceneRecordContentUpdates = Partial<
+  Pick<SceneRecord, 'name' | 'description' | 'tags' | 'timeline' | 'sceneState'>
+>;
+
+export function updateSceneRecordPreservingMeta(
+  existingRecord: SceneRecord,
+  updates: SceneRecordContentUpdates
+): SceneRecord {
+  return {
+    ...existingRecord,
+    ...updates,
+    updatedAt: Date.now(),
+  };
+}
+
+export function getCanonicalSceneRecordFromState(
+  state: CanonicalSceneStateSnapshot,
+  storyId: string,
+  sceneId: string
+): SceneRecord | undefined {
+  return state.sceneRecordsByStory[storyId]?.[sceneId];
+}
+
+export function getCanonicalSceneRecordsForStoryFromState(
+  state: CanonicalSceneStateSnapshot,
+  storyId: string
+): SceneRecord[] {
+  const storyRecords = Object.values(state.sceneRecordsByStory[storyId] || {});
+  return storyRecords.sort((a, b) => a.createdAt - b.createdAt);
+}
 
 export interface CanonicalSceneOperationsSnapshot {
   storiesMetadata: StoryMetadata[];
@@ -16,6 +109,71 @@ export interface CanonicalStorySeed {
 
 function sortSceneRecords(records: Record<string, SceneRecord>): SceneRecord[] {
   return Object.values(records).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+function mapLegacyChoicesToConnections(choices: StoryScene['choices'] = []): SceneConnection[] {
+  return choices
+    .filter((choice) => !!choice.nextSceneId)
+    .map((choice, index) => ({
+      targetSceneId: choice.nextSceneId,
+      outputPort: `choice_${index}`,
+      label: choice.text,
+    }));
+}
+
+function legacySceneToSceneRecordDraft(storyId: string, scene: StoryScene): SceneRecord {
+  const timeline: TimelineStep[] = [];
+
+  if (scene.backgroundImageUri) {
+    timeline.push(createBackgroundStep({ assetId: scene.backgroundImageUri }));
+  }
+
+  if (scene.text?.trim()) {
+    timeline.push(createTextStep({ content: scene.text }));
+  }
+
+  if (scene.choices?.length) {
+    timeline.push(createChoiceStep({
+      options: scene.choices.map((choice) => ({
+        id: choice.id,
+        text: choice.text,
+        targetSceneId: choice.nextSceneId || null,
+      })),
+    }));
+  }
+
+  if (scene.musicUri) {
+    timeline.push(createMusicStep({ assetId: scene.musicUri, action: 'play' }));
+  }
+
+  return {
+    id: scene.id,
+    storyId,
+    name: scene.id,
+    description: '',
+    tags: [],
+    timeline: normalizeEditorTimeline(timeline),
+    sceneState: {
+      backgroundAssetId: scene.backgroundImageUri ?? null,
+      backgroundTransition: 'fade',
+      characters: [],
+      activeEffects: [],
+      musicTrackId: scene.musicUri ?? null,
+      musicPlaying: !!scene.musicUri,
+      musicVolume: 1,
+      variables: {},
+      dialogueHistory: [],
+      currentChoices: null,
+      isTransitioning: false,
+      transitionTarget: null,
+    },
+    flowX: 0,
+    flowY: 0,
+    connections: mapLegacyChoicesToConnections(scene.choices),
+    isStart: false,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
 }
 
 export function resolveCanonicalStartSceneId(
@@ -98,7 +256,7 @@ export function buildCanonicalSceneRecordsFromLegacyScenes(
   preferredStartSceneId?: string
 ): Record<string, SceneRecord> {
   const sceneRecords = Object.fromEntries(
-    Object.values(legacyScenes).map((scene) => [scene.id, storySceneToSceneRecordDraft(storyId, scene)])
+    Object.values(legacyScenes).map((scene) => [scene.id, legacySceneToSceneRecordDraft(storyId, scene)])
   );
 
   return syncCanonicalStartScene(
@@ -125,6 +283,38 @@ export function buildCanonicalSceneRecordsFromLegacyScenes(
   ).sceneRecordsByStory[storyId] || {};
 }
 
+export function upsertCanonicalSceneFromLegacyScene(
+  snapshot: CanonicalSceneOperationsSnapshot,
+  storyId: string,
+  scene: StoryScene
+): CanonicalSceneOperationsSnapshot {
+  const storyRecords = { ...(snapshot.sceneRecordsByStory[storyId] || {}) };
+  const existingRecord = storyRecords[scene.id];
+  const draft = legacySceneToSceneRecordDraft(storyId, scene);
+  const timestamp = Date.now();
+
+  storyRecords[scene.id] = existingRecord
+    ? {
+        ...existingRecord,
+        name: existingRecord.name || draft.name,
+        timeline: normalizeEditorTimeline(draft.timeline),
+        connections: draft.connections,
+        updatedAt: timestamp,
+      }
+    : {
+        ...draft,
+        timeline: normalizeEditorTimeline(draft.timeline),
+        isStart: Object.keys(storyRecords).length === 0,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+
+  return syncCanonicalStartScene(snapshot, storyId, {
+    sceneRecords: storyRecords,
+    preferredStartSceneId: storyRecords[scene.id].isStart ? scene.id : undefined,
+  });
+}
+
 export function createCanonicalStorySeed(
   title: string,
   options: {
@@ -134,7 +324,7 @@ export function createCanonicalStorySeed(
   }
 ): CanonicalStorySeed {
   const timestamp = options.now ?? Date.now();
-  const baseSceneRecord = storySceneToSceneRecordDraft(options.storyId, {
+  const baseSceneRecord = legacySceneToSceneRecordDraft(options.storyId, {
     id: options.sceneId,
     text: 'Your story begins here...',
     characters: [],

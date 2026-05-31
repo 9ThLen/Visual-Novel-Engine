@@ -24,6 +24,7 @@ import {
   Pressable,
   StyleSheet,
   useWindowDimensions,
+  Animated as RNAnimated,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -33,9 +34,10 @@ import Animated, {
 import { Image } from 'expo-image';
 import { cn } from '@/lib/utils';
 import { useColors } from '@/hooks/use-colors';
-import { StoryScene, Choice, UserSettings } from '@/lib/types';
-import type { CharacterPosition } from '@/lib/character-types';
-import type { TimelineStep } from '@/lib/engine/types';
+import type { UserSettings } from '@/lib/user-settings';
+import { StoryScene, Choice } from '@/lib/scene-operations';
+import type { CharacterPosition, CharacterSprite } from '@/lib/character-types';
+import type { CharacterRuntimeState, SceneState, TimelineStep } from '@/lib/engine/types';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
 import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
 import { DialogueHistory, HistoryEntry } from './dialogue-history';
@@ -47,7 +49,7 @@ import { enhancedAudioManager } from '@/lib/audio-manager-enhanced';
 import { isReaderAudioSessionActive } from '@/lib/reader-audio-session';
 import { useI18n } from '@/lib/i18n';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
-import { getChoiceTransitionTarget } from '@/lib/story-reader-choice';
+import { createExecutorSceneImageState } from '@/lib/reader-runtime';
 import {
   getStoryReaderContainerStyle,
   getStoryReaderSpeakerTextStyle,
@@ -68,16 +70,20 @@ const AUTO_PLAY_DELAY_MS = 2400;
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface Props {
+  sceneId?: string;
   /** @deprecated Use timeline + onTransition instead */
   scene?: StoryScene;
   timeline?: TimelineStep[];
   initialVariables?: Record<string, string | number | boolean>;
   onContinue?: (targetSceneId?: string) => void;
   onChoiceSelect?: (choice: Choice) => void;
+  onExecutorChoiceSelect?: (choice: { sceneId: string; choiceId: string; targetSceneId: string | null }) => void;
   onTransition?: (targetSceneId: string | null) => void;
   isLoading?: boolean;
   settings?: Partial<UserSettings>;
   onHistoryVisibleChange?: (visible: boolean) => void;
+  onSceneStateChange?: (sceneState: SceneState) => void;
+  routeOnExecutorComplete?: boolean;
 }
 
 const DIALOGUE_MARGIN_BOTTOM = 28;
@@ -85,21 +91,26 @@ const DIALOGUE_MARGIN_BOTTOM = 28;
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function StoryReaderResponsive({
+  sceneId,
   scene,
   timeline,
   initialVariables,
   onContinue,
   onChoiceSelect,
+  onExecutorChoiceSelect,
   onTransition,
   isLoading = false,
   settings = {},
   onHistoryVisibleChange,
+  onSceneStateChange,
+  routeOnExecutorComplete = false,
 }: Props) {
   const colors = useColors();
   const { t } = useI18n();
   const dims = useWindowDimensions();
   const layout = getReaderLayout(dims);
   const fontSize = getResponsiveFontSize(dims);
+  const firstTimelineStepId = timeline?.[0]?.id;
 
   const {
     textSpeed = 0.5,
@@ -113,9 +124,9 @@ export function StoryReaderResponsive({
 
   // Derive display values from either executor state or legacy scene
   const displaySceneId = useMemo(() => {
-    if (usingExecutor) return 'executed-scene';
+    if (usingExecutor) return sceneId ?? `executed-scene:${firstTimelineStepId ?? 'empty'}`;
     return scene?.id ?? '';
-  }, [usingExecutor, scene?.id]);
+  }, [usingExecutor, sceneId, firstTimelineStepId, scene?.id]);
 
   const pages = useMemo(() => {
     if (usingExecutor) {
@@ -134,16 +145,6 @@ export function StoryReaderResponsive({
     return scene!.text.split('\n\n').filter(Boolean);
   }, [usingExecutor, timeline, executor.currentStepIndex, scene]);
 
-  // For text blocks, get content from the current timeline step
-  const currentTextContent = useMemo(() => {
-    if (!usingExecutor) return undefined;
-    const currentBlock = timeline?.[executor.currentStepIndex];
-    if (currentBlock?.blockType === 'text') {
-      return (currentBlock.data as { content: string }).content;
-    }
-    return undefined;
-  }, [usingExecutor, timeline, executor.currentStepIndex]);
-
   const displayBackgroundUri = usingExecutor
     ? executor.sceneState.backgroundAssetId
     : scene!.backgroundImageUri;
@@ -158,10 +159,19 @@ export function StoryReaderResponsive({
     : scene!.choices;
 
   const hasChoices = displayChoices.length > 0;
+  type DisplayChoice = (typeof displayChoices)[number];
 
   const [pageIndex, setPageIndex] = useState(0);
 
-  const { bgSource, resolvedCharUris } = useSceneImages(scene ?? { id: displaySceneId, backgroundImageUri: displayBackgroundUri ?? undefined, characters: [] } as unknown as StoryScene);
+  const executorImageState = useMemo(
+    () => createExecutorSceneImageState(
+      displaySceneId,
+      displayBackgroundUri,
+      executor.sceneState.characters,
+    ),
+    [displayBackgroundUri, displaySceneId, executor.sceneState.characters],
+  );
+  const { bgSource, resolvedCharUris } = useSceneImages(scene ?? executorImageState);
 
   // ── History ─────────────────────────────────────────────────────────────
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -170,6 +180,38 @@ export function StoryReaderResponsive({
   useEffect(() => {
     onHistoryVisibleChange?.(showHistory);
   }, [showHistory, onHistoryVisibleChange]);
+
+  useEffect(() => {
+    if (usingExecutor) {
+      onSceneStateChange?.(executor.sceneState);
+    }
+  }, [executor.sceneState, onSceneStateChange, usingExecutor]);
+
+  const transitionNotifiedRef = useRef<string | null>(null);
+  const completeNotifiedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!usingExecutor || !executor.sceneState.isTransitioning) return;
+    const target = executor.sceneState.transitionTarget ?? '__end__';
+    const key = `${displaySceneId}:${target}`;
+    if (transitionNotifiedRef.current === key) return;
+    transitionNotifiedRef.current = key;
+    onTransition?.(executor.sceneState.transitionTarget);
+  }, [
+    displaySceneId,
+    executor.sceneState.isTransitioning,
+    executor.sceneState.transitionTarget,
+    onTransition,
+    usingExecutor,
+  ]);
+
+  useEffect(() => {
+    if (!usingExecutor || !routeOnExecutorComplete || !executor.isComplete) return;
+    const key = `${displaySceneId}:complete`;
+    if (completeNotifiedRef.current === key) return;
+    completeNotifiedRef.current = key;
+    onTransition?.(null);
+  }, [displaySceneId, executor.isComplete, onTransition, routeOnExecutorComplete, usingExecutor]);
 
   // ── Auto-play ───────────────────────────────────────────────────────────
   const [autoPlayActive, setAutoPlayActive] = useState(autoPlay);
@@ -219,6 +261,8 @@ export function StoryReaderResponsive({
 
   useEffect(() => {
     textCompleteFiredRef.current = null;
+    transitionNotifiedRef.current = null;
+    completeNotifiedRef.current = null;
   }, [displaySceneId]);
 
   useEffect(() => {
@@ -291,9 +335,12 @@ export function StoryReaderResponsive({
       return;
     }
     turboInterval.current = setInterval(() => {
-      if (isTyping) {
-        completeTypewriter();
-      } else if (!usingExecutor && !_isLastPage) {
+    if (isTyping) {
+      completeTypewriter();
+      if (usingExecutor && executor.isTyping) {
+        executor.advance();
+      }
+    } else if (!usingExecutor && !_isLastPage) {
         setPageIndex((p) => p + 1);
       } else if (!usingExecutor && scene!.choices.length === 0) {
         onContinue?.();
@@ -309,7 +356,13 @@ export function StoryReaderResponsive({
   // ── Tap handler ────────────────────────────────────────────────────────
   const handleTap = () => {
     if (isLoading) return;
-    if (isTyping) { completeTypewriter(); return; }
+    if (isTyping) {
+      completeTypewriter();
+      if (usingExecutor && executor.isTyping) {
+        executor.advance();
+      }
+      return;
+    }
 
     if (usingExecutor) {
       if (executor.sceneState.isTransitioning) return;
@@ -427,8 +480,8 @@ export function StoryReaderResponsive({
             },
           ]}
         >
-          {(usingExecutor ? executor.sceneState.characters : (scene?.characters ?? [])).map((char: any) => {
-            const charId = usingExecutor ? (char as { characterId: string }).characterId : (char as { id: string }).id;
+          {(usingExecutor ? executor.sceneState.characters : (scene?.characters ?? [])).map((char: CharacterRuntimeState | CharacterSprite) => {
+            const charId = 'characterId' in char ? char.characterId : char.id;
             const charSource = resolvedCharUris[charId];
             if (!charSource) return null;
             const uri = typeof charSource === 'string' ? charSource : (charSource as { uri: string }).uri;
@@ -441,10 +494,10 @@ export function StoryReaderResponsive({
                   spriteId: '',
                   position: 'center' as CharacterPosition,
                   zIndex: 0,
-                  animatedOpacity: new (require('react-native').Animated.Value)(1),
-                  animatedTranslateX: new (require('react-native').Animated.Value)(0),
-                  animatedTranslateY: new (require('react-native').Animated.Value)(0),
-                  animatedScale: new (require('react-native').Animated.Value)(1),
+                  animatedOpacity: new RNAnimated.Value(1),
+                  animatedTranslateX: new RNAnimated.Value(0),
+                  animatedTranslateY: new RNAnimated.Value(0),
+                  animatedScale: new RNAnimated.Value(1),
                 }}
                 spriteUri={uri}
                 dialogueTop={isPortrait ? dims.height - layout.dialogueHeight : undefined}
@@ -547,7 +600,7 @@ export function StoryReaderResponsive({
             {/* Choices */}
             {((usingExecutor ? executor.sceneState.currentChoices !== null : _isLastPage) && !isTyping && displayChoices.length > 0) && (
               <View className="px-3 pt-1 pb-3 gap-2">
-                {displayChoices.map((choice: any) => (
+                {displayChoices.map((choice: DisplayChoice) => (
                   <Pressable
                     key={choice.id}
                     style={({ pressed }) => ({
@@ -562,9 +615,13 @@ export function StoryReaderResponsive({
                     onPress={() => {
                       if (usingExecutor) {
                         executor.selectChoice(choice.id);
-                        onTransition?.(getChoiceTransitionTarget(choice));
+                        onExecutorChoiceSelect?.({
+                          sceneId: displaySceneId,
+                          choiceId: choice.id,
+                          targetSceneId: choice.nextSceneId ?? null,
+                        });
                       } else {
-                        onChoiceSelect?.(choice);
+                        onChoiceSelect?.(choice as Choice);
                       }
                     }}
                     accessibilityRole="button"

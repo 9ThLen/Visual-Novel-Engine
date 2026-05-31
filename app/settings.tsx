@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
 import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback } from 'react';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
 import { useStoryState, useStoryActions } from '@/lib/story-hooks';
@@ -187,8 +186,9 @@ export default function SettingsScreen() {
                   onPress={() => updateSettings({ textSize: size })}
                   accessibilityRole="button"
                   accessibilityLabel={t('settings.textSize')}
+                  accessibilityState={{ selected: settings.textSize === size }}
                 >
-                  <Text style={{ color: settings.textSize === size ? (colors['text-inverse'] ?? '#fff') : colors.foreground, fontSize: 13, fontWeight: '600', textTransform: 'capitalize' }}>
+                  <Text style={{ color: settings.textSize === size ? colors['text-inverse'] : colors.foreground, fontSize: 13, fontWeight: '600', textTransform: 'capitalize' }}>
                     {t(`settings.${size}`)}
                   </Text>
                 </Pressable>
