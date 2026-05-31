@@ -12,7 +12,7 @@ import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
 import { useStoryState, useStoryActions } from '@/lib/story-hooks';
 import { useColors } from '@/hooks/use-colors';
-import { SaveSlot } from '@/lib/types';
+import { SaveSlot } from '@/lib/story-domain';
 import { useI18n } from '@/lib/i18n';
 import { Button } from '@/components/ui';
 
