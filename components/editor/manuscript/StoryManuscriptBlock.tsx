@@ -79,7 +79,6 @@ function StoryManuscriptBlockComponent({
       {block.kind === 'narration' && (
         <TextInput
           multiline
-          numberOfLines={5}
           value={block.content}
           onChangeText={(content) => onChange({ ...block, content })}
           placeholder="Write narration..."
