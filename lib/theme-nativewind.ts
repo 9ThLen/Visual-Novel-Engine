@@ -8,9 +8,13 @@ type NativewindBindings = {
 
 type LoadBindings = () => NativewindBindings;
 
-function defaultLoadBindings(): NativewindBindings {
-  return require('nativewind') as NativewindBindings;
-}
+const defaultLoadBindings: LoadBindings = () => {
+  try {
+    return require('nativewind') as NativewindBindings;
+  } catch {
+    return {};
+  }
+};
 
 export function getNativewindColorSchemeController(options: {
   isWeb: boolean;
