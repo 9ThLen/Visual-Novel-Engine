@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui';
 import { useColors } from '@/hooks/use-colors';
@@ -282,7 +282,7 @@ function StoryManuscriptBlockComponent({
       )}
 
       {block.kind === 'technical_marker' && (
-        <Pressable
+        <View
           style={{
             borderRadius: 999,
             alignSelf: 'flex-start',
@@ -292,7 +292,7 @@ function StoryManuscriptBlockComponent({
           }}
         >
           <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>{block.label}</Text>
-        </Pressable>
+        </View>
       )}
     </View>
   );
