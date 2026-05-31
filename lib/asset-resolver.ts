@@ -127,7 +127,7 @@ async function resolveUri(uri: string): Promise<string | number | null> {
   try {
     // Path traversal check for file paths
     if (!isPathSafe(uri)) {
-      if (__DEV__) console.warn('[AssetResolver] Blocked unsafe path:', uri);
+      ErrorHandler.handle('Blocked unsafe path', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri });
       return null;
     }
 
@@ -155,7 +155,7 @@ async function resolveUri(uri: string): Promise<string | number | null> {
       ];
       const isSafe = safeDataPrefixes.some(p => lowerUri.startsWith(p));
       if (!isSafe) {
-        if (__DEV__) console.warn('[AssetResolver] Blocked unsafe data URI:', uri.slice(0, 80));
+        ErrorHandler.handle('Blocked unsafe data URI', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri: uri.slice(0, 80) });
         return null;
       }
       return uri;
@@ -196,7 +196,7 @@ async function resolveUri(uri: string): Promise<string | number | null> {
 
     if (uri.startsWith('assets/')) return uri;
 
-    if (__DEV__) console.warn('[AssetResolver] Could not verify URI, using as-is:', uri);
+    ErrorHandler.handle('Could not verify URI, using as-is', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri });
     return uri;
   } catch (error) {
     ErrorHandler.handle('Error resolving asset URI', error, ErrorCategory.MEDIA, ErrorSeverity.LOW, { uri });
