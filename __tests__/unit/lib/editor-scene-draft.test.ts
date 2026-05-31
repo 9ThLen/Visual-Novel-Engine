@@ -82,7 +82,7 @@ describe('editor-scene-draft', () => {
     expect(draft.timeline[0]?.blockType).toBe('background');
   });
 
-  it('collapses duplicate background blocks to a single background step', () => {
+  it('ensures a scene draft always has exactly one background block regardless of input', () => {
     const sceneRecord = makeSceneRecord({
       timeline: [
         {
