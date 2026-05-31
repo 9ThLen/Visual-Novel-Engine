@@ -62,6 +62,8 @@ export const themeColors: {
   'shadow-lg': { light: string; dark: string };
   'shadow-xl': { light: string; dark: string };
   'shadow-glow': { light: string; dark: string };
+  'surface-container': { light: string; dark: string };
+  'secondary': { light: string; dark: string };
 };
 
 declare const themeConfig: {
