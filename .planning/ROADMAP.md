@@ -136,10 +136,23 @@ Close the 4 partially-fixed issues from `code-review-verification-2026-06-02.md`
 ## Phase 14 — Audit Hardening
 
 **Priority:** P1  
-**Status:** Planned  
-**Plan:** `.planning/phases/14-audit-hardening/14-PLAN.md`
+**Status:** Complete (Wave 1 + Wave 2 executed)  
+**Plan:** `.planning/phases/14-audit-hardening/14-PLAN.md`  
+**Source audit:** `audit-2026-06-02.md` (21 findings, 7.0/10)
 
 Resolve the 3 CRITICAL and 7 WARNING findings from `audit-2026-06-02.md` (comprehensive project-wide audit of 157 files). Fixes: PII/token logging hygiene, 12 unguarded `console.*` calls, hex-alpha hacks in 7 files, `withAlpha()` helper, decompose the new god component `PropertiesPanel.tsx` (1094 LOC), and refactor `useReaderAudio` to use a singleton.
+
+### Wave 1 — Console hygiene, token sanitization, withAlpha, PropertiesPanel
+- **CR-3 + WR-1:** 12 unguarded `console.*` calls wrapped in `if (__DEV__)` across 6 files; 2 `setTimeout` handlers refactored to `useRef`-cleared pattern
+- **CR-1 + CR-2:** `app/oauth/callback.tsx:46` logs only `{ id, openId }` (no PII); `lib/_core/api.ts:153,194` logs `hasSessionToken` boolean (no token prefix)
+- **WR-4 + WR-5 + C-6:** `withAlpha(color, alpha)` helper added to `lib/_core/theme.ts` (handles hex/rgb/oklch); 9 hex-alpha concatenations + 3 inline `rgba()` sites migrated
+- **WR-2 + C-1:** `PropertiesPanel.tsx` decomposed from 1094 → 87 LOC; 12 per-block-type subcomponents + 4 supporting files in `components/editor/properties/`
+
+### Wave 2 — useReaderAudio singleton
+- **WR-3:** `useReaderAudio` no longer accepts `audioManager` param; `initPromise: Promise<void> | null` module-level singleton in `lib/audio-player-service.ts:30` guards `initialize()`; L298-312 useEffect deps stable
+- **CR-3 (deferred):** `useReaderAudio.ts:194` `console.warn` wrapped in `if (__DEV__)`
+
+**Re-audit expected verdict:** ≥ 8.5/10 (all 3 CRITICAL + 7 WARNING + 5 high-impact INFO findings addressed).
 
 ## Execution Order
 
