@@ -111,6 +111,22 @@ Address all findings from the security audit — fix critical OAuth CSRF, protot
 
 Restore project quality gates after the migration/security work: fix reader runtime regressions, make lint pass, and make the web export gate reproducible on the supported Node/Expo setup.
 
+## Phase 12 — Code Analysis Remediation
+
+**Priority:** P0  
+**Status:** Planned  
+**Plan:** `.planning/phases/12-code-analysis-remediation/12-PLAN.md`
+
+Fix the 2026-06-01 external audit findings, ordered by complexity and user impact: DocumentSceneEditor scroll/decomposition, unsupported block UX, theme hardening, import validation, reader decomposition, and store/runtime cleanup.
+
+## Phase 13 — Post-Audit Remaining Issues
+
+**Priority:** P2  
+**Status:** Planned  
+**Plan:** `.planning/phases/13-post-audit-remediation/13-PLAN.md`
+
+Close the 4 partially-fixed issues from `code-review-verification-2026-06-02.md` (verification of the 2026-06-01 audit): finish DocumentSceneEditor decomposition (H1), replace remaining hardcoded `rgba()` overlays (M2), add phone header overflow protection (M3), and document the `file://` allow-list decision (L1).
+
 ## Execution Order
 
 1. Phase 01
@@ -125,6 +141,8 @@ Restore project quality gates after the migration/security work: fix reader runt
 10. Phase 09.1
 11. Phase 10
 12. Phase 11
+13. Phase 12
+14. Phase 13
 
 ## Global Verification Gate
 
