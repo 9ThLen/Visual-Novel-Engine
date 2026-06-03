@@ -133,6 +133,14 @@ Close the 4 partially-fixed issues from `code-review-verification-2026-06-02.md`
 - **M3:** `SceneComposerPhone.tsx` header wrapped in horizontal `ScrollView` (mirroring the existing tabs pattern at L227)
 - **L1:** `file://` platform-gate documented with inline comment at `lib/story-validator.ts:28-30`; Expo FileSystem compatibility rationale added
 
+## Phase 14 — Audit Hardening
+
+**Priority:** P1  
+**Status:** Planned  
+**Plan:** `.planning/phases/14-audit-hardening/14-PLAN.md`
+
+Resolve the 3 CRITICAL and 7 WARNING findings from `audit-2026-06-02.md` (comprehensive project-wide audit of 157 files). Fixes: PII/token logging hygiene, 12 unguarded `console.*` calls, hex-alpha hacks in 7 files, `withAlpha()` helper, decompose the new god component `PropertiesPanel.tsx` (1094 LOC), and refactor `useReaderAudio` to use a singleton.
+
 ## Execution Order
 
 1. Phase 01
@@ -149,6 +157,7 @@ Close the 4 partially-fixed issues from `code-review-verification-2026-06-02.md`
 12. Phase 11
 13. Phase 12
 14. Phase 13
+15. Phase 14
 
 ## Global Verification Gate
 
