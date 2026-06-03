@@ -18,6 +18,7 @@ import { getLibraryAssets, addAssetToLibrary } from '@/lib/media-library-service
 import { StoryMetadata } from '@/lib/story-domain';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/lib/i18n';
+import { withAlpha } from '@/lib/_core/theme';
 import { Button } from '@/components/ui';
 import demoStory from '@/assets/demo-story.json';
 import demoStoryAdvanced from '@/assets/demo-story-advanced.json';
@@ -33,31 +34,10 @@ interface StoryCardProps {
   onPress: (story: StoryMetadata) => void;
 }
 
-function withOpacity(hexColor: string | undefined, opacity: number) {
-  if (!hexColor?.startsWith('#')) {
-    return hexColor ?? '#7c5bf5';
-  }
-
-  const raw = hexColor.slice(1);
-  const normalized =
-    raw.length === 3 || raw.length === 4
-      ? raw.slice(0, 3).split('').map((char) => `${char}${char}`).join('')
-      : raw.length === 6 || raw.length === 8
-        ? raw.slice(0, 6)
-        : null;
-
-  if (!normalized || !/^[0-9a-fA-F]{6}$/.test(normalized)) {
-    return '#7c5bf5';
-  }
-
-  const alpha = Math.round(opacity * 255).toString(16).padStart(2, '0').toUpperCase();
-  return `#${normalized}${alpha}`;
-}
-
 const StoryCard = memo(function StoryCard({ item, onPress }: StoryCardProps) {
   const { t } = useI18n();
   const colors = useColors();
-  const accent = withOpacity(colors.primary, 0.14);
+  const accent = withAlpha(colors.primary, 0.14);
   const elevatedSurface = colors['surface-1'] ?? colors.surface;
 
   return (

@@ -15,6 +15,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/lib/i18n';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { type BlockType } from '@/lib/engine/types';
+import { withAlpha } from '@/lib/_core/theme';
 
 // ── Template scene definitions ──────────────────────────────────────
 interface TemplateScene {
@@ -335,7 +336,7 @@ export function SceneSelector({
             alignItems: isPhone ? 'flex-start' : 'center',
             justifyContent: 'space-between',
             paddingHorizontal: 16, paddingVertical: 10,
-            backgroundColor: colors.primary + '20',
+            backgroundColor: withAlpha(colors.primary, 0.13),
             borderBottomWidth: 1, borderBottomColor: colors.border,
             gap: isPhone ? 8 : 12,
           }}>
@@ -422,7 +423,7 @@ export function SceneSelector({
                 flexDirection: isPhone ? 'column' : 'row',
                 alignItems: isPhone ? 'stretch' : 'center',
                 padding: 14, marginBottom: 8,
-                backgroundColor: selectedTemplate?.id === item.id ? colors.primary + '15' : colors.surface,
+                backgroundColor: selectedTemplate?.id === item.id ? withAlpha(colors.primary, 0.08) : colors.surface,
                 borderRadius: 10,
                 borderWidth: 1,
                 borderColor: selectedTemplate?.id === item.id ? colors.primary : colors.border,

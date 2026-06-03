@@ -11,6 +11,7 @@ import { isWeb } from '@/lib/web-utils';
 import { getWebLayout } from '@/lib/responsive';
 import { useI18n } from '@/lib/i18n';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
+import { withAlpha } from '@/lib/_core/theme';
 
 interface NavItem {
   id: string;
@@ -84,7 +85,7 @@ export function WebSidebar({ visible = true }: WebSidebarProps) {
                 styles.navItem,
                 {
                   backgroundColor: isActive
-                    ? colors.primary + '15'
+                    ? withAlpha(colors.primary, 0.08)
                     : hovered
                     ? colors.background
                     : 'transparent',

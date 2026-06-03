@@ -33,6 +33,7 @@ import { createTimelineSortableProps } from '@/lib/editor/timeline-sortable';
 import { getTimelineItemLayout } from '@/lib/editor/timeline-item-layout';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getBlockIconName } from '@/lib/editor/block-icon';
+import { withAlpha } from '@/lib/_core/theme';
 
 interface TimelinePanelProps {
   timeline: TimelineStep[];
@@ -188,7 +189,7 @@ export function TimelinePanel({
                               width: 12,
                               height: 12,
                               borderRadius: 6,
-                              backgroundColor: info.color + '40',
+                              backgroundColor: withAlpha(info.color, 0.25),
                             }} />
                           </View>
                         </SortableItem.Handle>
@@ -203,6 +204,7 @@ export function TimelinePanel({
                           })}
                           accessibilityRole="button"
                           accessibilityLabel={t(`editor.block.${step.blockType}`, undefined, info.label)}
+                          accessibilityHint={isSelected ? 'Block selected, tap to deselect' : 'Tap to select and edit this block'}
                         >
                           <View style={{ position: 'relative' }}>
                             <View style={{
@@ -259,6 +261,7 @@ export function TimelinePanel({
                               style={{ padding: 4 }}
                               accessibilityRole="button"
                               accessibilityLabel={step.collapsed ? `${t('editor.blockActions')} expand` : `${t('editor.blockActions')} collapse`}
+                              accessibilityHint={step.collapsed ? 'Expand this block' : 'Collapse this block'}
                             >
                               <IconSymbol name={step.collapsed ? 'expand' : 'collapse'} size={16} color={colors.muted} />
                             </Pressable>
@@ -267,6 +270,7 @@ export function TimelinePanel({
                               style={{ padding: 4 }}
                               accessibilityRole="button"
                               accessibilityLabel={t('common.duplicate')}
+                              accessibilityHint="Duplicate this block"
                             >
                               <IconSymbol name="duplicate" size={16} color={colors.muted} />
                             </Pressable>
@@ -275,6 +279,7 @@ export function TimelinePanel({
                               style={{ padding: 4 }}
                               accessibilityRole="button"
                               accessibilityLabel={t('common.delete')}
+                              accessibilityHint="Delete this block from timeline"
                             >
                               <IconSymbol name="delete" size={16} color={colors.error} />
                             </Pressable>

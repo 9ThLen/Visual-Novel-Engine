@@ -162,6 +162,54 @@ export const Colors = {
   dark: buildRuntimePalette("dark"),
 } satisfies Record<ColorScheme, RuntimePalette>;
 
+/**
+ * Apply alpha to a color. Handles hex (#rrggbb/#rgb/#rrggbbaa), rgb()/rgba(), oklch().
+ * - For hex: appends/overwrites 2-char alpha (clamped 0..255).
+ * - For rgb()/rgba(): replaces alpha channel.
+ * - For oklch(): appends /<alpha> if not present.
+ * - Falls back to the input if format is unrecognized.
+ */
+export function withAlpha(color: string | undefined, alpha: number): string {
+  if (!color) return color ?? '';
+  const a = Math.max(0, Math.min(1, alpha));
+
+  // hex
+  if (color.startsWith('#')) {
+    const raw = color.slice(1);
+    const six =
+      raw.length === 3 || raw.length === 4
+        ? raw
+            .slice(0, 3)
+            .split('')
+            .map((c) => c + c)
+            .join('')
+        : raw.length >= 6
+          ? raw.slice(0, 6)
+          : null;
+    if (!six || !/^[0-9a-fA-F]{6}$/.test(six)) return color;
+    const aa = Math.round(a * 255).toString(16).padStart(2, '0').toUpperCase();
+    return `#${six}${aa}`;
+  }
+
+  // rgb / rgba
+  const rgbMatch = color.match(
+    /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*[\d.]+)?\s*\)$/i,
+  );
+  if (rgbMatch) {
+    return `rgba(${rgbMatch[1]}, ${rgbMatch[2]}, ${rgbMatch[3]}, ${a})`;
+  }
+
+  // oklch(L% C H[/ A])
+  const oklchMatch = color.match(/^oklch\(([^)]+)\)$/i);
+  if (oklchMatch) {
+    const inner = oklchMatch[1];
+    const base = inner.split('/')[0].trim();
+    return `oklch(${base} / ${a})`;
+  }
+
+  return color;
+}
+
 export type ThemeColorPalette = (typeof Colors)[ColorScheme];
 
 export const Fonts = Platform.select({
