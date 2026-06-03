@@ -122,10 +122,16 @@ Fix the 2026-06-01 external audit findings, ordered by complexity and user impac
 ## Phase 13 — Post-Audit Remaining Issues
 
 **Priority:** P2  
-**Status:** Planned  
-**Plan:** `.planning/phases/13-post-audit-remediation/13-PLAN.md`
+**Status:** Complete (Wave 1 executed)  
+**Plan:** `.planning/phases/13-post-audit-remediation/13-01-PLAN.md`
 
 Close the 4 partially-fixed issues from `code-review-verification-2026-06-02.md` (verification of the 2026-06-01 audit): finish DocumentSceneEditor decomposition (H1), replace remaining hardcoded `rgba()` overlays (M2), add phone header overflow protection (M3), and document the `file://` allow-list decision (L1).
+
+### Wave 1 — All 4 issues fixed
+- **H1:** DocumentSceneEditor decomposed from 562 → 238 LOC (`saveDocumentSceneToRecord` extracted to `lib/document-scene-persistence.ts`; sub-components `DocumentPage`, `DocumentBlockDialogue`, `DocumentBlockChoice` extracted to separate files; 7 `accessibilityHint` preserved)
+- **M2:** 5 hardcoded `rgba()` removed from `WebSidebar.tsx` (2) and `app/tabs/index.tsx` (3); replaced with `useColors()` theme tokens
+- **M3:** `SceneComposerPhone.tsx` header wrapped in horizontal `ScrollView` (mirroring the existing tabs pattern at L227)
+- **L1:** `file://` platform-gate documented with inline comment at `lib/story-validator.ts:28-30`; Expo FileSystem compatibility rationale added
 
 ## Execution Order
 
