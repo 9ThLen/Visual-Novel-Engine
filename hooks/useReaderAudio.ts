@@ -78,18 +78,24 @@ export async function stopReaderPlayback(
   await audioManager.stopAll(0);
 }
 
+/**
+ * `audioManager` is a module-level singleton (see `enhancedAudioManager` in
+ * `lib/audio-manager-enhanced.ts`). Its reference never changes, so dependency
+ * arrays that include it are stable and the hook does not need to receive it
+ * as a parameter. Use the singleton directly to keep the API surface small.
+ */
 export function useReaderAudio(
   storyId: string | null | undefined,
   currentScene: ReaderAudioScene | null,
   settings: UserSettings,
   options?: {
-    audioManager?: IAudioManager;
     sceneState?: SceneState | null;
     /** True when reader menu, history log, or similar overlays block story audio. */
     blockedByOverlay?: boolean;
   },
 ) {
-  const audioManager = options?.audioManager ?? defaultAudioManager;
+  // Singleton — import once, never re-assign. See module doc above.
+  const audioManager = defaultAudioManager;
   const sceneState = options?.sceneState ?? null;
   const blockedByOverlay = options?.blockedByOverlay ?? false;
   const isFocused = useIsFocused();

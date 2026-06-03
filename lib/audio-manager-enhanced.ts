@@ -186,3 +186,13 @@ export function createEnhancedAudioManager(
 // ── Singleton export ───────────────────────────────────────────────────────
 
 export const enhancedAudioManager = createEnhancedAudioManager();
+
+/**
+ * Initialize the singleton audio manager. Idempotent and safe to call multiple
+ * times — the underlying `AudioPlayerService.initialize()` is guarded by a
+ * module-level `initPromise` so the actual audio-mode setup runs at most once
+ * per session. Returns the shared initialization promise.
+ */
+export async function ensureAudioManagerInitialized(): Promise<void> {
+  await enhancedAudioManager.initialize();
+}
