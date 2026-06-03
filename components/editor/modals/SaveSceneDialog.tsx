@@ -9,6 +9,7 @@ import {
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/lib/i18n';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { withAlpha } from '@/lib/_core/theme';
 
 // ── Save Dialog ────────────────────────────────────────────────────────────
 
@@ -162,7 +163,7 @@ export function SaveSceneDialog({
                       paddingHorizontal: 10,
                       paddingVertical: 4,
                       borderRadius: 12,
-                      backgroundColor: colors.primary + '20',
+                      backgroundColor: withAlpha(colors.primary, 0.13),
                       flexDirection: 'row',
                       alignItems: 'center',
                       gap: 4,

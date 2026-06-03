@@ -11,6 +11,7 @@ import { resolveAssetUri } from '@/lib/asset-resolver';
 import { AudioPlayerService } from '@/lib/audio-player-service';
 import { useI18n } from '@/lib/i18n';
 import { getTimelineDisplayPages } from '@/lib/reader-runtime';
+import { withAlpha } from '@/lib/_core/theme';
 
 export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: string }) {
   const router = useRouter();
@@ -155,7 +156,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
             {t('editor.loadingBackground')}
           </Text>
         ) : (
-          <Text style={{ fontSize: 14, color: `${colors.muted}99` }}>{t('editor.noBackground')}</Text>
+          <Text style={{ fontSize: 14, color: withAlpha(colors.muted, 0.6) }}>{t('editor.noBackground')}</Text>
         )}
 
         {sceneState.characters.map((char, i) => (
@@ -167,7 +168,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
               left: getCharacterPosition(char.position),
               width: 80,
               height: 120,
-              backgroundColor: secondaryColor + '30',
+              backgroundColor: withAlpha(secondaryColor, 0.19),
               borderRadius: 8,
               alignItems: 'center',
               justifyContent: 'center',

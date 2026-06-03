@@ -17,6 +17,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useI18n } from '@/lib/i18n';
 import { getPhoneComposerPanel } from '@/lib/mobile-composer-layout';
+import { withAlpha } from '@/lib/_core/theme';
 
 export interface SceneComposerPhoneProps {
   colors: ReturnType<typeof useColors>;
@@ -137,7 +138,7 @@ export function SceneComposerPhone(props: SceneComposerPhoneProps) {
       borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.border,
-      backgroundColor: `${colors.primary}12`,
+      backgroundColor: withAlpha(colors.primary, 0.07),
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
     },

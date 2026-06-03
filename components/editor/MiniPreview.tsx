@@ -16,6 +16,7 @@ import type {
   TimelineStep,
 } from '@/lib/engine/types';
 import { resolveAssetUri } from '@/lib/asset-resolver';
+import { withAlpha } from '@/lib/_core/theme';
 
 interface MiniPreviewProps {
   timeline: TimelineStep[];
@@ -93,7 +94,7 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
                 bottom: 10,
                 width: 40,
                 height: 60,
-                backgroundColor: colors.secondary + '30',
+                backgroundColor: withAlpha(colors.secondary, 0.19),
                 borderRadius: 6,
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -158,7 +159,7 @@ function ResolvedMiniBackground({ assetId }: { assetId: string }) {
     return (
       <View style={{
         flex: 1,
-        backgroundColor: colors.primary + '20',
+        backgroundColor: withAlpha(colors.primary, 0.13),
         alignItems: 'center',
         justifyContent: 'center',
       }}>
