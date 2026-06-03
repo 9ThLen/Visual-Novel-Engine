@@ -252,3 +252,14 @@ export function generateId(prefix: string, length = 7): string {
 [[security-audit-report-2026-05-31]] - Попередній звіт аудиту (перша версія)
 [[code-analysis-report-2026-05-31]] - Аудит коду
 [[architecture-reference]] - Архітектурна довідка
+
+---
+
+## L1 file:// allow-list status (2026-06-02 verification)
+
+Per `code-review-verification-2026-06-02.md`, L1 (file:// allowed in isSafeUri()) is RESOLVED with documented platform-gate.
+
+**Status:** RESOLVED (platform-gated, intentional on native).
+**Code:** `lib/story-validator.ts:28-32` — `file://` added to allowedPrefixes only when `Platform.OS !== 'web'`.
+**Risk:** Web platform completely blocks `file://` URIs. Native platforms (iOS/Android) intentionally permit `file://` for Expo FileSystem local file access.
+**Wiki update:** 2026-06-02 — verified PARTIALLY FIXED → FIXED via inline comment + this section.
