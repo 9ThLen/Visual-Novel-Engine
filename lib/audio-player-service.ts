@@ -15,12 +15,19 @@ interface TrackEntry {
     player: AudioPlayer;
     metadata?: Record<string, string | undefined>;
     fadeInterval?: ReturnType<typeof setInterval>;
+    fadeOnDone?: () => void;
     startTime: number;
 }
 
 export class AudioPlayerService implements IAudioPlayerService {
     private tracks = new Map<string, TrackEntry>();
     private initialized = false;
+    /**
+     * Singleton initialization promise: shared across concurrent `initialize()`
+     * calls so the underlying `setAudioModeAsync` runs at most once per session.
+     * Reset to null on failure so the next call can retry.
+     */
+    private initPromise: Promise<void> | null = null;
     /** Invalidates in-flight crossFade when stop/stopAll runs mid-fade. */
     private crossFadeGeneration = new Map<string, number>();
 
@@ -30,13 +37,19 @@ export class AudioPlayerService implements IAudioPlayerService {
     }
 
     async initialize(): Promise<void> {
-        if (this.initialized) return;
-        try {
-            await setAudioModeAsync({ playsInSilentMode: true });
-            this.initialized = true;
-} catch (err) {
-      ErrorHandler.handle('AudioPlayer init failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW);
-    }
+        if (this.initPromise) return this.initPromise;
+        this.initPromise = (async () => {
+            if (this.initialized) return;
+            try {
+                await setAudioModeAsync({ playsInSilentMode: true });
+                this.initialized = true;
+            } catch (err) {
+                // Reset on failure so a future call can retry.
+                this.initPromise = null;
+                ErrorHandler.handle('AudioPlayer init failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW);
+            }
+        })();
+        return this.initPromise;
     }
 
     async play(
@@ -239,6 +252,9 @@ export class AudioPlayerService implements IAudioPlayerService {
         if (t?.fadeInterval) {
             clearInterval(t.fadeInterval);
             t.fadeInterval = undefined;
+            const onDone = t.fadeOnDone;
+            t.fadeOnDone = undefined;
+            onDone?.();
         }
     }
 
@@ -275,10 +291,13 @@ export class AudioPlayerService implements IAudioPlayerService {
             if (done) {
                 clearInterval(interval);
                 track.fadeInterval = undefined;
-                onDone?.();
+                const doneCallback = track.fadeOnDone;
+                track.fadeOnDone = undefined;
+                doneCallback?.();
             }
         }, FADE_STEP_MS);
 
         t.fadeInterval = interval;
+        t.fadeOnDone = onDone;
     }
 }
