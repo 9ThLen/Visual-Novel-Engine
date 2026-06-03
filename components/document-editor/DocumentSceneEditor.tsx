@@ -16,7 +16,7 @@
  * - DocumentCommandMenu — slash command palette
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, ScrollView, View, KeyboardAvoidingView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -78,6 +78,17 @@ export function DocumentSceneEditor({
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [prevDocuments, setPrevDocuments] = useState(initialDocuments);
+  const savingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup pending save-feedback timer on unmount
+  useEffect(() => {
+    return () => {
+      if (savingTimerRef.current) {
+        clearTimeout(savingTimerRef.current);
+        savingTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Sync state when props change
   if (prevDocuments !== initialDocuments) {
@@ -135,7 +146,13 @@ export function DocumentSceneEditor({
     onSave(ensuredDocuments, ensured.characters);
     setLocalCharacters(ensured.characters);
     setDocumentScenes(ensuredDocuments);
-    setTimeout(() => setIsSaving(false), 250);
+    if (savingTimerRef.current) {
+      clearTimeout(savingTimerRef.current);
+    }
+    savingTimerRef.current = setTimeout(() => {
+      setIsSaving(false);
+      savingTimerRef.current = null;
+    }, 250);
   }, [documentScenes, localCharacters, onSave]);
 
   // ── Page render ──────────────────────────────────────────────────────────
