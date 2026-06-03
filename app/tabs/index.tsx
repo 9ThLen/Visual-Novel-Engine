@@ -9,14 +9,12 @@ import {
   useWindowDimensions,
   Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
 import { useStoryState, useStoryActions } from '@/lib/story-hooks';
 import { useAppStore } from '@/stores/use-app-store';
 import { getLibraryAssets, addAssetToLibrary } from '@/lib/media-library-service';
-import { Story } from '@/lib/scene-operations'; // TODO(phase-09): replace with canonical type
 import { StoryMetadata } from '@/lib/story-domain';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/lib/i18n';
@@ -24,6 +22,7 @@ import { Button } from '@/components/ui';
 import demoStory from '@/assets/demo-story.json';
 import demoStoryAdvanced from '@/assets/demo-story-advanced.json';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
+import { StoryValidator } from '@/lib/story-validator';
 import { shouldUpsertBundledStory } from '@/lib/bundled-story-sync';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 
@@ -35,14 +34,24 @@ interface StoryCardProps {
 }
 
 function withOpacity(hexColor: string | undefined, opacity: number) {
-  if (!hexColor?.startsWith('#') || hexColor.length !== 7) {
-    return hexColor ?? `rgba(124, 91, 245, ${opacity})`;
+  if (!hexColor?.startsWith('#')) {
+    return hexColor ?? '#7c5bf5';
   }
 
-  const red = parseInt(hexColor.slice(1, 3), 16);
-  const green = parseInt(hexColor.slice(3, 5), 16);
-  const blue = parseInt(hexColor.slice(5, 7), 16);
-  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+  const raw = hexColor.slice(1);
+  const normalized =
+    raw.length === 3 || raw.length === 4
+      ? raw.slice(0, 3).split('').map((char) => `${char}${char}`).join('')
+      : raw.length === 6 || raw.length === 8
+        ? raw.slice(0, 6)
+        : null;
+
+  if (!normalized || !/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    return '#7c5bf5';
+  }
+
+  const alpha = Math.round(opacity * 255).toString(16).padStart(2, '0').toUpperCase();
+  return `#${normalized}${alpha}`;
 }
 
 const StoryCard = memo(function StoryCard({ item, onPress }: StoryCardProps) {
@@ -140,6 +149,13 @@ export default function HomeScreen() {
     });
     await waitForHydration();
 
+    // Migrate legacy data before loading stories
+    try {
+      await useAppStore.getState().migrateFromLegacyKeys();
+    } catch (error) {
+      ErrorHandler.handle('Legacy migration failed', error, ErrorCategory.STORAGE);
+    }
+
     let initError: unknown = null;
     try {
       await loadStories();
@@ -151,8 +167,8 @@ export default function HomeScreen() {
     // Ensure demo stories exist regardless of storage errors
     try {
       const state = useAppStore.getState();
-      const demo1 = (demoStory as unknown) as Story;
-      const demo2 = (demoStoryAdvanced as unknown) as Story;
+      const demo1 = StoryValidator.validateStory(demoStory);
+      const demo2 = StoryValidator.validateStory(demoStoryAdvanced);
 
       if (shouldUpsertBundledStory(state, demo1)) {
         if (__DEV__) {
@@ -210,7 +226,7 @@ export default function HomeScreen() {
   }, [initializeApp]);
 
   const handlePlayStory = useCallback((story: StoryMetadata) => {
-    console.log('[DIAG] handlePlayStory called with storyId:', story.id);
+    if (__DEV__) console.log('[DIAG] handlePlayStory called with storyId:', story.id);
     navigateWithViewTransition(() => {
       router.push({
         pathname: '/reader',
@@ -225,12 +241,12 @@ export default function HomeScreen() {
   );
 
   const handleOpenEditor = useCallback(() => {
-    console.log('[DIAG] handleOpenEditor called');
+    if (__DEV__) console.log('[DIAG] handleOpenEditor called');
     navigateWithViewTransition(() => router.push('/editor'), 'surface-shift');
   }, [router]);
 
   const handleOpenSettings = useCallback(() => {
-    console.log('[DIAG] handleOpenSettings called');
+    if (__DEV__) console.log('[DIAG] handleOpenSettings called');
     navigateWithViewTransition(() => router.push('/settings'), 'surface-shift');
   }, [router]);
 

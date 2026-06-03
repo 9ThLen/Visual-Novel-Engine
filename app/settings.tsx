@@ -144,12 +144,12 @@ export default function SettingsScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
 
         {/* Language */}
-        <Section title={`🌐  ${t('settings.language')}`}>
+        <Section title={t('settings.language')}>
           <LanguageSelector />
         </Section>
 
         {/* Audio */}
-        <Section title={`🔊  ${t('settings.audio')}`}>
+        <Section title={t('settings.audio')}>
           <SliderRow label={t('settings.bgmVolume')} emoji="🎵" value={settings.bgmVolume}
             onValueChange={(v) => updateSettings({ bgmVolume: v })} />
           <Divider />
@@ -161,7 +161,7 @@ export default function SettingsScreen() {
         </Section>
 
         {/* Text */}
-        <Section title={`✏️  ${t('settings.textSection')}`}>
+        <Section title={t('settings.textSection')}>
           <SliderRow label={t('settings.textSpeed')} emoji="⚡" value={settings.textSpeed}
             onValueChange={(v) => updateSettings({ textSpeed: v })} />
           <Divider />
@@ -198,7 +198,7 @@ export default function SettingsScreen() {
         </Section>
 
         {/* Playback */}
-        <Section title={`▶️  ${t('settings.playbackSection')}`}>
+        <Section title={t('settings.playbackSection')}>
           <ToggleRow
             label={t('settings.autoPlay')}
             emoji="⏯"
@@ -209,7 +209,7 @@ export default function SettingsScreen() {
         </Section>
 
         {/* About */}
-        <Section title={`ℹ️  ${t('settings.aboutSection')}`}>
+        <Section title={t('settings.aboutSection')}>
           <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 20 }}>
             {t('app.name')} v1.0.0{'\n'}
             {t('settings.aboutDescription')}

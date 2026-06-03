@@ -57,7 +57,14 @@ export function WebSidebar({ visible = true }: WebSidebarProps) {
       ]}
     >
       {/* Logo/Title */}
-      <View style={styles.header}>
+      <View
+        style={[
+          styles.header,
+          {
+            borderBottomColor: colors['border-subtle'],
+          },
+        ]}
+      >
         <IconSymbol name="book.fill" size={28} color={colors.primary} />
         <Text style={[styles.title, { color: colors.foreground }]}>
           Visual Novel
@@ -116,7 +123,14 @@ export function WebSidebar({ visible = true }: WebSidebarProps) {
       </View>
 
       {/* Footer */}
-      <View style={styles.footer}>
+      <View
+        style={[
+          styles.footer,
+          {
+            borderTopColor: colors['border-subtle'],
+          },
+        ]}
+      >
         <Text style={[styles.footerText, { color: colors.muted }]}>
           v1.0.0
         </Text>
@@ -137,7 +151,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   title: {
     fontSize: 16,
@@ -179,7 +192,6 @@ const styles = StyleSheet.create({
   footer: {
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
     alignItems: 'center',
   },
   footerText: {
