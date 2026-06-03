@@ -4,8 +4,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import {
   DocumentSceneEditor,
-  saveDocumentSceneToRecord,
 } from '@/components/document-editor/DocumentSceneEditor';
+import { saveDocumentSceneToRecord } from '@/lib/document-scene-persistence';
 import { ScreenContainer } from '@/components/screen-container';
 import { orderSceneRecordsForDocument, sceneRecordToDocumentScene } from '@/lib/document-editor/document-scene';
 import { createSceneRecordFromEditorDraft } from '@/lib/editor-scene-draft';
@@ -134,7 +134,7 @@ export default function DocumentEditorRoute() {
       flowY: sourceSceneRecord.flowY ?? 0,
       connections: oldNextSceneId ? [{ targetSceneId: oldNextSceneId, outputPort: 'next', label: 'Next' }] : [],
     });
-    router.setParams({ storyId, sceneId: nextSceneId } as never);
+    router.setParams({ storyId, sceneId: nextSceneId });
   };
 
   return (
