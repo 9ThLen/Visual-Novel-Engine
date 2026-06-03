@@ -32,21 +32,16 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Image } from 'expo-image';
-import { cn } from '@/lib/utils';
 import { useColors } from '@/hooks/use-colors';
 import type { UserSettings } from '@/lib/user-settings';
-import { StoryScene, Choice } from '@/lib/scene-operations';
-import type { CharacterPosition, CharacterSprite } from '@/lib/character-types';
+import type { CharacterPosition } from '@/lib/character-types';
 import type { CharacterRuntimeState, SceneState, TimelineStep } from '@/lib/engine/types';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
 import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
 import { DialogueHistory, HistoryEntry } from './dialogue-history';
-import { SplashScreenComponent } from './SplashScreen';
 import { CharacterDisplay } from './CharacterDisplay';
 import { useTypewriter } from '@/hooks/useTypewriter';
 import { useSceneImages } from '@/hooks/useSceneImages';
-import { enhancedAudioManager } from '@/lib/audio-manager-enhanced';
-import { isReaderAudioSessionActive } from '@/lib/reader-audio-session';
 import { useI18n } from '@/lib/i18n';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 import { createExecutorSceneImageState } from '@/lib/reader-runtime';
@@ -66,17 +61,11 @@ function extractSpeaker(text: string): { speaker: string | null; body: string } 
 
 // Auto-play delay after full text appears
 const AUTO_PLAY_DELAY_MS = 2400;
-
-// ── Types ──────────────────────────────────────────────────────────────────
-
 interface Props {
   sceneId?: string;
-  /** @deprecated Use timeline + onTransition instead */
-  scene?: StoryScene;
   timeline?: TimelineStep[];
   initialVariables?: Record<string, string | number | boolean>;
   onContinue?: (targetSceneId?: string) => void;
-  onChoiceSelect?: (choice: Choice) => void;
   onExecutorChoiceSelect?: (choice: { sceneId: string; choiceId: string; targetSceneId: string | null }) => void;
   onTransition?: (targetSceneId: string | null) => void;
   isLoading?: boolean;
@@ -92,11 +81,9 @@ const DIALOGUE_MARGIN_BOTTOM = 28;
 
 export function StoryReaderResponsive({
   sceneId,
-  scene,
   timeline,
   initialVariables,
   onContinue,
-  onChoiceSelect,
   onExecutorChoiceSelect,
   onTransition,
   isLoading = false,
@@ -124,39 +111,31 @@ export function StoryReaderResponsive({
 
   // Derive display values from either executor state or legacy scene
   const displaySceneId = useMemo(() => {
-    if (usingExecutor) return sceneId ?? `executed-scene:${firstTimelineStepId ?? 'empty'}`;
-    return scene?.id ?? '';
-  }, [usingExecutor, sceneId, firstTimelineStepId, scene?.id]);
+    return sceneId ?? `executed-scene:${firstTimelineStepId ?? 'empty'}`;
+  }, [sceneId, firstTimelineStepId]);
 
   const pages = useMemo(() => {
-    if (usingExecutor) {
-      const currentBlock = timeline?.[executor.currentStepIndex];
-      if (!currentBlock) return [''];
-      if (currentBlock.blockType === 'text') {
-        const d = currentBlock.data as { content: string };
-        return d.content.split('\n\n').filter(Boolean);
-      }
-      if (currentBlock.blockType === 'dialogue') {
-        const d = currentBlock.data as { entries: { text: string }[] };
-        return d.entries.map(e => e.text);
-      }
-      return [''];
+    const currentBlock = timeline?.[executor.currentStepIndex];
+    if (!currentBlock) return [''];
+    if (currentBlock.blockType === 'text') {
+      const d = currentBlock.data as { content: string };
+      return d.content.split('\n\n').filter(Boolean);
     }
-    return scene!.text.split('\n\n').filter(Boolean);
-  }, [usingExecutor, timeline, executor.currentStepIndex, scene]);
+    if (currentBlock.blockType === 'dialogue') {
+      const d = currentBlock.data as { entries: { text: string }[] };
+      return d.entries.map(e => e.text);
+    }
+    return [''];
+  }, [timeline, executor.currentStepIndex]);
 
-  const displayBackgroundUri = usingExecutor
-    ? executor.sceneState.backgroundAssetId
-    : scene!.backgroundImageUri;
+  const displayBackgroundUri = executor.sceneState.backgroundAssetId;
 
-  const displayChoices = usingExecutor
-    ? (executor.sceneState.currentChoices?.map((opt, i) => ({
-        id: opt.id,
-        text: opt.text,
-        nextSceneId: opt.targetSceneId,
-        index: i,
-      })) ?? [])
-    : scene!.choices;
+  const displayChoices = executor.sceneState.currentChoices?.map((opt, i) => ({
+    id: opt.id,
+    text: opt.text,
+    nextSceneId: opt.targetSceneId,
+    index: i,
+  })) ?? [];
 
   const hasChoices = displayChoices.length > 0;
   type DisplayChoice = (typeof displayChoices)[number];
@@ -171,7 +150,7 @@ export function StoryReaderResponsive({
     ),
     [displayBackgroundUri, displaySceneId, executor.sceneState.characters],
   );
-  const { bgSource, resolvedCharUris } = useSceneImages(scene ?? executorImageState);
+  const { bgSource, resolvedCharUris } = useSceneImages(executorImageState);
 
   // ── History ─────────────────────────────────────────────────────────────
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -182,36 +161,28 @@ export function StoryReaderResponsive({
   }, [showHistory, onHistoryVisibleChange]);
 
   useEffect(() => {
-    if (usingExecutor) {
-      onSceneStateChange?.(executor.sceneState);
-    }
-  }, [executor.sceneState, onSceneStateChange, usingExecutor]);
+    onSceneStateChange?.(executor.sceneState);
+  }, [executor.sceneState, onSceneStateChange]);
 
   const transitionNotifiedRef = useRef<string | null>(null);
   const completeNotifiedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!usingExecutor || !executor.sceneState.isTransitioning) return;
+    if (!executor.sceneState.isTransitioning) return;
     const target = executor.sceneState.transitionTarget ?? '__end__';
     const key = `${displaySceneId}:${target}`;
     if (transitionNotifiedRef.current === key) return;
     transitionNotifiedRef.current = key;
     onTransition?.(executor.sceneState.transitionTarget);
-  }, [
-    displaySceneId,
-    executor.sceneState.isTransitioning,
-    executor.sceneState.transitionTarget,
-    onTransition,
-    usingExecutor,
-  ]);
+  }, [displaySceneId, executor.sceneState.isTransitioning, executor.sceneState.transitionTarget, onTransition]);
 
   useEffect(() => {
-    if (!usingExecutor || !routeOnExecutorComplete || !executor.isComplete) return;
+    if (!routeOnExecutorComplete || !executor.isComplete) return;
     const key = `${displaySceneId}:complete`;
     if (completeNotifiedRef.current === key) return;
     completeNotifiedRef.current = key;
     onTransition?.(null);
-  }, [displaySceneId, executor.isComplete, onTransition, routeOnExecutorComplete, usingExecutor]);
+  }, [displaySceneId, executor.isComplete, onTransition, routeOnExecutorComplete]);
 
   // ── Auto-play ───────────────────────────────────────────────────────────
   const [autoPlayActive, setAutoPlayActive] = useState(autoPlay);
@@ -238,21 +209,11 @@ export function StoryReaderResponsive({
   useEffect(() => {
     setPageIndex(0);
 
-    if (usingExecutor) {
-      sceneOpacity.value = 0;
-      bgScale.value = 1.04;
-      sceneOpacity.value = withTiming(1, { duration: 380 });
-      bgScale.value = withTiming(1, { duration: 700 });
-    } else if (scene?.splashScreen?.splash) {
-      setShowSplash(true);
-      setUiVisible(false);
-    } else {
-      sceneOpacity.value = 0;
-      bgScale.value = 1.04;
-      sceneOpacity.value = withTiming(1, { duration: 380 });
-      bgScale.value = withTiming(1, { duration: 700 });
-    }
-  }, [displaySceneId, scene?.splashScreen?.splash, usingExecutor, sceneOpacity, bgScale]);
+    sceneOpacity.value = 0;
+    bgScale.value = 1.04;
+    sceneOpacity.value = withTiming(1, { duration: 380 });
+    bgScale.value = withTiming(1, { duration: 700 });
+  }, [displaySceneId, usingExecutor, sceneOpacity, bgScale]);
 
   useEffect(() => {
     const { body } = extractSpeaker(pages[pageIndex] ?? '');
@@ -266,18 +227,6 @@ export function StoryReaderResponsive({
   }, [displaySceneId]);
 
   useEffect(() => {
-    if (usingExecutor || isTyping || !scene?.audioTriggers?.length || !isReaderAudioSessionActive()) return;
-
-    const key = `${scene.id}-${pageIndex}`;
-    if (textCompleteFiredRef.current === key) return;
-    textCompleteFiredRef.current = key;
-
-    enhancedAudioManager
-      .executeTriggersByType(scene.audioTriggers, 'text_complete')
-      .catch(() => {});
-  }, [usingExecutor, isTyping, scene?.id, scene?.audioTriggers, pageIndex]);
-
-  useEffect(() => {
     if (isTyping) return;
     const raw = pages[pageIndex] ?? '';
     const { speaker, body } = extractSpeaker(raw);
@@ -288,45 +237,20 @@ export function StoryReaderResponsive({
     });
   }, [isTyping, pageIndex, displaySceneId, pages]);
 
-  // ── Auto-advance (Scene-level) ──────────────────────────────────────────
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    if (!usingExecutor && uiVisible && !isTyping && scene?.autoAdvance?.enabled && scene.autoAdvance.nextSceneId) {
-      const delay = scene.autoAdvance.delay || 3000;
-      timer = setTimeout(() => {
-        const autoChoice = scene.choices.find(c => c.nextSceneId === scene.autoAdvance?.nextSceneId);
-        if (autoChoice) {
-          onChoiceSelect?.(autoChoice);
-        } else {
-          onContinue?.(scene.autoAdvance?.nextSceneId);
-        }
-      }, delay);
-    }
-
-    return () => { if (timer) clearTimeout(timer); };
-  }, [usingExecutor, uiVisible, isTyping, scene?.id, scene?.autoAdvance, scene?.choices, onChoiceSelect, onContinue]);
-
-  // ── Auto-play (Page-level) ────────────────────────────────────────────
-  const _isLastPage = usingExecutor ? hasChoices : pageIndex === pages.length - 1;
+  // ── Auto-play ───────────────────────────────────────────────────────────
+  const awaitingChoice = hasChoices;
 
   useEffect(() => {
     if (autoPlayTimer.current) clearTimeout(autoPlayTimer.current);
     if (!autoPlayActive || isTyping) return;
 
     autoPlayTimer.current = setTimeout(() => {
-      if (usingExecutor) {
-        if (hasChoices) return;
-        if (executor.canAdvance) executor.advance();
-      } else if (_isLastPage) {
-        if (scene!.choices.length === 0) onContinue?.();
-      } else {
-        setPageIndex((p) => p + 1);
-      }
+      if (hasChoices) return;
+      if (executor.canAdvance) executor.advance();
     }, AUTO_PLAY_DELAY_MS);
 
     return () => { if (autoPlayTimer.current) clearTimeout(autoPlayTimer.current); };
-  }, [autoPlayActive, isTyping, _isLastPage, usingExecutor, hasChoices, executor, scene, onContinue]);
+  }, [autoPlayActive, isTyping, hasChoices, executor, pageIndex]);
 
   // ── Turbo skip ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -337,42 +261,31 @@ export function StoryReaderResponsive({
     turboInterval.current = setInterval(() => {
     if (isTyping) {
       completeTypewriter();
-      if (usingExecutor && executor.isTyping) {
+      if (executor.isTyping) {
         executor.advance();
       }
-    } else if (!usingExecutor && !_isLastPage) {
-        setPageIndex((p) => p + 1);
-      } else if (!usingExecutor && scene!.choices.length === 0) {
-        onContinue?.();
-      } else if (usingExecutor) {
-        if (executor.canAdvance) executor.advance();
-      } else {
-        setTurbo(false);
-      }
-    }, 180);
-    return () => { if (turboInterval.current) clearInterval(turboInterval.current); };
-  }, [turbo, isTyping, _isLastPage, usingExecutor, scene, onContinue, completeTypewriter, executor]);
+    } else {
+      if (executor.canAdvance) executor.advance();
+      else setTurbo(false);
+    }
+  }, 180);
+  return () => { if (turboInterval.current) clearInterval(turboInterval.current); };
+}, [turbo, isTyping, executor, completeTypewriter]);
 
   // ── Tap handler ────────────────────────────────────────────────────────
   const handleTap = () => {
     if (isLoading) return;
     if (isTyping) {
       completeTypewriter();
-      if (usingExecutor && executor.isTyping) {
+      if (executor.isTyping) {
         executor.advance();
       }
       return;
     }
 
-    if (usingExecutor) {
-      if (executor.sceneState.isTransitioning) return;
-      if (executor.canAdvance) { executor.advance(); return; }
-      if (executor.sceneState.currentChoices) return;
-      return;
-    }
-
-    if (!_isLastPage) { setPageIndex((p) => p + 1); return; }
-    if (scene!.choices.length === 0) onContinue?.();
+    if (executor.sceneState.isTransitioning) return;
+    if (executor.canAdvance) { executor.advance(); return; }
+    if (executor.sceneState.currentChoices) return;
   };
 
   // ── Font size from settings ────────────────────────────────────────────
@@ -396,20 +309,6 @@ export function StoryReaderResponsive({
     bgScale.value = withTiming(1, { duration: 700 });
   }, [bgScale, sceneOpacity]);
 
-  const handleUIHidden = useCallback(() => {
-    if (usingExecutor) return;
-    uiOpacity.value = withTiming(0, {
-      duration: scene?.splashScreen?.uiHideTransition?.duration || 500,
-    });
-  }, [usingExecutor, scene?.splashScreen, uiOpacity]);
-
-  const handleUIShown = useCallback(() => {
-    if (usingExecutor) return;
-    uiOpacity.value = withTiming(1, {
-      duration: scene?.splashScreen?.uiShowTransition?.duration || 500,
-    });
-  }, [usingExecutor, scene?.splashScreen, uiOpacity]);
-
   // ── Animated styles ─────────────────────────────────────────────────────
   const bgAnimatedStyle = useAnimatedStyle(() => ({
     opacity: sceneOpacity.value,
@@ -431,18 +330,6 @@ export function StoryReaderResponsive({
 
   return (
     <View className="flex-1" style={readerContainerStyle}>
-
-      {/* ── Splash Screen ──────────────────────────────────────────────── */}
-      {!usingExecutor && showSplash && scene?.splashScreen?.splash && (
-        <SplashScreenComponent
-          splash={scene.splashScreen.splash}
-          uiHideTransition={scene.splashScreen.uiHideTransition}
-          uiShowTransition={scene.splashScreen.uiShowTransition}
-          onComplete={handleSplashComplete}
-          onUIHidden={handleUIHidden}
-          onUIShown={handleUIShown}
-        />
-      )}
 
       {/* ── Background ────────────────────────────────────────────────── */}
       <Animated.View
@@ -480,8 +367,8 @@ export function StoryReaderResponsive({
             },
           ]}
         >
-          {(usingExecutor ? executor.sceneState.characters : (scene?.characters ?? [])).map((char: CharacterRuntimeState | CharacterSprite) => {
-            const charId = 'characterId' in char ? char.characterId : char.id;
+          {executor.sceneState.characters.map((char: CharacterRuntimeState) => {
+            const charId = char.characterId;
             const charSource = resolvedCharUris[charId];
             if (!charSource) return null;
             const uri = typeof charSource === 'string' ? charSource : (charSource as { uri: string }).uri;
@@ -598,7 +485,7 @@ export function StoryReaderResponsive({
             </View>
 
             {/* Choices */}
-            {((usingExecutor ? executor.sceneState.currentChoices !== null : _isLastPage) && !isTyping && displayChoices.length > 0) && (
+            {(executor.sceneState.currentChoices !== null && !isTyping && displayChoices.length > 0) && (
               <View className="px-3 pt-1 pb-3 gap-2">
                 {displayChoices.map((choice: DisplayChoice) => (
                   <Pressable
@@ -613,16 +500,12 @@ export function StoryReaderResponsive({
                       opacity: pressed ? 0.75 : 1,
                     })}
                     onPress={() => {
-                      if (usingExecutor) {
-                        executor.selectChoice(choice.id);
-                        onExecutorChoiceSelect?.({
-                          sceneId: displaySceneId,
-                          choiceId: choice.id,
-                          targetSceneId: choice.nextSceneId ?? null,
-                        });
-                      } else {
-                        onChoiceSelect?.(choice as Choice);
-                      }
+                      executor.selectChoice(choice.id);
+                      onExecutorChoiceSelect?.({
+                        sceneId: displaySceneId,
+                        choiceId: choice.id,
+                        targetSceneId: choice.nextSceneId ?? null,
+                      });
                     }}
                     accessibilityRole="button"
                     accessibilityLabel={t('reader.choiceLabel', { text: choice.text })}
@@ -644,27 +527,10 @@ export function StoryReaderResponsive({
 
             {/* Bottom bar: page indicator + skip */}
             <View className="flex-row items-center justify-between px-4 pb-3 pt-1">
-              {/* Page dots */}
-              {!usingExecutor && pages.length > 1 ? (
-                <View className="flex-row gap-1">
-                  {pages.map((_, i) => (
-                    <View
-                      key={`dot-${i}`}
-                      className={cn('rounded-full', i === pageIndex ? 'w-4 h-1.5' : 'w-1.5 h-1.5')}
-                      style={{
-                        backgroundColor: i === pageIndex ? colors.primary : colors.border,
-                      }}
-                    />
-                  ))}
-                </View>
-              ) : <View />}
+              <View />
 
               <View className="flex-row gap-2 items-center">
-                {/* Skip / fast-forward button */}
-                {!isTyping && !_isLastPage && (
-                  <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>{t('reader.tapToContinue')} ▼</Text>
-                )}
-                {_isLastPage && !isTyping && !hasChoices && !usingExecutor && (
+                {!isTyping && !awaitingChoice && (
                   <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>{t('reader.tapToContinue')} ▼</Text>
                 )}
                 <Pressable
@@ -683,7 +549,7 @@ export function StoryReaderResponsive({
                 >
                   <Text
                     className="text-xs font-semibold"
-                    style={{ color: turbo ? (colors['text-inverse'] ?? '#ffffff') : colors.muted }}
+                    style={{ color: turbo ? colors['text-inverse'] : colors.muted }}
                   >
                     ⏩ {t('reader.skip')}
                   </Text>
@@ -735,7 +601,7 @@ function ControlButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
     >
-      <Text style={{ color: colors['text-inverse'] ?? '#fff', fontSize: 12, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ color: colors['text-inverse'], fontSize: 12, fontWeight: '600' }}>{label}</Text>
     </Pressable>
   );
 }
