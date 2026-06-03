@@ -153,7 +153,6 @@ export async function exchangeOAuthCode(
   if (__DEV__) console.log("[API] OAuth exchange result:", {
     hasSessionToken: !!sessionToken,
     hasUser: !!result.user,
-    sessionToken: sessionToken ? `${sessionToken.substring(0, 50)}...` : null,
   });
 
   return {

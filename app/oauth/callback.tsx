@@ -43,7 +43,7 @@ export default function OAuthCallback() {
                 lastSignedIn: new Date(apiUser.lastSignedIn || Date.now()),
               };
               await Auth.setUserInfo(authUserInfo);
-              if (__DEV__) console.log("[OAuth] User info fetched from API:", authUserInfo);
+              if (__DEV__) console.log("[OAuth] User fetched:", { id: authUserInfo.id, openId: authUserInfo.openId });
             }
           } catch (err) {
             // Non-fatal: user info will be empty, session token is still valid
