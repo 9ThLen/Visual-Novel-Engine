@@ -166,7 +166,7 @@ export function TimelinePanel({
                         borderColor: isSelected ? colors.primary : 'transparent',
                         opacity: step.enabled ? 1 : 0.5,
                         elevation: isSelected ? 4 : 1,
-                        shadowColor: '#000',
+                        shadowColor: colors.foreground,
                         shadowOffset: { width: 0, height: 1 },
                         shadowOpacity: isSelected ? 0.3 : 0.1,
                         shadowRadius: 3,

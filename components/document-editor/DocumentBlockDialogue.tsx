@@ -16,6 +16,7 @@ import { ensureDocumentCharactersInBlocks } from '@/lib/document-editor/document
 import type { DocumentBlock, DocumentDialogueBlock, DocumentScene } from '@/lib/document-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { useColors } from '@/hooks/use-colors';
+import { withAlpha } from '@/lib/_core/theme';
 import type { useI18n } from '@/lib/i18n';
 
 export interface DocumentBlockDialogueProps {
@@ -94,8 +95,8 @@ export const DocumentBlockDialogue = React.memo(function DocumentBlockDialogue({
           minWidth: isPhone ? 0 : 58,
           maxWidth: isPhone ? 120 : 132,
           color: isPhone ? colors.foreground : colors.primary,
-          backgroundColor: isPhone ? 'transparent' : `${colors.primary}14`,
-          borderColor: isPhone ? 'transparent' : `${colors.primary}55`,
+          backgroundColor: isPhone ? 'transparent' : withAlpha(colors.primary, 0x14 / 255),
+          borderColor: isPhone ? 'transparent' : withAlpha(colors.primary, 0x55 / 255),
           borderWidth: isPhone ? 0 : 1,
           borderRadius: 8,
           fontSize: isPhone ? 17 : 15,
