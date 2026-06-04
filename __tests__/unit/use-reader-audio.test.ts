@@ -203,6 +203,120 @@ describe('useReaderAudio', () => {
       expect(enhancedAudioManager.stop).not.toHaveBeenCalledWith('bgm');
     });
 
+    it('should stop runtime BGM when music block action is stop', async () => {
+      renderHook(() =>
+        useReaderAudio(STORY_ID, createScene(), defaultSettings, {
+          sceneState: {
+            backgroundAssetId: null,
+            backgroundTransition: 'fade',
+            characters: [],
+            activeEffects: [],
+            musicTrackId: null,
+            musicPlaying: false,
+            musicAction: 'stop',
+            musicVolume: 0.8,
+            musicLoop: true,
+            musicFadeDuration: 1200,
+            variables: {},
+            dialogueHistory: [],
+            currentChoices: null,
+            isTransitioning: false,
+            transitionTarget: null,
+          },
+        }),
+      );
+
+      await waitFor(() => {
+        expect(enhancedAudioManager.stop).toHaveBeenCalledWith('bgm', 1200);
+      });
+    });
+
+    it('should play runtime sound events once', async () => {
+      (resolvePlayableAssetUri as any).mockResolvedValue('/resolved/sfx.mp3');
+      const sceneState = {
+        backgroundAssetId: null,
+        backgroundTransition: 'fade',
+        characters: [],
+        activeEffects: [],
+        soundEvents: [
+          {
+            id: 'sound-event-1',
+            assetId: 'sfx-door',
+            action: 'play' as const,
+            volume: 0.5,
+            loop: false,
+            pitchVariation: 0,
+            timestamp: 100,
+          },
+        ],
+        musicTrackId: null,
+        musicPlaying: false,
+        musicVolume: 1,
+        variables: {},
+        dialogueHistory: [],
+        currentChoices: null,
+        isTransitioning: false,
+        transitionTarget: null,
+      };
+
+      const { rerender } = renderHook(
+        ({ state }) => useReaderAudio(STORY_ID, createScene(), defaultSettings, { sceneState: state }),
+        { initialProps: { state: sceneState } },
+      );
+
+      await waitFor(() => {
+        expect(resolvePlayableAssetUri).toHaveBeenCalledWith('sfx-door');
+        expect(enhancedAudioManager.play).toHaveBeenCalledWith('sfx:sound-event-1', '/resolved/sfx.mp3', {
+          volume: 0.3,
+          loop: false,
+        });
+      });
+
+      rerender({ state: sceneState });
+
+      await waitFor(() => {
+        expect(enhancedAudioManager.play).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('should use asset channel for looped runtime sound events', async () => {
+      (resolvePlayableAssetUri as any).mockResolvedValue('/resolved/loop.mp3');
+      const sceneState = {
+        backgroundAssetId: null,
+        backgroundTransition: 'fade',
+        characters: [],
+        activeEffects: [],
+        soundEvents: [
+          {
+            id: 'sound-event-loop',
+            assetId: 'sfx-loop',
+            action: 'play' as const,
+            volume: 1,
+            loop: true,
+            pitchVariation: 0,
+            timestamp: 100,
+          },
+        ],
+        musicTrackId: null,
+        musicPlaying: false,
+        musicVolume: 1,
+        variables: {},
+        dialogueHistory: [],
+        currentChoices: null,
+        isTransitioning: false,
+        transitionTarget: null,
+      };
+
+      renderHook(() => useReaderAudio(STORY_ID, createScene(), defaultSettings, { sceneState }));
+
+      await waitFor(() => {
+        expect(enhancedAudioManager.play).toHaveBeenCalledWith('sfx:sfx-loop', '/resolved/loop.mp3', {
+          volume: 0.6,
+          loop: true,
+        });
+      });
+    });
+
     it('should adjust volume when same bgm track persists', async () => {
       (resolvePlayableAssetUri as any).mockResolvedValue('/same-track.mp3');
 

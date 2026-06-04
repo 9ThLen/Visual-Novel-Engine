@@ -43,6 +43,8 @@ import { useReaderPages } from '@/hooks/useReaderPages';
 import { useReaderAssets } from '@/hooks/useReaderAssets';
 import { useReaderNotifications } from '@/hooks/useReaderNotifications';
 import { useDialogueHistory } from '@/hooks/useDialogueHistory';
+import { enhancedAudioManager } from '@/lib/audio-manager-enhanced';
+import { resolvePlayableAssetUri } from '@/lib/asset-resolver';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -118,6 +120,7 @@ export function StoryReaderResponsive({
 
   // ── Page index ────────────────────────────────────────────────────────
   const [pageIndex, setPageIndex] = useState(0);
+  const [temporaryDialogue, setTemporaryDialogue] = useState<{ text: string; speaker?: string } | null>(null);
 
   // ── Typewriter ─────────────────────────────────────────────────────────
   const { displayedText, isTyping, startTypewriter, completeTypewriter } =
@@ -214,6 +217,15 @@ export function StoryReaderResponsive({
     fontSize.md;
 
   const { speaker } = extractSpeaker(pages[pageIndex] ?? '');
+  const displaySpeaker = temporaryDialogue?.speaker ?? speaker;
+  const displayText = temporaryDialogue?.text ?? displayedText;
+  const handleDisplayTap = () => {
+    if (temporaryDialogue) {
+      setTemporaryDialogue(null);
+      return;
+    }
+    handleTap();
+  };
 
   // ── Choice selection ───────────────────────────────────────────────────
   const handleSelectChoice = (choiceId: string) => {
@@ -263,23 +275,34 @@ export function StoryReaderResponsive({
         colors={colors}
         dialogueAnimatedStyle={dialogueAnimatedStyle}
         dialogueFontSize={dialogueFontSize}
-        displayedText={displayedText}
+        displayedText={displayText}
         fallbackColor={colors.background}
         getChoiceAccessibilityLabel={(text) => t('reader.choiceLabel', { text })}
         continueAccessibilityLabel={t('reader.continueReading')}
         continueAccessibilityHint={t('reader.continueHint')}
         isTyping={isTyping}
         isLoading={isLoading}
-        onTap={handleTap}
+        onTap={handleDisplayTap}
         onSelectChoice={handleSelectChoice}
         paddingBottom={layout.dialoguePosition === 'bottom' ? layout.dialogueHeight - 20 : 0}
         pagesLength={pages.length}
         pageIndex={pageIndex}
         readerControls={readerControls}
         resolvedCharUris={resolvedCharUris}
-        speaker={speaker}
+        speaker={displaySpeaker}
         speakerTextStyle={getStoryReaderSpeakerTextStyle(colors)}
         instances={characterInstances}
+        activeEffects={executor.sceneState.activeEffects}
+        cameraState={executor.sceneState.cameraState}
+        interactiveObjects={executor.sceneState.interactiveObjects}
+        onInteractiveDialogue={(text, actionSpeaker) => setTemporaryDialogue({ text, speaker: actionSpeaker })}
+        onInteractiveSceneTransition={(targetSceneId) => onTransition?.(targetSceneId)}
+        onInteractivePlayAudio={(audioUri, volume = settings.sfxVolume ?? 1, loop = false) => {
+          void resolvePlayableAssetUri(audioUri).then((uri) => {
+            if (!uri) return;
+            void enhancedAudioManager.play(`interactive:${audioUri}:${Date.now()}`, uri, { volume, loop });
+          });
+        }}
       />
 
       <DialogueHistory

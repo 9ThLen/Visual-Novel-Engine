@@ -1,5 +1,19 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import type { TimelineStep, SceneState, BackgroundBlockData, CharacterBlockData, DialogueBlockData, ChoiceBlockData, EffectBlockData, MusicBlockData, VariableBlockData, TransitionBlockData } from './types';
+import type {
+  TimelineStep,
+  SceneState,
+  BackgroundBlockData,
+  CharacterBlockData,
+  DialogueBlockData,
+  ChoiceBlockData,
+  EffectBlockData,
+  MusicBlockData,
+  SoundBlockData,
+  InteractiveObjectBlockData,
+  CameraBlockData,
+  VariableBlockData,
+  TransitionBlockData,
+} from './types';
 import { createEmptySceneState, conditionsMet } from './conditionUtils';
 
 const YIELDING_BLOCK_TYPES = new Set(['text', 'dialogue', 'choice', 'transition']);
@@ -177,15 +191,63 @@ export function useSceneExecutor(
         }
         case 'music': {
           const d = step.data as MusicBlockData;
-          nextState.musicTrackId = d.assetId;
-          nextState.musicPlaying = d.action === 'play';
-          nextState.musicVolume = d.volume;
+          nextState.musicAction = d.action;
+          nextState.musicLoop = d.loop;
+          nextState.musicFadeDuration = d.fadeDuration;
+          if (d.action === 'play' || d.action === 'fade') {
+            nextState.musicTrackId = d.assetId;
+            nextState.musicPlaying = !!d.assetId;
+            nextState.musicVolume = d.volume;
+          } else if (d.action === 'pause') {
+            nextState.musicPlaying = false;
+            nextState.musicVolume = d.volume;
+          } else {
+            nextState.musicTrackId = null;
+            nextState.musicPlaying = false;
+            nextState.musicVolume = d.volume;
+          }
           break;
         }
-        case 'sound':
+        case 'sound': {
+          const d = step.data as SoundBlockData;
+          if (d.assetId) {
+            nextState.soundEvents = [
+              ...(nextState.soundEvents ?? []),
+              {
+                id: `${step.id}:${Date.now()}`,
+                assetId: d.assetId,
+                action: d.action,
+                volume: d.volume,
+                loop: d.loop,
+                pitchVariation: d.pitchVariation,
+                timestamp: Date.now(),
+              },
+            ];
+          }
           break;
-        case 'camera':
+        }
+        case 'camera': {
+          const d = step.data as CameraBlockData;
+          nextState.cameraState = d.action === 'reset'
+            ? {
+                action: 'reset',
+                zoomLevel: 1,
+                panX: 0,
+                panY: 0,
+                duration: d.duration,
+                easing: d.easing,
+              }
+            : {
+                action: d.action,
+                zoomLevel: d.zoomLevel ?? nextState.cameraState?.zoomLevel ?? 1,
+                panX: d.panX ?? nextState.cameraState?.panX ?? 0,
+                panY: d.panY ?? nextState.cameraState?.panY ?? 0,
+                target: d.target,
+                duration: d.duration,
+                easing: d.easing,
+              };
           break;
+        }
         case 'variable': {
           const d = step.data as VariableBlockData;
           nextState.variables = evaluateVariable(nextState.variables, d.variableName, d.operation, d.value);
@@ -196,8 +258,30 @@ export function useSceneExecutor(
           nextState.transitionTarget = (step.data as TransitionBlockData).targetSceneId;
           break;
         }
-        case 'interactive_object':
+        case 'interactive_object': {
+          const d = step.data as InteractiveObjectBlockData;
+          const nextObject = {
+            id: d.objectId || step.id,
+            name: d.name,
+            imageUri: d.assetId ?? undefined,
+            position: d.position,
+            actions: d.actions,
+            oneTimeOnly: d.oneTimeOnly,
+            pulseAnimation: d.pulseAnimation,
+            highlightOnHover: true,
+            isActive: true,
+          };
+          const currentObjects = nextState.interactiveObjects ?? [];
+          const existingIdx = currentObjects.findIndex((object) => object.id === nextObject.id);
+          if (existingIdx >= 0) {
+            const nextObjects = [...currentObjects];
+            nextObjects[existingIdx] = nextObject;
+            nextState.interactiveObjects = nextObjects;
+          } else {
+            nextState.interactiveObjects = [...currentObjects, nextObject];
+          }
           break;
+        }
       }
     } catch (err) {
       if (__DEV__) {

@@ -13,6 +13,7 @@ import {
   ensureDocumentCharactersInBlocks,
   parseDraftLineToDocumentBlock,
 } from '@/lib/document-editor/document-scene';
+import { generateId } from '@/lib/id-utils';
 import type { DocumentTechnicalBlock } from '@/lib/document-editor/types';
 
 // ── Pure helpers (moved from DocumentSceneEditor) ──────────────────────────
@@ -64,12 +65,10 @@ function pruneCharacterIfUnused(
 interface UseBlockOperationsParams {
   documentScenes: DocumentScene[];
   localCharacters: Character[];
-  lineDrafts: Record<string, string>;
   selectedBlockId: string | null;
   protectedCharacterIds: string[];
   onDocumentScenesChange: (scenes: DocumentScene[]) => void;
   onLocalCharactersChange: (characters: Character[]) => void;
-  onLineDraftsChange: (drafts: Record<string, string>) => void;
   onSelectedBlockIdChange: (id: string | null) => void;
   onCreateNextScene: (sourceSceneId: string, documentScenes: DocumentScene[], characters: Character[]) => void;
 }
@@ -77,20 +76,42 @@ interface UseBlockOperationsParams {
 export function useBlockOperations({
   documentScenes,
   localCharacters,
-  lineDrafts,
   selectedBlockId,
   protectedCharacterIds,
   onDocumentScenesChange,
   onLocalCharactersChange,
-  onLineDraftsChange,
   onSelectedBlockIdChange,
   onCreateNextScene,
 }: UseBlockOperationsParams) {
   const backspacePressRef = useRef<{ id: string; at: number } | null>(null);
 
+  const trailingBlockIdRef = useRef<string | null>(null);
+
+  const ensureTrailingEmptyBlock = useCallback((blocks: DocumentBlock[]): DocumentBlock[] => {
+    const last = blocks[blocks.length - 1];
+    if (!last || last.kind !== 'text' || last.content.trim() !== '') {
+      // Reuse the same trailing block ID to avoid re-creating the DOM element
+      const id = trailingBlockIdRef.current || generateId('doc_text');
+      trailingBlockIdRef.current = id;
+      return [...blocks, {
+        id,
+        kind: 'text' as const,
+        content: '',
+      }];
+    }
+    // Remember the ID of the existing trailing empty block
+    trailingBlockIdRef.current = last.id;
+    return blocks;
+  }, []);
+
   const updateDocumentScene = useCallback((sceneId: string, updater: (scene: DocumentScene) => DocumentScene) => {
-    onDocumentScenesChange(documentScenes.map((s) => (s.sceneId === sceneId ? updater(s) : s)));
-  }, [documentScenes, onDocumentScenesChange]);
+    onDocumentScenesChange(documentScenes.map((s) => {
+      if (s.sceneId !== sceneId) return s;
+      const updated = updater(s);
+      // Always keep a trailing empty text block
+      return { ...updated, blocks: ensureTrailingEmptyBlock(updated.blocks) };
+    }));
+  }, [documentScenes, onDocumentScenesChange, ensureTrailingEmptyBlock]);
 
   const updateBlock = useCallback((sceneId: string, blockId: string, updater: (block: DocumentBlock) => DocumentBlock) => {
     updateDocumentScene(sceneId, (current) => ({

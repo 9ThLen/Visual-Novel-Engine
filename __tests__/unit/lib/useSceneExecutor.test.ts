@@ -161,4 +161,59 @@ describe('useSceneExecutor', () => {
       expect(result.current.canAdvance).toBe(false);
     });
   });
+
+  it('executes sound, camera, and interactive object blocks into scene state', async () => {
+    const timeline: TimelineStep[] = [
+      {
+        id: 'sound-1',
+        blockType: 'sound',
+        data: { assetId: 'sfx-door', action: 'play', volume: 0.5, loop: false, pitchVariation: 0.2 },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+      {
+        id: 'camera-1',
+        blockType: 'camera',
+        data: { action: 'pan', panX: 15, panY: -5, zoomLevel: 1.4, duration: 0.6, easing: 'ease-out' },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+      {
+        id: 'object-1',
+        blockType: 'interactive_object',
+        data: {
+          objectId: 'door',
+          name: 'Door',
+          assetId: 'door-image',
+          position: { x: 40, y: 30, width: 20, height: 40 },
+          actions: [{ type: 'scene_transition', targetSceneId: 'hall' }],
+          oneTimeOnly: true,
+          pulseAnimation: false,
+        },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.sceneState.soundEvents?.[0]).toMatchObject({
+        assetId: 'sfx-door',
+        action: 'play',
+        volume: 0.5,
+      });
+      expect(result.current.sceneState.cameraState).toMatchObject({
+        action: 'pan',
+        panX: 15,
+        panY: -5,
+        zoomLevel: 1.4,
+      });
+      expect(result.current.sceneState.interactiveObjects?.[0]).toMatchObject({
+        id: 'door',
+        imageUri: 'door-image',
+        oneTimeOnly: true,
+      });
+    });
+  });
 });

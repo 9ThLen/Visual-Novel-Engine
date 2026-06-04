@@ -9,7 +9,7 @@
  * Handles: empty-backspace block removal, character auto-registration.
  */
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { TextInput, View } from 'react-native';
 
 import { ensureDocumentCharactersInBlocks } from '@/lib/document-editor/document-scene';
@@ -52,6 +52,37 @@ export const DocumentBlockDialogue = React.memo(function DocumentBlockDialogue({
   onActiveScene,
   onConvertDialogueToText,
 }: DocumentBlockDialogueProps) {
+  // Local state for speaker name to prevent keyboard dismissal on every keystroke.
+  // The parent state is synced on blur or when the block is committed.
+  const [localSpeakerName, setLocalSpeakerName] = useState(block.speakerName);
+  const localSpeakerNameRef = useRef(block.speakerName);
+  const charactersRef = useRef(localCharacters);
+  charactersRef.current = localCharacters;
+
+  const syncSpeakerName = (speakerName: string) => {
+    const next = {
+      ...block,
+      speakerName,
+      characterId: speakerName.trim()
+        ? charactersRef.current.find((item) => item.name.toLocaleLowerCase() === speakerName.trim().toLocaleLowerCase())?.id ?? null
+        : null,
+    };
+    const ensured = ensureDocumentCharactersInBlocks([next], charactersRef.current);
+    onUpdateBlock(documentScene.sceneId, block.id, () => ensured.blocks[0] ?? next);
+    // Only update characters if the array actually changed (new character created)
+    if (ensured.characters.length !== charactersRef.current.length) {
+      setLocalCharacters(ensured.characters);
+    }
+    return ensured;
+  };
+
+  // Sync local state when block.speakerName changes from outside
+  // (e.g. on initial load or programmatic update)
+  useEffect(() => {
+    setLocalSpeakerName(block.speakerName);
+    localSpeakerNameRef.current = block.speakerName;
+  }, [block.speakerName]);
+
   const textInputBaseStyle = {
     color: colors.foreground,
     fontSize: 17,
@@ -70,22 +101,19 @@ export const DocumentBlockDialogue = React.memo(function DocumentBlockDialogue({
       }}
     >
       <TextInput
-        value={block.speakerName}
+        value={localSpeakerName}
         onFocus={() => onActiveScene(documentScene.sceneId)}
         onChangeText={(speakerName) => {
-          const next = {
-            ...block,
-            speakerName,
-            characterId: speakerName.trim()
-              ? localCharacters.find((item) => item.name.toLocaleLowerCase() === speakerName.trim().toLocaleLowerCase())?.id ?? null
-              : null,
-          };
-          const ensured = ensureDocumentCharactersInBlocks([next], localCharacters);
-          onUpdateBlock(documentScene.sceneId, block.id, () => ensured.blocks[0] ?? next);
-          setLocalCharacters(ensured.characters);
+          setLocalSpeakerName(speakerName);
+          localSpeakerNameRef.current = speakerName;
+          syncSpeakerName(speakerName);
+        }}
+        onBlur={() => {
+          // Sync with parent on blur to ensure consistency
+          syncSpeakerName(localSpeakerNameRef.current);
         }}
         onKeyPress={(event) => {
-          if (event.nativeEvent.key !== 'Backspace' || block.speakerName.length > 0) return;
+          if (event.nativeEvent.key !== 'Backspace' || localSpeakerName.length > 0) return;
           onEmptyBackspace(`speaker:${block.id}`, () => {
             onConvertDialogueToText(documentScene.sceneId, block.id);
           });
@@ -104,6 +132,7 @@ export const DocumentBlockDialogue = React.memo(function DocumentBlockDialogue({
           paddingHorizontal: isPhone ? 0 : 8,
           paddingVertical: isPhone ? 2 : 5,
           textAlign: isPhone ? 'left' : 'center',
+          outline: 'none',
         }}
         placeholder={t('document.speakerPlaceholder')}
         placeholderTextColor={colors.muted}
@@ -130,6 +159,7 @@ export const DocumentBlockDialogue = React.memo(function DocumentBlockDialogue({
           flex: 1,
           minHeight: isPhone ? 32 : undefined,
           paddingVertical: isPhone ? 2 : 3,
+          outline: 'none',
         }}
         placeholder={t('document.dialoguePlaceholder')}
         placeholderTextColor={colors.muted}

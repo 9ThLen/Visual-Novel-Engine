@@ -5,12 +5,12 @@
  * scene editor. Extracted from DocumentSceneEditor to keep the parent file
  * small (see phase 13 post-audit remediation, H1).
  *
- * Renders: page chrome (scene counter, scene title), block list, line draft
- * input with slash command menu. Owns the onLayout → page registration
- * side-effect for the active-page scroll synchronization.
+ * Renders: page chrome (scene counter, scene title), block list.
+ * Owns the onLayout → page registration side-effect for the active-page
+ * scroll synchronization.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
 import { DocumentBlockDialogue } from '@/components/document-editor/DocumentBlockDialogue';
@@ -33,9 +33,6 @@ export interface DocumentPageProps {
   isPhone: boolean;
   sceneCount: number;
   sceneRecordId: string;
-  lineDraft: string;
-  slashOpen: boolean;
-  slashQuery: string;
   selectedBlockId: string | null;
   localCharacters: Character[];
   setLocalCharacters: React.Dispatch<React.SetStateAction<Character[]>>;
@@ -52,9 +49,6 @@ export const DocumentPage = React.memo(function DocumentPage({
   isPhone,
   sceneCount,
   sceneRecordId,
-  lineDraft,
-  slashOpen,
-  slashQuery,
   selectedBlockId,
   localCharacters,
   setLocalCharacters,
@@ -65,6 +59,9 @@ export const DocumentPage = React.memo(function DocumentPage({
   t,
 }: DocumentPageProps) {
   const colors = useColors();
+  const [slashBlockId, setSlashBlockId] = useState<string | null>(null);
+  const [slashQuery, setSlashQuery] = useState('');
+
   const textInputBaseStyle = useMemo(
     () => ({
       color: colors.foreground,
@@ -194,89 +191,90 @@ export const DocumentPage = React.memo(function DocumentPage({
           }
 
           // Default: text block
+          // Check if this is the last empty text block on a scene where all text blocks are empty
+          const isLastEmptyTextBlock =
+            block.id === documentScene.blocks[documentScene.blocks.length - 1].id &&
+            block.kind === 'text' &&
+            !block.content.trim() &&
+            documentScene.blocks.every(
+              (b) => b.kind !== 'text' || !b.content.trim() || b.id === block.id,
+            );
+
+          const textPlaceholder = isLastEmptyTextBlock && documentScene.blocks.length <= 2
+            ? t('document.storyBeginPlaceholder')
+            : t('document.narrationPlaceholder');
+
+          const isSlashOpen = slashBlockId === block.id;
+
           return (
-            <TextInput
-              key={block.id}
-              multiline
-              scrollEnabled={false}
-              value={block.content}
-              onFocus={() => setActiveSceneId(documentScene.sceneId)}
-              onChangeText={(content) => ops.handleTextBlockChange(documentScene.sceneId, block.id, content)}
-              onKeyPress={(event) => {
-                if (event.nativeEvent.key !== 'Backspace' || block.content.length > 0) return;
-                ops.handleEmptyBackspace(`text:${block.id}`, () => ops.removeBlock(documentScene.sceneId, block.id));
-              }}
-              style={{
-                color: colors.foreground,
-                fontSize: 17,
-                lineHeight: 27,
-                paddingVertical: 7,
-                marginBottom: isPhone ? 10 : 0,
-              }}
-              textAlignVertical="top"
-              placeholder={t('document.narrationPlaceholder')}
-              placeholderTextColor={colors.muted}
-              accessibilityLabel={t('document.narrationPlaceholder')}
-              accessibilityHint={t('document.a11y.narration')}
-            />
+            <View key={block.id} style={{ position: 'relative' }}>
+              <TextInput
+                multiline
+                scrollEnabled={false}
+                value={block.content}
+                onFocus={() => {
+                  setActiveSceneId(documentScene.sceneId);
+                  // Close slash menu when focusing a different block
+                  if (slashBlockId !== null && slashBlockId !== block.id) {
+                    setSlashBlockId(null);
+                    setSlashQuery('');
+                  }
+                }}
+                onChangeText={(content) => {
+                  // Check for slash command trigger
+                  const lines = content.split(/\r?\n/);
+                  const slashLine = lines.find((line) => line.trimStart().startsWith('/'));
+                  if (slashLine) {
+                    const query = slashLine.trimStart().slice(1);
+                    setSlashBlockId(block.id);
+                    setSlashQuery(query);
+                    // Remove the slash line from the block content
+                    const nextContent = lines.filter((line) => line !== slashLine).join('\n').trimEnd();
+                    ops.handleTextBlockChange(documentScene.sceneId, block.id, nextContent);
+                    return;
+                  }
+                  ops.handleTextBlockChange(documentScene.sceneId, block.id, content);
+                }}
+                onKeyPress={(event) => {
+                  if (event.nativeEvent.key === 'Backspace' && block.content.length === 0) {
+                    ops.handleEmptyBackspace(`text:${block.id}`, () => ops.removeBlock(documentScene.sceneId, block.id));
+                  }
+                  if (event.nativeEvent.key === 'Escape') {
+                    setSlashBlockId(null);
+                    setSlashQuery('');
+                  }
+                }}
+                style={{
+                  color: colors.foreground,
+                  fontSize: 17,
+                  lineHeight: 27,
+                  paddingVertical: 7,
+                  marginBottom: isPhone ? 10 : 0,
+                  outline: 'none',
+                }}
+                textAlignVertical="top"
+                placeholder={textPlaceholder}
+                placeholderTextColor={colors.muted}
+                accessibilityLabel={textPlaceholder}
+                accessibilityHint={t('document.a11y.narration')}
+              />
+              <DocumentCommandMenu
+                query={slashQuery}
+                visible={isSlashOpen}
+                isPhone={isPhone}
+                onPick={(command) => {
+                  ops.insertCommand(documentScene.sceneId, command);
+                  setSlashBlockId(null);
+                  setSlashQuery('');
+                }}
+                onClose={() => {
+                  setSlashBlockId(null);
+                  setSlashQuery('');
+                }}
+              />
+            </View>
           );
         })}
-      </View>
-
-      {/* Line draft input with slash commands */}
-      <View
-        style={{
-          position: 'relative',
-          marginTop: isPhone ? 2 : 12,
-          borderWidth: slashOpen ? 1 : 0,
-          borderColor: slashOpen ? colors.primary : colors.border,
-          borderRadius: 8,
-          backgroundColor: slashOpen && isPhone ? colors.background : 'transparent',
-        }}
-      >
-        <TextInput
-          multiline
-          numberOfLines={isPhone ? 2 : undefined}
-          scrollEnabled={false}
-          blurOnSubmit={false}
-          autoCapitalize="sentences"
-          autoCorrect
-          spellCheck
-          value={lineDraft}
-          onFocus={() => setActiveSceneId(documentScene.sceneId)}
-          onChangeText={(value) => ops.updateLineDraft(documentScene.sceneId, value)}
-          onSubmitEditing={() => ops.addLine(documentScene.sceneId, scroll.followWriting)}
-          onKeyPress={(event) => {
-            if (event.nativeEvent.key === 'Escape') ops.updateLineDraft(documentScene.sceneId, '');
-          }}
-          onSelectionChange={(event) => {
-            const cursorY = event.nativeEvent.selection.start;
-            scroll.setCursorY(documentScene.sceneId, cursorY);
-          }}
-          placeholder={t('document.lineDraftPlaceholder')}
-          placeholderTextColor={colors.muted}
-          style={{
-            minHeight: isPhone ? 56 : 44,
-            color: colors.foreground,
-            fontSize: 17,
-            lineHeight: 27,
-            borderWidth: isPhone ? 0 : 1,
-            borderColor: slashOpen ? colors.primary : 'transparent',
-            borderRadius: isPhone ? 0 : 8,
-            paddingHorizontal: isPhone ? 0 : 10,
-            paddingVertical: isPhone ? 12 : 8,
-            textAlignVertical: 'top',
-          }}
-          accessibilityLabel={t('document.lineDraftPlaceholder')}
-          accessibilityHint={t('document.a11y.slashCommandInput')}
-        />
-        <DocumentCommandMenu
-          query={slashQuery}
-          visible={slashOpen}
-          isPhone={isPhone}
-          onPick={(command) => ops.insertCommand(documentScene.sceneId, command)}
-          onClose={() => ops.updateLineDraft(documentScene.sceneId, '')}
-        />
       </View>
     </View>
   );
