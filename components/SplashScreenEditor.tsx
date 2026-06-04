@@ -101,7 +101,7 @@ export function SplashScreenEditor({ config, onChange }: Props) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <IconSymbol name="movie" size={16} color={colors.foreground} />
           <Text style={{ fontSize: 14, fontWeight: '700', color: colors.foreground }}>
-            Splash Screen
+            {t('splash.title')}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
@@ -152,7 +152,7 @@ export function SplashScreenEditor({ config, onChange }: Props) {
                 marginBottom: 8,
               }}
             >
-              Presets
+              {t('splash.presets')}
             </Text>
             <View style={{ gap: 6 }}>
               {SPLASH_PRESETS.map((preset) => (
@@ -198,7 +198,7 @@ export function SplashScreenEditor({ config, onChange }: Props) {
                     marginBottom: 6,
                   }}
                 >
-                  Media File ({splash.type})
+                  {t('splash.mediaFile', { type: splash.type })}
                 </Text>
                 <View
                   style={{
@@ -233,7 +233,7 @@ export function SplashScreenEditor({ config, onChange }: Props) {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     <IconSymbol name="files" size={14} color={colors['text-inverse']} />
                     <Text style={{ color: colors['text-inverse'], fontSize: 12, fontWeight: '600' }}>
-                      {splash.type === 'image' ? t('editor.pickImage') : 'Pick Video'}
+                      {splash.type === 'image' ? t('editor.pickImage') : t('editor.pickVideo')}
                     </Text>
                   </View>
                 </Pressable>
@@ -249,7 +249,7 @@ export function SplashScreenEditor({ config, onChange }: Props) {
                     marginBottom: 6,
                   }}
                 >
-                  Duration (ms)
+                  {t('splash.durationMs')}
                 </Text>
                 <TextInput
                   style={{
@@ -282,7 +282,7 @@ export function SplashScreenEditor({ config, onChange }: Props) {
                     marginBottom: 6,
                   }}
                 >
-                  Fade In (ms)
+                  {t('splash.fadeInMs')}
                 </Text>
                 <TextInput
                   style={{
@@ -315,7 +315,7 @@ export function SplashScreenEditor({ config, onChange }: Props) {
                     marginBottom: 6,
                   }}
                 >
-                  Fade Out (ms)
+                  {t('splash.fadeOutMs')}
                 </Text>
                 <TextInput
                   style={{
@@ -373,7 +373,7 @@ export function SplashScreenEditor({ config, onChange }: Props) {
                     )}
                   </View>
                   <Text style={{ color: colors.foreground, fontSize: 13 }}>
-                    Pause story during splash
+                    {t('splash.pauseStory')}
                   </Text>
                 </Pressable>
               </View>

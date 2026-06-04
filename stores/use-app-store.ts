@@ -13,7 +13,8 @@ import { createPersistentStorage } from '@/lib/persistent-storage';
 import type { Language } from '@/lib/translations';
 import type { Story } from '@/lib/scene-operations';
 import type { UserSettings } from '@/lib/user-settings';
-import type { SaveSlot, PlaybackState } from '@/lib/types';
+import type { PlaybackState } from '@/lib/engine/types';
+import type { SaveSlot } from '@/lib/story-domain';
 import type { SceneRecord, SceneConnection } from '@/lib/engine/types';
 import {
   getCanonicalSceneRecordFromState,
@@ -424,12 +425,17 @@ export const useAppStore = create<AppState & AppActions>()(
       reorderScenes: (storyId, sceneIds) =>
         set((s) => {
           const storyRecords = { ...(s.sceneRecordsByStory[storyId] || {}) };
-          sceneIds.forEach((id, index) => {
-            if (storyRecords[id]) {
-              storyRecords[id] = { ...storyRecords[id], updatedAt: Date.now() };
-            }
-          });
-          return { sceneRecordsByStory: { ...s.sceneRecordsByStory, [storyId]: storyRecords } };
+          const orderedSceneIds = [
+            ...sceneIds.filter((id) => storyRecords[id]),
+            ...Object.keys(storyRecords).filter((id) => !sceneIds.includes(id)),
+          ];
+          return {
+            storiesMetadata: s.storiesMetadata.map((metadata) =>
+              metadata.id === storyId
+                ? { ...metadata, sceneOrder: orderedSceneIds, updatedAt: Date.now() }
+                : metadata
+            ),
+          };
         }),
     }),
     {

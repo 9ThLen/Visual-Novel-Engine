@@ -3,6 +3,8 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { StoryManuscriptScene } from '@/lib/editor/story-manuscript';
 import { useColors } from '@/hooks/use-colors';
+import { radius, spacing, typeScale } from '@/lib/design-tokens';
+import { useI18n } from '@/lib/i18n';
 
 interface StoryManuscriptSidebarProps {
   scenes: StoryManuscriptScene[];
@@ -16,6 +18,7 @@ export function StoryManuscriptSidebar({
   onSelectScene,
 }: StoryManuscriptSidebarProps) {
   const colors = useColors();
+  const { t } = useI18n();
 
   return (
     <View
@@ -26,19 +29,19 @@ export function StoryManuscriptSidebar({
         backgroundColor: colors.surface,
       }}
     >
-      <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 }}>
-        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted, textTransform: 'uppercase' }}>
-          Manuscript Map
+      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md }}>
+        <Text style={{ ...typeScale.caption, fontWeight: '700', color: colors.muted, textTransform: 'uppercase' }}>
+          {t('manuscript.map')}
         </Text>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: colors.foreground, marginTop: 6 }}>
-          Scenes
+        <Text style={{ ...typeScale.sectionTitle, color: colors.foreground, marginTop: spacing.xs }}>
+          {t('editor.scenes')}
         </Text>
-        <Text style={{ fontSize: 13, color: colors.muted, marginTop: 4 }}>
-          Швидкий перехід між секціями історії.
+        <Text style={{ ...typeScale.caption, color: colors.muted, marginTop: spacing.xs }}>
+          {t('manuscript.mapHint')}
         </Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 16 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.sm, paddingBottom: spacing.lg }}>
         {scenes.map((scene, index) => {
           const isActive = scene.sceneId === activeSceneId;
 
@@ -47,31 +50,30 @@ export function StoryManuscriptSidebar({
               key={scene.sceneId}
               onPress={() => onSelectScene(scene.sceneId)}
               style={{
-                marginBottom: 6,
-                borderRadius: 12,
+                marginBottom: spacing.xs,
+                borderRadius: radius.md,
                 borderWidth: 1,
                 borderColor: isActive ? colors.primary : colors.border,
                 backgroundColor: isActive ? `${colors.primary}18` : colors.background,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.sm,
               }}
             >
-              <Text style={{ fontSize: 11, color: isActive ? colors.primary : colors.muted, fontWeight: '700' }}>
-                Scene {index + 1}
+              <Text style={{ ...typeScale.micro, color: isActive ? colors.primary : colors.muted, fontWeight: '700' }}>
+                {t('manuscript.sceneIndex', { number: index + 1 })}
               </Text>
               <Text
                 numberOfLines={2}
                 style={{
-                  fontSize: 14,
-                  fontWeight: '600',
+                  ...typeScale.label,
                   color: colors.foreground,
-                  marginTop: 4,
+                  marginTop: spacing.xs,
                 }}
               >
-                {scene.sceneName || 'Untitled Scene'}
+                {scene.sceneName || t('editor.untitledScene')}
               </Text>
-              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>
-                {scene.blocks.length} fragments
+              <Text style={{ ...typeScale.caption, color: colors.muted, marginTop: spacing.xs }}>
+                {t('manuscript.fragmentCount', { count: scene.blocks.length })}
               </Text>
             </Pressable>
           );

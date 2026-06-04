@@ -17,6 +17,8 @@ import type {
 } from '@/lib/engine/types';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 import { withAlpha } from '@/lib/_core/theme';
+import { useI18n } from '@/lib/i18n';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 interface MiniPreviewProps {
   timeline: TimelineStep[];
@@ -25,6 +27,7 @@ interface MiniPreviewProps {
 
 export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
   const colors = useColors();
+  const { t } = useI18n();
 
   // Compute current scene state from timeline
   const sceneState = computeSceneState(timeline);
@@ -53,10 +56,10 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
           textTransform: 'uppercase',
           color: colors.muted,
         }}>
-          👁 Preview
+          {t('editor.preview.title')}
         </Text>
-        <Pressable onPress={onClose} style={{ padding: 4 }}>
-          <Text style={{ fontSize: 12, color: colors.muted }}>✕</Text>
+        <Pressable onPress={onClose} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('a11y.closePanel')}>
+          <IconSymbol name="close" size={14} color={colors.muted} />
         </Pressable>
       </View>
 
@@ -80,7 +83,7 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
               alignItems: 'center',
               justifyContent: 'center',
             }}>
-              <Text style={{ fontSize: 11, lineHeight: 15, color: colors.muted }}>No background</Text>
+              <Text style={{ fontSize: 11, lineHeight: 15, color: colors.muted }}>{t('editor.noBackground')}</Text>
             </View>
           )}
 
@@ -115,14 +118,14 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
           justifyContent: 'center',
         }}>
           <Text style={{ fontSize: 11, lineHeight: 15, color: colors.foreground, fontWeight: '600' }}>
-            {sceneState.characters.length} character{sceneState.characters.length !== 1 ? 's' : ''}
+            {t('editor.preview.characterCount', { count: String(sceneState.characters.length) })}
           </Text>
           <Text style={{ fontSize: 11, lineHeight: 15, color: colors.muted, marginTop: 4 }}>
-            {timeline.length} block{timeline.length !== 1 ? 's' : ''}
+            {t('editor.preview.blockCount', { count: String(timeline.length) })}
           </Text>
           {sceneState.musicTrackId && (
             <Text style={{ fontSize: 11, lineHeight: 15, color: colors.muted, marginTop: 4 }}>
-              🎵 {sceneState.musicTrackId}
+              <IconSymbol name="music" size={11} color={colors.muted} /> {sceneState.musicTrackId}
             </Text>
           )}
         </View>

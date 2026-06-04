@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { Button } from '@/components/ui';
@@ -15,6 +15,9 @@ import {
 import type { StoryManuscriptScene } from '@/lib/editor/story-manuscript-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
+import { useI18n } from '@/lib/i18n';
+import { showToast } from '@/lib/toast-store';
+import { spacing, typeScale } from '@/lib/design-tokens';
 import { useAppStore } from '@/stores/use-app-store';
 import { StoryManuscriptSidebar } from './manuscript/StoryManuscriptSidebar';
 import { StoryManuscriptSection } from './manuscript/StoryManuscriptSection';
@@ -33,6 +36,7 @@ export function StoryManuscriptScreen({
   const router = useRouter();
   const colors = useColors();
   const layout = useResponsiveLayout();
+  const { t } = useI18n();
   const saveSceneRecord = useAppStore((state) => state.saveSceneRecord);
   const scrollViewRef = useRef<ScrollView>(null);
   const sceneOffsetsRef = useRef<Record<string, number>>({});
@@ -118,11 +122,11 @@ export function StoryManuscriptScreen({
     try {
       const updatedScenes = applyStoryManuscriptChanges(draft, sceneRecords);
       updatedScenes.forEach((scene) => saveSceneRecord(scene));
-      Alert.alert('Saved', 'Manuscript changes were saved to the story.');
+      showToast(t('manuscript.saveSuccess'), 'success');
     } finally {
       setIsSaving(false);
     }
-  }, [draft, saveSceneRecord, sceneRecords]);
+  }, [draft, saveSceneRecord, sceneRecords, t]);
 
   const handleDiscard = useCallback(() => {
     setDraft(baseManuscript);
@@ -135,39 +139,39 @@ export function StoryManuscriptScreen({
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
           backgroundColor: colors.surface,
-          paddingHorizontal: 20,
-          paddingVertical: 16,
+          paddingHorizontal: spacing.xl,
+          paddingVertical: spacing.lg,
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.lg }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, color: colors.muted, fontWeight: '700', textTransform: 'uppercase' }}>
-              Story Manuscript
+            <Text style={{ ...typeScale.caption, color: colors.muted, fontWeight: '700', textTransform: 'uppercase' }}>
+              {t('manuscript.title')}
             </Text>
-            <Text style={{ fontSize: 28, fontWeight: '700', color: colors.foreground, marginTop: 8 }}>
+            <Text style={{ ...typeScale.pageTitle, fontWeight: '700', color: colors.foreground, marginTop: spacing.sm }}>
               {storyMetadata.title}
             </Text>
-            <Text style={{ fontSize: 14, color: colors.muted, marginTop: 6 }}>
-              Цілісний літературний вигляд усіх сцен з inline editing та scene-local reorder.
+            <Text style={{ ...typeScale.label, color: colors.muted, marginTop: spacing.sm }}>
+              {t('manuscript.subtitle')}
             </Text>
           </View>
 
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <View style={{ flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <Button variant="ghost" size="sm" onPress={() => router.back()}>
-              Back
+              {t('menu.back')}
             </Button>
             <Button
               variant="secondary"
               size="sm"
-              onPress={() => router.push({ pathname: '/scene-manager', params: { storyId } } as never)}
+              onPress={() => router.push({ pathname: '/scene-manager', params: { storyId } })}
             >
-              Scenes
+              {t('editor.scenes')}
             </Button>
             <Button variant="secondary" size="sm" onPress={handleDiscard} disabled={!isDirty || isSaving}>
-              Discard
+              {t('common.discard')}
             </Button>
             <Button variant="primary" size="sm" onPress={handleSave} disabled={!isDirty} loading={isSaving}>
-              Save Manuscript
+              {t('manuscript.save')}
             </Button>
           </View>
         </View>
@@ -188,7 +192,7 @@ export function StoryManuscriptScreen({
               backgroundColor: colors.surface,
             }}
           >
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: 12, gap: 8 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: spacing.md, gap: spacing.sm }}>
               {draft.scenes.map((scene) => {
                 const isActive = scene.sceneId === activeSceneId;
                 return (
@@ -198,7 +202,7 @@ export function StoryManuscriptScreen({
                     size="sm"
                     onPress={() => handleSelectScene(scene.sceneId)}
                   >
-                    {scene.sceneName || 'Untitled Scene'}
+                    {scene.sceneName || t('editor.untitledScene')}
                   </Button>
                 );
               })}
@@ -210,8 +214,8 @@ export function StoryManuscriptScreen({
           ref={scrollViewRef}
           style={{ flex: 1 }}
           contentContainerStyle={{
-            paddingHorizontal: layout.isTablet ? 28 : 16,
-            paddingVertical: 24,
+            paddingHorizontal: layout.isTablet ? spacing.xl : spacing.lg,
+            paddingVertical: spacing.xl,
             alignSelf: 'center',
             width: '100%',
             maxWidth: 980,

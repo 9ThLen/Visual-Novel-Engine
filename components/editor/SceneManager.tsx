@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/lib/i18n';
+import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { createSceneRecordFromEditorDraft } from '@/lib/editor-scene-draft';
 import type { BlockType, SceneRecord } from '@/lib/engine/types';
 import { generateId } from '@/lib/id-utils';
@@ -85,7 +86,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
     navigateWithViewTransition(() => router.push({
       pathname: '/document-editor',
       params: { storyId, sceneId },
-    } as never));
+    }));
   }, [router, storyId]);
 
   const handleCreateScene = useCallback(() => {
@@ -114,7 +115,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
     const record: SceneRecord = {
       ...scene,
       id: newId,
-      name: `${scene.name} (copy)`,
+      name: t('editor.sceneManager.copyName', { name: scene.name }),
       timeline: JSON.parse(JSON.stringify(scene.timeline || [])),
       flowX: scene.flowX + 30,
       flowY: scene.flowY + 30,
@@ -123,22 +124,22 @@ export function SceneManager({ storyId }: SceneManagerProps) {
       updatedAt: Date.now(),
     };
     saveSceneRecord(record);
-  }, [saveSceneRecord]);
+  }, [saveSceneRecord, t]);
 
   const handleDeleteScene = useCallback((scene: SceneRecord) => {
     Alert.alert(
-      'Delete Scene',
-      `Delete "${scene.name}"? This cannot be undone.`,
+      t('editor.confirmDeleteSceneTitle'),
+      t('editor.confirmDeleteSceneMessage', { name: scene.name }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: () => deleteSceneRecord(storyId, scene.id),
         },
       ],
     );
-  }, [deleteSceneRecord, storyId]);
+  }, [deleteSceneRecord, storyId, t]);
 
   const handleSetStart = useCallback((sceneId: string) => {
     setStartScene(storyId, sceneId);
@@ -150,17 +151,17 @@ export function SceneManager({ storyId }: SceneManagerProps) {
     const record = createManagedSceneRecord(
       storyId,
       newId,
-      `New Scene ${scenes.length + 1}`,
+      t('editor.sceneManager.newSceneName', { number: String(scenes.length + 1) }),
       100 + scenes.length * 30,
       100 + Math.floor(scenes.length / 3) * 200,
     );
     saveSceneRecord(record);
     useEditorStore.getState().setScene(record.id, record.name, record.timeline);
     openSceneEditor(newId);
-  }, [scenes.length, storyId, saveSceneRecord, openSceneEditor]);
+  }, [scenes.length, storyId, saveSceneRecord, openSceneEditor, t]);
 
   const openPlay = useCallback(() => {
-    navigateWithViewTransition(() => router.push({ pathname: '/play', params: { storyId } } as never));
+    navigateWithViewTransition(() => router.push({ pathname: '/play', params: { storyId } }));
   }, [router, storyId]);
 
   return (
@@ -169,7 +170,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
         style={[
           styles.header,
           {
-            paddingTop: insets.top + 12,
+            paddingTop: insets.top + spacing.md,
             backgroundColor: colors.surface,
             borderBottomColor: colors.border,
           },
@@ -181,15 +182,15 @@ export function SceneManager({ storyId }: SceneManagerProps) {
           accessibilityRole="button"
           accessibilityLabel={t('menu.back')}
         >
-          <Text style={[styles.backText, { color: colors.primary }]}>Back</Text>
+          <Text style={[styles.backText, { color: colors.primary }]}>{t('menu.back')}</Text>
         </Pressable>
         <View style={styles.headerCopy}>
           <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={1}>
-            {story?.title || 'Story'} Scenes
+            {t('editor.sceneManager.storyScenes', { title: story?.title || t('editor.untitledStory') })}
           </Text>
           <Text style={[styles.subtitle, { color: colors.muted }]} numberOfLines={1}>
-            {scenes.length} scene{scenes.length !== 1 ? 's' : ''}
-            {startSceneId ? ` · Start: ${storyRecords[startSceneId]?.name || startSceneId}` : ''}
+            {t('editor.sceneManager.sceneCount', { count: scenes.length })}
+            {startSceneId ? ` / ${t('editor.sceneManager.startScene', { name: storyRecords[startSceneId]?.name || startSceneId })}` : ''}
           </Text>
         </View>
       </View>
@@ -201,7 +202,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
             onChangeText={setNewSceneName}
             placeholder={t('editor.sceneManager.namePlaceholder')}
             placeholderTextColor={colors.muted}
-            accessibilityLabel="Scene Name"
+            accessibilityLabel={t('editor.sceneName')}
             onSubmitEditing={handleCreateScene}
             style={[
               styles.searchInput,
@@ -214,7 +215,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
             onChangeText={setSearchQuery}
             placeholder={t('editor.sceneManager.searchPlaceholder')}
             placeholderTextColor={colors.muted}
-            accessibilityLabel="Search Scenes"
+            accessibilityLabel={t('editor.searchScenes')}
             style={[
               styles.searchInput,
               { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground },
@@ -225,19 +226,19 @@ export function SceneManager({ storyId }: SceneManagerProps) {
         {showNewSceneForm ? (
           <>
             <Button variant="primary" size="sm" onPress={handleCreateScene}>
-              Create
+              {t('common.create')}
             </Button>
             <Button variant="ghost" size="sm" onPress={() => { setShowNewSceneForm(false); setNewSceneName(''); }}>
-              Cancel
+              {t('common.cancel')}
             </Button>
           </>
         ) : (
           <>
             <Button variant="primary" size="sm" onPress={() => setShowNewSceneForm(true)}>
-              New Scene
+              {t('editor.addNewScene')}
             </Button>
             <Button variant="secondary" size="sm" onPress={() => setShowSceneSelector(true)}>
-              Templates
+              {t('editor.sceneSelector.title')}
             </Button>
           </>
         )}
@@ -246,12 +247,12 @@ export function SceneManager({ storyId }: SceneManagerProps) {
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
         {scenes.length === 0 ? (
           <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No Scenes Yet</Text>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t('editor.sceneManager.emptyTitle')}</Text>
             <Text style={[styles.emptyText, { color: colors.muted }]}>
-              Create a scene manually or start from a template.
+              {t('editor.sceneManager.emptyText')}
             </Text>
             <Button variant="primary" size="base" onPress={() => setShowSceneSelector(true)}>
-              Browse Templates
+              {t('editor.sceneManager.browseTemplates')}
             </Button>
           </View>
         ) : (
@@ -269,7 +270,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
               <View style={styles.sceneHeader}>
                 {scene.isStart && (
                   <Text style={[styles.startBadge, { color: colors.success, borderColor: colors.success }]}>
-                    START
+                    {t('editor.sceneManager.startBadge')}
                   </Text>
                 )}
                 <Text style={[styles.sceneTitle, { color: colors.foreground }]} numberOfLines={1}>
@@ -278,7 +279,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
               </View>
 
               <Text style={[styles.sceneMeta, { color: colors.muted }]}>
-                {scene.timeline?.length || 0} blocks · Updated {dateFormatter.format(new Date(scene.updatedAt))}
+                {t('editor.sceneManager.meta', { blocks: scene.timeline?.length || 0, date: dateFormatter.format(new Date(scene.updatedAt)) })}
               </Text>
 
               {scene.tags.length > 0 && (
@@ -293,25 +294,25 @@ export function SceneManager({ storyId }: SceneManagerProps) {
 
               {scene.connections && scene.connections.length > 0 && (
                 <Text style={[styles.connections, { color: colors.muted }]} numberOfLines={2}>
-                  {scene.connections.length} connection{scene.connections.length !== 1 ? 's' : ''}:{' '}
-                  {scene.connections.map((connection) => `${connection.outputPort} to ${connection.targetSceneId}`).join(', ')}
+                  {t('editor.sceneManager.connections', { count: scene.connections.length })}:{' '}
+                  {scene.connections.map((connection) => `${connection.outputPort} ${t('editor.sceneManager.connectionTo')} ${connection.targetSceneId}`).join(', ')}
                 </Text>
               )}
 
               <View style={styles.sceneActions}>
                 <Button variant="primary" size="sm" onPress={() => handleEditScene(scene)}>
-                  Edit
+                  {t('common.edit')}
                 </Button>
                 <Button variant="secondary" size="sm" onPress={() => handleDuplicateScene(scene)}>
-                  Copy
+                  {t('common.copy')}
                 </Button>
                 {!scene.isStart && (
                   <Button variant="ghost" size="sm" onPress={() => handleSetStart(scene.id)}>
-                    Set Start
+                    {t('editor.sceneManager.setStart')}
                   </Button>
                 )}
                 <Button variant="ghost" size="sm" onPress={() => handleDeleteScene(scene)}>
-                  Delete
+                  {t('common.delete')}
                 </Button>
               </View>
             </View>
@@ -321,11 +322,11 @@ export function SceneManager({ storyId }: SceneManagerProps) {
 
       <View style={[styles.bottomBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         <Text style={[styles.bottomMeta, { color: colors.muted }]}>
-          {scenes.length} scene{scenes.length !== 1 ? 's' : ''}
+          {t('editor.sceneManager.sceneCount', { count: scenes.length })}
         </Text>
         <View style={styles.bottomActions}>
           <Button variant="primary" size="sm" onPress={openPlay}>
-            Play
+            {t('reader.continueReading')}
           </Button>
         </View>
       </View>
@@ -347,17 +348,17 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
     borderBottomWidth: 1,
   },
   backButton: {
     minHeight: 44,
     justifyContent: 'center',
-    paddingRight: 12,
+    paddingRight: spacing.md,
   },
   backText: {
-    fontSize: 14,
+    ...typeScale.label,
     fontWeight: '800',
   },
   headerCopy: {
@@ -365,120 +366,117 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    fontSize: 20,
+    ...typeScale.sectionTitle,
     fontWeight: '800',
   },
   subtitle: {
-    fontSize: 13,
+    ...typeScale.caption,
     marginTop: 2,
   },
   actionBar: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
     borderBottomWidth: 1,
   },
   searchInput: {
     flex: 1,
     minWidth: 180,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...typeScale.label,
   },
   list: {
     flex: 1,
   },
   listContent: {
-    padding: 16,
-    paddingBottom: 28,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   emptyState: {
     borderWidth: 1,
-    borderRadius: 24,
-    padding: 28,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
   },
   emptyTitle: {
-    fontSize: 20,
+    ...typeScale.sectionTitle,
     fontWeight: '800',
   },
   emptyText: {
     maxWidth: 360,
     textAlign: 'center',
-    fontSize: 14,
-    lineHeight: 21,
+    ...typeScale.label,
   },
   sceneCard: {
     borderWidth: 1,
-    borderRadius: 22,
-    padding: 16,
-    marginBottom: 12,
-    gap: 10,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   sceneHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   startBadge: {
-    fontSize: 10,
+    ...typeScale.micro,
     fontWeight: '800',
-    paddingHorizontal: 7,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 3,
-    borderRadius: 999,
+    borderRadius: radius.full,
     borderWidth: 1,
   },
   sceneTitle: {
     flex: 1,
     minWidth: 0,
-    fontSize: 17,
+    ...typeScale.body,
     fontWeight: '800',
   },
   sceneMeta: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...typeScale.caption,
   },
   tags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: spacing.xs,
   },
   tag: {
-    fontSize: 11,
+    ...typeScale.micro,
     fontWeight: '700',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
   },
   connections: {
-    fontSize: 12,
-    lineHeight: 18,
+    ...typeScale.caption,
   },
   sceneActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: spacing.sm,
   },
   bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     borderTopWidth: 1,
   },
   bottomMeta: {
-    fontSize: 12,
+    ...typeScale.caption,
     fontWeight: '700',
   },
   bottomActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.sm,
   },
 });

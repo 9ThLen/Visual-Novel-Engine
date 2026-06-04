@@ -5,9 +5,10 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { StoryAutoSave } from "@/lib/story-hooks";
+import { StoryAutoSave } from "@/components/StoryAutoSave";
 import { ReaderAudioRouteGuard } from "@/components/ReaderAudioRouteGuard";
 import { MigrationErrorBanner } from "@/components/MigrationErrorBanner";
+import { ToastViewport } from "@/components/ui";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 
@@ -43,6 +44,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="tabs" />
           </Stack>
+          <ToastViewport />
           <StatusBar style="auto" />
         </ThemeProvider>
       </GestureHandlerRootView>

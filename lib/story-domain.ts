@@ -10,6 +10,7 @@ export interface StoryMetadata {
   updatedAt: number;
   thumbnailUri?: string;
   sceneCount: number;
+  sceneOrder?: string[];
 }
 
 export interface StoryMetadataInput extends Omit<StoryMetadata, 'sceneCount'> {

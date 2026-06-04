@@ -11,11 +11,33 @@ import { getBrowserSafeAudioUri } from './audio-web-source';
 import { resolveLibraryAssetUri } from './media-library-service';
 import { isSafeUri } from './story-validator';
 
-const uriCache = new Map<string, Promise<string | number | null>>();
-const playableUriCache = new Map<string, Promise<string | null>>();
+type TimedCacheEntry<T> = {
+  expiresAt: number;
+  value: Promise<T>;
+};
+
+const uriCache = new Map<string, TimedCacheEntry<string | number | null>>();
+const playableUriCache = new Map<string, TimedCacheEntry<string | null>>();
+const MODULE_CACHE_MAX_SIZE = 50;
+
+function evictOldest(cache: Map<unknown, unknown>, maxSize: number): void {
+  if (cache.size >= maxSize) {
+    const firstKey = cache.keys().next().value;
+    if (firstKey !== undefined) cache.delete(firstKey);
+  }
+}
+
 const moduleUriCache = new Map<number, string>();
 const modulePlayableCache = new Map<number, string>();
 const URI_CACHE_MAX_SIZE = 100;
+const URI_CACHE_TTL_MS = 5 * 60 * 1000;
+const SAFE_DATA_URI_PREFIXES = [
+  'data:image/',
+  'data:audio/',
+  'data:video/',
+  'data:font/',
+  'data:application/octet-stream',
+];
 
 // ── Path traversal prevention ────────────────────────────────────────────────
 
@@ -31,13 +53,32 @@ function isPathSafe(path: string): boolean {
   return true;
 }
 
-function setCacheEntry(key: string, value: Promise<string | number | null>): void {
-  if (uriCache.size >= URI_CACHE_MAX_SIZE) {
-    // Evict oldest entry (first inserted)
-    const firstKey = uriCache.keys().next().value;
-    if (firstKey !== undefined) uriCache.delete(firstKey);
+function getTimedCacheEntry<T>(cache: Map<string, TimedCacheEntry<T>>, key: string): Promise<T> | null {
+  const cached = cache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    cache.delete(key);
+    return null;
   }
-  uriCache.set(key, value);
+  return cached.value;
+}
+
+function setTimedCacheEntry<T>(cache: Map<string, TimedCacheEntry<T>>, key: string, value: Promise<T>): void {
+  if (cache.size >= URI_CACHE_MAX_SIZE) {
+    // Evict oldest entry (first inserted)
+    const firstKey = cache.keys().next().value;
+    if (firstKey !== undefined) cache.delete(firstKey);
+  }
+  cache.set(key, {
+    expiresAt: Date.now() + URI_CACHE_TTL_MS,
+    value,
+  });
+}
+
+function isSafeDataUri(uri: string): boolean {
+  const lowerUri = uri.toLowerCase();
+  if (lowerUri.startsWith('data:image/svg+xml')) return false;
+  return SAFE_DATA_URI_PREFIXES.some((prefix) => lowerUri.startsWith(prefix));
 }
 
 // Bundled assets mapping - maps asset IDs to actual asset locations
@@ -117,16 +158,24 @@ export function getBundledAsset(assetId: string): number | null {
 export async function resolveAssetUri(uri: string | undefined): Promise<string | number | null> {
   if (!uri) return null;
 
-  const cached = uriCache.get(uri);
+  const cached = getTimedCacheEntry(uriCache, uri);
   if (cached) return cached;
 
   const promise = resolveUri(uri);
-  setCacheEntry(uri, promise);
+  setTimedCacheEntry(uriCache, uri, promise);
   return promise;
 }
 
 async function resolveUri(uri: string): Promise<string | number | null> {
   try {
+    if (uri.startsWith('data:')) {
+      if (!isSafeDataUri(uri)) {
+        ErrorHandler.handle('Blocked unsafe data URI', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri: uri.slice(0, 80) });
+        return null;
+      }
+      return uri;
+    }
+
     if (!isSafeUri(uri)) {
       ErrorHandler.handle('Blocked unsafe URI', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri });
       return null;
@@ -153,23 +202,6 @@ async function resolveUri(uri: string): Promise<string | number | null> {
     if (uri.startsWith('blob:')) return uri;
 
     // data: URIs — only allow safe media types (image, audio, video)
-    if (uri.startsWith('data:')) {
-      const lowerUri = uri.toLowerCase();
-      const safeDataPrefixes = [
-        'data:image/',
-        'data:audio/',
-        'data:video/',
-        'data:font/',
-        'data:application/octet-stream',
-      ];
-      const isSafe = safeDataPrefixes.some(p => lowerUri.startsWith(p));
-      if (!isSafe) {
-        ErrorHandler.handle('Blocked unsafe data URI', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri: uri.slice(0, 80) });
-        return null;
-      }
-      return uri;
-    }
-
     // If it already looks like a valid file URI, verify it exists
     if (uri.startsWith('file://') || uri.startsWith('/')) {
       const isMediaLibraryPath = uri.includes('media-library');
@@ -220,15 +252,11 @@ async function resolveUri(uri: string): Promise<string | number | null> {
 export async function resolvePlayableAssetUri(uri: string | undefined): Promise<string | null> {
   if (!uri) return null;
 
-  const cached = playableUriCache.get(uri);
+  const cached = getTimedCacheEntry(playableUriCache, uri);
   if (cached) return cached;
 
   const promise = resolvePlayableUri(uri);
-  if (playableUriCache.size >= URI_CACHE_MAX_SIZE) {
-    const firstKey = playableUriCache.keys().next().value;
-    if (firstKey !== undefined) playableUriCache.delete(firstKey);
-  }
-  playableUriCache.set(uri, promise);
+  setTimedCacheEntry(playableUriCache, uri, promise);
   return promise;
 }
 
@@ -254,7 +282,10 @@ async function moduleIdToPlayableUri(moduleId: number): Promise<string | null> {
   if (cached) return cached;
 
   const playable = await moduleIdToUri(moduleId);
-  if (playable) modulePlayableCache.set(moduleId, playable);
+  if (playable) {
+    evictOldest(modulePlayableCache, MODULE_CACHE_MAX_SIZE);
+    modulePlayableCache.set(moduleId, playable);
+  }
   return playable;
 }
 
@@ -266,7 +297,10 @@ async function moduleIdToUri(moduleId: number): Promise<string | null> {
     const asset = Asset.fromModule(moduleId);
     if (!asset.localUri) await asset.downloadAsync();
     const uri = asset.localUri ?? asset.uri ?? null;
-    if (uri) moduleUriCache.set(moduleId, uri);
+    if (uri) {
+      evictOldest(moduleUriCache, MODULE_CACHE_MAX_SIZE);
+      moduleUriCache.set(moduleId, uri);
+    }
     return uri;
   } catch (error) {
     ErrorHandler.handle('Failed to resolve bundled module URI', error, ErrorCategory.MEDIA, ErrorSeverity.LOW);

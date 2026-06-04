@@ -16,6 +16,8 @@ import { useI18n } from '@/lib/i18n';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { type BlockType } from '@/lib/engine/types';
 import { withAlpha } from '@/lib/_core/theme';
+import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
+import { radius, spacing, typeScale } from '@/lib/design-tokens';
 
 // ── Template scene definitions ──────────────────────────────────────
 interface TemplateScene {
@@ -23,7 +25,7 @@ interface TemplateScene {
   name: string;
   description: string;
   category: 'dialogue' | 'action' | 'transition' | 'choice' | 'cinematic';
-  icon: string;
+  icon: IconSymbolName;
   tags: string[];
   blockTypes: BlockType[];  // Block types to add when importing
   outputs: string[];
@@ -36,7 +38,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Basic Dialogue',
     description: 'Character speaks with name tag and text box',
     category: 'dialogue',
-    icon: '💬',
+    icon: 'voice',
     tags: ['dialogue', 'character', 'text'],
     blockTypes: ['dialogue'],
     outputs: ['next'],
@@ -47,7 +49,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Narration',
     description: 'Narrator text without character name',
     category: 'dialogue',
-    icon: '📖',
+    icon: 'document',
     tags: ['narration', 'text'],
     blockTypes: ['text'],
     outputs: ['next'],
@@ -58,7 +60,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Binary Choice',
     description: 'Two options for the player to choose from',
     category: 'choice',
-    icon: '🔀',
+    icon: 'timeline',
     tags: ['choice', 'branching'],
     blockTypes: ['dialogue', 'choice'],
     outputs: ['choice_a', 'choice_b'],
@@ -69,7 +71,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Triple Choice',
     description: 'Three options for the player',
     category: 'choice',
-    icon: '🔀',
+    icon: 'timeline',
     tags: ['choice', 'branching', 'triple'],
     blockTypes: ['dialogue', 'choice'],
     outputs: ['choice_a', 'choice_b', 'choice_c'],
@@ -80,7 +82,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Scene Transition',
     description: 'Fade out / fade in between scenes',
     category: 'transition',
-    icon: '🎬',
+    icon: 'movie',
     tags: ['transition', 'fade'],
     blockTypes: ['transition'],
     outputs: ['next'],
@@ -91,7 +93,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Character Entrance',
     description: 'Character appears with animation',
     category: 'action',
-    icon: '🚶',
+    icon: 'character',
     tags: ['character', 'entrance', 'animation'],
     blockTypes: ['character'],
     outputs: ['next'],
@@ -102,7 +104,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Character Exit',
     description: 'Character leaves the scene',
     category: 'action',
-    icon: '👋',
+    icon: 'character',
     tags: ['character', 'exit', 'animation'],
     blockTypes: ['character'],
     outputs: ['next'],
@@ -113,7 +115,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Background Change',
     description: 'Switch to a new background image',
     category: 'cinematic',
-    icon: '🖼️',
+    icon: 'image',
     tags: ['background', 'cinematic'],
     blockTypes: ['background'],
     outputs: ['next'],
@@ -124,7 +126,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Start Music',
     description: 'Begin background music track',
     category: 'cinematic',
-    icon: '🎵',
+    icon: 'music',
     tags: ['music', 'audio', 'bgm'],
     blockTypes: ['music'],
     outputs: ['next'],
@@ -135,7 +137,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Stop Music',
     description: 'Fade out and stop background music',
     category: 'cinematic',
-    icon: '🔇',
+    icon: 'stop',
     tags: ['music', 'audio', 'fadeout'],
     blockTypes: ['music'],
     outputs: ['next'],
@@ -146,7 +148,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Sound Effect',
     description: 'Play a one-shot sound effect',
     category: 'cinematic',
-    icon: '🔊',
+    icon: 'sound',
     tags: ['sound', 'sfx', 'effect'],
     blockTypes: ['sound'],
     outputs: ['next'],
@@ -157,7 +159,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Set Variable',
     description: 'Set a story variable (flag, counter, etc.)',
     category: 'action',
-    icon: '🏷️',
+    icon: 'settings',
     tags: ['variable', 'flag', 'logic'],
     blockTypes: ['variable'],
     outputs: ['next'],
@@ -168,7 +170,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Condition Check',
     description: 'Branch based on a variable value',
     category: 'action',
-    icon: '❓',
+    icon: 'question',
     tags: ['condition', 'branching', 'logic', 'if'],
     blockTypes: ['variable'],
     outputs: ['true', 'false'],
@@ -179,7 +181,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Camera Pan',
     description: 'Pan camera across the scene',
     category: 'cinematic',
-    icon: '📷',
+    icon: 'camera',
     tags: ['camera', 'pan', 'cinematic'],
     blockTypes: ['camera'],
     outputs: ['next'],
@@ -190,7 +192,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Camera Zoom',
     description: 'Zoom in or out',
     category: 'cinematic',
-    icon: '🔍',
+    icon: 'search',
     tags: ['camera', 'zoom', 'cinematic'],
     blockTypes: ['camera'],
     outputs: ['next'],
@@ -201,7 +203,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Screen Shake',
     description: 'Shake the screen for dramatic effect',
     category: 'cinematic',
-    icon: '💥',
+    icon: 'lightning',
     tags: ['effect', 'shake', 'dramatic'],
     blockTypes: ['effect'],
     outputs: ['next'],
@@ -212,7 +214,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     name: 'Screen Flash',
     description: 'Flash the screen white or colored',
     category: 'cinematic',
-    icon: '⚡',
+    icon: 'lightning',
     tags: ['effect', 'flash', 'dramatic'],
     blockTypes: ['effect'],
     outputs: ['next'],
@@ -221,15 +223,48 @@ const TEMPLATE_SCENES: TemplateScene[] = [
 ];
 
 const CATEGORIES = [
-  { key: 'all', labelKey: 'editor.filterAll', icon: '📋' },
-  { key: 'dialogue', labelKey: 'editor.filterDialogue', icon: '💬' },
-  { key: 'choice', labelKey: 'editor.filterChoices', icon: '🔀' },
-  { key: 'action', labelKey: 'editor.filterAction', icon: '🚶' },
-  { key: 'transition', labelKey: 'editor.filterTransitions', icon: '🎬' },
-  { key: 'cinematic', labelKey: 'editor.filterCinematic', icon: '📷' },
-] as const;
+  { key: 'all', labelKey: 'editor.filterAll', icon: 'list' },
+  { key: 'dialogue', labelKey: 'editor.filterDialogue', icon: 'voice' },
+  { key: 'choice', labelKey: 'editor.filterChoices', icon: 'timeline' },
+  { key: 'action', labelKey: 'editor.filterAction', icon: 'character' },
+  { key: 'transition', labelKey: 'editor.filterTransitions', icon: 'movie' },
+  { key: 'cinematic', labelKey: 'editor.filterCinematic', icon: 'camera' },
+] as const satisfies readonly { key: string; labelKey: string; icon: IconSymbolName }[];
 
 // ── Props ───────────────────────────────────────────────────────────
+const CATEGORY_ICON_BY_KEY: Record<string, IconSymbolName> = {
+  all: 'list',
+  dialogue: 'voice',
+  choice: 'timeline',
+  action: 'character',
+  transition: 'movie',
+  cinematic: 'camera',
+};
+
+const TEMPLATE_ICON_BY_ID: Record<string, IconSymbolName> = {
+  tpl_dialogue_basic: 'voice',
+  tpl_dialogue_narration: 'document',
+  tpl_choice_binary: 'timeline',
+  tpl_choice_triple: 'timeline',
+  tpl_scene_transition: 'movie',
+  tpl_character_entrance: 'character',
+  tpl_character_exit: 'character',
+  tpl_background_change: 'image',
+  tpl_music_start: 'music',
+  tpl_music_stop: 'stop',
+  tpl_sound_effect: 'sound',
+  tpl_variable_set: 'settings',
+  tpl_condition_check: 'question',
+  tpl_camera_pan: 'camera',
+  tpl_camera_zoom: 'search',
+  tpl_fx_shake: 'lightning',
+  tpl_fx_flash: 'lightning',
+};
+
+function getTemplateIconName(scene: TemplateScene): IconSymbolName {
+  return TEMPLATE_ICON_BY_ID[scene.id] ?? 'document';
+}
+
 interface SceneSelectorProps {
   visible: boolean;
   onClose: () => void;
@@ -257,11 +292,18 @@ export function SceneSelector({
   const [connectFrom, setConnectFrom] = useState<{ sceneId: string; output: string } | null>(null);
   const listRef = useRef<FlatList<TemplateScene> | null>(null);
 
+  const templateName = useCallback((scene: TemplateScene) =>
+    t(`editor.template.${scene.id}.name`, undefined, scene.name), [t]);
+  const templateDescription = useCallback((scene: TemplateScene) =>
+    t(`editor.template.${scene.id}.description`, undefined, scene.description), [t]);
+
   const filteredScenes = TEMPLATE_SCENES.filter((scene) => {
+    const name = templateName(scene).toLowerCase();
+    const description = templateDescription(scene).toLowerCase();
     const matchesCategory = selectedCategory === 'all' || scene.category === selectedCategory;
     const matchesSearch = searchQuery === '' ||
-      scene.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      scene.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      name.includes(searchQuery.toLowerCase()) ||
+      description.includes(searchQuery.toLowerCase()) ||
       scene.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesSearch;
   });
@@ -317,15 +359,18 @@ export function SceneSelector({
         {/* Header */}
         <View style={{
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-          paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12,
+          paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md,
           borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface,
         }}>
-          <Pressable onPress={onClose} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel={t('a11y.closePanel')}>
-            <Text style={{ color: colors.primary, fontSize: 16 }}>✕</Text>
+          <Pressable onPress={onClose} style={{ padding: spacing.sm }} accessibilityRole="button" accessibilityLabel={t('a11y.closePanel')}>
+            <IconSymbol name="close" size={18} color={colors.primary} />
           </Pressable>
-          <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: '700' }}>
-            {connectMode ? `🔗 ${t('editor.sceneSelector.titleConnect')}` : `📚 ${t('editor.sceneSelector.title')}`}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <IconSymbol name={connectMode ? 'link' : 'list'} size={18} color={colors.foreground} />
+            <Text style={{ color: colors.foreground, ...typeScale.sectionTitle }}>
+              {connectMode ? t('editor.sceneSelector.titleConnect') : t('editor.sceneSelector.title')}
+            </Text>
+          </View>
           <View style={{ width: 32 }} />
         </View>
 
@@ -335,24 +380,24 @@ export function SceneSelector({
             flexDirection: isPhone ? 'column' : 'row',
             alignItems: isPhone ? 'flex-start' : 'center',
             justifyContent: 'space-between',
-            paddingHorizontal: 16, paddingVertical: 10,
+            paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
             backgroundColor: withAlpha(colors.primary, 0.13),
             borderBottomWidth: 1, borderBottomColor: colors.border,
-            gap: isPhone ? 8 : 12,
+            gap: isPhone ? spacing.sm : spacing.md,
           }}>
-            <Text style={{ color: colors.foreground, fontSize: 13 }}>
+            <Text style={{ color: colors.foreground, ...typeScale.caption }}>
               {t('editor.sceneSelector.connecting')}<Text style={{ fontWeight: '600', color: colors.primary }}>{connectFrom.sceneId}</Text>
               {' → '}
               <Text style={{ fontWeight: '600' }}>{connectFrom.output}</Text>
             </Text>
-            <Pressable onPress={handleCancelConnect} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
-              <Text style={{ color: colors.danger, fontSize: 13 }}>{t('common.cancel')}</Text>
+            <Pressable onPress={handleCancelConnect} style={{ padding: spacing.xs }} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+              <Text style={{ color: colors.danger, ...typeScale.caption }}>{t('common.cancel')}</Text>
             </Pressable>
           </View>
         )}
 
         {/* Search */}
-        <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+        <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.md }}>
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -361,8 +406,8 @@ export function SceneSelector({
             style={{
               backgroundColor: colors.surface,
               borderWidth: 1, borderColor: colors.border,
-              borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8,
-              color: colors.foreground, fontSize: 14,
+              borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+              color: colors.foreground, ...typeScale.label,
             }}
           />
         </View>
@@ -372,7 +417,7 @@ export function SceneSelector({
           horizontal
           showsHorizontalScrollIndicator={false}
           style={{ maxHeight: isPhone ? 56 : 64 }}
-          contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8, alignItems: 'center' }}
+          contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm, alignItems: 'center' }}
         >
           {CATEGORIES.map((cat) => (
             <Pressable
@@ -381,17 +426,23 @@ export function SceneSelector({
               accessibilityRole="button"
               accessibilityLabel={t(cat.labelKey)}
               style={{
-                paddingHorizontal: 14, paddingVertical: 8, marginHorizontal: 4,
-                borderRadius: 20,
+                paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginHorizontal: spacing.xs,
+                borderRadius: radius.full,
                 backgroundColor: selectedCategory === cat.key ? colors.primary : colors.surface,
                 borderWidth: 1, borderColor: selectedCategory === cat.key ? colors.primary : colors.border,
               }}
             >
               <Text style={{
                 color: selectedCategory === cat.key ? colors['text-inverse'] : colors.foreground,
-                fontSize: 13, fontWeight: '500',
+                ...typeScale.caption,
               }}>
-                {cat.icon} {t(cat.labelKey)}
+                <IconSymbol
+                  name={CATEGORY_ICON_BY_KEY[cat.key]}
+                  size={14}
+                  color={selectedCategory === cat.key ? colors['text-inverse'] : colors.foreground}
+                  style={{ marginRight: spacing.xs }}
+                />
+                {t(cat.labelKey)}
               </Text>
             </Pressable>
           ))}
@@ -404,8 +455,8 @@ export function SceneSelector({
           keyExtractor={(item) => item.id}
           style={{ flex: 1 }}
           contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingBottom: selectedTemplate || connectMode ? (isPhone ? 160 : 120) : 20,
+            paddingHorizontal: spacing.lg,
+            paddingBottom: selectedTemplate || connectMode ? (isPhone ? 160 : 120) : spacing.xl,
           }}
           onScrollToIndexFailed={(info) => {
             listRef.current?.scrollToOffset({
@@ -418,13 +469,13 @@ export function SceneSelector({
               onPress={() => handleSelectTemplate(item)}
               onLongPress={() => !connectMode && storyScenes.length > 0 && handleStartConnect(item.id, item.outputs[0])}
               accessibilityRole="button"
-              accessibilityLabel={`${item.icon} ${item.name}`}
+              accessibilityLabel={templateName(item)}
               style={{
                 flexDirection: isPhone ? 'column' : 'row',
                 alignItems: isPhone ? 'stretch' : 'center',
-                padding: 14, marginBottom: 8,
+                padding: spacing.md, marginBottom: spacing.sm,
                 backgroundColor: selectedTemplate?.id === item.id ? withAlpha(colors.primary, 0.08) : colors.surface,
-                borderRadius: 10,
+                borderRadius: radius.md,
                 borderWidth: 1,
                 borderColor: selectedTemplate?.id === item.id ? colors.primary : colors.border,
               }}
@@ -434,26 +485,26 @@ export function SceneSelector({
                 width: isPhone ? '100%' : 4,
                 height: isPhone ? 4 : 40,
                 borderRadius: 2,
-                marginRight: isPhone ? 0 : 12,
-                marginBottom: isPhone ? 12 : 0,
+                marginRight: isPhone ? 0 : spacing.md,
+                marginBottom: isPhone ? spacing.md : 0,
                 backgroundColor: getCategoryColor(item.category),
               }} />
 
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2, flexWrap: 'wrap' }}>
-                  <Text style={{ fontSize: 16, marginRight: 6 }}>{item.icon}</Text>
-                  <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '600', flexShrink: 1 }}>
-                    {item.name}
+                  <IconSymbol name={getTemplateIconName(item)} size={16} color={getCategoryColor(item.category)} style={{ marginRight: spacing.xs }} />
+                  <Text style={{ color: colors.foreground, ...typeScale.label, flexShrink: 1 }}>
+                    {templateName(item)}
                   </Text>
                 </View>
-                <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 4 }}>
-                  {item.description}
+                <Text style={{ color: colors.muted, ...typeScale.caption, marginBottom: spacing.xs }}>
+                  {templateDescription(item)}
                 </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
                   {item.tags.map((tag) => (
                     <Text key={tag} style={{
-                      fontSize: 10, paddingHorizontal: 6, paddingVertical: 2,
-                      borderRadius: 4, backgroundColor: colors.surface,
+                      ...typeScale.micro, paddingHorizontal: spacing.xs, paddingVertical: 2,
+                      borderRadius: radius.sm, backgroundColor: colors.surface,
                       color: colors.muted, borderWidth: 1, borderColor: colors.border,
                     }}>
                       {tag}
@@ -461,15 +512,15 @@ export function SceneSelector({
                   ))}
                 </View>
                 {/* Input/Output ports */}
-                <View style={{ flexDirection: 'row', marginTop: 6, gap: 8, flexWrap: 'wrap' }}>
+                <View style={{ flexDirection: 'row', marginTop: spacing.xs, gap: spacing.sm, flexWrap: 'wrap' }}>
                       {item.inputs.map((input) => (
-                        <Text key={input} style={{ fontSize: 10, color: colors.success }}>
+                        <Text key={input} style={{ ...typeScale.micro, color: colors.success }}>
                           ▼ {input}
                         </Text>
                       ))}
                       {item.outputs.map((output) => (
-                        <Text key={output} style={{ fontSize: 10, color: colors.warning }}>
-                          ▶ {output}
+                        <Text key={output} style={{ ...typeScale.micro, color: colors.warning }}>
+                          <IconSymbol name="play" size={10} color={colors.warning} /> {output}
                         </Text>
                       ))}
                 </View>
@@ -480,22 +531,22 @@ export function SceneSelector({
                 <Pressable
                   onPress={() => handleStartConnect(item.id, item.outputs[0])}
                   style={{
-                    paddingHorizontal: 8,
-                    paddingVertical: 6,
-                    marginLeft: isPhone ? 0 : 8,
-                    marginTop: isPhone ? 12 : 0,
+                    paddingHorizontal: spacing.sm,
+                    paddingVertical: spacing.xs,
+                    marginLeft: isPhone ? 0 : spacing.sm,
+                    marginTop: isPhone ? spacing.md : 0,
                     alignSelf: isPhone ? 'flex-end' : 'center',
-                    borderRadius: 6, backgroundColor: colors.surface,
+                    borderRadius: radius.sm, backgroundColor: colors.surface,
                     borderWidth: 1, borderColor: colors.border,
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 6,
+                    gap: spacing.xs,
                   }}
                   accessibilityRole="button"
                   accessibilityLabel={t('sceneSelector.connectScene')}
                 >
-                  <Text style={{ fontSize: 12 }}>🔗</Text>
-                  <Text style={{ fontSize: 12, color: colors.foreground, fontWeight: '600' }}>
+                  <IconSymbol name="link" size={14} color={colors.foreground} />
+                  <Text style={{ ...typeScale.caption, color: colors.foreground }}>
                     {t('sceneSelector.connect')}
                   </Text>
                 </Pressable>
@@ -503,8 +554,8 @@ export function SceneSelector({
             </Pressable>
           )}
           ListEmptyComponent={
-            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-              <Text style={{ color: colors.muted, fontSize: 14 }}>{t('editor.noMatchingScenes')}</Text>
+            <View style={{ alignItems: 'center', paddingVertical: spacing['3xl'] }}>
+              <Text style={{ color: colors.muted, ...typeScale.label }}>{t('editor.noMatchingScenes')}</Text>
             </View>
           }
         />
@@ -515,29 +566,35 @@ export function SceneSelector({
             flexDirection: isPhone ? 'column' : 'row',
             alignItems: isPhone ? 'stretch' : 'center',
             justifyContent: 'space-between',
-            paddingHorizontal: 16, paddingVertical: 12,
+            paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
             borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface,
-            gap: isPhone ? 12 : 16,
+            gap: isPhone ? spacing.md : spacing.lg,
           }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '600' }}>
-                {selectedTemplate.icon} {selectedTemplate.name}
-              </Text>
-              <Text style={{ color: colors.muted, fontSize: 12 }}>
-                {selectedTemplate.blockTypes.length} block{selectedTemplate.blockTypes.length > 1 ? 's' : ''} · {selectedTemplate.outputs.length} output{selectedTemplate.outputs.length > 1 ? 's' : ''}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                <IconSymbol name={getTemplateIconName(selectedTemplate)} size={14} color={getCategoryColor(selectedTemplate.category)} />
+                <Text style={{ color: colors.foreground, ...typeScale.label }}>
+                  {templateName(selectedTemplate)}
+                </Text>
+              </View>
+              <Text style={{ color: colors.muted, ...typeScale.caption }}>
+                {t('editor.sceneSelector.templateMeta', {
+                  blocks: selectedTemplate.blockTypes.length,
+                  outputs: selectedTemplate.outputs.length,
+                })}
               </Text>
             </View>
             <Pressable
               onPress={handleImport}
               style={{
-                paddingHorizontal: 20, paddingVertical: 10,
-                borderRadius: 8, backgroundColor: colors.primary,
+                paddingHorizontal: spacing.xl, paddingVertical: spacing.sm,
+                borderRadius: radius.md, backgroundColor: colors.primary,
                 alignSelf: isPhone ? 'stretch' : 'auto',
               }}
               accessibilityRole="button"
               accessibilityLabel={t('editor.addBlock')}
             >
-              <Text style={{ color: colors['text-inverse'], fontSize: 14, fontWeight: '600' }}>
+              <Text style={{ color: colors['text-inverse'], ...typeScale.label }}>
                 {t('editor.addBlock')}
               </Text>
             </Pressable>
@@ -547,11 +604,11 @@ export function SceneSelector({
         {/* Connect mode: bottom bar */}
         {connectMode && (
           <View style={{
-            paddingHorizontal: 16, paddingVertical: 12,
+            paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
             borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface,
             alignItems: 'center',
           }}>
-            <Text style={{ color: colors.muted, fontSize: 13 }}>
+            <Text style={{ color: colors.muted, ...typeScale.caption }}>
               {t('sceneSelector.tapTargetToConnect')}{' '}
               <Text style={{ color: colors.primary }} onPress={handleCancelConnect} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>{t('common.cancel')}</Text>
             </Text>

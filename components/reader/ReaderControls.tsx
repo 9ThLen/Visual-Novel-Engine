@@ -31,12 +31,14 @@ const ControlButton = React.memo(function ControlButton({
   onPress,
   colors,
   accessibilityLabel,
+  accessibilityHint,
 }: {
   label: string;
   active?: boolean;
   onPress: () => void;
   colors: ReturnType<typeof useColors>;
   accessibilityLabel?: string;
+  accessibilityHint?: string;
 }) {
   return (
     <Pressable
@@ -44,13 +46,14 @@ const ControlButton = React.memo(function ControlButton({
         paddingHorizontal: 10,
         paddingVertical: 6,
         borderRadius: 8,
-        backgroundColor: active ? colors.primary : 'rgba(0,0,0,0.45)',
+        backgroundColor: active ? colors.primary : colors.overlay,
         borderWidth: 1,
-        borderColor: active ? colors.primary : 'rgba(255,255,255,0.18)',
+        borderColor: active ? colors.primary : colors['border-subtle'],
       }}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
     >
       <Text style={{ color: colors['text-inverse'], fontSize: 12, fontWeight: '600' }}>
         {label}
@@ -83,12 +86,14 @@ export const ReaderControls = React.memo(function ReaderControls({
           onPress={onToggleAutoPlay}
           colors={colors}
           accessibilityLabel={autoPlayActive ? labels.stopAuto : labels.startAuto}
+          accessibilityHint="Double tap to toggle auto-play mode"
         />
         <ControlButton
           label={`Log ${labels.log}`}
           onPress={onOpenHistory}
           colors={colors}
           accessibilityLabel={labels.openHistory}
+          accessibilityHint="Double tap to open dialogue history"
         />
       </View>
 
@@ -111,6 +116,7 @@ export const ReaderControls = React.memo(function ReaderControls({
           onPressOut={() => onSetTurbo(false)}
           accessibilityRole="button"
           accessibilityLabel={labels.skipText}
+          accessibilityHint="Hold to fast-forward through text"
         >
           <Text
             className="text-xs font-semibold"

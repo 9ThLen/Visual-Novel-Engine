@@ -32,6 +32,7 @@ for (const [specifier, mockPath] of Object.entries(aliases)) {
 // Files that should NOT get the mocked version for matching aliases
 const mockExemptFiles = [
   path.join(rootDir, '__tests__/unit/lib/audio-library.test.ts'),
+  path.join(rootDir, '__tests__/unit/lib/asset-resolver.test.ts'),
   path.join(rootDir, '__mocks__/lib/audio-library.ts'),
 ];
 

@@ -127,6 +127,43 @@ describe('use-app-store canonical scene helpers', () => {
     expect(records.map((record) => record.id)).toEqual(['scene-0', 'scene-1', 'scene-2']);
   });
 
+  it('returns canonical scene records using explicit sceneOrder when present', () => {
+    const state = {
+      ...baseState,
+      storiesMetadata: [
+        {
+          ...baseState.storiesMetadata[0],
+          sceneOrder: ['scene-2', 'scene-1', 'scene-0'],
+        },
+      ],
+      sceneRecordsByStory: {
+        ...baseState.sceneRecordsByStory,
+        'story-1': {
+          ...baseState.sceneRecordsByStory['story-1'],
+          'scene-2': {
+            ...baseState.sceneRecordsByStory['story-1']['scene-1'],
+            id: 'scene-2',
+            name: 'Second Scene',
+            createdAt: 20,
+            updatedAt: 20,
+          },
+          'scene-0': {
+            ...baseState.sceneRecordsByStory['story-1']['scene-1'],
+            id: 'scene-0',
+            name: 'First Scene',
+            createdAt: 5,
+            updatedAt: 5,
+          },
+        },
+      },
+    } as any;
+
+    const records = getCanonicalSceneRecordsForStoryFromState(state, 'story-1');
+
+    expect(records.map((record) => record.id)).toEqual(['scene-2', 'scene-1', 'scene-0']);
+  });
+
+
   it('returns no scene records when only legacy scenes exist on the strict canonical selector path', () => {
     const records = getCanonicalSceneRecordsForStoryFromState(
       {

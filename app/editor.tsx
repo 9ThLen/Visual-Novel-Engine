@@ -18,6 +18,8 @@ import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import { useStoryActions, useStoryState } from '@/lib/story-hooks';
 import { StoryMetadata } from '@/lib/story-domain';
 import type { SceneRecord } from '@/lib/engine/types';
+import { showToast } from '@/lib/toast-store';
+import { radius, spacing, typeScale } from '@/lib/design-tokens';
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short',
@@ -60,7 +62,7 @@ export default function EditorScreen() {
 
   const handleCreateStory = useCallback(async () => {
     if (!newStoryTitle.trim()) {
-      Alert.alert(t('common.error'), t('editor.pleaseEnterTitle'));
+      showToast(t('editor.pleaseEnterTitle'), 'error');
       return;
     }
 
@@ -71,26 +73,26 @@ export default function EditorScreen() {
       navigateWithViewTransition(() => router.push({
         pathname: '/document-editor',
         params: { storyId: created.storyId, sceneId: created.sceneId },
-      } as never));
+      }));
     } catch {
-      Alert.alert(t('common.error'), t('editor.createFailed'));
+      showToast(t('editor.createFailed'), 'error');
     }
   }, [newStoryTitle, createStory, router, t]);
 
   const handleEditStory = useCallback((story: StoryMetadata) => {
     const sceneId = getPaperEditorSceneId(story, sceneRecordsByStory[story.id]);
     if (!sceneId) {
-      Alert.alert(t('common.error'), t('document.invalidRoute'));
+      showToast(t('document.invalidRoute'), 'error');
       return;
     }
     navigateWithViewTransition(() => router.push({
       pathname: '/document-editor',
       params: { storyId: story.id, sceneId },
-    } as never));
+    }));
   }, [router, sceneRecordsByStory, t]);
 
   const handlePlay = useCallback((storyId: string) => {
-    navigateWithViewTransition(() => router.push({ pathname: '/play', params: { storyId } } as never));
+    navigateWithViewTransition(() => router.push({ pathname: '/play', params: { storyId } }));
   }, [router]);
 
   const handleDeleteStory = useCallback((storyId: string) => {
@@ -103,7 +105,7 @@ export default function EditorScreen() {
           try {
             await deleteStory(storyId);
           } catch {
-            Alert.alert(t('common.error'), t('editor.deleteFailed'));
+            showToast(t('editor.deleteFailed'), 'error');
           }
         },
       },
@@ -218,8 +220,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    gap: 16,
-    paddingBottom: 28,
+    gap: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   webContent: {
     width: '100%',
@@ -228,112 +230,111 @@ const styles = StyleSheet.create({
   },
   hero: {
     borderWidth: 1,
-    borderRadius: 28,
-    padding: 20,
-    gap: 18,
+    borderRadius: radius.xl,
+    padding: spacing.xl,
+    gap: spacing.lg,
   },
   heroCopy: {
-    gap: 8,
+    gap: spacing.sm,
   },
   eyebrow: {
-    fontSize: 12,
+    ...typeScale.caption,
     fontWeight: '800',
-    letterSpacing: 1.1,
     textTransform: 'uppercase',
   },
   heroTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    letterSpacing: -0.8,
+    ...typeScale.pageTitle,
   },
   heroSubtitle: {
     maxWidth: 620,
-    fontSize: 15,
-    lineHeight: 22,
+    ...typeScale.body,
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: spacing.sm,
   },
   statCard: {
     minWidth: 104,
     borderWidth: 1,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: typeScale.sectionTitle.fontSize,
+    lineHeight: typeScale.sectionTitle.lineHeight,
     fontWeight: '800',
   },
   statLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...typeScale.caption,
     marginTop: 2,
   },
   formCard: {
     borderWidth: 1,
-    borderRadius: 22,
-    padding: 16,
-    gap: 12,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
   formTitle: {
-    fontSize: 14,
+    fontSize: typeScale.label.fontSize,
+    lineHeight: typeScale.label.lineHeight,
     fontWeight: '700',
   },
   input: {
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    fontSize: typeScale.body.fontSize,
+    lineHeight: typeScale.body.lineHeight,
   },
   emptyState: {
     borderWidth: 1,
-    borderRadius: 24,
-    padding: 28,
+    borderRadius: radius.xl,
+    padding: spacing.xl,
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: typeScale.sectionTitle.fontSize,
+    lineHeight: typeScale.sectionTitle.lineHeight,
     fontWeight: '800',
   },
   emptyText: {
     maxWidth: 420,
     textAlign: 'center',
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: typeScale.label.fontSize,
+    lineHeight: typeScale.label.lineHeight,
   },
   storyStack: {
-    gap: 12,
+    gap: spacing.md,
   },
   storyGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: spacing.md,
   },
   storyCard: {
     borderWidth: 1,
-    borderRadius: 22,
-    padding: 16,
-    gap: 12,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
   storyCardGrid: {
     flexBasis: '48%',
     flexGrow: 1,
   },
   storyTitle: {
-    fontSize: 18,
+    fontSize: typeScale.sectionTitle.fontSize,
+    lineHeight: typeScale.sectionTitle.lineHeight,
     fontWeight: '800',
   },
   storyMeta: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...typeScale.caption,
   },
   actionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: spacing.sm,
   },
 });

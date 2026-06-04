@@ -34,7 +34,9 @@ function evaluateVariable(
   value: string | number | boolean,
 ): Record<string, string | number | boolean> {
   if (RESERVED_KEYS.has(varName)) {
-    console.warn('[useSceneExecutor] attempted to set reserved variable key:', varName);
+    if (__DEV__) {
+      console.warn('[useSceneExecutor] attempted to set reserved variable key:', varName);
+    }
     return variables;
   }
   const next = { ...variables };
@@ -181,10 +183,8 @@ export function useSceneExecutor(
           break;
         }
         case 'sound':
-          if (__DEV__) console.warn('[useSceneExecutor] no-op block type: sound', step.id);
           break;
         case 'camera':
-          if (__DEV__) console.warn('[useSceneExecutor] no-op block type: camera', step.id);
           break;
         case 'variable': {
           const d = step.data as VariableBlockData;
@@ -197,11 +197,12 @@ export function useSceneExecutor(
           break;
         }
         case 'interactive_object':
-          if (__DEV__) console.warn('[useSceneExecutor] no-op block type: interactive_object', step.id);
           break;
       }
     } catch (err) {
-      console.warn('[useSceneExecutor] executeStep: failed to process step', step.blockType, step.id, err);
+      if (__DEV__) {
+        console.warn('[useSceneExecutor] executeStep: failed to process step', step.blockType, step.id, err);
+      }
       return { nextState: currentState, result: 'continue' };
     }
 
@@ -264,7 +265,9 @@ export function useSceneExecutor(
     try {
       processNext();
     } catch (e) {
-      console.warn('[useSceneExecutor] processNext error:', e);
+      if (__DEV__) {
+        console.warn('[useSceneExecutor] processNext error:', e);
+      }
     }
 
   }, [timelineKey, processNext]);

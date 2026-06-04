@@ -186,3 +186,39 @@ After Phase 06:
 - run `gsd-ui-review`
 - compare new score against `standalone-UI-REVIEW.md`
 - create follow-up gaps only for findings still below 3/4
+
+## Phase 15 — Deep Audit Remediation
+
+**Priority:** P0  
+**Status:** Planned  
+**Plan:** `.planning/phases/15-deep-audit-remediation/PLAN.md`  
+**Source audits:** `DEEP-CODE-REVIEW-2026-06-04.md` (187 files, 2 critical/11 warning/7 info), `DEEP-UI-REVIEW-2026-06-04.md` (47 files, 13/24 score, regressed from 15/24), `AUDIT-FULL-2026-06-04.md`, `PLAN-FIXES-2026-06-04.md`
+
+Resolve the 4 CRITICAL, 17 WARNING, and 10 INFO findings from the 2026-06-04 deep audit. Highest-impact issues: `useTypewriter` textSpeed regression, 8 hex-alpha concat sites in `document-editor/`, hardcoded `#000000`/`#ffffff` in `story-reader-platform.ts`, Unicode glyphs violating UI-SPEC P0, and 21 hardcoded a11y strings. Phased as Critical (Beta-ready), Warnings (Production-ready), Polish (DX-hardened).
+
+### Wave 1 — Critical fixes (~6.5h, 1-2 days) → Beta release
+- CR-1: `useTypewriter` textSpeed re-read — user-visible bug
+- CR-2: 8 hex-alpha concat sites in `document-editor/` + `manuscript/` — M2 regression
+- CR-3: Hardcoded `#000000`/`#ffffff` in `story-reader-platform.ts`
+- CR-4: IconSymbol MAPPING + 6 Unicode glyphs in SplashScreenEditor, InteractiveObjectsEditor, PreviewScreen, SceneSelector
+- CR-5: 21 hardcoded English a11y strings in 10 files
+- CR-6: `app/preview.tsx` dead-end error state
+- CR-7: `story-manuscript-save.ts` production dedup silently dropped
+
+### Wave 2 — Warnings (~8-10h, 3-5 days) → Production release
+- WR-1: PreviewScreen audio service singleton
+- WR-2: Unguarded `console.*` in `app/tabs/index.tsx`
+- WR-3: `Language` type add `'pl'`
+- WR-5..WR-11: Quality/consistency batch fixes (useSceneExecutor contract, conditionUtils, isValidUser, persistent-storage, etc.)
+- UI-W1..W4: Inline `fontSize` → `typeScale` in document-editor
+- UI-W5..W8: Magic spacing → `spacing` tokens in document-editor
+- UI-W9: `SceneComposerPhone` dedupe `editor.blocks`
+- UI-W10: `SplashScreenEditor` undo path
+
+### Wave 3 — Polish + DX (~8-10h, 1 week) → Regression-proof
+- ESLint rules preventing hex+alpha, unguarded console, inline fontSize regressions
+- Codemod for tokenization
+- `translations.ts` split by locale
+- `use-app-store.ts` slice decomposition
+- 2-locale vs 3-locale spec drift resolution
+- Regression check script (`tools/check_regressions.sh`)

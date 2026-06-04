@@ -70,6 +70,15 @@ const REQUIRED_DOCUMENT_UX_KEYS = [
   'splash.removeMessage',
 ] as const;
 
+const REQUIRED_MANUSCRIPT_KEYS = [
+  'manuscript.title',
+  'manuscript.subtitle',
+  'manuscript.save',
+  'manuscript.saveSuccess',
+  'editor.untitledScene',
+  'common.discard',
+] as const;
+
 describe('translations', () => {
   it('supports English and Ukrainian in the app', () => {
     expect(SUPPORTED_LANGUAGES.map((language) => language.code)).toEqual(['en', 'uk']);
@@ -93,6 +102,14 @@ describe('translations', () => {
   it('contains document-first UX translations for every supported language', () => {
     for (const language of Object.keys(allTranslations) as (keyof typeof allTranslations)[]) {
       for (const key of REQUIRED_DOCUMENT_UX_KEYS) {
+        expect(allTranslations[language][key], `${language}:${key}`).toBeTruthy();
+      }
+    }
+  });
+
+  it('contains manuscript screen translations for every supported language', () => {
+    for (const language of Object.keys(allTranslations) as (keyof typeof allTranslations)[]) {
+      for (const key of REQUIRED_MANUSCRIPT_KEYS) {
         expect(allTranslations[language][key], `${language}:${key}`).toBeTruthy();
       }
     }

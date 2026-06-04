@@ -117,7 +117,7 @@ export function TimelinePanel({
           fontSize: 11,
           color: colors.muted,
         }}>
-          {timeline.length} block{timeline.length !== 1 ? 's' : ''}
+          {t('editor.preview.blockCount', { count: timeline.length })}
         </Text>
       </View>
 
@@ -204,7 +204,7 @@ export function TimelinePanel({
                           })}
                           accessibilityRole="button"
                           accessibilityLabel={t(`editor.block.${step.blockType}`, undefined, info.label)}
-                          accessibilityHint={isSelected ? 'Block selected, tap to deselect' : 'Tap to select and edit this block'}
+                          accessibilityHint={isSelected ? t('editor.blockDeselectHint') : t('editor.blockSelectHint')}
                         >
                           <View style={{ position: 'relative' }}>
                             <View style={{
@@ -248,7 +248,7 @@ export function TimelinePanel({
                                 color: colors.muted,
                                 marginTop: 4,
                               }}>
-                                {getBlockPreviewText(step, info.label)}
+                              {getBlockPreviewText(step, info.label, t)}
                               </Text>
                             )}
                           </View>
@@ -260,8 +260,8 @@ export function TimelinePanel({
                               onPress={(e) => { e.stopPropagation(); onBlockToggleCollapse(step.id); }}
                               style={{ padding: 4 }}
                               accessibilityRole="button"
-                              accessibilityLabel={step.collapsed ? `${t('editor.blockActions')} expand` : `${t('editor.blockActions')} collapse`}
-                              accessibilityHint={step.collapsed ? 'Expand this block' : 'Collapse this block'}
+                              accessibilityLabel={step.collapsed ? t('editor.expandBlock') : t('editor.collapseBlock')}
+                              accessibilityHint={step.collapsed ? t('editor.expandBlockHint') : t('editor.collapseBlockHint')}
                             >
                               <IconSymbol name={step.collapsed ? 'expand' : 'collapse'} size={16} color={colors.muted} />
                             </Pressable>
@@ -270,7 +270,7 @@ export function TimelinePanel({
                               style={{ padding: 4 }}
                               accessibilityRole="button"
                               accessibilityLabel={t('common.duplicate')}
-                              accessibilityHint="Duplicate this block"
+                              accessibilityHint={t('editor.duplicateBlockHint')}
                             >
                               <IconSymbol name="duplicate" size={16} color={colors.muted} />
                             </Pressable>
@@ -279,7 +279,7 @@ export function TimelinePanel({
                               style={{ padding: 4 }}
                               accessibilityRole="button"
                               accessibilityLabel={t('common.delete')}
-                              accessibilityHint="Delete this block from timeline"
+                              accessibilityHint={t('editor.deleteBlockHint')}
                             >
                               <IconSymbol name="delete" size={16} color={colors.error} />
                             </Pressable>
@@ -287,7 +287,7 @@ export function TimelinePanel({
                         )}
                       </View>
 
-                      {!step.collapsed && renderBlockContent(step, colors)}
+                      {!step.collapsed && renderBlockContent(step, colors, t)}
                     </View>
                   </View>
                 </SortableItem>
@@ -299,7 +299,11 @@ export function TimelinePanel({
   );
 }
 
-const renderBlockContent = (step: TimelineStep, colors: ReturnType<typeof useColors>) => {
+const renderBlockContent = (
+  step: TimelineStep,
+  colors: ReturnType<typeof useColors>,
+  t: ReturnType<typeof useI18n>['t'],
+) => {
   const data = step.data;
 
   switch (step.blockType) {
@@ -308,7 +312,7 @@ const renderBlockContent = (step: TimelineStep, colors: ReturnType<typeof useCol
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
           <Text style={{ fontSize: 12, color: colors['foreground-secondary'], fontStyle: 'italic' }}>
-            &quot;{textData.content || 'Empty narration...'}&quot;
+            &quot;{textData.content || t('editor.preview.emptyNarration')}&quot;
           </Text>
         </View>
       );
@@ -321,10 +325,10 @@ const renderBlockContent = (step: TimelineStep, colors: ReturnType<typeof useCol
           {dialogueData.entries?.map((entry, i: number) => (
             <View key={entry.id || i} style={{ marginBottom: 4 }}>
               <Text style={{ fontSize: 11, fontWeight: '600', color: colors.primary }}>
-                {entry.characterId || 'Speaker'}:
+                {entry.characterId || t('editor.preview.speaker')}:
               </Text>
               <Text style={{ fontSize: 12, color: colors.foreground }}>
-                {entry.text || 'Empty dialogue...'}
+                {entry.text || t('editor.preview.emptyDialogue')}
               </Text>
             </View>
           ))}
@@ -336,12 +340,12 @@ const renderBlockContent = (step: TimelineStep, colors: ReturnType<typeof useCol
       const charData = data as CharacterBlockData;
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Character:</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>{t('editor.block.character')}:</Text>
           <Text style={{ fontSize: 12, color: colors.foreground, fontWeight: '500' }}>
-            {charData.characterId || '(not selected)'}
+            {charData.characterId || t('editor.preview.notSelected')}
           </Text>
           <Text style={{ fontSize: 11, color: colors.muted }}>|</Text>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Position:</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>{t('editor.properties.position')}:</Text>
           <Text style={{ fontSize: 12, color: colors.foreground }}>{charData.position}</Text>
         </View>
       );
@@ -351,12 +355,12 @@ const renderBlockContent = (step: TimelineStep, colors: ReturnType<typeof useCol
       const bgData = data as BackgroundBlockData;
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Background:</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>{t('editor.block.background')}:</Text>
           <Text style={{ fontSize: 12, color: colors.foreground }}>
-            {bgData.assetId || '(not selected)'}
+            {bgData.assetId || t('editor.preview.notSelected')}
           </Text>
           <Text style={{ fontSize: 11, color: colors.muted }}>|</Text>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Transition:</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>{t('editor.properties.transition')}:</Text>
           <Text style={{ fontSize: 12, color: colors.foreground }}>{bgData.transition}</Text>
         </View>
       );
@@ -375,7 +379,7 @@ const renderBlockContent = (step: TimelineStep, colors: ReturnType<typeof useCol
               marginBottom: 4,
             }}>
               <Text style={{ fontSize: 12, color: colors.foreground }}>
-                {i + 1}. {opt.text || `Choice ${i + 1}`}
+                {i + 1}. {opt.text || t('reader.choiceFallback', { id: i + 1 })}
               </Text>
             </View>
           ))}
@@ -387,9 +391,9 @@ const renderBlockContent = (step: TimelineStep, colors: ReturnType<typeof useCol
       const effectData = data as EffectBlockData;
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Effect:</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>{t('editor.block.effect')}:</Text>
           <Text style={{ fontSize: 12, color: colors.foreground }}>{effectData.effectType}</Text>
-          <Text style={{ fontSize: 11, color: colors.muted }}>| Intensity:</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>| {t('editor.properties.intensity')}:</Text>
           <Text style={{ fontSize: 12, color: colors.foreground }}>{effectData.intensity}%</Text>
         </View>
       );
@@ -400,11 +404,11 @@ const renderBlockContent = (step: TimelineStep, colors: ReturnType<typeof useCol
       const audioData = data as MusicBlockData | SoundBlockData;
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Audio:</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>{t('editor.preview.audio')}:</Text>
           <Text style={{ fontSize: 12, color: colors.foreground }}>
-            {audioData.assetId || '(not selected)'}
+            {audioData.assetId || t('editor.preview.notSelected')}
           </Text>
-          <Text style={{ fontSize: 11, color: colors.muted }}>| Vol:</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>| {t('editor.properties.volume')}:</Text>
           <Text style={{ fontSize: 12, color: colors.foreground }}>{Math.round((audioData.volume || 0) * 100)}%</Text>
         </View>
       );
@@ -413,37 +417,41 @@ const renderBlockContent = (step: TimelineStep, colors: ReturnType<typeof useCol
     default:
       return (
         <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Configure in properties →</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>{t('editor.preview.configureInProperties')}</Text>
         </View>
       );
   }
 };
 
-function getBlockPreviewText(step: TimelineStep, fallback: string): string {
+function getBlockPreviewText(
+  step: TimelineStep,
+  fallback: string,
+  t: ReturnType<typeof useI18n>['t'],
+): string {
   const data = step.data;
 
   switch (step.blockType) {
     case 'text':
-      return (data as { content: string }).content ? `"${(data as { content: string }).content.substring(0, 40)}${(data as { content: string }).content.length > 40 ? '...' : ''}"` : 'Empty text';
+      return (data as { content: string }).content ? `"${(data as { content: string }).content.substring(0, 40)}${(data as { content: string }).content.length > 40 ? '...' : ''}"` : t('editor.preview.emptyText');
     case 'dialogue':
       if ((data as DialogueBlockData).entries?.length > 0) {
         const first = (data as DialogueBlockData).entries[0];
-        return `${first.characterId || 'Speaker'}: ${first.text?.substring(0, 30) || 'Empty'}...`;
+        return `${first.characterId || t('editor.preview.speaker')}: ${first.text?.substring(0, 30) || t('editor.preview.empty')}...`;
       }
-      return 'No entries';
+      return t('editor.preview.noEntries');
     case 'character':
       const characterData = data as CharacterBlockData;
-      return `${characterData.characterId || '(no character)'} - ${characterData.position}`;
+      return `${characterData.characterId || t('editor.preview.noCharacter')} - ${characterData.position}`;
     case 'background':
-      return (data as BackgroundBlockData).assetId || 'No background selected';
+      return (data as BackgroundBlockData).assetId || t('editor.preview.noBackgroundSelected');
     case 'choice':
-      return `${(data as ChoiceBlockData).options?.length || 0} options`;
+      return t('editor.preview.optionCount', { count: (data as ChoiceBlockData).options?.length || 0 });
     case 'effect':
       const effectData = data as EffectBlockData;
-      return `${effectData.effectType} - intensity ${effectData.intensity}%`;
+      return t('editor.preview.effectSummary', { type: effectData.effectType, intensity: effectData.intensity });
     case 'music':
     case 'sound':
-      return (data as MusicBlockData | SoundBlockData).assetId || 'No audio selected';
+      return (data as MusicBlockData | SoundBlockData).assetId || t('editor.preview.noAudioSelected');
     case 'camera':
       const cameraData = data as CameraBlockData;
       return `${cameraData.action} - ${cameraData.duration}s`;
@@ -452,9 +460,9 @@ function getBlockPreviewText(step: TimelineStep, fallback: string): string {
       return `${variableData.variableName || 'var'} ${variableData.operation} ${variableData.value}`;
     case 'transition':
       const transitionData = data as TransitionBlockData;
-      return transitionData.targetSceneId ? `-> ${transitionData.targetSceneId}` : 'End scene';
+      return transitionData.targetSceneId ? `-> ${transitionData.targetSceneId}` : t('editor.preview.endScene');
     case 'interactive_object':
-      return (data as InteractiveObjectBlockData).name || 'Unnamed object';
+      return (data as InteractiveObjectBlockData).name || t('editor.preview.unnamedObject');
     default:
       return fallback;
   }
