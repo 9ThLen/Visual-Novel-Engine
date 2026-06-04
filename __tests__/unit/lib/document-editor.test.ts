@@ -12,6 +12,7 @@ import {
 import type { DocumentScene } from '@/lib/document-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
+import { BLOCK_TYPE_INFO } from '@/lib/engine/types';
 import { createBackgroundStep } from '@/lib/engine/event-factory';
 
 describe('document editor commands', () => {
@@ -38,6 +39,12 @@ describe('document editor commands', () => {
     expect(searchDocumentCommands('/нова сцена')[0]?.id).toBe('newScene');
     expect(searchDocumentCommands('/лист')[0]?.id).toBe('newScene');
     expect(searchDocumentCommands('/page')[0]?.id).toBe('newScene');
+  });
+  it('does not mark implemented slash blocks as coming soon', () => {
+    for (const blockType of ['sound', 'camera', 'interactive_object'] as const) {
+      expect(BLOCK_TYPE_INFO[blockType].comingSoon).toBeFalsy();
+      expect(BLOCK_TYPE_INFO[blockType].disabled).toBeFalsy();
+    }
   });
 });
 

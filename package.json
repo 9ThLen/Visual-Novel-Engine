@@ -90,8 +90,12 @@
       ]
     }
   },
-  "packageManager": "pnpm@9.12.0",
+  "packageManager": "pnpm@10.23.0",
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "unrs-resolver"
+    ],
     "patchedDependencies": {
       "react-native-css-interop": "patches/react-native-css-interop.patch",
       "@expo/cli": "patches/@expo__cli@54.0.24.patch"

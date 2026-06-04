@@ -346,7 +346,7 @@ export function createCanonicalStorySeed(
   const timestamp = options.now ?? Date.now();
   const baseSceneRecord = legacySceneToSceneRecordDraft(options.storyId, {
     id: options.sceneId,
-    text: 'Your story begins here...',
+    text: '',
     characters: [],
     choices: [],
     musicUri: null,

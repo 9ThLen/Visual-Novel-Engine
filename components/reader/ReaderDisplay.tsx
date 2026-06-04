@@ -8,6 +8,9 @@ import type { ReaderChoice } from '@/lib/reader-runtime';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { ReaderChoices } from '@/components/reader/ReaderChoices';
+import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
+import type { ActiveEffect, CameraRuntimeState } from '@/lib/engine/types';
+import type { InteractiveObject } from '@/lib/interactive-types';
 
 const DIALOGUE_MARGIN_BOTTOM = 28;
 const TAPPABLE_AREA_STYLE = { flex: 1 };
@@ -51,6 +54,12 @@ interface ReaderDisplayProps {
   speaker: string | null;
   speakerTextStyle: StyleProp<TextStyle>;
   instances: React.ComponentProps<typeof CharacterDisplay>['instance'][];
+  activeEffects?: ActiveEffect[];
+  cameraState?: CameraRuntimeState;
+  interactiveObjects?: InteractiveObject[];
+  onInteractiveDialogue?: (text: string, speaker?: string) => void;
+  onInteractiveSceneTransition?: (sceneId: string) => void;
+  onInteractivePlayAudio?: (audioUri: string, volume?: number, loop?: boolean) => void;
 }
 
 function ReaderBackground({
@@ -151,7 +160,36 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   speaker,
   speakerTextStyle,
   instances,
+  activeEffects = [],
+  cameraState,
+  interactiveObjects = [],
+  onInteractiveDialogue,
+  onInteractiveSceneTransition,
+  onInteractivePlayAudio,
 }: ReaderDisplayProps) {
+  const now = Date.now();
+  const visibleEffects = activeEffects.filter((effect) => effect.endTime >= now);
+  const hasFlash = visibleEffects.some((effect) => effect.effectType === 'flash');
+  const hasVignette = visibleEffects.some((effect) => effect.effectType === 'vignette');
+  const hasGlitch = visibleEffects.some((effect) => effect.effectType === 'glitch');
+  const hasShake = visibleEffects.some((effect) => effect.effectType === 'shake');
+  const hasRain = visibleEffects.some((effect) => effect.effectType === 'rain');
+  const hasSnow = visibleEffects.some((effect) => effect.effectType === 'snow');
+
+  const cameraTransformStyle = useMemo(() => {
+    const camera = cameraState ?? { zoomLevel: 1, panX: 0, panY: 0 };
+    const zoom = camera.zoomLevel || 1;
+    const translateX = (camera.panX || 0) * -2 + (hasShake ? 8 : 0);
+    const translateY = (camera.panY || 0) * -2;
+    return {
+      transform: [
+        { translateX },
+        { translateY },
+        { scale: zoom },
+      ],
+    };
+  }, [cameraState, hasShake]);
+
   const dialogueTextStyle = useMemo(() => ({
     fontSize: dialogueFontSize,
     lineHeight: dialogueFontSize * 1.65,
@@ -168,18 +206,60 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
     <>
       <ReaderBackground
         bgSource={bgSource}
-        animatedStyle={backgroundAnimatedStyle}
+        animatedStyle={[backgroundAnimatedStyle, cameraTransformStyle]}
         fallbackColor={fallbackColor}
       />
 
       {Object.keys(resolvedCharUris).length > 0 && (
         <ReaderCharacters
-          animatedStyle={characterAnimatedStyle}
+          animatedStyle={[characterAnimatedStyle, cameraTransformStyle]}
           instances={instances}
           resolvedCharUris={resolvedCharUris}
           paddingBottom={paddingBottom}
         />
       )}
+
+      {interactiveObjects.length > 0 ? (
+        <InteractiveObjectsLayer
+          objects={interactiveObjects}
+          onDialogue={onInteractiveDialogue}
+          onSceneTransition={onInteractiveSceneTransition}
+          onPlayAudio={onInteractivePlayAudio}
+        />
+      ) : null}
+
+      {visibleEffects.length > 0 ? (
+        <View style={[StyleSheet.absoluteFillObject, getPointerEventsStyle('none')]}>
+          {hasFlash ? <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#ffffff', opacity: 0.28 }]} /> : null}
+          {hasVignette ? (
+            <View
+              style={[
+                StyleSheet.absoluteFillObject,
+                { borderWidth: 36, borderColor: 'rgba(0,0,0,0.32)' },
+              ]}
+            />
+          ) : null}
+          {hasGlitch ? <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.primary, opacity: 0.08 }]} /> : null}
+          {hasRain || hasSnow ? (
+            <View style={[StyleSheet.absoluteFillObject, { opacity: 0.18 }]}>
+              {Array.from({ length: 18 }).map((_, index) => (
+                <View
+                  key={index}
+                  style={{
+                    position: 'absolute',
+                    left: `${(index * 17) % 100}%`,
+                    top: `${(index * 29) % 100}%`,
+                    width: hasSnow ? 5 : 2,
+                    height: hasSnow ? 5 : 18,
+                    borderRadius: hasSnow ? 5 : 1,
+                    backgroundColor: '#ffffff',
+                  }}
+                />
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       <Pressable
         style={TAPPABLE_AREA_STYLE}

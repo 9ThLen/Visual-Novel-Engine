@@ -6,10 +6,10 @@ settings:
 
 patchedDependencies:
   '@expo/cli':
-    hash: xo5us4cnhmzwzv7py2rz3cdfky
+    hash: 892be31b1655f2aa547fa3c67a94a6abde2aafe96b8b736efae1a6222bb57c95
     path: patches/@expo__cli@54.0.24.patch
   react-native-css-interop:
-    hash: j27ksdyh3npvp2nhr3gt3ow2oi
+    hash: 1fdc650fb52b8979d34c214331333ce67e818baeccbb38fb565e702bcc228058
     path: patches/react-native-css-interop.patch
 
 importers:
@@ -7073,7 +7073,7 @@ snapshots:
 
   '@exodus/bytes@1.15.0': {}
 
-  '@expo/cli@54.0.24(patch_hash=xo5us4cnhmzwzv7py2rz3cdfky)(expo-router@6.0.23)(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(typescript@5.7.3)':
+  '@expo/cli@54.0.24(patch_hash=892be31b1655f2aa547fa3c67a94a6abde2aafe96b8b736efae1a6222bb57c95)(expo-router@6.0.23)(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(typescript@5.7.3)':
     dependencies:
       '@0no-co/graphql.web': 1.2.0
       '@expo/code-signing-certificates': 0.0.6
@@ -9789,7 +9789,7 @@ snapshots:
   expo@54.0.34(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.7.3):
     dependencies:
       '@babel/runtime': 7.29.2
-      '@expo/cli': 54.0.24(patch_hash=xo5us4cnhmzwzv7py2rz3cdfky)(expo-router@6.0.23)(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(typescript@5.7.3)
+      '@expo/cli': 54.0.24(patch_hash=892be31b1655f2aa547fa3c67a94a6abde2aafe96b8b736efae1a6222bb57c95)(expo-router@6.0.23)(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(typescript@5.7.3)
       '@expo/config': 12.0.13
       '@expo/config-plugins': 54.0.4
       '@expo/devtools': 0.1.8(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -11134,7 +11134,7 @@ snapshots:
     dependencies:
       comment-json: 4.6.2
       debug: 4.4.3
-      react-native-css-interop: 0.2.3(patch_hash=j27ksdyh3npvp2nhr3gt3ow2oi)(react-native-reanimated@4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.12.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(tailwindcss@3.4.19(tsx@4.22.3)(yaml@2.8.4))
+      react-native-css-interop: 0.2.3(patch_hash=1fdc650fb52b8979d34c214331333ce67e818baeccbb38fb565e702bcc228058)(react-native-reanimated@4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.12.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(tailwindcss@3.4.19(tsx@4.22.3)(yaml@2.8.4))
       tailwindcss: 3.4.19(tsx@4.22.3)(yaml@2.8.4)
     transitivePeerDependencies:
       - react
@@ -11547,7 +11547,7 @@ snapshots:
 
   react-is@19.2.6: {}
 
-  react-native-css-interop@0.2.3(patch_hash=j27ksdyh3npvp2nhr3gt3ow2oi)(react-native-reanimated@4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.12.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(tailwindcss@3.4.19(tsx@4.22.3)(yaml@2.8.4)):
+  react-native-css-interop@0.2.3(patch_hash=1fdc650fb52b8979d34c214331333ce67e818baeccbb38fb565e702bcc228058)(react-native-reanimated@4.1.7(react-native-worklets@0.5.1(@babel/core@7.29.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.12.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(tailwindcss@3.4.19(tsx@4.22.3)(yaml@2.8.4)):
     dependencies:
       '@babel/helper-module-imports': 7.28.6
       '@babel/traverse': 7.29.0

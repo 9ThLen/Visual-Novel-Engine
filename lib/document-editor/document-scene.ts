@@ -140,10 +140,22 @@ function timelineStepToDocumentBlocks(step: TimelineStep, characters: Character[
 }
 
 export function sceneRecordToDocumentScene(sceneRecord: SceneRecord, characters: Character[] = []): DocumentScene {
+  const blocks = sceneRecord.timeline.flatMap((step) => timelineStepToDocumentBlocks(step, characters));
+  // Always ensure a trailing empty text block exists so the user has
+  // somewhere to type (replaces the old separate line-draft input).
+  // Avoid duplicating if the last block is already an empty text block.
+  const lastBlock = blocks[blocks.length - 1];
+  if (!lastBlock || lastBlock.kind !== 'text' || lastBlock.content.trim() !== '') {
+    blocks.push({
+      id: generateId('doc_text'),
+      kind: 'text',
+      content: '',
+    });
+  }
   return {
     sceneId: sceneRecord.id,
     sceneName: sceneRecord.name || 'Untitled Scene',
-    blocks: sceneRecord.timeline.flatMap((step) => timelineStepToDocumentBlocks(step, characters)),
+    blocks,
   };
 }
 

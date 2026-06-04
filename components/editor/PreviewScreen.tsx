@@ -13,6 +13,7 @@ import { useI18n } from '@/lib/i18n';
 import { getTimelineDisplayPages } from '@/lib/reader-runtime';
 import { withAlpha } from '@/lib/_core/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 
 export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: string }) {
   const router = useRouter();
@@ -40,6 +41,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const [displayedText, setDisplayedText] = useState('');
   const audioServiceRef = useRef(new AudioPlayerService());
   const typewriterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const playedSoundEventsRef = useRef<Set<string>>(new Set());
 
   const currentStep = timeline[currentStepIndex];
 
@@ -70,16 +72,42 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const prevMusicTrackRef = useRef<string | null>(null);
   useEffect(() => {
     const currentTrack = sceneState.musicTrackId;
+    if (sceneState.musicAction === 'stop') {
+      void audioServiceRef.current.stop('preview-bgm', sceneState.musicFadeDuration ?? 300);
+      prevMusicTrackRef.current = null;
+      return;
+    }
+    if (sceneState.musicAction === 'pause') {
+      void audioServiceRef.current.pause('preview-bgm');
+      return;
+    }
     if (currentTrack && currentTrack !== prevMusicTrackRef.current) {
       void audioServiceRef.current.play('preview-bgm', currentTrack, {
         volume: typeof sceneState.musicVolume === 'number' ? sceneState.musicVolume : 0.8,
-        loop: true,
+        loop: sceneState.musicLoop ?? true,
+        fadeIn: sceneState.musicFadeDuration,
       });
     } else if (!currentTrack && prevMusicTrackRef.current) {
       void audioServiceRef.current.stop('preview-bgm', 300);
     }
     prevMusicTrackRef.current = currentTrack;
-  }, [sceneState.musicTrackId, sceneState.musicVolume]);
+  }, [sceneState.musicAction, sceneState.musicFadeDuration, sceneState.musicLoop, sceneState.musicTrackId, sceneState.musicVolume]);
+
+  useEffect(() => {
+    for (const event of sceneState.soundEvents ?? []) {
+      if (!event.assetId || playedSoundEventsRef.current.has(event.id)) continue;
+      playedSoundEventsRef.current.add(event.id);
+      if (event.action === 'stop') {
+        void audioServiceRef.current.stop(`preview-sfx:${event.assetId}`, 100);
+        continue;
+      }
+      const channelId = event.loop ? `preview-sfx:${event.assetId}` : `preview-sfx:${event.id}`;
+      void audioServiceRef.current.play(channelId, event.assetId, {
+        volume: event.volume,
+        loop: event.loop,
+      });
+    }
+  }, [sceneState.soundEvents]);
 
   const typewriteText = useCallback((text: string) => {
     if (typewriterIntervalRef.current) {
@@ -135,6 +163,18 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const surfaceContainer = colors['surface-container'] || colors.surface;
   const secondaryColor = colors.secondary || colors.primary;
   const showChoices = !!sceneState.currentChoices;
+  const camera = sceneState.cameraState;
+  const activeEffects = sceneState.activeEffects.filter((effect) => effect.endTime >= Date.now());
+  const hasFlash = activeEffects.some((effect) => effect.effectType === 'flash');
+  const hasVignette = activeEffects.some((effect) => effect.effectType === 'vignette');
+  const hasShake = activeEffects.some((effect) => effect.effectType === 'shake');
+  const cameraTransform = {
+    transform: [
+      { translateX: -2 * (camera?.panX ?? 0) + (hasShake ? 8 : 0) },
+      { translateY: -2 * (camera?.panY ?? 0) },
+      { scale: camera?.zoomLevel ?? 1 },
+    ],
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -143,11 +183,12 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
         backgroundColor: colors['surface-1'] ?? colors.background,
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'hidden',
       }}>
         {backgroundSource ? (
           <Image
             source={backgroundSource}
-            style={{ position: 'absolute', inset: 0 }}
+            style={[{ position: 'absolute', inset: 0 }, cameraTransform]}
             contentFit="cover"
             cachePolicy="memory-disk"
             transition={200}
@@ -173,6 +214,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
               borderRadius: 8,
               alignItems: 'center',
               justifyContent: 'center',
+              ...cameraTransform,
             }}
           >
             <Text style={{ fontSize: 10, color: colors.muted }}>
@@ -180,6 +222,20 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
             </Text>
           </View>
         ))}
+
+        {(sceneState.interactiveObjects?.length ?? 0) > 0 ? (
+          <InteractiveObjectsLayer
+            objects={sceneState.interactiveObjects ?? []}
+            onSceneTransition={(targetSceneId) => router.push({ pathname: '/preview', params: { storyId, sceneId: targetSceneId } })}
+            onDialogue={(text) => setDisplayedText(text)}
+            onPlayAudio={(audioUri, volume = 1, loop = false) => {
+              void audioServiceRef.current.play(`preview-interactive:${Date.now()}`, audioUri, { volume, loop });
+            }}
+          />
+        ) : null}
+
+        {hasFlash ? <View pointerEvents="none" style={{ position: 'absolute', inset: 0, backgroundColor: '#fff', opacity: 0.28 }} /> : null}
+        {hasVignette ? <View pointerEvents="none" style={{ position: 'absolute', inset: 0, borderWidth: 36, borderColor: 'rgba(0,0,0,0.32)' }} /> : null}
       </View>
 
       {!showChoices && displayedText ? (

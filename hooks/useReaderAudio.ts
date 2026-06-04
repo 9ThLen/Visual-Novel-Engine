@@ -6,7 +6,7 @@ import { enhancedAudioManager as defaultAudioManager } from '../lib/audio-manage
 import { resolvePlayableAssetUri } from '../lib/asset-resolver';
 import { getPlaybackAudioLibrary } from '../lib/audio-library';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from '../lib/error-handler';
-import type { MusicBlockData, SceneState, TimelineStep } from '../lib/engine/types';
+import type { MusicBlockData, SceneState, SoundRuntimeEvent, TimelineStep } from '../lib/engine/types';
 import type { AudioTrigger } from '../lib/audio-types';
 import {
   activateReaderAudioSession,
@@ -48,6 +48,22 @@ function buildAudioTriggerSignature(scene: ReaderAudioScene | null): string {
     .join('|');
 }
 
+function buildSoundEventSignature(events: SoundRuntimeEvent[] | undefined): string {
+  return (events ?? [])
+    .map((event) =>
+      [
+        event.id,
+        event.assetId,
+        event.action,
+        event.volume,
+        event.loop,
+        event.pitchVariation,
+        event.timestamp,
+      ].join(':'),
+    )
+    .join('|');
+}
+
 function getSceneStartMusicUri(scene: ReaderAudioScene | null): string | null {
   const musicStep = scene?.timeline?.find(
     (step: TimelineStep) => step.enabled && step.blockType === 'music',
@@ -59,14 +75,32 @@ function getSceneStartMusicUri(scene: ReaderAudioScene | null): string | null {
   return data.assetId?.trim() || null;
 }
 
-function resolveRuntimeMusicUri(
+function resolveRuntimeMusic(
   scene: ReaderAudioScene,
   sceneState: SceneState | null | undefined,
-): string | null {
-  if (sceneState) {
-    return sceneState.musicPlaying ? sceneState.musicTrackId?.trim() || null : null;
+): {
+  uri: string | null;
+  action: MusicBlockData['action'] | null;
+  volume: number;
+  loop: boolean;
+  fadeDuration: number;
+} {
+  if (sceneState?.musicAction) {
+    return {
+      uri: sceneState.musicTrackId?.trim() || null,
+      action: sceneState.musicAction,
+      volume: typeof sceneState.musicVolume === 'number' ? sceneState.musicVolume : 1,
+      loop: sceneState.musicLoop ?? true,
+      fadeDuration: sceneState.musicFadeDuration ?? 800,
+    };
   }
-  return getSceneStartMusicUri(scene);
+  return {
+    uri: getSceneStartMusicUri(scene),
+    action: null,
+    volume: 1,
+    loop: true,
+    fadeDuration: 800,
+  };
 }
 
 /** Stops all reader playback and disables the reader audio session. */
@@ -100,8 +134,10 @@ export function useReaderAudio(
   const blockedByOverlay = options?.blockedByOverlay ?? false;
   const isFocused = useIsFocused();
   const audioTriggerSignature = buildAudioTriggerSignature(currentScene);
+  const soundEventSignature = buildSoundEventSignature(sceneState?.soundEvents);
   const volumesRef = useRef({ bgm: settings.bgmVolume, voice: settings.voiceVolume });
   const currentBgmUriRef = useRef<string | null>(null);
+  const playedSoundEventsRef = useRef<Set<string>>(new Set());
   const sceneGenerationRef = useRef(0);
 
   const logDebug = useCallback((event: string, context?: Record<string, unknown>) => {
@@ -112,7 +148,8 @@ export function useReaderAudio(
   const applySceneAudio = useCallback(
     (scene: ReaderAudioScene, runtimeState: SceneState | null, sessionId: number) => {
       const generation = ++sceneGenerationRef.current;
-      const musicUri = resolveRuntimeMusicUri(scene, runtimeState);
+      const music = resolveRuntimeMusic(scene, runtimeState);
+      const musicUri = music.uri;
       logDebug('applySceneAudio', {
         storyId,
         sceneId: scene.id,
@@ -135,7 +172,12 @@ export function useReaderAudio(
 
       const newMusicUri = musicUri;
 
-      if (newMusicUri) {
+      if (music.action === 'stop') {
+        void audioManager.stop('bgm', music.fadeDuration);
+        currentBgmUriRef.current = null;
+      } else if (music.action === 'pause') {
+        void audioManager.pause('bgm');
+      } else if (newMusicUri) {
         resolvePlayableAssetUri(newMusicUri).then((uri) => {
           logDebug('bgm:resolved', {
             sceneId: scene.id,
@@ -164,24 +206,28 @@ export function useReaderAudio(
           }
 
           if (currentBgmUriRef.current === uri) {
-            void audioManager.setVolume('bgm', volumesRef.current.bgm);
+            void audioManager.setVolume('bgm', volumesRef.current.bgm * music.volume);
             logDebug('bgm:reuse-track', {
               sceneId: scene.id,
               resolvedUri: uri,
-              bgmVolume: volumesRef.current.bgm,
+              bgmVolume: volumesRef.current.bgm * music.volume,
             });
             return;
           }
 
           void audioManager
-            .crossFade('bgm', uri, { volume: volumesRef.current.bgm, duration: 800 })
+            .crossFade('bgm', uri, {
+              volume: volumesRef.current.bgm * music.volume,
+              duration: music.fadeDuration || 800,
+              ...(music.action ? { loop: music.loop } : {}),
+            })
             .catch((err) =>
               ErrorHandler.handle('BGM crossfade failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW),
             );
           logDebug('bgm:crossFade-dispatched', {
             sceneId: scene.id,
             resolvedUri: uri,
-            bgmVolume: volumesRef.current.bgm,
+            bgmVolume: volumesRef.current.bgm * music.volume,
           });
           currentBgmUriRef.current = uri;
         });
@@ -217,8 +263,35 @@ export function useReaderAudio(
             ErrorHandler.handle('scene_start triggers failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW),
           );
       }
+
+      for (const event of runtimeState?.soundEvents ?? []) {
+        if (!event.assetId || playedSoundEventsRef.current.has(event.id)) continue;
+        playedSoundEventsRef.current.add(event.id);
+        const soundChannelId = event.loop ? `sfx:${event.assetId}` : `sfx:${event.id}`;
+        if (event.action === 'stop') {
+          void audioManager.stop(`sfx:${event.assetId}`, 100);
+          continue;
+        }
+        resolvePlayableAssetUri(event.assetId).then((uri) => {
+          if (
+            sceneGenerationRef.current !== generation ||
+            !isReaderAudioSessionValid(sessionId) ||
+            !uri
+          ) {
+            return;
+          }
+          void audioManager
+            .play(soundChannelId, uri, {
+              volume: settings.sfxVolume * event.volume,
+              loop: event.loop,
+            })
+            .catch((err) =>
+              ErrorHandler.handle('SFX playback failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW),
+            );
+        });
+      }
     },
-    [audioManager, logDebug, storyId],
+    [audioManager, logDebug, settings.sfxVolume, storyId],
   );
 
   useEffect(() => {
@@ -294,7 +367,11 @@ export function useReaderAudio(
     currentScene?.id,
     sceneState?.musicTrackId,
     sceneState?.musicPlaying,
+    sceneState?.musicAction,
     sceneState?.musicVolume,
+    sceneState?.musicLoop,
+    sceneState?.musicFadeDuration,
+    soundEventSignature,
     currentScene?.voiceAudioUri,
     audioTriggerSignature,
     applySceneAudio,

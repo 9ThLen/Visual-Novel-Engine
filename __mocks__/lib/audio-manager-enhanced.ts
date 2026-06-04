@@ -2,6 +2,7 @@ const createMockManager = () => ({
   initialize: vi.fn().mockResolvedValue(undefined),
   setVolume: vi.fn().mockResolvedValue(undefined),
   play: vi.fn().mockResolvedValue(undefined),
+  pause: vi.fn().mockResolvedValue(undefined),
   stop: vi.fn().mockResolvedValue(undefined),
   stopAll: vi.fn().mockResolvedValue(undefined),
   crossFade: vi.fn().mockResolvedValue(undefined),

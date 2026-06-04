@@ -73,7 +73,6 @@ export function DocumentSceneEditor({
   // ── State ────────────────────────────────────────────────────────────────
   const [documentScenes, setDocumentScenes] = useState(initialDocuments);
   const [localCharacters, setLocalCharacters] = useState(characters);
-  const [lineDrafts, setLineDrafts] = useState<Record<string, string>>({});
   const [activeSceneId, setActiveSceneId] = useState(sceneRecord.id);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -157,19 +156,14 @@ export function DocumentSceneEditor({
 
   // ── Page render ──────────────────────────────────────────────────────────
   const renderPage = useCallback((documentScene: DocumentScene, pageIndex: number) => {
-    const lineDraft = lineDrafts[documentScene.sceneId] ?? '';
-    const slashOpen = lineDraft.trimStart().startsWith('/');
-    const slashQuery = slashOpen ? lineDraft.trimStart().slice(1) : '';
     return (
       <DocumentPage
+        key={documentScene.sceneId}
         documentScene={documentScene}
         pageIndex={pageIndex}
         isPhone={isPhone}
         sceneCount={sceneCount}
         sceneRecordId={sceneRecord.id}
-        lineDraft={lineDraft}
-        slashOpen={slashOpen}
-        slashQuery={slashQuery}
         selectedBlockId={selectedBlockId}
         localCharacters={localCharacters}
         setLocalCharacters={setLocalCharacters}
@@ -180,7 +174,7 @@ export function DocumentSceneEditor({
         t={t}
       />
     );
-  }, [isPhone, lineDrafts, localCharacters, ops, sceneCount, sceneRecord.id, scroll, selectedBlockId, t]);
+  }, [isPhone, localCharacters, ops, sceneCount, sceneRecord.id, scroll, selectedBlockId, t]);
 
   // ── Main render ──────────────────────────────────────────────────────────
   return (

@@ -9,7 +9,7 @@
 
 import type { Language } from '@/lib/translations';
 import type { Character } from '@/lib/character-types';
-import type { InteractiveAction, InteractiveObjectPosition } from '@/lib/interactive-types';
+import type { InteractiveAction, InteractiveObject, InteractiveObjectPosition } from '@/lib/interactive-types';
 import type { StoryScene as LegacyStoryScene } from '@/lib/scene-operations';
 
 // ── Block Categories ────────────────────────────────────────────────────
@@ -74,9 +74,9 @@ export const BLOCK_TYPE_INFO: Record<BlockType, BlockTypeInfo> = {
   choice:            { type: 'choice',            label: 'Choice',            description: 'Player choice branch',         icon: 'timeline', color: '#e91e63', bgColor: '#e91e6320' },
   effect:            { type: 'effect',            label: 'Effect',            description: 'Visual/screen effects',        icon: 'lightning', color: '#ffd93d', bgColor: '#ffd93d20' },
   music:             { type: 'music',             label: 'Music',             description: 'Play/stop background music',   icon: 'music', color: '#ff6b6b', bgColor: '#ff6b6b20' },
-  sound:             { type: 'sound',             label: 'Sound',             description: 'Play sound effect',            icon: 'sound', color: '#ef5350', bgColor: '#ef535020', comingSoon: true, disabled: true },
-  interactive_object:{ type: 'interactive_object',label: 'Interactive Object', description: 'Clickable scene object',       icon: 'location', color: '#00bcd4', bgColor: '#00bcd420', comingSoon: true, disabled: true },
-  camera:            { type: 'camera',            label: 'Camera',            description: 'Camera zoom/pan/focus',        icon: 'camera', color: '#009688', bgColor: '#00968820', comingSoon: true, disabled: true },
+  sound:             { type: 'sound',             label: 'Sound',             description: 'Play sound effect',            icon: 'sound', color: '#ef5350', bgColor: '#ef535020' },
+  interactive_object:{ type: 'interactive_object',label: 'Interactive Object', description: 'Clickable scene object',       icon: 'location', color: '#00bcd4', bgColor: '#00bcd420' },
+  camera:            { type: 'camera',            label: 'Camera',            description: 'Camera zoom/pan/focus',        icon: 'camera', color: '#009688', bgColor: '#00968820' },
   variable:          { type: 'variable',          label: 'Variable',          description: 'Set/modify a variable',         icon: 'settings', color: '#8bc34a', bgColor: '#8bc34a20' },
   transition:        { type: 'transition',        label: 'Transition',        description: 'Scene transition effect',       icon: 'timeline', color: '#3f51b5', bgColor: '#3f51b520' },
 };
@@ -244,9 +244,15 @@ export interface SceneState {
   backgroundTransition: string;
   characters: CharacterRuntimeState[];
   activeEffects: ActiveEffect[];
+  soundEvents?: SoundRuntimeEvent[];
+  cameraState?: CameraRuntimeState;
+  interactiveObjects?: InteractiveObject[];
   musicTrackId: string | null;
   musicPlaying: boolean;
+  musicAction?: MusicBlockData['action'] | null;
   musicVolume: number;
+  musicLoop?: boolean;
+  musicFadeDuration?: number;
   variables: Record<string, string | number | boolean>;
   dialogueHistory: DialogueHistoryEntry[];
   currentChoices: ChoiceOption[] | null;
@@ -270,6 +276,26 @@ export interface ActiveEffect {
   target: string;
   startTime: number;
   endTime: number;
+}
+
+export interface SoundRuntimeEvent {
+  id: string;
+  assetId: string;
+  action: SoundBlockData['action'];
+  volume: number;
+  loop: boolean;
+  pitchVariation: number;
+  timestamp: number;
+}
+
+export interface CameraRuntimeState {
+  action: CameraBlockData['action'];
+  zoomLevel: number;
+  panX: number;
+  panY: number;
+  target?: string;
+  duration: number;
+  easing: CameraBlockData['easing'];
 }
 
 export interface DialogueHistoryEntry {
