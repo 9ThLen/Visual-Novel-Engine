@@ -119,7 +119,11 @@ export function SplashScreenEditor({ config, onChange }: Props) {
               onPress={() => setExpanded(!expanded)}
             >
               <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: '600' }}>
-                {expanded ? '▲' : '▼'}
+                <IconSymbol
+                  name={expanded ? 'chevron.up' : 'chevron.down'}
+                  size={12}
+                  color={colors.foreground}
+                />
               </Text>
             </Pressable>
           )}
@@ -369,7 +373,7 @@ export function SplashScreenEditor({ config, onChange }: Props) {
                     }}
                   >
                     {splash.pauseOnSplash && (
-                      <Text style={{ color: colors['text-inverse'], fontSize: 12 }}>✓</Text>
+                      <IconSymbol name="checkmark" size={12} color={colors['text-inverse']} />
                     )}
                   </View>
                   <Text style={{ color: colors.foreground, fontSize: 13 }}>

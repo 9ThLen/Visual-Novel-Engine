@@ -175,8 +175,6 @@ export function SceneComposerPhone(props: SceneComposerPhoneProps) {
     bottomAction: { padding: 8 },
   }), [colors, insetsTop]);
 
-  const rotatedBackIconStyle = useMemo(() => ({ transform: [{ rotate: '180deg' }] }), []);
-
   return (
     <View style={phoneStyles.root}>
       {/* Header */}
@@ -188,7 +186,7 @@ export function SceneComposerPhone(props: SceneComposerPhoneProps) {
             accessibilityRole="button"
             accessibilityLabel={t('menu.back')}
           >
-            <IconSymbol name="chevron.right" size={22} color={colors.foreground} style={rotatedBackIconStyle} />
+            <IconSymbol name="arrow.left" size={22} color={colors.foreground} />
           </Pressable>
 
           <View style={phoneStyles.undoRedoGroup}>
