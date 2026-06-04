@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
+import { withAlpha } from '@/lib/_core/theme';
 import { useI18n } from '@/lib/i18n';
 import type { DocumentTechnicalBlock } from '@/lib/document-editor/types';
 import { documentCommandIcons, getDocumentCommandTone } from './document-command-ui';
@@ -32,8 +33,8 @@ export function DocumentChip({ block, selected, onPress }: DocumentChipProps) {
         alignSelf: 'flex-start',
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: selected ? colors.primary : block.warning ? colors.warning : `${toneColor}40`,
-        backgroundColor: selected ? `${colors.primary}14` : `${toneColor}12`,
+        borderColor: selected ? colors.primary : block.warning ? colors.warning : withAlpha(toneColor, 0x40 / 255),
+        backgroundColor: selected ? withAlpha(colors.primary, 0x14 / 255) : withAlpha(toneColor, 0x12 / 255),
         paddingHorizontal: 12,
         paddingVertical: 8,
         marginVertical: 8,

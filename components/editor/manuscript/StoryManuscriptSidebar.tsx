@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { StoryManuscriptScene } from '@/lib/editor/story-manuscript';
 import { useColors } from '@/hooks/use-colors';
+import { withAlpha } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { useI18n } from '@/lib/i18n';
 
@@ -54,7 +55,7 @@ export function StoryManuscriptSidebar({
                 borderRadius: radius.md,
                 borderWidth: 1,
                 borderColor: isActive ? colors.primary : colors.border,
-                backgroundColor: isActive ? `${colors.primary}18` : colors.background,
+                backgroundColor: isActive ? withAlpha(colors.primary, 0x18 / 255) : colors.background,
                 paddingHorizontal: spacing.md,
                 paddingVertical: spacing.sm,
               }}

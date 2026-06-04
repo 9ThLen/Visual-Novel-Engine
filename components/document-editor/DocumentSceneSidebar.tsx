@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useColors } from '@/hooks/use-colors';
+import { withAlpha } from '@/lib/_core/theme';
 import { useI18n } from '@/lib/i18n';
 import type { SceneRecord } from '@/lib/engine/types';
 
@@ -27,7 +28,7 @@ export function DocumentSceneSidebar({ activeSceneId, scenes, onScenePress }: Do
               borderRadius: 8,
               borderWidth: 1,
               borderColor: scene.id === activeSceneId ? colors.primary : colors.border,
-              backgroundColor: scene.id === activeSceneId ? `${colors.primary}12` : colors.background,
+              backgroundColor: scene.id === activeSceneId ? withAlpha(colors.primary, 0x12 / 255) : colors.background,
               padding: 10,
               marginBottom: 8,
             }}

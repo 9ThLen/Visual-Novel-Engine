@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
+import { withAlpha } from '@/lib/_core/theme';
 import { useI18n } from '@/lib/i18n';
 import { searchDocumentCommands } from '@/lib/document-editor/commands';
 import type { DocumentCommand } from '@/lib/document-editor/types';
@@ -101,7 +102,7 @@ export function DocumentCommandMenu({
                     width: 44,
                     height: 44,
                     borderRadius: 8,
-                    backgroundColor: `${toneColor}16`,
+                    backgroundColor: withAlpha(toneColor, 0x16 / 255),
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
