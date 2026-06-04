@@ -135,7 +135,7 @@ export const DocumentPage = React.memo(function DocumentPage({
             placeholderTextColor={colors.muted}
             style={{ color: colors.foreground, fontSize: 36, fontWeight: '800', paddingVertical: 8 }}
             accessibilityLabel={t('document.sceneNamePlaceholder')}
-            accessibilityHint="Scene title"
+            accessibilityHint={t('document.a11y.sceneTitle')}
           />
         </>
       ) : null}
@@ -184,6 +184,7 @@ export const DocumentPage = React.memo(function DocumentPage({
                 documentScene={documentScene}
                 isPhone={isPhone}
                 colors={colors}
+                t={t}
                 onUpdateBlock={ops.updateBlock}
                 onRemoveBlock={ops.removeBlock}
                 onEmptyBackspace={ops.handleEmptyBackspace}
@@ -216,7 +217,7 @@ export const DocumentPage = React.memo(function DocumentPage({
               placeholder={t('document.narrationPlaceholder')}
               placeholderTextColor={colors.muted}
               accessibilityLabel={t('document.narrationPlaceholder')}
-              accessibilityHint="Narration or story text"
+              accessibilityHint={t('document.a11y.narration')}
             />
           );
         })}
@@ -267,7 +268,7 @@ export const DocumentPage = React.memo(function DocumentPage({
             textAlignVertical: 'top',
           }}
           accessibilityLabel={t('document.lineDraftPlaceholder')}
-          accessibilityHint="Type / for commands, Enter to add line"
+          accessibilityHint={t('document.a11y.slashCommandInput')}
         />
         <DocumentCommandMenu
           query={slashQuery}

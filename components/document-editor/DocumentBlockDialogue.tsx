@@ -108,7 +108,7 @@ export const DocumentBlockDialogue = React.memo(function DocumentBlockDialogue({
         placeholder={t('document.speakerPlaceholder')}
         placeholderTextColor={colors.muted}
         accessibilityLabel={t('document.speakerPlaceholder')}
-        accessibilityHint="Character name for this dialogue line"
+        accessibilityHint={t('document.dialogue.characterHint')}
       />
       <TextInput
         multiline
@@ -134,7 +134,7 @@ export const DocumentBlockDialogue = React.memo(function DocumentBlockDialogue({
         placeholder={t('document.dialoguePlaceholder')}
         placeholderTextColor={colors.muted}
         accessibilityLabel={t('document.dialoguePlaceholder')}
-        accessibilityHint="Dialogue text for this character"
+        accessibilityHint={t('document.dialogue.lineHint')}
       />
     </View>
   );

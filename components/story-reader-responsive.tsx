@@ -267,7 +267,7 @@ export function StoryReaderResponsive({
         fallbackColor={colors.background}
         getChoiceAccessibilityLabel={(text) => t('reader.choiceLabel', { text })}
         continueAccessibilityLabel={t('reader.continueReading')}
-        continueAccessibilityHint="Tap to advance text or make a choice"
+        continueAccessibilityHint={t('reader.continueHint')}
         isTyping={isTyping}
         isLoading={isLoading}
         onTap={handleTap}

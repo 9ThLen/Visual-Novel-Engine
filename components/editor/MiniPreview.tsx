@@ -136,6 +136,7 @@ export function MiniPreview({ timeline, onClose }: MiniPreviewProps) {
 
 function ResolvedMiniBackground({ assetId }: { assetId: string }) {
   const colors = useColors();
+  const { t } = useI18n();
   const [source, setSource] = useState<number | { uri: string } | null>(null);
 
   useEffect(() => {
@@ -167,7 +168,7 @@ function ResolvedMiniBackground({ assetId }: { assetId: string }) {
         justifyContent: 'center',
       }}>
         <Text style={{ fontSize: 11, lineHeight: 15, color: colors.muted }}>
-          Loading...
+          {t('common.loading')}
         </Text>
       </View>
     );
