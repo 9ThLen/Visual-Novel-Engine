@@ -11,9 +11,9 @@ describe('story reader platform styles', () => {
     });
   });
 
-  it('falls back to black when no colors provided', () => {
+  it('returns null backgroundColor when no colors provided (consumer must pass colors)', () => {
     expect(getStoryReaderContainerStyle()).toEqual({
-      backgroundColor: '#000000',
+      backgroundColor: null,
       overflow: 'hidden',
     });
   });
@@ -24,9 +24,9 @@ describe('story reader platform styles', () => {
     });
   });
 
-  it('falls back to white for speaker text when no colors provided', () => {
+  it('returns null color when no colors provided (consumer must pass colors)', () => {
     expect(getStoryReaderSpeakerTextStyle()).toEqual({
-      color: '#ffffff',
+      color: null,
     });
   });
 });

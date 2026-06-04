@@ -385,11 +385,13 @@ export function SceneSelector({
             borderBottomWidth: 1, borderBottomColor: colors.border,
             gap: isPhone ? spacing.sm : spacing.md,
           }}>
-            <Text style={{ color: colors.foreground, ...typeScale.caption }}>
-              {t('editor.sceneSelector.connecting')}<Text style={{ fontWeight: '600', color: colors.primary }}>{connectFrom.sceneId}</Text>
-              {' → '}
-              <Text style={{ fontWeight: '600' }}>{connectFrom.output}</Text>
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, flexWrap: 'wrap' }}>
+              <Text style={{ color: colors.foreground, ...typeScale.caption }}>
+                {t('editor.sceneSelector.connecting')}<Text style={{ fontWeight: '600', color: colors.primary }}>{connectFrom.sceneId}</Text>
+              </Text>
+              <IconSymbol name="arrow.right" size={12} color={colors.muted} />
+              <Text style={{ ...typeScale.caption, fontWeight: '600' }}>{connectFrom.output}</Text>
+            </View>
             <Pressable onPress={handleCancelConnect} style={{ padding: spacing.xs }} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
               <Text style={{ color: colors.danger, ...typeScale.caption }}>{t('common.cancel')}</Text>
             </Pressable>
@@ -514,9 +516,10 @@ export function SceneSelector({
                 {/* Input/Output ports */}
                 <View style={{ flexDirection: 'row', marginTop: spacing.xs, gap: spacing.sm, flexWrap: 'wrap' }}>
                       {item.inputs.map((input) => (
-                        <Text key={input} style={{ ...typeScale.micro, color: colors.success }}>
-                          ▼ {input}
-                        </Text>
+                        <View key={input} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <IconSymbol name="chevron.down" size={10} color={colors.success} />
+                          <Text style={{ ...typeScale.micro, color: colors.success }}>{input}</Text>
+                        </View>
                       ))}
                       {item.outputs.map((output) => (
                         <Text key={output} style={{ ...typeScale.micro, color: colors.warning }}>

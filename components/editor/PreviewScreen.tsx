@@ -276,8 +276,9 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
         paddingHorizontal: 16,
         paddingVertical: 8,
       }}>
-        <Pressable onPress={handleBack} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
-          <Text style={{ color: colors['text-inverse'], fontSize: 14 }}>← {t('menu.back')}</Text>
+        <Pressable onPress={handleBack} style={{ padding: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
+          <IconSymbol name="arrow.left" size={14} color={colors['text-inverse']} />
+          <Text style={{ color: colors['text-inverse'], fontSize: 14 }}>{t('menu.back')}</Text>
         </Pressable>
         <Text style={{ color: colors['text-inverse'], fontSize: 12, alignSelf: 'center' }}>
           {currentStepIndex + 1}/{timeline.length}

@@ -57,6 +57,15 @@ const MAPPING = {
   expand: "keyboard-arrow-down",
   movie: "movie",
   mic: "mic",
+  "chevron.up": "keyboard-arrow-up",
+  "chevron.down": "keyboard-arrow-down",
+  "arrow.left": "arrow-back",
+  "arrow.right": "arrow-forward",
+  xmark: "close",
+  checkmark: "check",
+  "plus.circle": "add-circle",
+  minus: "remove",
+  "square.and.arrow.up": "ios-share",
 } satisfies Record<string, ComponentProps<typeof MaterialIcons>["name"]>;
 
 export type IconSymbolName = keyof typeof MAPPING;

@@ -121,7 +121,11 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
           onPress={() => setExpanded(!expanded)}
         >
           <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: '600' }}>
-            {expanded ? '▲' : '▼'}
+            <IconSymbol
+              name={expanded ? 'chevron.up' : 'chevron.down'}
+              size={12}
+              color={colors.foreground}
+            />
           </Text>
         </Pressable>
       </View>
