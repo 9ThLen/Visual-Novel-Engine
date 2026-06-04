@@ -72,14 +72,19 @@ export function applyStoryManuscriptChanges(
     const originalStepsById = new Map(sceneRecord.timeline.map((step) => [step.id, step]));
     const seenSourceStepIds = new Set<string>();
     const nextTimeline = sceneSection.blocks.flatMap((block) => {
-      if (__DEV__) {
-        if (seenSourceStepIds.has(block.sourceStepId)) {
+      // Dedup runs in both dev and production to prevent duplicate timeline
+      // entries when multiple manuscript blocks reference the same source step.
+      if (seenSourceStepIds.has(block.sourceStepId)) {
+        if (__DEV__) {
           console.warn(
             `[applyStoryManuscriptChanges] Duplicate sourceStepId "${block.sourceStepId}" in scene "${sceneRecord.id}" — multiple manuscript blocks reference the same timeline step`
           );
         }
-        seenSourceStepIds.add(block.sourceStepId);
+        return []; // skip duplicate
+      }
+      seenSourceStepIds.add(block.sourceStepId);
 
+      if (__DEV__) {
         if (!originalStepsById.has(block.sourceStepId)) {
           console.warn(
             `[applyStoryManuscriptChanges] Orphan block "${block.id}" in scene "${sceneRecord.id}" — sourceStepId "${block.sourceStepId}" not found. A new step will be auto-created.`
