@@ -388,7 +388,7 @@ export function SplashScreenEditor({ config, onChange }: Props) {
 
       {config && !expanded && (
         <Text style={{ fontSize: 12, color: colors.muted }}>
-          Splash configured • {splash?.duration}ms • {splash?.type}
+          {t('splash.status', { duration: splash?.duration ?? 0, type: splash?.type ?? '' })}
         </Text>
       )}
     </View>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 import type { ReaderChoice } from '@/lib/reader-runtime';
 
 interface ReaderChoicesProps {
@@ -18,6 +19,7 @@ export const ReaderChoices = React.memo(function ReaderChoices({
   getAccessibilityLabel,
   onSelectChoice,
 }: ReaderChoicesProps) {
+  const { t } = useI18n();
   if (choices.length === 0) return null;
 
   return (
@@ -37,7 +39,7 @@ export const ReaderChoices = React.memo(function ReaderChoices({
           onPress={() => onSelectChoice(choice.id)}
           accessibilityRole="button"
           accessibilityLabel={getAccessibilityLabel(choice.text)}
-          accessibilityHint="Double tap to select this choice"
+          accessibilityHint={t('reader.hints.selectChoice')}
         >
           <Text
             className="text-center font-medium leading-5"

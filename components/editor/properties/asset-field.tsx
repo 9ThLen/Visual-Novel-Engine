@@ -25,7 +25,7 @@ export function AssetField({
   onChange: (id: string) => void;
   onPick: () => void;
   colors: ReturnType<typeof useColors>;
-  t: (k: string) => string;
+  t: (k: string, params?: Record<string, string | number>) => string;
 }) {
   return (
     <FieldHelper t={t} label={label} colors={colors}>
@@ -33,10 +33,10 @@ export function AssetField({
         <TextInput
           value={value || ''}
           onChangeText={onChange}
-          placeholder={`Select ${category}...`}
+          placeholder={t('editor.selectX', { category })}
           placeholderTextColor={colors.muted}
           accessibilityLabel={label}
-          accessibilityHint="Enter asset ID or tap search to browse"
+          accessibilityHint={t('editor.properties.assetFieldHint')}
           style={[inputStyle(colors), { flex: 1 }]}
         />
         <Pressable

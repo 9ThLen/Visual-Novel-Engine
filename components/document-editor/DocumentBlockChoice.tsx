@@ -14,12 +14,14 @@ import { TextInput, View } from 'react-native';
 
 import type { DocumentBlock, DocumentChoiceBlock, DocumentScene } from '@/lib/document-editor/types';
 import type { useColors } from '@/hooks/use-colors';
+import type { useI18n } from '@/lib/i18n';
 
 export interface DocumentBlockChoiceProps {
   block: DocumentChoiceBlock;
   documentScene: DocumentScene;
   isPhone: boolean;
   colors: ReturnType<typeof useColors>;
+  t: ReturnType<typeof useI18n>['t'];
   onUpdateBlock: (
     sceneId: string,
     blockId: string,
@@ -35,6 +37,7 @@ export const DocumentBlockChoice = React.memo(function DocumentBlockChoice({
   documentScene,
   isPhone,
   colors,
+  t,
   onUpdateBlock,
   onRemoveBlock,
   onEmptyBackspace,
@@ -63,8 +66,8 @@ export const DocumentBlockChoice = React.memo(function DocumentBlockChoice({
           onEmptyBackspace(`choice:${block.id}`, () => onRemoveBlock(documentScene.sceneId, block.id));
         }}
         style={{ color: colors.foreground, fontSize: 16, fontWeight: '700', paddingVertical: 6 }}
-        accessibilityLabel="Choice question"
-        accessibilityHint="Question text for the player to choose from"
+        accessibilityLabel={t('document.choice.questionLabel')}
+        accessibilityHint={t('document.choice.addOption')}
       />
       {block.options.map((option, index) => (
         <TextInput
@@ -90,8 +93,8 @@ export const DocumentBlockChoice = React.memo(function DocumentBlockChoice({
             });
           }}
           style={{ color: colors.foreground, fontSize: 15, paddingVertical: 4, marginLeft: 10 }}
-          accessibilityLabel={`Choice option ${index + 1}`}
-          accessibilityHint="Text for this answer choice"
+          accessibilityLabel={t('document.choice.optionLabel', { number: index + 1 })}
+          accessibilityHint={t('document.choice.editOption')}
         />
       ))}
     </View>

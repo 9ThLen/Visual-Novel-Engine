@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 
 interface ReaderControlsProps {
@@ -74,6 +75,7 @@ export const ReaderControls = React.memo(function ReaderControls({
   onToggleAutoPlay,
   turbo,
 }: ReaderControlsProps) {
+  const { t } = useI18n();
   return (
     <>
       <View
@@ -86,14 +88,14 @@ export const ReaderControls = React.memo(function ReaderControls({
           onPress={onToggleAutoPlay}
           colors={colors}
           accessibilityLabel={autoPlayActive ? labels.stopAuto : labels.startAuto}
-          accessibilityHint="Double tap to toggle auto-play mode"
+          accessibilityHint={t('reader.hints.autoPlay')}
         />
         <ControlButton
           label={`Log ${labels.log}`}
           onPress={onOpenHistory}
           colors={colors}
           accessibilityLabel={labels.openHistory}
-          accessibilityHint="Double tap to open dialogue history"
+          accessibilityHint={t('reader.hints.history')}
         />
       </View>
 
@@ -116,7 +118,7 @@ export const ReaderControls = React.memo(function ReaderControls({
           onPressOut={() => onSetTurbo(false)}
           accessibilityRole="button"
           accessibilityLabel={labels.skipText}
-          accessibilityHint="Hold to fast-forward through text"
+          accessibilityHint={t('reader.hints.fastForward')}
         >
           <Text
             className="text-xs font-semibold"

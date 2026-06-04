@@ -52,7 +52,7 @@ export function PanelHeader({
         style={{ padding: 4 }}
         accessibilityRole="button"
         accessibilityLabel={t('a11y.closePanel')}
-        accessibilityHint="Close properties panel"
+        accessibilityHint={t('editor.properties.closeHint')}
       >
         <IconSymbol name="close" size={16} color={colors.muted} />
       </Pressable>
@@ -88,7 +88,7 @@ export function PanelFooter({
         style={[baseBtn, { borderWidth: 1, borderColor: colors.border }]}
         accessibilityRole="button"
         accessibilityLabel={t('common.duplicate')}
-        accessibilityHint="Duplicate this block"
+        accessibilityHint={t('editor.properties.duplicateHint')}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <IconSymbol name="duplicate" size={14} color={colors.foreground} />
@@ -102,7 +102,7 @@ export function PanelFooter({
         style={[baseBtn, { backgroundColor: withAlpha(colors.error, 0.13) }]}
         accessibilityRole="button"
         accessibilityLabel={t('common.delete')}
-        accessibilityHint="Delete this block from timeline"
+        accessibilityHint={t('editor.properties.deleteHint')}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <IconSymbol name="delete" size={14} color={colors.error} />
