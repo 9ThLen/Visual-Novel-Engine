@@ -192,3 +192,54 @@ describe('story-manuscript save', () => {
     });
   });
 });
+
+describe('story-manuscript production dedup (CR-7)', () => {
+  const originalDev = (globalThis as Record<string, unknown>).__DEV__;
+
+  beforeEach(() => {
+    (globalThis as Record<string, unknown>).__DEV__ = false;
+  });
+
+  afterEach(() => {
+    (globalThis as Record<string, unknown>).__DEV__ = originalDev;
+  });
+
+  it('skips duplicate sourceStepId entries in production builds', () => {
+    const metadata = makeStoryMetadata();
+    const sourceScene = makeSceneRecord();
+    const manuscript = buildStoryManuscript(metadata, [sourceScene]);
+    const sceneSection = manuscript.scenes[0];
+
+    if (!sceneSection) {
+      throw new Error('expected scene section');
+    }
+
+    // Insert a duplicate narrative block that targets the same sourceStepId
+    // as the existing text-1 step. In production builds, dedup MUST still
+    // run (it was previously gated by __DEV__ which silently dropped
+    // duplicates in release builds).
+    const originalText = sceneSection.blocks.find((block) => block.sourceStepId === 'text-1');
+    if (!originalText || originalText.kind !== 'narration') {
+      throw new Error('expected a narration block targeting text-1');
+    }
+
+    const duplicate: typeof originalText = {
+      ...originalText,
+      id: 'text-1-dup',
+      content: 'A duplicate that should be skipped',
+    };
+    sceneSection.blocks.push(duplicate);
+
+    const updatedScene = applyStoryManuscriptChanges(manuscript, [sourceScene])[0];
+    const textOneOccurrences = updatedScene?.timeline.filter((step) => step.id === 'text-1');
+
+    // The duplicate block targets the SAME sourceStepId, so production
+    // dedup should ensure text-1 is in the timeline exactly once.
+    expect(textOneOccurrences).toHaveLength(1);
+    // The content of the surviving entry should be the ORIGINAL (the
+    // first block wins), not the duplicate.
+    expect(textOneOccurrences?.[0]?.data).toMatchObject({
+      content: 'Opening line',
+    });
+  });
+});
