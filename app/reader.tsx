@@ -60,7 +60,9 @@ export default function ReaderScreen() {
   const navigateToScene = useCallback((sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
     if (!story || !playbackState) return;
     if (!sceneRecordsByStory[story.id]?.[sceneId]) {
-      console.warn('[ReaderScreen] navigateToScene: target scene not found', sceneId);
+      if (__DEV__) {
+        console.warn('[ReaderScreen] navigateToScene: target scene not found', sceneId);
+      }
       return;
     }
     const updated: PlaybackState = {

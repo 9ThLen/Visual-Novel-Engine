@@ -4,6 +4,8 @@ import { useLocalSearchParams } from 'expo-router';
 
 import { ScreenContainer } from '@/components/screen-container';
 import { StoryManuscriptScreen } from '@/components/editor/StoryManuscriptScreen';
+import { spacing, typeScale } from '@/lib/design-tokens';
+import { useI18n } from '@/lib/i18n';
 import { useStoryActions, useStoryState } from '@/lib/story-hooks';
 import { selectSceneRecordsForStory, selectStoryMetadata, useAppStore } from '@/stores/use-app-store';
 
@@ -11,6 +13,7 @@ export default function ManuscriptEditorRoute() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
   const { isLoaded } = useStoryState();
   const { setCurrentStory } = useStoryActions();
+  const { t } = useI18n();
 
   const storyMetadata = useAppStore(
     useMemo(() => {
@@ -43,7 +46,7 @@ export default function ManuscriptEditorRoute() {
       <ScreenContainer>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" />
-          <Text style={{ marginTop: 12, fontSize: 14 }}>Loading manuscript...</Text>
+          <Text style={{ marginTop: spacing.md, ...typeScale.label }}>{t('manuscript.loading')}</Text>
         </View>
       </ScreenContainer>
     );
@@ -53,7 +56,7 @@ export default function ManuscriptEditorRoute() {
     return (
       <ScreenContainer>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontSize: 16 }}>Invalid story ID</Text>
+          <Text style={typeScale.label}>{t('document.invalidRoute')}</Text>
         </View>
       </ScreenContainer>
     );

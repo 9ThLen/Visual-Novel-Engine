@@ -125,7 +125,7 @@ export function TopBarAction({
         style={[
           styles.actionLabel,
           {
-            color: variant === 'primary' ? '#fff' : colors.foreground,
+            color: variant === 'primary' ? colors['text-inverse'] : colors.foreground,
           },
         ]}
       >

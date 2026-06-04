@@ -6,8 +6,7 @@ import {
   Alert,
   Image,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
 import { useStoryState, useStoryActions } from '@/lib/story-hooks';
@@ -15,6 +14,8 @@ import { useColors } from '@/hooks/use-colors';
 import { SaveSlot } from '@/lib/story-domain';
 import { useI18n } from '@/lib/i18n';
 import { Button, IconSymbol } from '@/components/ui';
+import { showToast } from '@/lib/toast-store';
+import { typeScale } from '@/lib/design-tokens';
 
 function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
   slot: SaveSlot;
@@ -88,7 +89,6 @@ export default function SaveLoadScreen() {
   const router = useRouter();
   useFocusEffect(
     useCallback(() => {
-      void stopReaderPlayback();
       return () => {
         void stopReaderPlayback();
       };
@@ -102,14 +102,14 @@ export default function SaveLoadScreen() {
 
   const handleSaveToSlot = useCallback(async (slotId: string) => {
     if (!currentStory || !playbackState) {
-      Alert.alert(t('common.error'), t('save.noActiveStory'));
+      showToast(t('save.noActiveStory'), 'error');
       return;
     }
     try {
       await saveGame(slotId);
-      Alert.alert(t('common.success'), t('save.success'));
+      showToast(t('save.success'), 'success');
     } catch {
-      Alert.alert(t('common.error'), t('common.error'));
+      showToast(t('common.error'), 'error');
     }
   }, [currentStory, playbackState, saveGame, t]);
 
@@ -119,13 +119,13 @@ export default function SaveLoadScreen() {
 
     try {
       await loadGame(slotId);
-      Alert.alert(t('common.success'), t('save.loadSuccess'));
+      showToast(t('save.loadSuccess'), 'success');
       router.replace({
         pathname: '/reader',
         params: { storyId: slot.storyId, resume: '1' },
       });
     } catch {
-      Alert.alert(t('common.error'), t('common.error'));
+      showToast(t('common.error'), 'error');
     }
   }, [saveSlots, loadGame, router, t]);
 
@@ -301,7 +301,7 @@ export default function SaveLoadScreen() {
   return (
     <ScreenContainer className="p-4">
       <View className="flex-row justify-between items-center mb-5">
-        <Text style={[{ color: colors.foreground }, { fontSize: 24, fontWeight: 'bold' }]}>
+        <Text style={[{ color: colors.foreground }, typeScale.sectionTitle]}>
           {activeTab === 'save' ? t('save.title') : t('load.title')}
         </Text>
         <Button

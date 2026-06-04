@@ -2,7 +2,9 @@ import React, { memo } from 'react';
 import { Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
+import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { useI18n } from '@/lib/i18n';
 import type { StoryManuscriptBlock as StoryManuscriptBlockModel } from '@/lib/editor/story-manuscript';
 
@@ -33,8 +35,8 @@ function StoryManuscriptBlockComponent({
       style={{
         borderTopWidth: 1,
         borderTopColor: colors.border,
-        paddingTop: 16,
-        marginTop: 16,
+        paddingTop: spacing.lg,
+        marginTop: spacing.lg,
       }}
     >
       <View
@@ -42,12 +44,12 @@ function StoryManuscriptBlockComponent({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 12,
-          marginBottom: 12,
+          gap: spacing.md,
+          marginBottom: spacing.md,
         }}
       >
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase' }}>
+          <Text style={{ ...typeScale.micro, fontWeight: '700', color: colors.muted, textTransform: 'uppercase' }}>
             {block.kind === 'narration'
               ? t('manuscript.narration')
               : block.kind === 'dialogue'
@@ -56,19 +58,33 @@ function StoryManuscriptBlockComponent({
                   ? t('manuscript.choiceGroup')
                   : block.label}
           </Text>
-          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
+          <Text style={{ ...typeScale.caption, color: colors.muted, marginTop: spacing.xs }}>
             {block.kind === 'technical_marker'
               ? t('manuscript.technicalBlock')
               : t('manuscript.editable')}
           </Text>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Button variant="ghost" size="sm" onPress={onMoveUp} disabled={!canMoveUp}>
-            ↑
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={onMoveUp}
+            disabled={!canMoveUp}
+            icon={<IconSymbol name="chevron.right" size={14} color={colors.primary} style={{ transform: [{ rotate: '-90deg' }] }} />}
+            accessibilityLabel={t('editor.moveUp')}
+          >
+            {t('editor.moveUp')}
           </Button>
-          <Button variant="ghost" size="sm" onPress={onMoveDown} disabled={!canMoveDown}>
-            ↓
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={onMoveDown}
+            disabled={!canMoveDown}
+            icon={<IconSymbol name="chevron.right" size={14} color={colors.primary} style={{ transform: [{ rotate: '90deg' }] }} />}
+            accessibilityLabel={t('editor.moveDown')}
+          >
+            {t('editor.moveDown')}
           </Button>
           {block.kind !== 'technical_marker' && (
             <Button variant="ghost" size="sm" onPress={onRemove}>
@@ -87,31 +103,30 @@ function StoryManuscriptBlockComponent({
           placeholderTextColor={colors.muted}
           style={{
             minHeight: 120,
-            borderRadius: 16,
+            borderRadius: radius.lg,
             borderWidth: 1,
             borderColor: colors.border,
             backgroundColor: colors.background,
             color: colors.foreground,
-            paddingHorizontal: 14,
-            paddingVertical: 14,
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.md,
             textAlignVertical: 'top',
-            fontSize: 16,
-            lineHeight: 24,
+            ...typeScale.body,
           }}
         />
       )}
 
       {block.kind === 'dialogue' && (
-        <View style={{ gap: 12 }}>
+        <View style={{ gap: spacing.md }}>
           {block.entries.map((entry, index) => (
             <View
               key={entry.id}
               style={{
-                borderRadius: 16,
+                borderRadius: radius.lg,
                 borderWidth: 1,
                 borderColor: colors.border,
                 backgroundColor: colors.background,
-                padding: 14,
+                padding: spacing.md,
               }}
             >
               <TextInput
@@ -127,10 +142,10 @@ function StoryManuscriptBlockComponent({
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border,
                   color: colors.foreground,
-                  fontSize: 13,
+                  ...typeScale.caption,
                   fontWeight: '700',
-                  paddingBottom: 8,
-                  marginBottom: 12,
+                  paddingBottom: spacing.sm,
+                  marginBottom: spacing.md,
                 }}
               />
               <TextInput
@@ -147,12 +162,11 @@ function StoryManuscriptBlockComponent({
                 style={{
                   minHeight: 78,
                   color: colors.foreground,
-                  fontSize: 15,
-                  lineHeight: 22,
+                  ...typeScale.label,
                   textAlignVertical: 'top',
                 }}
               />
-              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: spacing.sm }}>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -194,19 +208,19 @@ function StoryManuscriptBlockComponent({
       )}
 
       {block.kind === 'choice_group' && (
-        <View style={{ gap: 12 }}>
+        <View style={{ gap: spacing.md }}>
           {block.options.map((option, index) => (
             <View
               key={option.id}
               style={{
-                borderRadius: 16,
+                borderRadius: radius.lg,
                 borderWidth: 1,
                 borderColor: colors.border,
                 backgroundColor: colors.background,
-                padding: 14,
+                padding: spacing.md,
               }}
             >
-              <Text style={{ fontSize: 11, color: colors.muted, fontWeight: '700', marginBottom: 8 }}>
+              <Text style={{ ...typeScale.micro, color: colors.muted, fontWeight: '700', marginBottom: spacing.sm }}>
                 {t('editor.properties.choice', { number: index + 1 })}
               </Text>
               <TextInput
@@ -220,9 +234,8 @@ function StoryManuscriptBlockComponent({
                 placeholderTextColor={colors.muted}
                 style={{
                   color: colors.foreground,
-                  fontSize: 15,
-                  lineHeight: 22,
-                  marginBottom: 12,
+                  ...typeScale.label,
+                  marginBottom: spacing.md,
                 }}
               />
               <TextInput
@@ -238,11 +251,11 @@ function StoryManuscriptBlockComponent({
                   borderTopWidth: 1,
                   borderTopColor: colors.border,
                   color: colors.muted,
-                  fontSize: 13,
-                  paddingTop: 10,
+                  ...typeScale.caption,
+                  paddingTop: spacing.sm,
                 }}
               />
-              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: spacing.sm }}>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -285,14 +298,14 @@ function StoryManuscriptBlockComponent({
       {block.kind === 'technical_marker' && (
         <View
           style={{
-            borderRadius: 999,
+            borderRadius: radius.full,
             alignSelf: 'flex-start',
             backgroundColor: `${colors.primary}14`,
-            paddingHorizontal: 12,
-            paddingVertical: 8,
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
           }}
         >
-          <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>{block.label}</Text>
+          <Text style={{ color: colors.primary, ...typeScale.caption }}>{block.label}</Text>
         </View>
       )}
     </View>

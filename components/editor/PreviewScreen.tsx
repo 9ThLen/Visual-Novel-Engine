@@ -12,6 +12,7 @@ import { AudioPlayerService } from '@/lib/audio-player-service';
 import { useI18n } from '@/lib/i18n';
 import { getTimelineDisplayPages } from '@/lib/reader-runtime';
 import { withAlpha } from '@/lib/_core/theme';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: string }) {
   const router = useRouter();
@@ -202,7 +203,8 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
             {displayedText}
           </Text>
           <Text style={{ fontSize: 10, color: colors.muted, marginTop: 8, textAlign: 'right' }}>
-            {isTyping ? t('reader.tapToSpeedUp') : `${t('reader.tapToContinue')} ▶`}
+            {isTyping ? t('reader.tapToSpeedUp') : t('reader.tapToContinue')}
+            {!isTyping ? <IconSymbol name="play" size={10} color={colors.muted} /> : null}
           </Text>
         </Pressable>
       ) : null}
@@ -231,7 +233,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
               accessibilityLabel={t('reader.choiceLabel', { text: opt.text || opt.id })}
             >
               <Text style={{ fontSize: 14, color: colors.foreground, fontWeight: '500' }}>
-                {opt.text || `Choice ${opt.id}`}
+              {opt.text || t('reader.choiceFallback', { id: opt.id })}
               </Text>
             </Pressable>
           ))}
@@ -257,7 +259,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
             accessibilityLabel={t('menu.back')}
           >
             <Text style={{ fontSize: 14, color: colors.foreground }}>
-              Scene complete — tap to exit preview
+              {t('editor.preview.complete')}
             </Text>
           </Pressable>
         </View>

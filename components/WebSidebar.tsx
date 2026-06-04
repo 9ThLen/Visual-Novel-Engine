@@ -68,7 +68,7 @@ export function WebSidebar({ visible = true }: WebSidebarProps) {
       >
         <IconSymbol name="book.fill" size={28} color={colors.primary} />
         <Text style={[styles.title, { color: colors.foreground }]}>
-          Visual Novel
+          {t('app.name')}
         </Text>
       </View>
 

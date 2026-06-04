@@ -64,6 +64,7 @@ import {
 
 export interface CanonicalSceneStateSnapshot {
   sceneRecordsByStory: Record<string, Record<string, SceneRecord>>;
+  storiesMetadata?: StoryMetadata[];
 }
 
 export type SceneRecordContentUpdates = Partial<
@@ -93,8 +94,22 @@ export function getCanonicalSceneRecordsForStoryFromState(
   state: CanonicalSceneStateSnapshot,
   storyId: string
 ): SceneRecord[] {
-  const storyRecords = Object.values(state.sceneRecordsByStory[storyId] || {});
-  return storyRecords.sort((a, b) => a.createdAt - b.createdAt);
+  const storyRecordsById = state.sceneRecordsByStory[storyId] || {};
+  const storyRecords = Object.values(storyRecordsById);
+  const sceneOrder = state.storiesMetadata?.find((item) => item.id === storyId)?.sceneOrder;
+  if (!sceneOrder?.length) {
+    return storyRecords.sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  const orderIndex = new Map(sceneOrder.map((sceneId, index) => [sceneId, index]));
+  return storyRecords.sort((a, b) => {
+    const aIndex = orderIndex.get(a.id);
+    const bIndex = orderIndex.get(b.id);
+    if (aIndex !== undefined && bIndex !== undefined) return aIndex - bIndex;
+    if (aIndex !== undefined) return -1;
+    if (bIndex !== undefined) return 1;
+    return a.createdAt - b.createdAt;
+  });
 }
 
 export interface CanonicalSceneOperationsSnapshot {
@@ -243,6 +258,10 @@ export function syncCanonicalStartScene(
             ...metadata,
             startSceneId,
             sceneCount: Object.keys(synchronizedRecords).length,
+            sceneOrder: [
+              ...(metadata.sceneOrder || []).filter((sceneId) => synchronizedRecords[sceneId]),
+              ...Object.keys(synchronizedRecords).filter((sceneId) => !(metadata.sceneOrder || []).includes(sceneId)),
+            ],
             updatedAt: Date.now(),
           }
         : metadata
@@ -269,6 +288,7 @@ export function buildCanonicalSceneRecordsFromLegacyScenes(
           createdAt: 0,
           updatedAt: 0,
           sceneCount: Object.keys(sceneRecords).length,
+          sceneOrder: Object.keys(sceneRecords),
         },
       ],
       sceneRecordsByStory: {
@@ -349,6 +369,7 @@ export function createCanonicalStorySeed(
       createdAt: timestamp,
       updatedAt: timestamp,
       sceneCount: 1,
+      sceneOrder: [options.sceneId],
     },
     sceneRecord,
   };

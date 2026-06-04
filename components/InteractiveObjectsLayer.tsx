@@ -14,6 +14,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/lib/i18n';
 import { getBundledAsset } from '@/lib/asset-resolver';
 import type {
   InteractiveObject,
@@ -112,6 +113,7 @@ interface ObjectViewProps {
 
 function InteractiveObjectView({ object, onPress, isClicked }: ObjectViewProps) {
   const colors = useColors();
+  const { t } = useI18n();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -195,6 +197,10 @@ function InteractiveObjectView({ object, onPress, isClicked }: ObjectViewProps) 
           },
         ]}
         onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={t('reader.interactiveObject', { name: object.name || object.id })}
+        accessibilityHint={t('reader.interactiveObjectHint')}
+        accessibilityState={{ disabled: object.isActive === false }}
       >
         {/* Glow effect */}
         {object.glowColor && !isClicked && (

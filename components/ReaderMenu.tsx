@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useColors } from '@/hooks/use-colors';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
@@ -16,6 +16,8 @@ export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
   const router = useRouter();
   const colors = useColors();
   const { t } = useI18n();
+  const { width: screenWidth } = useWindowDimensions();
+  const menuWidth = Math.min(320, screenWidth - 32);
 
   if (!visible) return null;
 
@@ -41,17 +43,24 @@ export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
   return (
     <>
       <Pressable
-        style={styles.overlay}
+        style={[styles.overlay, { backgroundColor: colors.backdrop }]}
         onPress={onClose}
       />
       <View
-        style={[
-          styles.menuContainer,
-          {
-            backgroundColor: colors.dialogueBg,
-            borderColor: colors.border,
-          },
-        ]}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: [{ translateX: -(Math.min(320, screenWidth - 32) / 2) }, { translateY: -200 }],
+          zIndex: 100,
+          borderRadius: 16,
+          padding: 16,
+          borderWidth: 1,
+          width: menuWidth,
+          elevation: 8,
+          backgroundColor: colors.dialogueBg,
+          borderColor: colors.border,
+        }}
       >
         {menuItems.map((item) => (
           <Pressable
@@ -83,7 +92,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     zIndex: 99,
   },
   menuContainer: {

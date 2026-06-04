@@ -37,6 +37,7 @@ export const ReaderChoices = React.memo(function ReaderChoices({
           onPress={() => onSelectChoice(choice.id)}
           accessibilityRole="button"
           accessibilityLabel={getAccessibilityLabel(choice.text)}
+          accessibilityHint="Double tap to select this choice"
         >
           <Text
             className="text-center font-medium leading-5"

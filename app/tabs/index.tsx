@@ -20,6 +20,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/lib/i18n';
 import { withAlpha } from '@/lib/_core/theme';
 import { Button } from '@/components/ui';
+import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import demoStory from '@/assets/demo-story.json';
 import demoStoryAdvanced from '@/assets/demo-story-advanced.json';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
@@ -89,14 +90,14 @@ const StoryCard = memo(function StoryCard({ item, onPress }: StoryCardProps) {
           </Text>
         ) : (
           <Text style={[styles.storyDescription, { color: colors.muted }]} numberOfLines={2}>
-            Ready to read in the visual novel player.
+            {t('home.readyToRead')}
           </Text>
         )}
         <View style={styles.storyMetaRow}>
           <Text style={[styles.storyMeta, { color: colors.muted }]} numberOfLines={1}>
-            {item.author ? `${t('home.by')} ${item.author}` : 'Interactive story'}
+            {item.author ? `${t('home.by')} ${item.author}` : t('home.interactiveStory')}
           </Text>
-          <Text style={[styles.storyMetaCta, { color: colors.primary }]}>Play</Text>
+          <Text style={[styles.storyMetaCta, { color: colors.primary }]}>{t('home.play')}</Text>
         </View>
       </View>
     </Pressable>
@@ -248,7 +249,7 @@ export default function HomeScreen() {
         <View style={[styles.loadingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.loadingTitle, { color: colors.foreground }]}>{t('common.loading')}</Text>
           <Text style={[styles.loadingText, { color: colors.muted }]}>
-            Preparing your story library…
+            {t('home.preparingLibrary')}
           </Text>
         </View>
       </ScreenContainer>
@@ -260,10 +261,10 @@ export default function HomeScreen() {
       <View style={contentWidthStyle}>
         <View style={[styles.hero, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.heroCopy}>
-            <Text style={[styles.eyebrow, { color: colors.primary }]}>Visual Novel Engine</Text>
+            <Text style={[styles.eyebrow, { color: colors.primary }]}>{t('home.productName')}</Text>
             <Text style={[styles.heroTitle, { color: colors.foreground }]}>{t('home.stories')}</Text>
             <Text style={[styles.heroSubtitle, { color: colors.muted }]}>
-              Choose a story to play, or jump into the editor to build the next scene.
+              {t('home.heroSubtitle')}
             </Text>
           </View>
 
@@ -272,24 +273,24 @@ export default function HomeScreen() {
               {t('home.edit')}
             </Button>
             <Button variant="secondary" size="base" onPress={handleOpenSettings} accessibilityLabel={t('settings.open')}>
-              Settings
+              {t('settings.title')}
             </Button>
           </View>
 
           <View style={styles.statsRow}>
             <View style={[styles.statCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.statValue, { color: colors.foreground }]}>{storiesMetadata.length}</Text>
-              <Text style={[styles.statLabel, { color: colors.muted }]}>Stories</Text>
+              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('home.stories')}</Text>
             </View>
           </View>
         </View>
 
       {storiesMetadata.length === 0 ? (
         <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.emptyIcon, { color: colors.primary }]}>New</Text>
+            <Text style={[styles.emptyIcon, { color: colors.primary }]}>{t('common.new')}</Text>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t('home.noStories')}</Text>
           <Text style={[styles.emptyText, { color: colors.muted }]}>
-            Start with a small scene, then connect it into a playable story flow.
+            {t('home.emptyHint')}
           </Text>
           <Button variant="primary" size="base" onPress={handleOpenEditor} accessibilityLabel={t('home.createStory')}>
             {t('home.createStory')}
@@ -318,114 +319,109 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     borderWidth: 1,
-    borderRadius: 24,
-    padding: 24,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   loadingTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    ...typeScale.sectionTitle,
   },
   loadingText: {
-    fontSize: 14,
+    ...typeScale.label,
     textAlign: 'center',
   },
   hero: {
     borderWidth: 1,
-    borderRadius: 28,
-    padding: 20,
-    marginBottom: 18,
-    gap: 18,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    marginBottom: spacing.lg,
+    gap: spacing.lg,
   },
   heroCopy: {
-    gap: 8,
+    gap: spacing.sm,
   },
   eyebrow: {
-    fontSize: 12,
+    ...typeScale.caption,
     fontWeight: '800',
     letterSpacing: 1.1,
     textTransform: 'uppercase',
   },
   heroTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    letterSpacing: -0.8,
+    ...typeScale.pageTitle,
   },
   heroSubtitle: {
     maxWidth: 560,
-    fontSize: 15,
-    lineHeight: 22,
+    ...typeScale.body,
   },
   heroActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: spacing.sm,
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: spacing.sm,
   },
   statCard: {
     minWidth: 104,
     borderWidth: 1,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   statValue: {
-    fontSize: 24,
+    ...typeScale.sectionTitle,
     fontWeight: '800',
   },
   statLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...typeScale.caption,
     marginTop: 2,
   },
   storyList: {
-    paddingBottom: 28,
-    gap: 14,
+    paddingBottom: spacing.xl,
+    gap: spacing.md,
   },
   storyGridRow: {
-    gap: 14,
+    gap: spacing.md,
   },
   storyCard: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 22,
-    padding: 12,
-    marginBottom: 14,
-    gap: 12,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.md,
   },
   thumbnailFrame: {
     overflow: 'hidden',
-    borderRadius: 16,
+    borderRadius: radius.lg,
   },
   thumbnail: {
     width: '100%',
     height: 148,
-    borderRadius: 16,
+    borderRadius: radius.lg,
   },
   thumbnailPlaceholder: {
     height: 148,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 16,
+    borderRadius: radius.lg,
   },
   thumbnailIcon: {
     fontSize: 36,
   },
   storyCardBody: {
-    gap: 8,
+    gap: spacing.sm,
   },
   storyCardTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: spacing.sm,
   },
   storyTitle: {
     flex: 1,
-    fontSize: 17,
+    ...typeScale.body,
     fontWeight: '800',
   },
   sceneBadge: {
@@ -434,51 +430,48 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: spacing.md,
   },
   sceneBadgeText: {
-    fontSize: 12,
+    ...typeScale.caption,
     fontWeight: '800',
   },
   storyDescription: {
     minHeight: 42,
-    fontSize: 14,
-    lineHeight: 21,
+    ...typeScale.label,
   },
   storyMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: spacing.md,
   },
   storyMeta: {
     flex: 1,
-    fontSize: 12,
-    fontWeight: '600',
+    ...typeScale.caption,
   },
   storyMetaCta: {
-    fontSize: 13,
+    ...typeScale.caption,
     fontWeight: '800',
   },
   emptyState: {
     borderWidth: 1,
-    borderRadius: 24,
-    padding: 28,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
   },
   emptyIcon: {
-    fontSize: 32,
+    ...typeScale.sectionTitle,
   },
   emptyTitle: {
-    fontSize: 20,
+    ...typeScale.sectionTitle,
     fontWeight: '800',
     textAlign: 'center',
   },
   emptyText: {
     maxWidth: 360,
-    fontSize: 14,
-    lineHeight: 21,
+    ...typeScale.label,
     textAlign: 'center',
   },
 });

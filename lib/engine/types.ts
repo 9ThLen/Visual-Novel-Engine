@@ -17,11 +17,11 @@ import type { StoryScene as LegacyStoryScene } from '@/lib/scene-operations';
 export type BlockCategory = 'scene' | 'dialogue' | 'media' | 'effects' | 'logic';
 
 export const BLOCK_CATEGORIES: { key: BlockCategory; label: string; icon: string }[] = [
-  { key: 'scene', label: 'Scene', icon: '🎬' },
-  { key: 'dialogue', label: 'Dialogue', icon: '💬' },
-  { key: 'media', label: 'Media', icon: '🎵' },
-  { key: 'effects', label: 'Effects', icon: '✨' },
-  { key: 'logic', label: 'Logic', icon: '⚙️' },
+  { key: 'scene', label: 'Scene', icon: 'movie' },
+  { key: 'dialogue', label: 'Dialogue', icon: 'voice' },
+  { key: 'media', label: 'Media', icon: 'music' },
+  { key: 'effects', label: 'Effects', icon: 'lightning' },
+  { key: 'logic', label: 'Logic', icon: 'settings' },
 ];
 
 export const BLOCK_CATEGORY_MAP: Record<BlockType, BlockCategory> = {
@@ -62,21 +62,23 @@ export interface BlockTypeInfo {
   icon: string;
   color: string;       // hex color for left border / accent
   bgColor: string;     // semi-transparent bg (color + '15'/'20')
+  comingSoon?: boolean;
+  disabled?: boolean;
 }
 
 export const BLOCK_TYPE_INFO: Record<BlockType, BlockTypeInfo> = {
-  background:        { type: 'background',        label: 'Background',        description: 'Change scene background',     icon: '🖼', color: '#50c878', bgColor: '#50c87820' },
-  character:         { type: 'character',         label: 'Character',         description: 'Show/hide character sprite',  icon: '👤', color: '#f5a623', bgColor: '#f5a62320' },
-  text:              { type: 'text',              label: 'Text / Narration',   description: 'Display narration text',       icon: '📝', color: '#7c5bf5', bgColor: '#7c5bf520' },
-  dialogue:          { type: 'dialogue',          label: 'Dialogue',          description: 'Character dialogue exchange',  icon: '💬', color: '#9b59b6', bgColor: '#9b59b620' },
-  choice:            { type: 'choice',            label: 'Choice',            description: 'Player choice branch',         icon: '🔀', color: '#e91e63', bgColor: '#e91e6320' },
-  effect:            { type: 'effect',            label: 'Effect',            description: 'Visual/screen effects',        icon: '✨', color: '#ffd93d', bgColor: '#ffd93d20' },
-  music:             { type: 'music',             label: 'Music',             description: 'Play/stop background music',   icon: '🎵', color: '#ff6b6b', bgColor: '#ff6b6b20' },
-  sound:             { type: 'sound',             label: 'Sound',             description: 'Play sound effect',            icon: '🔊', color: '#ef5350', bgColor: '#ef535020' },
-  interactive_object:{ type: 'interactive_object',label: 'Interactive Object', description: 'Clickable scene object',       icon: '🎯', color: '#00bcd4', bgColor: '#00bcd420' },
-  camera:            { type: 'camera',            label: 'Camera',            description: 'Camera zoom/pan/focus',        icon: '🎥', color: '#009688', bgColor: '#00968820' },
-  variable:          { type: 'variable',          label: 'Variable',          description: 'Set/modify a variable',         icon: '🔧', color: '#8bc34a', bgColor: '#8bc34a20' },
-  transition:        { type: 'transition',        label: 'Transition',        description: 'Scene transition effect',       icon: '🔄', color: '#3f51b5', bgColor: '#3f51b520' },
+  background:        { type: 'background',        label: 'Background',        description: 'Change scene background',     icon: 'image', color: '#50c878', bgColor: '#50c87820' },
+  character:         { type: 'character',         label: 'Character',         description: 'Show/hide character sprite',  icon: 'character', color: '#f5a623', bgColor: '#f5a62320' },
+  text:              { type: 'text',              label: 'Text / Narration',   description: 'Display narration text',       icon: 'text', color: '#7c5bf5', bgColor: '#7c5bf520' },
+  dialogue:          { type: 'dialogue',          label: 'Dialogue',          description: 'Character dialogue exchange',  icon: 'voice', color: '#9b59b6', bgColor: '#9b59b620' },
+  choice:            { type: 'choice',            label: 'Choice',            description: 'Player choice branch',         icon: 'timeline', color: '#e91e63', bgColor: '#e91e6320' },
+  effect:            { type: 'effect',            label: 'Effect',            description: 'Visual/screen effects',        icon: 'lightning', color: '#ffd93d', bgColor: '#ffd93d20' },
+  music:             { type: 'music',             label: 'Music',             description: 'Play/stop background music',   icon: 'music', color: '#ff6b6b', bgColor: '#ff6b6b20' },
+  sound:             { type: 'sound',             label: 'Sound',             description: 'Play sound effect',            icon: 'sound', color: '#ef5350', bgColor: '#ef535020', comingSoon: true, disabled: true },
+  interactive_object:{ type: 'interactive_object',label: 'Interactive Object', description: 'Clickable scene object',       icon: 'location', color: '#00bcd4', bgColor: '#00bcd420', comingSoon: true, disabled: true },
+  camera:            { type: 'camera',            label: 'Camera',            description: 'Camera zoom/pan/focus',        icon: 'camera', color: '#009688', bgColor: '#00968820', comingSoon: true, disabled: true },
+  variable:          { type: 'variable',          label: 'Variable',          description: 'Set/modify a variable',         icon: 'settings', color: '#8bc34a', bgColor: '#8bc34a20' },
+  transition:        { type: 'transition',        label: 'Transition',        description: 'Scene transition effect',       icon: 'timeline', color: '#3f51b5', bgColor: '#3f51b520' },
 };
 
 // ── Timeline Step ────────────────────────────────────────────────────────

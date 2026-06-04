@@ -3,6 +3,8 @@ import { Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui';
 import { useColors } from '@/hooks/use-colors';
+import { radius, spacing, typeScale } from '@/lib/design-tokens';
+import { useI18n } from '@/lib/i18n';
 import type {
   StoryManuscriptBlock as StoryManuscriptBlockModel,
   StoryManuscriptScene,
@@ -31,50 +33,51 @@ function StoryManuscriptSectionComponent({
   onMeasure,
 }: StoryManuscriptSectionProps) {
   const colors = useColors();
+  const { t } = useI18n();
 
   return (
     <View
       onLayout={(event) => onMeasure(scene.sceneId, event.nativeEvent.layout.y)}
       style={{
-        marginBottom: 28,
-        borderRadius: 28,
+        marginBottom: spacing.xl,
+        borderRadius: radius.lg,
         backgroundColor: colors.surface,
         borderWidth: 1,
         borderColor: colors.border,
-        paddingHorizontal: 20,
-        paddingVertical: 20,
+        paddingHorizontal: spacing.xl,
+        paddingVertical: spacing.xl,
       }}
     >
-      <Text style={{ fontSize: 12, color: colors.muted, fontWeight: '700', textTransform: 'uppercase' }}>
-        Scene {index + 1}
+      <Text style={{ ...typeScale.caption, color: colors.muted, fontWeight: '700', textTransform: 'uppercase' }}>
+        {t('manuscript.sceneIndex', { number: index + 1 })}
       </Text>
       <TextInput
         value={scene.sceneName}
         onChangeText={(sceneName) => onSceneNameChange(scene.sceneId, sceneName)}
-        placeholder="Scene title"
+        placeholder={t('manuscript.sceneTitle')}
         placeholderTextColor={colors.muted}
         style={{
           color: colors.foreground,
-          fontSize: 28,
+          ...typeScale.pageTitle,
           fontWeight: '700',
-          marginTop: 10,
+          marginTop: spacing.sm,
           paddingVertical: 0,
         }}
       />
 
-      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+      <View style={{ flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap', marginTop: spacing.lg }}>
         <Button variant="secondary" size="sm" onPress={() => onAddBlock(scene.sceneId, 'narration')}>
-          + Narration
+          {t('manuscript.addNarration')}
         </Button>
         <Button variant="secondary" size="sm" onPress={() => onAddBlock(scene.sceneId, 'dialogue')}>
-          + Dialogue
+          {t('manuscript.addDialogue')}
         </Button>
         <Button variant="secondary" size="sm" onPress={() => onAddBlock(scene.sceneId, 'choice_group')}>
-          + Choice Group
+          {t('manuscript.addChoiceGroup')}
         </Button>
       </View>
 
-      <View style={{ marginTop: 18 }}>
+      <View style={{ marginTop: spacing.lg }}>
         {scene.blocks.map((block, blockIndex) => (
           <StoryManuscriptBlock
             key={block.id}

@@ -102,9 +102,12 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
           marginBottom: expanded ? 12 : 0,
         }}
       >
-        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.foreground }}>
-          🎯 Interactive Objects ({objects.length})
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <IconSymbol name="location" size={16} color={colors.foreground} />
+          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.foreground }}>
+            {t('editor.objects.title', { count: String(objects.length) })}
+          </Text>
+        </View>
         <Pressable
           style={({ pressed }) => ({
             paddingHorizontal: 10,
@@ -135,7 +138,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                 marginBottom: 8,
               }}
             >
-              Add from Preset
+              {t('editor.objects.addFromPreset')}
             </Text>
             <View style={{ gap: 6 }}>
               {INTERACTIVE_PRESETS.map((preset) => (
@@ -180,7 +183,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                   marginBottom: 8,
                 }}
               >
-                Objects
+                {t('editor.objects.objects')}
               </Text>
               <View style={{ gap: 6 }}>
                 {objects.map((obj) => (
@@ -218,7 +221,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                           color: selectedObjectId === obj.id ? colors['text-inverse'] : colors.muted,
                         }}
                       >
-                        {obj.actions?.length ?? 0} action(s)
+                        {t('editor.objects.actionCount', { count: String(obj.actions?.length ?? 0) })}
                       </Text>
                     </View>
                     <Pressable
@@ -255,7 +258,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                   marginBottom: 12,
                 }}
               >
-                Edit: {selectedObject.name}
+                {t('editor.objects.edit', { name: selectedObject.name ?? t('editor.objects.name') })}
               </Text>
 
               {/* Name */}
@@ -268,7 +271,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                     marginBottom: 4,
                   }}
                 >
-                  Name
+                  {t('editor.objects.name')}
                 </Text>
                 <TextInput
                   style={{
@@ -282,7 +285,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                   }}
                   value={selectedObject.name}
                   onChangeText={(text) => handleUpdateObject({ name: text })}
-                  placeholder="Object name"
+                  placeholder={t('editor.objects.namePlaceholder')}
                   placeholderTextColor={colors.muted}
                 />
               </View>
@@ -297,7 +300,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                     marginBottom: 8,
                   }}
                 >
-                  Position (%)
+                  {t('editor.objects.positionPercent')}
                 </Text>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
                   {(['x', 'y', 'width', 'height'] as const).map((key) => (
@@ -344,7 +347,7 @@ export function InteractiveObjectsEditor({ objects, onChange }: Props) {
                     marginBottom: 4,
                   }}
                 >
-                  Actions ({selectedObject.actions.length})
+                  {t('editor.objects.actions', { count: String(selectedObject.actions.length) })}
                 </Text>
                 {selectedObject.actions.map((action, index) => (
                   <View

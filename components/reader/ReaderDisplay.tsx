@@ -34,7 +34,6 @@ interface ReaderDisplayProps {
   colors: ReturnType<typeof useColors>;
   dialogueAnimatedStyle: StyleProp<ViewStyle>;
   dialogueFontSize: number;
-  dialogueTop?: number;
   displayedText: string;
   fallbackColor: string;
   getChoiceAccessibilityLabel: (text: string) => string;
@@ -92,13 +91,11 @@ function ReaderCharacters({
   instances,
   resolvedCharUris,
   paddingBottom,
-  dialogueTop,
 }: {
   animatedStyle: StyleProp<ViewStyle>;
   instances: React.ComponentProps<typeof CharacterDisplay>['instance'][];
   resolvedCharUris: Record<string, ImageSource | undefined>;
   paddingBottom: number;
-  dialogueTop?: number;
 }) {
   const containerStyle = useMemo(
     () => [
@@ -122,7 +119,6 @@ function ReaderCharacters({
             key={instance.characterId}
             instance={instance}
             spriteUri={uri}
-            dialogueTop={dialogueTop}
           />
         );
       })}
@@ -138,7 +134,6 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   colors,
   dialogueAnimatedStyle,
   dialogueFontSize,
-  dialogueTop,
   displayedText,
   fallbackColor,
   getChoiceAccessibilityLabel,
@@ -183,7 +178,6 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
           instances={instances}
           resolvedCharUris={resolvedCharUris}
           paddingBottom={paddingBottom}
-          dialogueTop={dialogueTop}
         />
       )}
 

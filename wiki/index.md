@@ -1,6 +1,6 @@
 # Wiki Index
 
-Last updated: 2026-05-31
+Last updated: 2026-06-02
 
 ## Active Wiki Pages
 
@@ -19,7 +19,14 @@ Last updated: 2026-05-31
 | `audio-system.md` | Audio manager architecture, services, triggers |
 | `testing-guide.md` | Test structure, patterns, coverage, how to run |
 | `migration-guide.md` | Legacy-to-canonical migration paths and rules |
-| `SCHEMA.md` | Wiki maintenance rules |
+|| `security-audit-report-2026-05-31-rev2.md` | Security audit (rev 2): URI, XSS, OAuth, prototype pollution |
+
+## Останні звіти (2026-06-02)
+
+|| Page | Purpose |
+|---|---|
+|| `code-analysis-report-2026-06-02.md` | **Повний аналіз VNE** — UX/UI, безпека, оптимізація, якість коду, архітектура |
+|| `fixes-2026-06-02.md` | **План виправлень** — 13 задач від легких до складних |
 
 ## Active Repository Docs
 

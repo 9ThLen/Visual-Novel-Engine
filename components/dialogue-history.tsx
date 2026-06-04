@@ -15,6 +15,7 @@ import {
   getPointerEventsStyle,
   shouldUseNativeDriverForPlatform,
 } from '@/lib/react-native-web-interop';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 export interface HistoryEntry {
   id: string;
@@ -141,7 +142,7 @@ export function DialogueHistory({ visible, entries, onClose }: Props) {
             accessibilityRole="button"
             accessibilityLabel={t('common.close')}
           >
-            <Text style={{ fontSize: 22, color: colors.muted }}>✕</Text>
+            <IconSymbol name="close" size={22} color={colors.muted} />
           </Pressable>
         </View>
 

@@ -1,12 +1,11 @@
 import React from 'react';
-import { Image, Animated, useWindowDimensions } from 'react-native';
+import { Image, Animated, useWindowDimensions, View } from 'react-native';
 import type { AnimatedCharacterInstance } from '@/lib/character-animator';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 
 interface Props {
   instance: AnimatedCharacterInstance;
   spriteUri: string;
-  dialogueTop?: number;
 }
 
 export const CharacterDisplay = React.memo(function CharacterDisplay({ instance, spriteUri }: Props) {
@@ -27,11 +26,15 @@ export const CharacterDisplay = React.memo(function CharacterDisplay({ instance,
         ...getPointerEventsStyle('none'),
       }}
     >
+      {spriteUri ? (
       <Image
-        source={spriteUri ? { uri: spriteUri } : { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' }}
+        source={{ uri: spriteUri }}
         style={{ width: '100%', aspectRatio: 9 / 16, maxHeight: screenHeight * 0.65 }}
         resizeMode="contain"
       />
+    ) : (
+      <View style={{ width: '100%', aspectRatio: 9 / 16, maxHeight: screenHeight * 0.65 }} />
+    )}
     </Animated.View>
   );
 });

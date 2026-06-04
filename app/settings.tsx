@@ -7,8 +7,7 @@ import {
   Switch,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
 import { useStoryState, useStoryActions } from '@/lib/story-hooks';
@@ -16,12 +15,12 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/lib/i18n';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { Button } from '@/components/ui';
+import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 
 export default function SettingsScreen() {
   const router = useRouter();
   useFocusEffect(
     useCallback(() => {
-      void stopReaderPlayback();
       return () => {
         void stopReaderPlayback();
       };
@@ -37,14 +36,14 @@ export default function SettingsScreen() {
     label,
     value,
     onValueChange,
-    emoji,
+    icon,
     description,
-  }: { label: string; value: boolean; onValueChange: (v: boolean) => void; emoji?: string; description?: string }) => (
+  }: { label: string; value: boolean; onValueChange: (v: boolean) => void; icon?: IconSymbolName; description?: string }) => (
     <View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View style={{ flex: 1, marginRight: 12 }}>
           <Text style={{ fontSize: 14, color: colors.foreground, fontWeight: '500' }}>
-            {emoji ? `${emoji}  ` : ''}{label}
+            {icon ? <IconSymbol name={icon} size={14} color={colors.foreground} /> : null} {label}
           </Text>
           {description && (
             <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{description}</Text>
@@ -98,12 +97,12 @@ export default function SettingsScreen() {
     label,
     value,
     onValueChange,
-    emoji,
-  }: { label: string; value: number; onValueChange: (v: number) => void; emoji?: string }) => (
+    icon,
+  }: { label: string; value: number; onValueChange: (v: number) => void; icon?: IconSymbolName }) => (
     <View style={{ marginBottom: 4 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
         <Text style={{ fontSize: 14, color: colors.foreground, fontWeight: '500' }}>
-          {emoji ? `${emoji}  ` : ''}{label}
+          {icon ? <IconSymbol name={icon} size={14} color={colors.foreground} /> : null} {label}
         </Text>
         <Text style={{ fontSize: 13, color: colors.muted, fontWeight: '600' }}>
           {Math.round(value * 100)}%
@@ -150,24 +149,24 @@ export default function SettingsScreen() {
 
         {/* Audio */}
         <Section title={t('settings.audio')}>
-          <SliderRow label={t('settings.bgmVolume')} emoji="🎵" value={settings.bgmVolume}
+          <SliderRow label={t('settings.bgmVolume')} icon="music" value={settings.bgmVolume}
             onValueChange={(v) => updateSettings({ bgmVolume: v })} />
           <Divider />
-          <SliderRow label={t('settings.voiceVolume')} emoji="🗣" value={settings.voiceVolume}
+          <SliderRow label={t('settings.voiceVolume')} icon="voice" value={settings.voiceVolume}
             onValueChange={(v) => updateSettings({ voiceVolume: v })} />
           <Divider />
-          <SliderRow label={t('settings.sfxVolume')} emoji="🔔" value={settings.sfxVolume}
+          <SliderRow label={t('settings.sfxVolume')} icon="sound" value={settings.sfxVolume}
             onValueChange={(v) => updateSettings({ sfxVolume: v })} />
         </Section>
 
         {/* Text */}
         <Section title={t('settings.textSection')}>
-          <SliderRow label={t('settings.textSpeed')} emoji="⚡" value={settings.textSpeed}
+          <SliderRow label={t('settings.textSpeed')} icon="lightning" value={settings.textSpeed}
             onValueChange={(v) => updateSettings({ textSpeed: v })} />
           <Divider />
           <View>
             <Text style={{ fontSize: 14, color: colors.foreground, fontWeight: '500', marginBottom: 10 }}>
-              🔡  {t('settings.textSize')}
+              <IconSymbol name="text" size={14} color={colors.foreground} /> {t('settings.textSize')}
             </Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {sizes.map((size) => (
@@ -201,7 +200,7 @@ export default function SettingsScreen() {
         <Section title={t('settings.playbackSection')}>
           <ToggleRow
             label={t('settings.autoPlay')}
-            emoji="⏯"
+            icon="play"
             value={settings.autoPlay}
             onValueChange={(v) => updateSettings({ autoPlay: v })}
             description={t('settings.autoPlayDescription')}

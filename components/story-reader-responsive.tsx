@@ -10,57 +10,48 @@
  *  • Modern VN UI: full-screen bg, gradient overlay, speaker nameplate
  *  • Lazy image loading via expo-image
  *  • Dark / light theme
+ *
+ * Decomposed into custom hooks:
+ *  • useReaderPages — page computation + display choices
+ *  • useReaderAssets — character animations + scene images
+ *  • useReaderNotifications — transition/complete side effects
+ *  • useDialogueHistory — history state management
  */
-import React, {
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-  useMemo,
-} from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { View, useWindowDimensions } from 'react-native';
 import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  useWindowDimensions,
-  Animated as RNAnimated,
-} from 'react-native';
-import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
 } from 'react-native-reanimated';
-import { Image } from 'expo-image';
 import { useColors } from '@/hooks/use-colors';
 import type { UserSettings } from '@/lib/user-settings';
-import type { CharacterPosition } from '@/lib/character-types';
-import type { CharacterRuntimeState, SceneState, TimelineStep } from '@/lib/engine/types';
+import type { SceneState, TimelineStep } from '@/lib/engine/types';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
 import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
-import { DialogueHistory, HistoryEntry } from './dialogue-history';
-import { CharacterDisplay } from './CharacterDisplay';
+import { DialogueHistory } from './dialogue-history';
+import { ReaderControls } from './reader/ReaderControls';
+import { ReaderDisplay } from './reader/ReaderDisplay';
 import { useTypewriter } from '@/hooks/useTypewriter';
-import { useSceneImages } from '@/hooks/useSceneImages';
+import { useReaderAutoAdvance } from '@/hooks/useReaderAutoAdvance';
 import { useI18n } from '@/lib/i18n';
-import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
-import { createExecutorSceneImageState } from '@/lib/reader-runtime';
 import {
   getStoryReaderContainerStyle,
   getStoryReaderSpeakerTextStyle,
 } from '@/lib/story-reader-platform';
+import { useReaderPages } from '@/hooks/useReaderPages';
+import { useReaderAssets } from '@/hooks/useReaderAssets';
+import { useReaderNotifications } from '@/hooks/useReaderNotifications';
+import { useDialogueHistory } from '@/hooks/useDialogueHistory';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function extractSpeaker(text: string): { speaker: string | null; body: string } {
-  // Support "Name: dialogue…" format
   const match = text.match(/^([A-Za-zА-Яа-яҐґЄєІіЇї\u4e00-\u9fff][\w \u00c0-\u024f'.-]{0,30}?)\s*:\s*([\s\S]+)$/);
   if (match) return { speaker: match[1], body: match[2] };
   return { speaker: null, body: text };
 }
 
-// Auto-play delay after full text appears
-const AUTO_PLAY_DELAY_MS = 2400;
 interface Props {
   sceneId?: string;
   timeline?: TimelineStep[];
@@ -74,8 +65,6 @@ interface Props {
   onSceneStateChange?: (sceneState: SceneState) => void;
   routeOnExecutorComplete?: boolean;
 }
-
-const DIALOGUE_MARGIN_BOTTOM = 28;
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -99,217 +88,112 @@ export function StoryReaderResponsive({
   const fontSize = getResponsiveFontSize(dims);
   const firstTimelineStepId = timeline?.[0]?.id;
 
-  const {
-    textSpeed = 0.5,
-    textSize = 'medium',
-    autoPlay = false,
-  } = settings;
+  const { textSpeed = 0.5, textSize = 'medium', autoPlay = false } = settings;
 
-  // ── Executor mode (new) ────────────────────────────────────────────────
+  // ── Executor ──────────────────────────────────────────────────────────
   const executor = useSceneExecutor(timeline ?? [], { initialVariables });
   const usingExecutor = !!timeline && timeline.length > 0;
 
-  // Derive display values from either executor state or legacy scene
-  const displaySceneId = useMemo(() => {
-    return sceneId ?? `executed-scene:${firstTimelineStepId ?? 'empty'}`;
-  }, [sceneId, firstTimelineStepId]);
+  const displaySceneId = useMemo(
+    () => sceneId ?? `executed-scene:${firstTimelineStepId ?? 'empty'}`,
+    [sceneId, firstTimelineStepId],
+  );
 
-  const pages = useMemo(() => {
-    const currentBlock = timeline?.[executor.currentStepIndex];
-    if (!currentBlock) return [''];
-    if (currentBlock.blockType === 'text') {
-      const d = currentBlock.data as { content: string };
-      return d.content.split('\n\n').filter(Boolean);
-    }
-    if (currentBlock.blockType === 'dialogue') {
-      const d = currentBlock.data as { entries: { text: string }[] };
-      return d.entries.map(e => e.text);
-    }
-    return [''];
-  }, [timeline, executor.currentStepIndex]);
+  // ── Pages + Choices (extracted) ───────────────────────────────────────
+  const { pages, displayChoices, hasChoices, displayBackgroundUri } =
+    useReaderPages(
+      timeline,
+      executor.currentStepIndex,
+      executor.sceneState.currentChoices,
+      executor.sceneState.backgroundAssetId,
+    );
 
-  const displayBackgroundUri = executor.sceneState.backgroundAssetId;
-
-  const displayChoices = executor.sceneState.currentChoices?.map((opt, i) => ({
-    id: opt.id,
-    text: opt.text,
-    nextSceneId: opt.targetSceneId,
-    index: i,
-  })) ?? [];
-
-  const hasChoices = displayChoices.length > 0;
-  type DisplayChoice = (typeof displayChoices)[number];
-
-  const [pageIndex, setPageIndex] = useState(0);
-
-  const executorImageState = useMemo(
-    () => createExecutorSceneImageState(
+  // ── Assets: images + character instances (extracted) ──────────────────
+  const { bgSource, resolvedCharUris, characterInstances } =
+    useReaderAssets(
       displaySceneId,
       displayBackgroundUri,
       executor.sceneState.characters,
-    ),
-    [displayBackgroundUri, displaySceneId, executor.sceneState.characters],
-  );
-  const { bgSource, resolvedCharUris } = useSceneImages(executorImageState);
+    );
 
-  // ── History ─────────────────────────────────────────────────────────────
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
+  // ── Page index ────────────────────────────────────────────────────────
+  const [pageIndex, setPageIndex] = useState(0);
+
+  // ── Typewriter ─────────────────────────────────────────────────────────
+  const { displayedText, isTyping, startTypewriter, completeTypewriter } =
+    useTypewriter(textSpeed);
+
+  // ── Auto-advance ───────────────────────────────────────────────────────
+  const {
+    autoPlayActive,
+    turbo,
+    setTurbo,
+    toggleAutoPlay,
+    handleTapAdvance: handleTap,
+  } = useReaderAutoAdvance({
+    isLoading,
+    isTyping,
+    hasChoices,
+    executor,
+    completeTypewriter,
+    initialAutoPlay: autoPlay,
+    pageIndex,
+  });
+
+  // ── History (extracted) ───────────────────────────────────────────────
+  const { history, showHistory, openHistory, closeHistory } =
+    useDialogueHistory({
+      isTyping,
+      pageIndex,
+      displaySceneId,
+      pages,
+      extractSpeaker,
+    });
+
+  // ── Notifications (extracted) ─────────────────────────────────────────
+  useReaderNotifications({
+    displaySceneId,
+    isTransitioning: executor.sceneState.isTransitioning,
+    transitionTarget: executor.sceneState.transitionTarget,
+    isComplete: executor.isComplete,
+    routeOnExecutorComplete,
+    onTransition,
+  });
+
+  // ── Callbacks via refs (avoids stale closures) ────────────────────────
+  const onHistoryVisibleChangeRef = useRef(onHistoryVisibleChange);
+  onHistoryVisibleChangeRef.current = onHistoryVisibleChange;
+  const onSceneStateChangeRef = useRef(onSceneStateChange);
+  onSceneStateChangeRef.current = onSceneStateChange;
 
   useEffect(() => {
-    onHistoryVisibleChange?.(showHistory);
-  }, [showHistory, onHistoryVisibleChange]);
+    onHistoryVisibleChangeRef.current?.(showHistory);
+  }, [showHistory]);
 
   useEffect(() => {
-    onSceneStateChange?.(executor.sceneState);
-  }, [executor.sceneState, onSceneStateChange]);
+    onSceneStateChangeRef.current?.(executor.sceneState);
+  }, [executor.sceneState]);
 
-  const transitionNotifiedRef = useRef<string | null>(null);
-  const completeNotifiedRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!executor.sceneState.isTransitioning) return;
-    const target = executor.sceneState.transitionTarget ?? '__end__';
-    const key = `${displaySceneId}:${target}`;
-    if (transitionNotifiedRef.current === key) return;
-    transitionNotifiedRef.current = key;
-    onTransition?.(executor.sceneState.transitionTarget);
-  }, [displaySceneId, executor.sceneState.isTransitioning, executor.sceneState.transitionTarget, onTransition]);
-
-  useEffect(() => {
-    if (!routeOnExecutorComplete || !executor.isComplete) return;
-    const key = `${displaySceneId}:complete`;
-    if (completeNotifiedRef.current === key) return;
-    completeNotifiedRef.current = key;
-    onTransition?.(null);
-  }, [displaySceneId, executor.isComplete, onTransition, routeOnExecutorComplete]);
-
-  // ── Auto-play ───────────────────────────────────────────────────────────
-  const [autoPlayActive, setAutoPlayActive] = useState(autoPlay);
-  const autoPlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // ── Animations ──────────────────────────────────────────────────────────
+  // ── Scene change — fade in ─────────────────────────────────────────────
   const sceneOpacity = useSharedValue(1);
   const bgScale = useSharedValue(1);
-
-  // ── Skip turbo mode ─────────────────────────────────────────────────────
-  const [turbo, setTurbo] = useState(false);
-  const turboInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ── Splash screen state ─────────────────────────────────────────────────
-  const [showSplash, setShowSplash] = useState(false);
-  const [uiVisible, setUiVisible] = useState(true);
   const uiOpacity = useSharedValue(1);
 
-  // ── Typewriter ──────────────────────────────────────────────────────────
-  const { displayedText, isTyping, startTypewriter, completeTypewriter } = useTypewriter(textSpeed);
-  const textCompleteFiredRef = useRef<string | null>(null);
-
-  // ── Scene change — fade in ───────────────────────────────────────────────
   useEffect(() => {
     setPageIndex(0);
-
     sceneOpacity.value = 0;
     bgScale.value = 1.04;
     sceneOpacity.value = withTiming(1, { duration: 380 });
     bgScale.value = withTiming(1, { duration: 700 });
   }, [displaySceneId, usingExecutor, sceneOpacity, bgScale]);
 
+  // ── Start typewriter on page change ────────────────────────────────────
   useEffect(() => {
     const { body } = extractSpeaker(pages[pageIndex] ?? '');
     startTypewriter(body);
   }, [pageIndex, pages, startTypewriter]);
 
-  useEffect(() => {
-    textCompleteFiredRef.current = null;
-    transitionNotifiedRef.current = null;
-    completeNotifiedRef.current = null;
-  }, [displaySceneId]);
-
-  useEffect(() => {
-    if (isTyping) return;
-    const raw = pages[pageIndex] ?? '';
-    const { speaker, body } = extractSpeaker(raw);
-    setHistory((h) => {
-      const last = h[h.length - 1];
-      if (last?.text === body) return h;
-      return [...h, { id: `${displaySceneId}-${pageIndex}-${Date.now()}`, speaker: speaker ?? undefined, text: body, sceneId: displaySceneId }];
-    });
-  }, [isTyping, pageIndex, displaySceneId, pages]);
-
-  // ── Auto-play ───────────────────────────────────────────────────────────
-  const awaitingChoice = hasChoices;
-
-  useEffect(() => {
-    if (autoPlayTimer.current) clearTimeout(autoPlayTimer.current);
-    if (!autoPlayActive || isTyping) return;
-
-    autoPlayTimer.current = setTimeout(() => {
-      if (hasChoices) return;
-      if (executor.canAdvance) executor.advance();
-    }, AUTO_PLAY_DELAY_MS);
-
-    return () => { if (autoPlayTimer.current) clearTimeout(autoPlayTimer.current); };
-  }, [autoPlayActive, isTyping, hasChoices, executor, pageIndex]);
-
-  // ── Turbo skip ────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!turbo) {
-      if (turboInterval.current) clearInterval(turboInterval.current);
-      return;
-    }
-    turboInterval.current = setInterval(() => {
-    if (isTyping) {
-      completeTypewriter();
-      if (executor.isTyping) {
-        executor.advance();
-      }
-    } else {
-      if (executor.canAdvance) executor.advance();
-      else setTurbo(false);
-    }
-  }, 180);
-  return () => { if (turboInterval.current) clearInterval(turboInterval.current); };
-}, [turbo, isTyping, executor, completeTypewriter]);
-
-  // ── Tap handler ────────────────────────────────────────────────────────
-  const handleTap = () => {
-    if (isLoading) return;
-    if (isTyping) {
-      completeTypewriter();
-      if (executor.isTyping) {
-        executor.advance();
-      }
-      return;
-    }
-
-    if (executor.sceneState.isTransitioning) return;
-    if (executor.canAdvance) { executor.advance(); return; }
-    if (executor.sceneState.currentChoices) return;
-  };
-
-  // ── Font size from settings ────────────────────────────────────────────
-  const dialogueFontSize =
-    textSize === 'small' ? fontSize.sm :
-    textSize === 'large' ? fontSize.lg :
-    fontSize.md;
-
-  // ── Speaker ────────────────────────────────────────────────────────────
-  const { speaker } = extractSpeaker(pages[pageIndex] ?? '');
-
-  // ── Splash handlers ────────────────────────────────────────────────────
-  const handleSplashComplete = useCallback(() => {
-    setShowSplash(false);
-    setUiVisible(true);
-
-    sceneOpacity.value = 0;
-    bgScale.value = 1.04;
-
-    sceneOpacity.value = withTiming(1, { duration: 380 });
-    bgScale.value = withTiming(1, { duration: 700 });
-  }, [bgScale, sceneOpacity]);
-
-  // ── Animated styles ─────────────────────────────────────────────────────
+  // ── Animated styles ────────────────────────────────────────────────────
   const bgAnimatedStyle = useAnimatedStyle(() => ({
     opacity: sceneOpacity.value,
     transform: [{ scale: bgScale.value }],
@@ -323,285 +207,86 @@ export function StoryReaderResponsive({
     opacity: sceneOpacity.value * uiOpacity.value,
   }));
 
-  // ── UI ──────────────────────────────────────────────────────────────────
-  const isPortrait = layout.dialoguePosition === 'bottom';
-  const readerContainerStyle = getStoryReaderContainerStyle(colors);
-  const speakerTextStyle = getStoryReaderSpeakerTextStyle(colors);
+  // ── Speaker + font size ────────────────────────────────────────────────
+  const dialogueFontSize =
+    textSize === 'small' ? fontSize.sm :
+    textSize === 'large' ? fontSize.lg :
+    fontSize.md;
 
+  const { speaker } = extractSpeaker(pages[pageIndex] ?? '');
+
+  // ── Choice selection ───────────────────────────────────────────────────
+  const handleSelectChoice = (choiceId: string) => {
+    const choice = displayChoices.find((item) => item.id === choiceId);
+    executor.selectChoice(choiceId);
+    if (!choice) return;
+    onExecutorChoiceSelect?.({
+      sceneId: displaySceneId,
+      choiceId,
+      targetSceneId: choice.targetSceneId,
+    });
+  };
+
+  // ── Reader controls ────────────────────────────────────────────────────
+  const readerControls = (
+    <ReaderControls
+      autoPlayActive={autoPlayActive}
+      canAdvance={executor.canAdvance}
+      colors={colors}
+      hasChoices={hasChoices}
+      isTyping={isTyping}
+      labels={{
+        auto: t('reader.auto'),
+        log: t('reader.log'),
+        openHistory: t('reader.openHistory'),
+        skip: t('reader.skip'),
+        skipText: t('reader.skipText'),
+        startAuto: t('reader.startAuto'),
+        stopAuto: t('reader.stopAuto'),
+        tapToContinue: t('reader.tapToContinue'),
+      }}
+      onOpenHistory={openHistory}
+      onSetTurbo={setTurbo}
+      onToggleAutoPlay={toggleAutoPlay}
+      turbo={turbo}
+    />
+  );
+
+  // ── Render ─────────────────────────────────────────────────────────────
   return (
-    <View className="flex-1" style={readerContainerStyle}>
+    <View className="flex-1" style={getStoryReaderContainerStyle(colors)}>
+      <ReaderDisplay
+        backgroundAnimatedStyle={bgAnimatedStyle}
+        bgSource={bgSource}
+        characterAnimatedStyle={charactersAnimatedStyle}
+        choices={displayChoices}
+        colors={colors}
+        dialogueAnimatedStyle={dialogueAnimatedStyle}
+        dialogueFontSize={dialogueFontSize}
+        displayedText={displayedText}
+        fallbackColor={colors.background}
+        getChoiceAccessibilityLabel={(text) => t('reader.choiceLabel', { text })}
+        continueAccessibilityLabel={t('reader.continueReading')}
+        continueAccessibilityHint="Tap to advance text or make a choice"
+        isTyping={isTyping}
+        isLoading={isLoading}
+        onTap={handleTap}
+        onSelectChoice={handleSelectChoice}
+        paddingBottom={layout.dialoguePosition === 'bottom' ? layout.dialogueHeight - 20 : 0}
+        pagesLength={pages.length}
+        pageIndex={pageIndex}
+        readerControls={readerControls}
+        resolvedCharUris={resolvedCharUris}
+        speaker={speaker}
+        speakerTextStyle={getStoryReaderSpeakerTextStyle(colors)}
+        instances={characterInstances}
+      />
 
-      {/* ── Background ────────────────────────────────────────────────── */}
-      <Animated.View
-        style={[StyleSheet.absoluteFillObject, bgAnimatedStyle]}
-      >
-        {bgSource ? (
-          <Image
-            source={bgSource}
-            style={StyleSheet.absoluteFillObject}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            onLoad={() => {}}
-            onError={(err) => { if (__DEV__) console.error('[StoryReader] Background load error:', err); }}
-            placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
-            transition={300}
-          />
-        ) : (
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.background }]} />
-        )}
-
-      </Animated.View>
-
-      {/* ── Characters ────────────────────────────────────────────────── */}
-      {uiVisible && Object.keys(resolvedCharUris).length > 0 && (
-        <Animated.View
-          style={[
-            StyleSheet.absoluteFillObject,
-            charactersAnimatedStyle,
-            {
-              flexDirection: 'row',
-              justifyContent: 'center',
-              alignItems: 'flex-end',
-              paddingBottom: isPortrait ? layout.dialogueHeight - 20 : 0,
-              ...getPointerEventsStyle('none'),
-            },
-          ]}
-        >
-          {executor.sceneState.characters.map((char: CharacterRuntimeState) => {
-            const charId = char.characterId;
-            const charSource = resolvedCharUris[charId];
-            if (!charSource) return null;
-            const uri = typeof charSource === 'string' ? charSource : (charSource as { uri: string }).uri;
-            return (
-              <CharacterDisplay
-                key={charId}
-                instance={{
-                  id: charId,
-                  characterId: charId,
-                  spriteId: '',
-                  position: 'center' as CharacterPosition,
-                  zIndex: 0,
-                  animatedOpacity: new RNAnimated.Value(1),
-                  animatedTranslateX: new RNAnimated.Value(0),
-                  animatedTranslateY: new RNAnimated.Value(0),
-                  animatedScale: new RNAnimated.Value(1),
-                }}
-                spriteUri={uri}
-                dialogueTop={isPortrait ? dims.height - layout.dialogueHeight : undefined}
-              />
-            );
-          })}
-        </Animated.View>
-      )}
-
-
-      {/* ── Main tappable area ────────────────────────────────────────── */}
-      {uiVisible && (
-        <Pressable
-          style={{ flex: 1 }}
-          onPress={handleTap}
-          disabled={isLoading}
-          accessible={true}
-          accessibilityRole="button"
-          accessibilityLabel={t('reader.continueReading')}
-          accessibilityHint="Tap to advance text or make a choice"
-        />
-      )}
-
-      {/* ── Top controls ───────────────────────────────────────────────── */}
-      {uiVisible && (
-        <View
-          className="absolute right-4 top-12 flex-row gap-2"
-          style={getPointerEventsStyle('box-none')}
-        >
-          <ControlButton
-            label={autoPlayActive ? `⏸ ${t('reader.auto')}` : `▶ ${t('reader.auto')}`}
-            active={autoPlayActive}
-            onPress={() => setAutoPlayActive((a) => !a)}
-            colors={colors}
-            accessibilityLabel={autoPlayActive ? t('reader.stopAuto') : t('reader.startAuto')}
-          />
-          <ControlButton
-            label={`📖 ${t('reader.log')}`}
-            onPress={() => setShowHistory(true)}
-            colors={colors}
-            accessibilityLabel={t('reader.openHistory')}
-          />
-        </View>
-      )}
-
-      {/* ── Dialogue box ──────────────────────────────────────────────── */}
-      {uiVisible && (
-        <Animated.View
-          style={[
-            {
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-            },
-            dialogueAnimatedStyle,
-            getPointerEventsStyle('box-none'),
-          ]}
-        >
-          <View className="mx-3 mb-7 rounded-2xl border overflow-hidden"
-            style={{
-              backgroundColor: colors.dialogueBg ?? 'rgba(15, 14, 23, 0.92)',
-              borderColor: colors.border,
-              marginBottom: DIALOGUE_MARGIN_BOTTOM,
-            }}
-          >
-            {/* Speaker nameplate */}
-            {speaker ? (
-              <View
-                className="self-start px-3.5 py-1 rounded-br-lg rounded-tl-xl"
-                style={{
-                  backgroundColor: colors.nameBg ?? colors.primary,
-                }}
-              >
-                <Text
-                  className="text-xs font-bold tracking-wider"
-                  style={speakerTextStyle}
-                >
-                  {speaker}
-                </Text>
-              </View>
-            ) : null}
-
-            <View className="p-4 min-h-[80]">
-              <Text
-                style={{
-                  fontSize: dialogueFontSize,
-                  lineHeight: dialogueFontSize * 1.65,
-                  color: colors.foreground,
-                  fontWeight: '400',
-                }}
-              >
-                {displayedText}
-                {isTyping && (
-                  <Text style={{ color: colors.primary, opacity: 0.8 }}>█</Text>
-                )}
-              </Text>
-            </View>
-
-            {/* Choices */}
-            {(executor.sceneState.currentChoices !== null && !isTyping && displayChoices.length > 0) && (
-              <View className="px-3 pt-1 pb-3 gap-2">
-                {displayChoices.map((choice: DisplayChoice) => (
-                  <Pressable
-                    key={choice.id}
-                    style={({ pressed }) => ({
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      paddingVertical: 10,
-                      paddingHorizontal: 16,
-                      backgroundColor: colors.choiceBg ?? 'rgba(124,58,237,0.12)',
-                      borderColor: colors.choiceBorder ?? colors.primary,
-                      opacity: pressed ? 0.75 : 1,
-                    })}
-                    onPress={() => {
-                      executor.selectChoice(choice.id);
-                      onExecutorChoiceSelect?.({
-                        sceneId: displaySceneId,
-                        choiceId: choice.id,
-                        targetSceneId: choice.nextSceneId ?? null,
-                      });
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('reader.choiceLabel', { text: choice.text })}
-                  >
-                    <Text
-                      className="text-center font-medium leading-5"
-                      style={{
-                        color: colors.foreground,
-                        fontSize: fontSize.sm,
-                      }}
-                      numberOfLines={3}
-                    >
-                      {choice.text}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-
-            {/* Bottom bar: page indicator + skip */}
-            <View className="flex-row items-center justify-between px-4 pb-3 pt-1">
-              <View />
-
-              <View className="flex-row gap-2 items-center">
-                {!isTyping && !awaitingChoice && (
-                  <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>{t('reader.tapToContinue')} ▼</Text>
-                )}
-                <Pressable
-                  style={{
-                    borderRadius: 6,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderWidth: 1,
-                    borderColor: turbo ? colors.primary : colors.border,
-                    backgroundColor: turbo ? colors.primary : 'transparent',
-                  }}
-                  onPressIn={() => setTurbo(true)}
-                  onPressOut={() => setTurbo(false)}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('reader.skipText')}
-                >
-                  <Text
-                    className="text-xs font-semibold"
-                    style={{ color: turbo ? colors['text-inverse'] : colors.muted }}
-                  >
-                    ⏩ {t('reader.skip')}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        </Animated.View>
-      )}
-
-      {/* ── Dialogue history drawer ───────────────────────────────────── */}
       <DialogueHistory
         visible={showHistory}
         entries={history}
-        onClose={() => setShowHistory(false)}
+        onClose={closeHistory}
       />
     </View>
-  );
-}
-
-// ── Small control button ───────────────────────────────────────────────────
-
-function ControlButton({
-  label,
-  active = false,
-  onPress,
-  colors,
-  accessibilityLabel,
-}: {
-  label: string;
-  active?: boolean;
-  onPress: () => void;
-  colors: ReturnType<typeof useColors>;
-  accessibilityLabel?: string;
-}) {
-  return (
-    <Pressable
-      style={{
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 8,
-        backgroundColor: active
-          ? colors.primary
-          : 'rgba(0,0,0,0.45)',
-        borderWidth: 1,
-        borderColor: active ? colors.primary : 'rgba(255,255,255,0.18)',
-      }}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-    >
-      <Text style={{ color: colors['text-inverse'], fontSize: 12, fontWeight: '600' }}>{label}</Text>
-    </Pressable>
   );
 }
