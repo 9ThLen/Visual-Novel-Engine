@@ -8,7 +8,7 @@
 import React from 'react';
 import { View, Text, Pressable, Modal } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 
 interface ConfirmDialogProps {
   visible: boolean;

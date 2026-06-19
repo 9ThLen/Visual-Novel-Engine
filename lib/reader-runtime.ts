@@ -1,9 +1,7 @@
 import type {
   ChoiceOption,
-  BackgroundBlockData,
   DialogueBlockData,
   InteractiveObjectBlockData,
-  SceneRecord,
   TextBlockData,
   TimelineStep,
 } from '@/lib/engine/types';
@@ -12,6 +10,7 @@ import type { InteractiveObject } from '@/lib/interactive-types';
 import type { StoryMetadata } from '@/lib/story-domain';
 import type { PlaybackState } from '@/lib/engine/types';
 import type { SaveSlot } from '@/lib/story-domain';
+import { toSaveSlotMeta, type ReaderScene } from '@/lib/reader-scene';
 
 export interface ReaderChoice {
   id: string;
@@ -22,7 +21,7 @@ export interface ReaderChoice {
 }
 
 export function getStartSceneId(
-  sceneRecords: Record<string, SceneRecord>,
+  sceneRecords: Record<string, ReaderScene>,
   metadataStartSceneId?: string | null,
 ): string | null {
   if (metadataStartSceneId && sceneRecords[metadataStartSceneId]) {
@@ -32,7 +31,7 @@ export function getStartSceneId(
 }
 
 export function getNextSceneId(
-  sceneRecords: Record<string, SceneRecord>,
+  sceneRecords: Record<string, ReaderScene>,
   currentSceneId: string,
   explicitTargetSceneId?: string | null,
 ): string | null {
@@ -110,40 +109,20 @@ export function getTimelineInteractiveObjects(timeline: TimelineStep[] | null | 
     });
 }
 
-export interface CanonicalRuntimeSnapshot {
+export interface ReaderRuntimeSnapshot {
   storiesMetadata: StoryMetadata[];
-  sceneRecordsByStory: Record<string, Record<string, SceneRecord>>;
-}
-
-function getScenePreviewText(scene: SceneRecord): string {
-  for (const step of scene.timeline) {
-    if (!step.enabled) continue;
-    if (step.blockType === 'text') {
-      const data = step.data as TextBlockData;
-      return data.content.split('\n')[0]?.slice(0, 100) || '';
-    }
-    if (step.blockType === 'dialogue') {
-      const data = step.data as DialogueBlockData;
-      return data.entries[0]?.text?.split('\n')[0]?.slice(0, 100) || '';
-    }
-  }
-  return '';
-}
-
-function getSceneThumbnailUri(scene: SceneRecord): string | undefined {
-  const background = scene.timeline.find((step) => step.enabled && step.blockType === 'background');
-  const assetId = background ? (background.data as BackgroundBlockData).assetId : null;
-  return assetId ?? undefined;
+  sceneRecordsByStory: Record<string, Record<string, ReaderScene>>;
 }
 
 export function buildCanonicalSaveSlot(
   slotId: string,
-  snapshot: CanonicalRuntimeSnapshot,
+  snapshot: ReaderRuntimeSnapshot,
   playbackState: PlaybackState,
 ): SaveSlot | null {
   const metadata = snapshot.storiesMetadata.find((story) => story.id === playbackState.storyId);
   const scene = snapshot.sceneRecordsByStory[playbackState.storyId]?.[playbackState.currentSceneId];
   if (!metadata || !scene) return null;
+  const sceneMeta = toSaveSlotMeta(scene);
 
   return {
     id: slotId,
@@ -151,16 +130,16 @@ export function buildCanonicalSaveSlot(
     sceneId: playbackState.currentSceneId,
     choicesMade: playbackState.choicesMade,
     timestamp: Date.now(),
-    sceneName: scene.name || scene.id,
-    thumbnailUri: getSceneThumbnailUri(scene),
+    sceneName: sceneMeta.sceneName,
+    thumbnailUri: sceneMeta.thumbnailUri,
     storyTitle: metadata.title,
-    sceneText: getScenePreviewText(scene),
+    sceneText: sceneMeta.sceneText,
     playTime: 0,
   };
 }
 
 export function buildCanonicalLoadSnapshot(
-  snapshot: CanonicalRuntimeSnapshot,
+  snapshot: ReaderRuntimeSnapshot,
   slot: SaveSlot,
 ): { storyId: string; playbackState: PlaybackState } | null {
   const metadata = snapshot.storiesMetadata.find((story) => story.id === slot.storyId);

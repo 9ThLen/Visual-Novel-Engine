@@ -308,6 +308,7 @@ describe('document scene parser/compiler', () => {
     };
 
     const documentScene = sceneRecordToDocumentScene(sceneRecord, []);
-    expect(documentScene.blocks.map((block) => block.kind)).toEqual(['text', 'dialogue', 'dialogue']);
+    expect(documentScene.blocks.map((block) => block.kind)).toEqual(['text', 'dialogue', 'dialogue', 'text']);
+    expect(documentScene.blocks.at(-1)).toMatchObject({ kind: 'text', content: '' });
   });
 });

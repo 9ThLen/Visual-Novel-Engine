@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useColors } from '@/hooks/use-colors';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { buttonFeedback } from '@/lib/ui-feedback';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 
 interface ReaderMenuProps {

@@ -7,7 +7,7 @@ import {
   View, Text, Pressable, TextInput, ScrollView, Modal, FlatList,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { withAlpha } from '@/lib/_core/theme';
 

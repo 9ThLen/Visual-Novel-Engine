@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -11,11 +10,11 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
-import { Button } from '@/components/ui';
+import { Button, ConfirmDialog } from '@/components/ui';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
-import { useStoryActions, useStoryState } from '@/lib/story-hooks';
+import { useStoryActions, useStoryState } from '@/hooks/use-story-state';
 import { StoryMetadata } from '@/lib/story-domain';
 import type { SceneRecord } from '@/lib/engine/types';
 import { showToast } from '@/lib/toast-store';
@@ -48,6 +47,7 @@ export default function EditorScreen() {
 
   const [showNewStoryForm, setShowNewStoryForm] = useState(false);
   const [newStoryTitle, setNewStoryTitle] = useState('');
+  const [storyIdToDelete, setStoryIdToDelete] = useState<string | null>(null);
 
   const storyColumns = useMemo(() => {
     if (Platform.OS !== 'web') return 1;
@@ -96,21 +96,18 @@ export default function EditorScreen() {
   }, [router]);
 
   const handleDeleteStory = useCallback((storyId: string) => {
-    Alert.alert(t('editor.deleteTitle'), t('editor.deleteConfirm'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('common.delete'),
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteStory(storyId);
-          } catch {
-            showToast(t('editor.deleteFailed'), 'error');
-          }
-        },
-      },
-    ]);
-  }, [deleteStory, t]);
+    setStoryIdToDelete(storyId);
+  }, []);
+
+  const confirmDeleteStory = useCallback(() => {
+    if (!storyIdToDelete) return;
+    try {
+      deleteStory(storyIdToDelete);
+      setStoryIdToDelete(null);
+    } catch {
+      showToast(t('editor.deleteFailed'), 'error');
+    }
+  }, [deleteStory, storyIdToDelete, t]);
 
   return (
     <ScreenContainer className="px-4 py-5" edges={['top', 'left', 'right', 'bottom']}>
@@ -211,6 +208,15 @@ export default function EditorScreen() {
           </View>
         )}
       </ScrollView>
+      <ConfirmDialog
+        visible={storyIdToDelete !== null}
+        title={t('editor.deleteTitle')}
+        message={t('editor.deleteConfirm')}
+        confirmLabel={t('common.delete')}
+        onConfirm={confirmDeleteStory}
+        onCancel={() => setStoryIdToDelete(null)}
+        destructive
+      />
     </ScreenContainer>
   );
 }

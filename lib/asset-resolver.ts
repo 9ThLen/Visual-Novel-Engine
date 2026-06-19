@@ -8,7 +8,7 @@ import { Asset } from 'expo-asset';
 import { Platform } from 'react-native';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
 import { getBrowserSafeAudioUri } from './audio-web-source';
-import { resolveLibraryAssetUri } from './media-library-service';
+import { resolveLibraryAssetUri } from '@/stores/media-library-actions';
 import { isSafeUri } from './story-validator';
 
 type TimedCacheEntry<T> = {
@@ -189,7 +189,6 @@ async function resolveUri(uri: string): Promise<string | number | null> {
     // ALWAYS try to find in bundled assets first, regardless of prefix
     const bundled = getBundledAsset(uri);
     if (bundled) {
-      if (Platform.OS === 'web') return bundled;
       return moduleIdToUri(bundled);
     }
 

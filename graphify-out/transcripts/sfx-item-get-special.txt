@@ -1,0 +1,1 @@
+Visual novel engine codebase, React Native editor, scene execution, audio, story persistence.

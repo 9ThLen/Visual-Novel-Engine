@@ -222,3 +222,48 @@ Resolve the 4 CRITICAL, 17 WARNING, and 10 INFO findings from the 2026-06-04 dee
 - `use-app-store.ts` slice decomposition
 - 2-locale vs 3-locale spec drift resolution
 - Regression check script (`tools/check_regressions.sh`)
+
+## Phase 16 - Plate Editor Migration
+
+**Priority:** P0
+**Status:** Planned
+**Plan:** `.planning/phases/16-plate-editor-migration/16-00-PLAN.md` through `.planning/phases/16-plate-editor-migration/16-05-PLAN.md`
+
+Replace the active scene editor with Plate while preserving `SceneRecord + TimelineStep` as the only persisted scene contract. The phase starts with a backup branch and an explicit decision for the installed `platejs` runtime, then locks serializer roundtrip tests around the existing Document/Plate bridge before removing remaining `useEditorStore` usage from active paths, splitting active/legacy/manuscript code, evolving the current `/document-editor` bridge into `PlateSceneEditor`, deprecating only superseded bridge modules, and updating README/AGENTS with Plate-only rules.
+
+### Wave 0 - Plate decision and branch safety
+- Create/switch to `codex/plate-editor-migration`
+- Verify installed `platejs@53.1.2` API/platform support with Context7, local types, or official docs
+- Confirm declared/installed Plate versions match before source edits
+- Record `16-PLATE-DECISION.md`
+
+### Wave 1 - Serializer contract and data preservation
+- Test and harden the current `SceneRecord -> DocumentScene/Plate bridge -> SceneRecord` path first
+- First passing test preserves `background(assetId: "bg_forest", transition: "dissolve", duration: 1000)`
+- Promote new `components/editor/plate/serializers/*` wrappers only if they clarify the boundary or match the real Plate node shape
+- Expand roundtrip coverage for all `BlockType` payloads
+
+### Wave 2 - Remove Lego draft state from active paths
+- `PreviewScreen` reads persisted `SceneRecord.timeline` from `useAppStore`
+- `SceneManager` navigates to `/document-editor` without `useEditorStore.setScene`
+- Preserve the existing `/document-editor` invariant: it already owns initial scene input loading from `useAppStore`
+
+### Wave 3 - Active/legacy/manuscript split
+- Move Lego UI to `components/editor-legacy/`
+- Keep manuscript editor active and compiling
+- Classify `SceneSelector`, `PlayMode`, `AssetPicker`, and `lib/editor-scene-draft.ts` as active/shared unless replacement imports exist
+- Add ESLint/script boundary against legacy imports from active screens
+
+### Wave 4 - Production Plate editor module
+- Extract/evolve `components/editor/plate/PlateSceneEditor` from the existing `DocumentSceneEditor + PlateWebViewEditor` baseline
+- Add Plate elements/plugins/commands/serializers
+- Preserve reusable header/sidebar/inspector UI unless explicitly superseded
+- Web uses real Plate if viable; native uses the chosen shared-runtime bridge if needed
+
+### Wave 5 - Route switch, deprecation, docs
+- `/document-editor` renders `PlateSceneEditor`
+- Mark only superseded document-editor/vn-plate bridge files as deprecated compatibility/reference
+- Update README/AGENTS to Plate-only active editing rule
+
+Each wave includes an explicit rollback path; route/docs changes are blocked
+until serializer and editor smoke checks pass.

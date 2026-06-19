@@ -9,9 +9,9 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useColors } from '@/hooks/use-colors';
 import { type SplashScreenConfig, type SplashScreen, SPLASH_PRESETS } from '@/lib/splash-types';
-import { addAssetToLibrary } from '@/lib/media-library-service';
+import { addAssetToLibrary } from '@/stores/media-library-actions';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 
 interface Props {
   config?: SplashScreenConfig;

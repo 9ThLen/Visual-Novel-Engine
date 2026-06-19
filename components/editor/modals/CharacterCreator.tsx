@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import { generateId } from '@/lib/id-utils';
 import type { Character } from '@/lib/character-types';
 import { IconSymbol } from '@/components/ui/icon-symbol';

@@ -145,10 +145,6 @@ export function useBlockOperations({
     }
   }, []);
 
-  const updateLineDraft = useCallback((sceneId: string, value: string) => {
-    onLineDraftsChange({ ...lineDrafts, [sceneId]: value });
-  }, [lineDrafts, onLineDraftsChange]);
-
   const insertCommand = useCallback((sceneId: string, command: DocumentCommand) => {
     const documentScene = documentScenes.find((item) => item.sceneId === sceneId);
     if (!documentScene) return;
@@ -165,7 +161,6 @@ export function useBlockOperations({
         return { ...ds, blocks };
       });
       onCreateNextScene(sceneId, ensuredDocuments, ensured.characters);
-      updateLineDraft(sceneId, '');
       return;
     }
 
@@ -173,30 +168,13 @@ export function useBlockOperations({
       const technical = createDocumentTechnicalBlock(command.id, localCharacters, getNearbyDialogue(current.blocks));
       return { ...current, blocks: [...current.blocks, technical] };
     });
-    updateLineDraft(sceneId, '');
-  }, [documentScenes, localCharacters, onCreateNextScene, updateDocumentScene, updateLineDraft]);
-
-  const addLine = useCallback((sceneId: string, followWritingFn: (sceneId: string) => void) => {
-    const lineDraft = lineDrafts[sceneId] ?? '';
-    const slashOpen = lineDraft.trimStart().startsWith('/');
-    if (!lineDraft.trim()) return;
-    if (slashOpen) return;
-    updateDocumentScene(sceneId, (current) => {
-      const blocks = [...current.blocks, parseDraftLineToDocumentBlock(lineDraft, localCharacters)];
-      const ensured = ensureDocumentCharactersInBlocks(blocks, localCharacters);
-      onLocalCharactersChange(ensured.characters);
-      return { ...current, blocks: ensured.blocks };
-    });
-    updateLineDraft(sceneId, '');
-    followWritingFn(sceneId);
-  }, [lineDrafts, localCharacters, updateDocumentScene, updateLineDraft, onLocalCharactersChange]);
+  }, [documentScenes, localCharacters, onCreateNextScene, updateDocumentScene]);
 
   const handleTextBlockChange = useCallback((sceneId: string, blockId: string, content: string) => {
     const lines = content.split(/\r?\n/);
     const slashLine = lines.find((line) => line.trimStart().startsWith('/'));
 
     if (slashLine) {
-      updateLineDraft(sceneId, slashLine.trim());
       const nextContent = lines.filter((line) => line !== slashLine).join('\n').trimEnd();
       updateBlock(sceneId, blockId, (current) => current.kind === 'text' ? { ...current, content: nextContent } : current);
       return;
@@ -213,7 +191,7 @@ export function useBlockOperations({
     }
 
     updateBlock(sceneId, blockId, (current) => current.kind === 'text' ? { ...current, content } : current);
-  }, [localCharacters, replaceBlock, updateBlock, updateLineDraft, onLocalCharactersChange]);
+  }, [localCharacters, replaceBlock, updateBlock, onLocalCharactersChange]);
 
   const pruneCharacter = useCallback((characters: Character[], blocks: DocumentBlock[], characterId: string | null) => {
     return pruneCharacterIfUnused(characters, blocks, characterId, protectedCharacterIds);
@@ -225,9 +203,7 @@ export function useBlockOperations({
     replaceBlock,
     removeBlock,
     handleEmptyBackspace,
-    updateLineDraft,
     insertCommand,
-    addLine,
     handleTextBlockChange,
     pruneCharacter,
   };

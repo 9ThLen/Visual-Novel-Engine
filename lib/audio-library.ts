@@ -1,20 +1,26 @@
 /**
  * Audio Library Manager
  * Manages per-story audio libraries and trigger-based playback
+ *
+ * NOTE: This file contains only pure functions. Store access is in
+ * stores/audio-library-actions.ts. This resolves the layer boundary
+ * violation (lib/ should not import from stores/).
  */
 
 import type { AudioLibraryItem } from './audio-types';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
-import { useAppStore } from '@/stores/use-app-store';
 import { generateId } from './id-utils';
 import type { LibraryAsset } from './media-library-service';
 
 /**
- * Get audio library for a story
+ * Get audio library for a story (pure function — accepts state as parameter)
  */
-export async function getAudioLibrary(storyId: string): Promise<AudioLibraryItem[]> {
+export function getAudioLibraryPure(
+  storyId: string,
+  audioLibraries: Record<string, AudioLibraryItem[]>,
+): AudioLibraryItem[] {
   try {
-    return useAppStore.getState().audioLibraries[storyId] || [];
+    return audioLibraries[storyId] || [];
   } catch (error) {
     ErrorHandler.handle('Failed to get audio library', error, ErrorCategory.STORAGE);
     return [];
@@ -26,11 +32,9 @@ function inferAudioItemType(name: string): AudioLibraryItem['type'] {
   if (normalizedName.includes('voice')) {
     return 'voice';
   }
-
   if (normalizedName.includes('music') || normalizedName.includes('theme') || normalizedName.includes('bgm')) {
     return 'music';
   }
-
   return 'sfx';
 }
 
@@ -38,7 +42,6 @@ function mediaAssetToAudioItem(asset: LibraryAsset): AudioLibraryItem | null {
   if (asset.type !== 'audio') {
     return null;
   }
-
   return {
     id: asset.id,
     name: asset.name,
@@ -53,38 +56,43 @@ function mediaAssetToAudioItem(asset: LibraryAsset): AudioLibraryItem | null {
 
 export function buildPlaybackAudioLibraryItems(
   storyLibrary: AudioLibraryItem[],
-  mediaLibrary: LibraryAsset[]
+  mediaLibrary: LibraryAsset[],
 ): AudioLibraryItem[] {
   const merged = new Map<string, AudioLibraryItem>();
-
   for (const asset of mediaLibrary) {
     const item = mediaAssetToAudioItem(asset);
     if (item) {
       merged.set(item.id, item);
     }
   }
-
   for (const item of storyLibrary) {
     merged.set(item.id, item);
   }
-
   return Array.from(merged.values());
 }
 
-export async function getPlaybackAudioLibrary(storyId: string): Promise<AudioLibraryItem[]> {
-  const storyLibrary = await getAudioLibrary(storyId);
-  return buildPlaybackAudioLibraryItems(storyLibrary, useAppStore.getState().mediaLibrary);
+/**
+ * Get playback audio library (pure function — accepts state as parameters)
+ */
+export function getPlaybackAudioLibraryPure(
+  storyId: string,
+  audioLibraries: Record<string, AudioLibraryItem[]>,
+  mediaLibrary: LibraryAsset[],
+): AudioLibraryItem[] {
+  const storyLibrary = getAudioLibraryPure(storyId, audioLibraries);
+  return buildPlaybackAudioLibraryItems(storyLibrary, mediaLibrary);
 }
 
 /**
- * Save audio library for a story
+ * Save audio library for a story (pure function — returns new state)
  */
-export async function saveAudioLibrary(
+export function saveAudioLibraryPure(
   storyId: string,
-  library: AudioLibraryItem[]
-): Promise<void> {
+  library: AudioLibraryItem[],
+  audioLibraries: Record<string, AudioLibraryItem[]>,
+): Record<string, AudioLibraryItem[]> {
   try {
-    useAppStore.getState().setAudioLibrary(storyId, library);
+    return { ...audioLibraries, [storyId]: library };
   } catch (error) {
     ErrorHandler.handle('Failed to save audio library', error, ErrorCategory.STORAGE);
     throw error;
@@ -92,24 +100,19 @@ export async function saveAudioLibrary(
 }
 
 /**
- * Add audio item to library
+ * Add audio item to library (pure function)
  */
-export async function addAudioToLibrary(
+export function addAudioToLibraryPure(
   storyId: string,
-  item: Omit<AudioLibraryItem, 'id' | 'createdAt'>
-): Promise<AudioLibraryItem> {
+  item: Omit<AudioLibraryItem, 'id' | 'createdAt'>,
+  library: AudioLibraryItem[],
+): AudioLibraryItem {
   try {
-    const library = await getAudioLibrary(storyId);
-
     const newItem: AudioLibraryItem = {
       ...item,
       id: generateId('audio', 9),
       createdAt: Date.now(),
     };
-
-    const updated = [...library, newItem];
-    await saveAudioLibrary(storyId, updated);
-
     return newItem;
   } catch (error) {
     ErrorHandler.handle('Failed to add audio to library', error, ErrorCategory.STORAGE);
@@ -118,23 +121,20 @@ export async function addAudioToLibrary(
 }
 
 /**
- * Update audio item in library
+ * Update audio item in library (pure function)
  */
-export async function updateAudioInLibrary(
+export function updateAudioInLibraryPure(
   storyId: string,
   audioId: string,
-  updates: Partial<AudioLibraryItem>
-): Promise<void> {
+  updates: Partial<AudioLibraryItem>,
+  library: AudioLibraryItem[],
+): AudioLibraryItem[] {
   try {
-    const library = await getAudioLibrary(storyId);
     const index = library.findIndex((item) => item.id === audioId);
-
     if (index === -1) {
       throw ErrorHandler.handleValidationError('Audio item not found in library');
     }
-
-    const updated = library.map((item, i) => i === index ? { ...item, ...updates } : item);
-    await saveAudioLibrary(storyId, updated);
+    return library.map((item, i) => i === index ? { ...item, ...updates } : item);
   } catch (error) {
     ErrorHandler.handle('Failed to update audio in library', error, ErrorCategory.STORAGE);
     throw error;
@@ -142,16 +142,15 @@ export async function updateAudioInLibrary(
 }
 
 /**
- * Delete audio item from library
+ * Delete audio item from library (pure function)
  */
-export async function deleteAudioFromLibrary(
+export function deleteAudioFromLibraryPure(
   storyId: string,
-  audioId: string
-): Promise<void> {
+  audioId: string,
+  library: AudioLibraryItem[],
+): AudioLibraryItem[] {
   try {
-    const library = await getAudioLibrary(storyId);
-    const filtered = library.filter((item) => item.id !== audioId);
-    await saveAudioLibrary(storyId, filtered);
+    return library.filter((item) => item.id !== audioId);
   } catch (error) {
     ErrorHandler.handle('Failed to delete audio from library', error, ErrorCategory.STORAGE);
     throw error;
@@ -159,20 +158,19 @@ export async function deleteAudioFromLibrary(
 }
 
 /**
- * Search audio library by tags or name
+ * Search audio library by tags or name (pure function)
  */
-export async function searchAudioLibrary(
+export function searchAudioLibraryPure(
   storyId: string,
-  query: string
-): Promise<AudioLibraryItem[]> {
+  query: string,
+  library: AudioLibraryItem[],
+): AudioLibraryItem[] {
   try {
-    const library = await getAudioLibrary(storyId);
     const lowerQuery = query.toLowerCase();
-
     return library.filter((item) => {
       const nameMatch = item.name.toLowerCase().includes(lowerQuery);
       const tagMatch = item.tags?.some((tag) =>
-        tag.toLowerCase().includes(lowerQuery)
+        tag.toLowerCase().includes(lowerQuery),
       );
       return nameMatch || tagMatch;
     });
@@ -183,14 +181,14 @@ export async function searchAudioLibrary(
 }
 
 /**
- * Get audio items by type
+ * Get audio items by type (pure function)
  */
-export async function getAudioByType(
+export function getAudioByTypePure(
   storyId: string,
-  type: AudioLibraryItem['type']
-): Promise<AudioLibraryItem[]> {
+  type: AudioLibraryItem['type'],
+  library: AudioLibraryItem[],
+): AudioLibraryItem[] {
   try {
-    const library = await getAudioLibrary(storyId);
     return library.filter((item) => item.type === type);
   } catch (error) {
     ErrorHandler.handle('Failed to get audio by type', error, ErrorCategory.STORAGE);
@@ -199,28 +197,23 @@ export async function getAudioByType(
 }
 
 /**
- * Import audio library from another story
+ * Import audio library from another story (pure function)
  */
-export async function importAudioLibrary(
+export function importAudioLibraryPure(
   targetStoryId: string,
-  sourceStoryId: string
-): Promise<void> {
+  sourceStoryId: string,
+  sourceLibrary: AudioLibraryItem[],
+  targetLibrary: AudioLibraryItem[],
+): AudioLibraryItem[] {
   try {
-    const sourceLibrary = await getAudioLibrary(sourceStoryId);
-    const targetLibrary = await getAudioLibrary(targetStoryId);
-
-    // Merge libraries, avoiding duplicates by URI
     const existingUris = new Set(targetLibrary.map((item) => item.uri));
     const newItems = sourceLibrary.filter((item) => !existingUris.has(item.uri));
-
-    // Regenerate IDs for imported items
     const importedItems = newItems.map((item) => ({
       ...item,
       id: generateId('audio', 9),
       createdAt: Date.now(),
     }));
-
-    await saveAudioLibrary(targetStoryId, [...targetLibrary, ...importedItems]);
+    return [...targetLibrary, ...importedItems];
   } catch (error) {
     ErrorHandler.handle('Failed to import audio library', error, ErrorCategory.STORAGE);
     throw error;
@@ -228,11 +221,13 @@ export async function importAudioLibrary(
 }
 
 /**
- * Export audio library as JSON
+ * Export audio library as JSON (pure function)
  */
-export async function exportAudioLibrary(storyId: string): Promise<string> {
+export function exportAudioLibraryPure(
+  storyId: string,
+  library: AudioLibraryItem[],
+): string {
   try {
-    const library = await getAudioLibrary(storyId);
     return JSON.stringify(library, null, 2);
   } catch (error) {
     ErrorHandler.handle('Failed to export audio library', error, ErrorCategory.STORAGE);

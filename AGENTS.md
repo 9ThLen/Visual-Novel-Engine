@@ -25,7 +25,7 @@ Context7 має **вищий пріоритет** ніж власні знанн
 ## Інші правила
 
 - **Don't fight with mistakes** — Коли стикаєшся з тією самою помилкою двічі, зупинись і досліджуй веб для 3-5 можливих виправлень, потім обери найефективніше.
-- **Lego — єдина система редагування** — Block та Node системи видалено. Використовуй тільки Lego.
+- **Plate — єдина система редагування сцени** — Legacy Lego компоненти можуть лишатися тільки як reference або compatibility layer. Active editor screens не мають імпортувати `components/editor-legacy` або `stores/use-editor-store`.
 - **Zustand напряму** — Не використовуй React Context для стейту. Використовуй useAppStore() напряму.
 - **HomeScreen init:** `initializeApp()` має чекати `useAppStore.persist.onFinishHydration()` перед `loadStories()`, а `addStory` для демо має бути в `finally` (переживає помилки `loadStories`).
 - **migrateFromLegacyKeys merge:** Не затирати вже згідратовані Persist дані пустими масивами — використовуй `stories.length > 0 ? stories : current.storiesMetadata`.

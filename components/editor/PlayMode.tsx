@@ -12,7 +12,7 @@ import { Button } from '@/components/ui';
 import { StoryReaderResponsive } from '@/components/story-reader-responsive';
 import type { SceneRecord } from '@/lib/engine/types';
 import { getNextSceneId, getStartSceneId } from '@/lib/reader-runtime';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
 interface PlayModeProps {

@@ -19,7 +19,7 @@ import { DocumentChip } from '@/components/document-editor/DocumentChip';
 import { DocumentCommandMenu } from '@/components/document-editor/DocumentCommandMenu';
 import { replaceBlockById } from '@/components/document-editor/useBlockOperations';
 import { useColors } from '@/hooks/use-colors';
-import type { useI18n } from '@/lib/i18n';
+import type { useI18n } from '@/hooks/use-i18n';
 import type { DocumentBlock, DocumentScene } from '@/lib/document-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { useDocumentScroll } from '@/components/document-editor/useDocumentScroll';

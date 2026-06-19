@@ -34,7 +34,7 @@ import { ReaderControls } from './reader/ReaderControls';
 import { ReaderDisplay } from './reader/ReaderDisplay';
 import { useTypewriter } from '@/hooks/useTypewriter';
 import { useReaderAutoAdvance } from '@/hooks/useReaderAutoAdvance';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import {
   getStoryReaderContainerStyle,
   getStoryReaderSpeakerTextStyle,

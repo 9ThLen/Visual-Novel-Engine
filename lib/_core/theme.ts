@@ -154,7 +154,7 @@ function buildRuntimePalette(scheme: ColorScheme): RuntimePalette {
     'surface-1': base['surface-1'],
     'surface-2': base['surface-2'],
     'shadow-color': base['shadow-color'],
-  } as unknown as RuntimePalette;
+  } as RuntimePalette;
 }
 
 export const Colors = {

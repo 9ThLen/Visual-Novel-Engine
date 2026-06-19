@@ -14,7 +14,7 @@ import { TextInput, View } from 'react-native';
 
 import type { DocumentBlock, DocumentChoiceBlock, DocumentScene } from '@/lib/document-editor/types';
 import type { useColors } from '@/hooks/use-colors';
-import type { useI18n } from '@/lib/i18n';
+import type { useI18n } from '@/hooks/use-i18n';
 
 export interface DocumentBlockChoiceProps {
   block: DocumentChoiceBlock;

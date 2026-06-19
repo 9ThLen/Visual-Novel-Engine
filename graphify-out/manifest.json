@@ -1,0 +1,2267 @@
+{
+  "D:\\Programs\\D\\visual_novel_engine\\__mocks__\\expo-asset.ts": {
+    "mtime": 1780068888.2353108,
+    "ast_hash": "9155b5a8e08fb687103d1c200982e56d",
+    "semantic_hash": "9155b5a8e08fb687103d1c200982e56d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__mocks__\\expo-audio.ts": {
+    "mtime": 1780068552.6660976,
+    "ast_hash": "dfe48bee80ef62c5bbca164c4c63cdda",
+    "semantic_hash": "dfe48bee80ef62c5bbca164c4c63cdda"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__mocks__\\expo-file-system-legacy.ts": {
+    "mtime": 1780068560.0955145,
+    "ast_hash": "e18d4ee3b3c9e1b721626ab0dac121cc",
+    "semantic_hash": "e18d4ee3b3c9e1b721626ab0dac121cc"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__mocks__\\expo-modules-core.ts": {
+    "mtime": 1780068151.9202523,
+    "ast_hash": "8f4fd3a9d71d42d6191518c51c12a0d7",
+    "semantic_hash": "8f4fd3a9d71d42d6191518c51c12a0d7"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__mocks__\\lib\\asset-resolver.ts": {
+    "mtime": 1780068938.605598,
+    "ast_hash": "467dbdca5365e7783c09876e3f74e4bd",
+    "semantic_hash": "467dbdca5365e7783c09876e3f74e4bd"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__mocks__\\lib\\audio-library.ts": {
+    "mtime": 1781509220.991873,
+    "ast_hash": "ff4859de0b77fad2c1fa0f76d9a05a13",
+    "semantic_hash": "ff4859de0b77fad2c1fa0f76d9a05a13"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__mocks__\\lib\\audio-manager-enhanced.ts": {
+    "mtime": 1781477879.9054954,
+    "ast_hash": "f317930c60f620adb478a94ca4c51a21",
+    "semantic_hash": "f317930c60f620adb478a94ca4c51a21"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__mocks__\\react-native.ts": {
+    "mtime": 1781477879.9154944,
+    "ast_hash": "3f062dfa3c4cd402bf7000c75f6263ce",
+    "semantic_hash": "3f062dfa3c4cd402bf7000c75f6263ce"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__mocks__\\react-navigation-native.ts": {
+    "mtime": 1780068357.7943363,
+    "ast_hash": "db3e3bd1341fa6e12a3a6d7cdd59ab48",
+    "semantic_hash": "db3e3bd1341fa6e12a3a6d7cdd59ab48"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__mocks__\\stores\\use-app-store.ts": {
+    "mtime": 1781477879.9189415,
+    "ast_hash": "cdd9147784408f8217e9bce289d9bdc0",
+    "semantic_hash": "cdd9147784408f8217e9bce289d9bdc0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\components\\smoke.test.tsx": {
+    "mtime": 1781477879.920942,
+    "ast_hash": "c1af2eb1f701f8a6ba2bcc82377a0a95",
+    "semantic_hash": "c1af2eb1f701f8a6ba2bcc82377a0a95"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\editor\\plate-scene-roundtrip.test.ts": {
+    "mtime": 1781899789.6615205,
+    "ast_hash": "6c9d657c649857c783f693bcd7efd6f7",
+    "semantic_hash": "6c9d657c649857c783f693bcd7efd6f7"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\editor\\preview-source.test.ts": {
+    "mtime": 1781797143.8007958,
+    "ast_hash": "5df135c306fc8e1845b2fe0a8b6f24b5",
+    "semantic_hash": "5df135c306fc8e1845b2fe0a8b6f24b5"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\hooks\\use-reader-auto-advance.test.ts": {
+    "mtime": 1780350462.4945762,
+    "ast_hash": "07e4a174eeb3c58c4d592942ed4f0785",
+    "semantic_hash": "07e4a174eeb3c58c4d592942ed4f0785"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\hooks\\use-typewriter.test.ts": {
+    "mtime": 1781477879.9229448,
+    "ast_hash": "1f2f8f8e73bcca7a7d34288f21af1833",
+    "semantic_hash": "1f2f8f8e73bcca7a7d34288f21af1833"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\_core\\api.test.ts": {
+    "mtime": 1781525962.5835068,
+    "ast_hash": "56909913e3bfe9bd74abe22dfb43bccb",
+    "semantic_hash": "56909913e3bfe9bd74abe22dfb43bccb"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\asset-resolver.test.ts": {
+    "mtime": 1781477879.9249575,
+    "ast_hash": "24548a37b21e1ee49b1c9c229977024f",
+    "semantic_hash": "24548a37b21e1ee49b1c9c229977024f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\audio-library.test.ts": {
+    "mtime": 1780220733.5127509,
+    "ast_hash": "cd6b3dd4608ea30b0cab79c865a136fd",
+    "semantic_hash": "cd6b3dd4608ea30b0cab79c865a136fd"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\audio-player-service.test.ts": {
+    "mtime": 1781477879.9269557,
+    "ast_hash": "9375fdbb96c0b48d24264418878e1f8f",
+    "semantic_hash": "9375fdbb96c0b48d24264418878e1f8f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\audio-web-source.test.ts": {
+    "mtime": 1780220733.5147476,
+    "ast_hash": "a8c9c95c902979f23309cb849be4f90d",
+    "semantic_hash": "a8c9c95c902979f23309cb849be4f90d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\auth.test.ts": {
+    "mtime": 1781509674.5310998,
+    "ast_hash": "6d7f258c930fd794592f2dc1912cacdf",
+    "semantic_hash": "6d7f258c930fd794592f2dc1912cacdf"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\block-validation.test.ts": {
+    "mtime": 1780092954.1387558,
+    "ast_hash": "2aa9452b7ff94769d34f196f14cf7196",
+    "semantic_hash": "2aa9452b7ff94769d34f196f14cf7196"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\bundled-story-sync.test.ts": {
+    "mtime": 1780220733.515747,
+    "ast_hash": "3d42934c9453f93a7a7afe5837261b9a",
+    "semantic_hash": "3d42934c9453f93a7a7afe5837261b9a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\button-platform.test.ts": {
+    "mtime": 1780220733.5167465,
+    "ast_hash": "6249fb457631609538ff23f709e81e73",
+    "semantic_hash": "6249fb457631609538ff23f709e81e73"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\condition-utils.test.ts": {
+    "mtime": 1780067326.002168,
+    "ast_hash": "7927ac9f95aa1e8e82b4a7d114a9d913",
+    "semantic_hash": "7927ac9f95aa1e8e82b4a7d114a9d913"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\document-editor-next-scene.test.ts": {
+    "mtime": 1781883684.3245437,
+    "ast_hash": "ac7f03885d0850606ec44be0fff0f4d2",
+    "semantic_hash": "ac7f03885d0850606ec44be0fff0f4d2"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\document-editor.test.ts": {
+    "mtime": 1781798337.8444014,
+    "ast_hash": "2d91ba8a0a94c78c3c7daa685883ef9a",
+    "semantic_hash": "2d91ba8a0a94c78c3c7daa685883ef9a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\editor-scene-draft.test.ts": {
+    "mtime": 1780220733.5177486,
+    "ast_hash": "fb62044e16293388c1f345e926067763",
+    "semantic_hash": "fb62044e16293388c1f345e926067763"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\editor-scene-save.test.ts": {
+    "mtime": 1780220733.5197484,
+    "ast_hash": "404d245957a5522973835dcf14f67505",
+    "semantic_hash": "404d245957a5522973835dcf14f67505"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\error-handler.test.ts": {
+    "mtime": 1781525940.9919086,
+    "ast_hash": "28c1badfadbbd2261b00dc650d7c562b",
+    "semantic_hash": "28c1badfadbbd2261b00dc650d7c562b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\media-library-service.test.ts": {
+    "mtime": 1780220733.5207472,
+    "ast_hash": "ff0108e408254ec8831e902e286eaef3",
+    "semantic_hash": "ff0108e408254ec8831e902e286eaef3"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\mobile-composer-layout.test.ts": {
+    "mtime": 1780220733.5217478,
+    "ast_hash": "98988e81dd94c8cb302b2e9c1c117022",
+    "semantic_hash": "98988e81dd94c8cb302b2e9c1c117022"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\react-native-web-interop.test.ts": {
+    "mtime": 1780220733.5227466,
+    "ast_hash": "fb3e54145feca5d3230f71d87da4553d",
+    "semantic_hash": "fb3e54145feca5d3230f71d87da4553d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\reader-launch.test.ts": {
+    "mtime": 1780220733.523747,
+    "ast_hash": "baf12426c0ab4cc5cd4e18d6ad2ed5b4",
+    "semantic_hash": "baf12426c0ab4cc5cd4e18d6ad2ed5b4"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\reader-runtime.test.ts": {
+    "mtime": 1780067465.5733528,
+    "ast_hash": "4d18f46f8cb6cff253ad3acda1aa14da",
+    "semantic_hash": "4d18f46f8cb6cff253ad3acda1aa14da"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\scene-document-adapter.test.ts": {
+    "mtime": 1781883686.999588,
+    "ast_hash": "bbc02f8057fe2b2b4f94f0363b6c4863",
+    "semantic_hash": "bbc02f8057fe2b2b4f94f0363b6c4863"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\scene-document.test.ts": {
+    "mtime": 1781883702.7619073,
+    "ast_hash": "0bed5c6406201f0df61af7cbcc5f5155",
+    "semantic_hash": "0bed5c6406201f0df61af7cbcc5f5155"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\screen-container-platform.test.ts": {
+    "mtime": 1780220733.5247457,
+    "ast_hash": "3c8f0b36a67c87837103bdb55b2427c3",
+    "semantic_hash": "3c8f0b36a67c87837103bdb55b2427c3"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\smoke.test.ts": {
+    "mtime": 1780175327.8326795,
+    "ast_hash": "d5b77263022114428c11f6678bd51d2a",
+    "semantic_hash": "d5b77263022114428c11f6678bd51d2a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\story-domain.test.ts": {
+    "mtime": 1780217900.068088,
+    "ast_hash": "5c611534a29ba0cd82aec54804c3acc1",
+    "semantic_hash": "5c611534a29ba0cd82aec54804c3acc1"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\story-hooks-import.test.ts": {
+    "mtime": 1781477879.9299564,
+    "ast_hash": "db4810c9e2f80c9c07e6cde9009f23df",
+    "semantic_hash": "db4810c9e2f80c9c07e6cde9009f23df"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\story-manuscript-save.test.ts": {
+    "mtime": 1781477879.931957,
+    "ast_hash": "dbd415abfdace9678fefc8ac2395f94c",
+    "semantic_hash": "dbd415abfdace9678fefc8ac2395f94c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\story-manuscript.test.ts": {
+    "mtime": 1781477879.9329567,
+    "ast_hash": "d619145bf9c966753aa29630511a19de",
+    "semantic_hash": "d619145bf9c966753aa29630511a19de"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\story-reader-platform.test.ts": {
+    "mtime": 1781477879.9339561,
+    "ast_hash": "e1debf657b6907a15fdefa968b4f47f6",
+    "semantic_hash": "e1debf657b6907a15fdefa968b4f47f6"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\theme-nativewind.test.ts": {
+    "mtime": 1780220733.5327485,
+    "ast_hash": "5f50415429ef011290b17e0dbeb96e02",
+    "semantic_hash": "5f50415429ef011290b17e0dbeb96e02"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\theme-runtime.test.ts": {
+    "mtime": 1781477879.9359555,
+    "ast_hash": "5f932c8d3c1c662166be4ac15a6edb36",
+    "semantic_hash": "5f932c8d3c1c662166be4ac15a6edb36"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\theme-variables.test.ts": {
+    "mtime": 1780220733.535749,
+    "ast_hash": "4899ed66e524d028ff07784f6819cb3a",
+    "semantic_hash": "4899ed66e524d028ff07784f6819cb3a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\timeline-item-layout.test.ts": {
+    "mtime": 1780220733.5367498,
+    "ast_hash": "10d3eda648bf570392b6e0b4886b5f73",
+    "semantic_hash": "10d3eda648bf570392b6e0b4886b5f73"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\timeline-sortable.test.ts": {
+    "mtime": 1780220733.5377574,
+    "ast_hash": "c695a114725c54500236dac1ad02f79f",
+    "semantic_hash": "c695a114725c54500236dac1ad02f79f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\toast-store.test.ts": {
+    "mtime": 1780578496.3970098,
+    "ast_hash": "4fbc081d128beedc6539d165cf15a7d1",
+    "semantic_hash": "4fbc081d128beedc6539d165cf15a7d1"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\translations.test.ts": {
+    "mtime": 1781477879.9379559,
+    "ast_hash": "513d2a75d0516baf3a126cc530c14acd",
+    "semantic_hash": "513d2a75d0516baf3a126cc530c14acd"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\useSceneExecutor.test.ts": {
+    "mtime": 1781477879.9394763,
+    "ast_hash": "e616458b10277ce22da675fd02a372d3",
+    "semantic_hash": "e616458b10277ce22da675fd02a372d3"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\lib\\useSceneExecutor2.test.ts": {
+    "mtime": 1780177679.141832,
+    "ast_hash": "620231dd604f20fde9853d6edb4525e2",
+    "semantic_hash": "620231dd604f20fde9853d6edb4525e2"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\reader-audio-session.test.ts": {
+    "mtime": 1780220733.5417526,
+    "ast_hash": "de2abe52b09e89013b37400a18384692",
+    "semantic_hash": "de2abe52b09e89013b37400a18384692"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\stores\\use-app-store-canonical.test.ts": {
+    "mtime": 1780346246.2704785,
+    "ast_hash": "050afe0b248e332136f6aea054025346",
+    "semantic_hash": "050afe0b248e332136f6aea054025346"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\stores\\use-app-store-connections.test.ts": {
+    "mtime": 1781898068.0606074,
+    "ast_hash": "d9ecca8564ef36704a3768d3aea19aeb",
+    "semantic_hash": "d9ecca8564ef36704a3768d3aea19aeb"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\stores\\use-app-store-scene-operations.test.ts": {
+    "mtime": 1780220733.5437515,
+    "ast_hash": "371d1d5f7aa195c1dd19a1e78853c1b3",
+    "semantic_hash": "371d1d5f7aa195c1dd19a1e78853c1b3"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\stores\\use-app-store-settings.test.ts": {
+    "mtime": 1780220733.5447488,
+    "ast_hash": "0d20673301ed86c3e10003e1ee4ac256",
+    "semantic_hash": "0d20673301ed86c3e10003e1ee4ac256"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\__tests__\\unit\\use-reader-audio.test.ts": {
+    "mtime": 1781895040.8447134,
+    "ast_hash": "b3740055e9867a3ca80d6e384aed1508",
+    "semantic_hash": "b3740055e9867a3ca80d6e384aed1508"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app.config.js": {
+    "mtime": 1779428961.1821842,
+    "ast_hash": "ee0c7504670a4dc6f3d555a0cba829c7",
+    "semantic_hash": "ee0c7504670a4dc6f3d555a0cba829c7"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app.json": {
+    "mtime": 1779305951.0149498,
+    "ast_hash": "bc09904d491b61f6a4911e147e7e0c1a",
+    "semantic_hash": "bc09904d491b61f6a4911e147e7e0c1a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\+html.tsx": {
+    "mtime": 1781477879.9431407,
+    "ast_hash": "99c49ee158a17e109e01359730b680da",
+    "semantic_hash": "99c49ee158a17e109e01359730b680da"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\_layout.tsx": {
+    "mtime": 1780578341.7726574,
+    "ast_hash": "1b7424a7dd07d10eb649190b475bc1e8",
+    "semantic_hash": "1b7424a7dd07d10eb649190b475bc1e8"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\document-editor.tsx": {
+    "mtime": 1781894895.251374,
+    "ast_hash": "cb94dc06ae882d225a4370f5d321aebe",
+    "semantic_hash": "cb94dc06ae882d225a4370f5d321aebe"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\editor.tsx": {
+    "mtime": 1781902751.3517337,
+    "ast_hash": "499773c34ac5ed6f04f49705ed46508a",
+    "semantic_hash": "499773c34ac5ed6f04f49705ed46508a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\index.tsx": {
+    "mtime": 1778349782.3172975,
+    "ast_hash": "cc82494d26b5a6c6a4593c2d2b742bd2",
+    "semantic_hash": "cc82494d26b5a6c6a4593c2d2b742bd2"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\manuscript-editor.tsx": {
+    "mtime": 1781894895.247375,
+    "ast_hash": "fbb3488887c7f55c1ed93eb9e7a31bbe",
+    "semantic_hash": "fbb3488887c7f55c1ed93eb9e7a31bbe"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\oauth\\callback.tsx": {
+    "mtime": 1780515303.4350555,
+    "ast_hash": "53163913b415c161e61b0b2f58886e00",
+    "semantic_hash": "53163913b415c161e61b0b2f58886e00"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\play.tsx": {
+    "mtime": 1779632283.053856,
+    "ast_hash": "4ceff198ddfd590506366eced2704b2d",
+    "semantic_hash": "4ceff198ddfd590506366eced2704b2d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\preview.tsx": {
+    "mtime": 1781894895.2463746,
+    "ast_hash": "ea44f8cb6639bf3936cc15b32412fa55",
+    "semantic_hash": "ea44f8cb6639bf3936cc15b32412fa55"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\reader.tsx": {
+    "mtime": 1781894895.2443743,
+    "ast_hash": "ea7cc87213741d885087d553dbd57aba",
+    "semantic_hash": "ea7cc87213741d885087d553dbd57aba"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\save-load.tsx": {
+    "mtime": 1781902790.0804372,
+    "ast_hash": "deadda28d252f52853da26fec81faac5",
+    "semantic_hash": "deadda28d252f52853da26fec81faac5"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\scene-editor.tsx": {
+    "mtime": 1780237450.2814896,
+    "ast_hash": "ae4b00a72eaa9df63d313953f076577c",
+    "semantic_hash": "ae4b00a72eaa9df63d313953f076577c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\scene-manager.tsx": {
+    "mtime": 1781477879.97314,
+    "ast_hash": "8bd97750ae98bcb51e318ccc88d5689a",
+    "semantic_hash": "8bd97750ae98bcb51e318ccc88d5689a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\settings.tsx": {
+    "mtime": 1781894895.2383778,
+    "ast_hash": "0fd1be52294a38c7b562c047caf5bd37",
+    "semantic_hash": "0fd1be52294a38c7b562c047caf5bd37"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\tabs\\_layout.tsx": {
+    "mtime": 1778924288.8950093,
+    "ast_hash": "117f683e6af66bb46857f2a4041aee50",
+    "semantic_hash": "117f683e6af66bb46857f2a4041aee50"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\app\\tabs\\index.tsx": {
+    "mtime": 1781894895.2363768,
+    "ast_hash": "bbc9da5053e84d4e606ff88bfdcc189b",
+    "semantic_hash": "bbc9da5053e84d4e606ff88bfdcc189b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\demo-blocks.json": {
+    "mtime": 1777575655.864281,
+    "ast_hash": "c8361def0289c8c083eb78f684159723",
+    "semantic_hash": "c8361def0289c8c083eb78f684159723"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\demo-story-advanced.json": {
+    "mtime": 1779890891.847998,
+    "ast_hash": "6fecd889d7c5add43f1f1323f3de7ff1",
+    "semantic_hash": "6fecd889d7c5add43f1f1323f3de7ff1"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\demo-story.json": {
+    "mtime": 1779629604.5067184,
+    "ast_hash": "65bf37f8a2b1d2fc82cb93e6c5619b00",
+    "semantic_hash": "65bf37f8a2b1d2fc82cb93e6c5619b00"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\CharacterDisplay.tsx": {
+    "mtime": 1781477879.9841487,
+    "ast_hash": "b2c2947f1f3ad58143e373a56d937b42",
+    "semantic_hash": "b2c2947f1f3ad58143e373a56d937b42"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\ErrorBoundary.tsx": {
+    "mtime": 1781894895.2563741,
+    "ast_hash": "7235f0a7c6ec935316287593bbb3edbd",
+    "semantic_hash": "7235f0a7c6ec935316287593bbb3edbd"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\InteractiveObjectsEditor.tsx": {
+    "mtime": 1781894895.2643719,
+    "ast_hash": "f5c80aa8a319739e684643ca4a09edad",
+    "semantic_hash": "f5c80aa8a319739e684643ca4a09edad"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\InteractiveObjectsLayer.tsx": {
+    "mtime": 1781894895.2603738,
+    "ast_hash": "036a37c0a2f3584295d8c3372d5062d1",
+    "semantic_hash": "036a37c0a2f3584295d8c3372d5062d1"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\LanguageSelector.tsx": {
+    "mtime": 1781894895.258374,
+    "ast_hash": "b2496377df5ad065372cba63daeabb06",
+    "semantic_hash": "b2496377df5ad065372cba63daeabb06"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\MigrationErrorBanner.tsx": {
+    "mtime": 1780393469.0863066,
+    "ast_hash": "f19e87e5471e3057b0d333e3848a2b64",
+    "semantic_hash": "f19e87e5471e3057b0d333e3848a2b64"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\ReaderAudioRouteGuard.tsx": {
+    "mtime": 1780398890.3234272,
+    "ast_hash": "35d1b26112a4e441bc9fe2adc6ed3faa",
+    "semantic_hash": "35d1b26112a4e441bc9fe2adc6ed3faa"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\ReaderMenu.tsx": {
+    "mtime": 1781894895.2733757,
+    "ast_hash": "0e67b5b37e28b94b3ae98b0f4494bf48",
+    "semantic_hash": "0e67b5b37e28b94b3ae98b0f4494bf48"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\ShortcutHint.tsx": {
+    "mtime": 1779129373.054229,
+    "ast_hash": "6d8b7c0d9d7b2395dd4ad66926f8f56e",
+    "semantic_hash": "6d8b7c0d9d7b2395dd4ad66926f8f56e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\SplashScreen.tsx": {
+    "mtime": 1780220733.5597553,
+    "ast_hash": "ee325d3c81623e5eedd942a3e116e5f1",
+    "semantic_hash": "ee325d3c81623e5eedd942a3e116e5f1"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\SplashScreenEditor.tsx": {
+    "mtime": 1781894895.2703764,
+    "ast_hash": "1c6014ab454a754acc00766a609caa1e",
+    "semantic_hash": "1c6014ab454a754acc00766a609caa1e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\StoryAutoSave.tsx": {
+    "mtime": 1780348123.8864567,
+    "ast_hash": "94dd7ef0d7ef45721b0e15faf63a1486",
+    "semantic_hash": "94dd7ef0d7ef45721b0e15faf63a1486"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\WebSidebar.tsx": {
+    "mtime": 1781894895.2403772,
+    "ast_hash": "adf487a1884e3a3921ceaa48214fb697",
+    "semantic_hash": "adf487a1884e3a3921ceaa48214fb697"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\WebTopBar.tsx": {
+    "mtime": 1780348895.257404,
+    "ast_hash": "8791831011718f3bfd86dc34e86a9a70",
+    "semantic_hash": "8791831011718f3bfd86dc34e86a9a70"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\dialogue-history.tsx": {
+    "mtime": 1781894895.2623754,
+    "ast_hash": "0b8d7c592abfd7cf29f0d71ef1fbe802",
+    "semantic_hash": "0b8d7c592abfd7cf29f0d71ef1fbe802"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\DocumentBlockChoice.tsx": {
+    "mtime": 1781894895.3223758,
+    "ast_hash": "24dcc266b07e5cab25b15732125ccd1d",
+    "semantic_hash": "24dcc266b07e5cab25b15732125ccd1d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\DocumentBlockDialogue.tsx": {
+    "mtime": 1781894895.3313754,
+    "ast_hash": "d1c961d9ca1fcfc87a4b4aaff7f7a2a7",
+    "semantic_hash": "d1c961d9ca1fcfc87a4b4aaff7f7a2a7"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\DocumentChip.tsx": {
+    "mtime": 1781894895.334375,
+    "ast_hash": "95a7fc10209a2be1fc0ec7ded9d2c14b",
+    "semantic_hash": "95a7fc10209a2be1fc0ec7ded9d2c14b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\DocumentCommandMenu.tsx": {
+    "mtime": 1781894895.3253765,
+    "ast_hash": "19f859cc96d0d2069fd24966172de8fb",
+    "semantic_hash": "19f859cc96d0d2069fd24966172de8fb"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\DocumentEditorHeader.tsx": {
+    "mtime": 1781894895.3423762,
+    "ast_hash": "5d8ff8d5b06d1e4de27aabf8eded478e",
+    "semantic_hash": "5d8ff8d5b06d1e4de27aabf8eded478e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\DocumentInspectorPanel.tsx": {
+    "mtime": 1781557587.5786314,
+    "ast_hash": "71ec3be4d111a49cad7bd09aa7d65464",
+    "semantic_hash": "71ec3be4d111a49cad7bd09aa7d65464"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\DocumentPage.tsx": {
+    "mtime": 1781894895.3453746,
+    "ast_hash": "0c246f83d8f9f28339ac359addfb84ce",
+    "semantic_hash": "0c246f83d8f9f28339ac359addfb84ce"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\DocumentSceneEditor.tsx": {
+    "mtime": 1781894895.3403752,
+    "ast_hash": "a848ba0c3c7a22aa2c97acefbdaa1df4",
+    "semantic_hash": "a848ba0c3c7a22aa2c97acefbdaa1df4"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\DocumentSceneSidebar.tsx": {
+    "mtime": 1781894895.3483758,
+    "ast_hash": "a7be8656c4fe75c4f72c04c165a35175",
+    "semantic_hash": "a7be8656c4fe75c4f72c04c165a35175"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\DocumentTechnicalPropertiesPanel.tsx": {
+    "mtime": 1781894895.3513746,
+    "ast_hash": "b85893b971fde0e57e702f47425d2915",
+    "semantic_hash": "b85893b971fde0e57e702f47425d2915"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\document-command-ui.ts": {
+    "mtime": 1781168556.176404,
+    "ast_hash": "f86b439abb533d99ac41915a2e0437e4",
+    "semantic_hash": "f86b439abb533d99ac41915a2e0437e4"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\useBlockOperations.ts": {
+    "mtime": 1781478543.7953324,
+    "ast_hash": "0d66b8870c5fb231860db9c94469eee6",
+    "semantic_hash": "0d66b8870c5fb231860db9c94469eee6"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\document-editor\\useDocumentScroll.ts": {
+    "mtime": 1780397447.3812022,
+    "ast_hash": "4023b8887522d0156881df5332946b33",
+    "semantic_hash": "4023b8887522d0156881df5332946b33"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\PlayMode.tsx": {
+    "mtime": 1781894895.3193753,
+    "ast_hash": "1ba5760813f803e8e87e997dcc2a05bb",
+    "semantic_hash": "1ba5760813f803e8e87e997dcc2a05bb"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\PreviewScreen.tsx": {
+    "mtime": 1781894895.3373775,
+    "ast_hash": "f5924274629407fdd96b83c6db24b073",
+    "semantic_hash": "f5924274629407fdd96b83c6db24b073"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\SceneManager.tsx": {
+    "mtime": 1781902771.3789718,
+    "ast_hash": "bd8daf47eac57bcd99600269f18a03da",
+    "semantic_hash": "bd8daf47eac57bcd99600269f18a03da"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\SceneSelector.tsx": {
+    "mtime": 1781898112.682659,
+    "ast_hash": "b273328a89afaf6b34bab2371ee7650c",
+    "semantic_hash": "b273328a89afaf6b34bab2371ee7650c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\StoryManuscriptScreen.tsx": {
+    "mtime": 1781894895.310377,
+    "ast_hash": "b54247ef39e3317a5f9a66c942241e6f",
+    "semantic_hash": "b54247ef39e3317a5f9a66c942241e6f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\index.ts": {
+    "mtime": 1781797522.574125,
+    "ast_hash": "e5b06379798db29b7ddf0ef447585add",
+    "semantic_hash": "e5b06379798db29b7ddf0ef447585add"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\manuscript\\StoryManuscriptBlock.tsx": {
+    "mtime": 1781894895.2793744,
+    "ast_hash": "4d611c2cb176697e08e0229e9b4ce651",
+    "semantic_hash": "4d611c2cb176697e08e0229e9b4ce651"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\manuscript\\StoryManuscriptSection.tsx": {
+    "mtime": 1781894895.3133757,
+    "ast_hash": "a61ebaad61b5729a0a9e79945c702dd5",
+    "semantic_hash": "a61ebaad61b5729a0a9e79945c702dd5"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\manuscript\\StoryManuscriptSidebar.tsx": {
+    "mtime": 1781894895.3023756,
+    "ast_hash": "210951228b40e68d54f21d6c3f6069ac",
+    "semantic_hash": "210951228b40e68d54f21d6c3f6069ac"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\modals\\AssetPicker.tsx": {
+    "mtime": 1781894895.2993753,
+    "ast_hash": "1fc08fe1e200c075734cd75ed76996bb",
+    "semantic_hash": "1fc08fe1e200c075734cd75ed76996bb"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\modals\\CharacterCreator.tsx": {
+    "mtime": 1781894895.3073764,
+    "ast_hash": "7227c386e3dbcf9ed67e5c1a6013d391",
+    "semantic_hash": "7227c386e3dbcf9ed67e5c1a6013d391"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\modals\\SaveSceneDialog.tsx": {
+    "mtime": 1781894895.304376,
+    "ast_hash": "2aa1883ae50b68b26869fbd8d6fa4074",
+    "semantic_hash": "2aa1883ae50b68b26869fbd8d6fa4074"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\native\\NativeBlockPreview.tsx": {
+    "mtime": 1781883490.981374,
+    "ast_hash": "652106939fbab83828b7c56d4b2072b1",
+    "semantic_hash": "652106939fbab83828b7c56d4b2072b1"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\native\\NativeEditorToolbar.tsx": {
+    "mtime": 1781883609.3877776,
+    "ast_hash": "46c1c876ca5d688cd0ba957b2b0b77ee",
+    "semantic_hash": "46c1c876ca5d688cd0ba957b2b0b77ee"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\native\\NativeSceneEditor.tsx": {
+    "mtime": 1781883611.8717756,
+    "ast_hash": "9edfc181df60c9626a6cb059f997911f",
+    "semantic_hash": "9edfc181df60c9626a6cb059f997911f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\native\\NativeScriptInput.tsx": {
+    "mtime": 1781878944.457566,
+    "ast_hash": "75605d51b3009c00c2d919a4305b97b3",
+    "semantic_hash": "75605d51b3009c00c2d919a4305b97b3"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\native\\blocks\\AudioBlock.native.tsx": {
+    "mtime": 1781883494.0727613,
+    "ast_hash": "ed2d83dbce3ebd0f4d1d20a517b5f84e",
+    "semantic_hash": "ed2d83dbce3ebd0f4d1d20a517b5f84e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\native\\blocks\\BackgroundBlock.native.tsx": {
+    "mtime": 1781878959.9772525,
+    "ast_hash": "0804d219593383c13d2a31410937f7cc",
+    "semantic_hash": "0804d219593383c13d2a31410937f7cc"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\native\\blocks\\ChoiceBlock.native.tsx": {
+    "mtime": 1781878967.0899718,
+    "ast_hash": "e95a33e1d9a3f2fda05a150417d7fe98",
+    "semantic_hash": "e95a33e1d9a3f2fda05a150417d7fe98"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\native\\blocks\\DialogueBlock.native.tsx": {
+    "mtime": 1781878953.9911408,
+    "ast_hash": "6d35293d3ecb810c69d2bf86076cdee4",
+    "semantic_hash": "6d35293d3ecb810c69d2bf86076cdee4"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\native\\blocks\\NarrationBlock.native.tsx": {
+    "mtime": 1781878956.86616,
+    "ast_hash": "2e9091c0e9c85a8d47a0ad4d033f41df",
+    "semantic_hash": "2e9091c0e9c85a8d47a0ad4d033f41df"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\plate\\PlateSceneEditor.native.tsx": {
+    "mtime": 1781883614.5352578,
+    "ast_hash": "bb20446baf24eb385ca7c64c18bced3c",
+    "semantic_hash": "bb20446baf24eb385ca7c64c18bced3c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\plate\\PlateSceneEditor.shared.tsx": {
+    "mtime": 1781883552.381435,
+    "ast_hash": "6cb058b9686590759dec3cf88c3342cd",
+    "semantic_hash": "6cb058b9686590759dec3cf88c3342cd"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\plate\\PlateSceneEditor.tsx": {
+    "mtime": 1781866805.296913,
+    "ast_hash": "c79b2439f539ea06b5823c92467774e9",
+    "semantic_hash": "c79b2439f539ea06b5823c92467774e9"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\plate\\PlateSceneEditor.web.tsx": {
+    "mtime": 1781866807.6381395,
+    "ast_hash": "c79b2439f539ea06b5823c92467774e9",
+    "semantic_hash": "c79b2439f539ea06b5823c92467774e9"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\plate\\character-colors.ts": {
+    "mtime": 1781797495.075011,
+    "ast_hash": "4f60f6400e672083893f2b05223f511c",
+    "semantic_hash": "4f60f6400e672083893f2b05223f511c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\plate\\commands\\index.ts": {
+    "mtime": 1781797495.2385902,
+    "ast_hash": "72cf9003aa787c48949fa1cae0753dd1",
+    "semantic_hash": "72cf9003aa787c48949fa1cae0753dd1"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\plate\\commands\\step-validation.ts": {
+    "mtime": 1781796850.5747569,
+    "ast_hash": "1624e34a5deb3f90d3eb1915b57baead",
+    "semantic_hash": "1624e34a5deb3f90d3eb1915b57baead"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\plate\\elements\\index.ts": {
+    "mtime": 1781797495.6093745,
+    "ast_hash": "342f5f48645714cdafa72071a6271439",
+    "semantic_hash": "342f5f48645714cdafa72071a6271439"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\plate\\plugins\\index.ts": {
+    "mtime": 1781797496.003537,
+    "ast_hash": "0a7bb845a863acdaf411dae47d1ae5b8",
+    "semantic_hash": "0a7bb845a863acdaf411dae47d1ae5b8"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\plate\\serializers\\plate-to-scene.ts": {
+    "mtime": 1781899669.7351208,
+    "ast_hash": "b6805aaf3468ad695f2efbf1d2ad7a11",
+    "semantic_hash": "b6805aaf3468ad695f2efbf1d2ad7a11"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\plate\\serializers\\scene-to-plate.ts": {
+    "mtime": 1781899666.0267305,
+    "ast_hash": "2e030773ba4da0abac367674e4569bab",
+    "semantic_hash": "2e030773ba4da0abac367674e4569bab"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\plate\\types.ts": {
+    "mtime": 1781899662.908073,
+    "ast_hash": "9ba608fa6f5aef6a257e2cbdbf444b78",
+    "semantic_hash": "9ba608fa6f5aef6a257e2cbdbf444b78"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\editor\\preview-source.ts": {
+    "mtime": 1781797143.490154,
+    "ast_hash": "dc8e25c7d93b8d0565e79dc632b1f6b8",
+    "semantic_hash": "dc8e25c7d93b8d0565e79dc632b1f6b8"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\reader\\ReaderChoices.tsx": {
+    "mtime": 1781894895.2553737,
+    "ast_hash": "a5793028f22bd4a84651747d2f73689b",
+    "semantic_hash": "a5793028f22bd4a84651747d2f73689b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\reader\\ReaderControls.tsx": {
+    "mtime": 1781894895.2533743,
+    "ast_hash": "15e51ce3ff7416b188f46ff074a5875b",
+    "semantic_hash": "15e51ce3ff7416b188f46ff074a5875b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\reader\\ReaderDisplay.tsx": {
+    "mtime": 1781525326.1130323,
+    "ast_hash": "8525dcf4439a12833e52772b9842ad7c",
+    "semantic_hash": "8525dcf4439a12833e52772b9842ad7c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\reader\\ReaderTransitions.tsx": {
+    "mtime": 1781477880.1748514,
+    "ast_hash": "39aa146844403757fba2ad4a58010c50",
+    "semantic_hash": "39aa146844403757fba2ad4a58010c50"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\screen-container.tsx": {
+    "mtime": 1779746544.3504755,
+    "ast_hash": "5eafd1aba20c563296c44db6cc206eb6",
+    "semantic_hash": "5eafd1aba20c563296c44db6cc206eb6"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\story-reader-responsive.tsx": {
+    "mtime": 1781894895.267373,
+    "ast_hash": "359e378f3bce49e1a85b59ceb6597f32",
+    "semantic_hash": "359e378f3bce49e1a85b59ceb6597f32"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\themed-view.tsx": {
+    "mtime": 1779611987.2302406,
+    "ast_hash": "a631d422fbb3e65f4c0ccd8fbfe4db7a",
+    "semantic_hash": "a631d422fbb3e65f4c0ccd8fbfe4db7a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\ui\\Button.tsx": {
+    "mtime": 1781477880.178851,
+    "ast_hash": "6432b97adb620717234fd0fe523211ab",
+    "semantic_hash": "6432b97adb620717234fd0fe523211ab"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\ui\\ConfirmDialog.tsx": {
+    "mtime": 1781894895.2763762,
+    "ast_hash": "7aedf99e0ff69955be4e986a92663403",
+    "semantic_hash": "7aedf99e0ff69955be4e986a92663403"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\ui\\Toast.tsx": {
+    "mtime": 1780578708.263729,
+    "ast_hash": "13d878c7ce29e7b49eeb0c37a497e203",
+    "semantic_hash": "13d878c7ce29e7b49eeb0c37a497e203"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\ui\\collapsible.tsx": {
+    "mtime": 1779613980.3475988,
+    "ast_hash": "b9f0667f9c4980b7ae6aa5e6d0e70f32",
+    "semantic_hash": "b9f0667f9c4980b7ae6aa5e6d0e70f32"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\ui\\icon-symbol.tsx": {
+    "mtime": 1781477880.2300088,
+    "ast_hash": "f40e96533ed480d848008a857e333dc1",
+    "semantic_hash": "f40e96533ed480d848008a857e333dc1"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\ui\\index.ts": {
+    "mtime": 1781902812.5940142,
+    "ast_hash": "e3565170456484c540331d45edd09be2",
+    "semantic_hash": "e3565170456484c540331d45edd09be2"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\vn-plate-editor\\PlateWebViewEditor.native.tsx": {
+    "mtime": 1781883531.9531958,
+    "ast_hash": "8f51143d954fbd6b8bff4ccc648f5151",
+    "semantic_hash": "8f51143d954fbd6b8bff4ccc648f5151"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\vn-plate-editor\\PlateWebViewEditor.tsx": {
+    "mtime": 1781478992.457057,
+    "ast_hash": "3372c158bb3a751b896489b88ea17d4d",
+    "semantic_hash": "3372c158bb3a751b896489b88ea17d4d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\components\\vn-plate-editor\\PlateWebViewEditor.web.tsx": {
+    "mtime": 1781883529.586563,
+    "ast_hash": "713b31147e622d28912286f2aa436245",
+    "semantic_hash": "713b31147e622d28912286f2aa436245"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\constants\\oauth.ts": {
+    "mtime": 1780223019.4239247,
+    "ast_hash": "6f0e2213f1de9bf20a759be4248cbb89",
+    "semantic_hash": "6f0e2213f1de9bf20a759be4248cbb89"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\constants\\theme-colors.json": {
+    "mtime": 1780220733.5867507,
+    "ast_hash": "033473da7279b7e310da1c1448142c5a",
+    "semantic_hash": "033473da7279b7e310da1c1448142c5a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\constants\\theme.ts": {
+    "mtime": 1774974430.0,
+    "ast_hash": "8b8035f0c374d809d2c62823bf77218d",
+    "semantic_hash": "8b8035f0c374d809d2c62823bf77218d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\e2e\\package.json": {
+    "mtime": 1778101430.9925473,
+    "ast_hash": "94b21095d17e312df10ac137e4598278",
+    "semantic_hash": "94b21095d17e312df10ac137e4598278"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\eas.json": {
+    "mtime": 1774991461.9463358,
+    "ast_hash": "2f34e13da883db129e848ccab4a1d58d",
+    "semantic_hash": "2f34e13da883db129e848ccab4a1d58d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\eslint.config.mjs": {
+    "mtime": 1781477880.2370126,
+    "ast_hash": "c8e569894c4354f999efb48f036c7869",
+    "semantic_hash": "c8e569894c4354f999efb48f036c7869"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\global.d.ts": {
+    "mtime": 1780220733.5877526,
+    "ast_hash": "a1018fef570ca53e51b46132c07d4b5b",
+    "semantic_hash": "a1018fef570ca53e51b46132c07d4b5b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\use-colors.ts": {
+    "mtime": 1779609933.9635754,
+    "ast_hash": "7a261931a7f9b7394061cea3db7e5705",
+    "semantic_hash": "7a261931a7f9b7394061cea3db7e5705"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\use-i18n.ts": {
+    "mtime": 1781509539.7982264,
+    "ast_hash": "9a609cb32caadc0e05062ed7f3d3a45a",
+    "semantic_hash": "9a609cb32caadc0e05062ed7f3d3a45a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\use-keyboard-shortcuts.ts": {
+    "mtime": 1779219964.7957892,
+    "ast_hash": "9222b2f9e846e85a9a9de9a0a6f34525",
+    "semantic_hash": "9222b2f9e846e85a9a9de9a0a6f34525"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\use-story-state.ts": {
+    "mtime": 1781895081.354754,
+    "ast_hash": "919ea6ef36fa4d83a7b28dac19145af3",
+    "semantic_hash": "919ea6ef36fa4d83a7b28dac19145af3"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\useAutoSave.ts": {
+    "mtime": 1781508688.1174026,
+    "ast_hash": "ddcd62481131eebfd21a0c1738951e48",
+    "semantic_hash": "ddcd62481131eebfd21a0c1738951e48"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\useCharacterAnimations.ts": {
+    "mtime": 1781477880.240533,
+    "ast_hash": "ac3819df200228bf1f87219555aa482a",
+    "semantic_hash": "ac3819df200228bf1f87219555aa482a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\useDialogueHistory.ts": {
+    "mtime": 1780402367.9569721,
+    "ast_hash": "061f4680a16b4d76aae05d27d11e971d",
+    "semantic_hash": "061f4680a16b4d76aae05d27d11e971d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\useReaderAssets.ts": {
+    "mtime": 1781477880.2415328,
+    "ast_hash": "33b5e1841ebf54a222b09e21c0dbd880",
+    "semantic_hash": "33b5e1841ebf54a222b09e21c0dbd880"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\useReaderAudio.ts": {
+    "mtime": 1781509230.1360233,
+    "ast_hash": "db4fbb25f34c37f9b8f08134ac2b80d8",
+    "semantic_hash": "db4fbb25f34c37f9b8f08134ac2b80d8"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\useReaderAutoAdvance.ts": {
+    "mtime": 1780350062.288694,
+    "ast_hash": "ce72e1aac67ac09b1624ab228adfeb9c",
+    "semantic_hash": "ce72e1aac67ac09b1624ab228adfeb9c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\useReaderInitialization.ts": {
+    "mtime": 1781509063.9830666,
+    "ast_hash": "a59ea939487500df2ddec7338498d3c4",
+    "semantic_hash": "a59ea939487500df2ddec7338498d3c4"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\useReaderNotifications.ts": {
+    "mtime": 1781477880.2475338,
+    "ast_hash": "8eefecd5178c4c7e6ab098f5b9b733e9",
+    "semantic_hash": "8eefecd5178c4c7e6ab098f5b9b733e9"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\useReaderPages.ts": {
+    "mtime": 1780403996.470332,
+    "ast_hash": "2a02b8ecad05fe0c439eaa2afdc3d449",
+    "semantic_hash": "2a02b8ecad05fe0c439eaa2afdc3d449"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\useResponsiveLayout.ts": {
+    "mtime": 1779223148.1522844,
+    "ast_hash": "2def171524b8f2371c43018fa957f145",
+    "semantic_hash": "2def171524b8f2371c43018fa957f145"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\useSceneImages.ts": {
+    "mtime": 1781477880.250535,
+    "ast_hash": "4c303ca3d512e3b46c1ff670548c24c8",
+    "semantic_hash": "4c303ca3d512e3b46c1ff670548c24c8"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\hooks\\useTypewriter.ts": {
+    "mtime": 1781477880.2525353,
+    "ast_hash": "2a7b3c9335a6a5cc40db0ad1986eb3fa",
+    "semantic_hash": "2a7b3c9335a6a5cc40db0ad1986eb3fa"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\_core\\api.ts": {
+    "mtime": 1781525844.6626675,
+    "ast_hash": "7cfc66b5ec3ad322b1fa2c9ed97c5e9a",
+    "semantic_hash": "7cfc66b5ec3ad322b1fa2c9ed97c5e9a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\_core\\auth.ts": {
+    "mtime": 1781477880.2575347,
+    "ast_hash": "41bec0f78c889fa99929e2969f2e35a2",
+    "semantic_hash": "41bec0f78c889fa99929e2969f2e35a2"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\_core\\nativewind-pressable.ts": {
+    "mtime": 1779743210.5707657,
+    "ast_hash": "1e9606554404c8a7b73b07926ea62d10",
+    "semantic_hash": "1e9606554404c8a7b73b07926ea62d10"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\_core\\theme.ts": {
+    "mtime": 1781525927.276368,
+    "ast_hash": "e5c2856edf430e288f7272c7004d6add",
+    "semantic_hash": "e5c2856edf430e288f7272c7004d6add"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\asset-resolver.ts": {
+    "mtime": 1781803065.7816381,
+    "ast_hash": "adaf35a0d5630af0d9940d6872a07d35",
+    "semantic_hash": "adaf35a0d5630af0d9940d6872a07d35"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\audio-interfaces.ts": {
+    "mtime": 1781477880.276801,
+    "ast_hash": "addfe7bffb5caaee51efe2b12019b163",
+    "semantic_hash": "addfe7bffb5caaee51efe2b12019b163"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\audio-library-service.ts": {
+    "mtime": 1779126266.9818482,
+    "ast_hash": "93bd34f305d95c733ebb79b7ccb13387",
+    "semantic_hash": "93bd34f305d95c733ebb79b7ccb13387"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\audio-library.ts": {
+    "mtime": 1781509174.7253327,
+    "ast_hash": "7e10525426a83bf9855cfc37270c66fe",
+    "semantic_hash": "7e10525426a83bf9855cfc37270c66fe"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\audio-manager-enhanced.ts": {
+    "mtime": 1781477880.2957664,
+    "ast_hash": "674acbcfcb778cf84d5707e0111add61",
+    "semantic_hash": "674acbcfcb778cf84d5707e0111add61"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\audio-player-service.ts": {
+    "mtime": 1781477880.2977526,
+    "ast_hash": "8b26b9b530d45264786b16fa0dd86eff",
+    "semantic_hash": "8b26b9b530d45264786b16fa0dd86eff"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\audio-trigger-scheduler.ts": {
+    "mtime": 1779129373.054229,
+    "ast_hash": "298de53775bbd02bec7cdb19a445de9e",
+    "semantic_hash": "298de53775bbd02bec7cdb19a445de9e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\audio-types.ts": {
+    "mtime": 1780220733.5977528,
+    "ast_hash": "a502e930686ac710e15e5982c5ed5fd5",
+    "semantic_hash": "a502e930686ac710e15e5982c5ed5fd5"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\audio-web-source.ts": {
+    "mtime": 1779792927.7484593,
+    "ast_hash": "339568c99b1ae348f593891c639e106c",
+    "semantic_hash": "339568c99b1ae348f593891c639e106c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\bundled-story-sync.ts": {
+    "mtime": 1780220733.5987523,
+    "ast_hash": "ec77b3e143f0af27a8ad643d26b61834",
+    "semantic_hash": "ec77b3e143f0af27a8ad643d26b61834"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\button-platform.ts": {
+    "mtime": 1779746400.8792403,
+    "ast_hash": "4327e999e0aa80d704575016326d17b8",
+    "semantic_hash": "4327e999e0aa80d704575016326d17b8"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\character-animator.ts": {
+    "mtime": 1778926285.6751533,
+    "ast_hash": "9ddbaadde64fa6bf6d6866e6d87406af",
+    "semantic_hash": "9ddbaadde64fa6bf6d6866e6d87406af"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\character-library.ts": {
+    "mtime": 1781509488.3781233,
+    "ast_hash": "c6e129cbd8d91ab0a1d1ff6ca83a912c",
+    "semantic_hash": "c6e129cbd8d91ab0a1d1ff6ca83a912c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\character-types.ts": {
+    "mtime": 1781477880.3017516,
+    "ast_hash": "0c79ee39c38e25435bf9b295fa190c31",
+    "semantic_hash": "0c79ee39c38e25435bf9b295fa190c31"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\document-editor\\commands.ts": {
+    "mtime": 1781477880.305753,
+    "ast_hash": "89d1301e9e5312850cf0f45916491bbb",
+    "semantic_hash": "89d1301e9e5312850cf0f45916491bbb"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\document-editor\\document-scene.ts": {
+    "mtime": 1781796929.9555154,
+    "ast_hash": "058d0f60262d57cce4dc771dd37a15e5",
+    "semantic_hash": "058d0f60262d57cce4dc771dd37a15e5"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\document-editor\\next-scene.ts": {
+    "mtime": 1781883468.884562,
+    "ast_hash": "550cfa2ba76643405de5608fa3043cca",
+    "semantic_hash": "550cfa2ba76643405de5608fa3043cca"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\document-editor\\types.ts": {
+    "mtime": 1781796710.744381,
+    "ast_hash": "ccada71c4bed155c589aba9afe5ccb81",
+    "semantic_hash": "ccada71c4bed155c589aba9afe5ccb81"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\document-scene-persistence.ts": {
+    "mtime": 1780509403.3805075,
+    "ast_hash": "2ec90b95afd029a39376c992ccc88e6a",
+    "semantic_hash": "2ec90b95afd029a39376c992ccc88e6a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\editor-scene-draft.ts": {
+    "mtime": 1780220733.599751,
+    "ast_hash": "dc291f7490721793b04118f9cd10cf35",
+    "semantic_hash": "dc291f7490721793b04118f9cd10cf35"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\editor-scene-save.ts": {
+    "mtime": 1781477880.3119583,
+    "ast_hash": "81645a9362c29e227e318977e29fd8f8",
+    "semantic_hash": "81645a9362c29e227e318977e29fd8f8"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\editor\\block-icon.ts": {
+    "mtime": 1781477880.3129597,
+    "ast_hash": "5d7a5d5c6534e940a0d127b438e7a311",
+    "semantic_hash": "5d7a5d5c6534e940a0d127b438e7a311"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\editor\\block-validation.ts": {
+    "mtime": 1780220733.6027522,
+    "ast_hash": "d6e27d7219f188335f921057c3213460",
+    "semantic_hash": "d6e27d7219f188335f921057c3213460"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\editor\\story-manuscript-save.ts": {
+    "mtime": 1781477880.3159585,
+    "ast_hash": "ee854e4b52a24932f130964fadedf992",
+    "semantic_hash": "ee854e4b52a24932f130964fadedf992"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\editor\\story-manuscript-types.ts": {
+    "mtime": 1781477880.3169603,
+    "ast_hash": "9af49238d0049ddc51191d579a718dbf",
+    "semantic_hash": "9af49238d0049ddc51191d579a718dbf"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\editor\\story-manuscript.ts": {
+    "mtime": 1781477880.3179576,
+    "ast_hash": "b5898c1789ece26781356181a6905e5f",
+    "semantic_hash": "b5898c1789ece26781356181a6905e5f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\editor\\timeline-item-layout.ts": {
+    "mtime": 1779795934.5299597,
+    "ast_hash": "1e6e40c02b1401441645cee03374f705",
+    "semantic_hash": "1e6e40c02b1401441645cee03374f705"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\editor\\timeline-sortable.ts": {
+    "mtime": 1779795490.7753384,
+    "ast_hash": "4bfb8efb5fc9f5706e6a7537ca1d1235",
+    "semantic_hash": "4bfb8efb5fc9f5706e6a7537ca1d1235"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\engine\\conditionUtils.ts": {
+    "mtime": 1781477880.3199582,
+    "ast_hash": "c4cdcbabe3b1d6bcabcbb3ef8c846162",
+    "semantic_hash": "c4cdcbabe3b1d6bcabcbb3ef8c846162"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\engine\\event-factory.ts": {
+    "mtime": 1779537676.4176939,
+    "ast_hash": "3f1526e81fa87e125d78736415617939",
+    "semantic_hash": "3f1526e81fa87e125d78736415617939"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\engine\\index.ts": {
+    "mtime": 1779537868.6520798,
+    "ast_hash": "0b300da6948a86bfa109f2d4471cfd1b",
+    "semantic_hash": "0b300da6948a86bfa109f2d4471cfd1b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\engine\\types.ts": {
+    "mtime": 1781886673.673964,
+    "ast_hash": "29cd2462df73a571ad0ad221016196a7",
+    "semantic_hash": "29cd2462df73a571ad0ad221016196a7"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\engine\\useSceneExecutor.ts": {
+    "mtime": 1781477880.3279727,
+    "ast_hash": "ad6664a117802fbb9d5cd4da134ba574",
+    "semantic_hash": "ad6664a117802fbb9d5cd4da134ba574"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\error-handler.ts": {
+    "mtime": 1781477880.3309712,
+    "ast_hash": "49d959ebc20b7a448b41f8b83c495be3",
+    "semantic_hash": "49d959ebc20b7a448b41f8b83c495be3"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\id-utils.ts": {
+    "mtime": 1780246947.4999418,
+    "ast_hash": "5ef059f1c24559a7636938d0217d9a55",
+    "semantic_hash": "5ef059f1c24559a7636938d0217d9a55"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\interactive-types.ts": {
+    "mtime": 1779482607.7908893,
+    "ast_hash": "703d43b5816f56afba6a6f057895edd0",
+    "semantic_hash": "703d43b5816f56afba6a6f057895edd0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\media-library-service.ts": {
+    "mtime": 1781509290.4257708,
+    "ast_hash": "f21c64a56036f3f06cf5f7fd71be3e34",
+    "semantic_hash": "f21c64a56036f3f06cf5f7fd71be3e34"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\mobile-composer-layout.ts": {
+    "mtime": 1779723458.3481686,
+    "ast_hash": "a3f5b72f182e4dbb1eb46e3688fe38a0",
+    "semantic_hash": "a3f5b72f182e4dbb1eb46e3688fe38a0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\navigation-transition.ts": {
+    "mtime": 1780219944.7405398,
+    "ast_hash": "cfb19ece4b20c1e5987336d03482e00d",
+    "semantic_hash": "cfb19ece4b20c1e5987336d03482e00d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\persistent-storage.ts": {
+    "mtime": 1781477880.351028,
+    "ast_hash": "57d6758cfc6be747dc59bd42da100d56",
+    "semantic_hash": "57d6758cfc6be747dc59bd42da100d56"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\react-native-web-interop.ts": {
+    "mtime": 1779787644.992764,
+    "ast_hash": "74eb8a8340acf8bcd4e617b933f2302e",
+    "semantic_hash": "74eb8a8340acf8bcd4e617b933f2302e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\reader-audio-session.ts": {
+    "mtime": 1780398890.3309643,
+    "ast_hash": "02a176efbe0561f37e3f0e944fe01feb",
+    "semantic_hash": "02a176efbe0561f37e3f0e944fe01feb"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\reader-launch.ts": {
+    "mtime": 1780247105.2276754,
+    "ast_hash": "96b1934c5e3b8279e80608fa3f3f8262",
+    "semantic_hash": "96b1934c5e3b8279e80608fa3f3f8262"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\reader-runtime.ts": {
+    "mtime": 1780247105.1001527,
+    "ast_hash": "1880ab2303ec744263d5a230fe768ba0",
+    "semantic_hash": "1880ab2303ec744263d5a230fe768ba0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\responsive.ts": {
+    "mtime": 1780220733.6097562,
+    "ast_hash": "f020ebf7115cb68865376176cce30448",
+    "semantic_hash": "f020ebf7115cb68865376176cce30448"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\scene-document\\characterColor.ts": {
+    "mtime": 1781886979.0725968,
+    "ast_hash": "cb0f4e63ff9f1e7579a1ebca3acf0de6",
+    "semantic_hash": "cb0f4e63ff9f1e7579a1ebca3acf0de6"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\scene-document\\sceneParser.ts": {
+    "mtime": 1781888012.2156837,
+    "ast_hash": "37a3334e440864a45914ecb943414217",
+    "semantic_hash": "37a3334e440864a45914ecb943414217"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\scene-document\\sceneRecordAdapter.ts": {
+    "mtime": 1781883445.5596414,
+    "ast_hash": "ed1c5bc0fc4b42f0e7eb3eff2d8ce9b8",
+    "semantic_hash": "ed1c5bc0fc4b42f0e7eb3eff2d8ce9b8"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\scene-document\\sceneSerializer.ts": {
+    "mtime": 1781888015.1702151,
+    "ast_hash": "df5a19784b11ea68710ac6fd10641462",
+    "semantic_hash": "df5a19784b11ea68710ac6fd10641462"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\scene-document\\sceneTypes.ts": {
+    "mtime": 1781883393.4132943,
+    "ast_hash": "0d45ba011631e81c63a22eea6c0cc793",
+    "semantic_hash": "0d45ba011631e81c63a22eea6c0cc793"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\scene-document\\sceneValidation.ts": {
+    "mtime": 1781883488.4330773,
+    "ast_hash": "0535a67534852b24ba40d0d04c4291db",
+    "semantic_hash": "0535a67534852b24ba40d0d04c4291db"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\scene-operations.ts": {
+    "mtime": 1781898062.3415189,
+    "ast_hash": "46c5fb5de4881eb5b4d0e712c4a8522b",
+    "semantic_hash": "46c5fb5de4881eb5b4d0e712c4a8522b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\screen-container-platform.ts": {
+    "mtime": 1779746514.5518932,
+    "ast_hash": "be8c684e52990cc1375b16efa80ad401",
+    "semantic_hash": "be8c684e52990cc1375b16efa80ad401"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\splash-types.ts": {
+    "mtime": 1776030924.7913728,
+    "ast_hash": "07b1f81facadab6fdd1f48fea08bfa5a",
+    "semantic_hash": "07b1f81facadab6fdd1f48fea08bfa5a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\storage-keys.ts": {
+    "mtime": 1779482689.4235137,
+    "ast_hash": "430b6dca4d56d4be6132edb20a2e6ba4",
+    "semantic_hash": "430b6dca4d56d4be6132edb20a2e6ba4"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\story-domain.ts": {
+    "mtime": 1781894867.66065,
+    "ast_hash": "9dc763259788a2d47da0759580e00e1c",
+    "semantic_hash": "9dc763259788a2d47da0759580e00e1c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\story-hooks.ts": {
+    "mtime": 1781894959.3004234,
+    "ast_hash": "3f1c08c4737b9c7c3f2f7b4c876df5e8",
+    "semantic_hash": "3f1c08c4737b9c7c3f2f7b4c876df5e8"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\story-reader-choice.ts": {
+    "mtime": 1780220706.389198,
+    "ast_hash": "3e331501b8ef683daa282eac8294cea4",
+    "semantic_hash": "3e331501b8ef683daa282eac8294cea4"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\story-reader-platform.ts": {
+    "mtime": 1781526189.644295,
+    "ast_hash": "fb378e81d9ae2fdf009e2175d8d98bf0",
+    "semantic_hash": "fb378e81d9ae2fdf009e2175d8d98bf0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\story-validator.ts": {
+    "mtime": 1781477880.3650255,
+    "ast_hash": "bd661237076e5e393853ec74be7929e3",
+    "semantic_hash": "bd661237076e5e393853ec74be7929e3"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\theme-nativewind.ts": {
+    "mtime": 1780219944.7425413,
+    "ast_hash": "ccba056e4327d608f940269841b5dbab",
+    "semantic_hash": "ccba056e4327d608f940269841b5dbab"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\theme-provider.tsx": {
+    "mtime": 1781509578.2470174,
+    "ast_hash": "b51dfe42dfef915382c9b4de6779ffde",
+    "semantic_hash": "b51dfe42dfef915382c9b4de6779ffde"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\theme-variables.ts": {
+    "mtime": 1779742940.54327,
+    "ast_hash": "427667939162038f9f88b2fc48d7d9ac",
+    "semantic_hash": "427667939162038f9f88b2fc48d7d9ac"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\toast-store.ts": {
+    "mtime": 1781526100.7585163,
+    "ast_hash": "a2498ad12abb86abafc13b664ab66b68",
+    "semantic_hash": "a2498ad12abb86abafc13b664ab66b68"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\translations.json": {
+    "mtime": 1779483917.1261897,
+    "ast_hash": "bedf77de58c2a526b507233b74ef78bb",
+    "semantic_hash": "bedf77de58c2a526b507233b74ef78bb"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\translations.ts": {
+    "mtime": 1781477880.368919,
+    "ast_hash": "9c2ab6bedd4f3994d2b9666e15c5489e",
+    "semantic_hash": "9c2ab6bedd4f3994d2b9666e15c5489e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\ui-feedback.ts": {
+    "mtime": 1780220733.6207526,
+    "ast_hash": "2532669cc71925d065b1b201ea6a6c2f",
+    "semantic_hash": "2532669cc71925d065b1b201ea6a6c2f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\user-settings.ts": {
+    "mtime": 1781477880.3719144,
+    "ast_hash": "756802def6c192bd3d998da6437e7a9a",
+    "semantic_hash": "756802def6c192bd3d998da6437e7a9a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\utils.ts": {
+    "mtime": 1774974430.0,
+    "ast_hash": "84d355df51393278300bc75aae3a32d0",
+    "semantic_hash": "84d355df51393278300bc75aae3a32d0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\vn-plate-editor\\embedded-commands.ts": {
+    "mtime": 1781899676.9827738,
+    "ast_hash": "269a2b715504226e481e8572ee6e7d87",
+    "semantic_hash": "269a2b715504226e481e8572ee6e7d87"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\vn-plate-editor\\embedded-html.ts": {
+    "mtime": 1781899757.6856205,
+    "ast_hash": "c793082e93942e7a7b364014ed9dc026",
+    "semantic_hash": "c793082e93942e7a7b364014ed9dc026"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\vn-plate-editor\\embedded-renderers.ts": {
+    "mtime": 1781899679.4402711,
+    "ast_hash": "215d5cd851f9ac0f246ba0e338490570",
+    "semantic_hash": "215d5cd851f9ac0f246ba0e338490570"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\vn-plate-editor\\embedded-script.ts": {
+    "mtime": 1781899751.2193444,
+    "ast_hash": "ddb642005ed77671e9cd5cb7eb851980",
+    "semantic_hash": "ddb642005ed77671e9cd5cb7eb851980"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\vn-plate-editor\\embedded-styles.ts": {
+    "mtime": 1781899681.8799748,
+    "ast_hash": "69782cf55eeede525d006853ecec5961",
+    "semantic_hash": "69782cf55eeede525d006853ecec5961"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\vn-plate-editor\\embedded-utils.ts": {
+    "mtime": 1781899673.5790193,
+    "ast_hash": "27c0ebf8f93810fa5a0eebb3e642f1a9",
+    "semantic_hash": "27c0ebf8f93810fa5a0eebb3e642f1a9"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\vn-plate-editor\\scene-normalizer.ts": {
+    "mtime": 1781796819.3392496,
+    "ast_hash": "f652f703b0e66358c1d3eac9dd26f185",
+    "semantic_hash": "f652f703b0e66358c1d3eac9dd26f185"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\vn-plate-editor\\types.ts": {
+    "mtime": 1781883524.8237932,
+    "ast_hash": "5141b8279cda5b2fda72427f0ec7e15f",
+    "semantic_hash": "5141b8279cda5b2fda72427f0ec7e15f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\lib\\web-utils.ts": {
+    "mtime": 1779223139.2659554,
+    "ast_hash": "426d68f3b5bfda4bfc55fe764d9ada39",
+    "semantic_hash": "426d68f3b5bfda4bfc55fe764d9ada39"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\metro.config.js": {
+    "mtime": 1779550764.8816385,
+    "ast_hash": "59022dfe36dbe8b82200dfd7a672d0ac",
+    "semantic_hash": "59022dfe36dbe8b82200dfd7a672d0ac"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\nativewind-env.d.ts": {
+    "mtime": 1778438614.3401742,
+    "ast_hash": "8c5d40a49e4f1ff89fa5fd68c98c3dff",
+    "semantic_hash": "8c5d40a49e4f1ff89fa5fd68c98c3dff"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\package.json": {
+    "mtime": 1781810450.7081337,
+    "ast_hash": "361b23f08ccbd30ff34067e252bc24b0",
+    "semantic_hash": "361b23f08ccbd30ff34067e252bc24b0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\run-tests.sh": {
+    "mtime": 1778101708.4961946,
+    "ast_hash": "7da1bf0f09fa2c628bbacff23df41c18",
+    "semantic_hash": "7da1bf0f09fa2c628bbacff23df41c18"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\scripts\\build-web.sh": {
+    "mtime": 1776154334.345528,
+    "ast_hash": "b296eb494782ea6b10296c6ad9281711",
+    "semantic_hash": "b296eb494782ea6b10296c6ad9281711"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\stores\\audio-library-actions.ts": {
+    "mtime": 1781803654.3457768,
+    "ast_hash": "3b11ee8b25df2861b8021913048a52db",
+    "semantic_hash": "3b11ee8b25df2861b8021913048a52db"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\stores\\media-library-actions.ts": {
+    "mtime": 1781509307.415387,
+    "ast_hash": "ec8eee941f0439866348cab948ecc3d5",
+    "semantic_hash": "ec8eee941f0439866348cab948ecc3d5"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\stores\\theme-store.ts": {
+    "mtime": 1781477880.3869278,
+    "ast_hash": "5baf29592367e8695e072343d5b1ab0f",
+    "semantic_hash": "5baf29592367e8695e072343d5b1ab0f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\stores\\use-app-store.ts": {
+    "mtime": 1781898064.8142006,
+    "ast_hash": "99e41314624de5ac7b50f71565c6447b",
+    "semantic_hash": "99e41314624de5ac7b50f71565c6447b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\tailwind.config.js": {
+    "mtime": 1780252066.813526,
+    "ast_hash": "7b0309319a4304ddf06c4031ab983c16",
+    "semantic_hash": "7b0309319a4304ddf06c4031ab983c16"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\theme.config.d.ts": {
+    "mtime": 1780219987.5639558,
+    "ast_hash": "af924323d89be7cb0d9869305686b080",
+    "semantic_hash": "af924323d89be7cb0d9869305686b080"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\theme.config.js": {
+    "mtime": 1779999951.6005192,
+    "ast_hash": "dc4a77906c5263c831065a63f7877d17",
+    "semantic_hash": "dc4a77906c5263c831065a63f7877d17"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\tools\\check-editor-boundaries.ps1": {
+    "mtime": 1781797306.0609872,
+    "ast_hash": "e1be1afa288f2989487274bd04969686",
+    "semantic_hash": "e1be1afa288f2989487274bd04969686"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\tools\\check-editor-boundaries.sh": {
+    "mtime": 1781810581.9729047,
+    "ast_hash": "a15865860424c5813328a361dc80e940",
+    "semantic_hash": "a15865860424c5813328a361dc80e940"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\tools\\check_dead_imports.py": {
+    "mtime": 1778399923.4221046,
+    "ast_hash": "04cdc12e858962dfa265b815626c7638",
+    "semantic_hash": "04cdc12e858962dfa265b815626c7638"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\tsconfig.json": {
+    "mtime": 1781477880.4063382,
+    "ast_hash": "d744e368ec68c5d67e487172ca13c429",
+    "semantic_hash": "d744e368ec68c5d67e487172ca13c429"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\tsconfig.vitest.json": {
+    "mtime": 1778275182.934264,
+    "ast_hash": "56afc1f1b0400e0c7c3042d74da2ba8f",
+    "semantic_hash": "56afc1f1b0400e0c7c3042d74da2ba8f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\vitest.config.ts": {
+    "mtime": 1780220733.6317532,
+    "ast_hash": "139f7233c4438567f5ee07a1ae4e89b0",
+    "semantic_hash": "139f7233c4438567f5ee07a1ae4e89b0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\vitest.setup.ts": {
+    "mtime": 1781477880.407864,
+    "ast_hash": "87d742f64387e2353e7e49155e093e45",
+    "semantic_hash": "87d742f64387e2353e7e49155e093e45"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\.obsidian\\app.json": {
+    "mtime": 1781478311.3552892,
+    "ast_hash": "82c11442153c4fb0ea88a6474d13cc8b",
+    "semantic_hash": "82c11442153c4fb0ea88a6474d13cc8b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\.obsidian\\appearance.json": {
+    "mtime": 1781478311.3638191,
+    "ast_hash": "b650db1823c522704127ce5c49720eb0",
+    "semantic_hash": "b650db1823c522704127ce5c49720eb0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\.obsidian\\core-plugins.json": {
+    "mtime": 1781478312.973345,
+    "ast_hash": "7c877bea49eaeabb100563bd157b9051",
+    "semantic_hash": "7c877bea49eaeabb100563bd157b9051"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\.obsidian\\graph.json": {
+    "mtime": 1781478345.439,
+    "ast_hash": "996f99f00b00e7aa758c0d4a4d15135d",
+    "semantic_hash": "996f99f00b00e7aa758c0d4a4d15135d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\.obsidian\\manifest.json": {
+    "mtime": 1776115657.4558315,
+    "ast_hash": "0134135af875a93af493e0518d447173",
+    "semantic_hash": "0134135af875a93af493e0518d447173"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\.obsidian\\workspace.json": {
+    "mtime": 1781478347.4441955,
+    "ast_hash": "d8f02232ab522c75b75821d93f576e1e",
+    "semantic_hash": "d8f02232ab522c75b75821d93f576e1e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.github\\workflows\\deploy-web.yml": {
+    "mtime": 1778271130.6426985,
+    "ast_hash": "3ea2f1a222eccadd2dc896c25737b7d6",
+    "semantic_hash": "3ea2f1a222eccadd2dc896c25737b7d6"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\CONVERGENCE.md": {
+    "mtime": 1779919489.9773958,
+    "ast_hash": "76cd1ab0831e03aaadcd6c8f623919a2",
+    "semantic_hash": "76cd1ab0831e03aaadcd6c8f623919a2"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\REVIEWS.md": {
+    "mtime": 1779919489.6727345,
+    "ast_hash": "c7a03502561fb94c5e2bdf4a9016f61a",
+    "semantic_hash": "c7a03502561fb94c5e2bdf4a9016f61a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\ROADMAP.md": {
+    "mtime": 1781792061.420093,
+    "ast_hash": "64fac8c07ebaa9b7c778b683d901936c",
+    "semantic_hash": "64fac8c07ebaa9b7c778b683d901936c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\STATE.md": {
+    "mtime": 1781477879.8709564,
+    "ast_hash": "f3f93cfeca91231529968d417c84a3b5",
+    "semantic_hash": "f3f93cfeca91231529968d417c84a3b5"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\native-scene-editor-plan.md": {
+    "mtime": 1781877970.988897,
+    "ast_hash": "f934e6ecfed80b13b7376f9381e685a7",
+    "semantic_hash": "f934e6ecfed80b13b7376f9381e685a7"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\01-icon-i18n-foundation\\PLAN.md": {
+    "mtime": 1779920138.534285,
+    "ast_hash": "8372db158fc08cdfd15a2a2a21b09ac0",
+    "semantic_hash": "8372db158fc08cdfd15a2a2a21b09ac0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\02-theme-token-hardening\\PLAN.md": {
+    "mtime": 1779920374.3201766,
+    "ast_hash": "7b7612519f4642840d6785dca34d4c6e",
+    "semantic_hash": "7b7612519f4642840d6785dca34d4c6e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\03-document-editor-polish\\PLAN.md": {
+    "mtime": 1779920648.2441647,
+    "ast_hash": "caa78f6940e46e52df649257061599d0",
+    "semantic_hash": "caa78f6940e46e52df649257061599d0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\04-character-creator-sprite-ux\\PLAN.md": {
+    "mtime": 1779920808.0568242,
+    "ast_hash": "87a563b8f3c7dce242116d45b10e3f44",
+    "semantic_hash": "87a563b8f3c7dce242116d45b10e3f44"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\05-feedback-loading-safety\\PLAN.md": {
+    "mtime": 1779920964.8400002,
+    "ast_hash": "dcb236c80e200d7e11dcdd63efd7b17d",
+    "semantic_hash": "dcb236c80e200d7e11dcdd63efd7b17d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\06-type-spacing-radius-convergence\\06-UI-REVIEW.md": {
+    "mtime": 1779921212.5696912,
+    "ast_hash": "7fe78bfbfd82755f388bd5fd26842b1d",
+    "semantic_hash": "7fe78bfbfd82755f388bd5fd26842b1d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\06-type-spacing-radius-convergence\\PLAN.md": {
+    "mtime": 1779921212.384289,
+    "ast_hash": "a76559b80a1ddf9d64b3ea42d187267f",
+    "semantic_hash": "a76559b80a1ddf9d64b3ea42d187267f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\07-reader-runtime-convergence\\PLAN.md": {
+    "mtime": 1780173690.160598,
+    "ast_hash": "1c462a4c3134d76e301ad3d26a86dbeb",
+    "semantic_hash": "1c462a4c3134d76e301ad3d26a86dbeb"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\07.5-race-condition-investigation\\07.5-REVIEW.md": {
+    "mtime": 1780059709.2980938,
+    "ast_hash": "aa0c85226e9bad4e1905ec08070fd6c2",
+    "semantic_hash": "aa0c85226e9bad4e1905ec08070fd6c2"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\07.6-race-condition-fix\\07.6-PLAN.md": {
+    "mtime": 1780060916.196303,
+    "ast_hash": "a0ac19f3509dd7aa4cc7e9609a859394",
+    "semantic_hash": "a0ac19f3509dd7aa4cc7e9609a859394"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\07.6-race-condition-fix\\07.6-SUMMARY.md": {
+    "mtime": 1780061797.3982973,
+    "ast_hash": "a3aee5cb53fd40f51aa2a58ce9997463",
+    "semantic_hash": "a3aee5cb53fd40f51aa2a58ce9997463"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\08-post-migration-cleanup\\08-CONTEXT.md": {
+    "mtime": 1780173732.371955,
+    "ast_hash": "5a8a2ae1d6c7475780a29832da20bfcc",
+    "semantic_hash": "5a8a2ae1d6c7475780a29832da20bfcc"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\08-post-migration-cleanup\\08-PLAN.md": {
+    "mtime": 1780173761.1648953,
+    "ast_hash": "12606aaccdbd53177c3526dd2ae77ebf",
+    "semantic_hash": "12606aaccdbd53177c3526dd2ae77ebf"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\08-post-migration-cleanup\\08-REVIEW-FIX.md": {
+    "mtime": 1780219900.6588295,
+    "ast_hash": "73b532844d3d0f82999439c20e43311c",
+    "semantic_hash": "73b532844d3d0f82999439c20e43311c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\08-post-migration-cleanup\\08-REVIEW.md": {
+    "mtime": 1780218978.255228,
+    "ast_hash": "fd4694f223249c95dce48b2e79e1299e",
+    "semantic_hash": "fd4694f223249c95dce48b2e79e1299e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\09-migration-finalization\\09-CONTEXT.md": {
+    "mtime": 1780217581.0556884,
+    "ast_hash": "fb88c1653d417b083d3e0e8921df252c",
+    "semantic_hash": "fb88c1653d417b083d3e0e8921df252c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\09-migration-finalization\\09-PLAN.md": {
+    "mtime": 1780218277.7924354,
+    "ast_hash": "f9c6ab2291e416e1d8d45ea519ff8431",
+    "semantic_hash": "f9c6ab2291e416e1d8d45ea519ff8431"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\09-migration-finalization\\09-SUMMARY.md": {
+    "mtime": 1780218277.5959275,
+    "ast_hash": "15872b51b0a644361755c06e77c999e5",
+    "semantic_hash": "15872b51b0a644361755c06e77c999e5"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\09.1-post-migration-deferred\\09.1-PLAN.md": {
+    "mtime": 1780220359.6508908,
+    "ast_hash": "d43ebc0ef946036ae0098c02b68d7582",
+    "semantic_hash": "d43ebc0ef946036ae0098c02b68d7582"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\09.1-post-migration-deferred\\09.1-SUMMARY.md": {
+    "mtime": 1780220806.102651,
+    "ast_hash": "78f467881029a3ec890e1df76dee5f52",
+    "semantic_hash": "78f467881029a3ec890e1df76dee5f52"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\10-security-hardening\\10-PLAN.md": {
+    "mtime": 1780222848.9775045,
+    "ast_hash": "71bf82c60d3f7f7029057d958026c765",
+    "semantic_hash": "71bf82c60d3f7f7029057d958026c765"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\10-security-hardening\\10-REVIEW.md": {
+    "mtime": 1780223963.95788,
+    "ast_hash": "9d64630d189c1126b95567a42052fb82",
+    "semantic_hash": "9d64630d189c1126b95567a42052fb82"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\10-security-hardening\\10-SECURITY-AUDIT.md": {
+    "mtime": 1780222758.31945,
+    "ast_hash": "3895388c2ece75890d4171e0c4a8181f",
+    "semantic_hash": "3895388c2ece75890d4171e0c4a8181f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\10-security-hardening\\SUMMARY.md": {
+    "mtime": 1780223588.9288666,
+    "ast_hash": "70a088b4ae01115cccfd3277e1fddf4c",
+    "semantic_hash": "70a088b4ae01115cccfd3277e1fddf4c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\11-runtime-quality-gates\\11-PLAN.md": {
+    "mtime": 1780251069.527428,
+    "ast_hash": "22de1b0f5cfe1bedd2adb7f976c1c742",
+    "semantic_hash": "22de1b0f5cfe1bedd2adb7f976c1c742"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\12-code-analysis-remediation\\12-PLAN.md": {
+    "mtime": 1780345158.0044103,
+    "ast_hash": "cc5a5ade5b73784ba43d8e73a8820d63",
+    "semantic_hash": "cc5a5ade5b73784ba43d8e73a8820d63"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\13-post-audit-remediation\\13-01-PLAN.md": {
+    "mtime": 1780507435.0276449,
+    "ast_hash": "b26eb55b4f6ce70d143932533fbf4d1a",
+    "semantic_hash": "b26eb55b4f6ce70d143932533fbf4d1a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\13-post-audit-remediation\\13-01-SUMMARY.md": {
+    "mtime": 1780510195.7208195,
+    "ast_hash": "48b9c366f3fd91cddbd0f1a7dd016b51",
+    "semantic_hash": "48b9c366f3fd91cddbd0f1a7dd016b51"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\13-post-audit-remediation\\13-CONTEXT.md": {
+    "mtime": 1780507066.843428,
+    "ast_hash": "0a32398c3fdd8bcdb9cf50795c6ae696",
+    "semantic_hash": "0a32398c3fdd8bcdb9cf50795c6ae696"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\14-audit-hardening\\14-01-PLAN.md": {
+    "mtime": 1780514093.2025335,
+    "ast_hash": "754bc884aa39db8df78c8726975b67ea",
+    "semantic_hash": "754bc884aa39db8df78c8726975b67ea"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\14-audit-hardening\\14-01-SUMMARY.md": {
+    "mtime": 1780517407.9986057,
+    "ast_hash": "8768159f2066351dba98628180deec11",
+    "semantic_hash": "8768159f2066351dba98628180deec11"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\14-audit-hardening\\14-02-PLAN.md": {
+    "mtime": 1780514165.3743796,
+    "ast_hash": "b42f98c090a0966450643ee4b118fd8b",
+    "semantic_hash": "b42f98c090a0966450643ee4b118fd8b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\14-audit-hardening\\14-02-SUMMARY.md": {
+    "mtime": 1780518239.3295841,
+    "ast_hash": "271fde1693c3275a7cec9054e9785631",
+    "semantic_hash": "271fde1693c3275a7cec9054e9785631"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\14-audit-hardening\\14-CONTEXT.md": {
+    "mtime": 1780513742.7841055,
+    "ast_hash": "d09f3f7f9753658cf5800ec405b0d51e",
+    "semantic_hash": "d09f3f7f9753658cf5800ec405b0d51e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\15-deep-audit-remediation\\15-01-PLAN.md": {
+    "mtime": 1780587324.822676,
+    "ast_hash": "fe41123f3430d151afe604e6772691b7",
+    "semantic_hash": "fe41123f3430d151afe604e6772691b7"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\15-deep-audit-remediation\\15-01-SUMMARY.md": {
+    "mtime": 1781477879.872955,
+    "ast_hash": "0a96a6db7e3a1457114e6c13791af9fa",
+    "semantic_hash": "0a96a6db7e3a1457114e6c13791af9fa"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\15-deep-audit-remediation\\15-02-PLAN.md": {
+    "mtime": 1780587529.257132,
+    "ast_hash": "ece4cb5999301a1526babea5a10236da",
+    "semantic_hash": "ece4cb5999301a1526babea5a10236da"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\15-deep-audit-remediation\\15-03-PLAN.md": {
+    "mtime": 1780587914.9103057,
+    "ast_hash": "1aa632968b7a2da037efd3b371318609",
+    "semantic_hash": "1aa632968b7a2da037efd3b371318609"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\15-deep-audit-remediation\\15-CONTEXT.md": {
+    "mtime": 1780586297.0260487,
+    "ast_hash": "219566fa0b957a6a23c8dee3b0394e3d",
+    "semantic_hash": "219566fa0b957a6a23c8dee3b0394e3d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-00-PLAN.md": {
+    "mtime": 1781792034.710263,
+    "ast_hash": "68882d866f6b50be90c6af069d5a732c",
+    "semantic_hash": "68882d866f6b50be90c6af069d5a732c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-00-SUMMARY.md": {
+    "mtime": 1781796555.9303763,
+    "ast_hash": "8e542cd297d07a409934d666377e9813",
+    "semantic_hash": "8e542cd297d07a409934d666377e9813"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-01-PLAN.md": {
+    "mtime": 1781792034.9663284,
+    "ast_hash": "25f1e92c348e74736bdb053d4c3d04d0",
+    "semantic_hash": "25f1e92c348e74736bdb053d4c3d04d0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-01-SUMMARY.md": {
+    "mtime": 1781806237.7995164,
+    "ast_hash": "8075b989679214fb211b4bc2eb18bbfb",
+    "semantic_hash": "8075b989679214fb211b4bc2eb18bbfb"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-02-PLAN.md": {
+    "mtime": 1781792035.2114403,
+    "ast_hash": "1d80f0542e409344945a03ad661c3d08",
+    "semantic_hash": "1d80f0542e409344945a03ad661c3d08"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-02-SUMMARY.md": {
+    "mtime": 1781806293.9877665,
+    "ast_hash": "fb17c5bb9c891547e1a9db23a93085a0",
+    "semantic_hash": "fb17c5bb9c891547e1a9db23a93085a0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-03-PLAN.md": {
+    "mtime": 1781792035.4612086,
+    "ast_hash": "a7f1b63cb64e3b16de987ae2a96f2b84",
+    "semantic_hash": "a7f1b63cb64e3b16de987ae2a96f2b84"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-03-SUMMARY.md": {
+    "mtime": 1781806358.8331506,
+    "ast_hash": "30d6022fca1ae17dfe47d35677ab0a84",
+    "semantic_hash": "30d6022fca1ae17dfe47d35677ab0a84"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-04-PLAN.md": {
+    "mtime": 1781792035.703126,
+    "ast_hash": "2909da396ced1bf77518a5747b5ccfcf",
+    "semantic_hash": "2909da396ced1bf77518a5747b5ccfcf"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-04-SUMMARY.md": {
+    "mtime": 1781806439.5231645,
+    "ast_hash": "1f67082f2bea593dc56b84e2d8ce4da7",
+    "semantic_hash": "1f67082f2bea593dc56b84e2d8ce4da7"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-05-PLAN.md": {
+    "mtime": 1781792035.9148216,
+    "ast_hash": "d503f91909da702fc6a6d00a52a0df81",
+    "semantic_hash": "d503f91909da702fc6a6d00a52a0df81"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-05-SUMMARY.md": {
+    "mtime": 1781806495.5186994,
+    "ast_hash": "6fc4eb32fee4e712ffa96bbbed3ae5e1",
+    "semantic_hash": "6fc4eb32fee4e712ffa96bbbed3ae5e1"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-CONTEXT.md": {
+    "mtime": 1781789982.4860651,
+    "ast_hash": "b054487f18544b833466f4df15734c0e",
+    "semantic_hash": "b054487f18544b833466f4df15734c0e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-PLAN-REVIEW-FIX.md": {
+    "mtime": 1781792052.304666,
+    "ast_hash": "4894dfa74bd75c6e259b318752f57f87",
+    "semantic_hash": "4894dfa74bd75c6e259b318752f57f87"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-PLATE-DECISION.md": {
+    "mtime": 1781796518.31141,
+    "ast_hash": "764f344bd7f39e4a39762e032473d4bd",
+    "semantic_hash": "764f344bd7f39e4a39762e032473d4bd"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\.planning\\phases\\16-plate-editor-migration\\16-VERIFICATION.md": {
+    "mtime": 1781810652.7712877,
+    "ast_hash": "e43bcac786cc321772299af8895dfbf3",
+    "semantic_hash": "e43bcac786cc321772299af8895dfbf3"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\AGENTS.md": {
+    "mtime": 1781797639.3882816,
+    "ast_hash": "35841f4bdd611f2be9eb2bd3385587dc",
+    "semantic_hash": "35841f4bdd611f2be9eb2bd3385587dc"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\AUDIT-FULL-2026-06-04.md": {
+    "mtime": 1781477879.874967,
+    "ast_hash": "0bdcafc77e519ffcc8fea6dbd62d896a",
+    "semantic_hash": "0bdcafc77e519ffcc8fea6dbd62d896a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\CODE-CLEANUP-PLAN.md": {
+    "mtime": 1781477879.875968,
+    "ast_hash": "fb09c1cabc54af172231ce12de3b3164",
+    "semantic_hash": "fb09c1cabc54af172231ce12de3b3164"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\DEEP-CODE-REVIEW-2026-06-04.md": {
+    "mtime": 1781477879.8769672,
+    "ast_hash": "e58ca2d194b93febcc6e11b560bfd17f",
+    "semantic_hash": "e58ca2d194b93febcc6e11b560bfd17f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\DEEP-UI-REVIEW-2026-06-04.md": {
+    "mtime": 1781477879.878968,
+    "ast_hash": "f4fbcb3b9bb26180983b7a7f4d2ec3b3",
+    "semantic_hash": "f4fbcb3b9bb26180983b7a7f4d2ec3b3"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\DESIGN_SYSTEM.md": {
+    "mtime": 1779822835.2514176,
+    "ast_hash": "a007228264877278db501a0bb0b763e7",
+    "semantic_hash": "a007228264877278db501a0bb0b763e7"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\PLAN-FIXES-2026-06-04.md": {
+    "mtime": 1781477879.8809683,
+    "ast_hash": "cabbd894ccb8521c65a443f219c93802",
+    "semantic_hash": "cabbd894ccb8521c65a443f219c93802"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\PLAN-UI-FIXES.md": {
+    "mtime": 1781477879.8819685,
+    "ast_hash": "76e31044f05d56720cd51fbd20f70622",
+    "semantic_hash": "76e31044f05d56720cd51fbd20f70622"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\PRODUCT.md": {
+    "mtime": 1780254630.3192778,
+    "ast_hash": "d06304e7fd5ae6e54df4fb6cffcbd9e1",
+    "semantic_hash": "d06304e7fd5ae6e54df4fb6cffcbd9e1"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\README.md": {
+    "mtime": 1781797639.1825128,
+    "ast_hash": "d32e5f7533a0fa94fa0291bdbbe9c142",
+    "semantic_hash": "d32e5f7533a0fa94fa0291bdbbe9c142"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\UI-REVIEW.md": {
+    "mtime": 1781477879.8829691,
+    "ast_hash": "e0be99375665939ca2ecdbf5857e0eff",
+    "semantic_hash": "e0be99375665939ca2ecdbf5857e0eff"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\UI-SPEC.md": {
+    "mtime": 1781477879.884968,
+    "ast_hash": "f9777f9d9bd025375452a84531f96ba4",
+    "semantic_hash": "f9777f9d9bd025375452a84531f96ba4"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds\\README.md": {
+    "mtime": 1776100759.6780117,
+    "ast_hash": "79ee532e11294e12a88342554881c10e",
+    "semantic_hash": "79ee532e11294e12a88342554881c10e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\audit-2026-06-02.md": {
+    "mtime": 1781477879.979151,
+    "ast_hash": "2900e4beec452e24c2b2ca3ece99899a",
+    "semantic_hash": "2900e4beec452e24c2b2ca3ece99899a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\audit-2026-06-04.md": {
+    "mtime": 1781477879.9801512,
+    "ast_hash": "faa2e15a572243788901a888ff347a18",
+    "semantic_hash": "faa2e15a572243788901a888ff347a18"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\code-review-verification-2026-06-02.md": {
+    "mtime": 1781477879.9811504,
+    "ast_hash": "9803d3427c623e78d4074f19fc97cc30",
+    "semantic_hash": "9803d3427c623e78d4074f19fc97cc30"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\design\\lego-block-system-design.html": {
+    "mtime": 1779022728.668783,
+    "ast_hash": "f6c0b40a55db40341c823a997d043f0a",
+    "semantic_hash": "f6c0b40a55db40341c823a997d043f0a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\design\\preview.html": {
+    "mtime": 1779078924.1113167,
+    "ast_hash": "e8693a28f587cb1ac59101645507ca3e",
+    "semantic_hash": "e8693a28f587cb1ac59101645507ca3e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\docs\\SCENE-MODEL-CONTRACT.md": {
+    "mtime": 1781797639.566875,
+    "ast_hash": "005c7e6d851be85ee02cfcbcd288040d",
+    "semantic_hash": "005c7e6d851be85ee02cfcbcd288040d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\docs\\UX-REFRESH-UI-SPEC.md": {
+    "mtime": 1779823794.355157,
+    "ast_hash": "571b25c0a41d9167d13dfb39a2220845",
+    "semantic_hash": "571b25c0a41d9167d13dfb39a2220845"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\docs\\WEB_DEPLOYMENT.md": {
+    "mtime": 1779822835.9631953,
+    "ast_hash": "a31a4458996f989672c5df778ad9d9a0",
+    "semantic_hash": "a31a4458996f989672c5df778ad9d9a0"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\docs\\plans\\2026-05-31-fix-critical-issues.md": {
+    "mtime": 1780242672.923482,
+    "ast_hash": "fc2f2caf8499ccb2ba9141d9d0b28dc6",
+    "semantic_hash": "fc2f2caf8499ccb2ba9141d9d0b28dc6"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\docs\\plans\\2026-05-31-google-docs-editor.md": {
+    "mtime": 1780256351.86558,
+    "ast_hash": "76c1abd90e6b9a5fe2c0d9283e1acb53",
+    "semantic_hash": "76c1abd90e6b9a5fe2c0d9283e1acb53"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\docs\\plans\\2026-06-01-fix-ux-ui-by-complexity.md": {
+    "mtime": 1780303168.655422,
+    "ast_hash": "5dc94ce2891c66757cb51df07834eccc",
+    "semantic_hash": "5dc94ce2891c66757cb51df07834eccc"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\docs\\plans\\2026-06-01-fix-ux-ui-critical-issues.md": {
+    "mtime": 1780300713.951794,
+    "ast_hash": "1703de9a13df29f7b11822623254ae75",
+    "semantic_hash": "1703de9a13df29f7b11822623254ae75"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\docs\\plans\\2026-06-04-lego-mechanics-to-paper-editor.md": {
+    "mtime": 1781477880.233012,
+    "ast_hash": "3ae252b17b7d542f8df8e2d0c69600d8",
+    "semantic_hash": "3ae252b17b7d542f8df8e2d0c69600d8"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\docs\\plans\\2026-06-04-paper-slash-blocks-full-implementation.md": {
+    "mtime": 1781477880.2350118,
+    "ast_hash": "0df5a3282e1ba25a3f9c1c05f71c8e1a",
+    "semantic_hash": "0df5a3282e1ba25a3f9c1c05f71c8e1a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\docs\\research\\vn-engine-features-and-pain-points.md": {
+    "mtime": 1779687757.6300917,
+    "ast_hash": "cfe1260f8dd003da5aea8e03591a3b2b",
+    "semantic_hash": "cfe1260f8dd003da5aea8e03591a3b2b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\standalone-UI-REVIEW-2026-05-28.md": {
+    "mtime": 1781477880.3839295,
+    "ast_hash": "d3a31797981acede68fcc9ebd61e066c",
+    "semantic_hash": "d3a31797981acede68fcc9ebd61e066c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\standalone-UI-REVIEW.md": {
+    "mtime": 1781477880.3849258,
+    "ast_hash": "15011a26a1203b39784005f917df1314",
+    "semantic_hash": "15011a26a1203b39784005f917df1314"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\README.md": {
+    "mtime": 1781477880.409862,
+    "ast_hash": "9afe3e94667e0409eb6b129cc307b14d",
+    "semantic_hash": "9afe3e94667e0409eb6b129cc307b14d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\SCHEMA.md": {
+    "mtime": 1780220733.6347525,
+    "ast_hash": "a5cdab6fcf5d3aa3d5c2f6910e5cc4d9",
+    "semantic_hash": "a5cdab6fcf5d3aa3d5c2f6910e5cc4d9"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\architecture-reference.md": {
+    "mtime": 1781477880.4168642,
+    "ast_hash": "6f449a7d7fbb55836585aca6fa0bfd67",
+    "semantic_hash": "6f449a7d7fbb55836585aca6fa0bfd67"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\audio-system.md": {
+    "mtime": 1780038712.9103856,
+    "ast_hash": "b5be5310746e0f056eeb11fc2768719e",
+    "semantic_hash": "b5be5310746e0f056eeb11fc2768719e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\block-system-migration-note.md": {
+    "mtime": 1781477880.4188645,
+    "ast_hash": "a670a598fce3cf1a8b59e3ce9f248596",
+    "semantic_hash": "a670a598fce3cf1a8b59e3ce9f248596"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\block-types-reference.md": {
+    "mtime": 1780038395.1624413,
+    "ast_hash": "6360952a7e3f72e4acf93ef779c26c97",
+    "semantic_hash": "6360952a7e3f72e4acf93ef779c26c97"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\changelog.md": {
+    "mtime": 1781509771.716073,
+    "ast_hash": "dcdefcd84099df2e481b6e2afa0fc9ce",
+    "semantic_hash": "dcdefcd84099df2e481b6e2afa0fc9ce"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\code-analysis-report-2026-05-29.md": {
+    "mtime": 1781477880.4198647,
+    "ast_hash": "ca8d964be0360b4b9e1bec9fee7eb5e2",
+    "semantic_hash": "ca8d964be0360b4b9e1bec9fee7eb5e2"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\code-analysis-report-2026-06-01.md": {
+    "mtime": 1781477880.4208636,
+    "ast_hash": "74b08247cd9b94ff66253b99c61f36a8",
+    "semantic_hash": "74b08247cd9b94ff66253b99c61f36a8"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\code-analysis-report-2026-06-02.md": {
+    "mtime": 1781477880.4228637,
+    "ast_hash": "503c1a362b5091534825b625e6dc8369",
+    "semantic_hash": "503c1a362b5091534825b625e6dc8369"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\components-reference.md": {
+    "mtime": 1780038457.3842776,
+    "ast_hash": "b99958b45354e59b889ca8b009509673",
+    "semantic_hash": "b99958b45354e59b889ca8b009509673"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\decomposition-report-2026-06-03.md": {
+    "mtime": 1781477880.4238784,
+    "ast_hash": "48a30ef012d074ace26fcce131de6fb4",
+    "semantic_hash": "48a30ef012d074ace26fcce131de6fb4"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\engine-reference.md": {
+    "mtime": 1781525398.235099,
+    "ast_hash": "1b4168130bbfcf7391b4b567df798bef",
+    "semantic_hash": "1b4168130bbfcf7391b4b567df798bef"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\final-migration-audit.md": {
+    "mtime": 1780249629.2341154,
+    "ast_hash": "b0277cbef154d031859ec3bfa6b5304e",
+    "semantic_hash": "b0277cbef154d031859ec3bfa6b5304e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\fixes-2026-06-02.md": {
+    "mtime": 1781477880.425876,
+    "ast_hash": "a61f150921d15432c9317f5fce75ebc5",
+    "semantic_hash": "a61f150921d15432c9317f5fce75ebc5"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\fixes-plan-2026-06-15.md": {
+    "mtime": 1781505768.7163756,
+    "ast_hash": "52d860f4350c272cb92b17539ec58179",
+    "semantic_hash": "52d860f4350c272cb92b17539ec58179"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\fixes-plan-2026-06-16.md": {
+    "mtime": 1781511786.420387,
+    "ast_hash": "3522caf11d17dd1cd97a32c2a359f3fa",
+    "semantic_hash": "3522caf11d17dd1cd97a32c2a359f3fa"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\full-code-review-2026-06-01.md": {
+    "mtime": 1781477880.4268727,
+    "ast_hash": "a0d451ce0587219800db4d93af1ce9f7",
+    "semantic_hash": "a0d451ce0587219800db4d93af1ce9f7"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\full-project-review-2026-06-15.md": {
+    "mtime": 1781498105.2805676,
+    "ast_hash": "e94628b27e5f918a70d552caa0096e3e",
+    "semantic_hash": "e94628b27e5f918a70d552caa0096e3e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\full-project-review-2026-06-16.md": {
+    "mtime": 1781510843.9146886,
+    "ast_hash": "c8acc6ccdc24e3e5bdea4293ae972088",
+    "semantic_hash": "c8acc6ccdc24e3e5bdea4293ae972088"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\full-project-review-2026-06-17.md": {
+    "mtime": 1781551362.822111,
+    "ast_hash": "773830612eaf64583e731c7abc266975",
+    "semantic_hash": "773830612eaf64583e731c7abc266975"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\full-verification-report-2026-06-03.md": {
+    "mtime": 1781477880.428876,
+    "ast_hash": "8b8f229c491fc40b67b621e67216746a",
+    "semantic_hash": "8b8f229c491fc40b67b621e67216746a"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\hooks-reference.md": {
+    "mtime": 1781509744.2105148,
+    "ast_hash": "7600934d1fb9b1ad4348c51a6c278aaa",
+    "semantic_hash": "7600934d1fb9b1ad4348c51a6c278aaa"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\index.md": {
+    "mtime": 1781551436.0995767,
+    "ast_hash": "341f195a81657c7bf942a15bf7b4f0b7",
+    "semantic_hash": "341f195a81657c7bf942a15bf7b4f0b7"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\migration-assessment.md": {
+    "mtime": 1780171632.1672573,
+    "ast_hash": "dc5dfe7bcbdf249e7af8f8f2ec51e086",
+    "semantic_hash": "dc5dfe7bcbdf249e7af8f8f2ec51e086"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\migration-guide.md": {
+    "mtime": 1780038881.2703815,
+    "ast_hash": "fe21a22fe83e71c650ff963c14ff6dd3",
+    "semantic_hash": "fe21a22fe83e71c650ff963c14ff6dd3"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\optimization-plan-2026-06-01.md": {
+    "mtime": 1781477880.4319906,
+    "ast_hash": "72a02202247170260e17b4676101efbc",
+    "semantic_hash": "72a02202247170260e17b4676101efbc"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\overview.md": {
+    "mtime": 1780220733.6387594,
+    "ast_hash": "c942de2cad111ff4572feb907ba53dcc",
+    "semantic_hash": "c942de2cad111ff4572feb907ba53dcc"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\paper-editor-migration-plan.md": {
+    "mtime": 1781477880.433003,
+    "ast_hash": "598c950c358e82215c6f46a6afa7c592",
+    "semantic_hash": "598c950c358e82215c6f46a6afa7c592"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\project-map.md": {
+    "mtime": 1781478005.1690147,
+    "ast_hash": "abdbf51110e7da4fa7f2ab731d54f89d",
+    "semantic_hash": "abdbf51110e7da4fa7f2ab731d54f89d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\security-audit-report-2026-05-31-rev2.md": {
+    "mtime": 1780508769.084881,
+    "ast_hash": "b9fcdf1d2c1e895a4a0e12660fb02bac",
+    "semantic_hash": "b9fcdf1d2c1e895a4a0e12660fb02bac"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\security-audit-report-2026-05-31.md": {
+    "mtime": 1781477880.4350026,
+    "ast_hash": "5fb97bdc743920fbe7e07d4068011300",
+    "semantic_hash": "5fb97bdc743920fbe7e07d4068011300"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\sri-strategy.md": {
+    "mtime": 1781477880.4370024,
+    "ast_hash": "8bba776cedfe7d2650e9bb9e7e3dbd10",
+    "semantic_hash": "8bba776cedfe7d2650e9bb9e7e3dbd10"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\stores-reference.md": {
+    "mtime": 1780038608.287233,
+    "ast_hash": "8a382affd98c047848cea6bf7afff2cc",
+    "semantic_hash": "8a382affd98c047848cea6bf7afff2cc"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\testing-guide.md": {
+    "mtime": 1780038808.573753,
+    "ast_hash": "61c815faf85bdb47f60160759829772b",
+    "semantic_hash": "61c815faf85bdb47f60160759829772b"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\wiki\\ux-ui-analysis-2026-06-01.md": {
+    "mtime": 1781477880.4395266,
+    "ast_hash": "52c8ddb06f289cb71164100cbcb2d9ef",
+    "semantic_hash": "52c8ddb06f289cb71164100cbcb2d9ef"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\background\\bg-ancient-library.png": {
+    "mtime": 1776105252.7089183,
+    "ast_hash": "76fa0e77549fa2f7f2ecbfc093990dbc",
+    "semantic_hash": "76fa0e77549fa2f7f2ecbfc093990dbc"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\background\\bg-grand-hall.png": {
+    "mtime": 1776105235.2170148,
+    "ast_hash": "fb0f45a66848053b234e486f75e66194",
+    "semantic_hash": "fb0f45a66848053b234e486f75e66194"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\background\\bg-hall-mirrors.png": {
+    "mtime": 1776105244.5292673,
+    "ast_hash": "31bcf54ae28d2efb65bc01ff2fdfeb4c",
+    "semantic_hash": "31bcf54ae28d2efb65bc01ff2fdfeb4c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\background\\bg-museum-entrance.png": {
+    "mtime": 1776105189.176308,
+    "ast_hash": "3a895efc47eaf5a0e1ba6f91d85b0a10",
+    "semantic_hash": "3a895efc47eaf5a0e1ba6f91d85b0a10"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\background\\bg-treasure-chamber.png": {
+    "mtime": 1776105264.9505882,
+    "ast_hash": "e8e563431eebf3055700a411de52c32f",
+    "semantic_hash": "e8e563431eebf3055700a411de52c32f"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\background\\bg-upper-library.png": {
+    "mtime": 1776105257.3291245,
+    "ast_hash": "a8b6e604c6ed4491cdeed094f27aee3c",
+    "semantic_hash": "a8b6e604c6ed4491cdeed094f27aee3c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\charakters\\char-guide.png": {
+    "mtime": 1776105586.6514814,
+    "ast_hash": "0d996f40c2de010ef04b5fd7bbde116d",
+    "semantic_hash": "0d996f40c2de010ef04b5fd7bbde116d"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\charakters\\char-librarian.png": {
+    "mtime": 1776105583.0204532,
+    "ast_hash": "19525e93e5b7c4ad4b5827cd64cdd315",
+    "semantic_hash": "19525e93e5b7c4ad4b5827cd64cdd315"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\charakters\\char-reflection.png": {
+    "mtime": 1776105578.5140386,
+    "ast_hash": "a4cf2b38ecf8e738383704a60fade997",
+    "semantic_hash": "a4cf2b38ecf8e738383704a60fade997"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\android-icon-background.png": {
+    "mtime": 1774974430.0,
+    "ast_hash": "2d65569cc0e2afdcea0af9f9902d4173",
+    "semantic_hash": "2d65569cc0e2afdcea0af9f9902d4173"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\android-icon-foreground.png": {
+    "mtime": 1774974430.0,
+    "ast_hash": "b162bde81a791c8060ed6f0ce42f424e",
+    "semantic_hash": "b162bde81a791c8060ed6f0ce42f424e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\android-icon-monochrome.png": {
+    "mtime": 1774974430.0,
+    "ast_hash": "1e097dab989759fc0b69440092ca22cd",
+    "semantic_hash": "1e097dab989759fc0b69440092ca22cd"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\favicon.png": {
+    "mtime": 1774974430.0,
+    "ast_hash": "b162bde81a791c8060ed6f0ce42f424e",
+    "semantic_hash": "b162bde81a791c8060ed6f0ce42f424e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\icon.png": {
+    "mtime": 1774974430.0,
+    "ast_hash": "b162bde81a791c8060ed6f0ce42f424e",
+    "semantic_hash": "b162bde81a791c8060ed6f0ce42f424e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\img-constellation-phoenix.png": {
+    "mtime": 1776106472.2654507,
+    "ast_hash": "baceb8fd37ef8e014971666cb5db23f9",
+    "semantic_hash": "baceb8fd37ef8e014971666cb5db23f9"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\img-phoenix-illustration.png": {
+    "mtime": 1776106467.8518984,
+    "ast_hash": "632af620618fe4e279afc48eb3503a89",
+    "semantic_hash": "632af620618fe4e279afc48eb3503a89"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\img-reflection-hint.png": {
+    "mtime": 1776106463.3209422,
+    "ast_hash": "55cc9f2a042bed21c1f23207ddfa3997",
+    "semantic_hash": "55cc9f2a042bed21c1f23207ddfa3997"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\partial-react-logo.png": {
+    "mtime": 1774974430.0,
+    "ast_hash": "8f14e478886737f3323a2ac79c833749",
+    "semantic_hash": "8f14e478886737f3323a2ac79c833749"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\react-logo.png": {
+    "mtime": 1774974430.0,
+    "ast_hash": "695d5a1c6f29a689130f3aaa573aec6e",
+    "semantic_hash": "695d5a1c6f29a689130f3aaa573aec6e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\react-logo@2x.png": {
+    "mtime": 1774974430.0,
+    "ast_hash": "b507e7f2c91ebc8fe24dee79ccb3b600",
+    "semantic_hash": "b507e7f2c91ebc8fe24dee79ccb3b600"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\react-logo@3x.png": {
+    "mtime": 1774974430.0,
+    "ast_hash": "8a4d0e5b845044e56e3b2df627d01cfd",
+    "semantic_hash": "8a4d0e5b845044e56e3b2df627d01cfd"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\images\\splash-icon.png": {
+    "mtime": 1774974430.0,
+    "ast_hash": "b162bde81a791c8060ed6f0ce42f424e",
+    "semantic_hash": "b162bde81a791c8060ed6f0ce42f424e"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\splash-screens\\splash-chapter1.png": {
+    "mtime": 1776106173.99661,
+    "ast_hash": "f7b17c9b0e8dd3da11b8ae71a8df0b13",
+    "semantic_hash": "f7b17c9b0e8dd3da11b8ae71a8df0b13"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\splash-screens\\splash-title.png": {
+    "mtime": 1776105778.408187,
+    "ast_hash": "8ff73d66dfeeaf72f6f1432dd3f26668",
+    "semantic_hash": "8ff73d66dfeeaf72f6f1432dd3f26668"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\splash-screens\\splash-victory.png": {
+    "mtime": 1776106177.8819022,
+    "ast_hash": "791f8e0a959d8a1626c4745e263bc1ce",
+    "semantic_hash": "791f8e0a959d8a1626c4745e263bc1ce"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds-sample\\music-eerie.mp3": {
+    "mtime": 1776107054.2102492,
+    "ast_hash": "92ba6d772884c9d68223131072c66ffc",
+    "semantic_hash": "92ba6d772884c9d68223131072c66ffc"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds-sample\\music-magical.mp3": {
+    "mtime": 1776107289.6924999,
+    "ast_hash": "66ab62a1a4d621554cb21553500e7409",
+    "semantic_hash": "66ab62a1a4d621554cb21553500e7409"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds-sample\\music-mysterious-adventure.mp3": {
+    "mtime": 1776107607.8825715,
+    "ast_hash": "a11d203f33b9eafbf0c77350a2207c40",
+    "semantic_hash": "a11d203f33b9eafbf0c77350a2207c40"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds-sample\\music-peaceful.mp3": {
+    "mtime": 1776107127.4311316,
+    "ast_hash": "09960288e08b9366a72b22b2f0da7b12",
+    "semantic_hash": "09960288e08b9366a72b22b2f0da7b12"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds-sample\\music-triumphant.mp3": {
+    "mtime": 1776107391.2493224,
+    "ast_hash": "d03efe718db195261e56f558bc9411d8",
+    "semantic_hash": "d03efe718db195261e56f558bc9411d8"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds-sample\\sfx-door-open.mp3": {
+    "mtime": 1776108190.336301,
+    "ast_hash": "ff9c32d6c2c1bac53e9c8aa8876ff37c",
+    "semantic_hash": "ff9c32d6c2c1bac53e9c8aa8876ff37c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds-sample\\sfx-item-get-special.mp3": {
+    "mtime": 1776108291.613167,
+    "ast_hash": "eb25cc5a0637d941de6a46478ecb8b84",
+    "semantic_hash": "eb25cc5a0637d941de6a46478ecb8b84"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds-sample\\sfx-item-get.mp3": {
+    "mtime": 1776108243.023291,
+    "ast_hash": "a6e95b0681e31e29d55f6c83c60dfb44",
+    "semantic_hash": "a6e95b0681e31e29d55f6c83c60dfb44"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds-sample\\sfx-stairs.mp3": {
+    "mtime": 1776108376.8772476,
+    "ast_hash": "c192fb4a5e6001e8e3974acf4d7002df",
+    "semantic_hash": "c192fb4a5e6001e8e3974acf4d7002df"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds-sample\\voice-guide-welcome.mp3": {
+    "mtime": 1776107933.329103,
+    "ast_hash": "29c32284941d2a3354f58ac9edac967c",
+    "semantic_hash": "29c32284941d2a3354f58ac9edac967c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds\\button-press.ogg": {
+    "mtime": 1776101434.2871108,
+    "ast_hash": "c22f9044d3cb91bcb70db12dfc5f8e5c",
+    "semantic_hash": "c22f9044d3cb91bcb70db12dfc5f8e5c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds\\error.wav": {
+    "mtime": 1776101563.6629531,
+    "ast_hash": "1df29a9c5a91e6474809b979e1770f1c",
+    "semantic_hash": "1df29a9c5a91e6474809b979e1770f1c"
+  },
+  "D:\\Programs\\D\\visual_novel_engine\\assets\\sounds\\success_action.wav": {
+    "mtime": 1776101502.7702055,
+    "ast_hash": "590f793358d1556efab37f1209d30f05",
+    "semantic_hash": "590f793358d1556efab37f1209d30f05"
+  }
+}

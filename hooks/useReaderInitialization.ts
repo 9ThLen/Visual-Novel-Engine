@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useStoryActions } from '@/lib/story-hooks';
+import { useStoryActions } from '@/hooks/use-story-state';
 import { resolveCanonicalStartSceneId } from '@/lib/scene-operations';
 import { useAppStore } from '@/stores/use-app-store';
 import type { Story } from '@/lib/scene-operations';
 import type { PlaybackState } from '@/lib/engine/types';
-import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
+import type { TimelineStep } from '@/lib/engine/types';
 import demoStory from '@/assets/demo-story.json';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 import { shouldReusePlaybackState } from '@/lib/reader-launch';
+import { toReaderScene, type ReaderScene } from '@/lib/reader-scene';
 
 export function useReaderInitialization(
   storyIdParam?: string | string[],
@@ -28,14 +29,15 @@ export function useReaderInitialization(
   // Safety timeout: force loading to resolve after 10s even if initialization hangs
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const currentSceneRecord: SceneRecord | null = useMemo(() => {
+  const currentReaderScene: ReaderScene | null = useMemo(() => {
     if (!currentStoryMetadata || !playbackState) return null;
-    return sceneRecordsByStory[playbackState.storyId]?.[playbackState.currentSceneId] ?? null;
+    const record = sceneRecordsByStory[playbackState.storyId]?.[playbackState.currentSceneId];
+    return record ? toReaderScene(record) : null;
   }, [currentStoryMetadata, playbackState, sceneRecordsByStory]);
 
   const currentTimeline: TimelineStep[] = useMemo(() => {
-    return currentSceneRecord?.timeline ?? [];
-  }, [currentSceneRecord]);
+    return currentReaderScene?.timeline ?? [];
+  }, [currentReaderScene]);
 
   const stateRef = useRef({ currentStoryId, playbackState });
 
@@ -126,10 +128,18 @@ export function useReaderInitialization(
 
   // Synchronize loading state: only resolve loading when we have a valid synchronized scene
   useEffect(() => {
-    if (currentSceneRecord && currentStoryMetadata && playbackState?.storyId === currentStoryMetadata.id) {
+    if (currentReaderScene && currentStoryMetadata && playbackState?.storyId === currentStoryMetadata.id) {
       setIsLoading(false);
     }
-  }, [currentSceneRecord, currentStoryMetadata, playbackState]);
+  }, [currentReaderScene, currentStoryMetadata, playbackState]);
 
-  return { isLoading, sceneRecord: currentSceneRecord, timeline: currentTimeline, story: currentStoryMetadata, playbackState, updatePlaybackState };
+  return {
+    isLoading,
+    scene: currentReaderScene,
+    sceneRecord: currentReaderScene,
+    timeline: currentTimeline,
+    story: currentStoryMetadata,
+    playbackState,
+    updatePlaybackState,
+  };
 }

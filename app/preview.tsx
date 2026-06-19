@@ -9,10 +9,10 @@
 import React from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useStoryState } from '@/lib/story-hooks';
+import { useStoryState } from '@/hooks/use-story-state';
 import { PreviewScreen } from '@/components/editor/PreviewScreen';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 
 export default function PreviewRoute() {

@@ -4,7 +4,7 @@ import { Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { Button } from '@/components/ui';
 import { AssetPicker, type AssetCategory } from '@/components/editor/modals/AssetPicker';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import type {
   BackgroundBlockData,
   CameraBlockData,

@@ -3,10 +3,21 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { useReaderAudio } from '../../hooks/useReaderAudio';
 import { enhancedAudioManager } from '../../lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '../../lib/asset-resolver';
-import { getPlaybackAudioLibrary } from '../../lib/audio-library';
+import { getPlaybackAudioLibraryPure } from '../../lib/audio-library';
 import { deactivateReaderAudioSession } from '../../lib/reader-audio-session';
 import type { UserSettings } from '../../lib/user-settings';
-import type { StoryScene } from '../../lib/types';
+import type { AudioTrigger } from '../../lib/audio-types';
+
+type StoryScene = {
+  id: string;
+  text: string;
+  characters: unknown[];
+  choices: unknown[];
+  backgroundImageUri?: string | null;
+  voiceAudioUri?: string | null;
+  musicUri?: string | null;
+  audioTriggers?: AudioTrigger[];
+};
 
 const STORY_ID = 'story-1';
 
@@ -66,14 +77,14 @@ describe('useReaderAudio', () => {
   describe('audio library', () => {
     it('should load story audio library on mount', async () => {
       const library = [{ id: 'a1', name: 'SFX', uri: 'sfx.mp3', type: 'sfx' as const, loop: false, volume: 1, tags: [], createdAt: 0 }];
-      (getPlaybackAudioLibrary as any).mockResolvedValue(library);
+      (getPlaybackAudioLibraryPure as any).mockResolvedValue(library);
 
       renderHook(() =>
         useReaderAudio(STORY_ID, createScene(), defaultSettings, { blockedByOverlay: false }),
       );
 
       await waitFor(() => {
-        expect(getPlaybackAudioLibrary).toHaveBeenCalledWith(STORY_ID);
+        expect(getPlaybackAudioLibraryPure).toHaveBeenCalledWith(STORY_ID, expect.anything(), expect.anything());
         expect(enhancedAudioManager.loadLibrary).toHaveBeenCalledWith(library);
       });
     });

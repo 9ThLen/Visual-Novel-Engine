@@ -14,9 +14,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { createAudioPlayer } from 'expo-audio';
 import { useColors } from '@/hooks/use-colors';
 import { useAppStore } from '@/stores/use-app-store';
-import { addAssetToLibrary, type LibraryAsset } from '@/lib/media-library-service';
+import { addAssetToLibrary } from '@/stores/media-library-actions';
+import { type LibraryAsset } from '@/lib/media-library-service';
 import { resolveAssetUri, resolvePlayableAssetUri } from '@/lib/asset-resolver';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 
 export type AssetCategory = 'backgrounds' | 'characters' | 'sprites' | 'music' | 'sfx' | 'voice' | 'ui';

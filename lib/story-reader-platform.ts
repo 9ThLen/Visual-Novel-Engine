@@ -11,7 +11,7 @@ export function getStoryReaderContainerStyle(
   colors?: { background?: string }
 ): Pick<ViewStyle, 'overflow' | 'backgroundColor'> {
   return {
-    backgroundColor: (colors?.background ?? null) as unknown as string,
+    backgroundColor: colors?.background ?? undefined,
     overflow: 'hidden',
   };
 }
@@ -20,6 +20,6 @@ export function getStoryReaderSpeakerTextStyle(
   colors?: { foreground?: string }
 ): Pick<TextStyle, 'color'> {
   return {
-    color: (colors?.foreground ?? null) as unknown as string,
+    color: colors?.foreground ?? undefined,
   };
 }

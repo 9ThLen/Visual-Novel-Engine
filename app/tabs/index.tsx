@@ -12,12 +12,12 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
-import { useStoryState, useStoryActions } from '@/lib/story-hooks';
+import { useStoryState, useStoryActions } from '@/hooks/use-story-state';
 import { useAppStore } from '@/stores/use-app-store';
-import { getLibraryAssets, addAssetToLibrary } from '@/lib/media-library-service';
+import { getLibraryAssets, addAssetToLibrary } from '@/stores/media-library-actions';
 import { StoryMetadata } from '@/lib/story-domain';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import { withAlpha } from '@/lib/_core/theme';
 import { Button } from '@/components/ui';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';

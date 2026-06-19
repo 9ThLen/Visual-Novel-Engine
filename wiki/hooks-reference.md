@@ -1,6 +1,27 @@
 # Hooks Reference
 
-Last updated: 2026-05.29
+Last updated: 2026-06-15
+
+## Story State Hooks
+
+### useStoryState
+- **File:** `hooks/use-story-state.ts` (extracted from `lib/story-hooks.ts`)
+- **Purpose:** Read story-related state from Zustand store.
+- **Returns:** `{ stories, storiesMetadata, currentStory, currentStoryId, sceneRecordsByStory, playbackState, settings, saveSlots, isLoaded }`
+- **Note:** Extracted from `lib/story-hooks.ts` to resolve layer boundary violation. The original file re-exports for backward compatibility.
+
+### useStoryActions
+- **File:** `hooks/use-story-state.ts` (extracted from `lib/story-hooks.ts`)
+- **Purpose:** Story-related actions (CRUD, save/load, settings).
+- **Returns:** `{ loadStories, createStory, setCurrentStory, addStory, deleteStory, deleteScene, saveGame, loadGame, deleteSaveSlot, updateSettings, setLanguage, updatePlaybackState, setMediaLibrary }`
+
+## Internationalization Hooks
+
+### useI18n
+- **File:** `hooks/use-i18n.ts` (moved from `lib/i18n.ts`)
+- **Purpose:** Internationalization hook — reads language directly from Zustand.
+- **Signature:** `useI18n() => { language, setLanguage, t, pluralize, languages }`
+- **Note:** Moved from `lib/i18n.ts` to resolve layer boundary violation. The original file re-exports for backward compatibility.
 
 ## Reader Hooks
 

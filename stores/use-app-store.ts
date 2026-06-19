@@ -24,11 +24,13 @@ import {
 } from '@/lib/scene-operations';
 import { StoryDomain, type StoryMetadata } from '@/lib/story-domain';
 import { buildCanonicalLoadSnapshot, buildCanonicalSaveSlot } from '@/lib/reader-runtime';
+import { toReaderSceneMap } from '@/lib/reader-scene';
 import {
   applyCanonicalSceneDelete,
   buildCanonicalSceneRecordsFromLegacyScenes,
   createCanonicalStorySeed,
   removeCanonicalConnection,
+  replaceConnectionByOutputPort,
   syncCanonicalStartScene,
 } from '@/lib/scene-operations';
 import type { Character } from '@/lib/character-types';
@@ -262,7 +264,7 @@ export const useAppStore = create<AppState & AppActions>()(
           slotId,
           {
             storiesMetadata: state.storiesMetadata,
-            sceneRecordsByStory: state.sceneRecordsByStory,
+            sceneRecordsByStory: toReaderSceneMap(state.sceneRecordsByStory),
           },
           state.playbackState
         );
@@ -279,7 +281,7 @@ export const useAppStore = create<AppState & AppActions>()(
         return buildCanonicalLoadSnapshot(
           {
             storiesMetadata: state.storiesMetadata,
-            sceneRecordsByStory: state.sceneRecordsByStory,
+            sceneRecordsByStory: toReaderSceneMap(state.sceneRecordsByStory),
           },
           slot
         );
@@ -405,11 +407,11 @@ export const useAppStore = create<AppState & AppActions>()(
           const storyRecords = { ...(s.sceneRecordsByStory[storyId] || {}) };
           const fromScene = storyRecords[fromSceneId];
           if (!fromScene) return {};
-          const existing = fromScene.connections || [];
-          const filtered = existing.filter(
-            (c) => !(c.targetSceneId === connection.targetSceneId && c.outputPort === connection.outputPort)
-          );
-          storyRecords[fromSceneId] = { ...fromScene, connections: [...filtered, connection], updatedAt: Date.now() };
+          storyRecords[fromSceneId] = {
+            ...fromScene,
+            connections: replaceConnectionByOutputPort(fromScene.connections || [], connection),
+            updatedAt: Date.now(),
+          };
           return { sceneRecordsByStory: { ...s.sceneRecordsByStory, [storyId]: storyRecords } };
         }),
 

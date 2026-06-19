@@ -1,17 +1,16 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button } from '@/components/ui';
+import { Button, ConfirmDialog } from '@/components/ui';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { createSceneRecordFromEditorDraft } from '@/lib/editor-scene-draft';
 import type { BlockType, SceneRecord } from '@/lib/engine/types';
 import { generateId } from '@/lib/id-utils';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import { useAppStore } from '@/stores/use-app-store';
-import { useEditorStore } from '@/stores/use-editor-store';
 import { SceneSelector } from './SceneSelector';
 
 interface SceneManagerProps {
@@ -52,6 +51,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
   const saveSceneRecord = useAppStore((state) => state.saveSceneRecord);
   const deleteSceneRecord = useAppStore((state) => state.deleteSceneRecord);
   const setStartScene = useAppStore((state) => state.setStartScene);
+  const updateSceneConnection = useAppStore((state) => state.updateSceneConnection);
   const sceneRecordsByStory = useAppStore((state) => state.sceneRecordsByStory);
 
   const story = storiesMetadata.find((metadata) => metadata.id === storyId);
@@ -64,6 +64,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
   const [showSceneSelector, setShowSceneSelector] = useState(false);
   const [showNewSceneForm, setShowNewSceneForm] = useState(false);
   const [newSceneName, setNewSceneName] = useState('');
+  const [sceneToDelete, setSceneToDelete] = useState<SceneRecord | null>(null);
 
   const scenes = useMemo(() => {
     const allScenes = Object.values(storyRecords);
@@ -106,7 +107,6 @@ export function SceneManager({ storyId }: SceneManagerProps) {
   }, [newSceneName, scenes.length, storyId, saveSceneRecord, openSceneEditor]);
 
   const handleEditScene = useCallback((scene: SceneRecord) => {
-    useEditorStore.getState().setScene(scene.id, scene.name, scene.timeline || []);
     openSceneEditor(scene.id);
   }, [openSceneEditor]);
 
@@ -127,19 +127,14 @@ export function SceneManager({ storyId }: SceneManagerProps) {
   }, [saveSceneRecord, t]);
 
   const handleDeleteScene = useCallback((scene: SceneRecord) => {
-    Alert.alert(
-      t('editor.confirmDeleteSceneTitle'),
-      t('editor.confirmDeleteSceneMessage', { name: scene.name }),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.delete'),
-          style: 'destructive',
-          onPress: () => deleteSceneRecord(storyId, scene.id),
-        },
-      ],
-    );
-  }, [deleteSceneRecord, storyId, t]);
+    setSceneToDelete(scene);
+  }, []);
+
+  const confirmDeleteScene = useCallback(() => {
+    if (!sceneToDelete) return;
+    deleteSceneRecord(storyId, sceneToDelete.id);
+    setSceneToDelete(null);
+  }, [deleteSceneRecord, sceneToDelete, storyId]);
 
   const handleSetStart = useCallback((sceneId: string) => {
     setStartScene(storyId, sceneId);
@@ -156,9 +151,17 @@ export function SceneManager({ storyId }: SceneManagerProps) {
       100 + Math.floor(scenes.length / 3) * 200,
     );
     saveSceneRecord(record);
-    useEditorStore.getState().setScene(record.id, record.name, record.timeline);
     openSceneEditor(newId);
   }, [scenes.length, storyId, saveSceneRecord, openSceneEditor, t]);
+
+  const handleConnectScenes = useCallback((fromSceneId: string, output: string, toSceneId: string) => {
+    updateSceneConnection(storyId, fromSceneId, {
+      targetSceneId: toSceneId,
+      outputPort: output,
+      label: output,
+    });
+    setShowSceneSelector(false);
+  }, [storyId, updateSceneConnection]);
 
   const openPlay = useCallback(() => {
     navigateWithViewTransition(() => router.push({ pathname: '/play', params: { storyId } }));
@@ -335,7 +338,17 @@ export function SceneManager({ storyId }: SceneManagerProps) {
         visible={showSceneSelector}
         onClose={() => setShowSceneSelector(false)}
         onSelectScene={handleSceneImport}
-        onConnectScenes={() => {}}
+        onConnectScenes={handleConnectScenes}
+        storyScenes={Object.values(storyRecords).map((scene) => ({ id: scene.id, name: scene.name }))}
+      />
+      <ConfirmDialog
+        visible={sceneToDelete !== null}
+        title={t('editor.confirmDeleteSceneTitle')}
+        message={t('editor.confirmDeleteSceneMessage', { name: sceneToDelete?.name ?? '' })}
+        confirmLabel={t('common.delete')}
+        onConfirm={confirmDeleteScene}
+        onCancel={() => setSceneToDelete(null)}
+        destructive
       />
     </View>
   );

@@ -3,17 +3,16 @@ import {
   View,
   Text,
   FlatList,
-  Alert,
   Image,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
-import { useStoryState, useStoryActions } from '@/lib/story-hooks';
+import { useStoryState, useStoryActions } from '@/hooks/use-story-state';
 import { useColors } from '@/hooks/use-colors';
 import { SaveSlot } from '@/lib/story-domain';
-import { useI18n } from '@/lib/i18n';
-import { Button, IconSymbol } from '@/components/ui';
+import { useI18n } from '@/hooks/use-i18n';
+import { Button, ConfirmDialog, IconSymbol } from '@/components/ui';
 import { showToast } from '@/lib/toast-store';
 import { typeScale } from '@/lib/design-tokens';
 
@@ -98,6 +97,7 @@ export default function SaveLoadScreen() {
   const { saveSlots, currentStory, playbackState } = useStoryState();
   const { saveGame, loadGame, deleteSaveSlot } = useStoryActions();
   const [activeTab, setActiveTab] = useState<'save' | 'load'>('load');
+  const [slotIdToDelete, setSlotIdToDelete] = useState<string | null>(null);
   const { t, language } = useI18n();
 
   const handleSaveToSlot = useCallback(async (slotId: string) => {
@@ -130,15 +130,14 @@ export default function SaveLoadScreen() {
   }, [saveSlots, loadGame, router, t]);
 
   const handleDeleteSlot = useCallback((slotId: string) => {
-    Alert.alert(t('save.delete'), t('save.deleteConfirm'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('save.delete'),
-        style: 'destructive',
-        onPress: () => deleteSaveSlot(slotId),
-      },
-    ]);
-  }, [deleteSaveSlot, t]);
+    setSlotIdToDelete(slotId);
+  }, []);
+
+  const confirmDeleteSlot = useCallback(() => {
+    if (!slotIdToDelete) return;
+    deleteSaveSlot(slotIdToDelete);
+    setSlotIdToDelete(null);
+  }, [deleteSaveSlot, slotIdToDelete]);
 
   const formatDate = useCallback((timestamp: number) => {
     const date = new Date(timestamp);
@@ -360,6 +359,15 @@ export default function SaveLoadScreen() {
         keyExtractor={(_, index) => `slot-${index}`}
         scrollEnabled={true}
         contentContainerStyle={{ paddingBottom: 20 }}
+      />
+      <ConfirmDialog
+        visible={slotIdToDelete !== null}
+        title={t('save.delete')}
+        message={t('save.deleteConfirm')}
+        confirmLabel={t('save.delete')}
+        onConfirm={confirmDeleteSlot}
+        onCancel={() => setSlotIdToDelete(null)}
+        destructive
       />
     </ScreenContainer>
   );

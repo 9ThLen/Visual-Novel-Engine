@@ -1,34 +1,30 @@
 /**
- * Story hooks — convenience wrappers around useAppStore
- *
- * Provides useStoryState() and useStoryActions() for components
- * that need story-related state and actions.
+ * Story import / export helpers.
  */
 
 import { useMemo } from 'react';
-import { useAppStore, selectStoryMetadata } from '@/stores/use-app-store';
 import { buildCanonicalSceneRecordsFromLegacyScenes } from '@/lib/scene-operations';
 import { isSafeUri, StoryValidator, ValidationError } from '@/lib/story-validator';
 import { generateId } from '@/lib/id-utils';
-import { normalizeUserSettings } from '@/lib/user-settings';
 import {
   BLOCK_TYPE_INFO,
   type BlockType,
+  type BlockData,
   type Condition,
   type SceneRecord,
   type TimelineStep,
 } from '@/lib/engine/types';
-import type { StoryMetadata } from '@/lib/story-domain';
+import type { CanonicalStory, StoryMetadata } from '@/lib/story-domain';
+import type { AppState } from '@/stores/use-app-store';
+import { useAppStore } from '@/stores/use-app-store';
 import { normalizeEditorTimeline } from '@/lib/editor-scene-draft';
+
+// ── Backward compatibility re-exports ──
+// @deprecated Import from @/hooks/use-story-state instead.
 
 // ── Story import / export — thin wrappers with validation ──
 
 const MAX_JSON_SIZE = 10 * 1024 * 1024;
-
-export interface CanonicalStory extends Omit<StoryMetadata, 'sceneCount'> {
-  sceneCount?: number;
-  scenes: Record<string, SceneRecord>;
-}
 
 function buildCanonicalStory(metadata: StoryMetadata, scenes: Record<string, SceneRecord>): CanonicalStory {
   return {
@@ -154,7 +150,15 @@ function validateCanonicalTimelineStep(step: unknown, sceneId: string, index: nu
     return null;
   }
 
-  return rawStep as unknown as TimelineStep;
+  // All validations passed — construct TimelineStep with validated fields
+  return {
+    id: rawStep.id,
+    blockType,
+    data: rawStep.data as BlockData,
+    collapsed: rawStep.collapsed,
+    enabled: rawStep.enabled,
+    conditions: rawStep.conditions ?? [],
+  };
 }
 
 function validateCanonicalTimeline(sceneId: string, timeline: unknown[]): TimelineStep[] {
@@ -191,9 +195,8 @@ function normalizeImportedSceneRecords(
   );
 }
 
-export async function exportStory(storyId: string): Promise<string> {
-  const state = useAppStore.getState();
-  const metadata = selectStoryMetadata(storyId)(state);
+export async function exportStory(storyId: string, state: AppState): Promise<string> {
+  const metadata = state.storiesMetadata.find((s) => s.id === storyId);
   if (!metadata) throw new Error('Story not found');
   const scenes = state.sceneRecordsByStory[storyId] || {};
   const story = buildCanonicalStory(metadata, scenes);
@@ -309,86 +312,3 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
   return buildCanonicalStory(metadata, importedScenes);
 }
 
-// ── Auto-save component ──
-
-// ── State selector hook ──
-
-export function useStoryState() {
-  const storiesMetadata = useAppStore((s) => s.storiesMetadata);
-  const currentStoryId = useAppStore((s) => s.currentStoryId);
-  const sceneRecordsByStory = useAppStore((s) => s.sceneRecordsByStory);
-  const playbackState = useAppStore((s) => s.playbackState);
-  const rawSettings = useAppStore((s) => s.settings);
-  const settings = normalizeUserSettings(rawSettings);
-  const saveSlots = useAppStore((s) => s.saveSlots);
-  const isLoaded = useAppStore((s) => s.isLoaded);
-
-  const currentMetadata = currentStoryId
-    ? storiesMetadata.find((story) => story.id === currentStoryId)
-    : null;
-  const currentStory = useMemo(
-    () => currentMetadata
-      ? buildCanonicalStory(currentMetadata, sceneRecordsByStory[currentMetadata.id] || {})
-      : null,
-    [currentMetadata, sceneRecordsByStory],
-  );
-  const stories = useMemo(
-    () => storiesMetadata.map((metadata) =>
-      buildCanonicalStory(metadata, sceneRecordsByStory[metadata.id] || {}),
-    ),
-    [storiesMetadata, sceneRecordsByStory],
-  );
-
-  return {
-    stories,
-    storiesMetadata,
-    currentStory,
-    currentStoryId,
-    sceneRecordsByStory,
-    playbackState,
-    settings,
-    saveSlots,
-    isLoaded,
-  };
-}
-
-// ── Actions hook ──
-
-export function useStoryActions() {
-  const loadCurrentStory = useAppStore((s) => s.loadCurrentStory);
-  const createStory = useAppStore((s) => s.createStory);
-  const addStory = useAppStore((s) => s.addStory);
-  const deleteStory = useAppStore((s) => s.deleteStory);
-  const deleteScene = useAppStore((s) => s.deleteScene);
-  const saveGame = useAppStore((s) => s.saveGame);
-  const loadGame = useAppStore((s) => s.loadGame);
-  const deleteSaveSlot = useAppStore((s) => s.deleteSaveSlot);
-  const updateSettings = useAppStore((s) => s.updateSettings);
-  const setLanguage = useAppStore((s) => s.setLanguage);
-  const updatePlaybackState = useAppStore((s) => s.updatePlaybackState);
-  const setMediaLibrary = useAppStore((s) => s.setMediaLibrary);
-
-  // Load stories from storage (migration)
-  const loadStories = useAppStore((s) => s.migrateFromLegacyKeys);
-
-  // Set current story by ID
-  const setCurrentStory = (storyId: string | null) => {
-    return loadCurrentStory(storyId);
-  };
-
-  return {
-    loadStories,
-    createStory,
-    setCurrentStory,
-    addStory,
-    deleteStory,
-    deleteScene,
-    saveGame,
-    loadGame,
-    deleteSaveSlot,
-    updateSettings,
-    setLanguage,
-    updatePlaybackState,
-    setMediaLibrary,
-  };
-}

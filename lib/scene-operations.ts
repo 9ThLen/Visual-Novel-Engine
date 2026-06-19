@@ -442,3 +442,13 @@ export function removeCanonicalConnection(
     ),
   };
 }
+
+export function replaceConnectionByOutputPort(
+  connections: SceneConnection[] = [],
+  connection: SceneConnection,
+): SceneConnection[] {
+  return [
+    ...connections.filter((item) => item.outputPort !== connection.outputPort),
+    connection,
+  ];
+}

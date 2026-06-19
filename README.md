@@ -16,10 +16,11 @@ The current app uses a canonical scene model: `SceneRecord + TimelineStep`. Edit
 ## Architecture
 
 - `app/` contains Expo Router screens.
-- `components/editor/` contains the active editor UI: `SceneComposer`, `TimelinePanel`, `BlockLibraryPanel`, `PropertiesPanel`, `PreviewScreen`, `StoryFlowScreen`, and related editor surfaces.
+- `components/editor/plate/` contains the active Plate scene editor. `components/editor/` also contains active preview, play, scene management, manuscript, and shared editor surfaces.
+- `components/editor-legacy/` contains legacy Lego editor UI for reference only. Active editor screens must not import it.
 - `lib/engine/` contains runtime execution: `useSceneExecutor`, timeline event types, factories, and condition evaluation.
 - `stores/use-app-store.ts` owns persisted app state through Zustand.
-- `stores/use-editor-store.ts` owns editor draft state.
+- `stores/use-editor-store.ts` is legacy draft state for isolated compatibility/reference code only. Active scene editor screens use persisted `SceneRecord` data from `useAppStore()`.
 - `lib/persistent-storage.ts` is the storage abstraction. Do not use AsyncStorage directly in app code.
 - `lib/scene-record-adapter.ts` is the compatibility boundary between canonical scene records and legacy story scene shapes.
 
@@ -67,8 +68,8 @@ pnpm ios
 
 ## Development Rules
 
-- Use Lego as the only editing system.
-- Use `useAppStore()` and `useEditorStore()` directly for state. Do not introduce React Context as a state source of truth.
+- Use Plate as the only scene editing system. Legacy Lego components must not be imported by active editor screens.
+- Use `useAppStore()` directly for active app state. Do not introduce React Context as a state source of truth.
 - Keep new scene logic canonical-first: read and write `SceneRecord + TimelineStep`.
 - Route compatibility conversions through `lib/scene-record-adapter.ts`.
 - Use `createPersistentStorage()` for persistence so web can fall back to `localStorage`.

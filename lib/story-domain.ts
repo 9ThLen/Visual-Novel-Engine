@@ -1,4 +1,4 @@
-import { PlaybackState } from './engine/types';
+import { PlaybackState, type SceneRecord } from './engine/types';
 
 export interface StoryMetadata {
   id: string;
@@ -17,6 +17,11 @@ export interface StoryMetadataInput extends Omit<StoryMetadata, 'sceneCount'> {
   sceneCount?: number;
   scenes?: Record<string, unknown>;
   audioLibrary?: unknown;
+}
+
+export interface CanonicalStory extends Omit<StoryMetadata, 'sceneCount'> {
+  sceneCount?: number;
+  scenes: Record<string, SceneRecord>;
 }
 
 export interface SaveSlotStoryInput {

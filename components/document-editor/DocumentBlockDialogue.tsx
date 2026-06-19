@@ -17,7 +17,7 @@ import type { DocumentBlock, DocumentDialogueBlock, DocumentScene } from '@/lib/
 import type { Character } from '@/lib/character-types';
 import type { useColors } from '@/hooks/use-colors';
 import { withAlpha } from '@/lib/_core/theme';
-import type { useI18n } from '@/lib/i18n';
+import type { useI18n } from '@/hooks/use-i18n';
 
 export interface DocumentBlockDialogueProps {
   block: DocumentDialogueBlock;

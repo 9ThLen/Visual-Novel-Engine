@@ -120,8 +120,8 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
 
     const text = await response.text();
     if (__DEV__) console.log("[API] Text response received");
-    // Non-JSON response — return text as-is (caller should expect T = string or handle)
-    return text as unknown as T;
+    // Non-JSON response — return text as T (caller should expect T = string)
+    return text as T;
   } catch (error) {
     ErrorHandler.handle('API request failed', error, ErrorCategory.NETWORK);
     if (error instanceof Error) {

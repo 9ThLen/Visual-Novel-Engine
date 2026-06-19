@@ -5,7 +5,7 @@ import type { StoryManuscriptScene } from '@/lib/editor/story-manuscript';
 import { useColors } from '@/hooks/use-colors';
 import { withAlpha } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 
 interface StoryManuscriptSidebarProps {
   scenes: StoryManuscriptScene[];

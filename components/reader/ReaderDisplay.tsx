@@ -6,6 +6,7 @@ import type { useColors } from '@/hooks/use-colors';
 import type { ImageSource } from '@/hooks/useSceneImages';
 import type { ReaderChoice } from '@/lib/reader-runtime';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
+import { withAlpha } from '@/lib/_core/theme';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { ReaderChoices } from '@/components/reader/ReaderChoices';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
@@ -230,12 +231,12 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
 
       {visibleEffects.length > 0 ? (
         <View style={[StyleSheet.absoluteFillObject, getPointerEventsStyle('none')]}>
-          {hasFlash ? <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#ffffff', opacity: 0.28 }]} /> : null}
+          {hasFlash ? <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surface, opacity: 0.28 }]} /> : null}
           {hasVignette ? (
             <View
               style={[
                 StyleSheet.absoluteFillObject,
-                { borderWidth: 36, borderColor: 'rgba(0,0,0,0.32)' },
+                { borderWidth: 36, borderColor: withAlpha(colors.foreground, 0.32) },
               ]}
             />
           ) : null}
@@ -252,7 +253,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
                     width: hasSnow ? 5 : 2,
                     height: hasSnow ? 5 : 18,
                     borderRadius: hasSnow ? 5 : 1,
-                    backgroundColor: '#ffffff',
+                    backgroundColor: colors.foreground,
                   }}
                 />
               ))}
@@ -269,6 +270,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         accessibilityRole="button"
         accessibilityLabel={continueAccessibilityLabel}
         accessibilityHint={continueAccessibilityHint}
+        accessibilityState={{ disabled: isLoading, busy: isLoading }}
       />
 
       <Animated.View
