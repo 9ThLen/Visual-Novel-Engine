@@ -15,7 +15,7 @@ import {
 import type { StoryManuscriptScene } from '@/lib/editor/story-manuscript-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import { showToast } from '@/lib/toast-store';
 import { spacing, typeScale } from '@/lib/design-tokens';
 import { useAppStore } from '@/stores/use-app-store';

@@ -12,7 +12,7 @@ import {
   View, Text, Pressable, ScrollView, TextInput, Modal, FlatList,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { type BlockType } from '@/lib/engine/types';
 import { withAlpha } from '@/lib/_core/theme';
@@ -30,6 +30,11 @@ interface TemplateScene {
   blockTypes: BlockType[];  // Block types to add when importing
   outputs: string[];
   inputs: string[];
+}
+
+interface StorySceneOption {
+  id: string;
+  name: string;
 }
 
 const TEMPLATE_SCENES: TemplateScene[] = [
@@ -270,7 +275,7 @@ interface SceneSelectorProps {
   onClose: () => void;
   onSelectScene: (blockTypes: BlockType[]) => void;
   onConnectScenes: (fromSceneId: string, output: string, toSceneId: string, input: string) => void;
-  storyScenes?: { id: string; name: string }[];
+  storyScenes?: StorySceneOption[];
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -309,20 +314,14 @@ export function SceneSelector({
   });
 
   const handleSelectTemplate = useCallback((scene: TemplateScene) => {
-    if (connectMode && connectFrom) {
-      onConnectScenes(connectFrom.sceneId, connectFrom.output, scene.id, scene.inputs[0] || 'start');
-      setConnectMode(false);
-      setConnectFrom(null);
-    } else {
-      setSelectedTemplate(scene);
-      const index = filteredScenes.findIndex((s) => s.id === scene.id);
-      if (index >= 0) {
-        requestAnimationFrame(() => {
-          listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.15 });
-        });
-      }
+    setSelectedTemplate(scene);
+    const index = filteredScenes.findIndex((s) => s.id === scene.id);
+    if (index >= 0) {
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.15 });
+      });
     }
-  }, [connectMode, connectFrom, filteredScenes, onConnectScenes]);
+  }, [filteredScenes]);
 
   const handleImport = useCallback(() => {
     if (selectedTemplate) {
@@ -332,15 +331,21 @@ export function SceneSelector({
     }
   }, [selectedTemplate, onSelectScene, onClose]);
 
-  const handleStartConnect = useCallback((sceneId: string, output: string) => {
-    setConnectMode(true);
-    setConnectFrom({ sceneId, output });
-  }, []);
-
   const handleCancelConnect = useCallback(() => {
     setConnectMode(false);
     setConnectFrom(null);
   }, []);
+
+  const handleConnectTarget = useCallback((sceneId: string) => {
+    if (!connectFrom) {
+      setConnectFrom({ sceneId, output: 'next' });
+      return;
+    }
+    if (connectFrom.sceneId === sceneId) return;
+    onConnectScenes(connectFrom.sceneId, connectFrom.output, sceneId, 'start');
+    setConnectMode(false);
+    setConnectFrom(null);
+  }, [connectFrom, onConnectScenes]);
 
   const getCategoryColor = (category: string): string => {
     const map: Record<string, string> = {
@@ -375,7 +380,7 @@ export function SceneSelector({
         </View>
 
         {/* Connect mode banner */}
-        {connectMode && connectFrom && (
+        {connectMode && (
           <View style={{
             flexDirection: isPhone ? 'column' : 'row',
             alignItems: isPhone ? 'flex-start' : 'center',
@@ -387,10 +392,16 @@ export function SceneSelector({
           }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, flexWrap: 'wrap' }}>
               <Text style={{ color: colors.foreground, ...typeScale.caption }}>
-                {t('editor.sceneSelector.connecting')}<Text style={{ fontWeight: '600', color: colors.primary }}>{connectFrom.sceneId}</Text>
+                {connectFrom
+                  ? <>{t('editor.sceneSelector.connecting')}<Text style={{ fontWeight: '600', color: colors.primary }}>{connectFrom.sceneId}</Text></>
+                  : <>{t('sceneSelector.connectScene')}</>}
               </Text>
-              <IconSymbol name="arrow.right" size={12} color={colors.muted} />
-              <Text style={{ ...typeScale.caption, fontWeight: '600' }}>{connectFrom.output}</Text>
+              {connectFrom ? (
+                <>
+                  <IconSymbol name="arrow.right" size={12} color={colors.muted} />
+                  <Text style={{ ...typeScale.caption, fontWeight: '600' }}>{connectFrom.output}</Text>
+                </>
+              ) : null}
             </View>
             <Pressable onPress={handleCancelConnect} style={{ padding: spacing.xs }} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
               <Text style={{ color: colors.danger, ...typeScale.caption }}>{t('common.cancel')}</Text>
@@ -412,6 +423,35 @@ export function SceneSelector({
               color: colors.foreground, ...typeScale.label,
             }}
           />
+          {!connectMode && storyScenes.length > 1 ? (
+            <Pressable
+              onPress={() => {
+                setConnectMode(true);
+                setConnectFrom(null);
+                setSelectedTemplate(null);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={t('sceneSelector.connectScene')}
+              style={{
+                marginTop: spacing.sm,
+                alignSelf: 'flex-start',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: spacing.xs,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.sm,
+                borderRadius: radius.md,
+                backgroundColor: colors.surface,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+            >
+              <IconSymbol name="link" size={16} color={colors.foreground} />
+              <Text style={{ color: colors.foreground, ...typeScale.caption }}>
+                {t('sceneSelector.connect')}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {/* Category tabs */}
@@ -451,9 +491,9 @@ export function SceneSelector({
         </ScrollView>
 
         {/* Scene list */}
-        <FlatList
-          ref={listRef}
-          data={filteredScenes}
+        <FlatList<TemplateScene | StorySceneOption>
+          ref={listRef as React.RefObject<FlatList<TemplateScene | StorySceneOption>>}
+          data={connectMode ? storyScenes : filteredScenes}
           keyExtractor={(item) => item.id}
           style={{ flex: 1 }}
           contentContainerStyle={{
@@ -466,20 +506,56 @@ export function SceneSelector({
               animated: true,
             });
           }}
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            if (connectMode) {
+              const isSource = connectFrom?.sceneId === item.id;
+              return (
+                <Pressable
+                  onPress={() => handleConnectTarget(item.id)}
+                  disabled={isSource}
+                  accessibilityRole="button"
+                  accessibilityLabel={item.name}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    padding: spacing.md,
+                    marginBottom: spacing.sm,
+                    backgroundColor: isSource ? withAlpha(colors.primary, 0.08) : colors.surface,
+                    borderRadius: radius.md,
+                    borderWidth: 1,
+                    borderColor: isSource ? colors.primary : colors.border,
+                    opacity: isSource ? 0.65 : 1,
+                  }}
+                >
+                  <IconSymbol name={isSource ? 'link' : connectFrom ? 'arrow.right' : 'play'} size={16} color={isSource ? colors.primary : colors.foreground} style={{ marginRight: spacing.sm }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.foreground, ...typeScale.label }}>{item.name}</Text>
+                    <Text style={{ color: colors.muted, ...typeScale.caption }}>
+                      {isSource
+                        ? connectFrom?.output
+                        : connectFrom
+                          ? t('sceneSelector.tapTargetToConnect')
+                          : t('sceneSelector.connectScene')}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            }
+
+            const template = item as TemplateScene;
+            return (
             <Pressable
-              onPress={() => handleSelectTemplate(item)}
-              onLongPress={() => !connectMode && storyScenes.length > 0 && handleStartConnect(item.id, item.outputs[0])}
+              onPress={() => handleSelectTemplate(template)}
               accessibilityRole="button"
-              accessibilityLabel={templateName(item)}
+              accessibilityLabel={templateName(template)}
               style={{
                 flexDirection: isPhone ? 'column' : 'row',
                 alignItems: isPhone ? 'stretch' : 'center',
                 padding: spacing.md, marginBottom: spacing.sm,
-                backgroundColor: selectedTemplate?.id === item.id ? withAlpha(colors.primary, 0.08) : colors.surface,
+                backgroundColor: selectedTemplate?.id === template.id ? withAlpha(colors.primary, 0.08) : colors.surface,
                 borderRadius: radius.md,
                 borderWidth: 1,
-                borderColor: selectedTemplate?.id === item.id ? colors.primary : colors.border,
+                borderColor: selectedTemplate?.id === template.id ? colors.primary : colors.border,
               }}
             >
               {/* Category color indicator */}
@@ -489,21 +565,21 @@ export function SceneSelector({
                 borderRadius: 2,
                 marginRight: isPhone ? 0 : spacing.md,
                 marginBottom: isPhone ? spacing.md : 0,
-                backgroundColor: getCategoryColor(item.category),
+                backgroundColor: getCategoryColor(template.category),
               }} />
 
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2, flexWrap: 'wrap' }}>
-                  <IconSymbol name={getTemplateIconName(item)} size={16} color={getCategoryColor(item.category)} style={{ marginRight: spacing.xs }} />
+                  <IconSymbol name={getTemplateIconName(template)} size={16} color={getCategoryColor(template.category)} style={{ marginRight: spacing.xs }} />
                   <Text style={{ color: colors.foreground, ...typeScale.label, flexShrink: 1 }}>
-                    {templateName(item)}
+                    {templateName(template)}
                   </Text>
                 </View>
                 <Text style={{ color: colors.muted, ...typeScale.caption, marginBottom: spacing.xs }}>
-                  {templateDescription(item)}
+                  {templateDescription(template)}
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
-                  {item.tags.map((tag) => (
+                  {template.tags.map((tag) => (
                     <Text key={tag} style={{
                       ...typeScale.micro, paddingHorizontal: spacing.xs, paddingVertical: 2,
                       borderRadius: radius.sm, backgroundColor: colors.surface,
@@ -515,13 +591,13 @@ export function SceneSelector({
                 </View>
                 {/* Input/Output ports */}
                 <View style={{ flexDirection: 'row', marginTop: spacing.xs, gap: spacing.sm, flexWrap: 'wrap' }}>
-                      {item.inputs.map((input) => (
+                      {template.inputs.map((input) => (
                         <View key={input} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                           <IconSymbol name="chevron.down" size={10} color={colors.success} />
                           <Text style={{ ...typeScale.micro, color: colors.success }}>{input}</Text>
                         </View>
                       ))}
-                      {item.outputs.map((output) => (
+                      {template.outputs.map((output) => (
                         <Text key={output} style={{ ...typeScale.micro, color: colors.warning }}>
                           <IconSymbol name="play" size={10} color={colors.warning} /> {output}
                         </Text>
@@ -529,33 +605,9 @@ export function SceneSelector({
                 </View>
               </View>
 
-              {/* Connect button */}
-              {!connectMode && storyScenes.length > 0 && (
-                <Pressable
-                  onPress={() => handleStartConnect(item.id, item.outputs[0])}
-                  style={{
-                    paddingHorizontal: spacing.sm,
-                    paddingVertical: spacing.xs,
-                    marginLeft: isPhone ? 0 : spacing.sm,
-                    marginTop: isPhone ? spacing.md : 0,
-                    alignSelf: isPhone ? 'flex-end' : 'center',
-                    borderRadius: radius.sm, backgroundColor: colors.surface,
-                    borderWidth: 1, borderColor: colors.border,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: spacing.xs,
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('sceneSelector.connectScene')}
-                >
-                  <IconSymbol name="link" size={14} color={colors.foreground} />
-                  <Text style={{ ...typeScale.caption, color: colors.foreground }}>
-                    {t('sceneSelector.connect')}
-                  </Text>
-                </Pressable>
-              )}
             </Pressable>
-          )}
+          );
+          }}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', paddingVertical: spacing['3xl'] }}>
               <Text style={{ color: colors.muted, ...typeScale.label }}>{t('editor.noMatchingScenes')}</Text>

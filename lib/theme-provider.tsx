@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { Platform, View } from 'react-native';
 import { Colors, type ColorScheme } from '@/constants/theme';
-import { useThemeStore , useThemeInit } from '@/stores/theme-store';
+// NOTE: theme-provider.tsx is a React component (.tsx), so importing from stores is acceptable.
+// This is the UI layer boundary, not pure business logic.
+import { useThemeStore, useThemeInit } from '@/stores/theme-store';
 import { createThemeVariables } from '@/lib/theme-variables';
 import { getNativewindVarsFactory } from '@/lib/theme-nativewind';
 

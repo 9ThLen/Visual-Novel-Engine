@@ -13,7 +13,7 @@ describe('story reader platform styles', () => {
 
   it('returns null backgroundColor when no colors provided (consumer must pass colors)', () => {
     expect(getStoryReaderContainerStyle()).toEqual({
-      backgroundColor: null,
+      backgroundColor: undefined,
       overflow: 'hidden',
     });
   });
@@ -26,7 +26,7 @@ describe('story reader platform styles', () => {
 
   it('returns null color when no colors provided (consumer must pass colors)', () => {
     expect(getStoryReaderSpeakerTextStyle()).toEqual({
-      color: null,
+      color: undefined,
     });
   });
 });

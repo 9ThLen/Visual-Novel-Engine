@@ -5,8 +5,8 @@ import { useLocalSearchParams } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
 import { StoryManuscriptScreen } from '@/components/editor/StoryManuscriptScreen';
 import { spacing, typeScale } from '@/lib/design-tokens';
-import { useI18n } from '@/lib/i18n';
-import { useStoryActions, useStoryState } from '@/lib/story-hooks';
+import { useI18n } from '@/hooks/use-i18n';
+import { useStoryActions, useStoryState } from '@/hooks/use-story-state';
 import { selectSceneRecordsForStory, selectStoryMetadata, useAppStore } from '@/stores/use-app-store';
 
 export default function ManuscriptEditorRoute() {

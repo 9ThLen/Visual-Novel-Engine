@@ -52,6 +52,9 @@ app-example
 # Codex artifacts
 .codex/
 
+# Claude Code
+.claude/
+
 # Logs
 logs
 *.log

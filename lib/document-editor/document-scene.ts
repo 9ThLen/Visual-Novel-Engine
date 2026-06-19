@@ -80,6 +80,7 @@ function timelineStepToDocumentBlock(step: TimelineStep, characters: Character[]
       id: step.id,
       kind: 'text',
       sourceStepId: step.id,
+      sourceStep: step,
       content: data.content,
     };
   }
@@ -91,6 +92,7 @@ function timelineStepToDocumentBlock(step: TimelineStep, characters: Character[]
       id: step.id,
       kind: 'dialogue',
       sourceStepId: step.id,
+      sourceStep: step,
       speakerName: entry?.characterId ? characterNameForId(characters, entry.characterId) : '',
       characterId: entry?.characterId || null,
       spriteId: entry?.spriteId || null,
@@ -104,6 +106,7 @@ function timelineStepToDocumentBlock(step: TimelineStep, characters: Character[]
       id: step.id,
       kind: 'choice',
       sourceStepId: step.id,
+      sourceStep: step,
       question: 'Що зробити?',
       options: data.options.map((option) => ({
         id: option.id,
@@ -263,6 +266,7 @@ export function ensureDocumentCharactersInBlocks(
     if (block.kind !== 'dialogue') return block;
     const speakerName = block.speakerName.trim();
     if (!speakerName) return block;
+    if (block.characterId) return block;
 
     const existing = nextCharacters.find((item) => item.name.toLocaleLowerCase() === speakerName.toLocaleLowerCase());
     if (existing) {
@@ -291,16 +295,55 @@ export function ensureDocumentCharactersInBlocks(
 }
 
 export function documentSceneToTimeline(documentScene: DocumentScene): TimelineStep[] {
-  return documentScene.blocks.flatMap((block) => {
+  return documentScene.blocks.flatMap((block, index) => {
     if (block.kind === 'technical') {
       return [block.step];
     }
 
     if (block.kind === 'text') {
+      if (!block.sourceStep && index === documentScene.blocks.length - 1 && block.content.trim() === '') {
+        return [];
+      }
+      if (block.sourceStep?.blockType === 'text') {
+        return [{
+          ...block.sourceStep,
+          data: {
+            ...(block.sourceStep.data as TextBlockData),
+            content: block.content,
+          },
+        }];
+      }
       return [createTextStep({ content: block.content })];
     }
 
     if (block.kind === 'dialogue') {
+      if (block.sourceStep?.blockType === 'dialogue') {
+        const sourceData = block.sourceStep.data as DialogueBlockData;
+        const entries = sourceData.entries.length
+          ? sourceData.entries.map((entry, entryIndex) => entryIndex === 0
+            ? {
+                ...entry,
+                characterId: block.characterId || block.speakerName,
+                spriteId: block.spriteId || '',
+                text: block.text,
+              }
+            : entry)
+          : [
+              {
+                id: generateId('dialogue_entry'),
+                characterId: block.characterId || block.speakerName,
+                spriteId: block.spriteId || '',
+                text: block.text,
+              },
+            ];
+        return [{
+          ...block.sourceStep,
+          data: {
+            ...sourceData,
+            entries,
+          },
+        }];
+      }
       return [
         createDialogueStep({
           entries: [
@@ -317,6 +360,22 @@ export function documentSceneToTimeline(documentScene: DocumentScene): TimelineS
     }
 
     if (block.kind === 'choice') {
+      if (block.sourceStep?.blockType === 'choice') {
+        const sourceData = block.sourceStep.data as ChoiceBlockData;
+        const sourceOptions = new Map(sourceData.options.map((option) => [option.id, option]));
+        return [{
+          ...block.sourceStep,
+          data: {
+            ...sourceData,
+            options: block.options.map((option) => ({
+              ...sourceOptions.get(option.id),
+              id: option.id,
+              text: option.text,
+              targetSceneId: option.targetSceneId,
+            })),
+          },
+        }];
+      }
       return [
         createChoiceStep({
           options: block.options.map((option) => ({

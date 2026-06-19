@@ -334,6 +334,7 @@ export interface ProjectScene {
 
 // ── Scene Record (persisted scene with metadata & connections) ─────────────
 // This is the canonical persisted scene contract for the refactor cycle.
+// Reader/audio/runtime code should consume explicit projections instead of this storage shape.
 
 export interface SceneConnection {
   targetSceneId: string;
@@ -372,35 +373,3 @@ export interface PlaybackState {
   choicesMade: { sceneId: string; choiceId: string }[];
 }
 
-// Alias for backward compatibility
-export type LegacySceneState = LegacyStoryScene;
-
-// ── Editor UI State ──────────────────────────────────────────────────────
-
-export interface EditorState {
-  // Selection
-  selectedBlockId: string | null;
-  selectedCharacterId: string | null;
-  selectedAssetId: string | null;
-
-  // View state
-  viewMode: 'edit' | 'preview' | 'flow';
-  panelWidths: {
-    left: number;
-    right: number;
-  };
-  showMiniPreview: boolean;
-  showBlockLibrary: boolean;
-
-  // Undo/Redo
-  undoStack: TimelineStep[][];
-  redoStack: TimelineStep[][];
-
-  // Search
-  blockSearchQuery: string;
-  assetSearchQuery: string;
-
-  // Preview
-  isPreviewPlaying: boolean;
-  previewCurrentStepIndex: number;
-}

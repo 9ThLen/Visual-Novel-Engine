@@ -3,7 +3,7 @@
  * Support for audio library and trigger-based playback
  */
 
-import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
+import type { TimelineStep } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
 
 /**
@@ -50,10 +50,15 @@ export interface AudioTrigger {
  * Canonical scene audio data. Audio is carried by TimelineStep music/sound blocks,
  * with optional trigger metadata for the trigger scheduler.
  */
-export interface StorySceneAudioTimeline extends Pick<SceneRecord, 'id' | 'storyId' | 'name'> {
+export interface AudioScene {
+  id: string;
+  storyId: string;
+  name: string;
   timeline: TimelineStep[];
   audioTriggers?: AudioTrigger[];
 }
+
+export type StorySceneAudioTimeline = AudioScene;
 
 /**
  * @deprecated Use StorySceneAudioTimeline. Kept for public API compatibility.

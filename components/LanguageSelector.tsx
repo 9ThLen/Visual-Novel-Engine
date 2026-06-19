@@ -6,7 +6,7 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, type ViewStyle } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n, type Language } from '@/lib/i18n';
+import { useI18n, type Language } from '@/hooks/use-i18n';
 
 interface Props {
   style?: ViewStyle;

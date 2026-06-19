@@ -25,6 +25,7 @@ export interface BaseDocumentBlock {
   id: string;
   kind: DocumentBlockKind;
   sourceStepId?: string;
+  sourceStep?: TimelineStep;
 }
 
 export interface DocumentTextBlock extends BaseDocumentBlock {

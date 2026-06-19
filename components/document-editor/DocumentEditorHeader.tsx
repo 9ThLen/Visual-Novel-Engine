@@ -4,10 +4,12 @@ import { Pressable, Text, View } from 'react-native';
 import { Button } from '@/components/ui';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
+import type { ColorScheme } from '@/constants/theme';
 
 interface DocumentEditorHeaderProps {
   activeTitle: string;
+  colorScheme?: ColorScheme;
   isPhone: boolean;
   isSaving: boolean;
   safeTop: number;
@@ -21,6 +23,7 @@ interface DocumentEditorHeaderProps {
 
 export function DocumentEditorHeader({
   activeTitle,
+  colorScheme,
   isPhone,
   isSaving,
   safeTop,
@@ -31,7 +34,7 @@ export function DocumentEditorHeader({
   onSave,
   onSaveAndPlay,
 }: DocumentEditorHeaderProps) {
-  const colors = useColors();
+  const colors = useColors(colorScheme);
   const { t } = useI18n();
 
   return (

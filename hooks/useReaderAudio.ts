@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import type { UserSettings } from '../lib/user-settings';
 import type { IAudioManager } from '../lib/audio-interfaces';
 import { enhancedAudioManager as defaultAudioManager } from '../lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '../lib/asset-resolver';
-import { getPlaybackAudioLibrary } from '../lib/audio-library';
+import { getPlaybackAudioLibrary } from '@/stores/audio-library-actions';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from '../lib/error-handler';
 import type { MusicBlockData, SceneState, SoundRuntimeEvent, TimelineStep } from '../lib/engine/types';
 import type { AudioTrigger } from '../lib/audio-types';

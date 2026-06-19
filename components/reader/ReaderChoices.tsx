@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import type { ReaderChoice } from '@/lib/reader-runtime';
 
 interface ReaderChoicesProps {

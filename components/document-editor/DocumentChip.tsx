@@ -4,7 +4,7 @@ import { Pressable, Text, View } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
 import { withAlpha } from '@/lib/_core/theme';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import type { DocumentTechnicalBlock } from '@/lib/document-editor/types';
 import { documentCommandIcons, getDocumentCommandTone } from './document-command-ui';
 

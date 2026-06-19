@@ -1,4 +1,5 @@
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
+import { toReaderScene } from '@/lib/reader-scene';
 import {
   getNextSceneId,
   getStartSceneId,
@@ -29,8 +30,8 @@ function makeScene(id: string, overrides: Partial<SceneRecord> = {}): SceneRecor
 describe('reader-runtime', () => {
   it('resolves metadata start scene before isStart fallback', () => {
     const scenes = {
-      a: makeScene('a', { isStart: true }),
-      b: makeScene('b'),
+      a: toReaderScene(makeScene('a', { isStart: true })),
+      b: toReaderScene(makeScene('b')),
     };
 
     expect(getStartSceneId(scenes, 'b')).toBe('b');
@@ -39,8 +40,8 @@ describe('reader-runtime', () => {
 
   it('resolves explicit and next-connection scene targets', () => {
     const scenes = {
-      a: makeScene('a', { connections: [{ outputPort: 'next', targetSceneId: 'b' }] }),
-      b: makeScene('b'),
+      a: toReaderScene(makeScene('a', { connections: [{ outputPort: 'next', targetSceneId: 'b' }] })),
+      b: toReaderScene(makeScene('b')),
     };
 
     expect(getNextSceneId(scenes, 'a', 'b')).toBe('b');

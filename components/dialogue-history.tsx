@@ -10,7 +10,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import {
   getPointerEventsStyle,
   shouldUseNativeDriverForPlatform,

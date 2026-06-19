@@ -4,12 +4,12 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
-import { useEditorStore } from '@/stores/use-editor-store';
 import { useAppStore } from '@/stores/use-app-store';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
+import { resolvePreviewTimelineFromRecords } from './preview-source';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 import { AudioPlayerService } from '@/lib/audio-player-service';
-import { useI18n } from '@/lib/i18n';
+import { useI18n } from '@/hooks/use-i18n';
 import { getTimelineDisplayPages } from '@/lib/reader-runtime';
 import { withAlpha } from '@/lib/_core/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -20,19 +20,11 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const colors = useColors();
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
-  const editorSceneId = useEditorStore((s) => s.sceneId);
-  const editorTimeline = useEditorStore((s) => s.timeline);
-  const editorIsDirty = useEditorStore((s) => s.isDirty);
   const sceneRecordsByStory = useAppStore((s) => s.sceneRecordsByStory);
 
   const timeline = useMemo(
-    () => {
-      if (editorIsDirty && editorSceneId === sceneId) {
-        return editorTimeline;
-      }
-      return sceneRecordsByStory[storyId]?.[sceneId]?.timeline ?? [];
-    },
-    [editorIsDirty, editorSceneId, editorTimeline, sceneId, sceneRecordsByStory, storyId]
+    () => resolvePreviewTimelineFromRecords(sceneRecordsByStory, storyId, sceneId),
+    [sceneId, sceneRecordsByStory, storyId]
   );
 
   const { sceneState, currentStepIndex, isComplete, isTyping, advance, selectChoice } =
@@ -234,8 +226,8 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
           />
         ) : null}
 
-        {hasFlash ? <View pointerEvents="none" style={{ position: 'absolute', inset: 0, backgroundColor: '#fff', opacity: 0.28 }} /> : null}
-        {hasVignette ? <View pointerEvents="none" style={{ position: 'absolute', inset: 0, borderWidth: 36, borderColor: 'rgba(0,0,0,0.32)' }} /> : null}
+        {hasFlash ? <View pointerEvents="none" style={{ position: 'absolute', inset: 0, backgroundColor: colors.surface, opacity: 0.28 }} /> : null}
+        {hasVignette ? <View pointerEvents="none" style={{ position: 'absolute', inset: 0, borderWidth: 36, borderColor: withAlpha(colors.foreground, 0.32) }} /> : null}
       </View>
 
       {!showChoices && displayedText ? (

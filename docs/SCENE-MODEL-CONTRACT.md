@@ -6,6 +6,8 @@
 
 - `SceneRecord` owns scene metadata, timeline content, graph position, and scene-to-scene connections.
 - `TimelineStep` owns executable scene events such as text, dialogue, choice, transition, background, character, audio, variable, effect, camera, and interactive object steps.
+- Plate is the only active scene editing system.
+- `components/editor/plate/` edits this canonical model; it must not persist a separate Plate JSON document.
 - New editor, preview, reader, save/load, and story-flow code should read canonical scene records first.
 
 ## Runtime Execution
@@ -34,5 +36,12 @@ Rules:
 ## State Ownership
 
 - Persisted app state lives in `stores/use-app-store.ts`.
-- Editor draft state lives in `stores/use-editor-store.ts`.
+- Legacy editor draft state lives in `stores/use-editor-store.ts` and must not be imported by active scene editor screens.
 - New state should use Zustand directly, not React Context.
+
+## Active Editor Boundary
+
+- Active scene editing enters through `components/editor/plate/PlateSceneEditor.tsx`.
+- Legacy Lego UI is isolated under `components/editor-legacy/`.
+- Active routes and active `components/editor/**` files must not import `components/editor-legacy`, `SceneComposer`, `TimelinePanel`, `BlockLibraryPanel`, `PropertiesPanel`, or `stores/use-editor-store`.
+- The boundary is enforced by `pnpm check:editor-boundaries`.
