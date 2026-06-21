@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { PlaybackState } from '@/lib/engine/types';
+import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { SaveSlot } from '@/lib/story-domain';
 import { buildCanonicalSaveSlot, type ReaderRuntimeSnapshot } from '../lib/reader-runtime';
 

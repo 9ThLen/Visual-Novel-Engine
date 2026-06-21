@@ -9,8 +9,18 @@
 
 import type { Language } from '@/lib/translations';
 import type { Character } from '@/lib/character-types';
-import type { InteractiveAction, InteractiveObject, InteractiveObjectPosition } from '@/lib/interactive-types';
-import type { StoryScene as LegacyStoryScene } from '@/lib/scene-operations';
+import type { InteractiveAction, InteractiveObjectPosition } from '@/lib/interactive-types';
+import type { SceneState } from './runtime-types';
+
+export type {
+  ActiveEffect,
+  CameraRuntimeState,
+  CharacterRuntimeState,
+  DialogueHistoryEntry,
+  PlaybackState,
+  SceneState,
+  SoundRuntimeEvent,
+} from './runtime-types';
 
 // ── Block Categories ────────────────────────────────────────────────────
 
@@ -239,72 +249,6 @@ export interface Condition {
 
 // ── Scene State (runtime) ────────────────────────────────────────────────
 
-export interface SceneState {
-  backgroundAssetId: string | null;
-  backgroundTransition: string;
-  characters: CharacterRuntimeState[];
-  activeEffects: ActiveEffect[];
-  soundEvents?: SoundRuntimeEvent[];
-  cameraState?: CameraRuntimeState;
-  interactiveObjects?: InteractiveObject[];
-  musicTrackId: string | null;
-  musicPlaying: boolean;
-  musicAction?: MusicBlockData['action'] | null;
-  musicVolume: number;
-  musicLoop?: boolean;
-  musicFadeDuration?: number;
-  variables: Record<string, string | number | boolean>;
-  dialogueHistory: DialogueHistoryEntry[];
-  currentChoices: ChoiceOption[] | null;
-  isTransitioning: boolean;
-  transitionTarget: string | null;
-  currentStepIndex?: number;
-}
-
-export interface CharacterRuntimeState {
-  characterId: string;
-  spriteId: string;
-  position: string;
-  visible: boolean;
-  opacity: number;
-  scale: number;
-  zIndex: number;
-}
-
-export interface ActiveEffect {
-  effectType: EffectType;
-  target: string;
-  startTime: number;
-  endTime: number;
-}
-
-export interface SoundRuntimeEvent {
-  id: string;
-  assetId: string;
-  action: SoundBlockData['action'];
-  volume: number;
-  loop: boolean;
-  pitchVariation: number;
-  timestamp: number;
-}
-
-export interface CameraRuntimeState {
-  action: CameraBlockData['action'];
-  zoomLevel: number;
-  panX: number;
-  panY: number;
-  target?: string;
-  duration: number;
-  easing: CameraBlockData['easing'];
-}
-
-export interface DialogueHistoryEntry {
-  characterId: string;
-  characterName: string;
-  text: string;
-  timestamp: number;
-}
-
 // ── Project ──────────────────────────────────────────────────────────────
 
 export interface Project {
@@ -361,15 +305,3 @@ export interface ProjectVariable {
   defaultValue: string | number | boolean;
   category: string;
 }
-
-/**
- * Represents the current playback state for the reader.
- */
-export interface PlaybackState {
-  storyId: string;
-  currentSceneId: string;
-  isPlaying: boolean;
-  currentDialogueIndex: number;
-  choicesMade: { sceneId: string; choiceId: string }[];
-}
-

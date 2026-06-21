@@ -7,7 +7,8 @@ import { enhancedAudioManager as defaultAudioManager } from '../lib/audio-manage
 import { resolvePlayableAssetUri } from '../lib/asset-resolver';
 import { getPlaybackAudioLibrary } from '@/stores/audio-library-actions';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from '../lib/error-handler';
-import type { MusicBlockData, SceneState, SoundRuntimeEvent, TimelineStep } from '../lib/engine/types';
+import type { MusicBlockData, TimelineStep } from '../lib/engine/types';
+import type { SceneState, SoundRuntimeEvent } from '../lib/engine/runtime-types';
 import type { AudioTrigger } from '../lib/audio-types';
 import {
   activateReaderAudioSession,

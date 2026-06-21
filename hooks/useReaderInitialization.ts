@@ -3,7 +3,7 @@ import { useStoryActions } from '@/hooks/use-story-state';
 import { resolveCanonicalStartSceneId } from '@/lib/scene-operations';
 import { useAppStore } from '@/stores/use-app-store';
 import type { Story } from '@/lib/scene-operations';
-import type { PlaybackState } from '@/lib/engine/types';
+import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { TimelineStep } from '@/lib/engine/types';
 import demoStory from '@/assets/demo-story.json';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';

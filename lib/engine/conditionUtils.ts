@@ -1,4 +1,5 @@
-import type { Condition, SceneState } from './types';
+import type { Condition } from './types';
+import type { SceneState } from './runtime-types';
 
 type VariableValue = string | number | boolean | string[];
 

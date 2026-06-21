@@ -8,7 +8,7 @@ import { ReaderMenu } from '@/components/ReaderMenu';
 import { useStoryState } from '@/hooks/use-story-state';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
-import type { PlaybackState, SceneState } from '@/lib/engine/types';
+import type { PlaybackState, SceneState } from '@/lib/engine/runtime-types';
 import { enhancedAudioManager as audioManager } from '@/lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '@/lib/asset-resolver';
 import { useReaderAudio, stopReaderPlayback } from '@/hooks/useReaderAudio';

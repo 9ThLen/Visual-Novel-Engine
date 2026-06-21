@@ -26,7 +26,8 @@ import {
 } from 'react-native-reanimated';
 import { useColors } from '@/hooks/use-colors';
 import type { UserSettings } from '@/lib/user-settings';
-import type { SceneState, TimelineStep } from '@/lib/engine/types';
+import type { TimelineStep } from '@/lib/engine/types';
+import type { SceneState } from '@/lib/engine/runtime-types';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
 import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
 import { DialogueHistory } from './dialogue-history';

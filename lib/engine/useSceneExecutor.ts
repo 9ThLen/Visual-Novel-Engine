@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import type {
   TimelineStep,
-  SceneState,
   BackgroundBlockData,
   CharacterBlockData,
   DialogueBlockData,
@@ -14,6 +13,7 @@ import type {
   VariableBlockData,
   TransitionBlockData,
 } from './types';
+import type { SceneState } from './runtime-types';
 import { createEmptySceneState, conditionsMet } from './conditionUtils';
 
 const YIELDING_BLOCK_TYPES = new Set(['text', 'dialogue', 'choice', 'transition']);
