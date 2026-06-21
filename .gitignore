@@ -69,9 +69,16 @@ Thumbs.db
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
+.pnpm-store/
 D:/.pnpm-store/
 
 # Hermes & test artifacts
 .hermes/
 .impeccable/
 test-results/
+
+# Local analysis/tool caches
+.kluster/
+graphify-out/
+_graphify_scope/
+graphify-scope/

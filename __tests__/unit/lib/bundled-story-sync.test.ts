@@ -93,6 +93,64 @@ describe('shouldUpsertBundledStory', () => {
     ).toBe(true);
   });
 
+  it('returns true when persisted canonical start scene has no reader-yielding timeline steps', () => {
+    expect(
+      shouldUpsertBundledStory(
+        {
+          storiesMetadata: [{ id: bundledStory.id }],
+          scenesByStory: {},
+          sceneRecordsByStory: {
+            [bundledStory.id]: {
+              scene_1: {
+                id: 'scene_1',
+                storyId: bundledStory.id,
+                name: 'scene_1',
+                description: '',
+                tags: [],
+                timeline: [
+                  {
+                    id: 'scene_1-music',
+                    blockType: 'music',
+                    data: {
+                      assetId: 'assets/sounds-sample/music-mysterious-adventure.mp3',
+                      action: 'play',
+                      volume: 1,
+                      loop: true,
+                      fadeDuration: 500,
+                    },
+                    collapsed: false,
+                    enabled: true,
+                  },
+                ],
+                sceneState: {
+                  backgroundAssetId: null,
+                  backgroundTransition: 'fade',
+                  characters: [],
+                  activeEffects: [],
+                  musicTrackId: null,
+                  musicPlaying: false,
+                  musicVolume: 1,
+                  variables: {},
+                  dialogueHistory: [],
+                  currentChoices: null,
+                  isTransitioning: false,
+                  transitionTarget: null,
+                },
+                flowX: 0,
+                flowY: 0,
+                connections: [],
+                isStart: true,
+                createdAt: 1,
+                updatedAt: 1,
+              },
+            },
+          },
+        },
+        bundledStory,
+      ),
+    ).toBe(true);
+  });
+
   it('returns false when canonical start scene matches bundled music', () => {
     expect(
       shouldUpsertBundledStory(

@@ -8,7 +8,7 @@ import type {
 import type { SceneImageState } from '@/hooks/useSceneImages';
 import type { InteractiveObject } from '@/lib/interactive-types';
 import type { StoryMetadata } from '@/lib/story-domain';
-import type { PlaybackState } from '@/lib/engine/types';
+import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { SaveSlot } from '@/lib/story-domain';
 import { toSaveSlotMeta, type ReaderScene } from '@/lib/reader-scene';
 

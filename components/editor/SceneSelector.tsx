@@ -673,6 +673,3 @@ export function SceneSelector({
     </Modal>
   );
 }
-
-export { TEMPLATE_SCENES };
-export type { TemplateScene };

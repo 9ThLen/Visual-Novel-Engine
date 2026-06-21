@@ -10,7 +10,7 @@ import { withAlpha } from '@/lib/_core/theme';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { ReaderChoices } from '@/components/reader/ReaderChoices';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
-import type { ActiveEffect, CameraRuntimeState } from '@/lib/engine/types';
+import type { ActiveEffect, CameraRuntimeState } from '@/lib/engine/runtime-types';
 import type { InteractiveObject } from '@/lib/interactive-types';
 
 const DIALOGUE_MARGIN_BOTTOM = 28;

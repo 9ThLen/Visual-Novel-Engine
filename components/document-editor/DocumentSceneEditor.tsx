@@ -176,12 +176,13 @@ export function DocumentSceneEditor({
         <ScrollView
           style={{
             flex: 1,
+            backgroundColor: colors.background,
           }}
           contentContainerStyle={{
             paddingHorizontal: isPhone ? 0 : 28,
-            paddingVertical: isPhone ? 0 : 24,
-            paddingBottom: isPhone ? insets.bottom : 24,
-            gap: isPhone ? 0 : 24,
+            paddingTop: isPhone ? 0 : 28,
+            paddingBottom: isPhone ? insets.bottom + 20 : 36,
+            gap: isPhone ? 18 : 34,
           }}
           keyboardShouldPersistTaps="handled"
         >
@@ -193,8 +194,10 @@ export function DocumentSceneEditor({
               characters={localCharacters}
               isPhone={isPhone}
               style={{
-                height: isPhone ? Math.max(layout.screenHeight - insets.top - 88, 620) : 760,
-                minHeight: isPhone ? 620 : 760,
+                width: '100%',
+                maxWidth: isPhone ? undefined : 920,
+                alignSelf: 'center',
+                overflow: 'visible',
               }}
               onChange={handlePlateChange}
               onCreateNextScene={handleCreateNextScene}

@@ -10,6 +10,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     var title = document.getElementById('title');
     var menu = document.getElementById('slashMenu');
     var saveTimer = 0;
+    var resizeTimer = 0;
     var activeSlash = null;
     var activeIndex = 0;
 
@@ -29,6 +30,29 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     function scheduleSave() {
       window.clearTimeout(saveTimer);
       saveTimer = window.setTimeout(saveNow, 260);
+    }
+
+    function measureHeight() {
+      var body = document.body;
+      var root = document.documentElement;
+      return Math.max(
+        body ? body.scrollHeight : 0,
+        body ? body.offsetHeight : 0,
+        root ? root.scrollHeight : 0,
+        root ? root.offsetHeight : 0
+      );
+    }
+
+    function postResize() {
+      post({
+        type: 'resize',
+        height: measureHeight()
+      });
+    }
+
+    function scheduleResize() {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(postResize, 140);
     }
 
     function textOf(node) {
@@ -136,6 +160,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     }
 
     function saveNow() {
+      scheduleResize();
       post({
         type: 'save',
         scene: buildScenePayload()
@@ -274,6 +299,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       block.insertAdjacentElement('afterend', next);
       closeSlashMenu();
       moveCaretToEnd(next);
+      scheduleResize();
       saveNow();
     }
 
@@ -283,6 +309,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var slash = currentSlashQuery();
       if (slash) renderSlashMenu(slash);
       else closeSlashMenu();
+      scheduleResize();
       scheduleSave();
     });
 
@@ -307,7 +334,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       }
     });
 
-    title.addEventListener('input', scheduleSave);
+    title.addEventListener('input', function() {
+      scheduleResize();
+      scheduleSave();
+    });
     document.addEventListener('selectionchange', function() {
       if (document.activeElement !== editor) return;
       var slash = currentSlashQuery();
@@ -315,6 +345,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     });
 
     ensureParagraph();
+    if (window.ResizeObserver) {
+      var resizeObserver = new ResizeObserver(scheduleResize);
+      resizeObserver.observe(document.body);
+      resizeObserver.observe(document.documentElement);
+    }
+    postResize();
     post({ type: 'ready' });
   `;
 }

@@ -1,6 +1,6 @@
 import { StoryDomain } from '@/lib/story-domain';
 import type { Story, StoryScene } from '@/lib/scene-operations';
-import type { PlaybackState } from '@/lib/engine/types';
+import type { PlaybackState } from '@/lib/engine/runtime-types';
 
 function makeStory(overrides: Partial<Story> = {}): Story {
   return {

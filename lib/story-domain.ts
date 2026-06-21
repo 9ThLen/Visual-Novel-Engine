@@ -1,4 +1,5 @@
-import { PlaybackState, type SceneRecord } from './engine/types';
+import type { PlaybackState } from './engine/runtime-types';
+import type { SceneRecord } from './engine/types';
 
 export interface StoryMetadata {
   id: string;

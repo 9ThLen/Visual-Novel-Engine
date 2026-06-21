@@ -17,6 +17,12 @@ export type VNPlateEditorMessage =
   | {
       source: 'vn-plate-editor';
       editorId: string;
+      type: 'resize';
+      height: number;
+    }
+  | {
+      source: 'vn-plate-editor';
+      editorId: string;
       type: 'save';
       scene: DocumentScene;
     }

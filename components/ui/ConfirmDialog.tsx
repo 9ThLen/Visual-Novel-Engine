@@ -1,8 +1,7 @@
 /**
  * components/ui/ConfirmDialog.tsx — Reusable confirmation dialog for destructive actions
  *
- * Modal-based dialog pattern following SaveSceneDialog.tsx.
- * Used for delete confirmation and other destructive action prompts.
+ * Modal-based dialog for delete confirmation and other destructive action prompts.
  */
 
 import React from 'react';

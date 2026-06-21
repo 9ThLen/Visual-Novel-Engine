@@ -13,7 +13,7 @@ import { createPersistentStorage } from '@/lib/persistent-storage';
 import type { Language } from '@/lib/translations';
 import type { Story } from '@/lib/scene-operations';
 import type { UserSettings } from '@/lib/user-settings';
-import type { PlaybackState } from '@/lib/engine/types';
+import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { SaveSlot } from '@/lib/story-domain';
 import type { SceneRecord, SceneConnection } from '@/lib/engine/types';
 import {

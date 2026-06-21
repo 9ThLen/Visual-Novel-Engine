@@ -5,7 +5,7 @@
  * to reduce its useEffect count.
  */
 import { useEffect, useRef } from 'react';
-import type { SceneState } from '@/lib/engine/types';
+import type { SceneState } from '@/lib/engine/runtime-types';
 
 export function useReaderNotifications({
   displaySceneId,
