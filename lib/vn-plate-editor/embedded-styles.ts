@@ -15,7 +15,7 @@ export function createEmbeddedStyles(): string {
     }
     .paper {
       max-width: 860px;
-      min-height: 390px;
+      min-height: 700px;
       height: auto;
       overflow: visible;
       margin: 0 auto;
@@ -47,7 +47,7 @@ export function createEmbeddedStyles(): string {
       font-weight: 800;
     }
     #editor {
-      min-height: 180px;
+      min-height: 300px;
       outline: none;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
       font-size: 17px;
@@ -140,7 +140,7 @@ export function createEmbeddedStyles(): string {
     .hidden { display: none; }
     @media (max-width: 760px) {
       .shell { padding: 0; }
-      .paper { min-height: 360px; border: 0; border-radius: 0; padding: 28px 24px 80px; box-shadow: none; }
+      .paper { min-height: 620px; border: 0; border-radius: 0; padding: 28px 24px 80px; box-shadow: none; }
       .title { font-size: 30px; }
       .slash-menu {
         left: 0 !important;

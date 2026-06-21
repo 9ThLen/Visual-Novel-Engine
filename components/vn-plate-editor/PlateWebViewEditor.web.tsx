@@ -13,6 +13,9 @@ const Iframe = 'iframe' as unknown as React.ComponentType<{
   style: React.CSSProperties;
 }>;
 
+const MIN_FRAME_HEIGHT = 760;
+const MIN_PHONE_FRAME_HEIGHT = 640;
+
 interface PlateWebViewEditorProps {
   editorId: string;
   scene: DocumentScene;
@@ -32,7 +35,8 @@ export function PlateWebViewEditor({
   onChange,
   onCreateNextScene,
 }: PlateWebViewEditorProps) {
-  const [frameHeight, setFrameHeight] = useState(isPhone ? 520 : 640);
+  const minimumFrameHeight = isPhone ? MIN_PHONE_FRAME_HEIGHT : MIN_FRAME_HEIGHT;
+  const [frameHeight, setFrameHeight] = useState(minimumFrameHeight);
   const html = useMemo(
     () => createVNPlateEditorHtml({ editorId, scene, characters, isPhone }),
     [characters, editorId, isPhone, scene.sceneId],
@@ -46,9 +50,10 @@ export function PlateWebViewEditor({
       if (message?.source !== 'vn-plate-editor' || message.editorId !== editorId) return;
       if (message.type === 'resize') {
         if (Number.isFinite(message.height) && message.height > 0) {
-          setFrameHeight((current) => Math.max(240, Math.ceil(message.height)) === current
-            ? current
-            : Math.max(240, Math.ceil(message.height)));
+          setFrameHeight((current) => {
+            const next = Math.max(minimumFrameHeight, Math.ceil(message.height));
+            return next === current ? current : next;
+          });
         }
         return;
       }
@@ -64,7 +69,7 @@ export function PlateWebViewEditor({
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [characters, editorId, onChange, onCreateNextScene]);
+  }, [characters, editorId, minimumFrameHeight, onChange, onCreateNextScene]);
 
   return (
     <View style={[{ alignSelf: 'stretch', overflow: 'visible' }, style, { height: frameHeight }]}>
