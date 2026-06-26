@@ -267,3 +267,70 @@ Replace the active scene editor with Plate while preserving `SceneRecord + Timel
 
 Each wave includes an explicit rollback path; route/docs changes are blocked
 until serializer and editor smoke checks pass.
+
+## Phase 17 - Inline Character Authoring
+
+**Priority:** P0
+**Status:** Planned
+**Plan:** `.planning/phases/17-inline-character-authoring/17-00-PLAN.md` through `.planning/phases/17-inline-character-authoring/17-04-PLAN.md`
+
+Replace the current non-actionable character block UX with compact inline
+speaker tokens. Typing `Маша:` creates or reuses a persistent character, assigns
+a stable color, opens controls only on first creation or manual token click,
+stores user-uploaded named sprites per character, generates internal character
+timeline steps on save, and renders real sprites with speaker focus in
+Preview/Reader.
+
+### Wave 0 - Data Contract And Resolver
+- Extend `Character` with persistent color and authoring defaults.
+- Make `spriteId` a sprite ID, not URI.
+- Add `characterId + spriteId -> sprite.uri` resolver.
+- Add lazy migration for existing character records.
+- Add story/character migration marker.
+- Preserve character metadata through export/import.
+- Update import validation.
+
+### Wave 1 - Inline Token Authoring UX
+- Render compact colored `Маша:` token.
+- Auto-create characters from typed speaker names.
+- Open controls once on first creation.
+- Support upload/name/rename/delete sprite per character.
+- Use an explicit WebView/Plate bridge message for token clicks.
+- Render hydrated dialogue tokens with `data-character-id` and resolve typed
+  speaker names against payload characters.
+- Add keyboard accessibility, mobile bottom-sheet fallback, upload validation,
+  and explicitly selected undo/save semantics for library edits.
+- Route new visible copy through i18n and use reference-count warnings for
+  character deletion.
+
+### Wave 2 - Generated Timeline Save Pipeline
+- Scan each scene top to bottom.
+- Insert `character show` only once per visible scene character.
+- Insert `change_sprite`/`move` only when needed.
+- Store speaker focus on `dialogue`, not as a character action.
+- Treat each scene as clean runtime state; do not inherit state across branches.
+- Ensure generated character steps are non-yielding and reader labels show character names.
+- Preserve explicit technical character step priority and dialogue sprite snapshots.
+- Keep `DialogueEntry.characterId` as library ID and preserve display name separately.
+
+### Wave 3 - Runtime, Preview, Reader
+- Execute `show/hide/change_sprite/move`.
+- Resolve and render real uploaded sprites.
+- Replace Preview placeholders.
+- Add responsive character positioning through `CharacterDisplay` and subtle active-speaker focus.
+- Position sprites with center anchors so far-left/far-right do not overflow.
+- Pass `characterLibraries[storyId]` through reader asset resolution and avoid exposing raw character IDs in dialogue labels.
+- Render placeholders for visible characters with missing sprites and share the animated instance path between Reader and Preview.
+- Ensure character animation values are cached, not recreated every render.
+- If needed, split execution into 03a runtime/resolver/display-name work and
+  03b visual positioning/focus/animation pipeline work.
+
+### Wave 4 - Tests And Documentation
+- Add regression coverage for first-use menu, stable colors, sticky sprites,
+  generated timeline, deleted/renamed characters, missing sprites, and speaker focus.
+- Split coverage into focused unit tests plus integration/manual smoke so the
+  verification task remains executable.
+- Document inline authoring vs internal timeline steps.
+- Verify accessibility and export/import behavior.
+- Verify schema marker, i18n coverage, deletion warnings, sprite name scope, and
+  current-sprite snapshot semantics.

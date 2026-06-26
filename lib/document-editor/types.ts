@@ -5,7 +5,6 @@ export type DocumentBlockKind = 'text' | 'dialogue' | 'choice' | 'technical';
 export type DocumentCommandId =
   | 'background'
   | 'character'
-  | 'sprite'
   | 'newScene'
   | 'music'
   | 'sound'
@@ -38,6 +37,8 @@ export interface DocumentDialogueBlock extends BaseDocumentBlock {
   speakerName: string;
   characterId: string | null;
   spriteId: string | null;
+  tokenColor?: string;
+  openCharacterControls?: boolean;
   text: string;
 }
 

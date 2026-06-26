@@ -10,11 +10,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DocumentEditorHeader } from '@/components/document-editor/DocumentEditorHeader';
 import { DocumentInspectorPanel } from '@/components/document-editor/DocumentInspectorPanel';
 import { DocumentSceneSidebar } from '@/components/document-editor/DocumentSceneSidebar';
-import { PlateWebViewEditor } from '@/components/vn-plate-editor/PlateWebViewEditor';
+import {
+  PlateWebViewEditor,
+  type PlateWebViewEditorHandle,
+  type PlateWebViewEditorSnapshot,
+} from '@/components/vn-plate-editor/PlateWebViewEditor';
 import { useColors } from '@/hooks/use-colors';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
-import { useI18n } from '@/hooks/use-i18n';
 import { ensureDocumentCharactersInBlocks } from '@/lib/document-editor/document-scene';
+import type { VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { DocumentScene } from '@/lib/document-editor/types';
 import type { SceneRecord } from '@/lib/engine/types';
@@ -26,10 +30,13 @@ interface DocumentSceneEditorProps {
   sceneIndex: number;
   sceneCount: number;
   initialDocuments: DocumentScene[];
+  documentsResetKey: string;
   characters: Character[];
+  backgroundAssets: VNPlateBackgroundAsset[];
   protectedCharacterIds?: string[];
   onSave: (documentScenes: DocumentScene[], characters: Character[]) => void;
   onCreateNextScene: (sourceSceneId: string, documentScenes: DocumentScene[], characters: Character[]) => void;
+  onUploadBackgroundAsset?: (name: string, dataUri: string) => Promise<VNPlateBackgroundAsset | null>;
   onBack?: () => void;
   onPreview?: (sceneId: string) => void;
   onSaveAndPlay?: (sceneId: string) => void;
@@ -42,9 +49,12 @@ export function DocumentSceneEditor({
   sceneIndex,
   sceneCount,
   initialDocuments,
+  documentsResetKey,
   characters,
+  backgroundAssets,
   onSave,
   onCreateNextScene,
+  onUploadBackgroundAsset,
   onBack,
   onPreview,
   onSaveAndPlay,
@@ -52,7 +62,6 @@ export function DocumentSceneEditor({
   const router = useRouter();
   const documentColorScheme = 'light';
   const colors = useColors(documentColorScheme);
-  const { t } = useI18n();
   const layout = useResponsiveLayout();
   const insets = useSafeAreaInsets();
   const isPhone = layout.deviceType === 'phone';
@@ -60,8 +69,12 @@ export function DocumentSceneEditor({
   const [documentScenes, setDocumentScenes] = useState(initialDocuments);
   const [localCharacters, setLocalCharacters] = useState(characters);
   const [activeSceneId, setActiveSceneId] = useState(sceneRecord.id);
+  const [dirtySceneIds, setDirtySceneIds] = useState<Set<string>>(() => new Set());
   const [isSaving, setIsSaving] = useState(false);
-  const [prevDocuments, setPrevDocuments] = useState(initialDocuments);
+  const editorRef = useRef<PlateWebViewEditorHandle>(null);
+  const draftRegistryRef = useRef(new Map<string, PlateWebViewEditorSnapshot>());
+  const prevResetKeyRef = useRef(documentsResetKey);
+  const prevRouteSceneIdRef = useRef(sceneRecord.id);
   const savingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -73,21 +86,59 @@ export function DocumentSceneEditor({
     };
   }, []);
 
-  if (prevDocuments !== initialDocuments) {
+  useEffect(() => {
+    if (prevResetKeyRef.current === documentsResetKey) return;
+    const routeSceneChanged = prevRouteSceneIdRef.current !== sceneRecord.id;
+    prevResetKeyRef.current = documentsResetKey;
+    prevRouteSceneIdRef.current = sceneRecord.id;
+    if (!routeSceneChanged && dirtySceneIds.has(activeSceneId)) return;
     setDocumentScenes(initialDocuments);
     setLocalCharacters(characters);
-    setActiveSceneId(sceneRecord.id);
-    setPrevDocuments(initialDocuments);
-  }
+    setActiveSceneId(routeSceneChanged ? sceneRecord.id : activeSceneId);
+    draftRegistryRef.current.clear();
+  }, [activeSceneId, characters, dirtySceneIds, documentsResetKey, initialDocuments, sceneRecord.id]);
 
   const activeDocument = documentScenes.find((ds) => ds.sceneId === activeSceneId) ?? documentScenes[0];
+  const activeSceneIndex = Math.max(0, scenes.findIndex((scene) => scene.id === activeSceneId));
 
-  const handleSave = useCallback(() => {
+  const applyDraftSnapshot = useCallback((snapshot: PlateWebViewEditorSnapshot, dirty = true) => {
+    draftRegistryRef.current.set(snapshot.scene.sceneId, snapshot);
+    setLocalCharacters(snapshot.characters);
+    setDocumentScenes((current) =>
+      current.map((documentScene) =>
+        documentScene.sceneId === snapshot.scene.sceneId ? snapshot.scene : documentScene,
+      ),
+    );
+    if (dirty) {
+      setDirtySceneIds((current) => {
+        const next = new Set(current);
+        next.add(snapshot.scene.sceneId);
+        return next;
+      });
+    }
+  }, []);
+
+  const flushActiveEditor = useCallback(async () => {
+    const snapshot = await editorRef.current?.flush();
+    if (!snapshot) return null;
+    applyDraftSnapshot(snapshot);
+    return snapshot;
+  }, [applyDraftSnapshot]);
+
+  const documentsWithDrafts = useCallback(() => {
+    return documentScenes.map((documentScene) =>
+      draftRegistryRef.current.get(documentScene.sceneId)?.scene ?? documentScene,
+    );
+  }, [documentScenes]);
+
+  const handleSave = useCallback(async () => {
+    const flushed = await flushActiveEditor();
+    const saveCharacters = flushed?.characters ?? localCharacters;
     setIsSaving(true);
-    const nextDocuments = documentScenes.map((ds) => ({ ...ds, blocks: [...ds.blocks] }));
+    const nextDocuments = documentsWithDrafts().map((ds) => ({ ...ds, blocks: [...ds.blocks] }));
     const ensured = ensureDocumentCharactersInBlocks(
       nextDocuments.flatMap((ds) => ds.blocks),
-      localCharacters,
+      saveCharacters,
     );
 
     let cursor = 0;
@@ -100,6 +151,8 @@ export function DocumentSceneEditor({
     onSave(ensuredDocuments, ensured.characters);
     setLocalCharacters(ensured.characters);
     setDocumentScenes(ensuredDocuments);
+    draftRegistryRef.current.clear();
+    setDirtySceneIds(new Set());
 
     if (savingTimerRef.current) {
       clearTimeout(savingTimerRef.current);
@@ -108,27 +161,55 @@ export function DocumentSceneEditor({
       setIsSaving(false);
       savingTimerRef.current = null;
     }, 250);
-  }, [documentScenes, localCharacters, onSave]);
+  }, [documentsWithDrafts, flushActiveEditor, localCharacters, onSave]);
 
   const handlePlateChange = useCallback((nextScene: DocumentScene, nextCharacters: Character[]) => {
-    setActiveSceneId(nextScene.sceneId);
-    setLocalCharacters(nextCharacters);
-    setDocumentScenes((current) =>
-      current.map((documentScene) =>
-        documentScene.sceneId === nextScene.sceneId ? nextScene : documentScene,
-      ),
-    );
-  }, []);
+    applyDraftSnapshot({ scene: nextScene, characters: nextCharacters });
+  }, [applyDraftSnapshot]);
 
   const handleCreateNextScene = useCallback((nextScene: DocumentScene, nextCharacters: Character[]) => {
-    const nextDocuments = documentScenes.map((documentScene) =>
+    const nextDocuments = documentsWithDrafts().map((documentScene) =>
       documentScene.sceneId === nextScene.sceneId ? nextScene : documentScene,
     );
+    draftRegistryRef.current.set(nextScene.sceneId, { scene: nextScene, characters: nextCharacters });
     setActiveSceneId(nextScene.sceneId);
     setLocalCharacters(nextCharacters);
     setDocumentScenes(nextDocuments);
     onCreateNextScene(nextScene.sceneId, nextDocuments, nextCharacters);
-  }, [documentScenes, onCreateNextScene]);
+  }, [documentsWithDrafts, onCreateNextScene]);
+
+  const handleBack = useCallback(async () => {
+    await handleSave();
+    if (onBack) {
+      onBack();
+      return;
+    }
+    router.back();
+  }, [handleSave, onBack, router]);
+
+  const handlePreview = useCallback(async () => {
+    await handleSave();
+    if (onPreview) {
+      onPreview(activeSceneId);
+      return;
+    }
+    router.push({ pathname: '/preview', params: { storyId, sceneId: activeSceneId } });
+  }, [activeSceneId, handleSave, onPreview, router, storyId]);
+
+  const handleSaveAndPlay = useCallback(async () => {
+    await handleSave();
+    if (onSaveAndPlay) {
+      onSaveAndPlay(activeSceneId);
+      return;
+    }
+    router.push({ pathname: '/preview', params: { storyId, sceneId: activeSceneId } });
+  }, [activeSceneId, handleSave, onSaveAndPlay, router, storyId]);
+
+  const handleScenePress = useCallback(async (nextSceneId: string) => {
+    if (nextSceneId === activeSceneId) return;
+    await flushActiveEditor();
+    setActiveSceneId(nextSceneId);
+  }, [activeSceneId, flushActiveEditor]);
 
   return (
     <KeyboardAvoidingView
@@ -142,25 +223,12 @@ export function DocumentSceneEditor({
         isPhone={isPhone}
         isSaving={isSaving}
         safeTop={insets.top}
-        sceneIndex={sceneIndex}
+        sceneIndex={activeSceneIndex >= 0 ? activeSceneIndex : sceneIndex}
         sceneCount={sceneCount}
-        onBack={onBack ?? (() => router.back())}
-        onPreview={() => {
-          if (onPreview) {
-            onPreview(activeSceneId);
-            return;
-          }
-          router.push({ pathname: '/preview', params: { storyId, sceneId: activeSceneId } });
-        }}
+        onBack={handleBack}
+        onPreview={handlePreview}
         onSave={handleSave}
-        onSaveAndPlay={() => {
-          handleSave();
-          if (onSaveAndPlay) {
-            onSaveAndPlay(activeSceneId);
-            return;
-          }
-          router.push({ pathname: '/preview', params: { storyId, sceneId: activeSceneId } });
-        }}
+        onSaveAndPlay={handleSaveAndPlay}
       />
 
       <View style={{ flex: 1, flexDirection: isPhone ? 'column' : 'row' }}>
@@ -168,8 +236,9 @@ export function DocumentSceneEditor({
           <DocumentSceneSidebar
             activeSceneId={activeSceneId}
             colorScheme={documentColorScheme}
+            dirtySceneIds={dirtySceneIds}
             scenes={scenes}
-            onScenePress={(sceneId) => router.push({ pathname: '/document-editor', params: { storyId, sceneId } })}
+            onScenePress={handleScenePress}
           />
         ) : null}
 
@@ -186,12 +255,14 @@ export function DocumentSceneEditor({
           }}
           keyboardShouldPersistTaps="handled"
         >
-          {documentScenes.map((documentScene) => (
+          {activeDocument ? (
             <PlateWebViewEditor
-              key={documentScene.sceneId}
-              editorId={`vn-plate-${storyId}-${documentScene.sceneId}`}
-              scene={documentScene}
+              ref={editorRef}
+              key={activeDocument.sceneId}
+              editorId={`vn-plate-${storyId}-${activeDocument.sceneId}`}
+              scene={activeDocument}
               characters={localCharacters}
+              backgroundAssets={backgroundAssets}
               isPhone={isPhone}
               style={{
                 width: '100%',
@@ -201,8 +272,9 @@ export function DocumentSceneEditor({
               }}
               onChange={handlePlateChange}
               onCreateNextScene={handleCreateNextScene}
+              onUploadBackgroundAsset={onUploadBackgroundAsset}
             />
-          ))}
+          ) : null}
         </ScrollView>
 
         {!isPhone ? (

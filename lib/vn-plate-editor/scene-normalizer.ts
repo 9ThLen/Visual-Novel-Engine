@@ -1,5 +1,6 @@
 import type { Character } from '@/lib/character-types';
 import {
+  createDocumentCharacterDialogueBlock,
   createDocumentTechnicalBlock,
   ensureDocumentCharactersInBlocks,
 } from '@/lib/document-editor/document-scene';
@@ -10,12 +11,11 @@ import type {
   DocumentTechnicalBlock,
 } from '@/lib/document-editor/types';
 import { generateId } from '@/lib/id-utils';
-import type { BlockType, TimelineStep } from '@/lib/engine/types';
+import type { BlockType, CharacterBlockData, TimelineStep } from '@/lib/engine/types';
 
 const technicalCommandIds = new Set<DocumentCommandId>([
   'background',
   'character',
-  'sprite',
   'newScene',
   'music',
   'sound',
@@ -51,7 +51,41 @@ function isTimelineStep(value: unknown): value is TimelineStep {
     typeof candidate.enabled === 'boolean';
 }
 
-function normalizeTechnicalBlock(block: DocumentTechnicalBlock, characters: Character[]): DocumentTechnicalBlock {
+function characterNameForId(characters: Character[], characterId: string | null | undefined): string {
+  if (!characterId) return 'Character';
+  return characters.find((character) => character.id === characterId)?.name || 'Character';
+}
+
+function technicalCharacterToDialogueBlock(
+  block: DocumentTechnicalBlock,
+  characters: Character[],
+): DocumentBlock {
+  const data = isTimelineStep(block.step) && block.step.blockType === 'character'
+    ? block.step.data as CharacterBlockData
+    : null;
+  const character = data?.characterId
+    ? characters.find((item) => item.id === data.characterId)
+    : null;
+  return {
+    ...createDocumentCharacterDialogueBlock(
+      character?.name || block.label || characterNameForId(characters, data?.characterId),
+      characters,
+    ),
+    id: block.id || generateId('doc_dialogue'),
+    sourceStepId: block.sourceStepId,
+    sourceStep: block.sourceStep,
+    characterId: data?.characterId || character?.id || null,
+    spriteId: data?.spriteId || character?.authoring?.currentSpriteId || character?.defaultSpriteId || null,
+    tokenColor: character?.color,
+    openCharacterControls: true,
+  };
+}
+
+function normalizeTechnicalBlock(block: DocumentTechnicalBlock, characters: Character[]): DocumentBlock {
+  if (block.commandId === 'character' || block.blockType === 'character') {
+    return technicalCharacterToDialogueBlock(block, characters);
+  }
+
   const step = block.step as TimelineStep | null | undefined;
   if (isTimelineStep(step)) {
     const blockType = block.blockType || step.blockType;
@@ -77,8 +111,32 @@ function normalizeTechnicalBlock(block: DocumentTechnicalBlock, characters: Char
   };
 }
 
+function textBlockToDialogueBlock(block: Extract<DocumentBlock, { kind: 'text' }>, characters: Character[]): DocumentBlock | null {
+  const content = block.content || '';
+  const trimmed = content.trim();
+  const match = /^([^:\n]{1,48}):\s*(.*)$/.exec(trimmed);
+  if (!match) return null;
+
+  const speakerName = match[1].trim();
+  const text = match[2] || '';
+  if (!speakerName || speakerName.startsWith('/')) return null;
+  if (/^[a-z][a-z0-9+.-]*$/i.test(speakerName) && text.trim().startsWith('//')) return null;
+
+  return {
+    ...createDocumentCharacterDialogueBlock(speakerName, characters),
+    id: block.id || generateId('doc_dialogue'),
+    sourceStepId: block.sourceStepId,
+    sourceStep: block.sourceStep,
+    text,
+    openCharacterControls: false,
+  };
+}
+
 function normalizeBlock(block: DocumentBlock, characters: Character[]): DocumentBlock | null {
   if (block.kind === 'text') {
+    const dialogueBlock = textBlockToDialogueBlock(block, characters);
+    if (dialogueBlock) return dialogueBlock;
+
     return {
       id: block.id || generateId('doc_text'),
       kind: 'text',
@@ -97,6 +155,8 @@ function normalizeBlock(block: DocumentBlock, characters: Character[]): Document
       speakerName: block.speakerName || '',
       characterId: block.characterId || null,
       spriteId: block.spriteId || null,
+      tokenColor: block.tokenColor,
+      openCharacterControls: block.openCharacterControls,
       text: block.text || '',
     };
   }

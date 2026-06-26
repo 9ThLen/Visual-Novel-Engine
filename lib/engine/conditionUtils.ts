@@ -18,21 +18,32 @@ export function conditionsMet(
 
   return conditions.every((cond) => {
     const variableValue = variables[cond.variableName];
-    const [a, b] = toComparable(variableValue as string | number | boolean, cond.value);
 
     switch (cond.operator) {
-      case '==':
+      case '==': {
+        const [a, b] = toComparable(variableValue as string | number | boolean, cond.value);
         return a === b;
-      case '!=':
+      }
+      case '!=': {
+        const [a, b] = toComparable(variableValue as string | number | boolean, cond.value);
         return a !== b;
-      case '>':
+      }
+      case '>': {
+        const [a, b] = toComparable(variableValue as string | number | boolean, cond.value);
         return typeof a === 'number' && typeof b === 'number' && a > b;
-      case '<':
+      }
+      case '<': {
+        const [a, b] = toComparable(variableValue as string | number | boolean, cond.value);
         return typeof a === 'number' && typeof b === 'number' && a < b;
-      case '>=':
+      }
+      case '>=': {
+        const [a, b] = toComparable(variableValue as string | number | boolean, cond.value);
         return typeof a === 'number' && typeof b === 'number' && a >= b;
-      case '<=':
+      }
+      case '<=': {
+        const [a, b] = toComparable(variableValue as string | number | boolean, cond.value);
         return typeof a === 'number' && typeof b === 'number' && a <= b;
+      }
       case 'contains':
         return String(variableValue).includes(String(cond.value));
       case 'isEmpty':

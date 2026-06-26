@@ -1,6 +1,5 @@
-import { searchDocumentCommands } from '@/lib/document-editor/commands';
+﻿import { searchDocumentCommands } from '@/lib/document-editor/commands';
 import {
-  createDocumentTechnicalBlock,
   documentSceneToConnections,
   documentSceneToTimeline,
   ensureDocumentCharacters,
@@ -9,6 +8,7 @@ import {
   parseDraftLineToDocumentBlock,
   sceneRecordToDocumentScene,
 } from '@/lib/document-editor/document-scene';
+import { buildDocumentsResetKey } from '@/lib/document-editor/document-reset-key';
 import type { DocumentScene } from '@/lib/document-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
@@ -23,16 +23,16 @@ describe('document editor commands', () => {
     expect(searchDocumentCommands('/picture')[0]?.id).toBe('background');
   });
 
-  it('finds character and sprite by human aliases', () => {
+  it('finds character by human aliases', () => {
     expect(searchDocumentCommands('/гер')[0]?.id).toBe('character');
-    expect(searchDocumentCommands('/емо')[0]?.id).toBe('sprite');
+    expect(searchDocumentCommands('/персонаж')[0]?.id).toBe('character');
   });
 
-  it('finds character and sprite by English human aliases', () => {
+  it('finds character by English human aliases', () => {
     expect(searchDocumentCommands('/hero')[0]?.id).toBe('character');
     expect(searchDocumentCommands('/actor')[0]?.id).toBe('character');
-    expect(searchDocumentCommands('/pose')[0]?.id).toBe('sprite');
-    expect(searchDocumentCommands('/expression')[0]?.id).toBe('sprite');
+    expect(searchDocumentCommands('/pose')).toEqual([]);
+    expect(searchDocumentCommands('/expression')).toEqual([]);
   });
 
   it('finds new scene by page aliases', () => {
@@ -40,6 +40,7 @@ describe('document editor commands', () => {
     expect(searchDocumentCommands('/лист')[0]?.id).toBe('newScene');
     expect(searchDocumentCommands('/page')[0]?.id).toBe('newScene');
   });
+
   it('does not mark implemented slash blocks as coming soon', () => {
     for (const blockType of ['sound', 'camera', 'interactive_object'] as const) {
       expect(BLOCK_TYPE_INFO[blockType].comingSoon).toBeFalsy();
@@ -90,14 +91,28 @@ describe('document scene parser/compiler', () => {
     expect(ordered.map((scene) => scene.id)).toEqual(['scene_1', 'scene_2', 'scene_3']);
   });
 
+  it('keeps document reset key stable across equivalent scene arrays', () => {
+    const first = [
+      createTestSceneRecord('scene_1', null, true),
+      createTestSceneRecord('scene_2'),
+    ];
+    const second = first.map((scene) => ({ ...scene }));
+
+    expect(buildDocumentsResetKey('scene_1', first)).toBe(buildDocumentsResetKey('scene_1', second));
+    expect(buildDocumentsResetKey('scene_2', first)).not.toBe(buildDocumentsResetKey('scene_1', first));
+    expect(buildDocumentsResetKey('scene_1', [{ ...first[0], updatedAt: 2 }, first[1]])).not.toBe(
+      buildDocumentsResetKey('scene_1', first),
+    );
+  });
+
   it('parses dialogue shorthand and auto-creates missing characters', () => {
-    const block = parseDraftLineToDocumentBlock('Макс: Привіт!', []);
+    const block = parseDraftLineToDocumentBlock('ĐśĐ°ĐşŃ: ĐźŃ€Đ¸Đ˛Ń–Ń‚!', []);
     expect(block.kind).toBe('dialogue');
     if (block.kind !== 'dialogue') throw new Error('Expected dialogue block');
 
     const characters = ensureDocumentCharacters([block], []);
     expect(characters).toHaveLength(1);
-    expect(characters[0].name).toBe('Макс');
+    expect(characters[0].name).toBe('ĐśĐ°ĐşŃ');
     expect(block.characterId).toBe(characters[0].id);
   });
 
@@ -117,6 +132,18 @@ describe('document scene parser/compiler', () => {
     expect(block.characterId).toBeNull();
   });
 
+  it('creates separate characters for different speaker-only names', () => {
+    const masha = parseDraftLineToDocumentBlock('Маша:', []);
+    const dima = parseDraftLineToDocumentBlock('Діма:', []);
+    const alina = parseDraftLineToDocumentBlock('Аліна:', []);
+
+    const result = ensureDocumentCharactersInBlocks([masha, dima, alina], []);
+
+    expect(result.characters.map((character) => character.name)).toEqual(['Маша', 'Діма', 'Аліна']);
+    const ids = result.blocks.map((block) => block.kind === 'dialogue' ? block.characterId : null);
+    expect(new Set(ids).size).toBe(3);
+  });
+
   it('converts slash aliases into technical blocks', () => {
     const block = parseDraftLineToDocumentBlock('/картинка', []);
     expect(block.kind).toBe('technical');
@@ -125,11 +152,28 @@ describe('document scene parser/compiler', () => {
     expect(block.blockType).toBe('background');
   });
 
+  it('converts /character into the same dialogue block shape as typed speaker shorthand', () => {
+    const block = parseDraftLineToDocumentBlock('/character', []);
+    expect(block.kind).toBe('dialogue');
+    if (block.kind !== 'dialogue') throw new Error('Expected dialogue block');
+    expect(block.speakerName).toBe('Character');
+    expect(block.characterId).toBeNull();
+    expect(block.openCharacterControls).toBe(true);
+
+    const result = ensureDocumentCharactersInBlocks([block], []);
+    const ensured = result.blocks[0];
+    expect(result.characters).toHaveLength(1);
+    expect(ensured.kind).toBe('dialogue');
+    if (ensured.kind !== 'dialogue') throw new Error('Expected dialogue block');
+    expect(ensured.characterId).toBe(result.characters[0].id);
+  });
+
   it('reuses existing characters case-insensitively when parsing dialogue', () => {
     const characters: Character[] = [{
       id: 'char_max',
       name: 'Max',
       defaultSpriteId: 'sprite_neutral',
+      authoring: { currentSpriteId: 'sprite_happy', currentPosition: 'center', focusOnSpeak: true },
       sprites: [{ id: 'sprite_neutral', name: 'Neutral', uri: 'max.png', createdAt: 1 }],
       createdAt: 1,
     }];
@@ -141,46 +185,65 @@ describe('document scene parser/compiler', () => {
     const nextCharacters = ensureDocumentCharacters([block], characters);
     expect(nextCharacters).toHaveLength(1);
     expect(block.characterId).toBe('char_max');
-    expect(block.spriteId).toBe('sprite_neutral');
+    expect(block.spriteId).toBe('sprite_happy');
   });
 
-  it('creates sprite commands from nearby dialogue context', () => {
-    const speaker = {
-      id: 'dialogue_1',
-      kind: 'dialogue' as const,
-      speakerName: 'Max',
-      characterId: 'char_max',
-      spriteId: 'sprite_happy',
-      text: 'Hello.',
-    };
+  it('does not parse URL-like text as dialogue shorthand', () => {
+    const block = parseDraftLineToDocumentBlock('https://example.com/path', []);
 
-    const block = createDocumentTechnicalBlock('sprite', [], speaker);
-    expect(block.blockType).toBe('character');
-    expect((block.step.data as any).characterId).toBe('char_max');
-    expect((block.step.data as any).spriteId).toBe('sprite_happy');
+    expect(block.kind).toBe('text');
+  });
+
+  it('auto-creates migrated characters with color and first-use marker', () => {
+    const block = parseDraftLineToDocumentBlock('Alice: Hello!', []);
+    if (block.kind !== 'dialogue') throw new Error('Expected dialogue block');
+
+    const result = ensureDocumentCharactersInBlocks([block], []);
+    const ensuredBlock = result.blocks[0];
+
+    expect(result.characters).toHaveLength(1);
+    expect(result.characters[0].color).toMatch(/^#/);
+    expect(result.characters[0].authoring?.currentPosition).toBe('center');
+    expect(ensuredBlock.kind).toBe('dialogue');
+    if (ensuredBlock.kind !== 'dialogue') throw new Error('Expected dialogue block');
+    expect(ensuredBlock.openCharacterControls).toBe(true);
+    expect(ensuredBlock.tokenColor).toBe(result.characters[0].color);
+  });
+
+  it('does not duplicate speaker names with whitespace and case variants', () => {
+    const first = parseDraftLineToDocumentBlock('Alice: One', []);
+    if (first.kind !== 'dialogue') throw new Error('Expected dialogue block');
+    const created = ensureDocumentCharactersInBlocks([first], []);
+
+    const second = parseDraftLineToDocumentBlock('  ALICE: Two', created.characters);
+    if (second.kind !== 'dialogue') throw new Error('Expected dialogue block');
+    const ensured = ensureDocumentCharactersInBlocks([second], created.characters);
+
+    expect(ensured.characters).toHaveLength(1);
+    expect(second.characterId).toBe(created.characters[0].id);
   });
 
   it('compiles text, dialogue, choice, and technical blocks to timeline steps', () => {
     const characters: Character[] = [{
       id: 'char_max',
-      name: 'Макс',
+      name: 'ĐśĐ°ĐşŃ',
       sprites: [],
       createdAt: 1,
     }];
 
     const documentScene: DocumentScene = {
       sceneId: 'scene_1',
-      sceneName: 'Початок',
+      sceneName: 'ĐźĐľŃ‡Đ°Ń‚ĐľĐş',
       blocks: [
-        { id: 'text_1', kind: 'text', content: 'Ранок у школі.' },
-        { id: 'dialogue_1', kind: 'dialogue', speakerName: 'Макс', characterId: 'char_max', spriteId: null, text: 'Привіт!' },
+        { id: 'text_1', kind: 'text', content: 'Đ Đ°Đ˝ĐľĐş Ń ŃĐşĐľĐ»Ń–.' },
+        { id: 'dialogue_1', kind: 'dialogue', speakerName: 'ĐśĐ°ĐşŃ', characterId: 'char_max', spriteId: null, text: 'ĐźŃ€Đ¸Đ˛Ń–Ń‚!' },
         {
           id: 'choice_1',
           kind: 'choice',
-          question: 'Що зробити?',
+          question: 'Đ©Đľ Đ·Ń€ĐľĐ±Đ¸Ń‚Đ¸?',
           options: [
-            { id: 'choice_a', text: 'Піти вперед', targetSceneId: 'scene_2' },
-            { id: 'choice_b', text: 'Залишитись', targetSceneId: null },
+            { id: 'choice_a', text: 'ĐźŃ–Ń‚Đ¸ Đ˛ĐżĐµŃ€ĐµĐ´', targetSceneId: 'scene_2' },
+            { id: 'choice_b', text: 'Đ—Đ°Đ»Đ¸ŃĐ¸Ń‚Đ¸ŃŃŚ', targetSceneId: null },
           ],
         },
         {
@@ -188,20 +251,21 @@ describe('document scene parser/compiler', () => {
           kind: 'technical',
           commandId: 'background',
           blockType: 'background',
-          label: 'Фон',
-          summary: 'school · fade',
+          label: 'Đ¤ĐľĐ˝',
+          summary: 'school Â· fade',
           step: createBackgroundStep({ assetId: 'school' }),
         },
       ],
     };
 
     const timeline = documentSceneToTimeline(documentScene);
-    expect(timeline.map((step) => step.blockType)).toEqual(['text', 'dialogue', 'choice', 'background']);
+    expect(timeline.map((step) => step.blockType)).toEqual(['text', 'character', 'dialogue', 'choice', 'background']);
+    expect((timeline[1].data as any).generatedByInlineDialogue).toBe(true);
   });
 
   it('saves next-scene connection for document page creation', () => {
     const connections = documentSceneToConnections(
-      { sceneId: 'scene_1', sceneName: 'Початок', blocks: [{ id: 'text_1', kind: 'text', content: 'Текст.' }] },
+      { sceneId: 'scene_1', sceneName: 'ĐźĐľŃ‡Đ°Ń‚ĐľĐş', blocks: [{ id: 'text_1', kind: 'text', content: 'Đ˘ĐµĐşŃŃ‚.' }] },
       'scene_2'
     );
 
@@ -236,7 +300,7 @@ describe('document scene parser/compiler', () => {
     const sceneRecord: SceneRecord = {
       id: 'scene_1',
       storyId: 'story_1',
-      name: 'Початок',
+      name: 'ĐźĐľŃ‡Đ°Ń‚ĐľĐş',
       description: '',
       tags: [],
       timeline: [createBackgroundStep({ assetId: 'school' })],
@@ -280,7 +344,7 @@ describe('document scene parser/compiler', () => {
         collapsed: false,
         enabled: true,
         data: {
-          content: 'Прийшов день.\nМакс: Я тут.\nМарлена: Привіт, Макс.',
+          content: 'ĐźŃ€Đ¸ĐąŃĐľĐ˛ Đ´ĐµĐ˝ŃŚ.\nĐśĐ°ĐşŃ: ĐŻ Ń‚ŃŃ‚.\nĐśĐ°Ń€Đ»ĐµĐ˝Đ°: ĐźŃ€Đ¸Đ˛Ń–Ń‚, ĐśĐ°ĐşŃ.',
           typewriterSpeed: 0.5,
           anchorTo: 'background',
         },
@@ -312,3 +376,4 @@ describe('document scene parser/compiler', () => {
     expect(documentScene.blocks.at(-1)).toMatchObject({ kind: 'text', content: '' });
   });
 });
+

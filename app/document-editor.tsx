@@ -14,6 +14,7 @@ import {
 } from '@/lib/document-editor/next-scene';
 import { useStoryActions, useStoryState } from '@/hooks/use-story-state';
 import { useI18n } from '@/hooks/use-i18n';
+import { addAssetToLibraryPure } from '@/lib/media-library-service';
 import {
   selectCanonicalSceneRecord,
   selectSceneRecordsForStory,
@@ -21,6 +22,7 @@ import {
 } from '@/stores/use-app-store';
 import type { Character } from '@/lib/character-types';
 import type { DialogueBlockData, SceneRecord } from '@/lib/engine/types';
+import type { VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
 
 export default function DocumentEditorRoute() {
   const { t } = useI18n();
@@ -44,11 +46,23 @@ export default function DocumentEditorRoute() {
   );
 
   const characters = useAppStore((state) => (storyId ? state.characterLibraries[storyId] || [] : []));
+  const mediaLibrary = useAppStore((state) => state.mediaLibrary);
   const saveSceneRecord = useAppStore((state) => state.saveSceneRecord);
   const setCharacterLibrary = useAppStore((state) => state.setCharacterLibrary);
+  const setMediaLibrary = useAppStore((state) => state.setMediaLibrary);
   const reorderScenes = useAppStore((state) => state.reorderScenes);
   const updateStoryMetadata = useAppStore((state) => state.updateStoryMetadata);
   const orderedScenes = useMemo(() => orderSceneRecordsForDocument(scenes), [scenes]);
+  const backgroundAssets = useMemo<VNPlateBackgroundAsset[]>(
+    () => mediaLibrary
+      .filter((asset) => asset.type === 'image')
+      .map((asset) => ({
+        id: asset.id,
+        name: asset.name,
+        uri: asset.uri,
+      })),
+    [mediaLibrary],
+  );
   const sceneIndex = Math.max(0, orderedScenes.findIndex((scene) => scene.id === sceneId));
   const protectedCharacterIds = useMemo(() => {
     return scenes
@@ -95,6 +109,17 @@ export default function DocumentEditorRoute() {
     sceneRecords.forEach((record) => saveSceneRecord(record));
   };
 
+  const handleUploadBackgroundAsset = async (name: string, dataUri: string): Promise<VNPlateBackgroundAsset | null> => {
+    if (!dataUri.startsWith('data:image/')) return null;
+    const result = await addAssetToLibraryPure(dataUri, name || 'background.png', 'image', mediaLibrary);
+    setMediaLibrary(result.assets);
+    return {
+      id: result.asset.id,
+      name: result.asset.name,
+      uri: result.asset.uri,
+    };
+  };
+
   const handleCreateNextScene = (
     sourceSceneId: string,
     editedRecords: SceneRecord[],
@@ -126,9 +151,11 @@ export default function DocumentEditorRoute() {
       sceneIndex={sceneIndex}
       sceneCount={orderedScenes.length}
       characters={characters}
+      backgroundAssets={backgroundAssets}
       protectedCharacterIds={protectedCharacterIds}
       onSave={handleSave}
       onCreateNextScene={handleCreateNextScene}
+      onUploadBackgroundAsset={handleUploadBackgroundAsset}
     />
   );
 }

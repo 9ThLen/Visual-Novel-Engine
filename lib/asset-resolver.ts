@@ -176,6 +176,11 @@ async function resolveUri(uri: string): Promise<string | number | null> {
       return uri;
     }
 
+    const libraryUri = resolveLibraryAssetUri(uri);
+    if (libraryUri && libraryUri !== uri) {
+      return resolveUri(libraryUri);
+    }
+
     if (!isSafeUri(uri)) {
       ErrorHandler.handle('Blocked unsafe URI', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri });
       return null;
@@ -190,11 +195,6 @@ async function resolveUri(uri: string): Promise<string | number | null> {
     const bundled = getBundledAsset(uri);
     if (bundled) {
       return moduleIdToUri(bundled);
-    }
-
-    const libraryUri = resolveLibraryAssetUri(uri);
-    if (libraryUri && libraryUri !== uri) {
-      return resolveUri(libraryUri);
     }
 
     // Blob URIs are safe (created by the browser/runtime)

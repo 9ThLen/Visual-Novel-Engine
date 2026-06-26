@@ -21,6 +21,7 @@ export function isValidUser(value: unknown): value is User {
   if (obj.name !== null && typeof obj.name !== 'string') return false;
   if (obj.email !== null && typeof obj.email !== 'string') return false;
   if (obj.loginMethod !== null && typeof obj.loginMethod !== 'string') return false;
+  // Stored JSON returns Date as string; runtime callers may pass Date instances.
   if (obj.lastSignedIn !== null && obj.lastSignedIn !== undefined) {
     const t = obj.lastSignedIn;
     if (typeof t === 'string' && !Number.isNaN(Date.parse(t))) return true;

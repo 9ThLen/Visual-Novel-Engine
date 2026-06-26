@@ -8,6 +8,8 @@ import { useMemo } from 'react';
 import { useSceneImages, type ImageSource } from '@/hooks/useSceneImages';
 import { useCharacterAnimations, buildCharacterInstance } from '@/hooks/useCharacterAnimations';
 import { createExecutorSceneImageState } from '@/lib/reader-runtime';
+import { resolveCharacterSpriteUri } from '@/lib/character-resolver';
+import type { Character } from '@/lib/character-types';
 
 export interface ReaderAssets {
   bgSource: ImageSource | null;
@@ -18,7 +20,9 @@ export interface ReaderAssets {
 export function useReaderAssets(
   displaySceneId: string,
   displayBackgroundUri: string | null | undefined,
-  characters: { characterId: string; spriteId?: string | null; zIndex?: number }[],
+  characters: { characterId: string; spriteId?: string | null; position?: string; zIndex?: number }[],
+  characterLibrary: Character[] = [],
+  storyId = 'current',
 ): ReaderAssets {
   const { getAnimValues } = useCharacterAnimations();
 
@@ -26,9 +30,18 @@ export function useReaderAssets(
     () => createExecutorSceneImageState(
       displaySceneId,
       displayBackgroundUri ?? null,
-      characters,
+      characters.map((character) => ({
+        characterId: character.characterId,
+        spriteId: resolveCharacterSpriteUri(
+          character.characterId,
+          character.spriteId,
+          { [storyId]: characterLibrary },
+          storyId,
+        ),
+        position: character.position,
+      })),
     ),
-    [displaySceneId, displayBackgroundUri, characters],
+    [displaySceneId, displayBackgroundUri, characters, characterLibrary, storyId],
   );
 
   const { bgSource, resolvedCharUris } = useSceneImages(executorImageState);
@@ -42,7 +55,9 @@ export function useReaderAssets(
           charId,
           char.spriteId ?? '',
           char.zIndex ?? 0,
-          'center',
+          (char.position === 'far-left' || char.position === 'left' || char.position === 'center' || char.position === 'right' || char.position === 'far-right')
+            ? char.position
+            : 'center',
           anim,
         );
       }),

@@ -4,7 +4,6 @@ import type { DocumentCommand } from '@/lib/document-editor/types';
 export const documentCommandIcons: Record<DocumentCommand['id'], IconSymbolName> = {
   background: 'image',
   character: 'character',
-  sprite: 'sprites',
   newScene: 'document',
   music: 'music',
   sound: 'sound',
@@ -17,6 +16,6 @@ export const documentCommandIcons: Record<DocumentCommand['id'], IconSymbolName>
 
 export function getDocumentCommandTone(commandId: DocumentCommand['id']): 'green' | 'amber' | 'blue' {
   if (commandId === 'background' || commandId === 'newScene') return 'green';
-  if (commandId === 'character' || commandId === 'sprite') return 'amber';
+  if (commandId === 'character') return 'amber';
   return 'blue';
 }

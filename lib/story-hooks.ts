@@ -18,6 +18,11 @@ import type { CanonicalStory, StoryMetadata } from '@/lib/story-domain';
 import type { AppState } from '@/stores/use-app-store';
 import { useAppStore } from '@/stores/use-app-store';
 import { normalizeEditorTimeline } from '@/lib/editor-scene-draft';
+import {
+  CHARACTER_AUTHORING_SCHEMA_VERSION,
+  migrateCharacterLibrary,
+} from '@/lib/character-migration';
+import type { Character } from '@/lib/character-types';
 
 // ── Backward compatibility re-exports ──
 // @deprecated Import from @/hooks/use-story-state instead.
@@ -26,11 +31,18 @@ import { normalizeEditorTimeline } from '@/lib/editor-scene-draft';
 
 const MAX_JSON_SIZE = 10 * 1024 * 1024;
 
-function buildCanonicalStory(metadata: StoryMetadata, scenes: Record<string, SceneRecord>): CanonicalStory {
+function buildCanonicalStory(
+  metadata: StoryMetadata,
+  scenes: Record<string, SceneRecord>,
+  characterLibrary: Character[] = []
+): CanonicalStory {
   return {
     ...metadata,
+    characterAuthoringSchemaVersion:
+      metadata.characterAuthoringSchemaVersion ?? CHARACTER_AUTHORING_SCHEMA_VERSION,
     sceneCount: Object.keys(scenes).length,
     scenes,
+    characterLibrary: migrateCharacterLibrary(characterLibrary),
   };
 }
 
@@ -86,7 +98,8 @@ function validateBlockData(blockType: BlockType, data: unknown): boolean {
     case 'background':
       return isSafeAssetReference(d.assetId) && isString(d.transition) && isNumber(d.duration);
     case 'character':
-      return isString(d.characterId) && isString(d.spriteId) && isSafeAssetReference(d.spriteId)
+      return isString(d.characterId) && isString(d.spriteId)
+        && (d.action === undefined || ['show', 'hide', 'change_sprite', 'move'].includes(String(d.action)))
         && isString(d.position) && isString(d.transition) && isNumber(d.delay)
         && (d.duration === null || isNumber(d.duration));
     case 'text':
@@ -199,7 +212,7 @@ export async function exportStory(storyId: string, state: AppState): Promise<str
   const metadata = state.storiesMetadata.find((s) => s.id === storyId);
   if (!metadata) throw new Error('Story not found');
   const scenes = state.sceneRecordsByStory[storyId] || {};
-  const story = buildCanonicalStory(metadata, scenes);
+  const story = buildCanonicalStory(metadata, scenes, state.characterLibraries[storyId] || []);
   return JSON.stringify(story, null, 2);
 }
 
@@ -256,6 +269,13 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
     const timestamp = Date.now();
     const storyId = generateId('story');
     const importedScenes = normalizeImportedSceneRecords(storyId, validatedRawScenes);
+    const importedCharacterLibrary = migrateCharacterLibrary(
+      Array.isArray(raw.characterLibrary)
+        ? raw.characterLibrary as Character[]
+        : Array.isArray(raw.characters)
+          ? raw.characters as Character[]
+          : []
+    );
     const metadata: StoryMetadata = {
       id: storyId,
       title: typeof raw.title === 'string' ? raw.title : 'Imported Story',
@@ -266,6 +286,7 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
       updatedAt: timestamp,
       thumbnailUri: typeof raw.thumbnailUri === 'string' ? raw.thumbnailUri : undefined,
       sceneCount: Object.keys(importedScenes).length,
+      characterAuthoringSchemaVersion: CHARACTER_AUTHORING_SCHEMA_VERSION,
     };
 
     useAppStore.setState((state) => ({
@@ -274,9 +295,15 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
         ...state.sceneRecordsByStory,
         [storyId]: importedScenes,
       },
+      characterLibraries: importedCharacterLibrary.length > 0
+        ? {
+            ...state.characterLibraries,
+            [storyId]: importedCharacterLibrary,
+          }
+        : state.characterLibraries,
     }));
 
-    return buildCanonicalStory(metadata, importedScenes);
+    return buildCanonicalStory(metadata, importedScenes, importedCharacterLibrary);
   }
 
   const story = StoryValidator.validateStory(raw);
@@ -299,7 +326,13 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
     updatedAt: story.updatedAt,
     thumbnailUri: story.thumbnailUri,
     sceneCount: Object.keys(importedScenes).length,
+    characterAuthoringSchemaVersion: CHARACTER_AUTHORING_SCHEMA_VERSION,
   };
+  const importedCharacterLibrary = migrateCharacterLibrary(
+    Array.isArray((story as unknown as { characters?: unknown }).characters)
+      ? (story as unknown as { characters: Character[] }).characters
+      : []
+  );
 
   useAppStore.setState((state) => ({
     storiesMetadata: [...state.storiesMetadata, metadata],
@@ -307,8 +340,13 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
       ...state.sceneRecordsByStory,
       [story.id]: importedScenes,
     },
+    characterLibraries: importedCharacterLibrary.length > 0
+      ? {
+          ...state.characterLibraries,
+          [story.id]: importedCharacterLibrary,
+        }
+      : state.characterLibraries,
   }));
 
-  return buildCanonicalStory(metadata, importedScenes);
+  return buildCanonicalStory(metadata, importedScenes, importedCharacterLibrary);
 }
-

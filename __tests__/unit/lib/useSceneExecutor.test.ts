@@ -216,4 +216,86 @@ describe('useSceneExecutor', () => {
       });
     });
   });
+
+  it('applies character action steps without replaying show semantics for sprite and move changes', async () => {
+    const timeline: TimelineStep[] = [
+      {
+        id: 'char-show',
+        blockType: 'character',
+        data: { characterId: 'masha', spriteId: 'sprite-happy', action: 'show', position: 'left' },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+      {
+        id: 'char-sprite',
+        blockType: 'character',
+        data: { characterId: 'masha', spriteId: 'sprite-sad', action: 'change_sprite' },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+      {
+        id: 'char-move',
+        blockType: 'character',
+        data: { characterId: 'masha', action: 'move', position: 'right' },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+      {
+        id: 'text',
+        blockType: 'text',
+        data: { content: 'pause', typewriterSpeed: 0.5, anchorTo: 'background' },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.sceneState.characters).toHaveLength(1);
+      expect(result.current.sceneState.characters[0]).toMatchObject({
+        characterId: 'masha',
+        spriteId: 'sprite-sad',
+        position: 'right',
+        visible: true,
+      });
+    });
+  });
+
+  it('tracks active dialogue speaker focus using display name separately from character id', async () => {
+    const timeline: TimelineStep[] = [
+      {
+        id: 'dialogue',
+        blockType: 'dialogue',
+        data: {
+          currentEntryIndex: 0,
+          speakerFocus: { characterId: 'char-masha', enabled: true, scale: 1.08, dimOthers: true },
+          entries: [
+            {
+              id: 'entry-1',
+              characterId: 'char-masha',
+              speakerName: 'Маша',
+              spriteId: 'sprite-masha',
+              text: 'Привіт',
+            },
+          ],
+        },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.sceneState.dialogueHistory[0]).toMatchObject({
+        characterId: 'char-masha',
+        characterName: 'Маша',
+        text: 'Привіт',
+      });
+      expect(result.current.sceneState.activeSpeakerCharacterId).toBe('char-masha');
+      expect(result.current.sceneState.activeSpeakerFocusScale).toBe(1.08);
+      expect(result.current.sceneState.dimNonSpeakerCharacters).toBe(true);
+    });
+  });
 });

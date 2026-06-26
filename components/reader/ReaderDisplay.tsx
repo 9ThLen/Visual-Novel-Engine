@@ -20,9 +20,11 @@ const BACKGROUND_PLACEHOLDER = { blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' };
 
 const styles = StyleSheet.create({
   charactersLayer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'flex-end',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
   },
 });
 
@@ -55,6 +57,9 @@ interface ReaderDisplayProps {
   speaker: string | null;
   speakerTextStyle: StyleProp<TextStyle>;
   instances: React.ComponentProps<typeof CharacterDisplay>['instance'][];
+  activeSpeakerCharacterId?: string | null;
+  activeSpeakerFocusScale?: number;
+  dimNonSpeakerCharacters?: boolean;
   activeEffects?: ActiveEffect[];
   cameraState?: CameraRuntimeState;
   interactiveObjects?: InteractiveObject[];
@@ -101,11 +106,17 @@ function ReaderCharacters({
   instances,
   resolvedCharUris,
   paddingBottom,
+  activeSpeakerCharacterId,
+  activeSpeakerFocusScale,
+  dimNonSpeakerCharacters,
 }: {
   animatedStyle: StyleProp<ViewStyle>;
   instances: React.ComponentProps<typeof CharacterDisplay>['instance'][];
   resolvedCharUris: Record<string, ImageSource | undefined>;
   paddingBottom: number;
+  activeSpeakerCharacterId?: string | null;
+  activeSpeakerFocusScale?: number;
+  dimNonSpeakerCharacters?: boolean;
 }) {
   const containerStyle = useMemo(
     () => [
@@ -122,13 +133,21 @@ function ReaderCharacters({
     <Animated.View style={containerStyle}>
       {instances.map((instance) => {
         const charSource = resolvedCharUris[instance.characterId];
-        if (!charSource || typeof charSource === 'number') return null;
-        const uri = typeof charSource === 'string' ? charSource : charSource.uri;
+        const uri = !charSource || typeof charSource === 'number'
+          ? ''
+          : typeof charSource === 'string'
+            ? charSource
+            : charSource.uri;
+        const isActiveSpeaker = activeSpeakerCharacterId === instance.characterId;
         return (
           <CharacterDisplay
             key={instance.characterId}
             instance={instance}
             spriteUri={uri}
+            position={instance.position}
+            isActiveSpeaker={isActiveSpeaker}
+            dimmed={Boolean(dimNonSpeakerCharacters && activeSpeakerCharacterId && !isActiveSpeaker)}
+            focusScale={activeSpeakerFocusScale}
           />
         );
       })}
@@ -161,6 +180,9 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   speaker,
   speakerTextStyle,
   instances,
+  activeSpeakerCharacterId,
+  activeSpeakerFocusScale,
+  dimNonSpeakerCharacters,
   activeEffects = [],
   cameraState,
   interactiveObjects = [],
@@ -211,14 +233,15 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         fallbackColor={fallbackColor}
       />
 
-      {Object.keys(resolvedCharUris).length > 0 && (
-        <ReaderCharacters
-          animatedStyle={[characterAnimatedStyle, cameraTransformStyle]}
-          instances={instances}
-          resolvedCharUris={resolvedCharUris}
-          paddingBottom={paddingBottom}
-        />
-      )}
+      <ReaderCharacters
+        animatedStyle={[characterAnimatedStyle, cameraTransformStyle]}
+        instances={instances}
+        resolvedCharUris={resolvedCharUris}
+        paddingBottom={paddingBottom}
+        activeSpeakerCharacterId={activeSpeakerCharacterId}
+        activeSpeakerFocusScale={activeSpeakerFocusScale}
+        dimNonSpeakerCharacters={dimNonSpeakerCharacters}
+      />
 
       {interactiveObjects.length > 0 ? (
         <InteractiveObjectsLayer

@@ -51,6 +51,7 @@ export function createBackgroundStep(overrides?: Partial<BackgroundBlockData>): 
 
 export function createCharacterStep(overrides?: Partial<CharacterBlockData>): TimelineStep {
   return createStep('character', {
+    action: 'show',
     characterId: '',
     spriteId: '',
     position: 'center',

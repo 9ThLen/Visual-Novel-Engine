@@ -17,11 +17,20 @@ export interface CharacterSprite {
   expression?: string;
 }
 
+export interface CharacterAuthoringDefaults {
+  currentSpriteId?: string;
+  currentPosition?: CharacterPosition;
+  focusOnSpeak?: boolean;
+}
+
 export interface Character {
   id: string;
   name: string; // Character name, e.g., "Alice"
   sprites: CharacterSprite[];
   defaultSpriteId?: string;
+  color?: string;
+  authoring?: CharacterAuthoringDefaults;
+  characterAuthoringSchemaVersion?: number;
   createdAt: number;
 }
 
