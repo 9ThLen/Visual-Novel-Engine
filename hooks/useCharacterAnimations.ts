@@ -12,7 +12,7 @@ export interface CharacterInstance {
   id: string;
   characterId: string;
   spriteId: string;
-  position: 'left' | 'center' | 'right';
+  position: CharacterPosition;
   zIndex: number;
   animatedOpacity: Animated.Value;
   animatedTranslateX: Animated.Value;
@@ -20,7 +20,7 @@ export interface CharacterInstance {
   animatedScale: Animated.Value;
 }
 
-export type CharacterPosition = 'left' | 'center' | 'right';
+export type CharacterPosition = 'far-left' | 'left' | 'center' | 'right' | 'far-right';
 
 export function useCharacterAnimations() {
   const cacheRef = useRef<Record<string, CharacterAnimationValues>>({});

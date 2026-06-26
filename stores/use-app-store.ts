@@ -34,6 +34,11 @@ import {
   syncCanonicalStartScene,
 } from '@/lib/scene-operations';
 import type { Character } from '@/lib/character-types';
+import {
+  CHARACTER_AUTHORING_SCHEMA_VERSION,
+  migrateCharacterLibraries,
+  migrateCharacterLibrary,
+} from '@/lib/character-migration';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { AudioLibraryItem } from '@/lib/audio-types';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
@@ -67,6 +72,16 @@ function mergeSceneRecordsByStory(
 
 
 // ── Store shape ─────────────────────────────────────────────────────────────
+
+function getPersistableMediaLibrary(assets: unknown): LibraryAsset[] {
+  if (!Array.isArray(assets)) return [];
+
+  return assets.filter((asset): asset is LibraryAsset => {
+    if (!asset || typeof asset !== 'object') return false;
+    const candidate = asset as Partial<LibraryAsset>;
+    return typeof candidate.uri === 'string' && !candidate.uri.startsWith('data:');
+  });
+}
 
 export interface AppState {
   storiesMetadata: StoryMetadata[];
@@ -178,7 +193,7 @@ export const useAppStore = create<AppState & AppActions>()(
             if (oldCharLibJson) {
               const parsed = JSON.parse(oldCharLibJson);
               if (parsed.characters) {
-                characterLibraries['default'] = parsed.characters;
+                characterLibraries['default'] = migrateCharacterLibrary(parsed.characters);
               }
             }
           } catch { }
@@ -189,7 +204,7 @@ export const useAppStore = create<AppState & AppActions>()(
                   const json = await storage.getItem(`character_library_${s.id}`);
                   if (json) {
                     const lib = JSON.parse(json);
-                    return [s.id, lib.characters || lib] as const;
+                    return [s.id, migrateCharacterLibrary(lib.characters || lib)] as const;
                   }
                 } catch { }
                 return [s.id, [] as Character[]] as const;
@@ -234,7 +249,12 @@ export const useAppStore = create<AppState & AppActions>()(
             sceneRecordsByStory: mergedSceneRecordsByStory,
             saveSlots: saveSlots.length > 0 && current.saveSlots.length === 0 ? saveSlots : current.saveSlots,
             settings: normalizeUserSettings(settings ?? current.settings),
-            characterLibraries: Object.keys(characterLibraries).length > 0 ? characterLibraries : current.characterLibraries,
+            characterLibraries: Object.keys(characterLibraries).length > 0
+              ? migrateCharacterLibraries({
+                  ...current.characterLibraries,
+                  ...characterLibraries,
+                })
+              : migrateCharacterLibraries(current.characterLibraries),
             language,
             isLoaded: true,
           });
@@ -357,7 +377,10 @@ export const useAppStore = create<AppState & AppActions>()(
 
       setCharacterLibrary: (storyId, characters) =>
         set((s) => ({
-          characterLibraries: { ...s.characterLibraries, [storyId]: characters as Character[] },
+          characterLibraries: {
+            ...s.characterLibraries,
+            [storyId]: migrateCharacterLibrary(characters as Character[]),
+          },
         })),
 
       setAudioLibrary: (storyId, items) =>
@@ -453,8 +476,26 @@ export const useAppStore = create<AppState & AppActions>()(
         audioLibraries: state.audioLibraries,
         characterLibraries: state.characterLibraries,
         language: state.language,
-        mediaLibrary: state.mediaLibrary,
+        mediaLibrary: getPersistableMediaLibrary(state.mediaLibrary),
       }),
+      merge: (persistedState, currentState) => {
+        if (!persistedState || typeof persistedState !== 'object') {
+          return currentState;
+        }
+
+        const persisted = persistedState as Partial<AppState>;
+        return {
+          ...currentState,
+          ...persisted,
+          mediaLibrary: getPersistableMediaLibrary(persisted.mediaLibrary),
+          characterLibraries: migrateCharacterLibraries(persisted.characterLibraries),
+          storiesMetadata: (persisted.storiesMetadata ?? currentState.storiesMetadata).map((story) => ({
+            ...story,
+            characterAuthoringSchemaVersion:
+              story.characterAuthoringSchemaVersion ?? CHARACTER_AUTHORING_SCHEMA_VERSION,
+          })),
+        };
+      },
       onRehydrateStorage: __DEV__
         ? () => {
             return (state, error) => {

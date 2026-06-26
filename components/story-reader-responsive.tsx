@@ -46,6 +46,7 @@ import { useReaderNotifications } from '@/hooks/useReaderNotifications';
 import { useDialogueHistory } from '@/hooks/useDialogueHistory';
 import { enhancedAudioManager } from '@/lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '@/lib/asset-resolver';
+import { useAppStore } from '@/stores/use-app-store';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,11 @@ export function StoryReaderResponsive({
   const layout = getReaderLayout(dims);
   const fontSize = getResponsiveFontSize(dims);
   const firstTimelineStepId = timeline?.[0]?.id;
+  const currentStoryId = useAppStore((state) => state.currentStoryId);
+  const storyIdForCharacters = currentStoryId ?? 'current';
+  const characterLibrary = useAppStore((state) =>
+    currentStoryId ? state.characterLibraries[currentStoryId] || [] : []
+  );
 
   const { textSpeed = 0.5, textSize = 'medium', autoPlay = false } = settings;
 
@@ -117,6 +123,8 @@ export function StoryReaderResponsive({
       displaySceneId,
       displayBackgroundUri,
       executor.sceneState.characters,
+      characterLibrary,
+      storyIdForCharacters,
     );
 
   // ── Page index ────────────────────────────────────────────────────────
@@ -293,6 +301,9 @@ export function StoryReaderResponsive({
         speaker={displaySpeaker}
         speakerTextStyle={getStoryReaderSpeakerTextStyle(colors)}
         instances={characterInstances}
+        activeSpeakerCharacterId={executor.sceneState.activeSpeakerCharacterId ?? null}
+        activeSpeakerFocusScale={executor.sceneState.activeSpeakerFocusScale}
+        dimNonSpeakerCharacters={executor.sceneState.dimNonSpeakerCharacters}
         activeEffects={executor.sceneState.activeEffects}
         cameraState={executor.sceneState.cameraState}
         interactiveObjects={executor.sceneState.interactiveObjects}

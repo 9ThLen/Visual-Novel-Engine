@@ -126,9 +126,14 @@ export interface BackgroundBlockData {
   assetId: string | null;
   transition: 'fade' | 'dissolve' | 'instant' | 'wipe';
   duration: number;         // ms, default 500
+  delay?: number;           // seconds before transition starts
+  fit?: 'cover' | 'contain' | 'stretch';
+  position?: 'center' | 'top' | 'bottom' | 'left' | 'right';
 }
 
 export interface CharacterBlockData {
+  action?: 'show' | 'hide' | 'change_sprite' | 'move';
+  generatedByInlineDialogue?: boolean;
   characterId: string;
   spriteId: string;
   position: 'left' | 'center' | 'right' | 'far-left' | 'far-right';
@@ -159,6 +164,7 @@ export interface TextBlockData {
 export interface DialogueEntry {
   id: string;
   characterId: string;
+  speakerName?: string;
   spriteId: string;
   text: string;
 }
@@ -166,6 +172,12 @@ export interface DialogueEntry {
 export interface DialogueBlockData {
   entries: DialogueEntry[];
   currentEntryIndex: number; // Runtime state: which entry is being displayed
+  speakerFocus?: {
+    characterId: string;
+    enabled: boolean;
+    scale?: number;
+    dimOthers?: boolean;
+  };
 }
 
 export interface ChoiceOption {

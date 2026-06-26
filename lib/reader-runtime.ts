@@ -57,7 +57,10 @@ export function getTimelineDisplayPages(step: TimelineStep | undefined): string[
   if (step.blockType === 'dialogue') {
     const data = step.data as DialogueBlockData;
     return data.entries
-      .map((entry) => entry.characterId ? `${entry.characterId}: ${entry.text}` : entry.text)
+      .map((entry) => {
+        const speaker = entry.speakerName || entry.characterId;
+        return speaker ? `${speaker}: ${entry.text}` : entry.text;
+      })
       .filter(Boolean);
   }
 
@@ -85,7 +88,7 @@ export function createExecutorSceneImageState(
     characters: characters.map((character) => ({
       id: character.characterId,
       name: character.characterId,
-      uri: character.spriteId || character.characterId,
+      uri: character.spriteId || null,
     })),
   };
 }

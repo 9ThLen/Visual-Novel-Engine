@@ -4,8 +4,10 @@ import { useRouter } from 'expo-router';
 import {
   DocumentSceneEditor,
 } from '@/components/document-editor/DocumentSceneEditor';
+import { buildDocumentsResetKey } from '@/lib/document-editor/document-reset-key';
 import type { Character } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
+import type { VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
 import type { PlateDocumentScene } from './types';
 import { sceneRecordToPlateDocument } from './serializers/scene-to-plate';
 import { plateDocumentToSceneRecord } from './serializers/plate-to-scene';
@@ -17,9 +19,11 @@ interface PlateSceneEditorProps {
   sceneIndex: number;
   sceneCount: number;
   characters: Character[];
+  backgroundAssets: VNPlateBackgroundAsset[];
   protectedCharacterIds?: string[];
   onSave: (sceneRecords: SceneRecord[], characters: Character[]) => void;
   onCreateNextScene?: (sourceSceneId: string, sceneRecords: SceneRecord[], characters: Character[]) => void;
+  onUploadBackgroundAsset?: (name: string, dataUri: string) => Promise<VNPlateBackgroundAsset | null>;
 }
 
 export function PlateSceneEditor({
@@ -29,14 +33,20 @@ export function PlateSceneEditor({
   sceneIndex,
   sceneCount,
   characters,
+  backgroundAssets,
   protectedCharacterIds,
   onSave,
   onCreateNextScene,
+  onUploadBackgroundAsset,
 }: PlateSceneEditorProps) {
   const router = useRouter();
   const initialDocuments = useMemo(
     () => scenes.map((scene) => sceneRecordToPlateDocument(scene, characters)),
     [characters, scenes],
+  );
+  const documentsResetKey = useMemo(
+    () => buildDocumentsResetKey(sceneRecord.id, scenes),
+    [sceneRecord.id, scenes],
   );
 
   const documentsToRecords = (documentScenes: PlateDocumentScene[], nextCharacters: Character[]) => {
@@ -72,10 +82,13 @@ export function PlateSceneEditor({
       sceneIndex={sceneIndex}
       sceneCount={sceneCount}
       initialDocuments={initialDocuments}
+      documentsResetKey={documentsResetKey}
       characters={characters}
+      backgroundAssets={backgroundAssets}
       protectedCharacterIds={protectedCharacterIds}
       onSave={saveDocuments}
       onCreateNextScene={createNextScene}
+      onUploadBackgroundAsset={onUploadBackgroundAsset}
       onBack={() => router.back()}
       onPreview={(sceneId) => router.push({ pathname: '/preview', params: { storyId, sceneId } })}
       onSaveAndPlay={(sceneId) => router.push({ pathname: '/preview', params: { storyId, sceneId } })}

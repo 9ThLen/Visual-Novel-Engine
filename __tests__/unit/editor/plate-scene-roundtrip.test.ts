@@ -19,6 +19,7 @@ import { createVNPlateEditorHtml } from '@/lib/vn-plate-editor/embedded-html';
 import type { PlateDocumentScene } from '@/components/editor/plate/types';
 import { sceneRecordToPlateDocument } from '@/components/editor/plate/serializers/scene-to-plate';
 import { plateDocumentToSceneRecord } from '@/components/editor/plate/serializers/plate-to-scene';
+import type { DialogueBlockData } from '@/lib/engine/types';
 
 function sceneWithTimeline(timeline: TimelineStep[]): SceneRecord {
   return {
@@ -116,16 +117,8 @@ describe('Plate scene serializer roundtrip', () => {
     expect(saved.connections).toEqual([{ targetSceneId: 'scene_next', outputPort: 'next', label: 'Next' }]);
   });
 
-  it('preserves all technical TimelineStep payloads and conditions', () => {
+  it('preserves non-character technical TimelineStep payloads and conditions', () => {
     const steps = [
-      withStepMeta(createCharacterStep({
-        characterId: 'char_alice',
-        spriteId: 'sprite_smile',
-        position: 'far-right',
-        transition: 'slide-left',
-        delay: 0.25,
-        duration: 3,
-      }), 'step_character'),
       withStepMeta(createMusicStep({
         assetId: 'music_theme',
         action: 'fade',
@@ -218,9 +211,29 @@ describe('Plate scene serializer roundtrip', () => {
 
     const saved = roundtrip(sceneWithTimeline([dialogueStep, choiceStep]));
 
-    expect(saved.timeline).toHaveLength(2);
-    expect(saved.timeline[0]).toEqual(dialogueStep);
-    expect(saved.timeline[1]).toEqual(choiceStep);
+    expect(saved.timeline).toHaveLength(3);
+    expect(saved.timeline[0]).toMatchObject({
+      blockType: 'character',
+      data: {
+        action: 'show',
+        generatedByInlineDialogue: true,
+        characterId: 'char_alice',
+        spriteId: 'sprite_neutral',
+      },
+    });
+    const expectedDialogueData = dialogueStep.data as DialogueBlockData;
+    expect(saved.timeline[1]).toEqual({
+      ...dialogueStep,
+      data: {
+        ...expectedDialogueData,
+        entries: [
+          { ...expectedDialogueData.entries[0], speakerName: 'char_alice' },
+          expectedDialogueData.entries[1],
+        ],
+        speakerFocus: { characterId: 'char_alice', enabled: true, scale: 1.04, dimOthers: true },
+      },
+    });
+    expect(saved.timeline[2]).toEqual(choiceStep);
   });
 
   it('normalizes a technical block without a step into a default placeholder step', () => {
@@ -251,6 +264,81 @@ describe('Plate scene serializer roundtrip', () => {
     expect(technical.step.blockType).toBe('music');
   });
 
+  it('normalizes legacy technical character blocks into dialogue blocks', () => {
+    const plateDocument: PlateDocumentScene = {
+      sceneId: 'scene_legacy_character',
+      sceneName: 'Legacy Character',
+      blocks: [
+        {
+          id: 'doc_legacy_character',
+          kind: 'technical',
+          commandId: 'character',
+          blockType: 'character',
+          label: 'Alice',
+          summary: 'sprite_neutral · center',
+          step: createCharacterStep({
+            characterId: 'char_alice',
+            spriteId: 'sprite_neutral',
+            position: 'center',
+          }),
+        },
+      ],
+    };
+
+    const normalized = normalizePlateDocumentScene(cloneThroughPlateBridge(plateDocument), [{
+      id: 'char_alice',
+      name: 'Alice',
+      color: '#ff4d6d',
+      defaultSpriteId: 'sprite_neutral',
+      authoring: { currentSpriteId: 'sprite_neutral', currentPosition: 'center', focusOnSpeak: true },
+      sprites: [{ id: 'sprite_neutral', name: 'Neutral', uri: 'file://alice.png', createdAt: 1 }],
+      createdAt: 1,
+    }]);
+    const block = normalized.scene.blocks[0];
+
+    expect(block.kind).toBe('dialogue');
+    if (block.kind !== 'dialogue') return;
+    expect(block.speakerName).toBe('Alice');
+    expect(block.characterId).toBe('char_alice');
+    expect(block.spriteId).toBe('sprite_neutral');
+    expect(block.openCharacterControls).toBe(true);
+  });
+
+  it('normalizes text shorthand speaker lines into dialogue blocks', () => {
+    const normalized = normalizePlateDocumentScene({
+      sceneId: 'scene_text_speakers',
+      sceneName: 'Text speakers',
+      blocks: [
+        { id: 'doc_masha_empty', kind: 'text', content: 'Маша:' },
+        { id: 'doc_dima_text', kind: 'text', content: 'Діма: Привіт' },
+        { id: 'doc_url', kind: 'text', content: 'https://example.com/path' },
+      ],
+    }, []);
+
+    const [masha, dima, url] = normalized.scene.blocks;
+
+    expect(masha.kind).toBe('dialogue');
+    if (masha.kind === 'dialogue') {
+      expect(masha.speakerName).toBe('Маша');
+      expect(masha.text).toBe('');
+      expect(masha.characterId).toBeTruthy();
+      expect(masha.openCharacterControls).toBe(false);
+    }
+
+    expect(dima.kind).toBe('dialogue');
+    if (dima.kind === 'dialogue') {
+      expect(dima.speakerName).toBe('Діма');
+      expect(dima.text).toBe('Привіт');
+      expect(dima.characterId).toBeTruthy();
+    }
+
+    expect(url).toMatchObject({
+      kind: 'text',
+      content: 'https://example.com/path',
+    });
+    expect(normalized.characters.map((character) => character.name)).toEqual(['Маша', 'Діма']);
+  });
+
   it('renders technical block bridge attributes and create-next-scene action in embedded HTML', () => {
     const backgroundStep = withStepMeta(
       createBackgroundStep({
@@ -266,13 +354,91 @@ describe('Plate scene serializer roundtrip', () => {
       editorId: 'editor_roundtrip',
       scene,
       characters: [],
+      backgroundAssets: [
+        {
+          id: 'bg_forest',
+          name: 'Forest.png',
+          uri: 'file:///media/forest.png',
+        },
+      ],
       isPhone: false,
     });
 
     expect(html).toContain('data-kind="technical"');
     expect(html).toContain('data-id="step_background"');
     expect(html).toContain('data-command="background"');
+    expect(html).toContain('Forest');
+    expect(html).not.toContain('background-thumb');
     expect(html).toContain('"id":"newScene"');
     expect(html).toContain("type: 'createNextScene'");
+  });
+
+  it('does not render inline background thumbnail when background asset is missing', () => {
+    const backgroundStep = withStepMeta(
+      createBackgroundStep({
+        assetId: 'bg_missing',
+        transition: 'fade',
+        duration: 500,
+      }),
+      'step_background',
+    );
+    const scene = sceneRecordToPlateDocument(sceneWithTimeline([backgroundStep]), []);
+
+    const html = createVNPlateEditorHtml({
+      editorId: 'editor_missing_background',
+      scene,
+      characters: [],
+      backgroundAssets: [],
+      isPhone: false,
+    });
+
+    expect(html).toContain('data-asset-id="bg_missing"');
+    expect(html).not.toContain('background-thumb');
+  });
+
+  it('auto-applies uploaded background assets to the active background block', () => {
+    const html = createVNPlateEditorHtml({
+      editorId: 'editor_upload_background',
+      scene: sceneRecordToPlateDocument(sceneWithTimeline([createBackgroundStep()]), []),
+      characters: [],
+      backgroundAssets: [],
+      isPhone: false,
+    });
+
+    expect(html).toContain("message.type === 'backgroundAssetUploaded'");
+    expect(html).toContain('applyBackgroundData(activeBackgroundBlock');
+    expect(html).toContain('assetId: message.asset.id');
+    expect(html).toContain('saveNow();');
+  });
+
+  it('supports explicit flush and character update messages without rebuilding the frame', () => {
+    const html = createVNPlateEditorHtml({
+      editorId: 'editor_flush_contract',
+      scene: sceneRecordToPlateDocument(sceneWithTimeline([createTextStep({ content: 'Draft' })]), []),
+      characters: [],
+      backgroundAssets: [],
+      isPhone: false,
+    });
+
+    expect(html).toContain("message.type === 'flush'");
+    expect(html).toContain("type: 'flushed'");
+    expect(html).toContain('requestId: message.requestId');
+    expect(html).toContain("message.type === 'charactersUpdated'");
+    expect(html).toContain('characters = message.characters.map(migrateCharacter)');
+  });
+
+  it('strips only a repeated speaker prefix from dialogue text', () => {
+    const html = createVNPlateEditorHtml({
+      editorId: 'editor_repeated_speaker_prefix',
+      scene: sceneRecordToPlateDocument(sceneWithTimeline([createTextStep({ content: 'Draft' })]), []),
+      characters: [],
+      backgroundAssets: [],
+      isPhone: false,
+    });
+
+    expect(html).toContain('function stripLeadingSpeakerLabel');
+    expect(html).toContain('var withoutBadge = stripLeadingSpeakerLabel(raw, speaker);');
+    expect(html).toContain('return stripLeadingSpeakerLabel(withoutBadge, speaker);');
+    expect(html).not.toContain("raw.replace(/^.*?:\\\\s*/, '')");
   });
 });

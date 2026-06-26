@@ -10,6 +10,7 @@
 import type { SceneRecord } from '@/lib/engine/types';
 import type { DocumentScene } from '@/lib/document-editor/types';
 import { documentSceneToConnections, documentSceneToTimeline } from '@/lib/document-editor/document-scene';
+import type { Character } from '@/lib/character-types';
 
 /**
  * Convert a document-scene edit back into the engine's canonical SceneRecord.
@@ -22,12 +23,13 @@ import { documentSceneToConnections, documentSceneToTimeline } from '@/lib/docum
 export function saveDocumentSceneToRecord(
   record: SceneRecord,
   documentScene: DocumentScene,
+  characters: Character[] = [],
   options: { nextSceneId?: string } = {},
 ): SceneRecord {
   return {
     ...record,
     name: documentScene.sceneName.trim() || record.name,
-    timeline: documentSceneToTimeline(documentScene),
+    timeline: documentSceneToTimeline(documentScene, characters),
     connections: documentSceneToConnections(documentScene, options.nextSceneId),
     updatedAt: Date.now(),
   };

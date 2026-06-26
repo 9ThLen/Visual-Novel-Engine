@@ -12,6 +12,13 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     var saveTimer = 0;
     var resizeTimer = 0;
     var activeSlash = null;
+    var activeBackgroundBlock = null;
+    var backgroundPopover = null;
+    var backgroundDraft = null;
+    var backgroundAssets = Array.isArray(payload.backgroundAssets) ? payload.backgroundAssets : [];
+    var characters = Array.isArray(payload.characters) ? payload.characters.slice() : [];
+    var characterPopover = null;
+    var activeCharacterToken = null;
     var activeIndex = 0;
 
     function uid(prefix) {
@@ -35,11 +42,18 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     function measureHeight() {
       var body = document.body;
       var root = document.documentElement;
+      var popover = document.querySelector('.background-popover');
+      var popoverBottom = 0;
+      if (popover) {
+        var rect = popover.getBoundingClientRect();
+        popoverBottom = rect.bottom + window.scrollY + 28;
+      }
       return Math.max(
         body ? body.scrollHeight : 0,
         body ? body.offsetHeight : 0,
         root ? root.scrollHeight : 0,
-        root ? root.offsetHeight : 0
+        root ? root.offsetHeight : 0,
+        popoverBottom
       );
     }
 
@@ -65,11 +79,518 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       return payload.scene.blocks.find(function(block) { return block.id === id; }) || null;
     }
 
+    function normalizeAssetName(value) {
+      return (value || '').trim();
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function normalizeSpeakerName(value) {
+      return String(value || '').normalize('NFC').trim().replace(/\\s+/g, ' ');
+    }
+
+    function normalizeSpeakerLookup(value) {
+      return normalizeSpeakerName(value).toLocaleLowerCase();
+    }
+
+    function escapeRegExp(value) {
+      return String(value || '').replace(/[\\\\^$.*+?()[\\]{}|]/g, '\\\\$&');
+    }
+
+    function stripLeadingSpeakerLabel(text, speaker) {
+      var normalizedSpeaker = normalizeSpeakerName(speaker);
+      if (!normalizedSpeaker) return String(text || '');
+      return String(text || '').replace(new RegExp('^\\\\s*' + escapeRegExp(normalizedSpeaker) + '\\\\s*:\\\\s*', 'i'), '');
+    }
+
+    function textWithoutBadge(node, badge) {
+      var raw = textOf(node);
+      if (!badge) return raw.replace(/^([^:]{1,48}):\\s*/, '');
+      var speaker = node.dataset.speaker || (badge.textContent || '').replace(/:\\s*$/, '');
+      var withoutBadge = stripLeadingSpeakerLabel(raw, speaker);
+      return stripLeadingSpeakerLabel(withoutBadge, speaker);
+    }
+
+    function findCharacterById(id) {
+      if (!id) return null;
+      return characters.find(function(character) { return character.id === id; }) || null;
+    }
+
+    function findCharacterByName(name) {
+      var lookup = normalizeSpeakerLookup(name);
+      if (!lookup) return null;
+      return characters.find(function(character) {
+        return normalizeSpeakerLookup(character.name) === lookup;
+      }) || null;
+    }
+
+    function currentSpriteId(character) {
+      if (!character) return null;
+      return character.authoring && character.authoring.currentSpriteId
+        || character.defaultSpriteId
+        || (character.sprites && character.sprites[0] && character.sprites[0].id)
+        || null;
+    }
+
+    function colorForCharacterKey(key) {
+      var palette = ['#ff4d6d', '#14b8a6', '#3b82f6', '#f59e0b', '#8b5cf6', '#22c55e', '#ef4444', '#06b6d4'];
+      var hash = 0;
+      for (var index = 0; index < String(key || '').length; index += 1) {
+        hash = (hash * 31 + String(key).charCodeAt(index)) >>> 0;
+      }
+      return palette[hash % palette.length];
+    }
+
+    function migrateCharacter(character) {
+      var next = Object.assign({}, character);
+      next.sprites = Array.isArray(next.sprites) ? next.sprites : [];
+      next.color = next.color || colorForCharacterKey(next.id || next.name);
+      next.authoring = Object.assign({
+        currentSpriteId: next.defaultSpriteId || (next.sprites[0] && next.sprites[0].id) || null,
+        currentPosition: 'center',
+        focusOnSpeak: true
+      }, next.authoring || {});
+      return next;
+    }
+
+    function createCharacter(name) {
+      var created = migrateCharacter({
+        id: uid('char'),
+        name: normalizeSpeakerName(name),
+        sprites: [],
+        createdAt: Date.now()
+      });
+      characters.push(created);
+      return created;
+    }
+
+    function ensureCharacter(name) {
+      return findCharacterByName(name) || createCharacter(name);
+    }
+
+    function ensureCharacterWithStatus(name) {
+      var existing = findCharacterByName(name);
+      if (existing) return { character: existing, created: false };
+      return { character: createCharacter(name), created: true };
+    }
+
+    function configureSpeakerToken(token, character, blockId) {
+      if (!token || !character) return;
+      token.classList.add('speaker-token', 'dialogue-badge');
+      token.contentEditable = 'false';
+      token.tabIndex = 0;
+      token.setAttribute('role', 'button');
+      token.setAttribute('aria-label', 'Edit character ' + character.name);
+      token.dataset.characterId = character.id;
+      token.dataset.blockId = blockId || '';
+      token.style.setProperty('--speaker-color', character.color || colorForCharacterKey(character.id));
+      token.textContent = character.name + ':';
+    }
+
+    function closeCharacterPopover() {
+      if (characterPopover) characterPopover.remove();
+      characterPopover = null;
+      activeCharacterToken = null;
+      scheduleResize();
+    }
+
+    function positionCharacterPopover(anchor) {
+      if (!characterPopover || !anchor) return;
+      var rect = anchor.getBoundingClientRect();
+      var width = Math.min(360, window.innerWidth - 32);
+      var left = Math.max(16, Math.min(window.innerWidth - width - 16, rect.left));
+      var height = characterPopover.offsetHeight || 0;
+      var top = Math.max(16, Math.min(window.innerHeight - height - 16, rect.bottom + 8));
+      characterPopover.style.left = left + 'px';
+      characterPopover.style.top = top + 'px';
+    }
+
+    function spriteNameExists(character, name) {
+      var lookup = normalizeSpeakerLookup(name);
+      return (character.sprites || []).some(function(sprite) {
+        return normalizeSpeakerLookup(sprite.name) === lookup;
+      });
+    }
+
+    function uniqueSpriteName(character, name) {
+      var base = normalizeSpeakerName(name) || 'Sprite';
+      if (!spriteNameExists(character, base)) return base;
+      var index = 2;
+      while (spriteNameExists(character, base + ' ' + index)) index += 1;
+      return base + ' ' + index;
+    }
+
+    function renderCharacterPopover(token) {
+      var character = findCharacterById(token && token.dataset.characterId);
+      if (!character) return;
+      closeBackgroundPopover();
+      closeCharacterPopover();
+      activeCharacterToken = token;
+      var popover = document.createElement('div');
+      popover.className = 'character-popover';
+      var selectedSpriteId = token.closest('p') && token.closest('p').dataset.spriteId || currentSpriteId(character) || '';
+      var spriteRows = (character.sprites || []).length
+        ? character.sprites.map(function(sprite) {
+            return '<label class="sprite-row"><span>' + escapeHtml(sprite.name || sprite.id) + '</span>' +
+              '<input type="radio" name="characterSprite" value="' + escapeHtml(sprite.id) + '"' + (sprite.id === selectedSpriteId ? ' checked' : '') + ' /></label>';
+          }).join('')
+        : '<div class="asset-empty">No sprites uploaded for this character.</div>';
+      popover.innerHTML =
+        '<label class="popover-label">Name</label>' +
+        '<input class="popover-control" data-field="character-name" value="' + escapeHtml(character.name) + '" />' +
+        '<label class="popover-label">Color</label>' +
+        '<input class="popover-control" data-field="character-color" type="color" value="' + escapeHtml(character.color || '#ff4d6d') + '" />' +
+        '<label class="popover-label">Current sprite</label>' +
+        '<div class="sprite-list">' + spriteRows + '</div>' +
+        '<input class="popover-control" data-field="sprite-name" placeholder="Sprite name" />' +
+        '<div class="preview-actions"><button type="button" class="popover-button" data-action="upload-character-sprite">Upload sprite</button><button type="button" class="popover-button" data-action="delete-character-sprite">Delete selected</button></div>' +
+        '<input class="character-sprite-file" type="file" accept="image/*" hidden />' +
+        '<label class="popover-label">Position</label>' +
+        '<select class="popover-control" data-field="character-position">' +
+          option('far-left', 'Far left', character.authoring && character.authoring.currentPosition) +
+          option('left', 'Left', character.authoring && character.authoring.currentPosition) +
+          option('center', 'Center', character.authoring && character.authoring.currentPosition) +
+          option('right', 'Right', character.authoring && character.authoring.currentPosition) +
+          option('far-right', 'Far right', character.authoring && character.authoring.currentPosition) +
+        '</select>' +
+        '<label class="sprite-row"><span>Focus when speaking</span><input type="checkbox" data-field="focus-on-speak"' + (!character.authoring || character.authoring.focusOnSpeak !== false ? ' checked' : '') + ' /></label>' +
+        '<p class="popover-help">Character edits are saved as library changes, outside text undo.</p>' +
+        '<div class="popover-footer"><button type="button" class="popover-button" data-action="close-character">Close</button><button type="button" class="popover-button primary" data-action="save-character">Save</button></div>';
+      document.body.appendChild(popover);
+      characterPopover = popover;
+      positionCharacterPopover(token);
+      scheduleResize();
+      post({ type: 'openCharacterPopover', characterId: character.id, blockId: token.dataset.blockId || '' });
+    }
+
+    function collectCharacterPopover() {
+      if (!characterPopover || !activeCharacterToken) return;
+      var character = findCharacterById(activeCharacterToken.dataset.characterId);
+      if (!character) return;
+      var paragraph = activeCharacterToken.closest('p');
+      var nameInput = characterPopover.querySelector('[data-field="character-name"]');
+      var colorInput = characterPopover.querySelector('[data-field="character-color"]');
+      var positionInput = characterPopover.querySelector('[data-field="character-position"]');
+      var focusInput = characterPopover.querySelector('[data-field="focus-on-speak"]');
+      var selectedSprite = characterPopover.querySelector('input[name="characterSprite"]:checked');
+      character.name = normalizeSpeakerName(nameInput && nameInput.value) || character.name;
+      character.color = colorInput && colorInput.value || character.color || colorForCharacterKey(character.id);
+      character.authoring = Object.assign({}, character.authoring || {}, {
+        currentSpriteId: selectedSprite && selectedSprite.value || currentSpriteId(character),
+        currentPosition: positionInput && positionInput.value || 'center',
+        focusOnSpeak: Boolean(focusInput && focusInput.checked)
+      });
+      if (!character.defaultSpriteId && character.authoring.currentSpriteId) character.defaultSpriteId = character.authoring.currentSpriteId;
+      if (paragraph) {
+        paragraph.dataset.speaker = character.name;
+        paragraph.dataset.characterId = character.id;
+        paragraph.dataset.spriteId = character.authoring.currentSpriteId || '';
+      }
+      configureSpeakerToken(activeCharacterToken, character, paragraph && paragraph.dataset.id);
+      saveNow();
+    }
+
+    function assetLabel(asset) {
+      return asset && asset.name ? asset.name.replace(/\.[^.]+$/, '') : '';
+    }
+
+    function findBackgroundAsset(value) {
+      var normalized = normalizeAssetName(value);
+      if (!normalized) return null;
+      return backgroundAssets.find(function(asset) {
+        return asset.id === normalized || asset.uri === normalized || asset.name === normalized || assetLabel(asset) === normalized;
+      }) || null;
+    }
+
+    function formatTransition(value) {
+      if (!value) return 'Fade';
+      return value.charAt(0).toUpperCase() + value.slice(1);
+    }
+
+    function formatSeconds(value) {
+      var number = Number(value);
+      if (!Number.isFinite(number)) number = 0;
+      return (Math.round(number * 100) / 100).toString() + 's';
+    }
+
+    function backgroundDataFromNode(node) {
+      var durationMs = Number(node.dataset.durationMs);
+      var delay = Number(node.dataset.delay);
+      return {
+        assetId: normalizeAssetName(node.dataset.assetId) || null,
+        transition: node.dataset.transition || 'fade',
+        duration: Number.isFinite(durationMs) ? durationMs : 500,
+        delay: Number.isFinite(delay) ? delay : 0,
+        fit: node.dataset.fit || 'cover',
+        position: node.dataset.position || 'center'
+      };
+    }
+
+    function backgroundSummary(data) {
+      return formatTransition(data.transition) + ' · ' + formatSeconds((data.duration || 0) / 1000) + ' · ' + (data.fit || 'cover');
+    }
+
+    function renderAllBackgroundBlocks() {
+      Array.prototype.slice.call(editor.querySelectorAll('.background-block')).forEach(function(block) {
+        renderBackgroundBlockContent(block);
+      });
+    }
+
+    function renderBackgroundBlockContent(node) {
+      var data = backgroundDataFromNode(node);
+      var asset = findBackgroundAsset(data.assetId);
+      var assetName = asset ? assetLabel(asset) || asset.name || asset.id : data.assetId ? data.assetId.replace(/^asset_/, '') : 'No background selected';
+      node.innerHTML =
+        '<div class="background-copy">' +
+          '<div class="background-command-line">' +
+            '<span class="void-title">/background</span>' +
+            '<span class="background-asset"></span>' +
+          '</div>' +
+          '<div class="void-summary"></div>' +
+        '</div>' +
+        '<div class="block-actions">' +
+          '<button type="button" class="block-button" data-action="pick-background">Pick</button>' +
+          '<button type="button" class="block-button" data-action="edit-background">Edit</button>' +
+        '</div>';
+      node.querySelector('.background-asset').textContent = assetName;
+      node.querySelector('.void-summary').textContent = backgroundSummary(data);
+    }
+
+    function applyBackgroundData(node, data) {
+      node.dataset.assetId = normalizeAssetName(data.assetId) || '';
+      node.dataset.transition = data.transition || 'fade';
+      node.dataset.durationMs = String(Math.max(0, Math.round(Number(data.duration) || 0)));
+      node.dataset.delay = String(Math.max(0, Number(data.delay) || 0));
+      node.dataset.fit = data.fit || 'cover';
+      node.dataset.position = data.position || 'center';
+      renderBackgroundBlockContent(node);
+    }
+
+    function selectedValue(select, fallback) {
+      return select ? select.value || fallback : fallback;
+    }
+
+    function closeBackgroundPopover() {
+      if (backgroundPopover) backgroundPopover.remove();
+      backgroundPopover = null;
+      backgroundDraft = null;
+      if (activeBackgroundBlock) activeBackgroundBlock.classList.remove('is-editing', 'is-selected');
+      activeBackgroundBlock = null;
+      scheduleResize();
+    }
+
+    function positionBackgroundPopover(anchor) {
+      if (!backgroundPopover || !anchor) return;
+      var rect = anchor.getBoundingClientRect();
+      var popoverWidth = Math.min(420, window.innerWidth - 32);
+      var left = Math.max(16, Math.min(window.innerWidth - popoverWidth - 16, rect.right - popoverWidth));
+      var popoverHeight = backgroundPopover.offsetHeight || 0;
+      var top = Math.max(16, Math.min(window.innerHeight - popoverHeight - 16, rect.bottom + 8));
+      backgroundPopover.style.left = left + 'px';
+      backgroundPopover.style.top = top + 'px';
+    }
+
+    function option(value, label, current) {
+      return '<option value="' + value + '"' + (value === current ? ' selected' : '') + '>' + label + '</option>';
+    }
+
+    function openBackgroundPopover(block, anchor) {
+      if (!block) return;
+      closeSlashMenu();
+      if (activeBackgroundBlock === block && backgroundPopover) {
+        closeBackgroundPopover();
+        return;
+      }
+      closeBackgroundPopover();
+      activeBackgroundBlock = block;
+      activeBackgroundBlock.classList.add('is-editing', 'is-selected');
+      backgroundDraft = backgroundDataFromNode(block);
+
+      var popover = document.createElement('div');
+      popover.className = 'background-popover';
+      popover.innerHTML =
+        '<label class="popover-label" for="bgAssetInput">Назва фону</label>' +
+        '<input id="bgAssetInput" class="popover-control" value="" list="backgroundAssets" />' +
+        '<datalist id="backgroundAssets">' +
+          '<option value="forest_night"></option>' +
+          '<option value="city_evening"></option>' +
+          '<option value="school_day"></option>' +
+          '<option value="room_night"></option>' +
+        '</datalist>' +
+        '<div class="background-preview"></div>' +
+        '<div class="preview-actions"><button type="button" class="popover-button" data-action="choose-background">Обрати</button></div>' +
+        '<div class="asset-picker hidden"></div>' +
+        '<div class="popover-grid">' +
+          '<label class="popover-label" for="bgTransition">Ефект переходу</label>' +
+          '<select id="bgTransition" class="popover-control">' +
+            option('fade', 'Fade', backgroundDraft.transition) +
+            option('dissolve', 'Dissolve', backgroundDraft.transition) +
+            option('instant', 'Instant', backgroundDraft.transition) +
+            option('wipe', 'Wipe', backgroundDraft.transition) +
+          '</select>' +
+          '<label class="popover-label" for="bgFit">Режим</label>' +
+          '<select id="bgFit" class="popover-control">' +
+            option('cover', 'Cover', backgroundDraft.fit) +
+            option('contain', 'Contain', backgroundDraft.fit) +
+            option('stretch', 'Stretch', backgroundDraft.fit) +
+          '</select>' +
+          '<label class="popover-label" for="bgPosition">Позиція</label>' +
+          '<select id="bgPosition" class="popover-control">' +
+            option('center', 'Center', backgroundDraft.position) +
+            option('top', 'Top', backgroundDraft.position) +
+            option('bottom', 'Bottom', backgroundDraft.position) +
+            option('left', 'Left', backgroundDraft.position) +
+            option('right', 'Right', backgroundDraft.position) +
+          '</select>' +
+          '<label class="popover-label" for="bgDelay">Затримка</label>' +
+          '<input id="bgDelay" class="popover-control" inputmode="decimal" value="" />' +
+          '<label class="popover-label" for="bgDuration">Тривалість</label>' +
+          '<input id="bgDuration" class="popover-control" inputmode="decimal" value="" />' +
+        '</div>' +
+        '<p class="popover-help">Зміна фону застосовується з цього моменту сцени і буде показана у відповідному порядку відтворення.</p>' +
+        '<div class="popover-footer">' +
+          '<button type="button" class="popover-button" data-action="reset-background">Скинути</button>' +
+          '<button type="button" class="popover-button primary" data-action="save-background">Зберегти</button>' +
+        '</div>';
+
+      document.body.appendChild(popover);
+      backgroundPopover = popover;
+      popover.querySelector('#bgAssetInput').value = backgroundDraft.assetId || '';
+      var selectedAsset = findBackgroundAsset(backgroundDraft.assetId);
+      if (selectedAsset) {
+        popover.dataset.selectedAssetId = selectedAsset.id;
+        popover.querySelector('#bgAssetInput').value = assetLabel(selectedAsset) || selectedAsset.name || selectedAsset.id;
+      }
+      popover.querySelector('#bgDelay').value = formatSeconds(backgroundDraft.delay || 0);
+      popover.querySelector('#bgDuration').value = formatSeconds((backgroundDraft.duration || 0) / 1000);
+      updatePreview(popover, selectedAsset ? selectedAsset.id : backgroundDraft.assetId);
+      renderAssetPicker(popover);
+      positionBackgroundPopover(anchor || block);
+      scheduleResize();
+    }
+
+    function updatePreview(popover, assetId) {
+      var preview = popover && popover.querySelector('.background-preview');
+      if (!preview) return;
+      var asset = findBackgroundAsset(assetId);
+      var uri = asset ? asset.uri : normalizeAssetName(assetId);
+      if (!uri) {
+        preview.classList.add('placeholder');
+        preview.textContent = 'Фон не вибрано';
+        preview.style.backgroundImage = '';
+        return;
+      }
+      preview.classList.remove('placeholder');
+      preview.textContent = '';
+      preview.style.backgroundImage = 'linear-gradient(180deg, rgba(6, 16, 32, 0.04), rgba(6, 16, 32, 0.18)), url("' + String(uri).replace(/"/g, '\\"') + '")';
+      preview.style.backgroundSize = 'cover';
+      preview.style.backgroundPosition = 'center';
+    }
+
+    function setSelectedBackgroundAsset(asset) {
+      if (!backgroundPopover || !asset) return;
+      var input = backgroundPopover.querySelector('#bgAssetInput');
+      if (input) input.value = assetLabel(asset) || asset.name || asset.id;
+      backgroundPopover.dataset.selectedAssetId = asset.id;
+      updatePreview(backgroundPopover, asset.id);
+      renderAssetPicker(backgroundPopover);
+    }
+
+    function renderAssetPicker(popover) {
+      var picker = popover && popover.querySelector('.asset-picker');
+      if (!picker) return;
+      var selected = popover.dataset.selectedAssetId || '';
+      var items = backgroundAssets.length
+        ? backgroundAssets.map(function(asset) {
+            var active = asset.id === selected ? ' active' : '';
+            return '<button type="button" class="asset-choice' + active + '" data-action="select-background-asset" data-asset-id="' + escapeHtml(asset.id) + '">' +
+              '<span class="asset-thumb" style="background-image:url(&quot;' + escapeHtml(asset.uri) + '&quot;)"></span>' +
+              '<span class="asset-name">' + escapeHtml(assetLabel(asset) || asset.name || asset.id) + '</span>' +
+            '</button>';
+          }).join('')
+        : '<div class="asset-empty">Ще немає завантажених фонів.</div>';
+
+      picker.innerHTML =
+        '<div class="asset-picker-actions">' +
+          '<button type="button" class="popover-button" data-action="upload-background">З комп’ютеру</button>' +
+          '<button type="button" class="popover-button" data-action="hide-asset-picker">Готово</button>' +
+        '</div>' +
+        '<div class="asset-choice-list">' + items + '</div>' +
+        '<input class="asset-file-input" type="file" accept="image/*" hidden />';
+    }
+
+    function openAssetPicker() {
+      if (!backgroundPopover) return;
+      var picker = backgroundPopover.querySelector('.asset-picker');
+      if (!picker) return;
+      picker.classList.remove('hidden');
+      renderAssetPicker(backgroundPopover);
+      scheduleResize();
+    }
+
+    function parseSecondsInput(value, fallback) {
+      var cleaned = String(value || '').replace(',', '.').replace(/s$/i, '').trim();
+      var number = Number(cleaned);
+      return Number.isFinite(number) ? Math.max(0, number) : fallback;
+    }
+
+    function collectBackgroundForm() {
+      if (!backgroundPopover) return backgroundDraft || {};
+      var asset = backgroundPopover.querySelector('#bgAssetInput');
+      var transition = backgroundPopover.querySelector('#bgTransition');
+      var fit = backgroundPopover.querySelector('#bgFit');
+      var position = backgroundPopover.querySelector('#bgPosition');
+      var delay = backgroundPopover.querySelector('#bgDelay');
+      var duration = backgroundPopover.querySelector('#bgDuration');
+      return {
+        assetId: normalizeAssetName(backgroundPopover.dataset.selectedAssetId) || normalizeAssetName(asset && asset.value) || null,
+        transition: selectedValue(transition, 'fade'),
+        fit: selectedValue(fit, 'cover'),
+        position: selectedValue(position, 'center'),
+        delay: parseSecondsInput(delay && delay.value, backgroundDraft ? backgroundDraft.delay : 0),
+        duration: Math.round(parseSecondsInput(duration && duration.value, backgroundDraft ? backgroundDraft.duration / 1000 : 0.5) * 1000)
+      };
+    }
+
     function serializeBlock(node) {
       var kind = node.dataset.kind;
       if (kind === 'technical') {
         var commandId = node.dataset.command || 'effect';
         var originalTechnical = originalBlockForNode(node);
+        if (commandId === 'background') {
+          var backgroundData = backgroundDataFromNode(node);
+          var originalStep = originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step
+            ? originalTechnical.step
+            : null;
+          var step = originalStep
+            ? Object.assign({}, originalStep, {
+                blockType: 'background',
+                data: Object.assign({}, originalStep.data || {}, backgroundData)
+              })
+            : {
+                id: node.dataset.id || uid('step'),
+                blockType: 'background',
+                data: backgroundData,
+                collapsed: false,
+                enabled: true
+              };
+          return {
+            id: node.dataset.id || uid('doc_block'),
+            kind: 'technical',
+            commandId: 'background',
+            blockType: 'background',
+            label: 'Background',
+            summary: backgroundSummary(backgroundData),
+            step: step
+          };
+        }
         if (originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step) {
           return Object.assign({}, originalTechnical, {
             id: node.dataset.id || originalTechnical.id,
@@ -81,7 +602,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           id: node.dataset.id || uid('doc_block'),
           kind: 'technical',
           commandId: commandId,
-          blockType: commandId === 'sprite' ? 'character' : commandId,
+          blockType: commandId,
           label: commandId,
           summary: '',
           step: null
@@ -108,22 +629,29 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (kind === 'dialogue') {
         var originalDialogue = originalBlockForNode(node);
         var speaker = node.dataset.speaker || '';
-        var badge = node.querySelector('.dialogue-badge');
-        var raw = textOf(node);
-        var text = badge ? raw.replace(/^.*?:\\s*/, '') : raw.replace(/^([^:]{1,48}):\\s*/, '');
+        var badge = node.querySelector('.speaker-token') || node.querySelector('.dialogue-badge');
+        var text = textWithoutBadge(node, badge);
+        var characterId = node.dataset.characterId || (badge && badge.dataset.characterId) || null;
+        var character = findCharacterById(characterId);
         if (originalDialogue && originalDialogue.kind === 'dialogue') {
           return Object.assign({}, originalDialogue, {
             id: node.dataset.id || originalDialogue.id,
-            speakerName: speaker || originalDialogue.speakerName,
+            speakerName: character && character.name || speaker || originalDialogue.speakerName,
+            characterId: characterId || originalDialogue.characterId || null,
+            spriteId: node.dataset.spriteId || originalDialogue.spriteId || currentSpriteId(character),
+            tokenColor: character && character.color || originalDialogue.tokenColor,
+            openCharacterControls: false,
             text: text
           });
         }
         return {
           id: node.dataset.id || uid('doc_dialogue'),
           kind: 'dialogue',
-          speakerName: speaker,
-          characterId: null,
-          spriteId: null,
+          speakerName: character && character.name || speaker,
+          characterId: characterId,
+          spriteId: node.dataset.spriteId || currentSpriteId(character),
+          tokenColor: character && character.color,
+          openCharacterControls: false,
           text: text
         };
       }
@@ -159,12 +687,17 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       };
     }
 
+    function buildSnapshot() {
+      return {
+        scene: buildScenePayload(),
+        characters: characters
+      };
+    }
+
     function saveNow() {
       scheduleResize();
-      post({
-        type: 'save',
-        scene: buildScenePayload()
-      });
+      var snapshot = buildSnapshot();
+      post(Object.assign({ type: 'save' }, snapshot));
     }
 
     function ensureParagraph() {
@@ -177,29 +710,96 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       }
     }
 
-    function nearestParagraph() {
-      var selection = window.getSelection();
-      if (!selection || !selection.anchorNode) return null;
-      var node = selection.anchorNode.nodeType === Node.TEXT_NODE ? selection.anchorNode.parentElement : selection.anchorNode;
-      return node && node.closest ? node.closest('p') : null;
+    function editableLineForNode(node) {
+      if (!node) return null;
+      if (node.nodeType === Node.TEXT_NODE && node.parentElement === editor) {
+        var wrapper = document.createElement('p');
+        wrapper.dataset.kind = 'text';
+        editor.insertBefore(wrapper, node);
+        wrapper.appendChild(node);
+        return wrapper;
+      }
+      var element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+      if (!element || !element.closest) return null;
+      var block = element.closest('p, div');
+      if (!block || !editor.contains(block) || block === editor) return null;
+      if (block.classList && block.classList.contains('void-block')) return null;
+      return block;
     }
 
-    function transformDialogueIfNeeded() {
-      var p = nearestParagraph();
-      if (!p || p.dataset.kind === 'dialogue') return;
+    function nearestEditableLine() {
+      var selection = window.getSelection();
+      if (!selection || !selection.anchorNode) return null;
+      return editableLineForNode(selection.anchorNode);
+    }
+
+    function createDialogueBlockFromCharacterName(p, speaker, text, options) {
+      var ensuredCharacter = ensureCharacterWithStatus(speaker);
+      var character = ensuredCharacter.character;
+      var shouldOpenControls = Boolean(
+        options && options.forceOpenControls
+        || (!options || options.openControls !== false) && ensuredCharacter.created
+      );
+      p.dataset.kind = 'dialogue';
+      p.dataset.speaker = character.name;
+      p.dataset.characterId = character.id;
+      p.dataset.spriteId = currentSpriteId(character) || '';
+      p.dataset.id = p.dataset.id || uid('doc_dialogue');
+      if (shouldOpenControls) {
+        p.dataset.openCharacterControls = 'true';
+      } else {
+        delete p.dataset.openCharacterControls;
+      }
+      p.innerHTML = '<span class="speaker-token dialogue-badge" contenteditable="false"></span> ';
+      configureSpeakerToken(p.querySelector('.speaker-token'), character, p.dataset.id);
+      p.appendChild(document.createTextNode(text));
+      if (!options || options.moveCaret !== false) moveCaretToEnd(p);
+      if (shouldOpenControls) {
+        renderCharacterPopover(p.querySelector('.speaker-token'));
+        if (options && options.focusName) {
+          setTimeout(function() {
+            var nameInput = characterPopover && characterPopover.querySelector('[data-field="character-name"]');
+            if (nameInput) {
+              nameInput.focus();
+              nameInput.select();
+            }
+          }, 0);
+        }
+      }
+    }
+
+    function transformParagraphDialogueIfNeeded(p, options) {
+      if (!p) return;
+      if (p.dataset.kind === 'dialogue' && p.querySelector('.speaker-token')) return;
       var value = textOf(p);
       var match = /^([^:\\n]{1,48}):\\s*(.*)$/.exec(value);
       if (!match) return;
       var speaker = match[1].trim();
       if (!speaker || speaker[0] === '/') return;
       var text = match[2] || '';
-      p.dataset.kind = 'dialogue';
-      p.dataset.speaker = speaker;
-      p.dataset.id = p.dataset.id || uid('doc_dialogue');
-      p.innerHTML = '<span class="dialogue-badge" contenteditable="false"></span> ';
-      p.querySelector('.dialogue-badge').textContent = speaker + ':';
-      p.appendChild(document.createTextNode(text));
-      moveCaretToEnd(p);
+      if (/^[a-z][a-z0-9+.-]*$/i.test(speaker) && text.trim().indexOf('//') === 0) return;
+      createDialogueBlockFromCharacterName(p, speaker, text, options || { openControls: true });
+    }
+
+    function transformDialogueIfNeeded() {
+      var p = nearestEditableLine();
+      transformParagraphDialogueIfNeeded(p, { openControls: true });
+    }
+
+    function transformAllDialogueIfNeeded() {
+      Array.prototype.slice.call(editor.childNodes).forEach(function(node) {
+        if (node.nodeType === Node.TEXT_NODE && textOf(node).trim()) {
+          var wrapper = document.createElement('p');
+          wrapper.dataset.kind = 'text';
+          editor.insertBefore(wrapper, node);
+          wrapper.appendChild(node);
+          node = wrapper;
+        }
+        if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
+        if (node.classList && node.classList.contains('void-block')) return;
+        if (node.dataset && node.dataset.kind && node.dataset.kind !== 'text' && !(node.dataset.kind === 'dialogue' && !node.querySelector('.speaker-token'))) return;
+        transformParagraphDialogueIfNeeded(node, { openControls: false, moveCaret: false });
+      });
     }
 
     function moveCaretToEnd(element) {
@@ -215,7 +815,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var selection = window.getSelection();
       if (!selection || !selection.rangeCount) return null;
       var range = selection.getRangeAt(0);
-      var p = nearestParagraph();
+      var p = nearestEditableLine();
       if (!p) return null;
       var text = textOf(p);
       var offsetText = text;
@@ -275,22 +875,40 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     }
 
     function insertCommand(commandId) {
-      var p = activeSlash && activeSlash.paragraph ? activeSlash.paragraph : nearestParagraph();
+      var p = activeSlash && activeSlash.paragraph ? activeSlash.paragraph : nearestEditableLine();
       if (!p) return;
       if (commandId === 'newScene') {
         removeSlashToken(p);
         closeSlashMenu();
-        post({ type: 'createNextScene', scene: buildScenePayload() });
+        post({ type: 'createNextScene', scene: buildScenePayload(), characters: characters });
         return;
       }
       removeSlashToken(p);
+      if (commandId === 'character') {
+        createDialogueBlockFromCharacterName(p, 'Character', textOf(p), { forceOpenControls: true, focusName: true });
+        closeSlashMenu();
+        scheduleResize();
+        saveNow();
+        return;
+      }
       var block = document.createElement('div');
-      block.className = 'void-block';
+      block.className = commandId === 'background' ? 'void-block background-block' : 'void-block';
       block.contentEditable = 'false';
       block.dataset.kind = 'technical';
       block.dataset.id = uid('doc_block');
       block.dataset.command = commandId;
-      block.innerHTML = '<div class="void-title">/' + commandId + '</div><div class="void-summary">New block</div>';
+      if (commandId === 'background') {
+        applyBackgroundData(block, {
+          assetId: null,
+          transition: 'fade',
+          duration: 500,
+          delay: 0,
+          fit: 'cover',
+          position: 'center'
+        });
+      } else {
+        block.innerHTML = '<div class="void-title">/' + commandId + '</div><div class="void-summary">New block</div>';
+      }
       p.insertAdjacentElement('afterend', block);
       var next = document.createElement('p');
       next.dataset.kind = 'text';
@@ -303,9 +921,245 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       saveNow();
     }
 
+    editor.addEventListener('mousedown', function(event) {
+      var target = event.target;
+      if (!target || !target.closest) return;
+      if (target.closest('.block-button')) event.preventDefault();
+    });
+
+    editor.addEventListener('click', function(event) {
+      var target = event.target;
+      if (!target || !target.closest) return;
+      var token = target.closest('.speaker-token');
+      if (token) {
+        event.preventDefault();
+        renderCharacterPopover(token);
+        return;
+      }
+      var button = target.closest('[data-action]');
+      var block = target.closest('.background-block');
+      if (!block) return;
+      Array.prototype.slice.call(editor.querySelectorAll('.void-block.is-selected')).forEach(function(item) {
+        if (item !== block) item.classList.remove('is-selected');
+      });
+      block.classList.add('is-selected');
+      if (!button) return;
+      var action = button.dataset.action;
+      if (action === 'edit-background' || action === 'pick-background') {
+        event.preventDefault();
+        openBackgroundPopover(block, button);
+      }
+    });
+
+    document.addEventListener('input', function(event) {
+      if (!backgroundPopover || !backgroundPopover.contains(event.target)) return;
+      var asset = backgroundPopover.querySelector('#bgAssetInput');
+      if (event.target === asset) delete backgroundPopover.dataset.selectedAssetId;
+      updatePreview(backgroundPopover, asset && asset.value);
+    });
+
+    document.addEventListener('click', function(event) {
+      if (characterPopover) {
+        var characterTarget = event.target;
+        if (characterTarget && characterTarget.closest && characterTarget.closest('.character-popover')) {
+          var characterActionButton = characterTarget.closest('[data-action]');
+          if (!characterActionButton) return;
+          var characterAction = characterActionButton.dataset.action;
+          if (characterAction === 'close-character') {
+            closeCharacterPopover();
+            return;
+          }
+          if (characterAction === 'save-character') {
+            collectCharacterPopover();
+            closeCharacterPopover();
+            return;
+          }
+          if (characterAction === 'upload-character-sprite') {
+            var spriteInput = characterPopover.querySelector('.character-sprite-file');
+            if (spriteInput) spriteInput.click();
+            return;
+          }
+          if (characterAction === 'delete-character-sprite') {
+            var deleteCharacter = activeCharacterToken && findCharacterById(activeCharacterToken.dataset.characterId);
+            var selected = characterPopover.querySelector('input[name="characterSprite"]:checked');
+            if (deleteCharacter && selected) {
+              deleteCharacter.sprites = (deleteCharacter.sprites || []).filter(function(sprite) { return sprite.id !== selected.value; });
+              if (deleteCharacter.authoring && deleteCharacter.authoring.currentSpriteId === selected.value) {
+                deleteCharacter.authoring.currentSpriteId = deleteCharacter.sprites[0] && deleteCharacter.sprites[0].id || null;
+              }
+              renderCharacterPopover(activeCharacterToken);
+              saveNow();
+            }
+            return;
+          }
+          return;
+        }
+        if (characterTarget && characterTarget.closest && characterTarget.closest('.speaker-token')) return;
+        closeCharacterPopover();
+      }
+      if (!backgroundPopover) return;
+      var target = event.target;
+      if (target && target.closest && target.closest('.background-popover')) {
+        var actionButton = target.closest('[data-action]');
+        if (!actionButton) return;
+        var action = actionButton.dataset.action;
+        if (action === 'choose-background') {
+          openAssetPicker();
+          return;
+        }
+        if (action === 'hide-asset-picker') {
+          var picker = backgroundPopover.querySelector('.asset-picker');
+          if (picker) picker.classList.add('hidden');
+          scheduleResize();
+          return;
+        }
+        if (action === 'select-background-asset') {
+          var selectedAsset = findBackgroundAsset(actionButton.dataset.assetId);
+          setSelectedBackgroundAsset(selectedAsset);
+          return;
+        }
+        if (action === 'upload-background') {
+          var input = backgroundPopover.querySelector('.asset-file-input');
+          if (input) input.click();
+          return;
+        }
+        if (action === 'reset-background' && activeBackgroundBlock && backgroundDraft) {
+          applyBackgroundData(activeBackgroundBlock, backgroundDraft);
+          saveNow();
+          closeBackgroundPopover();
+          return;
+        }
+        if (action === 'save-background' && activeBackgroundBlock) {
+          applyBackgroundData(activeBackgroundBlock, collectBackgroundForm());
+          saveNow();
+          closeBackgroundPopover();
+        }
+        return;
+      }
+      if (target && target.closest && target.closest('.background-block')) return;
+      closeBackgroundPopover();
+    });
+
+    document.addEventListener('change', function(event) {
+      if (characterPopover && characterPopover.contains(event.target)) {
+        var spriteUploadInput = event.target;
+        if (!spriteUploadInput || !spriteUploadInput.classList || !spriteUploadInput.classList.contains('character-sprite-file')) return;
+        var spriteFile = spriteUploadInput.files && spriteUploadInput.files[0];
+        if (!spriteFile || !String(spriteFile.type || '').startsWith('image/')) return;
+        if (spriteFile.size > 5 * 1024 * 1024) return;
+        var uploadCharacter = activeCharacterToken && findCharacterById(activeCharacterToken.dataset.characterId);
+        if (!uploadCharacter) return;
+        var spriteNameInput = characterPopover.querySelector('[data-field="sprite-name"]');
+        var reader = new FileReader();
+        reader.onload = function() {
+          var dataUri = String(reader.result || '');
+          if (!dataUri) return;
+          var img = new Image();
+          img.onload = function() {
+            if (img.naturalWidth > 4096 || img.naturalHeight > 4096) return;
+            var sprite = {
+              id: uid('sprite'),
+              name: uniqueSpriteName(uploadCharacter, spriteNameInput && spriteNameInput.value || spriteFile.name || 'Sprite'),
+              uri: dataUri,
+              createdAt: Date.now()
+            };
+            uploadCharacter.sprites = (uploadCharacter.sprites || []).concat([sprite]);
+            uploadCharacter.defaultSpriteId = uploadCharacter.defaultSpriteId || sprite.id;
+            uploadCharacter.authoring = Object.assign({}, uploadCharacter.authoring || {}, {
+              currentSpriteId: sprite.id
+            });
+            var paragraph = activeCharacterToken && activeCharacterToken.closest('p');
+            if (paragraph) paragraph.dataset.spriteId = sprite.id;
+            renderCharacterPopover(activeCharacterToken);
+            saveNow();
+          };
+          img.src = dataUri;
+        };
+        reader.readAsDataURL(spriteFile);
+        return;
+      }
+      if (!backgroundPopover || !backgroundPopover.contains(event.target)) return;
+      var input = event.target;
+      if (!input || !input.classList || !input.classList.contains('asset-file-input')) return;
+      var file = input.files && input.files[0];
+      if (!file || !String(file.type || '').startsWith('image/')) return;
+      var reader = new FileReader();
+      reader.onload = function() {
+        var dataUri = String(reader.result || '');
+        if (!dataUri) return;
+        var picker = backgroundPopover && backgroundPopover.querySelector('.asset-picker');
+        if (picker) picker.classList.add('is-uploading');
+        post({
+          type: 'uploadBackgroundAsset',
+          name: file.name || 'background.png',
+          dataUri: dataUri
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape' && backgroundPopover) {
+        event.preventDefault();
+        closeBackgroundPopover();
+      }
+      if (event.key === 'Escape' && characterPopover) {
+        event.preventDefault();
+        closeCharacterPopover();
+      }
+      var target = event.target;
+      if (target && target.classList && target.classList.contains('speaker-token') && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        renderCharacterPopover(target);
+      }
+    });
+
+    window.addEventListener('resize', function() {
+      if (activeBackgroundBlock) positionBackgroundPopover(activeBackgroundBlock);
+      if (activeCharacterToken) positionCharacterPopover(activeCharacterToken);
+    });
+
+    window.addEventListener('message', function(event) {
+      var message = event.data;
+      if (!message || message.source !== 'vn-plate-host' || message.editorId !== payload.editorId) return;
+      if (message.type === 'flush' && message.requestId) {
+        var snapshot = buildSnapshot();
+        post(Object.assign({ type: 'flushed', requestId: message.requestId }, snapshot));
+      }
+      if (message.type === 'charactersUpdated' && Array.isArray(message.characters)) {
+        characters = message.characters.map(migrateCharacter);
+      }
+      if (message.type === 'backgroundAssetsUpdated' && Array.isArray(message.assets)) {
+        backgroundAssets = message.assets;
+        renderAllBackgroundBlocks();
+        if (backgroundPopover) {
+          renderAssetPicker(backgroundPopover);
+          var input = backgroundPopover.querySelector('#bgAssetInput');
+          var currentAssetId = backgroundPopover.dataset.selectedAssetId || normalizeAssetName(input && input.value) || normalizeAssetName(backgroundDraft && backgroundDraft.assetId);
+          updatePreview(backgroundPopover, currentAssetId);
+        }
+      }
+      if (message.type === 'backgroundAssetUploaded' && message.asset) {
+        var existing = backgroundAssets.find(function(asset) { return asset.id === message.asset.id; });
+        if (!existing) backgroundAssets = backgroundAssets.concat([message.asset]);
+        if (backgroundPopover) {
+          var picker = backgroundPopover.querySelector('.asset-picker');
+          if (picker) picker.classList.remove('is-uploading');
+          setSelectedBackgroundAsset(message.asset);
+          if (activeBackgroundBlock) {
+            applyBackgroundData(activeBackgroundBlock, Object.assign({}, collectBackgroundForm(), {
+              assetId: message.asset.id
+            }));
+            saveNow();
+          }
+        }
+      }
+    });
+
     editor.addEventListener('input', function() {
       ensureParagraph();
       transformDialogueIfNeeded();
+      transformAllDialogueIfNeeded();
       var slash = currentSlashQuery();
       if (slash) renderSlashMenu(slash);
       else closeSlashMenu();
@@ -345,6 +1199,13 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     });
 
     ensureParagraph();
+    transformAllDialogueIfNeeded();
+    var firstOpenToken = editor.querySelector('[data-open-character-controls="true"] .speaker-token');
+    if (firstOpenToken) {
+      window.setTimeout(function() {
+        renderCharacterPopover(firstOpenToken);
+      }, 0);
+    }
     if (window.ResizeObserver) {
       var resizeObserver = new ResizeObserver(scheduleResize);
       resizeObserver.observe(document.body);

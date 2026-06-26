@@ -74,14 +74,16 @@ export function useStoryActions() {
   const updatePlaybackState = useAppStore((s) => s.updatePlaybackState);
   const setMediaLibrary = useAppStore((s) => s.setMediaLibrary);
 
-  const loadStories = useAppStore((s) => s.migrateFromLegacyKeys);
+  const migrateLegacyKeys = useAppStore((s) => s.migrateFromLegacyKeys);
 
   const setCurrentStory = (storyId: string | null) => {
     return loadCurrentStory(storyId);
   };
 
   return {
-    loadStories,
+    migrateLegacyKeys,
+    /** @deprecated Use migrateLegacyKeys. */
+    loadStories: migrateLegacyKeys,
     createStory,
     setCurrentStory,
     addStory,

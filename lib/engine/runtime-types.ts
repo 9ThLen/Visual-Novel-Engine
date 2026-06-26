@@ -51,6 +51,9 @@ export interface SceneState {
   isTransitioning: boolean;
   transitionTarget: string | null;
   currentStepIndex?: number;
+  activeSpeakerCharacterId?: string | null;
+  activeSpeakerFocusScale?: number;
+  dimNonSpeakerCharacters?: boolean;
 }
 
 export interface CharacterRuntimeState {

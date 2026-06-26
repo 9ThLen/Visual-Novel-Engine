@@ -63,12 +63,49 @@ export function createEmbeddedStyles(): string {
       display: inline-block;
       margin-right: 8px;
       padding: 2px 9px;
-      border: 1px solid #f87171;
-      border-radius: 7px;
-      background: #fff1f2;
-      color: #991b1b;
+      border: 1px solid var(--speaker-color, #f87171);
+      border-radius: 6px;
+      background: color-mix(in srgb, var(--speaker-color, #ff4d6d) 16%, white);
+      color: color-mix(in srgb, var(--speaker-color, #ff4d6d) 82%, black);
       font-family: Inter, ui-sans-serif, system-ui, sans-serif;
       font-weight: 700;
+      line-height: 1.35;
+      cursor: pointer;
+      vertical-align: baseline;
+    }
+    .speaker-token:focus {
+      outline: 2px solid color-mix(in srgb, var(--speaker-color, #ff4d6d) 60%, white);
+      outline-offset: 2px;
+    }
+    .character-popover {
+      position: fixed;
+      z-index: 32;
+      width: min(360px, calc(100vw - 32px));
+      padding: 14px;
+      border: 1px solid #ddd8cf;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 16px 34px rgba(17, 24, 39, 0.16), 0 2px 8px rgba(17, 24, 39, 0.08);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      color: #111827;
+    }
+    .character-popover .sprite-list {
+      display: grid;
+      gap: 6px;
+      max-height: 140px;
+      overflow: auto;
+      margin: 8px 0;
+    }
+    .character-popover .sprite-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 7px;
+      background: #f8fafc;
+      font-size: 13px;
     }
     .void-block {
       display: flex;
@@ -85,6 +122,11 @@ export function createEmbeddedStyles(): string {
       cursor: default;
       user-select: none;
     }
+    .void-block.is-selected,
+    .background-block.is-editing {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 1px #60a5fa;
+    }
     .void-title {
       color: #111827;
       font-weight: 800;
@@ -95,6 +137,212 @@ export function createEmbeddedStyles(): string {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .background-block {
+      min-height: 68px;
+      padding: 12px 16px;
+      background: #fffefa;
+    }
+    .background-copy {
+      min-width: 0;
+    }
+    .background-command-line {
+      display: flex;
+      align-items: baseline;
+      gap: 26px;
+      min-width: 0;
+    }
+    .background-asset {
+      overflow: hidden;
+      color: #111827;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .block-actions {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 10px;
+    }
+    .block-button,
+    .popover-button {
+      height: 38px;
+      padding: 0 16px;
+      border: 1px solid #d7d0c5;
+      border-radius: 7px;
+      background: #fffefa;
+      color: #111827;
+      font: 700 14px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    .block-button:hover,
+    .popover-button:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+    .popover-button.primary {
+      border-color: #ef4444;
+      background: #ef4444;
+      color: #ffffff;
+    }
+    .popover-button.primary:hover {
+      background: #dc2626;
+    }
+    .background-popover {
+      position: fixed;
+      z-index: 30;
+      width: min(420px, calc(100vw - 32px));
+      padding: 16px;
+      border: 1px solid #ddd8cf;
+      border-radius: 10px;
+      background: #ffffff;
+      box-shadow: 0 16px 34px rgba(17, 24, 39, 0.16), 0 2px 8px rgba(17, 24, 39, 0.08);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      color: #111827;
+    }
+    .background-popover::before {
+      content: "";
+      position: absolute;
+      top: -8px;
+      right: 36px;
+      width: 14px;
+      height: 14px;
+      border-left: 1px solid #ddd8cf;
+      border-top: 1px solid #ddd8cf;
+      background: #ffffff;
+      transform: rotate(45deg);
+    }
+    .popover-label {
+      display: block;
+      margin: 0 0 6px;
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .popover-control {
+      width: 100%;
+      height: 42px;
+      padding: 0 12px;
+      border: 1px solid #d6dee8;
+      border-radius: 7px;
+      background: #ffffff;
+      color: #111827;
+      font: 500 14px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      outline: none;
+    }
+    .popover-control:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.24);
+    }
+    .background-preview {
+      margin-top: 12px;
+      height: 132px;
+      border: 1px solid #d7d0c5;
+      border-radius: 7px;
+      background:
+        linear-gradient(180deg, rgba(6, 16, 32, 0.16), rgba(6, 16, 32, 0.58)),
+        radial-gradient(circle at 52% 18%, rgba(220, 236, 255, 0.95) 0 5%, transparent 6%),
+        linear-gradient(135deg, #0f2535, #152f46 42%, #07111f);
+      overflow: hidden;
+    }
+    .background-preview.placeholder {
+      display: grid;
+      place-items: center;
+      background: #f8fafc;
+      color: #64748b;
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .preview-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin: 8px 0 10px;
+    }
+    .asset-picker {
+      margin: 0 0 12px;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .asset-picker.is-uploading::after {
+      display: block;
+      margin-top: 8px;
+      color: #475569;
+      font-size: 12px;
+      content: "Завантаження...";
+    }
+    .asset-picker-actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .asset-choice-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      max-height: 156px;
+      overflow: auto;
+    }
+    .asset-choice {
+      display: grid;
+      grid-template-columns: 46px 1fr;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 6px;
+      border: 1px solid #dbe3ec;
+      border-radius: 7px;
+      background: #ffffff;
+      color: #111827;
+      text-align: left;
+      cursor: pointer;
+    }
+    .asset-choice:hover,
+    .asset-choice.active {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 1px #60a5fa;
+    }
+    .asset-thumb {
+      width: 46px;
+      height: 34px;
+      border-radius: 5px;
+      background-color: #e2e8f0;
+      background-position: center;
+      background-size: cover;
+    }
+    .asset-name {
+      overflow: hidden;
+      font-size: 12px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .asset-empty {
+      grid-column: 1 / -1;
+      padding: 10px;
+      color: #64748b;
+      font-size: 13px;
+      text-align: center;
+    }
+    .popover-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.45fr;
+      gap: 8px 14px;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .popover-help {
+      margin: 12px 0 16px;
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .popover-footer {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
     }
     .slash-menu {
       position: fixed;
@@ -151,6 +399,33 @@ export function createEmbeddedStyles(): string {
         max-height: 46vh;
         border-radius: 16px 16px 0 0;
         padding: 14px;
+      }
+      .background-block {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .background-command-line {
+        gap: 12px;
+      }
+      .block-actions {
+        justify-content: flex-end;
+      }
+      .background-popover,
+      .character-popover {
+        left: 12px !important;
+        right: 12px;
+        top: auto !important;
+        bottom: 12px;
+        width: auto;
+      }
+      .background-popover::before {
+        display: none;
+      }
+      .popover-grid {
+        grid-template-columns: 1fr;
+      }
+      .asset-choice-list {
+        grid-template-columns: 1fr;
       }
     }
   `;

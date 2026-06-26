@@ -1,8 +1,14 @@
 import type { Character } from '@/lib/character-types';
+import { migrateCharacter } from '@/lib/character-migration';
+import {
+  findCharacterCaseInsensitive,
+  normalizeSpeakerNameForDisplay,
+} from '@/lib/character-resolver';
 import { generateId } from '@/lib/id-utils';
 import {
   createBackgroundStep,
   createBlockStep,
+  createCharacterStep,
   createChoiceStep,
   createDialogueStep,
   createTextStep,
@@ -28,6 +34,23 @@ import type {
 
 function characterNameForId(characters: Character[], characterId: string): string {
   return characters.find((character) => character.id === characterId)?.name || characterId || 'Персонаж';
+}
+
+function characterForId(characters: Character[], characterId: string | null | undefined): Character | null {
+  if (!characterId) return null;
+  return characters.find((character) => character.id === characterId) ?? null;
+}
+
+function currentSpriteIdForCharacter(character: Character | null): string | null {
+  if (!character) return null;
+  return character.authoring?.currentSpriteId
+    ?? character.defaultSpriteId
+    ?? character.sprites[0]?.id
+    ?? null;
+}
+
+function isDialogueShorthandFalsePositive(speakerName: string, text: string): boolean {
+  return /^[a-z][a-z0-9+.-]*$/i.test(speakerName) && text.trimStart().startsWith('//');
 }
 
 function commandIdForStep(step: TimelineStep): DocumentCommandId {
@@ -88,6 +111,7 @@ function timelineStepToDocumentBlock(step: TimelineStep, characters: Character[]
   if (step.blockType === 'dialogue') {
     const data = step.data as DialogueBlockData;
     const entry = data.entries[0];
+    const character = characterForId(characters, entry?.characterId);
     return {
       id: step.id,
       kind: 'dialogue',
@@ -96,6 +120,7 @@ function timelineStepToDocumentBlock(step: TimelineStep, characters: Character[]
       speakerName: entry?.characterId ? characterNameForId(characters, entry.characterId) : '',
       characterId: entry?.characterId || null,
       spriteId: entry?.spriteId || null,
+      tokenColor: character?.color,
       text: entry?.text || '',
     };
   }
@@ -129,6 +154,10 @@ function timelineStepToDocumentBlock(step: TimelineStep, characters: Character[]
 }
 
 function timelineStepToDocumentBlocks(step: TimelineStep, characters: Character[]): DocumentBlock[] {
+  if (step.blockType === 'character' && (step.data as CharacterBlockData).generatedByInlineDialogue) {
+    return [];
+  }
+
   if (step.blockType !== 'text') {
     return [timelineStepToDocumentBlock(step, characters)];
   }
@@ -162,26 +191,32 @@ export function sceneRecordToDocumentScene(sceneRecord: SceneRecord, characters:
   };
 }
 
-function createTechnicalStep(commandId: DocumentCommandId, speaker?: DocumentDialogueBlock): TimelineStep {
+function createTechnicalStep(commandId: DocumentCommandId): TimelineStep {
   if (commandId === 'newScene') return createBlockStep('transition');
   if (commandId === 'background') return createBackgroundStep();
-  if (commandId === 'character' || commandId === 'sprite') {
-    const step = createBlockStep('character');
-    return {
-      ...step,
-      data: {
-        ...(step.data as CharacterBlockData),
-        characterId: speaker?.characterId || '',
-        spriteId: speaker?.spriteId || '',
-      },
-    };
-  }
-
   return createBlockStep(findDocumentCommand(commandId).blockType);
 }
 
-export function createDocumentTechnicalBlock(commandId: DocumentCommandId, characters: Character[] = [], speaker?: DocumentDialogueBlock): DocumentTechnicalBlock {
-  const step = createTechnicalStep(commandId, speaker);
+export function createDocumentCharacterDialogueBlock(
+  speakerName = 'Character',
+  characters: Character[] = [],
+): DocumentDialogueBlock {
+  const normalizedName = normalizeSpeakerNameForDisplay(speakerName) || 'Character';
+  const character = findCharacterCaseInsensitive({ current: characters }, 'current', normalizedName);
+  return {
+    id: generateId('doc_dialogue'),
+    kind: 'dialogue',
+    speakerName: character?.name || normalizedName,
+    characterId: character?.id ?? null,
+    spriteId: currentSpriteIdForCharacter(character),
+    tokenColor: character?.color,
+    openCharacterControls: true,
+    text: '',
+  };
+}
+
+export function createDocumentTechnicalBlock(commandId: DocumentCommandId, characters: Character[] = []): DocumentTechnicalBlock {
+  const step = createTechnicalStep(commandId);
   const summary = technicalSummary(step, characters);
   return {
     id: generateId('doc_block'),
@@ -209,21 +244,33 @@ export function parseDraftLineToDocumentBlock(line: string, characters: Characte
     ) ?? searchDocumentCommands(trimmed)[0];
 
     if (command) {
+      if (command.id === 'character') {
+        return createDocumentCharacterDialogueBlock('Character', characters);
+      }
       return createDocumentTechnicalBlock(command.id, characters);
     }
   }
 
-  const dialogueMatch = /^([^:]{1,48}):\s*(.+)$/.exec(trimmed);
+  const dialogueMatch = /^([^:]{1,48}):\s*(.*)$/.exec(trimmed);
   if (dialogueMatch) {
-    const speakerName = dialogueMatch[1].trim();
-    const character = characters.find((item) => item.name.toLocaleLowerCase() === speakerName.toLocaleLowerCase());
+    const speakerName = normalizeSpeakerNameForDisplay(dialogueMatch[1]);
+    const text = dialogueMatch[2].trim();
+    if (isDialogueShorthandFalsePositive(speakerName, text)) {
+      return {
+        id: generateId('doc_text'),
+        kind: 'text',
+        content: line,
+      };
+    }
+    const character = findCharacterCaseInsensitive({ current: characters }, 'current', speakerName);
     return {
       id: generateId('doc_dialogue'),
       kind: 'dialogue',
       speakerName,
       characterId: character?.id ?? null,
-      spriteId: character?.defaultSpriteId ?? null,
-      text: dialogueMatch[2].trim(),
+      spriteId: currentSpriteIdForCharacter(character),
+      tokenColor: character?.color,
+      text,
     };
   }
 
@@ -264,39 +311,193 @@ export function ensureDocumentCharactersInBlocks(
   const nextCharacters = [...characters];
   const nextBlocks = blocks.map((block) => {
     if (block.kind !== 'dialogue') return block;
-    const speakerName = block.speakerName.trim();
+    const speakerName = normalizeSpeakerNameForDisplay(block.speakerName);
     if (!speakerName) return block;
-    if (block.characterId) return block;
-
-    const existing = nextCharacters.find((item) => item.name.toLocaleLowerCase() === speakerName.toLocaleLowerCase());
-    if (existing) {
+    const currentCharacter = characterForId(nextCharacters, block.characterId);
+    if (currentCharacter) {
       return {
         ...block,
-        characterId: existing.id,
-        spriteId: block.spriteId ?? existing.defaultSpriteId ?? null,
+        speakerName: currentCharacter.name,
+        spriteId: block.spriteId ?? currentSpriteIdForCharacter(currentCharacter),
+        tokenColor: currentCharacter.color,
+      };
+    }
+    if (block.characterId) {
+      return {
+        ...block,
+        speakerName,
       };
     }
 
-    const created: Character = {
+    const existing = findCharacterCaseInsensitive({ current: nextCharacters }, 'current', speakerName);
+    if (existing) {
+      return {
+        ...block,
+        speakerName: existing.name,
+        characterId: existing.id,
+        spriteId: block.spriteId ?? currentSpriteIdForCharacter(existing),
+        tokenColor: existing.color,
+      };
+    }
+
+    const created = migrateCharacter({
       id: generateId('char', 11),
       name: speakerName,
       sprites: [],
       createdAt: Date.now(),
-    };
+    });
     nextCharacters.push(created);
     return {
       ...block,
+      speakerName: created.name,
       characterId: created.id,
       spriteId: null,
+      tokenColor: created.color,
+      openCharacterControls: block.openCharacterControls === false ? false : true,
     };
   });
 
   return { blocks: nextBlocks, characters: nextCharacters };
 }
 
-export function documentSceneToTimeline(documentScene: DocumentScene): TimelineStep[] {
+function dialogueStepForBlock(block: DocumentDialogueBlock, characters: Character[]): TimelineStep | null {
+  const characterId = block.characterId;
+  if (!characterId) return null;
+  const character = characterForId(characters, characterId);
+  const focusEnabled = character?.authoring?.focusOnSpeak !== false;
+
+  if (block.sourceStep?.blockType === 'dialogue') {
+    const sourceData = block.sourceStep.data as DialogueBlockData;
+    const entries = sourceData.entries.length
+      ? sourceData.entries.map((entry, entryIndex) => entryIndex === 0
+        ? {
+            ...entry,
+            characterId,
+            speakerName: block.speakerName,
+            spriteId: block.spriteId || '',
+            text: block.text,
+          }
+        : entry)
+      : [
+          {
+            id: generateId('dialogue_entry'),
+            characterId,
+            speakerName: block.speakerName,
+            spriteId: block.spriteId || '',
+            text: block.text,
+          },
+        ];
+    return {
+      ...block.sourceStep,
+      data: {
+        ...sourceData,
+        entries,
+        speakerFocus: focusEnabled
+          ? { characterId, enabled: true, scale: 1.04, dimOthers: true }
+          : undefined,
+      },
+    };
+  }
+
+  return createDialogueStep({
+    entries: [
+      {
+        id: generateId('dialogue_entry'),
+        characterId,
+        speakerName: block.speakerName,
+        spriteId: block.spriteId || '',
+        text: block.text,
+      },
+    ],
+    currentEntryIndex: 0,
+    speakerFocus: focusEnabled
+      ? { characterId, enabled: true, scale: 1.04, dimOthers: true }
+      : undefined,
+  });
+}
+
+function generatedCharacterStepsForDialogue(
+  block: DocumentDialogueBlock,
+  characters: Character[],
+  visibleCharacters: Set<string>,
+  currentSpriteByCharacter: Map<string, string>,
+  currentPositionByCharacter: Map<string, string>,
+): TimelineStep[] {
+  if (!block.characterId) return [];
+  const character = characterForId(characters, block.characterId);
+  const spriteId = block.spriteId || currentSpriteIdForCharacter(character) || '';
+  const position = character?.authoring?.currentPosition || 'center';
+  const result: TimelineStep[] = [];
+
+  if (!visibleCharacters.has(block.characterId)) {
+    result.push(createCharacterStep({
+      action: 'show',
+      generatedByInlineDialogue: true,
+      characterId: block.characterId,
+      spriteId,
+      position,
+      transition: 'fade',
+    }));
+    visibleCharacters.add(block.characterId);
+    currentSpriteByCharacter.set(block.characterId, spriteId);
+    currentPositionByCharacter.set(block.characterId, position);
+    return result;
+  }
+
+  if (currentSpriteByCharacter.get(block.characterId) !== spriteId) {
+    result.push(createCharacterStep({
+      action: 'change_sprite',
+      generatedByInlineDialogue: true,
+      characterId: block.characterId,
+      spriteId,
+      position,
+      transition: 'instant',
+    }));
+    currentSpriteByCharacter.set(block.characterId, spriteId);
+  }
+
+  if (currentPositionByCharacter.get(block.characterId) !== position) {
+    result.push(createCharacterStep({
+      action: 'move',
+      generatedByInlineDialogue: true,
+      characterId: block.characterId,
+      spriteId,
+      position,
+      transition: 'instant',
+    }));
+    currentPositionByCharacter.set(block.characterId, position);
+  }
+
+  return result;
+}
+
+function applyExplicitCharacterState(
+  step: TimelineStep,
+  visibleCharacters: Set<string>,
+  currentSpriteByCharacter: Map<string, string>,
+  currentPositionByCharacter: Map<string, string>,
+): void {
+  if (step.blockType !== 'character') return;
+  const data = step.data as CharacterBlockData;
+  if (!data.characterId) return;
+  const action = data.action || 'show';
+  if (action === 'hide') {
+    visibleCharacters.delete(data.characterId);
+    return;
+  }
+  visibleCharacters.add(data.characterId);
+  if (data.spriteId) currentSpriteByCharacter.set(data.characterId, data.spriteId);
+  if (data.position) currentPositionByCharacter.set(data.characterId, data.position);
+}
+
+export function documentSceneToTimeline(documentScene: DocumentScene, characters: Character[] = []): TimelineStep[] {
+  const visibleCharacters = new Set<string>();
+  const currentSpriteByCharacter = new Map<string, string>();
+  const currentPositionByCharacter = new Map<string, string>();
+
   return documentScene.blocks.flatMap((block, index) => {
     if (block.kind === 'technical') {
+      applyExplicitCharacterState(block.step, visibleCharacters, currentSpriteByCharacter, currentPositionByCharacter);
       return [block.step];
     }
 
@@ -317,45 +518,17 @@ export function documentSceneToTimeline(documentScene: DocumentScene): TimelineS
     }
 
     if (block.kind === 'dialogue') {
-      if (block.sourceStep?.blockType === 'dialogue') {
-        const sourceData = block.sourceStep.data as DialogueBlockData;
-        const entries = sourceData.entries.length
-          ? sourceData.entries.map((entry, entryIndex) => entryIndex === 0
-            ? {
-                ...entry,
-                characterId: block.characterId || block.speakerName,
-                spriteId: block.spriteId || '',
-                text: block.text,
-              }
-            : entry)
-          : [
-              {
-                id: generateId('dialogue_entry'),
-                characterId: block.characterId || block.speakerName,
-                spriteId: block.spriteId || '',
-                text: block.text,
-              },
-            ];
-        return [{
-          ...block.sourceStep,
-          data: {
-            ...sourceData,
-            entries,
-          },
-        }];
-      }
+      const dialogueStep = dialogueStepForBlock(block, characters);
+      if (!dialogueStep) return [];
       return [
-        createDialogueStep({
-          entries: [
-            {
-              id: generateId('dialogue_entry'),
-              characterId: block.characterId || block.speakerName,
-              spriteId: block.spriteId || '',
-              text: block.text,
-            },
-          ],
-          currentEntryIndex: 0,
-        }),
+        ...generatedCharacterStepsForDialogue(
+          block,
+          characters,
+          visibleCharacters,
+          currentSpriteByCharacter,
+          currentPositionByCharacter,
+        ),
+        dialogueStep,
       ];
     }
 

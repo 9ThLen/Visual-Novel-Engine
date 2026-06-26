@@ -14,6 +14,8 @@ import { getTimelineDisplayPages } from '@/lib/reader-runtime';
 import { withAlpha } from '@/lib/_core/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
+import { CharacterDisplay } from '@/components/CharacterDisplay';
+import { useReaderAssets } from '@/hooks/useReaderAssets';
 
 export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: string }) {
   const router = useRouter();
@@ -21,6 +23,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const sceneRecordsByStory = useAppStore((s) => s.sceneRecordsByStory);
+  const characterLibrary = useAppStore((s) => s.characterLibraries[storyId] || []);
 
   const timeline = useMemo(
     () => resolvePreviewTimelineFromRecords(sceneRecordsByStory, storyId, sceneId),
@@ -31,7 +34,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
     useSceneExecutor(timeline);
 
   const [displayedText, setDisplayedText] = useState('');
-  const audioServiceRef = useRef(new AudioPlayerService());
+  const [audioService] = useState(() => new AudioPlayerService());
   const typewriterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const playedSoundEventsRef = useRef<Set<string>>(new Set());
 
@@ -65,41 +68,41 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   useEffect(() => {
     const currentTrack = sceneState.musicTrackId;
     if (sceneState.musicAction === 'stop') {
-      void audioServiceRef.current.stop('preview-bgm', sceneState.musicFadeDuration ?? 300);
+      void audioService.stop('preview-bgm', sceneState.musicFadeDuration ?? 300);
       prevMusicTrackRef.current = null;
       return;
     }
     if (sceneState.musicAction === 'pause') {
-      void audioServiceRef.current.pause('preview-bgm');
+      void audioService.pause('preview-bgm');
       return;
     }
     if (currentTrack && currentTrack !== prevMusicTrackRef.current) {
-      void audioServiceRef.current.play('preview-bgm', currentTrack, {
+      void audioService.play('preview-bgm', currentTrack, {
         volume: typeof sceneState.musicVolume === 'number' ? sceneState.musicVolume : 0.8,
         loop: sceneState.musicLoop ?? true,
         fadeIn: sceneState.musicFadeDuration,
       });
     } else if (!currentTrack && prevMusicTrackRef.current) {
-      void audioServiceRef.current.stop('preview-bgm', 300);
+      void audioService.stop('preview-bgm', 300);
     }
     prevMusicTrackRef.current = currentTrack;
-  }, [sceneState.musicAction, sceneState.musicFadeDuration, sceneState.musicLoop, sceneState.musicTrackId, sceneState.musicVolume]);
+  }, [audioService, sceneState.musicAction, sceneState.musicFadeDuration, sceneState.musicLoop, sceneState.musicTrackId, sceneState.musicVolume]);
 
   useEffect(() => {
     for (const event of sceneState.soundEvents ?? []) {
       if (!event.assetId || playedSoundEventsRef.current.has(event.id)) continue;
       playedSoundEventsRef.current.add(event.id);
       if (event.action === 'stop') {
-        void audioServiceRef.current.stop(`preview-sfx:${event.assetId}`, 100);
+        void audioService.stop(`preview-sfx:${event.assetId}`, 100);
         continue;
       }
       const channelId = event.loop ? `preview-sfx:${event.assetId}` : `preview-sfx:${event.id}`;
-      void audioServiceRef.current.play(channelId, event.assetId, {
+      void audioService.play(channelId, event.assetId, {
         volume: event.volume,
         loop: event.loop,
       });
     }
-  }, [sceneState.soundEvents]);
+  }, [audioService, sceneState.soundEvents]);
 
   const typewriteText = useCallback((text: string) => {
     if (typewriterIntervalRef.current) {
@@ -129,7 +132,6 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   }, [currentStepIndex, currentText, currentStep, typewriteText]);
 
   useEffect(() => {
-    const audioService = audioServiceRef.current;
     return () => {
       if (typewriterIntervalRef.current) {
         clearInterval(typewriterIntervalRef.current);
@@ -137,7 +139,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
       }
       void audioService.cleanup();
     };
-  }, []);
+  }, [audioService]);
 
   const handleAdvance = useCallback(() => {
     advance();
@@ -148,12 +150,11 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   }, [selectChoice]);
 
   const handleBack = useCallback(() => {
-    void audioServiceRef.current.cleanup();
+    void audioService.cleanup();
     router.back();
-  }, [router]);
+  }, [audioService, router]);
 
-  const surfaceContainer = colors['surface-container'] || colors.surface;
-  const secondaryColor = colors.secondary || colors.primary;
+const surfaceContainer = colors['surface-container'] || colors.surface;
   const showChoices = !!sceneState.currentChoices;
   const camera = sceneState.cameraState;
   const activeEffects = sceneState.activeEffects.filter((effect) => effect.endTime >= Date.now());
@@ -167,6 +168,13 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
       { scale: camera?.zoomLevel ?? 1 },
     ],
   };
+  const { resolvedCharUris, characterInstances } = useReaderAssets(
+    sceneId,
+    null,
+    sceneState.characters,
+    characterLibrary,
+    storyId,
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -193,27 +201,22 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
           <Text style={{ fontSize: 14, color: withAlpha(colors.muted, 0.6) }}>{t('editor.noBackground')}</Text>
         )}
 
-        {sceneState.characters.map((char, i) => (
-          <View
-            key={i}
-            style={{
-              position: 'absolute',
-              bottom: 220,
-              left: getCharacterPosition(char.position),
-              width: 80,
-              height: 120,
-              backgroundColor: withAlpha(secondaryColor, 0.19),
-              borderRadius: 8,
-              alignItems: 'center',
-              justifyContent: 'center',
-              ...cameraTransform,
-            }}
-          >
-            <Text style={{ fontSize: 10, color: colors.muted }}>
-              {char.characterId}
-            </Text>
-          </View>
-        ))}
+        <View pointerEvents="none" style={[{ position: 'absolute', inset: 0 }, cameraTransform]}>
+          {characterInstances.map((instance) => (
+            <CharacterDisplay
+              key={instance.id}
+              instance={instance}
+              spriteUri={getImageSourceUri(resolvedCharUris[instance.id])}
+              position={instance.position}
+              isActiveSpeaker={sceneState.activeSpeakerCharacterId === instance.id}
+              dimmed={
+                sceneState.dimNonSpeakerCharacters === true
+                && sceneState.activeSpeakerCharacterId !== instance.id
+              }
+              focusScale={sceneState.activeSpeakerFocusScale}
+            />
+          ))}
+        </View>
 
         {(sceneState.interactiveObjects?.length ?? 0) > 0 ? (
           <InteractiveObjectsLayer
@@ -221,7 +224,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
             onSceneTransition={(targetSceneId) => router.push({ pathname: '/preview', params: { storyId, sceneId: targetSceneId } })}
             onDialogue={(text) => setDisplayedText(text)}
             onPlayAudio={(audioUri, volume = 1, loop = false) => {
-              void audioServiceRef.current.play(`preview-interactive:${Date.now()}`, audioUri, { volume, loop });
+              void audioService.play(`preview-interactive:${Date.now()}`, audioUri, { volume, loop });
             }}
           />
         ) : null}
@@ -336,13 +339,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   );
 }
 
-function getCharacterPosition(position: string): number {
-  switch (position) {
-    case 'far-left': return 20;
-    case 'left': return 60;
-    case 'center': return 140;
-    case 'right': return 220;
-    case 'far-right': return 280;
-    default: return 140;
-  }
+function getImageSourceUri(source: number | string | { uri: string } | undefined): string {
+  if (!source || typeof source === 'number') return '';
+  return typeof source === 'string' ? source : source.uri;
 }

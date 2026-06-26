@@ -133,22 +133,28 @@ export function useSceneExecutor(
         }
         case 'character': {
           const d = step.data as CharacterBlockData;
+          const action = d.action || 'show';
           const existingIdx = nextState.characters.findIndex((c) => c.characterId === d.characterId);
+          const existing = existingIdx >= 0 ? nextState.characters[existingIdx] : null;
+          if (action === 'hide') {
+            nextState.characters = nextState.characters.filter((c) => c.characterId !== d.characterId);
+            break;
+          }
           const charState = {
             characterId: d.characterId,
-            spriteId: d.spriteId,
-            position: d.position,
+            spriteId: action === 'move' ? existing?.spriteId ?? d.spriteId : d.spriteId || existing?.spriteId || '',
+            position: action === 'change_sprite' ? existing?.position ?? d.position : d.position || existing?.position || 'center',
             visible: true,
-            opacity: 1,
-            scale: 1,
-            zIndex: 1,
+            opacity: existing?.opacity ?? 1,
+            scale: existing?.scale ?? 1,
+            zIndex: existing?.zIndex ?? 1,
           };
+          const nextChars = [...nextState.characters];
           if (existingIdx >= 0) {
-            const nextChars = [...nextState.characters];
             nextChars[existingIdx] = charState;
             nextState.characters = nextChars;
-          } else {
-            nextState.characters = [...nextState.characters, charState];
+          } else if (action === 'show' || action === 'change_sprite' || action === 'move') {
+            nextState.characters = [...nextChars, charState];
           }
           break;
         }
@@ -157,12 +163,15 @@ export function useSceneExecutor(
           if (step.blockType === 'dialogue') {
             const d = step.data as DialogueBlockData;
             const entry = d.entries?.[d.currentEntryIndex ?? 0];
+            nextState.activeSpeakerCharacterId = d.speakerFocus?.enabled ? d.speakerFocus.characterId : entry?.characterId ?? null;
+            nextState.activeSpeakerFocusScale = d.speakerFocus?.scale ?? 1.04;
+            nextState.dimNonSpeakerCharacters = d.speakerFocus?.dimOthers ?? false;
             if (entry) {
               nextState.dialogueHistory = [
                 ...nextState.dialogueHistory,
                 {
                   characterId: entry.characterId,
-                  characterName: entry.characterId,
+                  characterName: entry.speakerName || entry.characterId,
                   text: entry.text,
                   timestamp: Date.now(),
                 },

@@ -13,5 +13,5 @@ export function plateDocumentToSceneRecord(
   // Normalization repairs the document-shaped payload from the embedded editor;
   // saveDocumentSceneToRecord owns the DocumentScene -> SceneRecord mapping.
   const normalized = normalizePlateDocumentScene(documentScene, characters);
-  return saveDocumentSceneToRecord(record, normalized.scene, options);
+  return saveDocumentSceneToRecord(record, normalized.scene, normalized.characters, options);
 }

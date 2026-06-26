@@ -113,7 +113,7 @@ export default function HomeScreen() {
     }, []),
   );
   const { storiesMetadata } = useStoryState();
-  const { loadStories, addStory } = useStoryActions();
+  const { migrateLegacyKeys, addStory } = useStoryActions();
   const [isInitialized, setIsInitialized] = useState(false);
   const { t } = useI18n();
 
@@ -139,7 +139,7 @@ export default function HomeScreen() {
 
     let initError: unknown = null;
     try {
-      await loadStories();
+      await migrateLegacyKeys();
     } catch (error) {
       initError = error;
       ErrorHandler.handle('Failed to load stories from storage', error, ErrorCategory.STORAGE);
@@ -192,7 +192,7 @@ export default function HomeScreen() {
     }
 
     setIsInitialized(true);
-  }, [loadStories, addStory]);
+  }, [migrateLegacyKeys, addStory]);
 
   // Safety timeout: force-show UI after 8 seconds even if initialization hangs
   useEffect(() => {

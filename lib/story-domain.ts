@@ -1,5 +1,6 @@
 import type { PlaybackState } from './engine/runtime-types';
 import type { SceneRecord } from './engine/types';
+import type { Character } from './character-types';
 
 export interface StoryMetadata {
   id: string;
@@ -12,6 +13,7 @@ export interface StoryMetadata {
   thumbnailUri?: string;
   sceneCount: number;
   sceneOrder?: string[];
+  characterAuthoringSchemaVersion?: number;
 }
 
 export interface StoryMetadataInput extends Omit<StoryMetadata, 'sceneCount'> {
@@ -23,6 +25,8 @@ export interface StoryMetadataInput extends Omit<StoryMetadata, 'sceneCount'> {
 export interface CanonicalStory extends Omit<StoryMetadata, 'sceneCount'> {
   sceneCount?: number;
   scenes: Record<string, SceneRecord>;
+  characterLibrary?: Character[];
+  characterAuthoringSchemaVersion?: number;
 }
 
 export interface SaveSlotStoryInput {

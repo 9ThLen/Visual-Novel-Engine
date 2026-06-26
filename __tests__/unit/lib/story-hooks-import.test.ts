@@ -1,4 +1,5 @@
-import { importStory } from '@/lib/story-hooks';
+import { exportStory, importStory } from '@/lib/story-hooks';
+import { CHARACTER_AUTHORING_SCHEMA_VERSION } from '@/lib/character-migration';
 import { useAppStore } from '@/stores/use-app-store';
 
 describe('importStory', () => {
@@ -6,6 +7,7 @@ describe('importStory', () => {
     useAppStore.setState({
       storiesMetadata: [],
       sceneRecordsByStory: {},
+      characterLibraries: {},
     });
   });
 
@@ -51,6 +53,37 @@ describe('importStory', () => {
     expect(Array.isArray(imported.scenes['scene-1'].timeline)).toBe(true);
     expect(imported.scenes['scene-1'].storyId).toBe(imported.id);
     expect(imported.sceneCount).toBe(1);
+  });
+
+  it('preserves canonical character library metadata on import', async () => {
+    const imported = await importStory(JSON.stringify({
+      title: 'Character Import',
+      startSceneId: 'scene-1',
+      characterLibrary: [
+        {
+          id: 'char_masha',
+          name: 'Маша',
+          color: '#ff4d6d',
+          sprites: [{ id: 'sprite_1', name: 'Main', uri: 'file://sprite.png', createdAt: 1 }],
+          defaultSpriteId: 'sprite_1',
+          authoring: { currentSpriteId: 'sprite_1', currentPosition: 'left', focusOnSpeak: true },
+          createdAt: 1,
+        },
+      ],
+      scenes: {
+        'scene-1': {
+          id: 'scene-1',
+          timeline: [],
+        },
+      },
+    }));
+
+    const library = useAppStore.getState().characterLibraries[imported.id];
+    expect(library[0].name).toBe('Маша');
+    expect(library[0].color).toBe('#ff4d6d');
+    expect(library[0].sprites[0].name).toBe('Main');
+    expect(library[0].authoring?.currentSpriteId).toBe('sprite_1');
+    expect(imported.characterAuthoringSchemaVersion).toBe(CHARACTER_AUTHORING_SCHEMA_VERSION);
   });
 
   it('returns a canonical story for legacy JSON', async () => {
@@ -124,5 +157,68 @@ describe('importStory', () => {
 
     expect(imported.scenes['scene-1'].timeline.some((step) => step.id === 'text-step')).toBe(true);
     expect(imported.scenes['scene-1'].timeline.some((step) => step.id === 'bad-step')).toBe(false);
+  });
+
+  it('exports character colors, sprite names, and authoring metadata', async () => {
+    useAppStore.setState({
+      storiesMetadata: [{
+        id: 'story_1',
+        title: 'Exportable',
+        startSceneId: 'scene-1',
+        createdAt: 1,
+        updatedAt: 1,
+        sceneCount: 1,
+      }],
+      sceneRecordsByStory: {
+        story_1: {
+          'scene-1': {
+            id: 'scene-1',
+            storyId: 'story_1',
+            name: 'Scene 1',
+            description: '',
+            tags: [],
+            timeline: [],
+            sceneState: {
+              backgroundAssetId: null,
+              backgroundTransition: 'fade',
+              characters: [],
+              activeEffects: [],
+              musicTrackId: null,
+              musicPlaying: false,
+              musicVolume: 1,
+              variables: {},
+              dialogueHistory: [],
+              currentChoices: null,
+              isTransitioning: false,
+              transitionTarget: null,
+            },
+            flowX: 0,
+            flowY: 0,
+            connections: [],
+            isStart: true,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        },
+      },
+      characterLibraries: {
+        story_1: [{
+          id: 'char_masha',
+          name: 'Маша',
+          color: '#ff4d6d',
+          sprites: [{ id: 'sprite_1', name: 'Main', uri: 'file://sprite.png', createdAt: 1 }],
+          defaultSpriteId: 'sprite_1',
+          authoring: { currentSpriteId: 'sprite_1', currentPosition: 'center', focusOnSpeak: true },
+          createdAt: 1,
+        }],
+      },
+    });
+
+    const exported = JSON.parse(await exportStory('story_1', useAppStore.getState()));
+
+    expect(exported.characterLibrary[0].color).toBe('#ff4d6d');
+    expect(exported.characterLibrary[0].sprites[0].name).toBe('Main');
+    expect(exported.characterLibrary[0].authoring.currentSpriteId).toBe('sprite_1');
+    expect(exported.characterAuthoringSchemaVersion).toBe(CHARACTER_AUTHORING_SCHEMA_VERSION);
   });
 });
