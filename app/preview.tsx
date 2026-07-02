@@ -9,15 +9,15 @@
 import React from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useStoryState } from '@/hooks/use-story-state';
 import { PreviewScreen } from '@/components/editor/PreviewScreen';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
+import { useAppStore } from '@/stores/use-app-store';
 
 export default function PreviewRoute() {
   const { storyId, sceneId } = useLocalSearchParams<{ storyId: string; sceneId: string }>();
-  const { isLoaded } = useStoryState();
+  const isLoaded = useAppStore((state) => state.isLoaded);
   const colors = useColors();
   const { t } = useI18n();
   const router = useRouter();

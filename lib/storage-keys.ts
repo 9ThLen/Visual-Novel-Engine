@@ -12,6 +12,9 @@ const PREFIX = 'vne_'; // Visual Novel Engine
  * Storage key constants
  */
 export const STORAGE_KEYS = {
+  // Zustand app store
+  APP_STATE: `${PREFIX}app_state`,
+
   // Stories
   STORIES: `${PREFIX}stories`,
 
@@ -32,6 +35,11 @@ export const STORAGE_KEYS = {
 
   // Scene data (per story)
   SCENES: (storyId: string) => `${PREFIX}scenes_${storyId}`,
+  CANONICAL_SCENE_RECORD_INDEX: `${PREFIX}scene_record_index`,
+  CANONICAL_SCENE_RECORDS: (storyId: string) => `${PREFIX}scene_records_${storyId}`,
+  CANONICAL_SCENE_RECORD_IDS: (storyId: string) => `${PREFIX}scene_record_ids_${storyId}`,
+  CANONICAL_SCENE_RECORD: (storyId: string, sceneId: string) =>
+    `${PREFIX}scene_record_${encodeURIComponent(storyId)}_${encodeURIComponent(sceneId)}`,
 
 } as const;
 
@@ -45,6 +53,7 @@ export type StorageKey = keyof typeof STORAGE_KEYS;
  */
 export function getAllStorageKeys(): string[] {
   const keys: string[] = [
+    STORAGE_KEYS.APP_STATE,
     STORAGE_KEYS.STORIES,
     STORAGE_KEYS.BLOCK_TREE,
     STORAGE_KEYS.SAVE_SLOTS,

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-07-02 - Stabilization Cleanup
+
+- Removed dead UI/reference files: `ReaderTransitions`, `SplashScreen`, `WebTopBar`, and `ShortcutHint`.
+- Removed `hooks/use-story-state.ts`; active code uses `useAppStore()` directly.
+- Added `shouldLogDevDiagnostics()` for dev-only logs that should stay quiet under Vitest.
+- Updated active wiki references after removing stale migration pages.
+
 ## 2026-06-15 — GSD Fix Round
 
 ### Hardcoded Colors Fixed

@@ -1,5 +1,6 @@
 import {
   applyCanonicalSceneDelete,
+  buildCanonicalSceneRecordsFromLegacyScenes,
   createCanonicalStorySeed,
   removeCanonicalConnection,
   syncCanonicalStartScene,
@@ -50,7 +51,6 @@ function createBaseSnapshot() {
         sceneCount: 0,
       },
     ],
-    scenesByStory: {},
     sceneRecordsByStory: {},
     currentStoryId: 'story-1',
     playbackState: null,
@@ -196,7 +196,7 @@ describe('use-app-store scene operations', () => {
     expect(seed.sceneRecord.timeline.filter((step) => step.blockType === 'background')).toHaveLength(1);
   });
 
-  it('upserts legacy scene edits into canonical records without writing legacy scene state', () => {
+  it('upserts legacy scene edits into canonical records', () => {
     const updated = upsertCanonicalSceneFromLegacyScene(baseSnapshot, 'story-1', {
       id: 'scene-1',
       text: 'Updated text',
@@ -212,8 +212,103 @@ describe('use-app-store scene operations', () => {
     expect(record?.connections).toEqual([
       { targetSceneId: 'scene-2', outputPort: 'choice_0', label: 'Go' },
     ]);
-    expect('scenesByStory' in updated).toBe(true);
-    expect((updated as typeof baseSnapshot).scenesByStory).toEqual({});
+  });
+
+  it('preserves legacy runtime fields when building canonical scene records', () => {
+    const records = buildCanonicalSceneRecordsFromLegacyScenes('story-1', {
+      'scene-1': {
+        id: 'scene-1',
+        text: 'Legacy text',
+        backgroundImageUri: 'legacy-bg.png',
+        characters: [
+          {
+            id: 'hero',
+            name: 'Hero',
+            uri: 'hero.png',
+            createdAt: 1,
+            position: 'left',
+          },
+        ],
+        choices: [],
+        musicUri: null,
+        voiceAudioUri: 'voice.mp3',
+        audioTriggers: [
+          { id: 'trigger-1', audioId: 'sfx-1', triggerType: 'scene_start' },
+        ],
+        interactiveObjects: [
+          {
+            id: 'door',
+            name: 'Door',
+            imageUri: 'door.png',
+            position: { x: 10, y: 20, width: 30, height: 40 },
+            actions: [{ type: 'scene_transition', targetSceneId: 'scene-2' }],
+          },
+        ],
+        autoAdvance: {
+          enabled: true,
+          delay: 2,
+          nextSceneId: 'scene-2',
+        },
+      },
+    }, 'scene-1');
+
+    const record = records['scene-1'];
+
+    expect(record?.voiceAudioUri).toBe('voice.mp3');
+    expect(record?.audioTriggers).toEqual([
+      { id: 'trigger-1', audioId: 'sfx-1', triggerType: 'scene_start' },
+    ]);
+    expect(record?.autoAdvance).toEqual({
+      enabled: true,
+      delay: 2,
+      nextSceneId: 'scene-2',
+    });
+    expect(record?.sceneState.characters).toMatchObject([
+      { characterId: 'hero', spriteId: 'hero.png', position: 'left' },
+    ]);
+    expect(record?.sceneState.interactiveObjects).toHaveLength(1);
+    expect(record?.timeline.map((step) => step.blockType)).toEqual([
+      'background',
+      'character',
+      'text',
+      'interactive_object',
+      'transition',
+    ]);
+    expect(record?.timeline.find((step) => step.blockType === 'transition')?.data).toMatchObject({
+      targetSceneId: 'scene-2',
+      duration: 2,
+    });
+  });
+
+  it('uses legacy blocks as canonical timeline input without dropping audio metadata', () => {
+    const records = buildCanonicalSceneRecordsFromLegacyScenes('story-1', {
+      'scene-1': {
+        id: 'scene-1',
+        text: 'Ignored when blocks exist',
+        characters: [],
+        choices: [],
+        musicUri: null,
+        voiceAudioUri: 'voice.mp3',
+        blocks: [
+          {
+            id: 'block-text',
+            blockType: 'text',
+            data: { content: 'Block text', typewriterSpeed: 0.5, anchorTo: 'background' },
+            collapsed: false,
+            enabled: true,
+          },
+        ],
+      },
+    }, 'scene-1');
+
+    const record = records['scene-1'];
+
+    expect(record?.timeline.find((step) => step.id === 'block-text')).toMatchObject({
+      id: 'block-text',
+      blockType: 'text',
+      data: { content: 'Block text' },
+    });
+    expect(record?.voiceAudioUri).toBe('voice.mp3');
   });
 
   it('preserves canonical flow metadata when a legacy scene edit updates content', () => {

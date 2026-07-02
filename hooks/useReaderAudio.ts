@@ -18,6 +18,7 @@ import {
   resumeReaderAudioSession,
   suspendReaderAudioSession,
 } from '../lib/reader-audio-session';
+import { shouldLogDevDiagnostics } from '../lib/dev-logging';
 
 type ReaderAudioScene = {
   id: string;
@@ -26,6 +27,8 @@ type ReaderAudioScene = {
   voiceAudioUri?: string | null;
   audioTriggers?: AudioTrigger[];
 };
+
+const MAX_PLAYED_SOUND_EVENT_KEYS = 200;
 
 function buildAudioTriggerSignature(scene: ReaderAudioScene | null): string {
   const triggers = scene?.audioTriggers;
@@ -64,6 +67,16 @@ function buildSoundEventSignature(events: SoundRuntimeEvent[] | undefined): stri
       ].join(':'),
     )
     .join('|');
+}
+
+function rememberPlayedSoundEvent(playedEvents: Set<string>, eventKey: string): void {
+  playedEvents.add(eventKey);
+
+  while (playedEvents.size > MAX_PLAYED_SOUND_EVENT_KEYS) {
+    const oldest = playedEvents.values().next().value;
+    if (oldest === undefined) break;
+    playedEvents.delete(oldest);
+  }
 }
 
 function getSceneStartMusicUri(scene: ReaderAudioScene | null): string | null {
@@ -143,7 +156,7 @@ export function useReaderAudio(
   const sceneGenerationRef = useRef(0);
 
   const logDebug = useCallback((event: string, context?: Record<string, unknown>) => {
-    if (!__DEV__) return;
+    if (!shouldLogDevDiagnostics()) return;
     console.log(`[useReaderAudio] ${event}`, context ?? {});
   }, []);
 
@@ -203,7 +216,7 @@ export function useReaderAudio(
             return;
           }
           if (!uri) {
-            if (__DEV__) console.warn('[useReaderAudio] Could not resolve BGM:', newMusicUri);
+            if (shouldLogDevDiagnostics()) console.warn('[useReaderAudio] Could not resolve BGM:', newMusicUri);
             return;
           }
 
@@ -244,7 +257,7 @@ export function useReaderAudio(
             !isReaderAudioSessionValid(sessionId) ||
             !uri
           ) {
-            if (__DEV__ && scene.voiceAudioUri?.trim()) {
+            if (shouldLogDevDiagnostics() && scene.voiceAudioUri?.trim()) {
               console.warn('[useReaderAudio] Could not resolve voice:', scene.voiceAudioUri);
             }
             return;
@@ -267,8 +280,9 @@ export function useReaderAudio(
       }
 
       for (const event of runtimeState?.soundEvents ?? []) {
-        if (!event.assetId || playedSoundEventsRef.current.has(event.id)) continue;
-        playedSoundEventsRef.current.add(event.id);
+        const eventKey = `${scene.id}:${event.id}`;
+        if (!event.assetId || playedSoundEventsRef.current.has(eventKey)) continue;
+        rememberPlayedSoundEvent(playedSoundEventsRef.current, eventKey);
         const soundChannelId = event.loop ? `sfx:${event.assetId}` : `sfx:${event.id}`;
         if (event.action === 'stop') {
           void audioManager.stop(`sfx:${event.assetId}`, 100);
@@ -331,6 +345,10 @@ export function useReaderAudio(
   );
 
   useEffect(() => {
+    playedSoundEventsRef.current.clear();
+  }, [currentScene?.id]);
+
+  useEffect(() => {
     if (blockedByOverlay) {
       sceneGenerationRef.current += 1;
       currentBgmUriRef.current = null;
@@ -342,22 +360,19 @@ export function useReaderAudio(
 
     resumeReaderAudioSession();
 
-    if (!isFocused) {
+    if (!isFocused || !currentScene) {
       sceneGenerationRef.current += 1;
       currentBgmUriRef.current = null;
       void stopReaderPlayback(audioManager);
-      return;
     }
+  }, [blockedByOverlay, isFocused, currentScene?.id, audioManager]);
 
-    if (!currentScene) {
-      sceneGenerationRef.current += 1;
-      currentBgmUriRef.current = null;
-      void stopReaderPlayback(audioManager);
+  useEffect(() => {
+    if (blockedByOverlay || !isFocused || !currentScene) {
       return;
     }
 
     const sessionId = getReaderAudioSessionId() ?? activateReaderAudioSession();
-
     applySceneAudio(currentScene, sceneState, sessionId);
 
     return () => {
@@ -377,7 +392,6 @@ export function useReaderAudio(
     currentScene?.voiceAudioUri,
     audioTriggerSignature,
     applySceneAudio,
-    audioManager,
   ]);
 
   useEffect(() => {

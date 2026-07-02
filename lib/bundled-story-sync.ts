@@ -17,8 +17,6 @@ type BundledAudioScene = AudioScene & {
 
 export interface BundledStorySyncSnapshot {
   storiesMetadata: { id: string }[];
-  /** @deprecated Ignored. Kept so old tests/snapshots can pass extra state. */
-  scenesByStory?: Record<string, unknown>;
   sceneRecordsByStory: Record<string, Record<string, BundledAudioScene>>;
 }
 

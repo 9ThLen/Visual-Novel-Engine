@@ -12,7 +12,6 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
-import { useStoryState, useStoryActions } from '@/hooks/use-story-state';
 import { useAppStore } from '@/stores/use-app-store';
 import { getLibraryAssets, addAssetToLibrary } from '@/stores/media-library-actions';
 import { StoryMetadata } from '@/lib/story-domain';
@@ -26,13 +25,33 @@ import demoStoryAdvanced from '@/assets/demo-story-advanced.json';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 import { StoryValidator } from '@/lib/story-validator';
 import { shouldUpsertBundledStory } from '@/lib/bundled-story-sync';
+import { createBundledStorySyncPayload } from '@/lib/bundled-story-upsert';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
+import type { Story } from '@/lib/scene-operations';
 
 import { buttonFeedback } from '@/lib/ui-feedback';
 
 interface StoryCardProps {
   item: StoryMetadata;
   onPress: (story: StoryMetadata) => void;
+}
+
+function syncBundledStory(story: Story): void {
+  const { metadata, sceneRecords } = createBundledStorySyncPayload(story);
+
+  useAppStore.setState((state) => ({
+    storiesMetadata: state.storiesMetadata.some((item) => item.id === metadata.id)
+      ? state.storiesMetadata.map((item) => (item.id === metadata.id ? metadata : item))
+      : [...state.storiesMetadata, metadata],
+    sceneRecordsByStory: {
+      ...state.sceneRecordsByStory,
+      [metadata.id]: sceneRecords,
+    },
+    sceneRecordHydration: {
+      ...state.sceneRecordHydration,
+      [metadata.id]: 'full',
+    },
+  }));
 }
 
 const StoryCard = memo(function StoryCard({ item, onPress }: StoryCardProps) {
@@ -112,8 +131,9 @@ export default function HomeScreen() {
       void stopReaderPlayback();
     }, []),
   );
-  const { storiesMetadata } = useStoryState();
-  const { migrateLegacyKeys, addStory } = useStoryActions();
+  const storiesMetadata = useAppStore((state) => state.storiesMetadata);
+  const migrateLegacyKeys = useAppStore((state) => state.migrateFromLegacyKeys);
+  const hydrateReaderSceneWindow = useAppStore((state) => state.hydrateReaderSceneWindow);
   const [isInitialized, setIsInitialized] = useState(false);
   const { t } = useI18n();
 
@@ -130,13 +150,6 @@ export default function HomeScreen() {
     });
     await waitForHydration();
 
-    // Migrate legacy data before loading stories
-    try {
-      await useAppStore.getState().migrateFromLegacyKeys();
-    } catch (error) {
-      ErrorHandler.handle('Legacy migration failed', error, ErrorCategory.STORAGE);
-    }
-
     let initError: unknown = null;
     try {
       await migrateLegacyKeys();
@@ -147,23 +160,25 @@ export default function HomeScreen() {
 
     // Ensure demo stories exist regardless of storage errors
     try {
-      const state = useAppStore.getState();
       const demo1 = StoryValidator.validateStory(demoStory);
       const demo2 = StoryValidator.validateStory(demoStoryAdvanced);
 
+      await hydrateReaderSceneWindow(demo1.id, demo1.startSceneId, 0);
+      const state = useAppStore.getState();
       if (shouldUpsertBundledStory(state, demo1)) {
         if (__DEV__) {
           console.log('[HomeScreen] syncing bundled story', { storyId: demo1.id });
         }
-        addStory(demo1);
+        syncBundledStory(demo1);
       }
 
+      await hydrateReaderSceneWindow(demo2.id, demo2.startSceneId, 0);
       const updatedState = useAppStore.getState();
       if (shouldUpsertBundledStory(updatedState, demo2)) {
         if (__DEV__) {
           console.log('[HomeScreen] syncing bundled story', { storyId: demo2.id });
         }
-        addStory(demo2);
+        syncBundledStory(demo2);
       }
     } catch (error) {
       initError = initError ?? error;
@@ -192,7 +207,7 @@ export default function HomeScreen() {
     }
 
     setIsInitialized(true);
-  }, [migrateLegacyKeys, addStory]);
+  }, [migrateLegacyKeys, hydrateReaderSceneWindow]);
 
   // Safety timeout: force-show UI after 8 seconds even if initialization hangs
   useEffect(() => {

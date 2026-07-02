@@ -23,13 +23,18 @@ function makeScene(overrides: Partial<SceneRecord> = {}): SceneRecord {
 
 describe('reader-scene projections', () => {
   it('projects only reader-facing scene fields', () => {
-    const record = makeScene();
+    const record = makeScene({
+      voiceAudioUri: 'voice.mp3',
+      audioTriggers: [{ id: 'trigger-1', audioId: 'sfx-1', triggerType: 'scene_start' }],
+    });
 
     expect(toReaderScene(record)).toEqual({
       id: 'scene-1',
       storyId: 'story-1',
       name: 'Opening',
       timeline: [],
+      voiceAudioUri: 'voice.mp3',
+      audioTriggers: [{ id: 'trigger-1', audioId: 'sfx-1', triggerType: 'scene_start' }],
       connections: [{ targetSceneId: 'scene-2', outputPort: 'next' }],
       isStart: true,
     });

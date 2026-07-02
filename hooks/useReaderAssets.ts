@@ -37,7 +37,7 @@ export function useReaderAssets(
           character.spriteId,
           { [storyId]: characterLibrary },
           storyId,
-        ),
+        ) ?? character.spriteId,
         position: character.position,
       })),
     ),

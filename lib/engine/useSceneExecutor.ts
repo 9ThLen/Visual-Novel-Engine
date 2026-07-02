@@ -17,12 +17,19 @@ import type { SceneState } from './runtime-types';
 import { createEmptySceneState, conditionsMet } from './conditionUtils';
 
 const YIELDING_BLOCK_TYPES = new Set(['text', 'dialogue', 'choice', 'transition']);
+const MAX_DIALOGUE_HISTORY_ENTRIES = 500;
 
 interface ExecutorState {
   sceneState: SceneState;
   currentStepIndex: number;
   isTyping: boolean;
   canAdvance: boolean;
+}
+
+interface ExecutorStepResult {
+  nextState: ExecutorState;
+  nextIndex: number;
+  isHalted: boolean;
 }
 
 export interface UseSceneExecutorOptions {
@@ -40,6 +47,20 @@ export interface UseSceneExecutorReturn {
 }
 
 const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function createInitialExecutorState(
+  initialVariables?: Record<string, string | number | boolean>,
+): ExecutorState {
+  return {
+    sceneState: {
+      ...createEmptySceneState(),
+      variables: initialVariables ?? {},
+    },
+    currentStepIndex: 0,
+    isTyping: false,
+    canAdvance: false,
+  };
+}
 
 function evaluateVariable(
   variables: Record<string, string | number | boolean>,
@@ -80,21 +101,16 @@ export function useSceneExecutor(
   timeline: TimelineStep[],
   options?: UseSceneExecutorOptions,
 ): UseSceneExecutorReturn {
-  const [execState, setExecState] = useState<ExecutorState>(() => ({
-    sceneState: {
-      ...createEmptySceneState(),
-      variables: options?.initialVariables ?? {},
-    },
-    currentStepIndex: 0,
-    isTyping: false,
-    canAdvance: false,
-  }));
+  const [execState, setExecState] = useState<ExecutorState>(() =>
+    createInitialExecutorState(options?.initialVariables),
+  );
 
   const internalIndexRef = useRef(0);
   const isHaltedRef = useRef(false);
   const timelineRef = useRef(timeline);
   const advanceGuardRef = useRef(false);
   const initialVariablesRef = useRef(options?.initialVariables);
+  const execStateRef = useRef(execState);
 
   timelineRef.current = timeline;
   initialVariablesRef.current = options?.initialVariables;
@@ -175,7 +191,7 @@ export function useSceneExecutor(
                   text: entry.text,
                   timestamp: Date.now(),
                 },
-              ];
+              ].slice(-MAX_DIALOGUE_HISTORY_ENTRIES);
             }
           }
           break;
@@ -192,6 +208,12 @@ export function useSceneExecutor(
             {
               effectType: d.effectType,
               target: d.target,
+              characterId: d.characterId,
+              intensity: d.intensity,
+              fadeIn: d.fadeIn,
+              fadeOut: d.fadeOut,
+              rain: d.rain,
+              snow: d.snow,
               startTime: now,
               endTime: now + d.duration * 1000,
             },
@@ -303,74 +325,99 @@ export function useSceneExecutor(
     return { nextState, result: yielding ? 'halt' : 'continue' };
   }, []);
 
-  const processNext = useCallback(() => {
-    const steps = timelineRef.current;
+  const computeNextExecutorState = useCallback((prev: ExecutorState, startIndex: number, steps: TimelineStep[]): ExecutorStepResult => {
+    let currentState: SceneState = { ...prev.sceneState, currentChoices: null };
+    let idx = startIndex;
 
-    setExecState((prev) => {
-      let currentState: SceneState = { ...prev.sceneState, currentChoices: null };
-      let idx = internalIndexRef.current;
+    while (idx < steps.length) {
+      const step = steps[idx];
+      const { nextState, result } = executeStep(step, currentState);
+      currentState = nextState;
 
-      while (idx < steps.length) {
-        const step = steps[idx];
-        const { nextState, result } = executeStep(step, currentState);
-        currentState = nextState;
-
-        if (result === 'halt') {
-          internalIndexRef.current = idx;
-          isHaltedRef.current = true;
-          const typing = step.blockType === 'text' || step.blockType === 'dialogue';
-          return {
+      if (result === 'halt') {
+        const typing = step.blockType === 'text' || step.blockType === 'dialogue';
+        return {
+          nextIndex: idx,
+          isHalted: true,
+          nextState: {
             ...prev,
             sceneState: currentState,
             currentStepIndex: idx,
             isTyping: typing,
             canAdvance: step.blockType !== 'choice',
-          };
-        }
-
-        idx++;
+          },
+        };
       }
 
-      internalIndexRef.current = idx;
-      isHaltedRef.current = false;
-      return {
+      idx++;
+    }
+
+    return {
+      nextIndex: idx,
+      isHalted: false,
+      nextState: {
         ...prev,
         sceneState: currentState,
         isTyping: false,
         canAdvance: false,
-      };
-    });
+      },
+    };
   }, [executeStep]);
 
-  useEffect(() => {
+  const commitExecutorState = useCallback((nextState: ExecutorState) => {
+    execStateRef.current = nextState;
+    setExecState(nextState);
+  }, []);
+
+  const processNext = useCallback(() => {
+    const { nextState, nextIndex, isHalted } = computeNextExecutorState(
+      execStateRef.current,
+      internalIndexRef.current,
+      timelineRef.current,
+    );
+    internalIndexRef.current = nextIndex;
+    isHaltedRef.current = isHalted;
+    commitExecutorState(nextState);
+  }, [commitExecutorState, computeNextExecutorState]);
+
+  const resetAndProcess = useCallback(() => {
     internalIndexRef.current = 0;
     isHaltedRef.current = false;
     advanceGuardRef.current = false;
-    setExecState({
-      sceneState: {
-        ...createEmptySceneState(),
-        variables: initialVariablesRef.current ?? {},
-      },
-      currentStepIndex: 0,
-      isTyping: false,
-      canAdvance: false,
-    });
+    const initialState = createInitialExecutorState(initialVariablesRef.current);
+    execStateRef.current = initialState;
+    const { nextState, nextIndex, isHalted } = computeNextExecutorState(
+      initialState,
+      0,
+      timelineRef.current,
+    );
+    internalIndexRef.current = nextIndex;
+    isHaltedRef.current = isHalted;
+    commitExecutorState(nextState);
+  }, [commitExecutorState, computeNextExecutorState]);
+
+  const updateExecutorState = useCallback((updater: (prev: ExecutorState) => ExecutorState) => {
+    const nextState = updater(execStateRef.current);
+    commitExecutorState(nextState);
+  }, [commitExecutorState]);
+
+  useEffect(() => {
     try {
-      processNext();
+      resetAndProcess();
     } catch (e) {
       if (__DEV__) {
         console.warn('[useSceneExecutor] processNext error:', e);
       }
     }
 
-  }, [timelineKey, processNext]);
+  }, [timelineKey, resetAndProcess]);
 
   const advance = useCallback(() => {
     if (advanceGuardRef.current) return;
     advanceGuardRef.current = true;
     try {
       if (isTyping) {
-        setExecState((prev) => ({ ...prev, isTyping: false, canAdvance: true }));
+        updateExecutorState((prev) => ({ ...prev, isTyping: false, canAdvance: true }));
         return;
       }
 
@@ -388,10 +435,10 @@ export function useSceneExecutor(
     } finally {
       advanceGuardRef.current = false;
     }
-  }, [isTyping, sceneState.currentChoices, processNext]);
+  }, [isTyping, sceneState.currentChoices, processNext, updateExecutorState]);
 
   const selectChoice = useCallback((optionId: string) => {
-    const currentChoices = sceneState.currentChoices;
+    const currentChoices = execStateRef.current.sceneState.currentChoices;
     if (!currentChoices || currentChoices.length === 0) return;
 
     const selected = currentChoices.find((o) => o.id === optionId);
@@ -399,7 +446,7 @@ export function useSceneExecutor(
 
     isHaltedRef.current = false;
     internalIndexRef.current = internalIndexRef.current + 1;
-    setExecState((prev) => ({
+    updateExecutorState((prev) => ({
       ...prev,
       sceneState: {
         ...prev.sceneState,
@@ -411,7 +458,7 @@ export function useSceneExecutor(
       canAdvance: false,
       currentStepIndex: internalIndexRef.current,
     }));
-  }, [sceneState.currentChoices]);
+  }, [updateExecutorState]);
 
   return {
     sceneState,

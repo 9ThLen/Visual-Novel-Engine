@@ -6,9 +6,10 @@ import type { useColors } from '@/hooks/use-colors';
 import type { ImageSource } from '@/hooks/useSceneImages';
 import type { ReaderChoice } from '@/lib/reader-runtime';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
-import { withAlpha } from '@/lib/_core/theme';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { ReaderChoices } from '@/components/reader/ReaderChoices';
+import { WeatherEffectsLayer } from '@/components/reader/WeatherEffectsLayer';
+import { VisualEffectsOverlay } from '@/components/reader/VisualEffectsOverlay';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import type { ActiveEffect, CameraRuntimeState } from '@/lib/engine/runtime-types';
 import type { InteractiveObject } from '@/lib/interactive-types';
@@ -30,6 +31,20 @@ const styles = StyleSheet.create({
 
 function handleBackgroundError(err: unknown) {
   if (__DEV__) console.error('[StoryReader] Background load error:', err);
+}
+
+function strongestIntensity(effects: ActiveEffect[], effectType: ActiveEffect['effectType']): number {
+  return effects
+    .filter((effect) => effect.effectType === effectType)
+    .reduce((max, effect) => Math.max(max, effect.intensity), 0);
+}
+
+function effectsForTarget(effects: ActiveEffect[], target: ActiveEffect['target']): ActiveEffect[] {
+  return effects.filter((effect) => (effect.target ?? 'screen') === target);
+}
+
+function effectsForCharacter(effects: ActiveEffect[], characterId: string): ActiveEffect[] {
+  return effects.filter((effect) => effect.characterId === characterId);
 }
 
 interface ReaderDisplayProps {
@@ -109,6 +124,8 @@ function ReaderCharacters({
   activeSpeakerCharacterId,
   activeSpeakerFocusScale,
   dimNonSpeakerCharacters,
+  activeEffects,
+  colors,
 }: {
   animatedStyle: StyleProp<ViewStyle>;
   instances: React.ComponentProps<typeof CharacterDisplay>['instance'][];
@@ -117,6 +134,8 @@ function ReaderCharacters({
   activeSpeakerCharacterId?: string | null;
   activeSpeakerFocusScale?: number;
   dimNonSpeakerCharacters?: boolean;
+  activeEffects: ActiveEffect[];
+  colors: ReturnType<typeof useColors>;
 }) {
   const containerStyle = useMemo(
     () => [
@@ -139,6 +158,7 @@ function ReaderCharacters({
             ? charSource
             : charSource.uri;
         const isActiveSpeaker = activeSpeakerCharacterId === instance.characterId;
+        const characterSpecificEffects = effectsForCharacter(activeEffects, instance.characterId);
         return (
           <CharacterDisplay
             key={instance.characterId}
@@ -148,6 +168,12 @@ function ReaderCharacters({
             isActiveSpeaker={isActiveSpeaker}
             dimmed={Boolean(dimNonSpeakerCharacters && activeSpeakerCharacterId && !isActiveSpeaker)}
             focusScale={activeSpeakerFocusScale}
+            overlay={characterSpecificEffects.length > 0 ? (
+              <>
+                <VisualEffectsOverlay effects={characterSpecificEffects} colors={colors} target="character" />
+                <WeatherEffectsLayer effects={characterSpecificEffects} target="character" />
+              </>
+            ) : null}
           />
         );
       })}
@@ -192,17 +218,17 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
 }: ReaderDisplayProps) {
   const now = Date.now();
   const visibleEffects = activeEffects.filter((effect) => effect.endTime >= now);
-  const hasFlash = visibleEffects.some((effect) => effect.effectType === 'flash');
-  const hasVignette = visibleEffects.some((effect) => effect.effectType === 'vignette');
-  const hasGlitch = visibleEffects.some((effect) => effect.effectType === 'glitch');
-  const hasShake = visibleEffects.some((effect) => effect.effectType === 'shake');
-  const hasRain = visibleEffects.some((effect) => effect.effectType === 'rain');
-  const hasSnow = visibleEffects.some((effect) => effect.effectType === 'snow');
+  const screenEffects = effectsForTarget(visibleEffects, 'screen');
+  const backgroundEffects = effectsForTarget(visibleEffects, 'background');
+  const characterEffects = effectsForTarget(visibleEffects, 'character');
+  const genericCharacterEffects = characterEffects.filter((effect) => !effect.characterId);
+  const hasShake = screenEffects.some((effect) => effect.effectType === 'shake');
+  const shakeOffset = strongestIntensity(screenEffects, 'shake') / 7;
 
   const cameraTransformStyle = useMemo(() => {
     const camera = cameraState ?? { zoomLevel: 1, panX: 0, panY: 0 };
     const zoom = camera.zoomLevel || 1;
-    const translateX = (camera.panX || 0) * -2 + (hasShake ? 8 : 0);
+    const translateX = (camera.panX || 0) * -2 + (hasShake ? shakeOffset : 0);
     const translateY = (camera.panY || 0) * -2;
     return {
       transform: [
@@ -211,7 +237,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         { scale: zoom },
       ],
     };
-  }, [cameraState, hasShake]);
+  }, [cameraState, hasShake, shakeOffset]);
 
   const dialogueTextStyle = useMemo(() => ({
     fontSize: dialogueFontSize,
@@ -232,6 +258,12 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         animatedStyle={[backgroundAnimatedStyle, cameraTransformStyle]}
         fallbackColor={fallbackColor}
       />
+      {backgroundEffects.length > 0 ? (
+        <>
+          <VisualEffectsOverlay effects={backgroundEffects} colors={colors} target="background" />
+          <WeatherEffectsLayer effects={backgroundEffects} target="background" />
+        </>
+      ) : null}
 
       <ReaderCharacters
         animatedStyle={[characterAnimatedStyle, cameraTransformStyle]}
@@ -241,7 +273,15 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         activeSpeakerCharacterId={activeSpeakerCharacterId}
         activeSpeakerFocusScale={activeSpeakerFocusScale}
         dimNonSpeakerCharacters={dimNonSpeakerCharacters}
+        activeEffects={characterEffects}
+        colors={colors}
       />
+      {genericCharacterEffects.length > 0 ? (
+        <>
+          <VisualEffectsOverlay effects={genericCharacterEffects} colors={colors} target="character" />
+          <WeatherEffectsLayer effects={genericCharacterEffects} target="character" />
+        </>
+      ) : null}
 
       {interactiveObjects.length > 0 ? (
         <InteractiveObjectsLayer
@@ -252,36 +292,10 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         />
       ) : null}
 
-      {visibleEffects.length > 0 ? (
+      {screenEffects.length > 0 ? (
         <View style={[StyleSheet.absoluteFillObject, getPointerEventsStyle('none')]}>
-          {hasFlash ? <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surface, opacity: 0.28 }]} /> : null}
-          {hasVignette ? (
-            <View
-              style={[
-                StyleSheet.absoluteFillObject,
-                { borderWidth: 36, borderColor: withAlpha(colors.foreground, 0.32) },
-              ]}
-            />
-          ) : null}
-          {hasGlitch ? <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.primary, opacity: 0.08 }]} /> : null}
-          {hasRain || hasSnow ? (
-            <View style={[StyleSheet.absoluteFillObject, { opacity: 0.18 }]}>
-              {Array.from({ length: 18 }).map((_, index) => (
-                <View
-                  key={index}
-                  style={{
-                    position: 'absolute',
-                    left: `${(index * 17) % 100}%`,
-                    top: `${(index * 29) % 100}%`,
-                    width: hasSnow ? 5 : 2,
-                    height: hasSnow ? 5 : 18,
-                    borderRadius: hasSnow ? 5 : 1,
-                    backgroundColor: colors.foreground,
-                  }}
-                />
-              ))}
-            </View>
-          ) : null}
+          <VisualEffectsOverlay effects={screenEffects} colors={colors} target="screen" />
+          <WeatherEffectsLayer effects={screenEffects} target="screen" />
         </View>
       ) : null}
 

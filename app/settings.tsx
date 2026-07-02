@@ -10,7 +10,8 @@ import Slider from '@react-native-community/slider';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
-import { useStoryState, useStoryActions } from '@/hooks/use-story-state';
+import { useAppStore } from '@/stores/use-app-store';
+import { normalizeUserSettings } from '@/lib/user-settings';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { LanguageSelector } from '@/components/LanguageSelector';
@@ -27,8 +28,8 @@ export default function SettingsScreen() {
     }, []),
   );
   const colors = useColors();
-  const { settings } = useStoryState();
-  const { updateSettings } = useStoryActions();
+  const settings = useAppStore((state) => normalizeUserSettings(state.settings));
+  const updateSettings = useAppStore((state) => state.updateSettings);
   const { t } = useI18n();
 
   // ── Toggle row ───────────────────────────────────────────────────────────

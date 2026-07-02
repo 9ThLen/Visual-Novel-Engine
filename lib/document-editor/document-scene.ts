@@ -11,6 +11,7 @@ import {
   createCharacterStep,
   createChoiceStep,
   createDialogueStep,
+  createEffectStep,
   createTextStep,
 } from '@/lib/engine/event-factory';
 import type {
@@ -18,6 +19,7 @@ import type {
   CharacterBlockData,
   ChoiceBlockData,
   DialogueBlockData,
+  EffectBlockData,
   SceneConnection,
   SceneRecord,
   TextBlockData,
@@ -28,7 +30,9 @@ import type {
   DocumentBlock,
   DocumentCommandId,
   DocumentDialogueBlock,
+  DocumentInlinePart,
   DocumentScene,
+  DocumentTextBlock,
   DocumentTechnicalBlock,
 } from './types';
 
@@ -171,13 +175,89 @@ function timelineStepToDocumentBlocks(step: TimelineStep, characters: Character[
   return lines.map((line) => parseDraftLineToDocumentBlock(line, characters));
 }
 
+function effectStepToInlinePart(step: TimelineStep): DocumentInlinePart | null {
+  if (step.blockType !== 'effect') return null;
+  const data = step.data as EffectBlockData;
+  return {
+    type: 'effect',
+    id: step.id,
+    effectType: data.effectType,
+    target: data.target,
+    characterId: data.characterId,
+    intensity: data.intensity,
+    duration: data.duration,
+    fadeIn: data.fadeIn,
+    fadeOut: data.fadeOut,
+    rain: data.rain,
+    snow: data.snow,
+  };
+}
+
+function inlinePartsText(parts: DocumentInlinePart[]): string {
+  return parts
+    .filter((part): part is Extract<DocumentInlinePart, { type: 'text' }> => part.type === 'text')
+    .map((part) => part.text)
+    .join('');
+}
+
+function mergeInlineEffectBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
+  const result: DocumentBlock[] = [];
+  let bufferedBlocks: DocumentBlock[] = [];
+  let bufferedParts: DocumentInlinePart[] = [];
+  let hasEffect = false;
+
+  const flush = () => {
+    if (!bufferedBlocks.length) return;
+    const firstText = bufferedBlocks.find((block): block is DocumentTextBlock => block.kind === 'text');
+    if (hasEffect && firstText) {
+      result.push({
+        id: firstText?.id || bufferedBlocks[0].id,
+        kind: 'text',
+        sourceStepId: firstText?.sourceStepId,
+        sourceStep: firstText?.sourceStep,
+        content: inlinePartsText(bufferedParts),
+        parts: bufferedParts,
+      });
+    } else {
+      result.push(...bufferedBlocks);
+    }
+    bufferedBlocks = [];
+    bufferedParts = [];
+    hasEffect = false;
+  };
+
+  for (const block of blocks) {
+    if (block.kind === 'text') {
+      bufferedBlocks.push(block);
+      bufferedParts.push(...(block.parts ?? [{ type: 'text' as const, text: block.content }]));
+      continue;
+    }
+
+    if (block.kind === 'technical' && block.blockType === 'effect') {
+      const effectPart = effectStepToInlinePart(block.step);
+      if (effectPart) {
+        bufferedBlocks.push(block);
+        bufferedParts.push(effectPart);
+        hasEffect = true;
+        continue;
+      }
+    }
+
+    flush();
+    result.push(block);
+  }
+
+  flush();
+  return result;
+}
+
 export function sceneRecordToDocumentScene(sceneRecord: SceneRecord, characters: Character[] = []): DocumentScene {
-  const blocks = sceneRecord.timeline.flatMap((step) => timelineStepToDocumentBlocks(step, characters));
+  const blocks = mergeInlineEffectBlocks(sceneRecord.timeline.flatMap((step) => timelineStepToDocumentBlocks(step, characters)));
   // Always ensure a trailing empty text block exists so the user has
   // somewhere to type (replaces the old separate line-draft input).
   // Avoid duplicating if the last block is already an empty text block.
   const lastBlock = blocks[blocks.length - 1];
-  if (!lastBlock || lastBlock.kind !== 'text' || lastBlock.content.trim() !== '') {
+  if (!lastBlock || lastBlock.kind !== 'text' || lastBlock.content.trim() !== '' || Boolean(lastBlock.parts?.length)) {
     blocks.push({
       id: generateId('doc_text'),
       kind: 'text',
@@ -416,6 +496,35 @@ function dialogueStepForBlock(block: DocumentDialogueBlock, characters: Characte
   });
 }
 
+function textStepFromInlineText(text: string): TimelineStep[] {
+  if (!text.trim()) return [];
+  return [createTextStep({ content: text })];
+}
+
+function effectStepFromInlinePart(part: Extract<DocumentInlinePart, { type: 'effect' }>): TimelineStep {
+  return {
+    ...createEffectStep({
+      effectType: part.effectType,
+      target: part.target,
+      characterId: part.characterId,
+      intensity: part.intensity,
+      duration: part.duration,
+      fadeIn: part.fadeIn,
+      fadeOut: part.fadeOut,
+      rain: part.rain,
+      snow: part.snow,
+    }),
+    id: part.id,
+  };
+}
+
+function timelineFromInlineParts(parts: DocumentInlinePart[]): TimelineStep[] {
+  return parts.flatMap((part) => {
+    if (part.type === 'text') return textStepFromInlineText(part.text);
+    return [effectStepFromInlinePart(part)];
+  });
+}
+
 function generatedCharacterStepsForDialogue(
   block: DocumentDialogueBlock,
   characters: Character[],
@@ -502,6 +611,9 @@ export function documentSceneToTimeline(documentScene: DocumentScene, characters
     }
 
     if (block.kind === 'text') {
+      if (block.parts?.length) {
+        return timelineFromInlineParts(block.parts);
+      }
       if (!block.sourceStep && index === documentScene.blocks.length - 1 && block.content.trim() === '') {
         return [];
       }

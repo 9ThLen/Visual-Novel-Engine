@@ -5,6 +5,10 @@ import type { SplashScreenConfig } from '@/lib/splash-types';
 import type { InteractiveObject } from '@/lib/interactive-types';
 import type { AudioLibraryItem, AudioTrigger } from '@/lib/audio-types';
 import type { CharacterSprite } from '@/lib/character-types';
+import {
+  getSceneRecordFromAccess,
+  getSceneRecordsForStoryFromAccess,
+} from '@/lib/scene-access';
 
 /**
  * @deprecated Legacy type — only used by buildCanonicalSceneRecordsFromLegacyScenes and upsertCanonicalSceneFromLegacyScene.
@@ -57,9 +61,12 @@ export interface Story {
 }
 import {
   createBackgroundStep,
+  createCharacterStep,
   createChoiceStep,
+  createInteractiveObjectStep,
   createMusicStep,
   createTextStep,
+  createTransitionStep,
 } from '@/lib/engine/event-factory';
 
 export interface CanonicalSceneStateSnapshot {
@@ -87,29 +94,17 @@ export function getCanonicalSceneRecordFromState(
   storyId: string,
   sceneId: string
 ): SceneRecord | undefined {
-  return state.sceneRecordsByStory[storyId]?.[sceneId];
+  return getSceneRecordFromAccess(state, storyId, sceneId);
 }
 
 export function getCanonicalSceneRecordsForStoryFromState(
   state: CanonicalSceneStateSnapshot,
   storyId: string
 ): SceneRecord[] {
-  const storyRecordsById = state.sceneRecordsByStory[storyId] || {};
-  const storyRecords = Object.values(storyRecordsById);
-  const sceneOrder = state.storiesMetadata?.find((item) => item.id === storyId)?.sceneOrder;
-  if (!sceneOrder?.length) {
-    return storyRecords.sort((a, b) => a.createdAt - b.createdAt);
-  }
-
-  const orderIndex = new Map(sceneOrder.map((sceneId, index) => [sceneId, index]));
-  return storyRecords.sort((a, b) => {
-    const aIndex = orderIndex.get(a.id);
-    const bIndex = orderIndex.get(b.id);
-    if (aIndex !== undefined && bIndex !== undefined) return aIndex - bIndex;
-    if (aIndex !== undefined) return -1;
-    if (bIndex !== undefined) return 1;
-    return a.createdAt - b.createdAt;
-  });
+  return getSceneRecordsForStoryFromAccess(
+    { storiesMetadata: state.storiesMetadata || [], sceneRecordsByStory: state.sceneRecordsByStory },
+    storyId,
+  );
 }
 
 export interface CanonicalSceneOperationsSnapshot {
@@ -136,30 +131,91 @@ function mapLegacyChoicesToConnections(choices: StoryScene['choices'] = []): Sce
     }));
 }
 
+const LEGACY_CHARACTER_POSITIONS = new Set(['left', 'center', 'right', 'far-left', 'far-right']);
+type CanonicalCharacterPosition = 'left' | 'center' | 'right' | 'far-left' | 'far-right';
+
+function normalizeLegacyCharacterPosition(position: string | undefined): CanonicalCharacterPosition {
+  return LEGACY_CHARACTER_POSITIONS.has(position || '') ? position as CanonicalCharacterPosition : 'center';
+}
+
+function buildLegacySceneTimeline(scene: StoryScene): TimelineStep[] {
+  const timeline: TimelineStep[] = Array.isArray(scene.blocks) && scene.blocks.length > 0
+    ? [...scene.blocks]
+    : [];
+
+  if (timeline.length === 0) {
+    if (scene.backgroundImageUri) {
+      timeline.push(createBackgroundStep({ assetId: scene.backgroundImageUri }));
+    }
+
+    for (const character of scene.characters || []) {
+      timeline.push(createCharacterStep({
+        characterId: character.id,
+        spriteId: character.uri || character.id,
+        position: normalizeLegacyCharacterPosition(character.position),
+        transition: 'fade',
+      }));
+    }
+
+    if (scene.text?.trim()) {
+      timeline.push(createTextStep({ content: scene.text }));
+    }
+
+    if (scene.choices?.length) {
+      timeline.push(createChoiceStep({
+        options: scene.choices.map((choice) => ({
+          id: choice.id,
+          text: choice.text,
+          targetSceneId: choice.nextSceneId || null,
+        })),
+      }));
+    }
+
+    if (scene.musicUri) {
+      timeline.push(createMusicStep({ assetId: scene.musicUri, action: 'play' }));
+    }
+
+    for (const object of scene.interactiveObjects || []) {
+      timeline.push(createInteractiveObjectStep({
+        objectId: object.id,
+        name: object.name || object.label || object.id,
+        assetId: object.imageUri ?? null,
+        position: object.position ?? { x: 50, y: 50, width: 10, height: 10 },
+        actions: object.actions ?? [],
+        oneTimeOnly: object.oneTimeOnly ?? false,
+        pulseAnimation: object.pulseAnimation ?? true,
+      }));
+    }
+  }
+
+  if (scene.autoAdvance?.enabled && scene.autoAdvance.nextSceneId) {
+    const hasEquivalentTransition = timeline.some((step) =>
+      step.blockType === 'transition'
+      && (step.data as { targetSceneId?: string | null }).targetSceneId === scene.autoAdvance?.nextSceneId
+    );
+    if (!hasEquivalentTransition) {
+      timeline.push(createTransitionStep({
+        targetSceneId: scene.autoAdvance.nextSceneId,
+        transitionType: 'fade',
+        duration: Math.max(0, scene.autoAdvance.delay || 0),
+      }));
+    }
+  }
+
+  return normalizeEditorTimeline(timeline);
+}
+
 function legacySceneToSceneRecordDraft(storyId: string, scene: StoryScene): SceneRecord {
-  const timeline: TimelineStep[] = [];
-
-  if (scene.backgroundImageUri) {
-    timeline.push(createBackgroundStep({ assetId: scene.backgroundImageUri }));
-  }
-
-  if (scene.text?.trim()) {
-    timeline.push(createTextStep({ content: scene.text }));
-  }
-
-  if (scene.choices?.length) {
-    timeline.push(createChoiceStep({
-      options: scene.choices.map((choice) => ({
-        id: choice.id,
-        text: choice.text,
-        targetSceneId: choice.nextSceneId || null,
-      })),
-    }));
-  }
-
-  if (scene.musicUri) {
-    timeline.push(createMusicStep({ assetId: scene.musicUri, action: 'play' }));
-  }
+  const timeline = buildLegacySceneTimeline(scene);
+  const characters = (scene.characters || []).map((character, index) => ({
+    characterId: character.id,
+    spriteId: character.uri || character.id,
+    position: normalizeLegacyCharacterPosition(character.position),
+    visible: true,
+    opacity: 1,
+    scale: character.scale ?? 1,
+    zIndex: index + 1,
+  }));
 
   return {
     id: scene.id,
@@ -167,15 +223,31 @@ function legacySceneToSceneRecordDraft(storyId: string, scene: StoryScene): Scen
     name: scene.id,
     description: '',
     tags: [],
-    timeline: normalizeEditorTimeline(timeline),
+    voiceAudioUri: scene.voiceAudioUri ?? null,
+    audioTriggers: scene.audioTriggers ?? [],
+    autoAdvance: scene.autoAdvance,
+    timeline,
     sceneState: {
       backgroundAssetId: scene.backgroundImageUri ?? null,
       backgroundTransition: 'fade',
-      characters: [],
+      characters,
       activeEffects: [],
+      soundEvents: [],
+      cameraState: {
+        action: 'reset',
+        zoomLevel: 1,
+        panX: 0,
+        panY: 0,
+        duration: 0,
+        easing: 'linear',
+      },
+      interactiveObjects: scene.interactiveObjects ?? [],
       musicTrackId: scene.musicUri ?? null,
       musicPlaying: !!scene.musicUri,
+      musicAction: scene.musicUri ? 'play' : null,
       musicVolume: 1,
+      musicLoop: true,
+      musicFadeDuration: 0,
       variables: {},
       dialogueHistory: [],
       currentChoices: null,
@@ -318,6 +390,13 @@ export function upsertCanonicalSceneFromLegacyScene(
         ...existingRecord,
         name: existingRecord.name || draft.name,
         timeline: normalizeEditorTimeline(draft.timeline),
+        voiceAudioUri: draft.voiceAudioUri,
+        audioTriggers: draft.audioTriggers,
+        autoAdvance: draft.autoAdvance,
+        sceneState: {
+          ...existingRecord.sceneState,
+          ...draft.sceneState,
+        },
         connections: draft.connections,
         updatedAt: timestamp,
       }

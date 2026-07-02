@@ -12,7 +12,6 @@ import {
   createNextSceneRecordAfter,
   insertSceneAfter,
 } from '@/lib/document-editor/next-scene';
-import { useStoryActions, useStoryState } from '@/hooks/use-story-state';
 import { useI18n } from '@/hooks/use-i18n';
 import { addAssetToLibraryPure } from '@/lib/media-library-service';
 import {
@@ -28,8 +27,8 @@ export default function DocumentEditorRoute() {
   const { t } = useI18n();
   const router = useRouter();
   const { storyId, sceneId } = useLocalSearchParams<{ storyId: string; sceneId: string }>();
-  const { isLoaded } = useStoryState();
-  const { setCurrentStory } = useStoryActions();
+  const isLoaded = useAppStore((state) => state.isLoaded);
+  const setCurrentStory = useAppStore((state) => state.loadCurrentStory);
 
   const sceneRecord = useAppStore(
     useMemo(() => {

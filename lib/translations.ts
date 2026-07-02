@@ -242,7 +242,7 @@ const EN: Record<string, string> = {
   'a11y.selectBlock': 'Select block',
   'a11y.addBlock': 'Add new block',
   'a11y.deleteBlock': 'Delete block',
-  // PropertiesPanel field labels
+  // Editor property field labels
   'editor.properties.asset': 'Asset',
   'editor.properties.transition': 'Transition',
   'editor.properties.durationMs': 'Duration (ms)',
@@ -320,7 +320,6 @@ const EN: Record<string, string> = {
   'manuscript.sceneIndex': 'Scene {number}',
   'manuscript.sceneTitle': 'Scene title',
   'manuscript.addNarration': '+ Narration',
-  'manuscript.addDialogue': '+ Dialogue',
   'manuscript.addChoiceGroup': '+ Choice Group',
   'manuscript.fragmentCount': '{count} fragments',
   'manuscript.title': 'Story Manuscript',
@@ -342,8 +341,6 @@ const EN: Record<string, string> = {
   'editor.noMatchingScenes': 'No scenes match your search',
   'editor.sceneSelector.connecting': 'Connecting: ',
   'editor.sceneSelector.templateMeta': '{blocks} blocks / {outputs} outputs',
-  'editor.template.tpl_dialogue_basic.name': 'Basic Dialogue',
-  'editor.template.tpl_dialogue_basic.description': 'Character speaks with name tag and text box',
   'editor.template.tpl_dialogue_narration.name': 'Narration',
   'editor.template.tpl_dialogue_narration.description': 'Narrator text without character name',
   'editor.template.tpl_choice_binary.name': 'Binary Choice',
@@ -517,7 +514,7 @@ const EN: Record<string, string> = {
 
 const UK: Record<string, string> = {
   'app.name': 'Візуальна Новела',
-  // PropertiesPanel field labels
+  // Editor property field labels
   'editor.properties.asset': 'Ресурс',
   'editor.properties.transition': 'Перехід',
   'editor.properties.durationMs': 'Тривалість (мс)',
@@ -608,8 +605,6 @@ const UK: Record<string, string> = {
   'editor.noMatchingScenes': 'Немає сцен за запитом',
   'editor.sceneSelector.connecting': "З'єднання: ",
   'editor.sceneSelector.templateMeta': '{blocks} блоків / {outputs} виходів',
-  'editor.template.tpl_dialogue_basic.name': 'Базовий діалог',
-  'editor.template.tpl_dialogue_basic.description': 'Персонаж говорить з іменем і текстовим вікном',
   'editor.template.tpl_dialogue_narration.name': 'Нарація',
   'editor.template.tpl_dialogue_narration.description': 'Текст оповідача без імені персонажа',
   'editor.template.tpl_choice_binary.name': 'Подвійний вибір',
@@ -978,7 +973,6 @@ const UK: Record<string, string> = {
   'manuscript.sceneIndex': 'Сцена {number}',
   'manuscript.sceneTitle': 'Назва сцени',
   'manuscript.addNarration': '+ Нарація',
-  'manuscript.addDialogue': '+ Діалог',
   'manuscript.addChoiceGroup': '+ Група виборів',
   'manuscript.fragmentCount': 'Фрагментів: {count}',
   'editor.blockCountStatus': '{count} блоків / {status}',

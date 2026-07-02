@@ -61,11 +61,6 @@ export interface AudioScene {
 export type StorySceneAudioTimeline = AudioScene;
 
 /**
- * @deprecated Use StorySceneAudioTimeline. Kept for public API compatibility.
- */
-export type StorySceneExtended = StorySceneAudioTimeline;
-
-/**
  * Canonical story with audio library and timeline-based scenes.
  */
 export interface StoryWithAudio extends Omit<StoryMetadata, 'sceneCount'> {

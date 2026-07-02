@@ -16,7 +16,7 @@ This wiki is intentionally small. It should describe the current project, not pr
 | `stores-reference.md` | Zustand stores: state shape, actions, selectors |
 | `audio-system.md` | Audio manager architecture, services, triggers |
 | `testing-guide.md` | Test structure, patterns, coverage, how to run |
-| `migration-guide.md` | Legacy-to-canonical migration paths |
+| `final-migration-audit.md` | Current migration status and cleanup boundaries |
 | `SCHEMA.md` | This maintenance policy |
 
 ## Page Rules

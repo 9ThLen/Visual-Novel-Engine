@@ -10,6 +10,7 @@ import type {
   StoryManuscriptBlock,
   StoryManuscriptDocument,
 } from '@/lib/editor/story-manuscript-types';
+import { shouldLogDevDiagnostics } from '@/lib/dev-logging';
 
 function updateStepFromManuscriptBlock(step: TimelineStep, block: StoryManuscriptBlock): TimelineStep {
   if (block.kind === 'narration' && step.blockType === 'text') {
@@ -75,7 +76,7 @@ export function applyStoryManuscriptChanges(
       // Dedup runs in both dev and production to prevent duplicate timeline
       // entries when multiple manuscript blocks reference the same source step.
       if (seenSourceStepIds.has(block.sourceStepId)) {
-        if (__DEV__) {
+        if (shouldLogDevDiagnostics()) {
           console.warn(
             `[applyStoryManuscriptChanges] Duplicate sourceStepId "${block.sourceStepId}" in scene "${sceneRecord.id}" — multiple manuscript blocks reference the same timeline step`
           );
@@ -84,7 +85,7 @@ export function applyStoryManuscriptChanges(
       }
       seenSourceStepIds.add(block.sourceStepId);
 
-      if (__DEV__) {
+      if (shouldLogDevDiagnostics()) {
         if (!originalStepsById.has(block.sourceStepId)) {
           console.warn(
             `[applyStoryManuscriptChanges] Orphan block "${block.id}" in scene "${sceneRecord.id}" — sourceStepId "${block.sourceStepId}" not found. A new step will be auto-created.`

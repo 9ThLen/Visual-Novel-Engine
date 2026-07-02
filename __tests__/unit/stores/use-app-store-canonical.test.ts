@@ -15,17 +15,6 @@ const baseState = {
       sceneCount: 1,
     },
   ],
-  scenesByStory: {
-    'story-1': {
-      'scene-1': {
-        id: 'scene-1',
-        text: 'Legacy text',
-        characters: [],
-        choices: [],
-        musicUri: null,
-      },
-    },
-  },
   sceneRecordsByStory: {
     'story-1': {
       'scene-1': {
@@ -164,7 +153,7 @@ describe('use-app-store canonical scene helpers', () => {
   });
 
 
-  it('returns no scene records when only legacy scenes exist on the strict canonical selector path', () => {
+  it('returns no scene records when canonical records are absent', () => {
     const records = getCanonicalSceneRecordsForStoryFromState(
       {
         ...baseState,

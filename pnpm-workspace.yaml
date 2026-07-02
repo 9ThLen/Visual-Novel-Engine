@@ -1,0 +1,11 @@
+shamefullyHoist: true
+strictPeerDependencies: false
+updateNotifier: false
+
+onlyBuiltDependencies:
+  - esbuild
+  - unrs-resolver
+
+patchedDependencies:
+  react-native-css-interop: patches/react-native-css-interop.patch
+  "@expo/cli": patches/@expo__cli@54.0.24.patch

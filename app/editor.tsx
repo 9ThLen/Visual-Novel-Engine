@@ -14,11 +14,11 @@ import { Button, ConfirmDialog } from '@/components/ui';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
-import { useStoryActions, useStoryState } from '@/hooks/use-story-state';
 import { StoryMetadata } from '@/lib/story-domain';
 import type { SceneRecord } from '@/lib/engine/types';
 import { showToast } from '@/lib/toast-store';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
+import { useAppStore } from '@/stores/use-app-store';
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short',
@@ -42,8 +42,10 @@ export default function EditorScreen() {
   const { width } = useWindowDimensions();
   const colors = useColors();
   const { t } = useI18n();
-  const { storiesMetadata, sceneRecordsByStory } = useStoryState();
-  const { createStory, deleteStory } = useStoryActions();
+  const storiesMetadata = useAppStore((state) => state.storiesMetadata);
+  const createStory = useAppStore((state) => state.createStory);
+  const deleteStory = useAppStore((state) => state.deleteStory);
+  const hydrateSceneRecordsForStory = useAppStore((state) => state.hydrateSceneRecordsForStory);
 
   const [showNewStoryForm, setShowNewStoryForm] = useState(false);
   const [newStoryTitle, setNewStoryTitle] = useState('');
@@ -79,17 +81,23 @@ export default function EditorScreen() {
     }
   }, [newStoryTitle, createStory, router, t]);
 
-  const handleEditStory = useCallback((story: StoryMetadata) => {
-    const sceneId = getPaperEditorSceneId(story, sceneRecordsByStory[story.id]);
-    if (!sceneId) {
+  const handleEditStory = useCallback(async (story: StoryMetadata) => {
+    try {
+      await hydrateSceneRecordsForStory(story.id);
+      const sceneRecordsByStory = useAppStore.getState().sceneRecordsByStory;
+      const sceneId = getPaperEditorSceneId(story, sceneRecordsByStory[story.id]);
+      if (!sceneId) {
+        showToast(t('document.invalidRoute'), 'error');
+        return;
+      }
+      navigateWithViewTransition(() => router.push({
+        pathname: '/document-editor',
+        params: { storyId: story.id, sceneId },
+      }));
+    } catch {
       showToast(t('document.invalidRoute'), 'error');
-      return;
     }
-    navigateWithViewTransition(() => router.push({
-      pathname: '/document-editor',
-      params: { storyId: story.id, sceneId },
-    }));
-  }, [router, sceneRecordsByStory, t]);
+  }, [hydrateSceneRecordsForStory, router, t]);
 
   const handlePlay = useCallback((storyId: string) => {
     navigateWithViewTransition(() => router.push({ pathname: '/play', params: { storyId } }));

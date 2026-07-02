@@ -8,6 +8,7 @@ import { setAudioModeAsync, createAudioPlayer, type AudioPlayer } from 'expo-aud
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from './error-handler';
 import type { IAudioPlayerService } from './audio-interfaces';
 import { resolvePlayableAssetUri } from './asset-resolver';
+import { shouldLogDevDiagnostics } from './dev-logging';
 
 const FADE_STEP_MS = 50;
 
@@ -32,7 +33,7 @@ export class AudioPlayerService implements IAudioPlayerService {
     private crossFadeGeneration = new Map<string, number>();
 
     private logDebug(event: string, context?: Record<string, unknown>): void {
-        if (!__DEV__) return;
+        if (!shouldLogDevDiagnostics()) return;
         console.log(`[AudioPlayerService] ${event}`, context ?? {});
     }
 

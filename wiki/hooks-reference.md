@@ -1,19 +1,15 @@
 # Hooks Reference
 
-Last updated: 2026-06-15
+Last updated: 2026-07-01
 
-## Story State Hooks
+## Story Store Access
 
-### useStoryState
-- **File:** `hooks/use-story-state.ts` (extracted from `lib/story-hooks.ts`)
-- **Purpose:** Read story-related state from Zustand store.
-- **Returns:** `{ stories, storiesMetadata, currentStory, currentStoryId, sceneRecordsByStory, playbackState, settings, saveSlots, isLoaded }`
-- **Note:** Extracted from `lib/story-hooks.ts` to resolve layer boundary violation. The original file re-exports for backward compatibility.
+Story state and actions are read directly from `useAppStore`.
 
-### useStoryActions
-- **File:** `hooks/use-story-state.ts` (extracted from `lib/story-hooks.ts`)
-- **Purpose:** Story-related actions (CRUD, save/load, settings).
-- **Returns:** `{ loadStories, createStory, setCurrentStory, addStory, deleteStory, deleteScene, saveGame, loadGame, deleteSaveSlot, updateSettings, setLanguage, updatePlaybackState, setMediaLibrary }`
+- **File:** `stores/use-app-store.ts`
+- **Purpose:** Persisted story metadata, scene records, playback state, save slots, settings, libraries, and related actions.
+- **Selectors:** Use exported selectors such as `selectStoryMetadata`, `selectCanonicalSceneRecord`, `selectSceneRecordMapForStory`, and `selectSceneRecordsForStory`.
+- **Note:** `hooks/use-story-state.ts`, `useStoryState`, and `useStoryActions` were removed. Active code should use `useAppStore()` directly.
 
 ## Internationalization Hooks
 
@@ -49,7 +45,7 @@ Last updated: 2026-06-15
 - **File:** `hooks/useReaderInitialization.ts` (144 LOC)
 - **Purpose:** Initialize reader state from story/scene IDs.
 - **Signature:** `useReaderInitialization(storyId?, options?) => { isLoading, currentScene, sceneRecord, timeline, story, playbackState, updatePlaybackState }`
-- **Resolves:** Story from store, scene record, timeline from `SceneRecord.timeline`
+- **Resolves:** Story from store, current scene record via `selectCanonicalSceneRecord`, timeline from `SceneRecord.timeline`
 
 ### useSceneImages
 - **File:** `hooks/useSceneImages.ts` (58 LOC)
@@ -77,7 +73,7 @@ Last updated: 2026-06-15
 - **Purpose:** Automatically save game state after scene changes.
 - **Signature:** `useAutoSave({ playbackState, runtimeSnapshot, onAutoSave, enabled }) => void`
 - **Trigger:** 2-second debounce after `currentSceneId` or `isPlaying` changes
-- **Mechanism:** Calls `buildRuntimeSaveSlot('autosave', snapshot, state)`
+- **Mechanism:** Calls `buildCanonicalSaveSlot('autosave', snapshot, state)`
 
 ### useResponsiveLayout
 - **File:** `hooks/useResponsiveLayout.ts` (43 LOC)

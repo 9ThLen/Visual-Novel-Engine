@@ -10,7 +10,7 @@ import { createSceneRecordFromEditorDraft } from '@/lib/editor-scene-draft';
 import type { BlockType, SceneRecord } from '@/lib/engine/types';
 import { generateId } from '@/lib/id-utils';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
-import { useAppStore } from '@/stores/use-app-store';
+import { selectSceneRecordMapForStory, useAppStore } from '@/stores/use-app-store';
 import { SceneSelector } from './SceneSelector';
 
 interface SceneManagerProps {
@@ -52,13 +52,9 @@ export function SceneManager({ storyId }: SceneManagerProps) {
   const deleteSceneRecord = useAppStore((state) => state.deleteSceneRecord);
   const setStartScene = useAppStore((state) => state.setStartScene);
   const updateSceneConnection = useAppStore((state) => state.updateSceneConnection);
-  const sceneRecordsByStory = useAppStore((state) => state.sceneRecordsByStory);
+  const storyRecords = useAppStore(selectSceneRecordMapForStory(storyId));
 
   const story = storiesMetadata.find((metadata) => metadata.id === storyId);
-  const storyRecords = useMemo(
-    () => sceneRecordsByStory[storyId] || {},
-    [sceneRecordsByStory, storyId],
-  );
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showSceneSelector, setShowSceneSelector] = useState(false);

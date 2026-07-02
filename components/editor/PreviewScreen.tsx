@@ -4,9 +4,8 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
-import { useAppStore } from '@/stores/use-app-store';
+import { selectCanonicalSceneRecord, useAppStore } from '@/stores/use-app-store';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
-import { resolvePreviewTimelineFromRecords } from './preview-source';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 import { AudioPlayerService } from '@/lib/audio-player-service';
 import { useI18n } from '@/hooks/use-i18n';
@@ -16,18 +15,35 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { useReaderAssets } from '@/hooks/useReaderAssets';
+import { WeatherEffectsLayer } from '@/components/reader/WeatherEffectsLayer';
+import { VisualEffectsOverlay } from '@/components/reader/VisualEffectsOverlay';
+import type { ActiveEffect } from '@/lib/engine/runtime-types';
+
+function strongestIntensity(effects: ActiveEffect[], effectType: ActiveEffect['effectType']): number {
+  return effects
+    .filter((effect) => effect.effectType === effectType)
+    .reduce((max, effect) => Math.max(max, effect.intensity), 0);
+}
+
+function effectsForTarget(effects: ActiveEffect[], target: ActiveEffect['target']): ActiveEffect[] {
+  return effects.filter((effect) => (effect.target ?? 'screen') === target);
+}
+
+function effectsForCharacter(effects: ActiveEffect[], characterId: string): ActiveEffect[] {
+  return effects.filter((effect) => effect.characterId === characterId);
+}
 
 export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: string }) {
   const router = useRouter();
   const colors = useColors();
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
-  const sceneRecordsByStory = useAppStore((s) => s.sceneRecordsByStory);
+  const sceneRecord = useAppStore(selectCanonicalSceneRecord(storyId, sceneId));
   const characterLibrary = useAppStore((s) => s.characterLibraries[storyId] || []);
 
   const timeline = useMemo(
-    () => resolvePreviewTimelineFromRecords(sceneRecordsByStory, storyId, sceneId),
-    [sceneId, sceneRecordsByStory, storyId]
+    () => sceneRecord?.timeline ?? [],
+    [sceneRecord]
   );
 
   const { sceneState, currentStepIndex, isComplete, isTyping, advance, selectChoice } =
@@ -158,12 +174,15 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
   const showChoices = !!sceneState.currentChoices;
   const camera = sceneState.cameraState;
   const activeEffects = sceneState.activeEffects.filter((effect) => effect.endTime >= Date.now());
-  const hasFlash = activeEffects.some((effect) => effect.effectType === 'flash');
-  const hasVignette = activeEffects.some((effect) => effect.effectType === 'vignette');
-  const hasShake = activeEffects.some((effect) => effect.effectType === 'shake');
+  const screenEffects = effectsForTarget(activeEffects, 'screen');
+  const backgroundEffects = effectsForTarget(activeEffects, 'background');
+  const characterEffects = effectsForTarget(activeEffects, 'character');
+  const genericCharacterEffects = characterEffects.filter((effect) => !effect.characterId);
+  const hasShake = screenEffects.some((effect) => effect.effectType === 'shake');
+  const shakeOffset = strongestIntensity(screenEffects, 'shake') / 7;
   const cameraTransform = {
     transform: [
-      { translateX: -2 * (camera?.panX ?? 0) + (hasShake ? 8 : 0) },
+      { translateX: -2 * (camera?.panX ?? 0) + (hasShake ? shakeOffset : 0) },
       { translateY: -2 * (camera?.panY ?? 0) },
       { scale: camera?.zoomLevel ?? 1 },
     ],
@@ -201,22 +220,44 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
           <Text style={{ fontSize: 14, color: withAlpha(colors.muted, 0.6) }}>{t('editor.noBackground')}</Text>
         )}
 
+        {backgroundEffects.length > 0 ? (
+          <>
+            <VisualEffectsOverlay effects={backgroundEffects} colors={colors} target="background" />
+            <WeatherEffectsLayer effects={backgroundEffects} target="background" />
+          </>
+        ) : null}
+
         <View pointerEvents="none" style={[{ position: 'absolute', inset: 0 }, cameraTransform]}>
-          {characterInstances.map((instance) => (
-            <CharacterDisplay
-              key={instance.id}
-              instance={instance}
-              spriteUri={getImageSourceUri(resolvedCharUris[instance.id])}
-              position={instance.position}
-              isActiveSpeaker={sceneState.activeSpeakerCharacterId === instance.id}
-              dimmed={
-                sceneState.dimNonSpeakerCharacters === true
-                && sceneState.activeSpeakerCharacterId !== instance.id
-              }
-              focusScale={sceneState.activeSpeakerFocusScale}
-            />
-          ))}
+          {characterInstances.map((instance) => {
+            const characterSpecificEffects = effectsForCharacter(characterEffects, instance.characterId);
+            return (
+              <CharacterDisplay
+                key={instance.id}
+                instance={instance}
+                spriteUri={getImageSourceUri(resolvedCharUris[instance.id])}
+                position={instance.position}
+                isActiveSpeaker={sceneState.activeSpeakerCharacterId === instance.id}
+                dimmed={
+                  sceneState.dimNonSpeakerCharacters === true
+                  && sceneState.activeSpeakerCharacterId !== instance.id
+                }
+                focusScale={sceneState.activeSpeakerFocusScale}
+                overlay={characterSpecificEffects.length > 0 ? (
+                  <>
+                    <VisualEffectsOverlay effects={characterSpecificEffects} colors={colors} target="character" />
+                    <WeatherEffectsLayer effects={characterSpecificEffects} target="character" />
+                  </>
+                ) : null}
+              />
+            );
+          })}
         </View>
+        {genericCharacterEffects.length > 0 ? (
+          <>
+            <VisualEffectsOverlay effects={genericCharacterEffects} colors={colors} target="character" />
+            <WeatherEffectsLayer effects={genericCharacterEffects} target="character" />
+          </>
+        ) : null}
 
         {(sceneState.interactiveObjects?.length ?? 0) > 0 ? (
           <InteractiveObjectsLayer
@@ -229,8 +270,12 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
           />
         ) : null}
 
-        {hasFlash ? <View pointerEvents="none" style={{ position: 'absolute', inset: 0, backgroundColor: colors.surface, opacity: 0.28 }} /> : null}
-        {hasVignette ? <View pointerEvents="none" style={{ position: 'absolute', inset: 0, borderWidth: 36, borderColor: withAlpha(colors.foreground, 0.32) }} /> : null}
+        {screenEffects.length > 0 ? (
+          <View pointerEvents="none" style={{ position: 'absolute', inset: 0 }}>
+            <VisualEffectsOverlay effects={screenEffects} colors={colors} target="screen" />
+            <WeatherEffectsLayer effects={screenEffects} target="screen" />
+          </View>
+        ) : null}
       </View>
 
       {!showChoices && displayedText ? (

@@ -1,5 +1,5 @@
 import type { Character } from '@/lib/character-types';
-import type { DocumentBlock, DocumentScene } from '@/lib/document-editor/types';
+import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import type { BackgroundBlockData, CharacterBlockData } from '@/lib/engine/types';
 import type { VNPlateBackgroundAsset } from './types';
 import { escapeHtml } from './embedded-utils';
@@ -20,6 +20,43 @@ function technicalSummary(block: Extract<DocumentBlock, { kind: 'technical' }>):
     return `${formatTransition(data.transition)} · ${formatSeconds(data.duration)} · ${data.fit || 'cover'}`;
   }
   return block.summary || block.label || block.blockType;
+}
+
+function effectLabel(effectType: string): string {
+  const labels: Record<string, string> = {
+    shake: 'Shake',
+    flash: 'Flash',
+    blur: 'Blur',
+    rain: 'Дощ',
+    snow: 'Snow',
+    glitch: 'Glitch',
+    vignette: 'Vignette',
+  };
+  return labels[effectType] || 'Ефект';
+}
+
+function inlinePartToHtml(part: DocumentInlinePart): string {
+  if (part.type === 'text') return escapeHtml(part.text);
+  const characterId = part.characterId ? ` data-character-id="${escapeHtml(part.characterId)}"` : '';
+  const fadeIn = part.fadeIn != null ? ` data-fade-in="${escapeHtml(String(part.fadeIn))}"` : '';
+  const fadeOut = part.fadeOut != null ? ` data-fade-out="${escapeHtml(String(part.fadeOut))}"` : '';
+  const rain = part.rain ? ` data-rain-options="${escapeHtml(JSON.stringify(part.rain))}"` : '';
+  const snow = part.snow ? ` data-snow-options="${escapeHtml(JSON.stringify(part.snow))}"` : '';
+  return [
+    `<span class="effect-chip" contenteditable="false" draggable="true" tabindex="0" role="button" data-kind="effect" data-id="${escapeHtml(part.id)}" data-effect-type="${escapeHtml(part.effectType)}" data-target="${escapeHtml(part.target)}"${characterId} data-intensity="${escapeHtml(String(part.intensity))}" data-duration="${escapeHtml(String(part.duration))}"${fadeIn}${fadeOut}${rain}${snow}>`,
+    `<span class="effect-chip-icon">✦</span>`,
+    `<span>${escapeHtml(effectLabel(part.effectType))}</span>`,
+    `<span class="effect-chip-menu">⋮</span>`,
+    '</span>',
+  ].join('');
+}
+
+function inlinePartsToHtml(parts: DocumentInlinePart[] | undefined, fallbackText: string): string {
+  if (parts?.length) {
+    const html = parts.map(inlinePartToHtml).join('');
+    return html || '<br>';
+  }
+  return escapeHtml(fallbackText || '') || '<br>';
 }
 
 function assetLabel(asset: VNPlateBackgroundAsset): string {
@@ -73,8 +110,7 @@ function backgroundBlockToHtml(
 
 export function blockToHtml(block: DocumentBlock, backgroundAssets: VNPlateBackgroundAsset[] = []): string {
   if (block.kind === 'text') {
-    const content = escapeHtml(block.content || '');
-    return `<p data-kind="text" data-id="${escapeHtml(block.id)}">${content || '<br>'}</p>`;
+    return `<p data-kind="text" data-id="${escapeHtml(block.id)}">${inlinePartsToHtml(block.parts, block.content)}</p>`;
   }
 
   if (block.kind === 'dialogue') {
@@ -84,7 +120,7 @@ export function blockToHtml(block: DocumentBlock, backgroundAssets: VNPlateBackg
     return [
       `<p data-kind="dialogue" data-id="${escapeHtml(block.id)}" data-speaker="${escapeHtml(block.speakerName)}" data-character-id="${escapeHtml(characterId)}" data-sprite-id="${escapeHtml(block.spriteId || '')}"${openControls}>`,
       `<span class="speaker-token dialogue-badge" contenteditable="false" tabindex="0" role="button" aria-label="Edit character ${escapeHtml(block.speakerName || 'Character')}" data-character-id="${escapeHtml(characterId)}" data-block-id="${escapeHtml(block.id)}" style="--speaker-color:${escapeHtml(color)}">${escapeHtml(block.speakerName || 'Character')}:</span> `,
-      `${escapeHtml(block.text || '') || '<br>'}`,
+      inlinePartsToHtml(block.parts, block.text),
       '</p>',
     ].join('');
   }

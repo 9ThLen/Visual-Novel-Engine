@@ -2,6 +2,8 @@
  * Error handling utilities for the Visual Novel Engine
  */
 
+import { shouldLogDevDiagnostics } from './dev-logging';
+
 export enum ErrorSeverity {
   LOW = 'low',       // Minor issues, app continues normally
   MEDIUM = 'medium', // Significant issues, some features may not work
@@ -97,7 +99,7 @@ export class ErrorHandler {
       ? 'error'
       : 'warn';
 
-    if (__DEV__) {
+    if (shouldLogDevDiagnostics()) {
       console[logLevel](`[${category.toUpperCase()}] ${message}`, {
         severity,
         originalError,
@@ -111,7 +113,7 @@ export class ErrorHandler {
         listener(appError);
       } catch (err) {
         // Prevent recursive error handling — just log to console
-        if (__DEV__) console.error('[ErrorHandler] Error in listener:', err);
+        if (shouldLogDevDiagnostics()) console.error('[ErrorHandler] Error in listener:', err);
       }
     });
 
@@ -122,7 +124,7 @@ export class ErrorHandler {
         this.userAlertCallback(userMessage, severity);
       } catch (err) {
         // Prevent recursive error handling — just log to console
-        if (__DEV__) console.error('[ErrorHandler] Error in user alert callback:', err);
+        if (shouldLogDevDiagnostics()) console.error('[ErrorHandler] Error in user alert callback:', err);
       }
     }
 

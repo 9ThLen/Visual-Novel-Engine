@@ -8,6 +8,8 @@ import { deactivateReaderAudioSession } from '../../lib/reader-audio-session';
 import type { UserSettings } from '../../lib/user-settings';
 import type { AudioTrigger } from '../../lib/audio-types';
 
+const { __setIsFocused } = require('@react-navigation/native');
+
 type StoryScene = {
   id: string;
   text: string;
@@ -44,6 +46,7 @@ const createScene = (overrides = {}): StoryScene => ({
 beforeEach(() => {
   vi.clearAllMocks();
   deactivateReaderAudioSession();
+  __setIsFocused(true);
 });
 
 describe('useReaderAudio', () => {
@@ -328,6 +331,58 @@ describe('useReaderAudio', () => {
       });
     });
 
+    it('should cap remembered runtime sound events so old event ids can be replayed', async () => {
+      (resolvePlayableAssetUri as any).mockResolvedValue('/resolved/sfx.mp3');
+      const manySoundEvents = Array.from({ length: 205 }, (_, index) => ({
+        id: `sound-event-${index}`,
+        assetId: `sfx-${index}`,
+        action: 'play' as const,
+        volume: 1,
+        loop: false,
+        pitchVariation: 0,
+        timestamp: index,
+      }));
+      const baseSceneState = {
+        backgroundAssetId: null,
+        backgroundTransition: 'fade',
+        characters: [],
+        activeEffects: [],
+        soundEvents: manySoundEvents,
+        musicTrackId: null,
+        musicPlaying: false,
+        musicVolume: 1,
+        variables: {},
+        dialogueHistory: [],
+        currentChoices: null,
+        isTransitioning: false,
+        transitionTarget: null,
+      };
+
+      const { rerender } = renderHook(
+        ({ state }) => useReaderAudio(STORY_ID, createScene(), defaultSettings, { sceneState: state }),
+        { initialProps: { state: baseSceneState } },
+      );
+
+      await waitFor(() => {
+        expect(enhancedAudioManager.play).toHaveBeenCalledTimes(205);
+      });
+
+      vi.clearAllMocks();
+      rerender({
+        state: {
+          ...baseSceneState,
+          soundEvents: [manySoundEvents[0]],
+        },
+      });
+
+      await waitFor(() => {
+        expect(enhancedAudioManager.play).toHaveBeenCalledWith('sfx:sound-event-0', '/resolved/sfx.mp3', {
+          volume: 0.6,
+          loop: false,
+        });
+      });
+    });
+
     it('should adjust volume when same bgm track persists', async () => {
       (resolvePlayableAssetUri as any).mockResolvedValue('/same-track.mp3');
 
@@ -360,6 +415,56 @@ describe('useReaderAudio', () => {
   });
 
   describe('cleanup', () => {
+    it('should stop playback and skip scene audio while blocked by overlay', () => {
+      renderHook(() =>
+        useReaderAudio(
+          STORY_ID,
+          createScene({ musicUri: 'music.mp3' }),
+          defaultSettings,
+          { blockedByOverlay: true },
+        ),
+      );
+
+      expect(enhancedAudioManager.cancelAllTriggers).toHaveBeenCalled();
+      expect(enhancedAudioManager.stopAll).toHaveBeenCalledWith(0);
+      expect(resolvePlayableAssetUri).not.toHaveBeenCalledWith('music.mp3');
+      expect(enhancedAudioManager.crossFade).not.toHaveBeenCalled();
+    });
+
+    it('should stop playback and skip scene audio when reader is not focused', () => {
+      __setIsFocused(false);
+
+      renderHook(() =>
+        useReaderAudio(STORY_ID, createScene({ musicUri: 'music.mp3' }), defaultSettings),
+      );
+
+      expect(enhancedAudioManager.cancelAllTriggers).toHaveBeenCalled();
+      expect(enhancedAudioManager.stopAll).toHaveBeenCalledWith(0);
+      expect(resolvePlayableAssetUri).not.toHaveBeenCalledWith('music.mp3');
+      expect(enhancedAudioManager.crossFade).not.toHaveBeenCalled();
+    });
+
+    it('should ignore resolved scene audio after the reader session is invalidated', async () => {
+      let resolveMusic: (value: string) => void = () => {};
+      (resolvePlayableAssetUri as any).mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveMusic = resolve;
+        }),
+      );
+
+      renderHook(() =>
+        useReaderAudio(STORY_ID, createScene({ musicUri: 'music.mp3' }), defaultSettings),
+      );
+
+      deactivateReaderAudioSession();
+      resolveMusic('/resolved/music.mp3');
+
+      await waitFor(() => {
+        expect(resolvePlayableAssetUri).toHaveBeenCalledWith('music.mp3');
+      });
+      expect(enhancedAudioManager.crossFade).not.toHaveBeenCalled();
+    });
+
     it('should stop all audio on unmount', () => {
       const { unmount } = renderHook(() =>
         useReaderAudio(STORY_ID, createScene(), defaultSettings),

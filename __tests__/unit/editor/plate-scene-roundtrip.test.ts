@@ -174,6 +174,129 @@ describe('Plate scene serializer roundtrip', () => {
     });
   });
 
+  it('roundtrips inline effect parts between surrounding text steps', () => {
+    const saved = roundtrip(sceneWithTimeline([
+      createTextStep({ content: 'Світло ліхтаря ' }),
+      withStepMeta(createEffectStep({
+        effectType: 'rain',
+        target: 'screen',
+        intensity: 40,
+        duration: 10,
+        fadeIn: 1,
+        fadeOut: 1,
+      }), 'step_effect_rain'),
+      createTextStep({ content: ' відкидало довгі тіні.' }),
+    ]));
+
+    expect(saved.timeline).toHaveLength(3);
+    expect(saved.timeline[0]).toMatchObject({
+      blockType: 'text',
+      data: { content: 'Світло ліхтаря ' },
+    });
+    expect(saved.timeline[1]).toMatchObject({
+      id: 'step_effect_rain',
+      blockType: 'effect',
+      data: {
+        effectType: 'rain',
+        target: 'screen',
+        intensity: 40,
+        duration: 10,
+        fadeIn: 1,
+        fadeOut: 1,
+      },
+    });
+    expect(saved.timeline[2]).toMatchObject({
+      blockType: 'text',
+      data: { content: ' відкидало довгі тіні.' },
+    });
+  });
+
+  it('roundtrips inline weather effect options at text edges and between chips', () => {
+    const saved = roundtrip(sceneWithTimeline([
+      withStepMeta(createEffectStep({
+        effectType: 'rain',
+        target: 'background',
+        intensity: 80,
+        duration: 6,
+        fadeIn: 0.5,
+        fadeOut: 0.75,
+        rain: {
+          color: '#9fd7ff',
+          opacity: 0.65,
+          density: 140,
+          speed: 2.5,
+          wind: 10,
+          angle: -8,
+          dropLength: 34,
+          dropWidth: 2,
+          splash: true,
+          lightning: true,
+        },
+      }), 'step_rain_edge'),
+      createTextStep({ content: 'Rain starts here' }),
+      withStepMeta(createEffectStep({
+        effectType: 'snow',
+        target: 'screen',
+        intensity: 35,
+        duration: 4,
+        snow: {
+          color: '#ffffff',
+          snowflakeCount: 96,
+          radius: [0.5, 3],
+          speed: [0.8, 2],
+          wind: [-0.4, 1.2],
+          changeFrequency: 180,
+          rotationSpeed: [-1, 1],
+          opacity: [0.55, 0.9],
+          enable3DRotation: true,
+          imageUris: ['file://flake.png'],
+        },
+      }), 'step_snow_middle'),
+      withStepMeta(createEffectStep({
+        effectType: 'flash',
+        target: 'screen',
+        intensity: 55,
+        duration: 0.4,
+      }), 'step_flash_after_snow'),
+    ]));
+
+    expect(saved.timeline).toHaveLength(4);
+    expect(saved.timeline[0]).toMatchObject({
+      id: 'step_rain_edge',
+      blockType: 'effect',
+      data: {
+        effectType: 'rain',
+        target: 'background',
+        intensity: 80,
+        rain: {
+          density: 140,
+          splash: true,
+          lightning: true,
+        },
+      },
+    });
+    expect(saved.timeline[2]).toMatchObject({
+      id: 'step_snow_middle',
+      blockType: 'effect',
+      data: {
+        effectType: 'snow',
+        snow: {
+          snowflakeCount: 96,
+          enable3DRotation: true,
+          imageUris: ['file://flake.png'],
+        },
+      },
+    });
+    expect(saved.timeline[3]).toMatchObject({
+      id: 'step_flash_after_snow',
+      blockType: 'effect',
+      data: {
+        effectType: 'flash',
+        intensity: 55,
+      },
+    });
+  });
+
   it('preserves dialogue entries and choice option data from source TimelineStep', () => {
     const dialogueStep = withStepMeta(createDialogueStep({
       entries: [
@@ -371,6 +494,34 @@ describe('Plate scene serializer roundtrip', () => {
     expect(html).not.toContain('background-thumb');
     expect(html).toContain('"id":"newScene"');
     expect(html).toContain("type: 'createNextScene'");
+  });
+
+  it('renders inline effect parts as compact effect chips in embedded HTML', () => {
+    const scene = sceneRecordToPlateDocument(sceneWithTimeline([
+      createTextStep({ content: 'Перед дощем ' }),
+      createEffectStep({
+        effectType: 'rain',
+        target: 'screen',
+        intensity: 40,
+        duration: 10,
+      }),
+      createTextStep({ content: ' стало тихо.' }),
+    ]), []);
+
+    const html = createVNPlateEditorHtml({
+      editorId: 'editor_inline_effect',
+      scene,
+      characters: [],
+      backgroundAssets: [],
+      isPhone: false,
+    });
+
+    expect(html).toContain('class="effect-chip"');
+    expect(html).toContain('draggable="true"');
+    expect(html).toContain('data-effect-type="rain"');
+    expect(html).toContain('data-intensity="40"');
+    expect(html).toContain('Перед дощем ');
+    expect(html).toContain(' стало тихо.');
   });
 
   it('does not render inline background thumbnail when background asset is missing', () => {

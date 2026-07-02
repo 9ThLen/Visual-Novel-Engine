@@ -2,7 +2,6 @@
  * Story import / export helpers.
  */
 
-import { useMemo } from 'react';
 import { buildCanonicalSceneRecordsFromLegacyScenes } from '@/lib/scene-operations';
 import { isSafeUri, StoryValidator, ValidationError } from '@/lib/story-validator';
 import { generateId } from '@/lib/id-utils';
@@ -23,9 +22,7 @@ import {
   migrateCharacterLibrary,
 } from '@/lib/character-migration';
 import type { Character } from '@/lib/character-types';
-
-// ── Backward compatibility re-exports ──
-// @deprecated Import from @/hooks/use-story-state instead.
+import { shouldLogDevDiagnostics } from '@/lib/dev-logging';
 
 // ── Story import / export — thin wrappers with validation ──
 
@@ -143,23 +140,23 @@ function validateBlockData(blockType: BlockType, data: unknown): boolean {
 function validateCanonicalTimelineStep(step: unknown, sceneId: string, index: number): TimelineStep | null {
   const rawStep = asRecord(step);
   if (!rawStep || !isString(rawStep.id) || !isString(rawStep.blockType)) {
-    if (__DEV__) console.warn('[importStory] skipped invalid timeline step identity', { sceneId, index });
+    if (shouldLogDevDiagnostics()) console.warn('[importStory] skipped invalid timeline step identity', { sceneId, index });
     return null;
   }
 
   if (!(rawStep.blockType in BLOCK_TYPE_INFO)) {
-    if (__DEV__) console.warn('[importStory] skipped unknown block type', { sceneId, index, blockType: rawStep.blockType });
+    if (shouldLogDevDiagnostics()) console.warn('[importStory] skipped unknown block type', { sceneId, index, blockType: rawStep.blockType });
     return null;
   }
 
   const blockType = rawStep.blockType as BlockType;
   if (!validateBlockData(blockType, rawStep.data)) {
-    if (__DEV__) console.warn('[importStory] skipped invalid block data', { sceneId, index, blockType });
+    if (shouldLogDevDiagnostics()) console.warn('[importStory] skipped invalid block data', { sceneId, index, blockType });
     return null;
   }
 
   if (typeof rawStep.collapsed !== 'boolean' || typeof rawStep.enabled !== 'boolean' || !validateConditions(rawStep.conditions)) {
-    if (__DEV__) console.warn('[importStory] skipped invalid timeline step metadata', { sceneId, index, blockType });
+    if (shouldLogDevDiagnostics()) console.warn('[importStory] skipped invalid timeline step metadata', { sceneId, index, blockType });
     return null;
   }
 

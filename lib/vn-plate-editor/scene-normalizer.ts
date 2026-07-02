@@ -143,6 +143,7 @@ function normalizeBlock(block: DocumentBlock, characters: Character[]): Document
       sourceStepId: block.sourceStepId,
       sourceStep: block.sourceStep,
       content: block.content || '',
+      parts: block.parts,
     };
   }
 
@@ -158,6 +159,7 @@ function normalizeBlock(block: DocumentBlock, characters: Character[]): Document
       tokenColor: block.tokenColor,
       openCharacterControls: block.openCharacterControls,
       text: block.text || '',
+      parts: block.parts,
     };
   }
 

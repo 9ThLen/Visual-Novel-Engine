@@ -5,9 +5,7 @@
  * Usage:
  *   const { t, language, setLanguage, pluralize, languages } = useI18n();
  *
- * NOTE: This file was moved from lib/i18n.ts to hooks/use-i18n.ts
- * to resolve the layer boundary violation (lib/ should not import from stores/).
- * The original lib/i18n.ts re-exports this hook for backward compatibility.
+ * NOTE: Keep this hook outside lib/ because it reads from Zustand.
  */
 
 import { useCallback, useMemo } from 'react';

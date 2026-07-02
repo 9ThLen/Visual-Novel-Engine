@@ -1,4 +1,5 @@
 import type { InteractiveObject } from '@/lib/interactive-types';
+import type { RainEffectOptions, SnowEffectOptions } from './effect-options';
 
 export type RuntimeConditionOperator =
   | '=='
@@ -69,6 +70,12 @@ export interface CharacterRuntimeState {
 export interface ActiveEffect {
   effectType: RuntimeEffectType;
   target: string;
+  characterId?: string;
+  intensity: number;
+  fadeIn?: number;
+  fadeOut?: number;
+  rain?: RainEffectOptions;
+  snow?: SnowEffectOptions;
   startTime: number;
   endTime: number;
 }

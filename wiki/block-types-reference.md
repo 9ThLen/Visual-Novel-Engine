@@ -49,11 +49,12 @@ Factories: `lib/engine/event-factory.ts`
 ### Dialogue
 - **Category:** Dialogue
 - **Color:** `#9b59b6`
-- **Purpose:** Character dialogue exchange with multiple speakers.
+- **Purpose:** Runtime representation of character dialogue authored in the Plate text editor through Character lines/speaker tokens.
 - **Fields:** `entries[]` (each: `id`, `characterId`, `spriteId`, `text`), `currentEntryIndex`
 - **Auto-executes:** No — **yields** for typewriter
 - **Validation:** Requires at least one entry with text
 - **Runtime:** Appends to `sceneState.dialogueHistory[]`
+- **Authoring:** Deprecated as a standalone addable block. New Plate authoring should create one dialogue paragraph per character line, saved as a single-entry runtime `dialogue` step.
 
 ### Choice
 - **Category:** Dialogue

@@ -10,6 +10,7 @@ interface Props {
   isActiveSpeaker?: boolean;
   dimmed?: boolean;
   focusScale?: number;
+  overlay?: React.ReactNode;
 }
 
 function positionPercent(position: Props['position']): `${number}%` {
@@ -35,6 +36,7 @@ export const CharacterDisplay = React.memo(function CharacterDisplay({
   isActiveSpeaker = false,
   dimmed = false,
   focusScale = 1.04,
+  overlay,
 }: Props) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const charWidth = screenWidth * 0.35;
@@ -61,23 +63,24 @@ export const CharacterDisplay = React.memo(function CharacterDisplay({
       accessibilityLabel={spriteUri ? 'Character sprite' : 'Character sprite missing'}
     >
       {spriteUri ? (
-      <Image
-        source={{ uri: spriteUri }}
-        style={{ width: '100%', aspectRatio: 9 / 16, maxHeight: screenHeight * 0.65 }}
-        resizeMode="contain"
-      />
-    ) : (
-      <View
-        style={{
-          width: '100%',
-          aspectRatio: 9 / 16,
-          maxHeight: screenHeight * 0.65,
-          borderWidth: 1,
-          borderColor: '#94a3b8',
-          backgroundColor: 'rgba(148, 163, 184, 0.22)',
-        }}
-      />
-    )}
+        <Image
+          source={{ uri: spriteUri }}
+          style={{ width: '100%', aspectRatio: 9 / 16, maxHeight: screenHeight * 0.65 }}
+          resizeMode="contain"
+        />
+      ) : (
+        <View
+          style={{
+            width: '100%',
+            aspectRatio: 9 / 16,
+            maxHeight: screenHeight * 0.65,
+            borderWidth: 1,
+            borderColor: '#94a3b8',
+            backgroundColor: 'rgba(148, 163, 184, 0.22)',
+          }}
+        />
+      )}
+      {overlay ? <View style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>{overlay}</View> : null}
     </Animated.View>
   );
 });

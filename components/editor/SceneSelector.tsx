@@ -39,17 +39,6 @@ interface StorySceneOption {
 
 const TEMPLATE_SCENES: TemplateScene[] = [
   {
-    id: 'tpl_dialogue_basic',
-    name: 'Basic Dialogue',
-    description: 'Character speaks with name tag and text box',
-    category: 'dialogue',
-    icon: 'voice',
-    tags: ['dialogue', 'character', 'text'],
-    blockTypes: ['dialogue'],
-    outputs: ['next'],
-    inputs: ['start'],
-  },
-  {
     id: 'tpl_dialogue_narration',
     name: 'Narration',
     description: 'Narrator text without character name',
@@ -67,7 +56,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     category: 'choice',
     icon: 'timeline',
     tags: ['choice', 'branching'],
-    blockTypes: ['dialogue', 'choice'],
+    blockTypes: ['choice'],
     outputs: ['choice_a', 'choice_b'],
     inputs: ['start'],
   },
@@ -78,7 +67,7 @@ const TEMPLATE_SCENES: TemplateScene[] = [
     category: 'choice',
     icon: 'timeline',
     tags: ['choice', 'branching', 'triple'],
-    blockTypes: ['dialogue', 'choice'],
+    blockTypes: ['choice'],
     outputs: ['choice_a', 'choice_b', 'choice_c'],
     inputs: ['start'],
   },
@@ -247,7 +236,6 @@ const CATEGORY_ICON_BY_KEY: Record<string, IconSymbolName> = {
 };
 
 const TEMPLATE_ICON_BY_ID: Record<string, IconSymbolName> = {
-  tpl_dialogue_basic: 'voice',
   tpl_dialogue_narration: 'document',
   tpl_choice_binary: 'timeline',
   tpl_choice_triple: 'timeline',

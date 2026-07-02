@@ -6,12 +6,15 @@ import type {
   TextBlockData,
   TimelineStep,
 } from '@/lib/engine/types';
+import type { AudioTrigger } from '@/lib/audio-types';
 
 export interface ReaderScene {
   id: string;
   storyId: string;
   name: string;
   timeline: TimelineStep[];
+  voiceAudioUri?: string | null;
+  audioTriggers?: AudioTrigger[];
   connections: SceneConnection[];
   isStart: boolean;
 }
@@ -28,6 +31,8 @@ export function toReaderScene(record: SceneRecord): ReaderScene {
     storyId: record.storyId,
     name: record.name,
     timeline: record.timeline,
+    voiceAudioUri: record.voiceAudioUri ?? null,
+    audioTriggers: record.audioTriggers ?? [],
     connections: record.connections,
     isStart: record.isStart,
   };

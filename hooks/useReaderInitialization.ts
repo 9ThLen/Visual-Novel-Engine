@@ -1,14 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useStoryActions } from '@/hooks/use-story-state';
-import { resolveCanonicalStartSceneId } from '@/lib/scene-operations';
-import { useAppStore } from '@/stores/use-app-store';
+import { selectReaderScene, selectReaderStartSceneId, useAppStore } from '@/stores/use-app-store';
 import type { Story } from '@/lib/scene-operations';
 import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { TimelineStep } from '@/lib/engine/types';
 import demoStory from '@/assets/demo-story.json';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 import { shouldReusePlaybackState } from '@/lib/reader-launch';
-import { toReaderScene, type ReaderScene } from '@/lib/reader-scene';
+import type { ReaderScene } from '@/lib/reader-scene';
 
 export function useReaderInitialization(
   storyIdParam?: string | string[],
@@ -17,8 +15,14 @@ export function useReaderInitialization(
   const storiesMetadata = useAppStore((s) => s.storiesMetadata);
   const currentStoryId = useAppStore((s) => s.currentStoryId);
   const playbackState = useAppStore((s) => s.playbackState);
-  const sceneRecordsByStory = useAppStore((s) => s.sceneRecordsByStory);
-  const { setCurrentStory, updatePlaybackState } = useStoryActions();
+  const currentReaderScene = useAppStore((s) =>
+    playbackState
+      ? selectReaderScene(playbackState.storyId, playbackState.currentSceneId)(s)
+      : null,
+  );
+  const setCurrentStory = useAppStore((s) => s.loadCurrentStory);
+  const updatePlaybackState = useAppStore((s) => s.updatePlaybackState);
+  const hydrateReaderSceneWindow = useAppStore((s) => s.hydrateReaderSceneWindow);
   const currentStoryMetadata = useMemo(
     () => storiesMetadata.find((story) => story.id === currentStoryId) ?? null,
     [currentStoryId, storiesMetadata],
@@ -29,15 +33,10 @@ export function useReaderInitialization(
   // Safety timeout: force loading to resolve after 10s even if initialization hangs
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const currentReaderScene: ReaderScene | null = useMemo(() => {
-    if (!currentStoryMetadata || !playbackState) return null;
-    const record = sceneRecordsByStory[playbackState.storyId]?.[playbackState.currentSceneId];
-    return record ? toReaderScene(record) : null;
-  }, [currentStoryMetadata, playbackState, sceneRecordsByStory]);
-
   const currentTimeline: TimelineStep[] = useMemo(() => {
+    if (!currentStoryMetadata || !playbackState) return [];
     return currentReaderScene?.timeline ?? [];
-  }, [currentReaderScene]);
+  }, [currentReaderScene, currentStoryMetadata, playbackState]);
 
   const stateRef = useRef({ currentStoryId, playbackState });
 
@@ -77,22 +76,45 @@ export function useReaderInitialization(
 
       if (requestId !== initRequestIdRef.current) return;
 
-      if (shouldReusePlaybackState(stateRef.current.playbackState, selectedStoryId, resumeExisting)) {
+      const metadata = storiesMetadata.find((s) => s.id === selectedStoryId) || (demoStory as unknown as Story);
+      const reusablePlaybackState = shouldReusePlaybackState(
+        stateRef.current.playbackState,
+        selectedStoryId,
+        resumeExisting,
+      )
+        ? stateRef.current.playbackState
+        : null;
+      const initialSceneId = reusablePlaybackState?.currentSceneId ?? metadata.startSceneId;
+      let initialSceneHydrated = initialSceneId
+        ? await hydrateReaderSceneWindow(selectedStoryId, initialSceneId)
+        : false;
+
+      if (requestId !== initRequestIdRef.current) return;
+
+      if (reusablePlaybackState && initialSceneHydrated) {
         setIsLoading(false);
         return;
       }
 
       if (requestId !== initRequestIdRef.current) return;
 
-      const metadata = storiesMetadata.find((s) => s.id === selectedStoryId) || (demoStory as unknown as Story);
-      const startSceneId = resolveCanonicalStartSceneId(
-        {
-          storiesMetadata,
-          sceneRecordsByStory,
-        },
-        metadata.id,
-        metadata.startSceneId
-      ) || metadata.startSceneId;
+      if (
+        reusablePlaybackState &&
+        !initialSceneHydrated &&
+        metadata.startSceneId &&
+        metadata.startSceneId !== initialSceneId
+      ) {
+        initialSceneHydrated = await hydrateReaderSceneWindow(selectedStoryId, metadata.startSceneId);
+      }
+
+      if (requestId !== initRequestIdRef.current) return;
+
+      const startSceneId = selectReaderStartSceneId(metadata.id, metadata.startSceneId)(
+        useAppStore.getState(),
+      );
+      if (!startSceneId) {
+        throw new Error(`Story ${metadata.id} has no readable start scene`);
+      }
       const newPlaybackState: PlaybackState = {
         storyId: metadata.id,
         currentSceneId: startSceneId,
@@ -110,7 +132,14 @@ export function useReaderInitialization(
         setIsLoading(false);
       }
     }
-  }, [resumeExisting, storyIdParam, storiesMetadata, sceneRecordsByStory, setCurrentStory, updatePlaybackState]);
+  }, [
+    hydrateReaderSceneWindow,
+    resumeExisting,
+    storyIdParam,
+    storiesMetadata,
+    setCurrentStory,
+    updatePlaybackState,
+  ]);
 
   useEffect(() => {
     safetyTimerRef.current = setTimeout(() => {

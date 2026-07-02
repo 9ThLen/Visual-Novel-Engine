@@ -9,7 +9,9 @@
 
 import type { Language } from '@/lib/translations';
 import type { Character } from '@/lib/character-types';
+import type { AudioTrigger } from '@/lib/audio-types';
 import type { InteractiveAction, InteractiveObjectPosition } from '@/lib/interactive-types';
+import type { RainEffectOptions, SnowEffectOptions } from './effect-options';
 import type { SceneState } from './runtime-types';
 
 export type {
@@ -80,7 +82,7 @@ export const BLOCK_TYPE_INFO: Record<BlockType, BlockTypeInfo> = {
   background:        { type: 'background',        label: 'Background',        description: 'Change scene background',     icon: 'image', color: '#50c878', bgColor: '#50c87820' },
   character:         { type: 'character',         label: 'Character',         description: 'Show/hide character sprite',  icon: 'character', color: '#f5a623', bgColor: '#f5a62320' },
   text:              { type: 'text',              label: 'Text / Narration',   description: 'Display narration text',       icon: 'text', color: '#7c5bf5', bgColor: '#7c5bf520' },
-  dialogue:          { type: 'dialogue',          label: 'Dialogue',          description: 'Character dialogue exchange',  icon: 'voice', color: '#9b59b6', bgColor: '#9b59b620' },
+  dialogue:          { type: 'dialogue',          label: 'Dialogue',          description: 'Runtime character dialogue; author via Character lines',  icon: 'voice', color: '#9b59b6', bgColor: '#9b59b620', disabled: true },
   choice:            { type: 'choice',            label: 'Choice',            description: 'Player choice branch',         icon: 'timeline', color: '#e91e63', bgColor: '#e91e6320' },
   effect:            { type: 'effect',            label: 'Effect',            description: 'Visual/screen effects',        icon: 'lightning', color: '#ffd93d', bgColor: '#ffd93d20' },
   music:             { type: 'music',             label: 'Music',             description: 'Play/stop background music',   icon: 'music', color: '#ff6b6b', bgColor: '#ff6b6b20' },
@@ -199,6 +201,10 @@ export interface EffectBlockData {
   characterId?: string;     // if target = 'character'
   intensity: number;        // 0-100
   duration: number;         // seconds
+  fadeIn?: number;          // seconds
+  fadeOut?: number;         // seconds
+  rain?: RainEffectOptions;
+  snow?: SnowEffectOptions;
 }
 
 export interface MusicBlockData {
@@ -302,6 +308,13 @@ export interface SceneRecord extends ProjectScene {
   storyId: string;
   description: string;
   tags: string[];
+  voiceAudioUri?: string | null;
+  audioTriggers?: AudioTrigger[];
+  autoAdvance?: {
+    enabled: boolean;
+    delay: number;
+    nextSceneId: string;
+  };
   connections: SceneConnection[];
   isStart: boolean;
   createdAt: number;

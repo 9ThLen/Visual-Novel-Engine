@@ -123,15 +123,11 @@ describe('story-manuscript', () => {
     });
   });
 
-  it('creates empty editable manuscript blocks for supported prose kinds', () => {
+  it('creates empty editable manuscript blocks for supported authoring kinds', () => {
     expect(createEmptyStoryManuscriptBlock('narration')).toMatchObject({
       kind: 'narration',
       stepBlockType: 'text',
       content: '',
-    });
-    expect(createEmptyStoryManuscriptBlock('dialogue')).toMatchObject({
-      kind: 'dialogue',
-      stepBlockType: 'dialogue',
     });
     expect(createEmptyStoryManuscriptBlock('choice_group')).toMatchObject({
       kind: 'choice_group',

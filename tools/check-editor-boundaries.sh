@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tools/check-editor-boundaries.sh — Cross-platform editor boundary check
+# tools/check-editor-boundaries.sh - Cross-platform editor boundary check
 # Usage: bash tools/check-editor-boundaries.sh
 
 set -euo pipefail

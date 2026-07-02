@@ -1,4 +1,5 @@
-import type { BlockType, TimelineStep } from '@/lib/engine/types';
+import type { BlockType, EffectType, TimelineStep } from '@/lib/engine/types';
+import type { RainEffectOptions, SnowEffectOptions } from '@/lib/engine/effect-options';
 
 export type DocumentBlockKind = 'text' | 'dialogue' | 'choice' | 'technical';
 
@@ -27,9 +28,29 @@ export interface BaseDocumentBlock {
   sourceStep?: TimelineStep;
 }
 
+export type DocumentInlinePart =
+  | {
+      type: 'text';
+      text: string;
+    }
+  | {
+      type: 'effect';
+      id: string;
+      effectType: EffectType;
+      target: 'screen' | 'character' | 'background';
+      characterId?: string;
+      intensity: number;
+      duration: number;
+      fadeIn?: number;
+      fadeOut?: number;
+      rain?: RainEffectOptions;
+      snow?: SnowEffectOptions;
+    };
+
 export interface DocumentTextBlock extends BaseDocumentBlock {
   kind: 'text';
   content: string;
+  parts?: DocumentInlinePart[];
 }
 
 export interface DocumentDialogueBlock extends BaseDocumentBlock {
@@ -40,6 +61,7 @@ export interface DocumentDialogueBlock extends BaseDocumentBlock {
   tokenColor?: string;
   openCharacterControls?: boolean;
   text: string;
+  parts?: DocumentInlinePart[];
 }
 
 export interface DocumentChoiceOption {

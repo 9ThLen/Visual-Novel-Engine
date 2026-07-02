@@ -8,7 +8,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
-import { useStoryState, useStoryActions } from '@/hooks/use-story-state';
+import { useAppStore } from '@/stores/use-app-store';
 import { useColors } from '@/hooks/use-colors';
 import { SaveSlot } from '@/lib/story-domain';
 import { useI18n } from '@/hooks/use-i18n';
@@ -94,31 +94,46 @@ export default function SaveLoadScreen() {
     }, []),
   );
   const colors = useColors();
-  const { saveSlots, currentStory, playbackState } = useStoryState();
-  const { saveGame, loadGame, deleteSaveSlot } = useStoryActions();
+  const saveSlots = useAppStore((state) => state.saveSlots);
+  const currentStoryId = useAppStore((state) => state.currentStoryId);
+  const playbackState = useAppStore((state) => state.playbackState);
+  const saveGame = useAppStore((state) => state.saveGame);
+  const loadGame = useAppStore((state) => state.loadGame);
+  const deleteSaveSlot = useAppStore((state) => state.deleteSaveSlot);
+  const hydrateSceneRecordsForStory = useAppStore((state) => state.hydrateSceneRecordsForStory);
   const [activeTab, setActiveTab] = useState<'save' | 'load'>('load');
   const [slotIdToDelete, setSlotIdToDelete] = useState<string | null>(null);
   const { t, language } = useI18n();
 
   const handleSaveToSlot = useCallback(async (slotId: string) => {
-    if (!currentStory || !playbackState) {
+    if (!currentStoryId || !playbackState) {
       showToast(t('save.noActiveStory'), 'error');
       return;
     }
     try {
-      await saveGame(slotId);
+      await hydrateSceneRecordsForStory(currentStoryId);
+      const saved = saveGame(slotId);
+      if (!saved) {
+        showToast(t('common.error'), 'error');
+        return;
+      }
       showToast(t('save.success'), 'success');
     } catch {
       showToast(t('common.error'), 'error');
     }
-  }, [currentStory, playbackState, saveGame, t]);
+  }, [currentStoryId, playbackState, hydrateSceneRecordsForStory, saveGame, t]);
 
   const handleLoadFromSlot = useCallback(async (slotId: string) => {
     const slot = saveSlots.find((s) => s.id === slotId);
     if (!slot) return;
 
     try {
-      await loadGame(slotId);
+      await hydrateSceneRecordsForStory(slot.storyId);
+      const loaded = loadGame(slotId);
+      if (!loaded) {
+        showToast(t('common.error'), 'error');
+        return;
+      }
       showToast(t('save.loadSuccess'), 'success');
       router.replace({
         pathname: '/reader',
@@ -127,7 +142,7 @@ export default function SaveLoadScreen() {
     } catch {
       showToast(t('common.error'), 'error');
     }
-  }, [saveSlots, loadGame, router, t]);
+  }, [saveSlots, hydrateSceneRecordsForStory, loadGame, router, t]);
 
   const handleDeleteSlot = useCallback((slotId: string) => {
     setSlotIdToDelete(slotId);

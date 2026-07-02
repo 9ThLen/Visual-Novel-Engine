@@ -12,12 +12,14 @@ const aliases = {
   'react-native': path.join(rootDir, '__mocks__/react-native.ts'),
   '@react-navigation/native': path.join(rootDir, '__mocks__/react-navigation-native.ts'),
   'expo-audio': path.join(rootDir, '__mocks__/expo-audio.ts'),
+  'expo-image': path.join(rootDir, '__mocks__/expo-image.ts'),
   'expo-file-system/legacy': path.join(rootDir, '__mocks__/expo-file-system-legacy.ts'),
   'expo-asset': path.join(rootDir, '__mocks__/expo-asset.ts'),
   'expo-linking': path.join(rootDir, '__mocks__/expo-linking.ts'),
   'expo-modules-core': path.join(rootDir, '__mocks__/expo-modules-core.ts'),
   'expo-router': path.join(rootDir, '__mocks__/expo-router.ts'),
   'expo-secure-store': path.join(rootDir, '__mocks__/expo-secure-store.ts'),
+  'react-native-reanimated': path.join(rootDir, '__mocks__/react-native-reanimated.ts'),
   '@/stores/use-app-store': path.join(rootDir, '__mocks__/stores/use-app-store.ts'),
   '@/lib/asset-resolver': path.join(rootDir, '__mocks__/lib/asset-resolver.ts'),
   '@/lib/audio-manager-enhanced': path.join(rootDir, '__mocks__/lib/audio-manager-enhanced.ts'),
@@ -36,6 +38,7 @@ for (const [specifier, mockPath] of Object.entries(aliases)) {
 // Files that should NOT get the mocked version for matching aliases
 const mockExemptFiles = [
   path.join(rootDir, '__tests__/unit/lib/audio-library.test.ts'),
+  path.join(rootDir, '__tests__/unit/lib/audio-manager-enhanced.test.ts'),
   path.join(rootDir, '__tests__/unit/lib/asset-resolver.test.ts'),
   path.join(rootDir, '__mocks__/lib/audio-library.ts'),
 ];
@@ -56,10 +59,11 @@ function getTs() {
 Module._extensions['.ts'] = function (mod, filename) {
   const source = fs.readFileSync(filename, 'utf8');
   const result = getTs().transpileModule(source, {
+    fileName: filename,
     compilerOptions: {
       module: getTs().ModuleKind.CommonJS,
       target: getTs().ScriptTarget.ES2020,
-      jsx: getTs().JsxEmit.Automatic,
+      jsx: getTs().JsxEmit.React,
       esModuleInterop: true,
       skipLibCheck: true,
     },

@@ -51,6 +51,8 @@ app-example
 
 # Codex artifacts
 .codex/
+.codex-web-export/
+.codex-native-export/
 
 # Claude Code
 .claude/

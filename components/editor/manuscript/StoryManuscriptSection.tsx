@@ -18,7 +18,7 @@ interface StoryManuscriptSectionProps {
   onBlockChange: (sceneId: string, blockId: string, nextBlock: StoryManuscriptBlockModel) => void;
   onMoveBlock: (sceneId: string, fromIndex: number, toIndex: number) => void;
   onRemoveBlock: (sceneId: string, blockId: string) => void;
-  onAddBlock: (sceneId: string, kind: 'narration' | 'dialogue' | 'choice_group') => void;
+  onAddBlock: (sceneId: string, kind: 'narration' | 'choice_group') => void;
   onMeasure: (sceneId: string, y: number) => void;
 }
 
@@ -68,9 +68,6 @@ function StoryManuscriptSectionComponent({
       <View style={{ flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap', marginTop: spacing.lg }}>
         <Button variant="secondary" size="sm" onPress={() => onAddBlock(scene.sceneId, 'narration')}>
           {t('manuscript.addNarration')}
-        </Button>
-        <Button variant="secondary" size="sm" onPress={() => onAddBlock(scene.sceneId, 'dialogue')}>
-          {t('manuscript.addDialogue')}
         </Button>
         <Button variant="secondary" size="sm" onPress={() => onAddBlock(scene.sceneId, 'choice_group')}>
           {t('manuscript.addChoiceGroup')}

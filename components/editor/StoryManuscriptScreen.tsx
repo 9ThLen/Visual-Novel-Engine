@@ -98,7 +98,7 @@ export function StoryManuscriptScreen({
     }));
   }, [updateScene]);
 
-  const handleAddBlock = useCallback((sceneId: string, kind: 'narration' | 'dialogue' | 'choice_group') => {
+  const handleAddBlock = useCallback((sceneId: string, kind: 'narration' | 'choice_group') => {
     updateScene(sceneId, (scene) => ({
       ...scene,
       blocks: [...scene.blocks, createEmptyStoryManuscriptBlock(kind)],

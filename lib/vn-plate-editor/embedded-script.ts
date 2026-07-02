@@ -19,6 +19,9 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     var characters = Array.isArray(payload.characters) ? payload.characters.slice() : [];
     var characterPopover = null;
     var activeCharacterToken = null;
+    var effectPopover = null;
+    var activeEffectChip = null;
+    var draggedEffectChip = null;
     var activeIndex = 0;
 
     function uid(prefix) {
@@ -116,6 +119,320 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var speaker = node.dataset.speaker || (badge.textContent || '').replace(/:\\s*$/, '');
       var withoutBadge = stripLeadingSpeakerLabel(raw, speaker);
       return stripLeadingSpeakerLabel(withoutBadge, speaker);
+    }
+
+    function isEffectChip(node) {
+      return node && node.nodeType === Node.ELEMENT_NODE && node.classList && node.classList.contains('effect-chip');
+    }
+
+    function numberFromDataset(value, fallback) {
+      var number = Number(value);
+      return Number.isFinite(number) ? number : fallback;
+    }
+
+    function jsonFromDataset(value) {
+      if (!value) return undefined;
+      try {
+        var parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' ? parsed : undefined;
+      } catch (error) {
+        return undefined;
+      }
+    }
+
+    function serializeInlineParts(node) {
+      var parts = [];
+      Array.prototype.slice.call(node.childNodes).forEach(function(child) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          if (child.textContent) parts.push({ type: 'text', text: child.textContent });
+          return;
+        }
+        if (isEffectChip(child)) {
+          parts.push({
+            type: 'effect',
+            id: child.dataset.id || uid('inline_effect'),
+            effectType: child.dataset.effectType || 'rain',
+            target: child.dataset.target || 'screen',
+            characterId: child.dataset.characterId || undefined,
+            intensity: numberFromDataset(child.dataset.intensity, 50),
+            duration: numberFromDataset(child.dataset.duration, 1),
+            fadeIn: child.dataset.fadeIn ? numberFromDataset(child.dataset.fadeIn, 0) : undefined,
+            fadeOut: child.dataset.fadeOut ? numberFromDataset(child.dataset.fadeOut, 0) : undefined,
+            rain: jsonFromDataset(child.dataset.rainOptions),
+            snow: jsonFromDataset(child.dataset.snowOptions)
+          });
+          return;
+        }
+        if (child.nodeType === Node.ELEMENT_NODE && child.classList && child.classList.contains('speaker-token')) {
+          return;
+        }
+        if (child.nodeName !== 'BR' && child.textContent) {
+          parts.push({ type: 'text', text: child.textContent });
+        }
+      });
+      return parts;
+    }
+
+    function hasEffectPart(parts) {
+      return parts.some(function(part) { return part.type === 'effect'; });
+    }
+
+    function inlinePartsText(parts) {
+      return parts
+        .filter(function(part) { return part.type === 'text'; })
+        .map(function(part) { return part.text; })
+        .join('')
+        .replace(/\\u00a0/g, ' ')
+        .trimEnd();
+    }
+
+    function effectChipLabel(effectType) {
+      var labels = {
+        shake: 'Shake',
+        flash: 'Flash',
+        blur: 'Blur',
+        rain: 'Дощ',
+        snow: 'Snow',
+        glitch: 'Glitch',
+        vignette: 'Vignette'
+      };
+      return labels[effectType] || 'Ефект';
+    }
+
+    function renderEffectChipContent(chip) {
+      chip.innerHTML = '<span class="effect-chip-icon">✦</span><span>' + escapeHtml(effectChipLabel(chip.dataset.effectType || 'rain')) + '</span><span class="effect-chip-menu">⋮</span>';
+    }
+
+    function createEffectChip(data) {
+      var chip = document.createElement('span');
+      chip.className = 'effect-chip';
+      chip.contentEditable = 'false';
+      chip.draggable = true;
+      chip.tabIndex = 0;
+      chip.setAttribute('role', 'button');
+      chip.dataset.kind = 'effect';
+      chip.dataset.id = data.id || uid('inline_effect');
+      chip.dataset.effectType = data.effectType || 'rain';
+      chip.dataset.target = data.target || 'screen';
+      chip.dataset.intensity = String(data.intensity == null ? 50 : data.intensity);
+      chip.dataset.duration = String(data.duration == null ? 1 : data.duration);
+      if (data.characterId) chip.dataset.characterId = data.characterId;
+      if (data.fadeIn != null) chip.dataset.fadeIn = String(data.fadeIn);
+      if (data.fadeOut != null) chip.dataset.fadeOut = String(data.fadeOut);
+      if (data.rain) chip.dataset.rainOptions = JSON.stringify(data.rain);
+      if (data.snow) chip.dataset.snowOptions = JSON.stringify(data.snow);
+      renderEffectChipContent(chip);
+      return chip;
+    }
+
+    function closeEffectPopover() {
+      if (effectPopover) effectPopover.remove();
+      effectPopover = null;
+      if (activeEffectChip) activeEffectChip.classList.remove('is-selected');
+      activeEffectChip = null;
+      scheduleResize();
+    }
+
+    function positionEffectPopover(anchor) {
+      if (!effectPopover || !anchor) return;
+      var rect = anchor.getBoundingClientRect();
+      var width = Math.min(420, window.innerWidth - 32);
+      var left = Math.max(16, Math.min(window.innerWidth - width - 16, rect.right + 12));
+      var height = effectPopover.offsetHeight || 0;
+      var top = Math.max(16, Math.min(window.innerHeight - height - 16, rect.top - 16));
+      effectPopover.style.left = left + 'px';
+      effectPopover.style.top = top + 'px';
+    }
+
+    function effectDataFromChip(chip) {
+      return {
+        effectType: chip.dataset.effectType || 'rain',
+        target: chip.dataset.target || 'screen',
+        characterId: chip.dataset.characterId || '',
+        intensity: numberFromDataset(chip.dataset.intensity, 50),
+        duration: numberFromDataset(chip.dataset.duration, 1),
+        fadeIn: numberFromDataset(chip.dataset.fadeIn, 0),
+        fadeOut: numberFromDataset(chip.dataset.fadeOut, 0),
+        rain: jsonFromDataset(chip.dataset.rainOptions) || {},
+        snow: jsonFromDataset(chip.dataset.snowOptions) || {}
+      };
+    }
+
+    function setChipJson(chip, key, value) {
+      if (value && Object.keys(value).length) chip.dataset[key] = JSON.stringify(value);
+      else delete chip.dataset[key];
+    }
+
+    function applyEffectData(chip, data) {
+      chip.dataset.effectType = data.effectType || 'rain';
+      chip.dataset.target = data.target || 'screen';
+      chip.dataset.intensity = String(Math.max(0, Math.min(100, Number(data.intensity) || 0)));
+      chip.dataset.duration = String(Math.max(0, Number(data.duration) || 0));
+      chip.dataset.fadeIn = String(Math.max(0, Number(data.fadeIn) || 0));
+      chip.dataset.fadeOut = String(Math.max(0, Number(data.fadeOut) || 0));
+      if (data.characterId) chip.dataset.characterId = data.characterId;
+      else delete chip.dataset.characterId;
+      setChipJson(chip, 'rainOptions', data.rain || {});
+      setChipJson(chip, 'snowOptions', data.snow || {});
+      renderEffectChipContent(chip);
+    }
+
+    function weatherNumber(popover, field, fallback) {
+      var input = popover.querySelector('[data-effect-field="' + field + '"]');
+      return input ? numberFromDataset(input.value, fallback) : fallback;
+    }
+
+    function weatherText(popover, field, fallback) {
+      var input = popover.querySelector('[data-effect-field="' + field + '"]');
+      return input && input.value ? input.value : fallback;
+    }
+
+    function weatherChecked(popover, field) {
+      var input = popover.querySelector('[data-effect-field="' + field + '"]');
+      return Boolean(input && input.checked);
+    }
+
+    function collectEffectForm() {
+      if (!effectPopover) return null;
+      var type = selectedValue(effectPopover.querySelector('[data-effect-field="effectType"]'), 'rain');
+      var target = selectedValue(effectPopover.querySelector('[data-effect-field="target"]'), 'screen');
+      var data = {
+        effectType: type,
+        target: target,
+        characterId: weatherText(effectPopover, 'characterId', ''),
+        intensity: weatherNumber(effectPopover, 'intensity', 50),
+        duration: weatherNumber(effectPopover, 'duration', 1),
+        fadeIn: weatherNumber(effectPopover, 'fadeIn', 0),
+        fadeOut: weatherNumber(effectPopover, 'fadeOut', 0),
+        rain: {},
+        snow: {}
+      };
+      if (type === 'rain') {
+        data.rain = {
+          color: weatherText(effectPopover, 'rainColor', '#d2e8ff'),
+          opacity: weatherNumber(effectPopover, 'rainOpacity', 0.4),
+          density: weatherNumber(effectPopover, 'rainDensity', 100),
+          speed: weatherNumber(effectPopover, 'rainSpeed', 2),
+          wind: weatherNumber(effectPopover, 'rainWind', 0),
+          angle: weatherNumber(effectPopover, 'rainAngle', -12),
+          dropLength: weatherNumber(effectPopover, 'rainDropLength', 28),
+          dropWidth: weatherNumber(effectPopover, 'rainDropWidth', 2),
+          splash: weatherChecked(effectPopover, 'rainSplash'),
+          lightning: weatherChecked(effectPopover, 'rainLightning')
+        };
+      }
+      if (type === 'snow') {
+        var imageUris = weatherText(effectPopover, 'snowImageUris', '').split(',').map(function(item) { return item.trim(); }).filter(Boolean);
+        data.snow = {
+          color: weatherText(effectPopover, 'snowColor', '#ffffff'),
+          snowflakeCount: weatherNumber(effectPopover, 'snowflakeCount', 150),
+          radius: [weatherNumber(effectPopover, 'snowRadiusMin', 0.5), weatherNumber(effectPopover, 'snowRadiusMax', 3)],
+          speed: [weatherNumber(effectPopover, 'snowSpeedMin', 1), weatherNumber(effectPopover, 'snowSpeedMax', 3)],
+          wind: [weatherNumber(effectPopover, 'snowWindMin', -0.5), weatherNumber(effectPopover, 'snowWindMax', 2)],
+          changeFrequency: weatherNumber(effectPopover, 'snowChangeFrequency', 200),
+          rotationSpeed: [weatherNumber(effectPopover, 'snowRotationMin', -1), weatherNumber(effectPopover, 'snowRotationMax', 1)],
+          opacity: [weatherNumber(effectPopover, 'snowOpacityMin', 1), weatherNumber(effectPopover, 'snowOpacityMax', 1)],
+          enable3DRotation: weatherChecked(effectPopover, 'snowEnable3D'),
+          imageUris: imageUris
+        };
+      }
+      return data;
+    }
+
+    function effectOption(value, label, current) {
+      return option(value, label, current);
+    }
+
+    function openEffectPopover(chip) {
+      if (!chip) return;
+      closeSlashMenu();
+      closeBackgroundPopover();
+      closeCharacterPopover();
+      if (activeEffectChip === chip && effectPopover) {
+        closeEffectPopover();
+        return;
+      }
+      closeEffectPopover();
+      activeEffectChip = chip;
+      activeEffectChip.classList.add('is-selected');
+      var data = effectDataFromChip(chip);
+      var rain = data.rain || {};
+      var snow = data.snow || {};
+      var popover = document.createElement('div');
+      popover.className = 'effect-popover';
+      popover.innerHTML =
+        '<div class="effect-popover-grid">' +
+          '<label class="popover-label">Ефект</label>' +
+          '<select class="popover-control" data-effect-field="effectType">' +
+            effectOption('rain', 'Дощ', data.effectType) +
+            effectOption('snow', 'Сніг', data.effectType) +
+            effectOption('shake', 'Shake', data.effectType) +
+            effectOption('flash', 'Flash', data.effectType) +
+            effectOption('blur', 'Blur', data.effectType) +
+            effectOption('glitch', 'Glitch', data.effectType) +
+            effectOption('vignette', 'Vignette', data.effectType) +
+          '</select>' +
+          '<label class="popover-label">Ціль</label>' +
+          '<select class="popover-control" data-effect-field="target">' +
+            effectOption('screen', 'Весь екран', data.target) +
+            effectOption('background', 'Фон', data.target) +
+            effectOption('character', 'Персонаж', data.target) +
+          '</select>' +
+          '<label class="popover-label">Character ID</label>' +
+          '<input class="popover-control" data-effect-field="characterId" value="' + escapeHtml(data.characterId || '') + '" />' +
+          '<label class="popover-label">Інтенсивність</label>' +
+          '<input class="popover-control" data-effect-field="intensity" type="number" min="0" max="100" value="' + escapeHtml(String(data.intensity)) + '" />' +
+          '<label class="popover-label">Тривалість (с)</label>' +
+          '<input class="popover-control" data-effect-field="duration" type="number" min="0" step="0.1" value="' + escapeHtml(String(data.duration)) + '" />' +
+          '<label class="popover-label">Fade in (с)</label>' +
+          '<input class="popover-control" data-effect-field="fadeIn" type="number" min="0" step="0.1" value="' + escapeHtml(String(data.fadeIn || 0)) + '" />' +
+          '<label class="popover-label">Fade out (с)</label>' +
+          '<input class="popover-control" data-effect-field="fadeOut" type="number" min="0" step="0.1" value="' + escapeHtml(String(data.fadeOut || 0)) + '" />' +
+        '</div>' +
+        '<div class="effect-options" data-effect-section="rain">' +
+          '<div class="effect-section-title">Rain options</div>' +
+          '<div class="effect-popover-grid">' +
+            '<label class="popover-label">Color</label><input class="popover-control" data-effect-field="rainColor" value="' + escapeHtml(rain.color || '#d2e8ff') + '" />' +
+            '<label class="popover-label">Opacity</label><input class="popover-control" data-effect-field="rainOpacity" type="number" min="0" max="1" step="0.05" value="' + escapeHtml(String(rain.opacity ?? 0.4)) + '" />' +
+            '<label class="popover-label">Density</label><input class="popover-control" data-effect-field="rainDensity" type="number" min="0" value="' + escapeHtml(String(rain.density ?? 100)) + '" />' +
+            '<label class="popover-label">Speed</label><input class="popover-control" data-effect-field="rainSpeed" type="number" min="0" step="0.1" value="' + escapeHtml(String(rain.speed ?? 2)) + '" />' +
+            '<label class="popover-label">Wind</label><input class="popover-control" data-effect-field="rainWind" type="number" step="1" value="' + escapeHtml(String(rain.wind ?? 0)) + '" />' +
+            '<label class="popover-label">Angle</label><input class="popover-control" data-effect-field="rainAngle" type="number" step="1" value="' + escapeHtml(String(rain.angle ?? -12)) + '" />' +
+            '<label class="popover-label">Drop length</label><input class="popover-control" data-effect-field="rainDropLength" type="number" min="1" value="' + escapeHtml(String(rain.dropLength ?? 28)) + '" />' +
+            '<label class="popover-label">Drop width</label><input class="popover-control" data-effect-field="rainDropWidth" type="number" min="1" step="0.5" value="' + escapeHtml(String(rain.dropWidth ?? 2)) + '" />' +
+          '</div>' +
+          '<label class="effect-checkbox"><input type="checkbox" data-effect-field="rainSplash"' + (rain.splash ? ' checked' : '') + ' /> Splash</label>' +
+          '<label class="effect-checkbox"><input type="checkbox" data-effect-field="rainLightning"' + (rain.lightning ? ' checked' : '') + ' /> Lightning</label>' +
+        '</div>' +
+        '<div class="effect-options" data-effect-section="snow">' +
+          '<div class="effect-section-title">React Snowfall options</div>' +
+          '<div class="effect-popover-grid">' +
+            '<label class="popover-label">Color</label><input class="popover-control" data-effect-field="snowColor" value="' + escapeHtml(snow.color || '#ffffff') + '" />' +
+            '<label class="popover-label">Count</label><input class="popover-control" data-effect-field="snowflakeCount" type="number" min="0" value="' + escapeHtml(String(snow.snowflakeCount ?? 150)) + '" />' +
+            '<label class="popover-label">Radius min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowRadiusMin" type="number" step="0.1" value="' + escapeHtml(String((snow.radius && snow.radius[0]) ?? 0.5)) + '" /><input class="popover-control" data-effect-field="snowRadiusMax" type="number" step="0.1" value="' + escapeHtml(String((snow.radius && snow.radius[1]) ?? 3)) + '" /></div>' +
+            '<label class="popover-label">Speed min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowSpeedMin" type="number" step="0.1" value="' + escapeHtml(String((snow.speed && snow.speed[0]) ?? 1)) + '" /><input class="popover-control" data-effect-field="snowSpeedMax" type="number" step="0.1" value="' + escapeHtml(String((snow.speed && snow.speed[1]) ?? 3)) + '" /></div>' +
+            '<label class="popover-label">Wind min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowWindMin" type="number" step="0.1" value="' + escapeHtml(String((snow.wind && snow.wind[0]) ?? -0.5)) + '" /><input class="popover-control" data-effect-field="snowWindMax" type="number" step="0.1" value="' + escapeHtml(String((snow.wind && snow.wind[1]) ?? 2)) + '" /></div>' +
+            '<label class="popover-label">Change frequency</label><input class="popover-control" data-effect-field="snowChangeFrequency" type="number" min="1" value="' + escapeHtml(String(snow.changeFrequency ?? 200)) + '" />' +
+            '<label class="popover-label">Rotation min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowRotationMin" type="number" step="0.1" value="' + escapeHtml(String((snow.rotationSpeed && snow.rotationSpeed[0]) ?? -1)) + '" /><input class="popover-control" data-effect-field="snowRotationMax" type="number" step="0.1" value="' + escapeHtml(String((snow.rotationSpeed && snow.rotationSpeed[1]) ?? 1)) + '" /></div>' +
+            '<label class="popover-label">Opacity min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowOpacityMin" type="number" min="0" max="1" step="0.05" value="' + escapeHtml(String((snow.opacity && snow.opacity[0]) ?? 1)) + '" /><input class="popover-control" data-effect-field="snowOpacityMax" type="number" min="0" max="1" step="0.05" value="' + escapeHtml(String((snow.opacity && snow.opacity[1]) ?? 1)) + '" /></div>' +
+            '<label class="popover-label">Image URIs</label><input class="popover-control" data-effect-field="snowImageUris" value="' + escapeHtml((snow.imageUris || []).join(', ')) + '" />' +
+          '</div>' +
+          '<label class="effect-checkbox"><input type="checkbox" data-effect-field="snowEnable3D"' + (snow.enable3DRotation ? ' checked' : '') + ' /> Enable 3D rotation</label>' +
+        '</div>' +
+        '<div class="popover-footer"><button type="button" class="popover-button" data-action="reset-effect">Скинути</button><button type="button" class="popover-button primary" data-action="save-effect">Зберегти</button></div>';
+      document.body.appendChild(popover);
+      effectPopover = popover;
+      updateEffectSections();
+      positionEffectPopover(chip);
+      scheduleResize();
+    }
+
+    function updateEffectSections() {
+      if (!effectPopover) return;
+      var type = selectedValue(effectPopover.querySelector('[data-effect-field="effectType"]'), 'rain');
+      Array.prototype.slice.call(effectPopover.querySelectorAll('[data-effect-section]')).forEach(function(section) {
+        section.classList.toggle('hidden', section.dataset.effectSection !== type);
+      });
     }
 
     function findCharacterById(id) {
@@ -231,6 +548,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var character = findCharacterById(token && token.dataset.characterId);
       if (!character) return;
       closeBackgroundPopover();
+      closeEffectPopover();
       closeCharacterPopover();
       activeCharacterToken = token;
       var popover = document.createElement('div');
@@ -408,6 +726,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         closeBackgroundPopover();
         return;
       }
+      closeEffectPopover();
       closeBackgroundPopover();
       activeBackgroundBlock = block;
       activeBackgroundBlock.classList.add('is-editing', 'is-selected');
@@ -630,11 +949,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         var originalDialogue = originalBlockForNode(node);
         var speaker = node.dataset.speaker || '';
         var badge = node.querySelector('.speaker-token') || node.querySelector('.dialogue-badge');
-        var text = textWithoutBadge(node, badge);
+        var dialogueParts = serializeInlineParts(node);
+        var text = hasEffectPart(dialogueParts) ? inlinePartsText(dialogueParts) : textWithoutBadge(node, badge);
         var characterId = node.dataset.characterId || (badge && badge.dataset.characterId) || null;
         var character = findCharacterById(characterId);
         if (originalDialogue && originalDialogue.kind === 'dialogue') {
-          return Object.assign({}, originalDialogue, {
+          var nextDialogue = Object.assign({}, originalDialogue, {
             id: node.dataset.id || originalDialogue.id,
             speakerName: character && character.name || speaker || originalDialogue.speakerName,
             characterId: characterId || originalDialogue.characterId || null,
@@ -643,8 +963,11 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
             openCharacterControls: false,
             text: text
           });
+          if (hasEffectPart(dialogueParts)) nextDialogue.parts = dialogueParts;
+          else delete nextDialogue.parts;
+          return nextDialogue;
         }
-        return {
+        var newDialogue = {
           id: node.dataset.id || uid('doc_dialogue'),
           kind: 'dialogue',
           speakerName: character && character.name || speaker,
@@ -654,19 +977,28 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           openCharacterControls: false,
           text: text
         };
+        if (hasEffectPart(dialogueParts)) newDialogue.parts = dialogueParts;
+        return newDialogue;
       }
       var originalText = originalBlockForNode(node);
+      var textParts = serializeInlineParts(node);
+      var content = hasEffectPart(textParts) ? inlinePartsText(textParts) : textOf(node);
       if (originalText && originalText.kind === 'text') {
-        return Object.assign({}, originalText, {
+        var nextText = Object.assign({}, originalText, {
           id: node.dataset.id || originalText.id,
-          content: textOf(node)
+          content: content
         });
+        if (hasEffectPart(textParts)) nextText.parts = textParts;
+        else delete nextText.parts;
+        return nextText;
       }
-      return {
+      var newText = {
         id: node.dataset.id || uid('doc_text'),
         kind: 'text',
-        content: textOf(node)
+        content: content
       };
+      if (hasEffectPart(textParts)) newText.parts = textParts;
+      return newText;
     }
 
     function buildScenePayload() {
@@ -674,10 +1006,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         .map(serializeBlock)
         .filter(function(block) {
           if (block.kind !== 'text') return true;
-          return block.content.trim() !== '' || editor.children.length === 1;
+          return block.content.trim() !== '' || Boolean(block.parts && block.parts.length) || editor.children.length === 1;
         });
       var last = blocks[blocks.length - 1];
-      if (!last || last.kind !== 'text' || last.content.trim() !== '') {
+      if (!last || last.kind !== 'text' || last.content.trim() !== '' || Boolean(last.parts && last.parts.length)) {
         blocks.push({ id: uid('doc_text'), kind: 'text', content: '' });
       }
       return {
@@ -753,7 +1085,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       p.innerHTML = '<span class="speaker-token dialogue-badge" contenteditable="false"></span> ';
       configureSpeakerToken(p.querySelector('.speaker-token'), character, p.dataset.id);
       p.appendChild(document.createTextNode(text));
-      if (!options || options.moveCaret !== false) moveCaretToEnd(p);
+      if (!options || options.moveCaret !== false) {
+        if (text && text.length) moveCaretToEnd(p);
+        else moveCaretAfterSpeakerToken(p);
+      }
       if (shouldOpenControls) {
         renderCharacterPopover(p.querySelector('.speaker-token'));
         if (options && options.focusName) {
@@ -764,6 +1099,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
               nameInput.select();
             }
           }, 0);
+        } else if (!options || options.keepEditorFocus !== false) {
+          editor.focus();
         }
       }
     }
@@ -809,6 +1146,27 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
+    }
+
+    function moveCaretAfterSpeakerToken(element) {
+      var token = element && element.querySelector ? element.querySelector('.speaker-token') : null;
+      if (!token) {
+        moveCaretToEnd(element);
+        return;
+      }
+      var afterToken = token.nextSibling;
+      if (!afterToken || afterToken.nodeType !== Node.TEXT_NODE) {
+        afterToken = document.createTextNode(' ');
+        token.parentNode.insertBefore(afterToken, token.nextSibling);
+      }
+      if (!afterToken.textContent) afterToken.textContent = ' ';
+      var range = document.createRange();
+      range.setStart(afterToken, afterToken.textContent.length);
+      range.collapse(true);
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      editor.focus();
     }
 
     function currentSlashQuery() {
@@ -868,10 +1226,154 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     }
 
     function removeSlashToken(p) {
-      var value = textOf(p);
-      var slash = value.lastIndexOf('/');
-      var next = slash >= 0 ? value.slice(0, slash).trimEnd() : value;
-      p.textContent = next;
+      var children = Array.prototype.slice.call(p.childNodes).reverse();
+      for (var index = 0; index < children.length; index += 1) {
+        var child = children[index];
+        if (child.nodeType !== Node.TEXT_NODE) continue;
+        var value = child.textContent || '';
+        var slash = value.lastIndexOf('/');
+        if (slash < 0) continue;
+        child.textContent = value.slice(0, slash).trimEnd();
+        return child;
+      }
+      var fallback = textOf(p);
+      var fallbackSlash = fallback.lastIndexOf('/');
+      p.textContent = fallbackSlash >= 0 ? fallback.slice(0, fallbackSlash).trimEnd() : fallback;
+      return null;
+    }
+
+    function insertEffectChipInParagraph(p, anchorNode) {
+      var chip = createEffectChip({
+        effectType: 'rain',
+        target: 'screen',
+        intensity: 50,
+        duration: 1,
+        fadeIn: 0,
+        fadeOut: 0
+      });
+      var spacer = document.createTextNode(' ');
+      var reference = anchorNode && anchorNode.parentNode === p ? anchorNode.nextSibling : null;
+      var needsLeadingSpace = anchorNode && anchorNode.textContent && !/\\s$/.test(anchorNode.textContent);
+      if (needsLeadingSpace) p.insertBefore(document.createTextNode(' '), reference);
+      p.insertBefore(chip, reference);
+      p.insertBefore(spacer, reference);
+      var range = document.createRange();
+      range.setStart(spacer, spacer.textContent.length);
+      range.collapse(true);
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      editor.focus();
+      return chip;
+    }
+
+    function selectedEffectChip() {
+      if (activeEffectChip && editor.contains(activeEffectChip)) return activeEffectChip;
+      var active = document.activeElement;
+      if (active && active.closest) {
+        var focused = active.closest('.effect-chip');
+        if (focused && editor.contains(focused)) return focused;
+      }
+      var selection = window.getSelection();
+      if (!selection || !selection.anchorNode) return null;
+      var node = selection.anchorNode.nodeType === Node.ELEMENT_NODE
+        ? selection.anchorNode
+        : selection.anchorNode.parentNode;
+      return node && node.closest ? node.closest('.effect-chip') : null;
+    }
+
+    function focusEffectChip(chip) {
+      chip.focus();
+      activeEffectChip = chip;
+      chip.classList.add('is-selected');
+      if (effectPopover) positionEffectPopover(chip);
+    }
+
+    function moveEffectChip(chip, direction) {
+      if (!chip || !chip.parentNode) return false;
+      var parent = chip.parentNode;
+      var moved = false;
+      if (direction < 0) {
+        var previous = chip.previousSibling;
+        if (previous && previous.nodeType === Node.TEXT_NODE && previous.textContent) {
+          var value = previous.textContent;
+          var movedChar = value.slice(-1);
+          previous.textContent = value.slice(0, -1);
+          var after = chip.nextSibling;
+          if (after && after.nodeType === Node.TEXT_NODE) after.textContent = movedChar + after.textContent;
+          else parent.insertBefore(document.createTextNode(movedChar), chip.nextSibling);
+          if (!previous.textContent) previous.remove();
+          moved = true;
+        } else if (previous) {
+          parent.insertBefore(chip, previous);
+          moved = true;
+        }
+      } else {
+        var next = chip.nextSibling;
+        if (next && next.nodeType === Node.TEXT_NODE && next.textContent) {
+          var nextValue = next.textContent;
+          var firstChar = nextValue.charAt(0);
+          next.textContent = nextValue.slice(1);
+          var before = chip.previousSibling;
+          if (before && before.nodeType === Node.TEXT_NODE) before.textContent += firstChar;
+          else parent.insertBefore(document.createTextNode(firstChar), chip);
+          if (!next.textContent) next.remove();
+          moved = true;
+        } else if (next) {
+          parent.insertBefore(next, chip);
+          moved = true;
+        }
+      }
+      if (!moved) return false;
+      focusEffectChip(chip);
+      scheduleResize();
+      saveNow();
+      return true;
+    }
+
+    function caretRangeFromPoint(x, y) {
+      if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+      if (document.caretPositionFromPoint) {
+        var position = document.caretPositionFromPoint(x, y);
+        if (!position) return null;
+        var range = document.createRange();
+        range.setStart(position.offsetNode, position.offset);
+        range.collapse(true);
+        return range;
+      }
+      return null;
+    }
+
+    function insertDraggedEffectChip(chip, event) {
+      if (!chip || !editor.contains(chip)) return false;
+      var target = event.target && event.target.closest ? event.target.closest('.effect-chip') : null;
+      if (target && target !== chip && editor.contains(target)) {
+        var rect = target.getBoundingClientRect();
+        if (event.clientX < rect.left + rect.width / 2) target.parentNode.insertBefore(chip, target);
+        else target.parentNode.insertBefore(chip, target.nextSibling);
+        focusEffectChip(chip);
+        scheduleResize();
+        saveNow();
+        return true;
+      }
+      var range = caretRangeFromPoint(event.clientX, event.clientY);
+      if (!range) return false;
+      var container = range.startContainer;
+      var parent = container.nodeType === Node.ELEMENT_NODE ? container : container.parentNode;
+      if (!parent || !editor.contains(parent)) return false;
+      if (parent.closest && parent.closest('.effect-chip')) return false;
+      range.insertNode(chip);
+      range.setStartAfter(chip);
+      range.collapse(true);
+      var selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      focusEffectChip(chip);
+      scheduleResize();
+      saveNow();
+      return true;
     }
 
     function insertCommand(commandId) {
@@ -883,14 +1385,23 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         post({ type: 'createNextScene', scene: buildScenePayload(), characters: characters });
         return;
       }
-      removeSlashToken(p);
       if (commandId === 'character') {
+        removeSlashToken(p);
         createDialogueBlockFromCharacterName(p, 'Character', textOf(p), { forceOpenControls: true, focusName: true });
         closeSlashMenu();
         scheduleResize();
         saveNow();
         return;
       }
+      if (commandId === 'effect') {
+        var slashAnchor = removeSlashToken(p);
+        insertEffectChipInParagraph(p, slashAnchor);
+        closeSlashMenu();
+        scheduleResize();
+        saveNow();
+        return;
+      }
+      removeSlashToken(p);
       var block = document.createElement('div');
       block.className = commandId === 'background' ? 'void-block background-block' : 'void-block';
       block.contentEditable = 'false';
@@ -927,6 +1438,39 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (target.closest('.block-button')) event.preventDefault();
     });
 
+    editor.addEventListener('dragstart', function(event) {
+      var target = event.target;
+      if (!target || !target.closest) return;
+      var chip = target.closest('.effect-chip');
+      if (!chip) return;
+      draggedEffectChip = chip;
+      chip.classList.add('is-dragging');
+      closeEffectPopover();
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', chip.dataset.id || 'effect');
+      }
+    });
+
+    editor.addEventListener('dragover', function(event) {
+      if (!draggedEffectChip) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    });
+
+    editor.addEventListener('drop', function(event) {
+      if (!draggedEffectChip) return;
+      event.preventDefault();
+      insertDraggedEffectChip(draggedEffectChip, event);
+      draggedEffectChip.classList.remove('is-dragging');
+      draggedEffectChip = null;
+    });
+
+    editor.addEventListener('dragend', function() {
+      if (draggedEffectChip) draggedEffectChip.classList.remove('is-dragging');
+      draggedEffectChip = null;
+    });
+
     editor.addEventListener('click', function(event) {
       var target = event.target;
       if (!target || !target.closest) return;
@@ -934,6 +1478,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (token) {
         event.preventDefault();
         renderCharacterPopover(token);
+        return;
+      }
+      var effectChip = target.closest('.effect-chip');
+      if (effectChip) {
+        event.preventDefault();
+        openEffectPopover(effectChip);
         return;
       }
       var button = target.closest('[data-action]');
@@ -959,6 +1509,38 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     });
 
     document.addEventListener('click', function(event) {
+      if (effectPopover) {
+        var effectTarget = event.target;
+        if (effectTarget && effectTarget.closest && effectTarget.closest('.effect-popover')) {
+          var effectActionButton = effectTarget.closest('[data-action]');
+          if (!effectActionButton) return;
+          var effectAction = effectActionButton.dataset.action;
+          if (effectAction === 'reset-effect' && activeEffectChip) {
+            applyEffectData(activeEffectChip, {
+              effectType: 'rain',
+              target: 'screen',
+              intensity: 50,
+              duration: 1,
+              fadeIn: 0,
+              fadeOut: 0,
+              rain: {},
+              snow: {}
+            });
+            saveNow();
+            closeEffectPopover();
+            return;
+          }
+          if (effectAction === 'save-effect' && activeEffectChip) {
+            applyEffectData(activeEffectChip, collectEffectForm());
+            saveNow();
+            closeEffectPopover();
+            return;
+          }
+          return;
+        }
+        if (effectTarget && effectTarget.closest && effectTarget.closest('.effect-chip')) return;
+        closeEffectPopover();
+      }
       if (characterPopover) {
         var characterTarget = event.target;
         if (characterTarget && characterTarget.closest && characterTarget.closest('.character-popover')) {
@@ -1041,6 +1623,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     });
 
     document.addEventListener('change', function(event) {
+      if (effectPopover && effectPopover.contains(event.target)) {
+        updateEffectSections();
+        return;
+      }
       if (characterPopover && characterPopover.contains(event.target)) {
         var spriteUploadInput = event.target;
         if (!spriteUploadInput || !spriteUploadInput.classList || !spriteUploadInput.classList.contains('character-sprite-file')) return;
@@ -1099,6 +1685,14 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     });
 
     document.addEventListener('keydown', function(event) {
+      if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        var chipToMove = selectedEffectChip();
+        if (chipToMove && editor.contains(chipToMove)) {
+          event.preventDefault();
+          moveEffectChip(chipToMove, event.key === 'ArrowLeft' ? -1 : 1);
+          return;
+        }
+      }
       if (event.key === 'Escape' && backgroundPopover) {
         event.preventDefault();
         closeBackgroundPopover();
@@ -1106,6 +1700,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (event.key === 'Escape' && characterPopover) {
         event.preventDefault();
         closeCharacterPopover();
+      }
+      if (event.key === 'Escape' && effectPopover) {
+        event.preventDefault();
+        closeEffectPopover();
       }
       var target = event.target;
       if (target && target.classList && target.classList.contains('speaker-token') && (event.key === 'Enter' || event.key === ' ')) {
@@ -1117,6 +1715,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     window.addEventListener('resize', function() {
       if (activeBackgroundBlock) positionBackgroundPopover(activeBackgroundBlock);
       if (activeCharacterToken) positionCharacterPopover(activeCharacterToken);
+      if (activeEffectChip) positionEffectPopover(activeEffectChip);
     });
 
     window.addEventListener('message', function(event) {

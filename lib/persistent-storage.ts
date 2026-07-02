@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { STORAGE_KEYS } from '@/lib/storage-keys';
 
 type StorageLike = {
   getItem: (key: string) => string | null | Promise<string | null>;
@@ -38,7 +39,7 @@ function createSafeWebStorage(storage: Storage): StorageLike {
     getItem: (key) => {
       try {
         const value = storage.getItem(key);
-        if (key === 'vne_app_state' && value) {
+        if (key === STORAGE_KEYS.APP_STATE && value) {
           try {
             JSON.parse(value);
           } catch (error) {
@@ -57,7 +58,7 @@ function createSafeWebStorage(storage: Storage): StorageLike {
       try {
         storage.setItem(key, value);
       } catch (error) {
-        const compactedValue = key === 'vne_app_state' ? compactPersistedAppState(value) : null;
+        const compactedValue = key === STORAGE_KEYS.APP_STATE ? compactPersistedAppState(value) : null;
         if (compactedValue) {
           try {
             storage.setItem(key, compactedValue);

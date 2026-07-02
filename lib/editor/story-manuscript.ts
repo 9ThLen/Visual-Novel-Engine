@@ -82,13 +82,9 @@ function buildManuscriptBlock(step: SceneRecord['timeline'][number]): StoryManus
   };
 }
 
-export function createEmptyStoryManuscriptBlock(kind: 'narration' | 'dialogue' | 'choice_group'): StoryManuscriptBlock {
+export function createEmptyStoryManuscriptBlock(kind: 'narration' | 'choice_group'): StoryManuscriptBlock {
   if (kind === 'narration') {
     return buildManuscriptBlock(createBlockStep('text'));
-  }
-
-  if (kind === 'dialogue') {
-    return buildManuscriptBlock(createBlockStep('dialogue'));
   }
 
   return buildManuscriptBlock(createBlockStep('choice'));

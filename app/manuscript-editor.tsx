@@ -6,13 +6,12 @@ import { ScreenContainer } from '@/components/screen-container';
 import { StoryManuscriptScreen } from '@/components/editor/StoryManuscriptScreen';
 import { spacing, typeScale } from '@/lib/design-tokens';
 import { useI18n } from '@/hooks/use-i18n';
-import { useStoryActions, useStoryState } from '@/hooks/use-story-state';
 import { selectSceneRecordsForStory, selectStoryMetadata, useAppStore } from '@/stores/use-app-store';
 
 export default function ManuscriptEditorRoute() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
-  const { isLoaded } = useStoryState();
-  const { setCurrentStory } = useStoryActions();
+  const isLoaded = useAppStore((state) => state.isLoaded);
+  const setCurrentStory = useAppStore((state) => state.loadCurrentStory);
   const { t } = useI18n();
 
   const storyMetadata = useAppStore(

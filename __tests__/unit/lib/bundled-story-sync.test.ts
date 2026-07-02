@@ -1,4 +1,7 @@
-import { shouldUpsertBundledStory } from '@/lib/bundled-story-sync';
+import {
+  shouldUpsertBundledStory,
+} from '@/lib/bundled-story-sync';
+import { createBundledStorySyncPayload } from '@/lib/bundled-story-upsert';
 import type { Story } from '@/lib/scene-operations';
 
 const bundledStory: Story = {
@@ -27,7 +30,6 @@ describe('shouldUpsertBundledStory', () => {
       shouldUpsertBundledStory(
         {
           storiesMetadata: [],
-          scenesByStory: {},
           sceneRecordsByStory: {},
         },
         bundledStory,
@@ -40,13 +42,6 @@ describe('shouldUpsertBundledStory', () => {
       shouldUpsertBundledStory(
         {
           storiesMetadata: [{ id: bundledStory.id }],
-          scenesByStory: {
-            [bundledStory.id]: {
-              scene_1: {
-                musicUri: null,
-              },
-            },
-          },
           sceneRecordsByStory: {
             [bundledStory.id]: {
               scene_1: {
@@ -98,7 +93,6 @@ describe('shouldUpsertBundledStory', () => {
       shouldUpsertBundledStory(
         {
           storiesMetadata: [{ id: bundledStory.id }],
-          scenesByStory: {},
           sceneRecordsByStory: {
             [bundledStory.id]: {
               scene_1: {
@@ -156,7 +150,6 @@ describe('shouldUpsertBundledStory', () => {
       shouldUpsertBundledStory(
         {
           storiesMetadata: [{ id: bundledStory.id }],
-          scenesByStory: {},
           sceneRecordsByStory: {
             [bundledStory.id]: {
               scene_1: {
@@ -214,5 +207,23 @@ describe('shouldUpsertBundledStory', () => {
         bundledStory,
       ),
     ).toBe(false);
+  });
+});
+
+describe('createBundledStorySyncPayload', () => {
+  it('builds canonical metadata and scene records for bundled stories', () => {
+    const payload = createBundledStorySyncPayload(bundledStory);
+
+    expect(payload.metadata).toMatchObject({
+      id: bundledStory.id,
+      title: bundledStory.title,
+      startSceneId: bundledStory.startSceneId,
+      sceneCount: 1,
+    });
+    expect(payload.sceneRecords.scene_1).toMatchObject({
+      id: 'scene_1',
+      storyId: bundledStory.id,
+      isStart: true,
+    });
   });
 });

@@ -217,6 +217,91 @@ describe('useSceneExecutor', () => {
     });
   });
 
+  it('passes effect intensity, target, fade, and weather options into active effects', async () => {
+    const timeline: TimelineStep[] = [
+      {
+        id: 'effect-rain',
+        blockType: 'effect',
+        data: {
+          effectType: 'rain',
+          target: 'background',
+          characterId: 'char-masha',
+          intensity: 72,
+          duration: 4,
+          fadeIn: 0.5,
+          fadeOut: 0.75,
+          rain: {
+            color: '#9fd7ff',
+            opacity: 0.6,
+            density: 120,
+            speed: 2.4,
+            wind: 12,
+            angle: -10,
+            dropLength: 32,
+            dropWidth: 2,
+            splash: true,
+            lightning: true,
+          },
+        },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+      {
+        id: 'effect-snow',
+        blockType: 'effect',
+        data: {
+          effectType: 'snow',
+          target: 'screen',
+          intensity: 35,
+          duration: 3,
+          snow: {
+            color: '#ffffff',
+            snowflakeCount: 90,
+            radius: [0.5, 2.5],
+            speed: [0.6, 1.8],
+            wind: [-0.5, 1],
+            changeFrequency: 160,
+            rotationSpeed: [-1, 1],
+            opacity: [0.5, 0.9],
+            enable3DRotation: true,
+            imageUris: ['file://flake.png'],
+          },
+        },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.sceneState.activeEffects).toHaveLength(2);
+      expect(result.current.sceneState.activeEffects[0]).toMatchObject({
+        effectType: 'rain',
+        target: 'background',
+        characterId: 'char-masha',
+        intensity: 72,
+        fadeIn: 0.5,
+        fadeOut: 0.75,
+        rain: {
+          density: 120,
+          splash: true,
+          lightning: true,
+        },
+      });
+      expect(result.current.sceneState.activeEffects[1]).toMatchObject({
+        effectType: 'snow',
+        target: 'screen',
+        intensity: 35,
+        snow: {
+          snowflakeCount: 90,
+          enable3DRotation: true,
+          imageUris: ['file://flake.png'],
+        },
+      });
+    });
+  });
+
   it('applies character action steps without replaying show semantics for sprite and move changes', async () => {
     const timeline: TimelineStep[] = [
       {
@@ -296,6 +381,51 @@ describe('useSceneExecutor', () => {
       expect(result.current.sceneState.activeSpeakerCharacterId).toBe('char-masha');
       expect(result.current.sceneState.activeSpeakerFocusScale).toBe(1.08);
       expect(result.current.sceneState.dimNonSpeakerCharacters).toBe(true);
+    });
+  });
+
+  it('limits dialogue history to the most recent 500 entries', async () => {
+    const timeline: TimelineStep[] = Array.from({ length: 501 }, (_, index) => ({
+      id: `dialogue-${index}`,
+      blockType: 'dialogue',
+      data: {
+        currentEntryIndex: 0,
+        entries: [
+          {
+            id: `entry-${index}`,
+            characterId: 'narrator',
+            speakerName: 'Narrator',
+            text: `Line ${index}`,
+          },
+        ],
+      },
+      collapsed: false,
+      enabled: true,
+    } as TimelineStep));
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.sceneState.dialogueHistory).toHaveLength(1);
+    });
+
+    for (let index = 1; index < 501; index++) {
+      act(() => {
+        result.current.advance();
+      });
+      act(() => {
+        result.current.advance();
+      });
+    }
+
+    await waitFor(() => {
+      expect(result.current.sceneState.dialogueHistory).toHaveLength(500);
+      expect(result.current.sceneState.dialogueHistory[0]).toMatchObject({
+        text: 'Line 1',
+      });
+      expect(result.current.sceneState.dialogueHistory[499]).toMatchObject({
+        text: 'Line 500',
+      });
     });
   });
 });

@@ -5,7 +5,6 @@ import { ScreenContainer } from '@/components/screen-container';
 import { StoryReaderResponsive } from '@/components/story-reader-responsive';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { ReaderMenu } from '@/components/ReaderMenu';
-import { useStoryState } from '@/hooks/use-story-state';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import type { PlaybackState, SceneState } from '@/lib/engine/runtime-types';
@@ -17,6 +16,10 @@ import { buttonFeedback } from '@/lib/ui-feedback';
 import { parseResumeExisting } from '@/lib/reader-launch';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getTimelineInteractiveObjects } from '@/lib/reader-runtime';
+import { normalizeUserSettings } from '@/lib/user-settings';
+import { createInMemorySceneAccess } from '@/lib/scene-access';
+import { getReaderSceneRecordForNavigation } from '@/lib/reader-scene-cache';
+import { useAppStore } from '@/stores/use-app-store';
 
 function useReaderRouteParams(): { storyId: string | null; resumeExisting: boolean } {
   const { storyId, resume } = useLocalSearchParams();
@@ -30,7 +33,8 @@ export default function ReaderScreen() {
   const router = useRouter();
   const colors = useColors();
   const { storyId, resumeExisting } = useReaderRouteParams();
-  const { settings, sceneRecordsByStory } = useStoryState();
+  const settings = useAppStore((s) => normalizeUserSettings(s.settings));
+  const hydrateReaderSceneWindow = useAppStore((s) => s.hydrateReaderSceneWindow);
   const [showMenu, setShowMenu] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [readerSceneState, setReaderSceneState] = useState<SceneState | null>(null);
@@ -57,9 +61,18 @@ export default function ReaderScreen() {
     setReaderSceneState(null);
   }, [playbackState?.currentSceneId]);
 
-  const navigateToScene = useCallback((sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
+  const navigateToScene = useCallback(async (sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
     if (!story || !playbackState) return;
-    if (!sceneRecordsByStory[story.id]?.[sceneId]) {
+    await hydrateReaderSceneWindow(story.id, sceneId);
+    const appState = useAppStore.getState();
+    const sceneAccess = createInMemorySceneAccess(appState);
+    const targetSceneRecord = getReaderSceneRecordForNavigation(
+      sceneAccess,
+      story.id,
+      playbackState.currentSceneId,
+      sceneId,
+    );
+    if (!targetSceneRecord) {
       if (__DEV__) {
         console.warn('[ReaderScreen] navigateToScene: target scene not found', sceneId);
       }
@@ -73,7 +86,7 @@ export default function ReaderScreen() {
       choicesMade: choicesMade || playbackState?.choicesMade || [],
     };
     updatePlaybackState(updated);
-  }, [story, playbackState, sceneRecordsByStory, updatePlaybackState]);
+  }, [story, playbackState, hydrateReaderSceneWindow, updatePlaybackState]);
 
   const handleTransition = (targetSceneId: string | null) => {
     if (isLoading || !playbackState) return;
@@ -85,7 +98,7 @@ export default function ReaderScreen() {
     const updatedChoices = [...playbackState.choicesMade, transitionChoice];
 
     if (targetSceneId) {
-      navigateToScene(targetSceneId, updatedChoices);
+      void navigateToScene(targetSceneId, updatedChoices);
     } else {
       updatePlaybackState({
         ...playbackState,
@@ -106,7 +119,7 @@ export default function ReaderScreen() {
   }, []);
 
   const handleObjectSceneTransition = (sceneId: string) => {
-    navigateToScene(sceneId);
+    void navigateToScene(sceneId);
   };
 
   const handleObjectDialogue = (text: string, speaker?: string) => {

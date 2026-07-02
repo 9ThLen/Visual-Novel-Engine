@@ -2,15 +2,14 @@
  * components/editor/PlayMode.tsx - Play story scenes through the shared reader runtime.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
-import { useAppStore } from '@/stores/use-app-store';
+import { selectSceneRecordMapForStory, useAppStore } from '@/stores/use-app-store';
 import { Button } from '@/components/ui';
 import { StoryReaderResponsive } from '@/components/story-reader-responsive';
-import type { SceneRecord } from '@/lib/engine/types';
 import { getNextSceneId, getStartSceneId } from '@/lib/reader-runtime';
 import { useI18n } from '@/hooks/use-i18n';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -27,14 +26,10 @@ export function PlayMode({ storyId }: PlayModeProps) {
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
 
-  const sceneRecordsByStory = useAppStore((s) => s.sceneRecordsByStory);
+  const storyRecords = useAppStore(selectSceneRecordMapForStory(storyId));
   const storiesMetadata = useAppStore((s) => s.storiesMetadata);
   const settings = useAppStore((s) => s.settings);
 
-  const storyRecords: Record<string, SceneRecord> = useMemo(
-    () => sceneRecordsByStory[storyId] || {},
-    [sceneRecordsByStory, storyId],
-  );
   const metadata = storiesMetadata.find((story) => story.id === storyId);
   const startSceneId = getStartSceneId(storyRecords, metadata?.startSceneId);
 
