@@ -42,21 +42,28 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       saveTimer = window.setTimeout(saveNow, 260);
     }
 
+    function floatingUiBottom(selector) {
+      var element = document.querySelector(selector);
+      if (!element) return 0;
+      var rect = element.getBoundingClientRect();
+      return rect.bottom + window.scrollY + 28;
+    }
+
     function measureHeight() {
       var body = document.body;
       var root = document.documentElement;
-      var popover = document.querySelector('.background-popover');
-      var popoverBottom = 0;
-      if (popover) {
-        var rect = popover.getBoundingClientRect();
-        popoverBottom = rect.bottom + window.scrollY + 28;
-      }
+      var floatingBottom = Math.max(
+        floatingUiBottom('.background-popover'),
+        floatingUiBottom('.character-popover'),
+        floatingUiBottom('.effect-popover'),
+        floatingUiBottom('.slash-menu:not(.hidden)')
+      );
       return Math.max(
         body ? body.scrollHeight : 0,
         body ? body.offsetHeight : 0,
         root ? root.scrollHeight : 0,
         root ? root.offsetHeight : 0,
-        popoverBottom
+        floatingBottom
       );
     }
 
@@ -1193,6 +1200,55 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       return command.id.toLowerCase().indexOf(q) >= 0 || command.title.toLowerCase().indexOf(q) >= 0;
     }
 
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function isCompactViewport() {
+      return window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
+    }
+
+    function positionSlashMenu(state) {
+      if (!state || !menu || menu.classList.contains('hidden')) return;
+      if (isCompactViewport()) {
+        menu.style.left = '';
+        menu.style.top = '';
+        menu.style.width = '';
+        menu.style.maxHeight = '';
+        return;
+      }
+
+      var margin = 12;
+      var gap = 8;
+      var preferredWidth = 340;
+      var preferredMaxHeight = 296;
+      var minimumHeight = 160;
+      var viewportWidth = window.innerWidth || document.documentElement.clientWidth || preferredWidth;
+      var viewportHeight = window.innerHeight || document.documentElement.clientHeight || preferredMaxHeight;
+      var width = Math.min(preferredWidth, Math.max(240, viewportWidth - margin * 2));
+      var rect = state.rect || {};
+      var anchorTop = typeof rect.top === 'number' ? rect.top : (typeof rect.bottom === 'number' ? rect.bottom : 120);
+      var anchorBottom = typeof rect.bottom === 'number' ? rect.bottom : anchorTop;
+      var below = Math.max(0, viewportHeight - anchorBottom - gap - margin);
+      var above = Math.max(0, anchorTop - gap - margin);
+      var openUp = below < minimumHeight && above > below;
+      var available = openUp ? above : below;
+      var maxHeight = Math.max(96, Math.min(preferredMaxHeight, available || preferredMaxHeight));
+
+      menu.style.width = width + 'px';
+      menu.style.maxHeight = maxHeight + 'px';
+
+      var menuHeight = Math.min(menu.offsetHeight || maxHeight, maxHeight);
+      var maxLeft = Math.max(margin, viewportWidth - width - margin);
+      var left = clamp(typeof rect.left === 'number' ? rect.left : 80, margin, maxLeft);
+      var desiredTop = openUp ? anchorTop - menuHeight - gap : anchorBottom + gap;
+      var maxTop = Math.max(margin, viewportHeight - menuHeight - margin);
+      var top = clamp(desiredTop, margin, maxTop);
+
+      menu.style.left = left + 'px';
+      menu.style.top = top + 'px';
+    }
+
     function renderSlashMenu(state) {
       activeSlash = state;
       var items = commands.filter(function(command) { return commandMatches(command, state.query); });
@@ -1209,8 +1265,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         '</button>';
       }).join('');
       menu.classList.remove('hidden');
-      menu.style.left = Math.max(12, Math.min(window.innerWidth - 352, state.rect.left || 80)) + 'px';
-      menu.style.top = Math.max(12, (state.rect.bottom || 120) + 8) + 'px';
+      positionSlashMenu(state);
+      scheduleResize();
       Array.prototype.slice.call(menu.querySelectorAll('.slash-item')).forEach(function(button) {
         button.addEventListener('mousedown', function(event) {
           event.preventDefault();
@@ -1223,6 +1279,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       activeSlash = null;
       menu.classList.add('hidden');
       menu.innerHTML = '';
+      scheduleResize();
     }
 
     function removeSlashToken(p) {
@@ -1716,6 +1773,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (activeBackgroundBlock) positionBackgroundPopover(activeBackgroundBlock);
       if (activeCharacterToken) positionCharacterPopover(activeCharacterToken);
       if (activeEffectChip) positionEffectPopover(activeEffectChip);
+      if (activeSlash) positionSlashMenu(activeSlash);
+      scheduleResize();
     });
 
     window.addEventListener('message', function(event) {

@@ -436,7 +436,7 @@ export function createEmbeddedStyles(): string {
     }
     .slash-menu {
       position: fixed;
-      z-index: 20;
+      z-index: 60;
       width: 340px;
       max-height: 296px;
       overflow: auto;

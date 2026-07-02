@@ -20,6 +20,60 @@ export interface LibraryAsset {
   addedAt: number;
 }
 
+type ParsedDataUri = {
+  mimeType: string;
+  base64: string;
+  extension: string;
+  contentHash: string;
+};
+
+function getDataUriExtension(mimeType: string, type: AssetType): string {
+  const normalized = mimeType.toLowerCase();
+  if (normalized === 'image/jpeg') return 'jpg';
+  if (normalized === 'image/png') return 'png';
+  if (normalized === 'image/webp') return 'webp';
+  if (normalized === 'image/gif') return 'gif';
+  if (normalized === 'audio/mpeg') return 'mp3';
+  if (normalized === 'audio/wav') return 'wav';
+  if (normalized === 'audio/ogg') return 'ogg';
+  return type === 'image' ? 'png' : 'mp3';
+}
+
+function stableContentHash(value: string): string {
+  let hashA = 0x811c9dc5;
+  let hashB = 0x01000193;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value.charCodeAt(index);
+    hashA ^= char;
+    hashA = Math.imul(hashA, 0x01000193) >>> 0;
+    hashB = Math.imul(hashB ^ char, 0x85ebca6b) >>> 0;
+  }
+  return `${hashA.toString(16).padStart(8, '0')}${hashB.toString(16).padStart(8, '0')}`;
+}
+
+function parseBase64DataUri(uri: string, type: AssetType): ParsedDataUri | null {
+  const match = uri.match(/^data:([^;,]+)(?:;[^,]*)?;base64,([\s\S]+)$/i);
+  if (!match) return null;
+
+  const mimeType = match[1].toLowerCase();
+  if (type === 'image' && (!mimeType.startsWith('image/') || mimeType === 'image/svg+xml')) {
+    return null;
+  }
+  if (type === 'audio' && !mimeType.startsWith('audio/')) {
+    return null;
+  }
+
+  const base64 = match[2].replace(/\s/g, '');
+  if (!base64) return null;
+
+  return {
+    mimeType,
+    base64,
+    extension: getDataUriExtension(mimeType, type),
+    contentHash: stableContentHash(`${mimeType}:${base64}`),
+  };
+}
+
 /**
  * Get library asset by ID (pure function)
  */
@@ -77,6 +131,73 @@ export async function addAssetToLibraryPure(
   }
 
   if (uri.startsWith('assets/') || uri.startsWith('bundle://')) {
+    const asset: LibraryAsset = {
+      id: generateAssetId(),
+      type,
+      uri,
+      name: name || filename,
+      addedAt: Date.now(),
+    };
+    return { asset, assets: [...assets, asset] };
+  }
+
+  const parsedDataUri = uri.startsWith('data:') ? parseBase64DataUri(uri, type) : null;
+  if (parsedDataUri) {
+    if (!FileSystem.documentDirectory) {
+      const asset: LibraryAsset = {
+        id: generateAssetId(),
+        type,
+        uri,
+        name: name || filename,
+        addedAt: Date.now(),
+      };
+      return { asset, assets: [...assets, asset] };
+    }
+
+    const dirPath = `${FileSystem.documentDirectory}media-library/${type}s/`;
+    const targetPath = `${dirPath}${parsedDataUri.contentHash}.${parsedDataUri.extension}`;
+    const existingByTargetUri = assets.find((a) => a.uri === targetPath);
+    if (existingByTargetUri) {
+      return { asset: existingByTargetUri, assets };
+    }
+
+    try {
+      await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
+    } catch {
+    }
+
+    try {
+      const checkTarget = await FileSystem.getInfoAsync(targetPath);
+      if (checkTarget.exists) {
+        const asset: LibraryAsset = {
+          id: generateAssetId(),
+          type,
+          uri: targetPath,
+          name: name || filename,
+          addedAt: Date.now(),
+        };
+        return { asset, assets: [...assets, asset] };
+      }
+
+      await FileSystem.writeAsStringAsync(targetPath, parsedDataUri.base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const verifyInfo = await FileSystem.getInfoAsync(targetPath);
+      if (verifyInfo.exists && verifyInfo.size > 0) {
+        const asset: LibraryAsset = {
+          id: generateAssetId(),
+          type,
+          uri: targetPath,
+          name: name || filename,
+          addedAt: Date.now(),
+        };
+        return { asset, assets: [...assets, asset] };
+      }
+    } catch {
+    }
+  }
+
+  if (uri.startsWith('data:')) {
     const asset: LibraryAsset = {
       id: generateAssetId(),
       type,

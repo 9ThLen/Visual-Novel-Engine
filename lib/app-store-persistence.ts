@@ -27,14 +27,63 @@ export type AppStorePersistenceState = {
   mediaLibrary: LibraryAsset[];
 };
 
+export const MAX_DATA_URI_ASSET_BYTES = 256 * 1024;
+export const MAX_TOTAL_DATA_URI_BYTES = 1024 * 1024;
+
+function getBase64DataUriBytes(uri: string): number | null {
+  const match = uri.match(/^data:image\/([^;,]+)(?:;[^,]*)?;base64,([\s\S]+)$/i);
+  if (!match) return null;
+
+  const imageSubtype = match[1].toLowerCase();
+  if (imageSubtype === 'svg+xml') return null;
+
+  const base64 = match[2].replace(/\s/g, '');
+  if (!base64) return null;
+
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
 export function getPersistableMediaLibrary(assets: unknown): LibraryAsset[] {
   if (!Array.isArray(assets)) return [];
 
-  return assets.filter((asset): asset is LibraryAsset => {
-    if (!asset || typeof asset !== 'object') return false;
+  const candidates: Array<{ asset: LibraryAsset; dataUriBytes: number; index: number }> = [];
+
+  assets.forEach((asset, index) => {
+    if (!asset || typeof asset !== 'object') return;
     const candidate = asset as Partial<LibraryAsset>;
-    return typeof candidate.uri === 'string' && !candidate.uri.startsWith('data:');
+
+    if (typeof candidate.uri !== 'string') return;
+
+    if (candidate.uri.startsWith('data:')) {
+      const dataUriBytes = getBase64DataUriBytes(candidate.uri);
+      if (dataUriBytes === null || dataUriBytes > MAX_DATA_URI_ASSET_BYTES) return;
+      candidates.push({ asset: candidate as LibraryAsset, dataUriBytes, index });
+      return;
+    }
+
+    candidates.push({ asset: candidate as LibraryAsset, dataUriBytes: 0, index });
   });
+
+  let totalDataUriBytes = candidates.reduce((total, candidate) => total + candidate.dataUriBytes, 0);
+  if (totalDataUriBytes <= MAX_TOTAL_DATA_URI_BYTES) {
+    return candidates.map((candidate) => candidate.asset);
+  }
+
+  const removedIndexes = new Set<number>();
+  const dataCandidates = candidates
+    .filter((candidate) => candidate.dataUriBytes > 0)
+    .sort((a, b) => b.dataUriBytes - a.dataUriBytes);
+
+  for (const candidate of dataCandidates) {
+    if (totalDataUriBytes <= MAX_TOTAL_DATA_URI_BYTES) break;
+    totalDataUriBytes -= candidate.dataUriBytes;
+    removedIndexes.add(candidate.index);
+  }
+
+  return candidates
+    .filter((candidate) => !removedIndexes.has(candidate.index))
+    .map((candidate) => candidate.asset);
 }
 
 export function buildPersistedAppState(state: AppStorePersistenceState): AppStorePersistenceState {

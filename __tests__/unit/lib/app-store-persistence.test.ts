@@ -4,9 +4,17 @@ import {
   mergePersistedAppState,
   migratePersistedAppState,
   APP_STORE_PERSIST_VERSION,
+  MAX_DATA_URI_ASSET_BYTES,
+  MAX_TOTAL_DATA_URI_BYTES,
   type AppStorePersistenceState,
 } from '@/lib/app-store-persistence';
 import type { SceneRecord } from '@/lib/engine/types';
+import { resolveLibraryAssetUri } from '@/lib/media-library-service';
+
+function makeDataImageUri(decodedBytes: number): string {
+  const base64Length = Math.ceil((decodedBytes * 4) / 3);
+  return `data:image/png;base64,${'A'.repeat(base64Length)}`;
+}
 
 function makeSceneRecord(): SceneRecord {
   return {
@@ -99,14 +107,94 @@ function makeState(): AppStorePersistenceState {
 }
 
 describe('app store persistence helpers', () => {
-  it('filters inline data URIs from persisted media assets', () => {
+  it('persists file media assets and small inline image data uris', () => {
     expect(getPersistableMediaLibrary(makeState().mediaLibrary).map((asset) => asset.id)).toEqual([
       'image-file',
+      'image-data',
     ]);
 
     expect(buildPersistedAppState(makeState()).mediaLibrary.map((asset) => asset.id)).toEqual([
       'image-file',
+      'image-data',
     ]);
+  });
+
+  it('filters unsafe and oversized inline image data uris from persisted media assets', () => {
+    const persisted = getPersistableMediaLibrary([
+      {
+        id: 'small-image',
+        type: 'image',
+        uri: makeDataImageUri(MAX_DATA_URI_ASSET_BYTES),
+        name: 'Small image',
+        addedAt: 1,
+      },
+      {
+        id: 'large-image',
+        type: 'image',
+        uri: makeDataImageUri(MAX_DATA_URI_ASSET_BYTES + 1),
+        name: 'Large image',
+        addedAt: 1,
+      },
+      {
+        id: 'svg-image',
+        type: 'image',
+        uri: 'data:image/svg+xml;base64,PHN2Zy8+',
+        name: 'Svg image',
+        addedAt: 1,
+      },
+      {
+        id: 'audio-data',
+        type: 'audio',
+        uri: 'data:audio/mpeg;base64,QUJD',
+        name: 'Audio',
+        addedAt: 1,
+      },
+    ]).map((asset) => asset.id);
+
+    expect(persisted).toEqual(['small-image']);
+  });
+
+  it('drops largest inline image data uris until the total inline storage limit fits', () => {
+    const persisted = getPersistableMediaLibrary([
+      {
+        id: 'image-240',
+        type: 'image',
+        uri: makeDataImageUri(240 * 1024),
+        name: 'Image 240',
+        addedAt: 1,
+      },
+      {
+        id: 'image-230',
+        type: 'image',
+        uri: makeDataImageUri(230 * 1024),
+        name: 'Image 230',
+        addedAt: 1,
+      },
+      {
+        id: 'image-220',
+        type: 'image',
+        uri: makeDataImageUri(220 * 1024),
+        name: 'Image 220',
+        addedAt: 1,
+      },
+      {
+        id: 'image-210',
+        type: 'image',
+        uri: makeDataImageUri(210 * 1024),
+        name: 'Image 210',
+        addedAt: 1,
+      },
+      {
+        id: 'image-200',
+        type: 'image',
+        uri: makeDataImageUri(200 * 1024),
+        name: 'Image 200',
+        addedAt: 1,
+      },
+    ]).map((asset) => asset.id);
+
+    expect(MAX_TOTAL_DATA_URI_BYTES).toBe(1024 * 1024);
+    expect(persisted).toEqual(['image-230', 'image-220', 'image-210', 'image-200']);
   });
 
   it('returns current state when persisted payload is empty or invalid', () => {
@@ -154,7 +242,7 @@ describe('app store persistence helpers', () => {
     );
 
     expect(merged.storiesMetadata[0].characterAuthoringSchemaVersion).toBe(1);
-    expect(merged.mediaLibrary).toEqual([]);
+    expect(merged.mediaLibrary.map((asset) => asset.id)).toEqual(['inline']);
     expect(merged.characterLibraries['story-2'][0]).toMatchObject({
       color: expect.any(String),
       authoring: {
@@ -178,7 +266,7 @@ describe('app store persistence helpers', () => {
     ) as Partial<AppStorePersistenceState>;
 
     expect(APP_STORE_PERSIST_VERSION).toBe(2);
-    expect(migrated.mediaLibrary?.map((asset) => asset.id)).toEqual(['image-file']);
+    expect(migrated.mediaLibrary?.map((asset) => asset.id)).toEqual(['image-file', 'image-data']);
     expect(migrated.sceneRecordsByStory?.['story-1']?.['scene-1']).toBeTruthy();
     expect(migrated.storiesMetadata?.[0].characterAuthoringSchemaVersion).toBe(1);
   });
@@ -195,5 +283,39 @@ describe('app store persistence helpers', () => {
     expect(merged.mediaLibrary).toBe(currentState.mediaLibrary);
     expect(merged.characterLibraries).toBe(currentState.characterLibraries);
     expect(merged.sceneRecordsByStory).toBe(currentState.sceneRecordsByStory);
+  });
+
+  it('roundtrips a small uploaded background asset through persistence and rehydrate', () => {
+    const currentState = makeState();
+    const uploadedAsset = {
+      id: 'uploaded-background',
+      type: 'image' as const,
+      uri: makeDataImageUri(32),
+      name: 'Background',
+      addedAt: 2,
+    };
+    const stateWithUpload: AppStorePersistenceState = {
+      ...currentState,
+      mediaLibrary: [uploadedAsset],
+      sceneRecordsByStory: {
+        'story-1': {
+          'scene-1': {
+            ...makeSceneRecord(),
+            sceneState: {
+              ...makeSceneRecord().sceneState,
+              backgroundAssetId: uploadedAsset.id,
+            },
+          },
+        },
+      },
+    };
+
+    const persisted = buildPersistedAppState(stateWithUpload);
+    const rehydrated = mergePersistedAppState(persisted, currentState);
+    const backgroundAssetId =
+      rehydrated.sceneRecordsByStory['story-1']['scene-1'].sceneState.backgroundAssetId;
+
+    expect(backgroundAssetId).toBe(uploadedAsset.id);
+    expect(resolveLibraryAssetUri(backgroundAssetId, rehydrated.mediaLibrary)).toBe(uploadedAsset.uri);
   });
 });
