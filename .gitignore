@@ -73,6 +73,8 @@ Thumbs.db
 .webdev/
 .pnpm-store/
 D:/.pnpm-store/
+*pnpm-store*/
+_backup_graphify-out-before-plate-final-*/
 
 # Hermes & test artifacts
 .hermes/
