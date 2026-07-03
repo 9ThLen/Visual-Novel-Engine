@@ -29,6 +29,7 @@ function effectLabel(effectType: string): string {
     blur: 'Blur',
     rain: 'Дощ',
     snow: 'Snow',
+    fog: 'Fog',
     glitch: 'Glitch',
     vignette: 'Vignette',
   };

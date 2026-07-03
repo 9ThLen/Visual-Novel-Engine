@@ -26,7 +26,7 @@ export interface RuntimeChoiceOption {
   condition?: RuntimeCondition;
 }
 
-export type RuntimeEffectType = 'shake' | 'flash' | 'blur' | 'rain' | 'snow' | 'glitch' | 'vignette';
+export type RuntimeEffectType = 'shake' | 'flash' | 'blur' | 'rain' | 'snow' | 'fog' | 'glitch' | 'vignette';
 export type RuntimeMusicAction = 'play' | 'stop' | 'pause' | 'fade';
 export type RuntimeSoundAction = 'play' | 'stop';
 export type RuntimeCameraAction = 'zoom' | 'pan' | 'focus' | 'reset';

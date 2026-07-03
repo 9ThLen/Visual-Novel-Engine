@@ -3,7 +3,7 @@ import type { ActiveEffect, RuntimeEffectType } from './runtime-types';
 
 type AnyEffectType = EffectType | RuntimeEffectType;
 
-export const BLOCKING_EFFECT_TYPES = new Set<AnyEffectType>(['rain', 'snow', 'blur']);
+export const BLOCKING_EFFECT_TYPES = new Set<AnyEffectType>(['rain', 'snow', 'fog']);
 
 export function isBlockingEffectType(effectType: AnyEffectType): boolean {
   return BLOCKING_EFFECT_TYPES.has(effectType);

@@ -115,7 +115,7 @@ export type VariableNode = {
 export type EffectNode = {
   id: string;
   type: 'effect';
-  effectType: 'shake' | 'flash' | 'blur' | 'rain' | 'snow' | 'glitch' | 'vignette';
+  effectType: 'shake' | 'flash' | 'blur' | 'rain' | 'snow' | 'fog' | 'glitch' | 'vignette';
   target?: 'screen' | 'character' | 'background';
   characterId?: string;
   intensity?: number;

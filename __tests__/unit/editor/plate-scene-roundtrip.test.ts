@@ -326,7 +326,7 @@ describe('Plate scene serializer roundtrip', () => {
         },
       }), 'step_snow_middle'),
       withStepMeta(createEffectStep({
-        effectType: 'blur',
+        effectType: 'fog',
         target: 'screen',
         intensity: 65,
         duration: 8,
@@ -374,7 +374,7 @@ describe('Plate scene serializer roundtrip', () => {
       id: 'step_fog_dense',
       blockType: 'effect',
       data: {
-        effectType: 'blur',
+        effectType: 'fog',
         fog: {
           variant: 'dense',
         },

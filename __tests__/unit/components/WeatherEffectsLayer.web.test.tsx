@@ -42,7 +42,7 @@ describe('WeatherEffectsLayer.web', () => {
 
   it('renders fog variants through the react-weather-effects adapter', () => {
     render(<WeatherEffectsLayer effects={[snowEffect({
-      effectType: 'blur',
+      effectType: 'fog',
       snow: undefined,
       fog: { variant: 'dense' },
     })]} target="screen" />);

@@ -11,7 +11,7 @@ interface WeatherEffectsLayerProps {
 
 function strongestEffect(
   effects: ActiveEffect[],
-  type: 'rain' | 'snow' | 'blur',
+  type: 'rain' | 'snow' | 'fog',
   target: ActiveEffect['target'],
 ): ActiveEffect | null {
   return effects
@@ -22,7 +22,7 @@ function strongestEffect(
 export function WeatherEffectsLayer({ effects, target = 'screen' }: WeatherEffectsLayerProps) {
   const rain = strongestEffect(effects, 'rain', target);
   const snow = strongestEffect(effects, 'snow', target);
-  const fog = strongestEffect(effects, 'blur', target);
+  const fog = strongestEffect(effects, 'fog', target);
 
   if (!rain && !snow && !fog) return null;
 

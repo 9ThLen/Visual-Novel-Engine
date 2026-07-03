@@ -277,7 +277,7 @@ describe('useSceneExecutor', () => {
         id: 'effect-fog',
         blockType: 'effect',
         data: {
-          effectType: 'blur',
+          effectType: 'fog',
           target: 'screen',
           intensity: 40,
           duration: 8,
@@ -319,7 +319,7 @@ describe('useSceneExecutor', () => {
         },
       });
       expect(result.current.sceneState.activeEffects[2]).toMatchObject({
-        effectType: 'blur',
+        effectType: 'fog',
         target: 'screen',
         fog: {
           variant: 'dense',
@@ -527,11 +527,21 @@ describe('useSceneExecutor', () => {
 
   it('creates weather effect steps with visible default duration', () => {
     const rainStep = createEffectStep({ effectType: 'rain' });
+    const fogStep = createEffectStep({ effectType: 'fog' });
+    const blurStep = createEffectStep({ effectType: 'blur' });
     const shakeStep = createEffectStep();
 
     expect(rainStep.data).toMatchObject({
       effectType: 'rain',
       duration: 8,
+    });
+    expect(fogStep.data).toMatchObject({
+      effectType: 'fog',
+      duration: 8,
+    });
+    expect(blurStep.data).toMatchObject({
+      effectType: 'blur',
+      duration: 0.8,
     });
     expect(shakeStep.data).toMatchObject({
       effectType: 'shake',

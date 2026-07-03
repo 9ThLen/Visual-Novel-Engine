@@ -195,6 +195,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         blur: 'Blur',
         rain: 'Дощ',
         snow: 'Snow',
+        fog: 'Fog',
         glitch: 'Glitch',
         vignette: 'Vignette'
       };
@@ -202,7 +203,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     }
 
     function defaultEffectDuration(effectType) {
-      if (effectType === 'rain' || effectType === 'snow' || effectType === 'blur') return 8;
+      if (effectType === 'rain' || effectType === 'snow' || effectType === 'fog') return 8;
       if (effectType === 'flash') return 0.35;
       if (effectType === 'shake' || effectType === 'glitch' || effectType === 'vignette') return 0.8;
       return 1;
@@ -360,7 +361,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           imageUris: imageUris
         };
       }
-      if (type === 'blur') {
+      if (type === 'fog') {
         data.fog = {
           variant: selectedValue(effectPopover.querySelector('[data-effect-field="fogVariant"]'), 'light')
         };
@@ -396,6 +397,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           '<select class="popover-control" data-effect-field="effectType">' +
             effectOption('rain', 'Дощ', data.effectType) +
             effectOption('snow', 'Сніг', data.effectType) +
+            effectOption('fog', 'Fog', data.effectType) +
             effectOption('shake', 'Shake', data.effectType) +
             effectOption('flash', 'Flash', data.effectType) +
             effectOption('blur', 'Blur', data.effectType) +
@@ -455,7 +457,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           '</div>' +
           '<label class="effect-checkbox"><input type="checkbox" data-effect-field="snowEnable3D"' + (snow.enable3DRotation ? ' checked' : '') + ' /> Enable 3D rotation</label>' +
         '</div>' +
-        '<div class="effect-options" data-effect-section="blur">' +
+        '<div class="effect-options" data-effect-section="fog">' +
           '<div class="effect-section-title">Fog options</div>' +
           '<div class="effect-popover-grid">' +
             '<label class="popover-label">Preset</label><select class="popover-control" data-effect-field="fogVariant">' +

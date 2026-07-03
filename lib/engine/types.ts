@@ -193,7 +193,7 @@ export interface ChoiceBlockData {
   options: ChoiceOption[];
 }
 
-export type EffectType = 'shake' | 'flash' | 'blur' | 'rain' | 'snow' | 'glitch' | 'vignette';
+export type EffectType = 'shake' | 'flash' | 'blur' | 'rain' | 'snow' | 'fog' | 'glitch' | 'vignette';
 
 export interface EffectBlockData {
   effectType: EffectType;
