@@ -155,6 +155,9 @@ function timelineStepToSceneNode(step: TimelineStep, characters: Character[]): S
       characterId: data.characterId,
       intensity: data.intensity,
       durationMs: data.duration * 1000,
+      rain: data.rain,
+      snow: data.snow,
+      fog: data.fog,
     };
   }
 
@@ -299,6 +302,9 @@ function sceneNodeToTimelineStep(node: SceneNode, characters: Character[]): Time
       characterId: node.characterId,
       intensity: node.intensity ?? 50,
       duration: (node.durationMs ?? 500) / 1000,
+      rain: node.rain,
+      snow: node.snow,
+      fog: node.fog,
     })];
   }
 

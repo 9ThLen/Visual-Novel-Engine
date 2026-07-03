@@ -1,5 +1,5 @@
 import type { InteractiveObject } from '@/lib/interactive-types';
-import type { RainEffectOptions, SnowEffectOptions } from './effect-options';
+import type { FogEffectOptions, RainEffectOptions, SnowEffectOptions } from './effect-options';
 
 export type RuntimeConditionOperator =
   | '=='
@@ -76,6 +76,7 @@ export interface ActiveEffect {
   fadeOut?: number;
   rain?: RainEffectOptions;
   snow?: SnowEffectOptions;
+  fog?: FogEffectOptions;
   startTime: number;
   endTime: number;
 }

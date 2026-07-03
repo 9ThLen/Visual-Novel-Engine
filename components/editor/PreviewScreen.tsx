@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { StyleSheet, View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,22 +15,14 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { useReaderAssets } from '@/hooks/useReaderAssets';
-import { WeatherEffectsLayer } from '@/components/reader/WeatherEffectsLayer';
-import { VisualEffectsOverlay } from '@/components/reader/VisualEffectsOverlay';
+import { EffectsLayerStack, effectsForCharacter, effectsForTarget } from '@/components/reader/EffectsLayerStack';
+import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import type { ActiveEffect } from '@/lib/engine/runtime-types';
 
 function strongestIntensity(effects: ActiveEffect[], effectType: ActiveEffect['effectType']): number {
   return effects
     .filter((effect) => effect.effectType === effectType)
     .reduce((max, effect) => Math.max(max, effect.intensity), 0);
-}
-
-function effectsForTarget(effects: ActiveEffect[], target: ActiveEffect['target']): ActiveEffect[] {
-  return effects.filter((effect) => (effect.target ?? 'screen') === target);
-}
-
-function effectsForCharacter(effects: ActiveEffect[], characterId: string): ActiveEffect[] {
-  return effects.filter((effect) => effect.characterId === characterId);
 }
 
 export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: string }) {
@@ -173,7 +165,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
 const surfaceContainer = colors['surface-container'] || colors.surface;
   const showChoices = !!sceneState.currentChoices;
   const camera = sceneState.cameraState;
-  const activeEffects = sceneState.activeEffects.filter((effect) => effect.endTime >= Date.now());
+  const activeEffects = useVisibleEffects(sceneState.activeEffects);
   const screenEffects = effectsForTarget(activeEffects, 'screen');
   const backgroundEffects = effectsForTarget(activeEffects, 'background');
   const characterEffects = effectsForTarget(activeEffects, 'character');
@@ -207,7 +199,7 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
         {backgroundSource ? (
           <Image
             source={backgroundSource}
-            style={[{ position: 'absolute', inset: 0 }, cameraTransform]}
+            style={[StyleSheet.absoluteFillObject, cameraTransform]}
             contentFit="cover"
             cachePolicy="memory-disk"
             transition={200}
@@ -221,42 +213,33 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
         )}
 
         {backgroundEffects.length > 0 ? (
-          <>
-            <VisualEffectsOverlay effects={backgroundEffects} colors={colors} target="background" />
-            <WeatherEffectsLayer effects={backgroundEffects} target="background" />
-          </>
+          <EffectsLayerStack effects={backgroundEffects} colors={colors} target="background" />
         ) : null}
 
-        <View pointerEvents="none" style={[{ position: 'absolute', inset: 0 }, cameraTransform]}>
+        <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, cameraTransform]}>
           {characterInstances.map((instance) => {
             const characterSpecificEffects = effectsForCharacter(characterEffects, instance.characterId);
             return (
               <CharacterDisplay
-                key={instance.id}
+                key={instance.characterId}
                 instance={instance}
-                spriteUri={getImageSourceUri(resolvedCharUris[instance.id])}
+                spriteUri={getImageSourceUri(resolvedCharUris[instance.characterId])}
                 position={instance.position}
-                isActiveSpeaker={sceneState.activeSpeakerCharacterId === instance.id}
+                isActiveSpeaker={sceneState.activeSpeakerCharacterId === instance.characterId}
                 dimmed={
                   sceneState.dimNonSpeakerCharacters === true
-                  && sceneState.activeSpeakerCharacterId !== instance.id
+                  && sceneState.activeSpeakerCharacterId !== instance.characterId
                 }
                 focusScale={sceneState.activeSpeakerFocusScale}
                 overlay={characterSpecificEffects.length > 0 ? (
-                  <>
-                    <VisualEffectsOverlay effects={characterSpecificEffects} colors={colors} target="character" />
-                    <WeatherEffectsLayer effects={characterSpecificEffects} target="character" />
-                  </>
+                  <EffectsLayerStack effects={characterSpecificEffects} colors={colors} target="character" />
                 ) : null}
               />
             );
           })}
         </View>
         {genericCharacterEffects.length > 0 ? (
-          <>
-            <VisualEffectsOverlay effects={genericCharacterEffects} colors={colors} target="character" />
-            <WeatherEffectsLayer effects={genericCharacterEffects} target="character" />
-          </>
+          <EffectsLayerStack effects={genericCharacterEffects} colors={colors} target="character" />
         ) : null}
 
         {(sceneState.interactiveObjects?.length ?? 0) > 0 ? (
@@ -271,9 +254,8 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
         ) : null}
 
         {screenEffects.length > 0 ? (
-          <View pointerEvents="none" style={{ position: 'absolute', inset: 0 }}>
-            <VisualEffectsOverlay effects={screenEffects} colors={colors} target="screen" />
-            <WeatherEffectsLayer effects={screenEffects} target="screen" />
+          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { zIndex: 30, elevation: 30 }]}>
+            <EffectsLayerStack effects={screenEffects} colors={colors} target="screen" />
           </View>
         ) : null}
       </View>

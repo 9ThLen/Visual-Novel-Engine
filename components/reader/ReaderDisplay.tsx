@@ -8,8 +8,8 @@ import type { ReaderChoice } from '@/lib/reader-runtime';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { ReaderChoices } from '@/components/reader/ReaderChoices';
-import { WeatherEffectsLayer } from '@/components/reader/WeatherEffectsLayer';
-import { VisualEffectsOverlay } from '@/components/reader/VisualEffectsOverlay';
+import { EffectsLayerStack, effectsForCharacter, effectsForTarget } from '@/components/reader/EffectsLayerStack';
+import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import type { ActiveEffect, CameraRuntimeState } from '@/lib/engine/runtime-types';
 import type { InteractiveObject } from '@/lib/interactive-types';
@@ -27,6 +27,11 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
+  screenEffectsLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 30,
+    elevation: 30,
+  },
 });
 
 function handleBackgroundError(err: unknown) {
@@ -37,14 +42,6 @@ function strongestIntensity(effects: ActiveEffect[], effectType: ActiveEffect['e
   return effects
     .filter((effect) => effect.effectType === effectType)
     .reduce((max, effect) => Math.max(max, effect.intensity), 0);
-}
-
-function effectsForTarget(effects: ActiveEffect[], target: ActiveEffect['target']): ActiveEffect[] {
-  return effects.filter((effect) => (effect.target ?? 'screen') === target);
-}
-
-function effectsForCharacter(effects: ActiveEffect[], characterId: string): ActiveEffect[] {
-  return effects.filter((effect) => effect.characterId === characterId);
 }
 
 interface ReaderDisplayProps {
@@ -169,10 +166,7 @@ function ReaderCharacters({
             dimmed={Boolean(dimNonSpeakerCharacters && activeSpeakerCharacterId && !isActiveSpeaker)}
             focusScale={activeSpeakerFocusScale}
             overlay={characterSpecificEffects.length > 0 ? (
-              <>
-                <VisualEffectsOverlay effects={characterSpecificEffects} colors={colors} target="character" />
-                <WeatherEffectsLayer effects={characterSpecificEffects} target="character" />
-              </>
+              <EffectsLayerStack effects={characterSpecificEffects} colors={colors} target="character" />
             ) : null}
           />
         );
@@ -216,8 +210,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   onInteractiveSceneTransition,
   onInteractivePlayAudio,
 }: ReaderDisplayProps) {
-  const now = Date.now();
-  const visibleEffects = activeEffects.filter((effect) => effect.endTime >= now);
+  const visibleEffects = useVisibleEffects(activeEffects);
   const screenEffects = effectsForTarget(visibleEffects, 'screen');
   const backgroundEffects = effectsForTarget(visibleEffects, 'background');
   const characterEffects = effectsForTarget(visibleEffects, 'character');
@@ -259,10 +252,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         fallbackColor={fallbackColor}
       />
       {backgroundEffects.length > 0 ? (
-        <>
-          <VisualEffectsOverlay effects={backgroundEffects} colors={colors} target="background" />
-          <WeatherEffectsLayer effects={backgroundEffects} target="background" />
-        </>
+        <EffectsLayerStack effects={backgroundEffects} colors={colors} target="background" />
       ) : null}
 
       <ReaderCharacters
@@ -277,10 +267,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         colors={colors}
       />
       {genericCharacterEffects.length > 0 ? (
-        <>
-          <VisualEffectsOverlay effects={genericCharacterEffects} colors={colors} target="character" />
-          <WeatherEffectsLayer effects={genericCharacterEffects} target="character" />
-        </>
+        <EffectsLayerStack effects={genericCharacterEffects} colors={colors} target="character" />
       ) : null}
 
       {interactiveObjects.length > 0 ? (
@@ -290,13 +277,6 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
           onSceneTransition={onInteractiveSceneTransition}
           onPlayAudio={onInteractivePlayAudio}
         />
-      ) : null}
-
-      {screenEffects.length > 0 ? (
-        <View style={[StyleSheet.absoluteFillObject, getPointerEventsStyle('none')]}>
-          <VisualEffectsOverlay effects={screenEffects} colors={colors} target="screen" />
-          <WeatherEffectsLayer effects={screenEffects} target="screen" />
-        </View>
       ) : null}
 
       <Pressable
@@ -310,6 +290,12 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         accessibilityState={{ disabled: isLoading, busy: isLoading }}
       />
 
+      {screenEffects.length > 0 ? (
+        <View style={[styles.screenEffectsLayer, getPointerEventsStyle('none')]}>
+          <EffectsLayerStack effects={screenEffects} colors={colors} target="screen" />
+        </View>
+      ) : null}
+
       <Animated.View
         style={[
           {
@@ -317,6 +303,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
             bottom: 0,
             left: 0,
             right: 0,
+            zIndex: 40,
           },
           dialogueAnimatedStyle,
           getPointerEventsStyle('box-none'),

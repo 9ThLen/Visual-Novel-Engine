@@ -1,3 +1,5 @@
+import type { FogEffectOptions, RainEffectOptions, SnowEffectOptions } from '@/lib/engine/effect-options';
+
 export type SceneDocument = {
   id: string;
   title: string;
@@ -118,6 +120,9 @@ export type EffectNode = {
   characterId?: string;
   intensity?: number;
   durationMs?: number;
+  rain?: RainEffectOptions;
+  snow?: SnowEffectOptions;
+  fog?: FogEffectOptions;
 };
 
 export type CameraNode = {

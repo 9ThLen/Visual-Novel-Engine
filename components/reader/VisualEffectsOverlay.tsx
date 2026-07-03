@@ -24,6 +24,56 @@ function strongestIntensity(effects: ActiveEffect[], effectType: ActiveEffect['e
     .reduce((max, effect) => Math.max(max, effect.intensity), 0);
 }
 
+function FogOverlay({ intensity }: { intensity: number }) {
+  const opacity = clamp(intensity / 130, 0.18, 0.78);
+  return (
+    <View style={[StyleSheet.absoluteFillObject, { opacity }]}>
+      <View
+        style={[
+          StyleSheet.absoluteFillObject,
+          { backgroundColor: 'rgba(235, 241, 245, 0.08)' },
+        ]}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          left: '-18%',
+          right: '-10%',
+          top: '10%',
+          height: '26%',
+          borderRadius: 999,
+          backgroundColor: 'rgba(245, 248, 250, 0.22)',
+          transform: [{ rotate: '-7deg' }],
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          left: '-8%',
+          right: '-20%',
+          top: '38%',
+          height: '30%',
+          borderRadius: 999,
+          backgroundColor: 'rgba(220, 229, 235, 0.18)',
+          transform: [{ rotate: '5deg' }],
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          left: '-24%',
+          right: '-16%',
+          bottom: '4%',
+          height: '34%',
+          borderRadius: 999,
+          backgroundColor: 'rgba(248, 250, 252, 0.2)',
+          transform: [{ rotate: '-3deg' }],
+        }}
+      />
+    </View>
+  );
+}
+
 export function VisualEffectsOverlay({ effects, colors, target = 'screen' }: VisualEffectsOverlayProps) {
   const targetEffects = effects.filter((effect) => (effect.target ?? 'screen') === target);
   if (!targetEffects.length) return null;
@@ -37,7 +87,7 @@ export function VisualEffectsOverlay({ effects, colors, target = 'screen' }: Vis
 
   return (
     <View style={[StyleSheet.absoluteFillObject, getPointerEventsStyle('none')]}>
-      {blur ? <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surface, opacity: clamp(blur / 900, 0.03, 0.12) }]} /> : null}
+      {blur ? <FogOverlay intensity={blur} /> : null}
       {flash ? <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surface, opacity: clamp(flash / 180, 0.12, 0.7) }]} /> : null}
       {vignette ? (
         <View

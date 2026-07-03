@@ -42,29 +42,23 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       saveTimer = window.setTimeout(saveNow, 260);
     }
 
-    function floatingUiBottom(selector) {
-      var element = document.querySelector(selector);
-      if (!element) return 0;
-      var rect = element.getBoundingClientRect();
-      return rect.bottom + window.scrollY + 28;
-    }
-
     function measureHeight() {
       var body = document.body;
       var root = document.documentElement;
-      var floatingBottom = Math.max(
-        floatingUiBottom('.background-popover'),
-        floatingUiBottom('.character-popover'),
-        floatingUiBottom('.effect-popover'),
-        floatingUiBottom('.slash-menu:not(.hidden)')
-      );
       return Math.max(
         body ? body.scrollHeight : 0,
         body ? body.offsetHeight : 0,
         root ? root.scrollHeight : 0,
-        root ? root.offsetHeight : 0,
-        floatingBottom
+        root ? root.offsetHeight : 0
       );
+    }
+
+    function afterLayout(callback) {
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(callback);
+        return;
+      }
+      window.setTimeout(callback, 0);
     }
 
     function postResize() {
@@ -162,11 +156,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
             target: child.dataset.target || 'screen',
             characterId: child.dataset.characterId || undefined,
             intensity: numberFromDataset(child.dataset.intensity, 50),
-            duration: numberFromDataset(child.dataset.duration, 1),
+            duration: normalizedEffectDuration(child.dataset.effectType || 'rain', child.dataset.duration),
             fadeIn: child.dataset.fadeIn ? numberFromDataset(child.dataset.fadeIn, 0) : undefined,
             fadeOut: child.dataset.fadeOut ? numberFromDataset(child.dataset.fadeOut, 0) : undefined,
             rain: jsonFromDataset(child.dataset.rainOptions),
-            snow: jsonFromDataset(child.dataset.snowOptions)
+            snow: jsonFromDataset(child.dataset.snowOptions),
+            fog: jsonFromDataset(child.dataset.fogOptions)
           });
           return;
         }
@@ -206,12 +201,25 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       return labels[effectType] || 'Ефект';
     }
 
+    function defaultEffectDuration(effectType) {
+      if (effectType === 'rain' || effectType === 'snow' || effectType === 'blur') return 8;
+      if (effectType === 'flash') return 0.35;
+      if (effectType === 'shake' || effectType === 'glitch' || effectType === 'vignette') return 0.8;
+      return 1;
+    }
+
+    function normalizedEffectDuration(effectType, value) {
+      var number = Number(value);
+      return Number.isFinite(number) && number > 0 ? Math.max(0.1, number) : defaultEffectDuration(effectType);
+    }
+
     function renderEffectChipContent(chip) {
       chip.innerHTML = '<span class="effect-chip-icon">✦</span><span>' + escapeHtml(effectChipLabel(chip.dataset.effectType || 'rain')) + '</span><span class="effect-chip-menu">⋮</span>';
     }
 
     function createEffectChip(data) {
       var chip = document.createElement('span');
+      var effectType = data.effectType || 'rain';
       chip.className = 'effect-chip';
       chip.contentEditable = 'false';
       chip.draggable = true;
@@ -219,15 +227,16 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       chip.setAttribute('role', 'button');
       chip.dataset.kind = 'effect';
       chip.dataset.id = data.id || uid('inline_effect');
-      chip.dataset.effectType = data.effectType || 'rain';
+      chip.dataset.effectType = effectType;
       chip.dataset.target = data.target || 'screen';
       chip.dataset.intensity = String(data.intensity == null ? 50 : data.intensity);
-      chip.dataset.duration = String(data.duration == null ? 1 : data.duration);
+      chip.dataset.duration = String(normalizedEffectDuration(effectType, data.duration));
       if (data.characterId) chip.dataset.characterId = data.characterId;
       if (data.fadeIn != null) chip.dataset.fadeIn = String(data.fadeIn);
       if (data.fadeOut != null) chip.dataset.fadeOut = String(data.fadeOut);
       if (data.rain) chip.dataset.rainOptions = JSON.stringify(data.rain);
       if (data.snow) chip.dataset.snowOptions = JSON.stringify(data.snow);
+      if (data.fog) chip.dataset.fogOptions = JSON.stringify(data.fog);
       renderEffectChipContent(chip);
       return chip;
     }
@@ -243,10 +252,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     function positionEffectPopover(anchor) {
       if (!effectPopover || !anchor) return;
       var rect = anchor.getBoundingClientRect();
+      var scrollX = window.scrollX || window.pageXOffset || 0;
+      var scrollY = window.scrollY || window.pageYOffset || 0;
       var width = Math.min(420, window.innerWidth - 32);
-      var left = Math.max(16, Math.min(window.innerWidth - width - 16, rect.right + 12));
+      var left = scrollX + Math.max(16, Math.min(window.innerWidth - width - 16, rect.right + 12));
       var height = effectPopover.offsetHeight || 0;
-      var top = Math.max(16, Math.min(window.innerHeight - height - 16, rect.top - 16));
+      var top = scrollY + Math.max(16, Math.min(window.innerHeight - height - 16, rect.top - 16));
       effectPopover.style.left = left + 'px';
       effectPopover.style.top = top + 'px';
     }
@@ -257,11 +268,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         target: chip.dataset.target || 'screen',
         characterId: chip.dataset.characterId || '',
         intensity: numberFromDataset(chip.dataset.intensity, 50),
-        duration: numberFromDataset(chip.dataset.duration, 1),
+        duration: normalizedEffectDuration(chip.dataset.effectType || 'rain', chip.dataset.duration),
         fadeIn: numberFromDataset(chip.dataset.fadeIn, 0),
         fadeOut: numberFromDataset(chip.dataset.fadeOut, 0),
         rain: jsonFromDataset(chip.dataset.rainOptions) || {},
-        snow: jsonFromDataset(chip.dataset.snowOptions) || {}
+        snow: jsonFromDataset(chip.dataset.snowOptions) || {},
+        fog: jsonFromDataset(chip.dataset.fogOptions) || {}
       };
     }
 
@@ -271,16 +283,18 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     }
 
     function applyEffectData(chip, data) {
-      chip.dataset.effectType = data.effectType || 'rain';
+      var effectType = data.effectType || 'rain';
+      chip.dataset.effectType = effectType;
       chip.dataset.target = data.target || 'screen';
       chip.dataset.intensity = String(Math.max(0, Math.min(100, Number(data.intensity) || 0)));
-      chip.dataset.duration = String(Math.max(0, Number(data.duration) || 0));
+      chip.dataset.duration = String(normalizedEffectDuration(effectType, data.duration));
       chip.dataset.fadeIn = String(Math.max(0, Number(data.fadeIn) || 0));
       chip.dataset.fadeOut = String(Math.max(0, Number(data.fadeOut) || 0));
       if (data.characterId) chip.dataset.characterId = data.characterId;
       else delete chip.dataset.characterId;
       setChipJson(chip, 'rainOptions', data.rain || {});
       setChipJson(chip, 'snowOptions', data.snow || {});
+      setChipJson(chip, 'fogOptions', data.fog || {});
       renderEffectChipContent(chip);
     }
 
@@ -308,14 +322,17 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         target: target,
         characterId: weatherText(effectPopover, 'characterId', ''),
         intensity: weatherNumber(effectPopover, 'intensity', 50),
-        duration: weatherNumber(effectPopover, 'duration', 1),
+        duration: normalizedEffectDuration(type, weatherNumber(effectPopover, 'duration', defaultEffectDuration(type))),
         fadeIn: weatherNumber(effectPopover, 'fadeIn', 0),
         fadeOut: weatherNumber(effectPopover, 'fadeOut', 0),
         rain: {},
-        snow: {}
+        snow: {},
+        fog: {}
       };
       if (type === 'rain') {
+        var rainVariant = selectedValue(effectPopover.querySelector('[data-effect-field="rainVariant"]'), 'rain');
         data.rain = {
+          variant: rainVariant,
           color: weatherText(effectPopover, 'rainColor', '#d2e8ff'),
           opacity: weatherNumber(effectPopover, 'rainOpacity', 0.4),
           density: weatherNumber(effectPopover, 'rainDensity', 100),
@@ -343,6 +360,11 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           imageUris: imageUris
         };
       }
+      if (type === 'blur') {
+        data.fog = {
+          variant: selectedValue(effectPopover.querySelector('[data-effect-field="fogVariant"]'), 'light')
+        };
+      }
       return data;
     }
 
@@ -365,6 +387,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var data = effectDataFromChip(chip);
       var rain = data.rain || {};
       var snow = data.snow || {};
+      var fog = data.fog || {};
       var popover = document.createElement('div');
       popover.className = 'effect-popover';
       popover.innerHTML =
@@ -390,7 +413,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           '<label class="popover-label">Інтенсивність</label>' +
           '<input class="popover-control" data-effect-field="intensity" type="number" min="0" max="100" value="' + escapeHtml(String(data.intensity)) + '" />' +
           '<label class="popover-label">Тривалість (с)</label>' +
-          '<input class="popover-control" data-effect-field="duration" type="number" min="0" step="0.1" value="' + escapeHtml(String(data.duration)) + '" />' +
+          '<input class="popover-control" data-effect-field="duration" type="number" min="0.1" step="0.1" value="' + escapeHtml(String(data.duration)) + '" />' +
           '<label class="popover-label">Fade in (с)</label>' +
           '<input class="popover-control" data-effect-field="fadeIn" type="number" min="0" step="0.1" value="' + escapeHtml(String(data.fadeIn || 0)) + '" />' +
           '<label class="popover-label">Fade out (с)</label>' +
@@ -399,6 +422,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         '<div class="effect-options" data-effect-section="rain">' +
           '<div class="effect-section-title">Rain options</div>' +
           '<div class="effect-popover-grid">' +
+            '<label class="popover-label">Preset</label><select class="popover-control" data-effect-field="rainVariant">' +
+              effectOption('rain', 'Rain', rain.variant || (rain.lightning ? 'storm' : 'rain')) +
+              effectOption('storm', 'Storm (lightning)', rain.variant || (rain.lightning ? 'storm' : 'rain')) +
+              effectOption('drizzle', 'Drizzle', rain.variant || (rain.lightning ? 'storm' : 'rain')) +
+              effectOption('fallout', 'Fallout', rain.variant || (rain.lightning ? 'storm' : 'rain')) +
+            '</select>' +
             '<label class="popover-label">Color</label><input class="popover-control" data-effect-field="rainColor" value="' + escapeHtml(rain.color || '#d2e8ff') + '" />' +
             '<label class="popover-label">Opacity</label><input class="popover-control" data-effect-field="rainOpacity" type="number" min="0" max="1" step="0.05" value="' + escapeHtml(String(rain.opacity ?? 0.4)) + '" />' +
             '<label class="popover-label">Density</label><input class="popover-control" data-effect-field="rainDensity" type="number" min="0" value="' + escapeHtml(String(rain.density ?? 100)) + '" />' +
@@ -426,12 +455,20 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           '</div>' +
           '<label class="effect-checkbox"><input type="checkbox" data-effect-field="snowEnable3D"' + (snow.enable3DRotation ? ' checked' : '') + ' /> Enable 3D rotation</label>' +
         '</div>' +
+        '<div class="effect-options" data-effect-section="blur">' +
+          '<div class="effect-section-title">Fog options</div>' +
+          '<div class="effect-popover-grid">' +
+            '<label class="popover-label">Preset</label><select class="popover-control" data-effect-field="fogVariant">' +
+              effectOption('light', 'Light fog', fog.variant || (data.intensity >= 60 ? 'dense' : 'light')) +
+              effectOption('dense', 'Dense fog', fog.variant || (data.intensity >= 60 ? 'dense' : 'light')) +
+            '</select>' +
+          '</div>' +
+        '</div>' +
         '<div class="popover-footer"><button type="button" class="popover-button" data-action="reset-effect">Скинути</button><button type="button" class="popover-button primary" data-action="save-effect">Зберегти</button></div>';
       document.body.appendChild(popover);
       effectPopover = popover;
       updateEffectSections();
-      positionEffectPopover(chip);
-      scheduleResize();
+      afterLayout(function() { positionEffectPopover(chip); });
     }
 
     function updateEffectSections() {
@@ -528,10 +565,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     function positionCharacterPopover(anchor) {
       if (!characterPopover || !anchor) return;
       var rect = anchor.getBoundingClientRect();
+      var scrollX = window.scrollX || window.pageXOffset || 0;
+      var scrollY = window.scrollY || window.pageYOffset || 0;
       var width = Math.min(360, window.innerWidth - 32);
-      var left = Math.max(16, Math.min(window.innerWidth - width - 16, rect.left));
+      var left = scrollX + Math.max(16, Math.min(window.innerWidth - width - 16, rect.left));
       var height = characterPopover.offsetHeight || 0;
-      var top = Math.max(16, Math.min(window.innerHeight - height - 16, rect.bottom + 8));
+      var top = scrollY + Math.max(16, Math.min(window.innerHeight - height - 16, rect.bottom + 8));
       characterPopover.style.left = left + 'px';
       characterPopover.style.top = top + 'px';
     }
@@ -590,8 +629,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         '<div class="popover-footer"><button type="button" class="popover-button" data-action="close-character">Close</button><button type="button" class="popover-button primary" data-action="save-character">Save</button></div>';
       document.body.appendChild(popover);
       characterPopover = popover;
-      positionCharacterPopover(token);
-      scheduleResize();
+      afterLayout(function() { positionCharacterPopover(token); });
       post({ type: 'openCharacterPopover', characterId: character.id, blockId: token.dataset.blockId || '' });
     }
 
@@ -714,10 +752,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     function positionBackgroundPopover(anchor) {
       if (!backgroundPopover || !anchor) return;
       var rect = anchor.getBoundingClientRect();
+      var scrollX = window.scrollX || window.pageXOffset || 0;
+      var scrollY = window.scrollY || window.pageYOffset || 0;
       var popoverWidth = Math.min(420, window.innerWidth - 32);
-      var left = Math.max(16, Math.min(window.innerWidth - popoverWidth - 16, rect.right - popoverWidth));
+      var left = scrollX + Math.max(16, Math.min(window.innerWidth - popoverWidth - 16, rect.right - popoverWidth));
       var popoverHeight = backgroundPopover.offsetHeight || 0;
-      var top = Math.max(16, Math.min(window.innerHeight - popoverHeight - 16, rect.bottom + 8));
+      var top = scrollY + Math.max(16, Math.min(window.innerHeight - popoverHeight - 16, rect.bottom + 8));
       backgroundPopover.style.left = left + 'px';
       backgroundPopover.style.top = top + 'px';
     }
@@ -798,8 +838,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       popover.querySelector('#bgDuration').value = formatSeconds((backgroundDraft.duration || 0) / 1000);
       updatePreview(popover, selectedAsset ? selectedAsset.id : backgroundDraft.assetId);
       renderAssetPicker(popover);
-      positionBackgroundPopover(anchor || block);
-      scheduleResize();
+      afterLayout(function() { positionBackgroundPopover(anchor || block); });
     }
 
     function updatePreview(popover, assetId) {
@@ -1225,6 +1264,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var minimumHeight = 160;
       var viewportWidth = window.innerWidth || document.documentElement.clientWidth || preferredWidth;
       var viewportHeight = window.innerHeight || document.documentElement.clientHeight || preferredMaxHeight;
+      var scrollX = window.scrollX || window.pageXOffset || 0;
+      var scrollY = window.scrollY || window.pageYOffset || 0;
       var width = Math.min(preferredWidth, Math.max(240, viewportWidth - margin * 2));
       var rect = state.rect || {};
       var anchorTop = typeof rect.top === 'number' ? rect.top : (typeof rect.bottom === 'number' ? rect.bottom : 120);
@@ -1240,10 +1281,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
 
       var menuHeight = Math.min(menu.offsetHeight || maxHeight, maxHeight);
       var maxLeft = Math.max(margin, viewportWidth - width - margin);
-      var left = clamp(typeof rect.left === 'number' ? rect.left : 80, margin, maxLeft);
+      var left = scrollX + clamp(typeof rect.left === 'number' ? rect.left : 80, margin, maxLeft);
       var desiredTop = openUp ? anchorTop - menuHeight - gap : anchorBottom + gap;
       var maxTop = Math.max(margin, viewportHeight - menuHeight - margin);
-      var top = clamp(desiredTop, margin, maxTop);
+      var top = scrollY + clamp(desiredTop, margin, maxTop);
 
       menu.style.left = left + 'px';
       menu.style.top = top + 'px';
@@ -1265,8 +1306,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         '</button>';
       }).join('');
       menu.classList.remove('hidden');
-      positionSlashMenu(state);
-      scheduleResize();
+      afterLayout(function() { positionSlashMenu(state); });
       Array.prototype.slice.call(menu.querySelectorAll('.slash-item')).forEach(function(button) {
         button.addEventListener('mousedown', function(event) {
           event.preventDefault();
@@ -1304,7 +1344,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         effectType: 'rain',
         target: 'screen',
         intensity: 50,
-        duration: 1,
+        duration: 8,
         fadeIn: 0,
         fadeOut: 0
       });
@@ -1577,7 +1617,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
               effectType: 'rain',
               target: 'screen',
               intensity: 50,
-              duration: 1,
+              duration: 8,
               fadeIn: 0,
               fadeOut: 0,
               rain: {},

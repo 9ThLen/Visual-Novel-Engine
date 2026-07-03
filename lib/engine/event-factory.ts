@@ -6,6 +6,7 @@
  */
 
 import { generateId } from '@/lib/id-utils';
+import { getDefaultEffectDuration } from './effect-duration';
 import type {
   TimelineStep,
   BlockType,
@@ -110,11 +111,13 @@ export function createChoiceStep(overrides?: Partial<ChoiceBlockData>): Timeline
 }
 
 export function createEffectStep(overrides?: Partial<EffectBlockData>): TimelineStep {
+  const effectType = overrides?.effectType ?? 'shake';
+
   return createStep('effect', {
-    effectType: 'shake',
+    effectType,
     target: 'screen',
     intensity: 50,
-    duration: 0.5,
+    duration: getDefaultEffectDuration(effectType),
     ...overrides,
   });
 }

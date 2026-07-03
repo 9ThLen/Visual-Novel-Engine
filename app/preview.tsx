@@ -6,7 +6,7 @@
  * dead-end view.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { PreviewScreen } from '@/components/editor/PreviewScreen';
@@ -18,11 +18,30 @@ import { useAppStore } from '@/stores/use-app-store';
 export default function PreviewRoute() {
   const { storyId, sceneId } = useLocalSearchParams<{ storyId: string; sceneId: string }>();
   const isLoaded = useAppStore((state) => state.isLoaded);
+  const hydrateSceneRecordsForStory = useAppStore((state) => state.hydrateSceneRecordsForStory);
+  const [hydratedStoryId, setHydratedStoryId] = useState<string | null>(null);
   const colors = useColors();
   const { t } = useI18n();
   const router = useRouter();
 
-  if (!isLoaded) {
+  useEffect(() => {
+    let cancelled = false;
+    setHydratedStoryId(null);
+
+    if (!storyId || !isLoaded) return () => {
+      cancelled = true;
+    };
+
+    void hydrateSceneRecordsForStory(storyId).finally(() => {
+      if (!cancelled) setHydratedStoryId(storyId);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrateSceneRecordsForStory, isLoaded, storyId]);
+
+  if (!isLoaded || (storyId && hydratedStoryId !== storyId)) {
     return (
       <View
         style={{

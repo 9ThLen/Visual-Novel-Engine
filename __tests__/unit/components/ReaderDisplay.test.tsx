@@ -75,4 +75,26 @@ describe('ReaderDisplay', () => {
     expect(screen.queryByRole('button', { name: 'Choose Go left' })).toBeNull();
     expect(screen.getByText('|')).toBeTruthy();
   });
+
+  it('renders the weather effects layer for active rain effects', () => {
+    const now = Date.now();
+
+    render(
+      <ReaderDisplay
+        {...baseProps}
+        activeEffects={[
+          {
+            effectType: 'rain',
+            target: 'screen',
+            intensity: 70,
+            startTime: now,
+            endTime: now + 8000,
+            rain: { density: 12 },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId('weather-effects-layer')).toBeTruthy();
+  });
 });

@@ -1,6 +1,9 @@
 export type EffectTarget = 'screen' | 'character' | 'background';
+export type RainEffectVariant = 'rain' | 'storm' | 'drizzle' | 'fallout';
+export type FogEffectVariant = 'light' | 'dense';
 
 export interface RainEffectOptions {
+  variant?: RainEffectVariant;
   color?: string;
   opacity?: number;
   density?: number;
@@ -24,4 +27,8 @@ export interface SnowEffectOptions {
   opacity?: [number, number];
   enable3DRotation?: boolean;
   imageUris?: string[];
+}
+
+export interface FogEffectOptions {
+  variant?: FogEffectVariant;
 }

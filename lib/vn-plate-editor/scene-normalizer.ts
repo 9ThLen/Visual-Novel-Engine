@@ -7,6 +7,7 @@ import {
 import type {
   DocumentBlock,
   DocumentCommandId,
+  DocumentInlinePart,
   DocumentScene,
   DocumentTechnicalBlock,
 } from '@/lib/document-editor/types';
@@ -111,6 +112,27 @@ function normalizeTechnicalBlock(block: DocumentTechnicalBlock, characters: Char
   };
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripSpeakerPrefixFromParts(
+  parts: DocumentInlinePart[] | undefined,
+  speakerName: string,
+): DocumentInlinePart[] | undefined {
+  if (!parts?.length) return parts;
+  const speakerPattern = new RegExp(`^\\s*${escapeRegExp(speakerName)}:\\s*`);
+  let stripped = false;
+
+  return parts.map((part) => {
+    if (stripped || part.type !== 'text') return part;
+    const text = part.text.replace(speakerPattern, '');
+    if (text === part.text) return part;
+    stripped = true;
+    return { ...part, text };
+  });
+}
+
 function textBlockToDialogueBlock(block: Extract<DocumentBlock, { kind: 'text' }>, characters: Character[]): DocumentBlock | null {
   const content = block.content || '';
   const trimmed = content.trim();
@@ -128,6 +150,7 @@ function textBlockToDialogueBlock(block: Extract<DocumentBlock, { kind: 'text' }
     sourceStepId: block.sourceStepId,
     sourceStep: block.sourceStep,
     text,
+    parts: stripSpeakerPrefixFromParts(block.parts, speakerName),
     openCharacterControls: false,
   };
 }

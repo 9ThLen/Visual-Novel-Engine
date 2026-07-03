@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Animated, useWindowDimensions, View } from 'react-native';
+import { Image, Animated, StyleSheet, useWindowDimensions, View } from 'react-native';
 import type { AnimatedCharacterInstance } from '@/lib/character-animator';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 
@@ -74,13 +74,11 @@ export const CharacterDisplay = React.memo(function CharacterDisplay({
             width: '100%',
             aspectRatio: 9 / 16,
             maxHeight: screenHeight * 0.65,
-            borderWidth: 1,
-            borderColor: '#94a3b8',
-            backgroundColor: 'rgba(148, 163, 184, 0.22)',
+            backgroundColor: 'transparent',
           }}
         />
       )}
-      {overlay ? <View style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>{overlay}</View> : null}
+      {overlay ? <View style={[StyleSheet.absoluteFillObject, { overflow: 'hidden' }]}>{overlay}</View> : null}
     </Animated.View>
   );
 });

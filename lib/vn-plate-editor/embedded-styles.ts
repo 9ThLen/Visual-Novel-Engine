@@ -111,7 +111,7 @@ export function createEmbeddedStyles(): string {
       font-weight: 850;
     }
     .character-popover {
-      position: fixed;
+      position: absolute;
       z-index: 32;
       width: min(360px, calc(100vw - 32px));
       padding: 14px;
@@ -223,7 +223,7 @@ export function createEmbeddedStyles(): string {
       background: #dc2626;
     }
     .background-popover {
-      position: fixed;
+      position: absolute;
       z-index: 30;
       width: min(420px, calc(100vw - 32px));
       padding: 16px;
@@ -247,7 +247,7 @@ export function createEmbeddedStyles(): string {
       transform: rotate(45deg);
     }
     .effect-popover {
-      position: fixed;
+      position: absolute;
       z-index: 34;
       width: min(420px, calc(100vw - 32px));
       max-height: min(720px, calc(100vh - 32px));
@@ -435,7 +435,7 @@ export function createEmbeddedStyles(): string {
       gap: 12px;
     }
     .slash-menu {
-      position: fixed;
+      position: absolute;
       z-index: 60;
       width: 340px;
       max-height: 296px;
@@ -481,6 +481,7 @@ export function createEmbeddedStyles(): string {
       .paper { min-height: 620px; border: 0; border-radius: 0; padding: 28px 24px 80px; box-shadow: none; }
       .title { font-size: 30px; }
       .slash-menu {
+        position: fixed;
         left: 0 !important;
         right: 0;
         bottom: 0;
@@ -503,6 +504,7 @@ export function createEmbeddedStyles(): string {
       .background-popover,
       .character-popover,
       .effect-popover {
+        position: fixed;
         left: 12px !important;
         right: 12px;
         top: auto !important;

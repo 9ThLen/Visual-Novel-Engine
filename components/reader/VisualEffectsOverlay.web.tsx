@@ -21,6 +21,61 @@ function strongestIntensity(effects: ActiveEffect[], effectType: ActiveEffect['e
     .reduce((max, effect) => Math.max(max, effect.intensity), 0);
 }
 
+function FogOverlay({ intensity }: { intensity: number }) {
+  const opacity = clamp(intensity / 130, 0.18, 0.78);
+  const blur = clamp(intensity / 18, 1, 8);
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        overflow: 'hidden',
+        opacity,
+        backdropFilter: `blur(${blur}px)`,
+        WebkitBackdropFilter: `blur(${blur}px)`,
+        background: 'rgba(235,241,245,0.08)',
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          left: '-18%',
+          right: '-10%',
+          top: '10%',
+          height: '26%',
+          borderRadius: 999,
+          background: 'rgba(245,248,250,0.22)',
+          transform: 'rotate(-7deg)',
+        }}
+      />
+      <span
+        style={{
+          position: 'absolute',
+          left: '-8%',
+          right: '-20%',
+          top: '38%',
+          height: '30%',
+          borderRadius: 999,
+          background: 'rgba(220,229,235,0.18)',
+          transform: 'rotate(5deg)',
+        }}
+      />
+      <span
+        style={{
+          position: 'absolute',
+          left: '-24%',
+          right: '-16%',
+          bottom: '4%',
+          height: '34%',
+          borderRadius: 999,
+          background: 'rgba(248,250,252,0.2)',
+          transform: 'rotate(-3deg)',
+        }}
+      />
+    </div>
+  );
+}
+
 export function VisualEffectsOverlay({ effects, colors, target = 'screen' }: VisualEffectsOverlayProps) {
   const targetEffects = effects.filter((effect) => (effect.target ?? 'screen') === target);
   if (!targetEffects.length) return null;
@@ -34,17 +89,7 @@ export function VisualEffectsOverlay({ effects, colors, target = 'screen' }: Vis
 
   return (
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-      {blur ? (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            backdropFilter: `blur(${clamp(blur / 18, 1, 8)}px)`,
-            WebkitBackdropFilter: `blur(${clamp(blur / 18, 1, 8)}px)`,
-            background: `rgba(255,255,255,${clamp(blur / 900, 0.03, 0.12)})`,
-          }}
-        />
-      ) : null}
+      {blur ? <FogOverlay intensity={blur} /> : null}
       {flash ? <div style={{ position: 'absolute', inset: 0, background: colors.surface, opacity: clamp(flash / 180, 0.12, 0.7) }} /> : null}
       {vignette ? (
         <div

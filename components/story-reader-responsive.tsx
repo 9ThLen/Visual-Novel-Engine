@@ -168,6 +168,7 @@ export function StoryReaderResponsive({
     isTransitioning: executor.sceneState.isTransitioning,
     transitionTarget: executor.sceneState.transitionTarget,
     isComplete: executor.isComplete,
+    activeEffects: executor.sceneState.activeEffects,
     routeOnExecutorComplete,
     onTransition,
   });

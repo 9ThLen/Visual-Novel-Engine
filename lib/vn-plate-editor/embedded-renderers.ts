@@ -42,8 +42,9 @@ function inlinePartToHtml(part: DocumentInlinePart): string {
   const fadeOut = part.fadeOut != null ? ` data-fade-out="${escapeHtml(String(part.fadeOut))}"` : '';
   const rain = part.rain ? ` data-rain-options="${escapeHtml(JSON.stringify(part.rain))}"` : '';
   const snow = part.snow ? ` data-snow-options="${escapeHtml(JSON.stringify(part.snow))}"` : '';
+  const fog = part.fog ? ` data-fog-options="${escapeHtml(JSON.stringify(part.fog))}"` : '';
   return [
-    `<span class="effect-chip" contenteditable="false" draggable="true" tabindex="0" role="button" data-kind="effect" data-id="${escapeHtml(part.id)}" data-effect-type="${escapeHtml(part.effectType)}" data-target="${escapeHtml(part.target)}"${characterId} data-intensity="${escapeHtml(String(part.intensity))}" data-duration="${escapeHtml(String(part.duration))}"${fadeIn}${fadeOut}${rain}${snow}>`,
+    `<span class="effect-chip" contenteditable="false" draggable="true" tabindex="0" role="button" data-kind="effect" data-id="${escapeHtml(part.id)}" data-effect-type="${escapeHtml(part.effectType)}" data-target="${escapeHtml(part.target)}"${characterId} data-intensity="${escapeHtml(String(part.intensity))}" data-duration="${escapeHtml(String(part.duration))}"${fadeIn}${fadeOut}${rain}${snow}${fog}>`,
     `<span class="effect-chip-icon">✦</span>`,
     `<span>${escapeHtml(effectLabel(part.effectType))}</span>`,
     `<span class="effect-chip-menu">⋮</span>`,

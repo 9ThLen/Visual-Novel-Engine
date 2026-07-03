@@ -2,6 +2,8 @@
 import type { TimelineStep } from '@/lib/engine/types';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
 
+import { createEffectStep } from '@/lib/engine/event-factory';
+
 describe('useSceneExecutor', () => {
   it('stays advanceable after text typing is completed so the next tap can continue', async () => {
     const timeline: TimelineStep[] = [
@@ -231,6 +233,7 @@ describe('useSceneExecutor', () => {
           fadeIn: 0.5,
           fadeOut: 0.75,
           rain: {
+            variant: 'storm',
             color: '#9fd7ff',
             opacity: 0.6,
             density: 120,
@@ -270,12 +273,27 @@ describe('useSceneExecutor', () => {
         collapsed: false,
         enabled: true,
       } as TimelineStep,
+      {
+        id: 'effect-fog',
+        blockType: 'effect',
+        data: {
+          effectType: 'blur',
+          target: 'screen',
+          intensity: 40,
+          duration: 8,
+          fog: {
+            variant: 'dense',
+          },
+        },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
     ];
 
     const { result } = renderHook(() => useSceneExecutor(timeline));
 
     await waitFor(() => {
-      expect(result.current.sceneState.activeEffects).toHaveLength(2);
+      expect(result.current.sceneState.activeEffects).toHaveLength(3);
       expect(result.current.sceneState.activeEffects[0]).toMatchObject({
         effectType: 'rain',
         target: 'background',
@@ -284,6 +302,7 @@ describe('useSceneExecutor', () => {
         fadeIn: 0.5,
         fadeOut: 0.75,
         rain: {
+          variant: 'storm',
           density: 120,
           splash: true,
           lightning: true,
@@ -299,6 +318,224 @@ describe('useSceneExecutor', () => {
           imageUris: ['file://flake.png'],
         },
       });
+      expect(result.current.sceneState.activeEffects[2]).toMatchObject({
+        effectType: 'blur',
+        target: 'screen',
+        fog: {
+          variant: 'dense',
+        },
+      });
+    });
+  });
+
+  it('normalizes zero and invalid effect durations before activating effects', async () => {
+    const timeline: TimelineStep[] = [
+      {
+        id: 'effect-rain-zero-duration',
+        blockType: 'effect',
+        data: {
+          effectType: 'rain',
+          target: 'screen',
+          intensity: 60,
+          duration: 0,
+        },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+      {
+        id: 'effect-flash-invalid-duration',
+        blockType: 'effect',
+        data: {
+          effectType: 'flash',
+          target: 'screen',
+          intensity: 80,
+          duration: Number.NaN,
+        },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.sceneState.activeEffects).toHaveLength(2);
+    });
+
+    const [rain, flash] = result.current.sceneState.activeEffects;
+    expect(rain.endTime - rain.startTime).toBe(8000);
+    expect(flash.endTime - flash.startTime).toBe(350);
+  });
+
+  it('keeps choices interactive when rain runs before a choice block', async () => {
+    const timeline: TimelineStep[] = [
+      createEffectStep({
+        effectType: 'rain',
+        target: 'screen',
+        intensity: 60,
+      }),
+      {
+        id: 'choice-after-rain',
+        blockType: 'choice',
+        data: {
+          options: [
+            { id: 'stay', text: 'Stay', targetSceneId: null },
+            { id: 'go', text: 'Go', targetSceneId: 'scene-next' },
+          ],
+        },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.sceneState.activeEffects[0]).toMatchObject({
+        effectType: 'rain',
+        target: 'screen',
+      });
+      expect(result.current.sceneState.currentChoices).toHaveLength(2);
+      expect(result.current.canAdvance).toBe(false);
+      expect(result.current.isComplete).toBe(false);
+    });
+  });
+
+  it('preloads blocking weather immediately after dialogue while the dialogue is displayed', async () => {
+    const timeline: TimelineStep[] = [
+      {
+        id: 'dialogue-before-snow',
+        blockType: 'dialogue',
+        data: {
+          currentEntryIndex: 0,
+          entries: [
+            {
+              id: 'entry-before-snow',
+              characterId: 'narrator',
+              speakerName: 'Narrator',
+              spriteId: '',
+              text: 'Snow starts here.',
+            },
+          ],
+        },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+      createEffectStep({
+        effectType: 'snow',
+        target: 'screen',
+        intensity: 70,
+        snow: { snowflakeCount: 96 },
+      }),
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.currentStepIndex).toBe(0);
+      expect(result.current.isComplete).toBe(false);
+      expect(result.current.sceneState.activeEffects).toHaveLength(1);
+      expect(result.current.sceneState.activeEffects[0]).toMatchObject({
+        effectType: 'snow',
+        target: 'screen',
+        snow: { snowflakeCount: 96 },
+      });
+    });
+  });
+
+  it('does not preload short effects after dialogue', async () => {
+    const timeline: TimelineStep[] = [
+      {
+        id: 'dialogue-before-flash',
+        blockType: 'dialogue',
+        data: {
+          currentEntryIndex: 0,
+          entries: [
+            {
+              id: 'entry-before-flash',
+              characterId: 'narrator',
+              speakerName: 'Narrator',
+              spriteId: '',
+              text: 'Flash happens after this line.',
+            },
+          ],
+        },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+      createEffectStep({
+        effectType: 'flash',
+        target: 'screen',
+        intensity: 90,
+      }),
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.currentStepIndex).toBe(0);
+      expect(result.current.sceneState.activeEffects).toHaveLength(0);
+    });
+  });
+
+  it('does not replay a preloaded weather effect on advance', async () => {
+    const timeline: TimelineStep[] = [
+      {
+        id: 'dialogue-before-rain',
+        blockType: 'dialogue',
+        data: {
+          currentEntryIndex: 0,
+          entries: [
+            {
+              id: 'entry-before-rain',
+              characterId: 'narrator',
+              speakerName: 'Narrator',
+              spriteId: '',
+              text: 'Rain starts now.',
+            },
+          ],
+        },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+      createEffectStep({
+        effectType: 'rain',
+        target: 'screen',
+        intensity: 60,
+        rain: { density: 120 },
+      }),
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.sceneState.activeEffects).toHaveLength(1);
+    });
+
+    act(() => {
+      result.current.advance();
+    });
+    act(() => {
+      result.current.advance();
+    });
+
+    await waitFor(() => {
+      expect(result.current.isComplete).toBe(true);
+      expect(result.current.sceneState.activeEffects.filter((effect) => effect.effectType === 'rain')).toHaveLength(1);
+    });
+  });
+
+  it('creates weather effect steps with visible default duration', () => {
+    const rainStep = createEffectStep({ effectType: 'rain' });
+    const shakeStep = createEffectStep();
+
+    expect(rainStep.data).toMatchObject({
+      effectType: 'rain',
+      duration: 8,
+    });
+    expect(shakeStep.data).toMatchObject({
+      effectType: 'shake',
+      duration: 0.8,
     });
   });
 

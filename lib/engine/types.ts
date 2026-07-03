@@ -11,7 +11,7 @@ import type { Language } from '@/lib/translations';
 import type { Character } from '@/lib/character-types';
 import type { AudioTrigger } from '@/lib/audio-types';
 import type { InteractiveAction, InteractiveObjectPosition } from '@/lib/interactive-types';
-import type { RainEffectOptions, SnowEffectOptions } from './effect-options';
+import type { FogEffectOptions, RainEffectOptions, SnowEffectOptions } from './effect-options';
 import type { SceneState } from './runtime-types';
 
 export type {
@@ -205,6 +205,7 @@ export interface EffectBlockData {
   fadeOut?: number;         // seconds
   rain?: RainEffectOptions;
   snow?: SnowEffectOptions;
+  fog?: FogEffectOptions;
 }
 
 export interface MusicBlockData {

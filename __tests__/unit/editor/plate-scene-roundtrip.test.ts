@@ -211,6 +211,78 @@ describe('Plate scene serializer roundtrip', () => {
     });
   });
 
+  it('preserves inline weather effect chips inside dialogue blocks', () => {
+    const record = sceneWithTimeline([]);
+    const saved = plateDocumentToSceneRecord(record, {
+      sceneId: record.id,
+      sceneName: record.name,
+      blocks: [
+        {
+          id: 'doc_dialogue_inline_effect',
+          kind: 'dialogue',
+          speakerName: 'Masha',
+          characterId: 'char_masha',
+          spriteId: 'sprite_neutral',
+          text: 'Rain starts now.',
+          parts: [
+            { type: 'text', text: 'Rain starts ' },
+            {
+              type: 'effect',
+              id: 'step_dialogue_rain',
+              effectType: 'rain',
+              target: 'screen',
+              intensity: 75,
+              duration: 8,
+              rain: {
+                variant: 'storm',
+                opacity: 0.62,
+                density: 132,
+                lightning: true,
+              },
+            },
+            { type: 'text', text: 'now.' },
+          ],
+        },
+        { id: 'doc_text_empty', kind: 'text', content: '' },
+      ],
+    }, []);
+
+    expect(saved.timeline.map((step) => step.blockType)).toEqual([
+      'character',
+      'dialogue',
+      'effect',
+      'dialogue',
+    ]);
+    expect((saved.timeline[1].data as DialogueBlockData).entries[0]).toMatchObject({
+      characterId: 'char_masha',
+      speakerName: 'Masha',
+      spriteId: 'sprite_neutral',
+      text: 'Rain starts ',
+    });
+    expect(saved.timeline[2]).toMatchObject({
+      id: 'step_dialogue_rain',
+      blockType: 'effect',
+      data: {
+        effectType: 'rain',
+        target: 'screen',
+        intensity: 75,
+        duration: 8,
+        rain: {
+          variant: 'storm',
+          opacity: 0.62,
+          density: 132,
+          lightning: true,
+        },
+      },
+    });
+    expect((saved.timeline[3].data as DialogueBlockData).entries[0]).toMatchObject({
+      characterId: 'char_masha',
+      speakerName: 'Masha',
+      spriteId: 'sprite_neutral',
+      text: 'now.',
+    });
+  });
+
   it('roundtrips inline weather effect options at text edges and between chips', () => {
     const saved = roundtrip(sceneWithTimeline([
       withStepMeta(createEffectStep({
@@ -221,6 +293,7 @@ describe('Plate scene serializer roundtrip', () => {
         fadeIn: 0.5,
         fadeOut: 0.75,
         rain: {
+          variant: 'fallout',
           color: '#9fd7ff',
           opacity: 0.65,
           density: 140,
@@ -253,6 +326,15 @@ describe('Plate scene serializer roundtrip', () => {
         },
       }), 'step_snow_middle'),
       withStepMeta(createEffectStep({
+        effectType: 'blur',
+        target: 'screen',
+        intensity: 65,
+        duration: 8,
+        fog: {
+          variant: 'dense',
+        },
+      }), 'step_fog_dense'),
+      withStepMeta(createEffectStep({
         effectType: 'flash',
         target: 'screen',
         intensity: 55,
@@ -260,7 +342,7 @@ describe('Plate scene serializer roundtrip', () => {
       }), 'step_flash_after_snow'),
     ]));
 
-    expect(saved.timeline).toHaveLength(4);
+    expect(saved.timeline).toHaveLength(5);
     expect(saved.timeline[0]).toMatchObject({
       id: 'step_rain_edge',
       blockType: 'effect',
@@ -269,6 +351,7 @@ describe('Plate scene serializer roundtrip', () => {
         target: 'background',
         intensity: 80,
         rain: {
+          variant: 'fallout',
           density: 140,
           splash: true,
           lightning: true,
@@ -288,6 +371,16 @@ describe('Plate scene serializer roundtrip', () => {
       },
     });
     expect(saved.timeline[3]).toMatchObject({
+      id: 'step_fog_dense',
+      blockType: 'effect',
+      data: {
+        effectType: 'blur',
+        fog: {
+          variant: 'dense',
+        },
+      },
+    });
+    expect(saved.timeline[4]).toMatchObject({
       id: 'step_flash_after_snow',
       blockType: 'effect',
       data: {
@@ -460,6 +553,70 @@ describe('Plate scene serializer roundtrip', () => {
       content: 'https://example.com/path',
     });
     expect(normalized.characters.map((character) => character.name)).toEqual(['Маша', 'Діма']);
+  });
+
+  it('preserves inline effect parts when text shorthand becomes dialogue', () => {
+    const record = sceneWithTimeline([]);
+    const normalized = normalizePlateDocumentScene({
+      sceneId: record.id,
+      sceneName: record.name,
+      blocks: [
+        {
+          id: 'doc_masha_rain_text',
+          kind: 'text',
+          content: 'Masha: Rain starts now.',
+          parts: [
+            { type: 'text', text: 'Masha: Rain starts ' },
+            {
+              type: 'effect',
+              id: 'step_text_shorthand_rain',
+              effectType: 'rain',
+              target: 'screen',
+              intensity: 70,
+              duration: 8,
+              rain: {
+                density: 128,
+                opacity: 0.58,
+                lightning: true,
+              },
+            },
+            { type: 'text', text: 'now.' },
+          ],
+        },
+      ],
+    }, []);
+
+    const [dialogue] = normalized.scene.blocks;
+    expect(dialogue.kind).toBe('dialogue');
+    if (dialogue.kind !== 'dialogue') return;
+    expect(dialogue.text).toBe('Rain starts now.');
+    expect(dialogue.parts?.[0]).toEqual({ type: 'text', text: 'Rain starts ' });
+
+    const saved = plateDocumentToSceneRecord(record, normalized.scene, normalized.characters);
+
+    expect(saved.timeline.map((step) => step.blockType)).toEqual([
+      'character',
+      'dialogue',
+      'effect',
+      'dialogue',
+    ]);
+    expect((saved.timeline[1].data as DialogueBlockData).entries[0].text).toBe('Rain starts ');
+    expect(saved.timeline[2]).toMatchObject({
+      id: 'step_text_shorthand_rain',
+      blockType: 'effect',
+      data: {
+        effectType: 'rain',
+        target: 'screen',
+        intensity: 70,
+        duration: 8,
+        rain: {
+          density: 128,
+          opacity: 0.58,
+          lightning: true,
+        },
+      },
+    });
+    expect((saved.timeline[3].data as DialogueBlockData).entries[0].text).toBe('now.');
   });
 
   it('renders technical block bridge attributes and create-next-scene action in embedded HTML', () => {

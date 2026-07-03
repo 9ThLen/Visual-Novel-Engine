@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -29,6 +29,8 @@ export default function DocumentEditorRoute() {
   const { storyId, sceneId } = useLocalSearchParams<{ storyId: string; sceneId: string }>();
   const isLoaded = useAppStore((state) => state.isLoaded);
   const setCurrentStory = useAppStore((state) => state.loadCurrentStory);
+  const hydrateSceneRecordsForStory = useAppStore((state) => state.hydrateSceneRecordsForStory);
+  const [sceneRecordsHydrated, setSceneRecordsHydrated] = useState(false);
 
   const sceneRecord = useAppStore(
     useMemo(() => {
@@ -82,7 +84,33 @@ export default function DocumentEditorRoute() {
     }
   }, [setCurrentStory, storyId]);
 
-  if (!isLoaded) {
+  useEffect(() => {
+    let cancelled = false;
+    setSceneRecordsHydrated(false);
+
+    if (!storyId) {
+      setSceneRecordsHydrated(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!isLoaded) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void hydrateSceneRecordsForStory(storyId).finally(() => {
+      if (!cancelled) setSceneRecordsHydrated(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrateSceneRecordsForStory, isLoaded, storyId]);
+
+  if (!isLoaded || !sceneRecordsHydrated) {
     return (
       <ScreenContainer>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>

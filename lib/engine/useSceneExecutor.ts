@@ -15,6 +15,7 @@ import type {
 } from './types';
 import type { SceneState } from './runtime-types';
 import { createEmptySceneState, conditionsMet } from './conditionUtils';
+import { isBlockingEffectType, normalizeEffectDuration } from './effect-duration';
 
 const YIELDING_BLOCK_TYPES = new Set(['text', 'dialogue', 'choice', 'transition']);
 const MAX_DIALOGUE_HISTORY_ENTRIES = 500;
@@ -31,6 +32,8 @@ interface ExecutorStepResult {
   nextIndex: number;
   isHalted: boolean;
 }
+
+type LookaheadAction = 'preload' | 'skip' | 'stop';
 
 export interface UseSceneExecutorOptions {
   initialVariables?: Record<string, string | number | boolean>;
@@ -60,6 +63,15 @@ function createInitialExecutorState(
     isTyping: false,
     canAdvance: false,
   };
+}
+
+function lookaheadActionForStep(step: TimelineStep, state: SceneState): LookaheadAction {
+  if (!step.enabled) return 'skip';
+  if (!conditionsMet(step.conditions, state.variables)) return 'skip';
+  if (step.blockType !== 'effect') return 'stop';
+
+  const data = step.data as EffectBlockData;
+  return isBlockingEffectType(data.effectType) ? 'preload' : 'stop';
 }
 
 function evaluateVariable(
@@ -203,6 +215,7 @@ export function useSceneExecutor(
         case 'effect': {
           const d = step.data as EffectBlockData;
           const now = Date.now();
+          const duration = normalizeEffectDuration(d.effectType, d.duration);
           nextState.activeEffects = [
             ...nextState.activeEffects,
             {
@@ -214,8 +227,9 @@ export function useSceneExecutor(
               fadeOut: d.fadeOut,
               rain: d.rain,
               snow: d.snow,
+              fog: d.fog,
               startTime: now,
-              endTime: now + d.duration * 1000,
+              endTime: now + duration * 1000,
             },
           ];
           break;
@@ -336,8 +350,24 @@ export function useSceneExecutor(
 
       if (result === 'halt') {
         const typing = step.blockType === 'text' || step.blockType === 'dialogue';
+        let resumeIndex = idx;
+
+        if (typing) {
+          let lookaheadIndex = idx + 1;
+          while (lookaheadIndex < steps.length) {
+            const lookaheadStep = steps[lookaheadIndex];
+            const action = lookaheadActionForStep(lookaheadStep, currentState);
+            if (action === 'stop') break;
+
+            const executed = executeStep(lookaheadStep, currentState);
+            currentState = executed.nextState;
+            resumeIndex = lookaheadIndex;
+            lookaheadIndex++;
+          }
+        }
+
         return {
-          nextIndex: idx,
+          nextIndex: resumeIndex,
           isHalted: true,
           nextState: {
             ...prev,

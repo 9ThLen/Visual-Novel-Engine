@@ -1,5 +1,5 @@
 import type { BlockType, EffectType, TimelineStep } from '@/lib/engine/types';
-import type { RainEffectOptions, SnowEffectOptions } from '@/lib/engine/effect-options';
+import type { FogEffectOptions, RainEffectOptions, SnowEffectOptions } from '@/lib/engine/effect-options';
 
 export type DocumentBlockKind = 'text' | 'dialogue' | 'choice' | 'technical';
 
@@ -45,6 +45,7 @@ export type DocumentInlinePart =
       fadeOut?: number;
       rain?: RainEffectOptions;
       snow?: SnowEffectOptions;
+      fog?: FogEffectOptions;
     };
 
 export interface DocumentTextBlock extends BaseDocumentBlock {

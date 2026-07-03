@@ -78,8 +78,16 @@ export const Animated = {
   View,
   Text,
   multiply: (value: number, multiplier: number) => Number(value || 0) * multiplier,
-  timing: () => ({ start: () => {} }),
-  Value: class { constructor(v: number) { this._value = v } _value: number; setValue(v: number) { this._value = v } },
+  timing: () => ({ start: () => {}, stop: () => {} }),
+  loop: (animation: any) => ({ start: () => animation.start?.(), stop: () => animation.stop?.() }),
+  sequence: (animations: any[]) => ({ start: () => animations.forEach((animation) => animation.start?.()), stop: () => animations.forEach((animation) => animation.stop?.()) }),
+  delay: () => ({ start: () => {}, stop: () => {} }),
+  Value: class {
+    constructor(v: number) { this._value = v }
+    _value: number;
+    setValue(v: number) { this._value = v }
+    interpolate(config: { outputRange: unknown[] }) { return config.outputRange[0] }
+  },
 };
 export const Easing = { linear: (t: number) => t, ease: (t: number) => t };
 

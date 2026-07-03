@@ -190,6 +190,7 @@ function effectStepToInlinePart(step: TimelineStep): DocumentInlinePart | null {
     fadeOut: data.fadeOut,
     rain: data.rain,
     snow: data.snow,
+    fog: data.fog,
   };
 }
 
@@ -496,6 +497,33 @@ function dialogueStepForBlock(block: DocumentDialogueBlock, characters: Characte
   });
 }
 
+function dialogueStepForInlineText(
+  block: DocumentDialogueBlock,
+  characters: Character[],
+  text: string,
+): TimelineStep | null {
+  if (!text.trim()) return null;
+  const characterId = block.characterId;
+  if (!characterId) return null;
+  const character = characterForId(characters, characterId);
+  const focusEnabled = character?.authoring?.focusOnSpeak !== false;
+  return createDialogueStep({
+    entries: [
+      {
+        id: generateId('dialogue_entry'),
+        characterId,
+        speakerName: block.speakerName,
+        spriteId: block.spriteId || '',
+        text,
+      },
+    ],
+    currentEntryIndex: 0,
+    speakerFocus: focusEnabled
+      ? { characterId, enabled: true, scale: 1.04, dimOthers: true }
+      : undefined,
+  });
+}
+
 function textStepFromInlineText(text: string): TimelineStep[] {
   if (!text.trim()) return [];
   return [createTextStep({ content: text })];
@@ -513,6 +541,7 @@ function effectStepFromInlinePart(part: Extract<DocumentInlinePart, { type: 'eff
       fadeOut: part.fadeOut,
       rain: part.rain,
       snow: part.snow,
+      fog: part.fog,
     }),
     id: part.id,
   };
@@ -522,6 +551,17 @@ function timelineFromInlineParts(parts: DocumentInlinePart[]): TimelineStep[] {
   return parts.flatMap((part) => {
     if (part.type === 'text') return textStepFromInlineText(part.text);
     return [effectStepFromInlinePart(part)];
+  });
+}
+
+function timelineFromDialogueInlineParts(
+  block: DocumentDialogueBlock,
+  characters: Character[],
+): TimelineStep[] {
+  return (block.parts ?? []).flatMap((part) => {
+    if (part.type === 'effect') return [effectStepFromInlinePart(part)];
+    const dialogueStep = dialogueStepForInlineText(block, characters, part.text);
+    return dialogueStep ? [dialogueStep] : [];
   });
 }
 
@@ -630,18 +670,21 @@ export function documentSceneToTimeline(documentScene: DocumentScene, characters
     }
 
     if (block.kind === 'dialogue') {
+      const characterSteps = generatedCharacterStepsForDialogue(
+        block,
+        characters,
+        visibleCharacters,
+        currentSpriteByCharacter,
+        currentPositionByCharacter,
+      );
+      if (block.parts?.length) {
+        return [
+          ...characterSteps,
+          ...timelineFromDialogueInlineParts(block, characters),
+        ];
+      }
       const dialogueStep = dialogueStepForBlock(block, characters);
-      if (!dialogueStep) return [];
-      return [
-        ...generatedCharacterStepsForDialogue(
-          block,
-          characters,
-          visibleCharacters,
-          currentSpriteByCharacter,
-          currentPositionByCharacter,
-        ),
-        dialogueStep,
-      ];
+      return dialogueStep ? [...characterSteps, dialogueStep] : [];
     }
 
     if (block.kind === 'choice') {

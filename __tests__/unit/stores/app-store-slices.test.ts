@@ -522,6 +522,18 @@ describe('app store slices', () => {
       'scene-2',
     ]);
     expect(harness.state.sceneRecordHydration['story-1']).toBe('full');
+
+    slice.saveSceneRecord({
+      ...makeSceneRecord('scene-1'),
+      name: 'Edited after full hydrate',
+    });
+
+    expect(harness.state.sceneRecordHydration['story-1']).toBe('full');
+    expect(Object.keys(harness.state.sceneRecordsByStory['story-1'])).toEqual([
+      'scene-1',
+      'scene-2',
+    ]);
+    expect(harness.state.sceneRecordsByStory['story-1']['scene-1'].name).toBe('Edited after full hydrate');
   });
 
   it('updates scene content while preserving metadata fields', () => {
