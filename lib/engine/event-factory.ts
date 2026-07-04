@@ -6,7 +6,7 @@
  */
 
 import { generateId } from '@/lib/id-utils';
-import { getDefaultEffectDuration } from './effect-duration';
+import { getDefaultEffectDuration, normalizeEffectDurationMode } from './effect-duration';
 import type {
   TimelineStep,
   BlockType,
@@ -119,6 +119,7 @@ export function createEffectStep(overrides?: Partial<EffectBlockData>): Timeline
     intensity: 50,
     duration: getDefaultEffectDuration(effectType),
     ...overrides,
+    durationMode: normalizeEffectDurationMode(effectType, overrides?.durationMode, overrides?.duration),
   });
 }
 

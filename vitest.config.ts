@@ -13,6 +13,7 @@ export default defineConfig({
       'expo-image': path.resolve(__dirname, '__mocks__/expo-image.ts'),
       'expo-file-system/legacy': path.resolve(__dirname, '__mocks__/expo-file-system-legacy.ts'),
       'expo-asset': path.resolve(__dirname, '__mocks__/expo-asset.ts'),
+      'expo-blur': path.resolve(__dirname, '__mocks__/expo-blur.ts'),
       'expo-linking': path.resolve(__dirname, '__mocks__/expo-linking.ts'),
       'expo-modules-core': path.resolve(__dirname, '__mocks__/expo-modules-core.ts'),
       'expo-router': path.resolve(__dirname, '__mocks__/expo-router.ts'),

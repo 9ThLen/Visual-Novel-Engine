@@ -1,5 +1,6 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 import type { ActiveEffect } from '@/lib/engine/runtime-types';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 import { withAlpha } from '@/lib/_core/theme';
@@ -14,63 +15,105 @@ interface VisualEffectsOverlayProps {
   target?: ActiveEffect['target'];
 }
 
+const GLITCH_TICK_MS = 90;
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function strongestIntensity(effects: ActiveEffect[], effectType: ActiveEffect['effectType']): number {
+function strongestEffect(
+  effects: ActiveEffect[],
+  effectType: ActiveEffect['effectType'],
+): ActiveEffect | null {
   return effects
     .filter((effect) => effect.effectType === effectType)
-    .reduce((max, effect) => Math.max(max, effect.intensity), 0);
+    .sort((a, b) => b.intensity - a.intensity)[0] ?? null;
 }
 
-function FogOverlay({ intensity }: { intensity: number }) {
-  const opacity = clamp(intensity / 130, 0.18, 0.78);
+function BlurOverlay({ effect }: { effect: ActiveEffect }) {
+  const intensity = clamp(effect.intensity, 8, 100);
   return (
-    <View style={[StyleSheet.absoluteFillObject, { opacity }]}>
-      <View
-        style={[
-          StyleSheet.absoluteFillObject,
-          { backgroundColor: 'rgba(235, 241, 245, 0.08)' },
-        ]}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          left: '-18%',
-          right: '-10%',
-          top: '10%',
-          height: '26%',
-          borderRadius: 999,
-          backgroundColor: 'rgba(245, 248, 250, 0.22)',
-          transform: [{ rotate: '-7deg' }],
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          left: '-8%',
-          right: '-20%',
-          top: '38%',
-          height: '30%',
-          borderRadius: 999,
-          backgroundColor: 'rgba(220, 229, 235, 0.18)',
-          transform: [{ rotate: '5deg' }],
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          left: '-24%',
-          right: '-16%',
-          bottom: '4%',
-          height: '34%',
-          borderRadius: 999,
-          backgroundColor: 'rgba(248, 250, 252, 0.2)',
-          transform: [{ rotate: '-3deg' }],
-        }}
-      />
-    </View>
+    <BlurView
+      intensity={intensity}
+      experimentalBlurMethod="dimezisBlurView"
+      style={StyleSheet.absoluteFillObject}
+    />
+  );
+}
+
+function FlashOverlay({ effect, color }: { effect: ActiveEffect; color: string }) {
+  const opacity = useRef(new Animated.Value(clamp(effect.intensity / 120, 0.2, 0.85))).current;
+
+  useEffect(() => {
+    const duration = effect.sceneBound ? 999999000 : Math.max(100, effect.endTime - effect.startTime);
+    const animation = Animated.timing(opacity, {
+      toValue: 0,
+      duration,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [effect.startTime, effect.endTime, effect.sceneBound, opacity]);
+
+  return (
+    <Animated.View
+      style={[StyleSheet.absoluteFillObject, { backgroundColor: color, opacity }]}
+    />
+  );
+}
+
+function GlitchOverlay({ effect, tint }: { effect: ActiveEffect; tint: string }) {
+  const intensity = clamp(effect.intensity, 0, 100);
+  const shift = clamp(intensity / 5, 4, 20);
+  const bandHeight = clamp(4 + intensity / 8, 4, 17);
+  const fringeOpacity = clamp(intensity / 320, 0.06, 0.3);
+  const offsets = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
+  const flicker = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      offsets.forEach((offset) => {
+        Animated.timing(offset, {
+          toValue: (Math.random() * 2 - 1) * shift,
+          duration: 60,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }).start();
+      });
+      flicker.setValue(Math.random() < 0.18 ? 0.35 : 1);
+    }, GLITCH_TICK_MS);
+    return () => clearInterval(interval);
+  }, [offsets, flicker, shift]);
+
+  const bands = [
+    { top: '14%' as const, color: withAlpha(tint, 0.5) },
+    { top: '47%' as const, color: 'rgba(255,0,64,0.4)' },
+    { top: '74%' as const, color: 'rgba(0,224,255,0.4)' },
+  ];
+
+  return (
+    <Animated.View style={[StyleSheet.absoluteFillObject, { opacity: flicker }]}>
+      {bands.map((band, index) => (
+        <Animated.View
+          key={index}
+          style={{
+            position: 'absolute',
+            left: '-4%',
+            right: '-4%',
+            top: band.top,
+            height: `${bandHeight}%`,
+            backgroundColor: band.color,
+            opacity: fringeOpacity * 2.2,
+            transform: [{ translateX: offsets[index] }],
+          }}
+        />
+      ))}
+    </Animated.View>
   );
 }
 
@@ -78,26 +121,26 @@ export function VisualEffectsOverlay({ effects, colors, target = 'screen' }: Vis
   const targetEffects = effects.filter((effect) => (effect.target ?? 'screen') === target);
   if (!targetEffects.length) return null;
 
-  const flash = strongestIntensity(targetEffects, 'flash');
-  const vignette = strongestIntensity(targetEffects, 'vignette');
-  const glitch = strongestIntensity(targetEffects, 'glitch');
-  const blur = strongestIntensity(targetEffects, 'blur');
+  const flash = strongestEffect(targetEffects, 'flash');
+  const vignette = strongestEffect(targetEffects, 'vignette');
+  const glitch = strongestEffect(targetEffects, 'glitch');
+  const blur = strongestEffect(targetEffects, 'blur');
 
   if (!flash && !vignette && !glitch && !blur) return null;
 
   return (
     <View style={[StyleSheet.absoluteFillObject, getPointerEventsStyle('none')]}>
-      {blur ? <FogOverlay intensity={blur} /> : null}
-      {flash ? <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.surface, opacity: clamp(flash / 180, 0.12, 0.7) }]} /> : null}
+      {blur ? <BlurOverlay key={`blur-${blur.startTime}`} effect={blur} /> : null}
+      {flash ? <FlashOverlay key={`flash-${flash.startTime}`} effect={flash} color={colors.surface} /> : null}
       {vignette ? (
         <View
           style={[
             StyleSheet.absoluteFillObject,
-            { borderWidth: 36, borderColor: withAlpha(colors.foreground, clamp(vignette / 220, 0.16, 0.7)) },
+            { borderWidth: 36, borderColor: withAlpha(colors.foreground, clamp(vignette.intensity / 220, 0.16, 0.7)) },
           ]}
         />
       ) : null}
-      {glitch ? <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.primary, opacity: clamp(glitch / 700, 0.04, 0.22) }]} /> : null}
+      {glitch ? <GlitchOverlay key={`glitch-${glitch.startTime}`} effect={glitch} tint={colors.primary} /> : null}
     </View>
   );
 }

@@ -149,14 +149,17 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           return;
         }
         if (isEffectChip(child)) {
+          var childEffectType = child.dataset.effectType || 'rain';
+          var childDurationMode = normalizedEffectDurationMode(childEffectType, child.dataset.durationMode, child.dataset.duration);
           parts.push({
             type: 'effect',
             id: child.dataset.id || uid('inline_effect'),
-            effectType: child.dataset.effectType || 'rain',
+            effectType: childEffectType,
             target: child.dataset.target || 'screen',
             characterId: child.dataset.characterId || undefined,
             intensity: numberFromDataset(child.dataset.intensity, 50),
-            duration: normalizedEffectDuration(child.dataset.effectType || 'rain', child.dataset.duration),
+            duration: normalizedEffectDuration(childEffectType, child.dataset.duration),
+            durationMode: childDurationMode,
             fadeIn: child.dataset.fadeIn ? numberFromDataset(child.dataset.fadeIn, 0) : undefined,
             fadeOut: child.dataset.fadeOut ? numberFromDataset(child.dataset.fadeOut, 0) : undefined,
             rain: jsonFromDataset(child.dataset.rainOptions),
@@ -190,16 +193,74 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
 
     function effectChipLabel(effectType) {
       var labels = {
-        shake: 'Shake',
-        flash: 'Flash',
-        blur: 'Blur',
+        shake: 'Тряска',
+        flash: 'Спалах',
+        blur: 'Розмиття',
         rain: 'Дощ',
-        snow: 'Snow',
-        fog: 'Fog',
-        glitch: 'Glitch',
-        vignette: 'Vignette'
+        snow: 'Сніг',
+        fog: 'Туман',
+        glitch: 'Гліч',
+        vignette: 'Віньєтка'
       };
       return labels[effectType] || 'Ефект';
+    }
+
+    function effectTypeIcon(effectType) {
+      var icons = {
+        shake: '📳',
+        flash: '⚡',
+        blur: '🌀',
+        rain: '🌧',
+        snow: '❄️',
+        fog: '🌫',
+        glitch: '👾',
+        vignette: '⭕'
+      };
+      return icons[effectType] || '✦';
+    }
+
+    function rainVariantLabel(variant) {
+      var labels = {
+        drizzle: 'мряка',
+        rain: 'дощ',
+        storm: 'гроза',
+        fallout: 'fallout'
+      };
+      return labels[variant] || '';
+    }
+
+    function fogVariantLabel(variant) {
+      var labels = { light: 'легкий', dense: 'щільний' };
+      return labels[variant] || '';
+    }
+
+    function formatChipDuration(value) {
+      var number = Number(value);
+      if (!Number.isFinite(number) || number <= 0) return '';
+      return String(Math.round(number * 10) / 10) + 'с';
+    }
+
+    function effectChipDetails(chip) {
+      var effectType = chip.dataset.effectType || 'rain';
+      var parts = [];
+      if (effectType === 'rain') {
+        var rain = jsonFromDataset(chip.dataset.rainOptions) || {};
+        var variant = rain.variant || (rain.lightning ? 'storm' : 'rain');
+        var variantLabel = rainVariantLabel(variant);
+        if (variantLabel && variant !== 'rain') parts.push(variantLabel);
+      }
+      if (effectType === 'fog') {
+        var fog = jsonFromDataset(chip.dataset.fogOptions) || {};
+        var fogLabel = fogVariantLabel(fog.variant);
+        if (fogLabel) parts.push(fogLabel);
+      }
+      if (chip.dataset.durationMode === 'scene') {
+        parts.push('до кінця сцени');
+      } else {
+        var duration = formatChipDuration(chip.dataset.duration);
+        if (duration) parts.push(duration);
+      }
+      return parts.join(' · ');
     }
 
     function defaultEffectDuration(effectType) {
@@ -214,8 +275,26 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       return Number.isFinite(number) && number > 0 ? Math.max(0.1, number) : defaultEffectDuration(effectType);
     }
 
+    function isSceneBoundEffectType(effectType) {
+      return effectType === 'rain' || effectType === 'snow' || effectType === 'fog';
+    }
+
+    function normalizedEffectDurationMode(effectType, value, duration) {
+      if (value === 'scene' || value === 'timed') return value;
+      if (!isSceneBoundEffectType(effectType)) return 'timed';
+      var number = Number(duration);
+      return Number.isFinite(number) && number > 0 && Math.abs(number - defaultEffectDuration(effectType)) > 0.001
+        ? 'timed'
+        : 'scene';
+    }
+
     function renderEffectChipContent(chip) {
-      chip.innerHTML = '<span class="effect-chip-icon">✦</span><span>' + escapeHtml(effectChipLabel(chip.dataset.effectType || 'rain')) + '</span><span class="effect-chip-menu">⋮</span>';
+      var effectType = chip.dataset.effectType || 'rain';
+      var details = effectChipDetails(chip);
+      chip.innerHTML = '<span class="effect-chip-icon">' + effectTypeIcon(effectType) + '</span>'
+        + '<span>' + escapeHtml(effectChipLabel(effectType)) + '</span>'
+        + (details ? '<span class="effect-chip-details">' + escapeHtml(details) + '</span>' : '')
+        + '<span class="effect-chip-menu">⋮</span>';
     }
 
     function createEffectChip(data) {
@@ -231,6 +310,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       chip.dataset.effectType = effectType;
       chip.dataset.target = data.target || 'screen';
       chip.dataset.intensity = String(data.intensity == null ? 50 : data.intensity);
+      chip.dataset.durationMode = normalizedEffectDurationMode(effectType, data.durationMode, data.duration);
       chip.dataset.duration = String(normalizedEffectDuration(effectType, data.duration));
       if (data.characterId) chip.dataset.characterId = data.characterId;
       if (data.fadeIn != null) chip.dataset.fadeIn = String(data.fadeIn);
@@ -264,12 +344,14 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     }
 
     function effectDataFromChip(chip) {
+      var effectType = chip.dataset.effectType || 'rain';
       return {
-        effectType: chip.dataset.effectType || 'rain',
+        effectType: effectType,
         target: chip.dataset.target || 'screen',
         characterId: chip.dataset.characterId || '',
         intensity: numberFromDataset(chip.dataset.intensity, 50),
-        duration: normalizedEffectDuration(chip.dataset.effectType || 'rain', chip.dataset.duration),
+        duration: normalizedEffectDuration(effectType, chip.dataset.duration),
+        durationMode: normalizedEffectDurationMode(effectType, chip.dataset.durationMode, chip.dataset.duration),
         fadeIn: numberFromDataset(chip.dataset.fadeIn, 0),
         fadeOut: numberFromDataset(chip.dataset.fadeOut, 0),
         rain: jsonFromDataset(chip.dataset.rainOptions) || {},
@@ -288,6 +370,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       chip.dataset.effectType = effectType;
       chip.dataset.target = data.target || 'screen';
       chip.dataset.intensity = String(Math.max(0, Math.min(100, Number(data.intensity) || 0)));
+      chip.dataset.durationMode = normalizedEffectDurationMode(effectType, data.durationMode, data.duration);
       chip.dataset.duration = String(normalizedEffectDuration(effectType, data.duration));
       chip.dataset.fadeIn = String(Math.max(0, Number(data.fadeIn) || 0));
       chip.dataset.fadeOut = String(Math.max(0, Number(data.fadeOut) || 0));
@@ -314,16 +397,25 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       return Boolean(input && input.checked);
     }
 
+    function activeEffectTypeValue() {
+      if (!effectPopover) return 'rain';
+      var active = effectPopover.querySelector('.effect-type-chip.is-active');
+      return active && active.dataset.effectTypeOption ? active.dataset.effectTypeOption : 'rain';
+    }
+
     function collectEffectForm() {
       if (!effectPopover) return null;
-      var type = selectedValue(effectPopover.querySelector('[data-effect-field="effectType"]'), 'rain');
+      var type = activeEffectTypeValue();
       var target = selectedValue(effectPopover.querySelector('[data-effect-field="target"]'), 'screen');
+      var existing = activeEffectChip ? effectDataFromChip(activeEffectChip) : null;
+      var durationMode = isSceneBoundEffectType(type) && weatherChecked(effectPopover, 'sceneBoundDuration') ? 'scene' : 'timed';
       var data = {
         effectType: type,
         target: target,
-        characterId: weatherText(effectPopover, 'characterId', ''),
+        characterId: target === 'character' ? selectedValue(effectPopover.querySelector('[data-effect-field="characterId"]'), '') : '',
         intensity: weatherNumber(effectPopover, 'intensity', 50),
         duration: normalizedEffectDuration(type, weatherNumber(effectPopover, 'duration', defaultEffectDuration(type))),
+        durationMode: durationMode,
         fadeIn: weatherNumber(effectPopover, 'fadeIn', 0),
         fadeOut: weatherNumber(effectPopover, 'fadeOut', 0),
         rain: {},
@@ -331,20 +423,19 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         fog: {}
       };
       if (type === 'rain') {
+        // Поля, які прибрані з форми (color/wind/angle/dropLength/splash),
+        // переносимо зі старих даних чипа, щоб не ламати наявні історії.
+        var previousRain = existing && existing.rain ? existing.rain : {};
         var rainVariant = selectedValue(effectPopover.querySelector('[data-effect-field="rainVariant"]'), 'rain');
-        data.rain = {
+        data.rain = Object.assign({}, previousRain, {
           variant: rainVariant,
-          color: weatherText(effectPopover, 'rainColor', '#d2e8ff'),
           opacity: weatherNumber(effectPopover, 'rainOpacity', 0.4),
           density: weatherNumber(effectPopover, 'rainDensity', 100),
           speed: weatherNumber(effectPopover, 'rainSpeed', 2),
-          wind: weatherNumber(effectPopover, 'rainWind', 0),
-          angle: weatherNumber(effectPopover, 'rainAngle', -12),
-          dropLength: weatherNumber(effectPopover, 'rainDropLength', 28),
           dropWidth: weatherNumber(effectPopover, 'rainDropWidth', 2),
-          splash: weatherChecked(effectPopover, 'rainSplash'),
-          lightning: weatherChecked(effectPopover, 'rainLightning')
-        };
+          lightning: rainVariant === 'storm' || weatherChecked(effectPopover, 'rainLightning'),
+          sound: weatherChecked(effectPopover, 'rainSound')
+        });
       }
       if (type === 'snow') {
         var imageUris = weatherText(effectPopover, 'snowImageUris', '').split(',').map(function(item) { return item.trim(); }).filter(Boolean);
@@ -391,78 +482,90 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var fog = data.fog || {};
       var popover = document.createElement('div');
       popover.className = 'effect-popover';
+      var effectTypes = ['rain', 'snow', 'fog', 'shake', 'flash', 'blur', 'glitch', 'vignette'];
+      var typeChipsHtml = effectTypes.map(function(effectType) {
+        return '<button type="button" class="effect-type-chip' + (effectType === data.effectType ? ' is-active' : '') + '" data-effect-type-option="' + effectType + '">' +
+          '<span class="effect-type-chip-icon">' + effectTypeIcon(effectType) + '</span>' +
+          '<span>' + escapeHtml(effectChipLabel(effectType)) + '</span>' +
+        '</button>';
+      }).join('');
+      var characterOptionsHtml = '<option value=""' + (data.characterId ? '' : ' selected') + '>—</option>' +
+        characters.map(function(character) {
+          return option(character.id, character.name || character.id, data.characterId);
+        }).join('');
+      if (data.characterId && !findCharacterById(data.characterId)) {
+        characterOptionsHtml += option(data.characterId, data.characterId, data.characterId);
+      }
+      var rainVariantCurrent = rain.variant || (rain.lightning ? 'storm' : 'rain');
+      var sceneBoundChecked = isSceneBoundEffectType(data.effectType) && data.durationMode !== 'timed';
       popover.innerHTML =
+        '<div class="effect-type-grid">' + typeChipsHtml + '</div>' +
         '<div class="effect-popover-grid">' +
-          '<label class="popover-label">Ефект</label>' +
-          '<select class="popover-control" data-effect-field="effectType">' +
-            effectOption('rain', 'Дощ', data.effectType) +
-            effectOption('snow', 'Сніг', data.effectType) +
-            effectOption('fog', 'Fog', data.effectType) +
-            effectOption('shake', 'Shake', data.effectType) +
-            effectOption('flash', 'Flash', data.effectType) +
-            effectOption('blur', 'Blur', data.effectType) +
-            effectOption('glitch', 'Glitch', data.effectType) +
-            effectOption('vignette', 'Vignette', data.effectType) +
-          '</select>' +
           '<label class="popover-label">Ціль</label>' +
           '<select class="popover-control" data-effect-field="target">' +
             effectOption('screen', 'Весь екран', data.target) +
             effectOption('background', 'Фон', data.target) +
             effectOption('character', 'Персонаж', data.target) +
           '</select>' +
-          '<label class="popover-label">Character ID</label>' +
-          '<input class="popover-control" data-effect-field="characterId" value="' + escapeHtml(data.characterId || '') + '" />' +
+          '<label class="popover-label" data-effect-row="character">Персонаж</label>' +
+          '<select class="popover-control" data-effect-field="characterId" data-effect-row="character">' + characterOptionsHtml + '</select>' +
           '<label class="popover-label">Інтенсивність</label>' +
-          '<input class="popover-control" data-effect-field="intensity" type="number" min="0" max="100" value="' + escapeHtml(String(data.intensity)) + '" />' +
+          '<div class="effect-range-row"><input data-effect-field="intensity" type="range" min="0" max="100" step="1" value="' + escapeHtml(String(data.intensity)) + '" /><span class="effect-range-value">' + escapeHtml(String(data.intensity)) + '</span></div>' +
           '<label class="popover-label">Тривалість (с)</label>' +
+          '<label class="effect-checkbox" data-effect-row="sceneBoundDuration"><input type="checkbox" data-effect-field="sceneBoundDuration"' + (sceneBoundChecked ? ' checked' : '') + ' /> До кінця сцени</label>' +
           '<input class="popover-control" data-effect-field="duration" type="number" min="0.1" step="0.1" value="' + escapeHtml(String(data.duration)) + '" />' +
-          '<label class="popover-label">Fade in (с)</label>' +
+          '<label class="popover-label">Поява (с)</label>' +
           '<input class="popover-control" data-effect-field="fadeIn" type="number" min="0" step="0.1" value="' + escapeHtml(String(data.fadeIn || 0)) + '" />' +
-          '<label class="popover-label">Fade out (с)</label>' +
+          '<label class="popover-label">Згасання (с)</label>' +
           '<input class="popover-control" data-effect-field="fadeOut" type="number" min="0" step="0.1" value="' + escapeHtml(String(data.fadeOut || 0)) + '" />' +
         '</div>' +
         '<div class="effect-options" data-effect-section="rain">' +
-          '<div class="effect-section-title">Rain options</div>' +
+          '<div class="effect-section-title">Дощ</div>' +
           '<div class="effect-popover-grid">' +
-            '<label class="popover-label">Preset</label><select class="popover-control" data-effect-field="rainVariant">' +
-              effectOption('rain', 'Rain', rain.variant || (rain.lightning ? 'storm' : 'rain')) +
-              effectOption('storm', 'Storm (lightning)', rain.variant || (rain.lightning ? 'storm' : 'rain')) +
-              effectOption('drizzle', 'Drizzle', rain.variant || (rain.lightning ? 'storm' : 'rain')) +
-              effectOption('fallout', 'Fallout', rain.variant || (rain.lightning ? 'storm' : 'rain')) +
+            '<label class="popover-label">Пресет</label><select class="popover-control" data-effect-field="rainVariant">' +
+              effectOption('drizzle', 'Мряка', rainVariantCurrent) +
+              effectOption('rain', 'Дощ', rainVariantCurrent) +
+              effectOption('storm', 'Гроза', rainVariantCurrent) +
+              effectOption('fallout', 'Fallout', rainVariantCurrent) +
             '</select>' +
-            '<label class="popover-label">Color</label><input class="popover-control" data-effect-field="rainColor" value="' + escapeHtml(rain.color || '#d2e8ff') + '" />' +
-            '<label class="popover-label">Opacity</label><input class="popover-control" data-effect-field="rainOpacity" type="number" min="0" max="1" step="0.05" value="' + escapeHtml(String(rain.opacity ?? 0.4)) + '" />' +
-            '<label class="popover-label">Density</label><input class="popover-control" data-effect-field="rainDensity" type="number" min="0" value="' + escapeHtml(String(rain.density ?? 100)) + '" />' +
-            '<label class="popover-label">Speed</label><input class="popover-control" data-effect-field="rainSpeed" type="number" min="0" step="0.1" value="' + escapeHtml(String(rain.speed ?? 2)) + '" />' +
-            '<label class="popover-label">Wind</label><input class="popover-control" data-effect-field="rainWind" type="number" step="1" value="' + escapeHtml(String(rain.wind ?? 0)) + '" />' +
-            '<label class="popover-label">Angle</label><input class="popover-control" data-effect-field="rainAngle" type="number" step="1" value="' + escapeHtml(String(rain.angle ?? -12)) + '" />' +
-            '<label class="popover-label">Drop length</label><input class="popover-control" data-effect-field="rainDropLength" type="number" min="1" value="' + escapeHtml(String(rain.dropLength ?? 28)) + '" />' +
-            '<label class="popover-label">Drop width</label><input class="popover-control" data-effect-field="rainDropWidth" type="number" min="1" step="0.5" value="' + escapeHtml(String(rain.dropWidth ?? 2)) + '" />' +
+            '<label class="popover-label">Прозорість</label>' +
+            '<div class="effect-range-row"><input data-effect-field="rainOpacity" type="range" min="0" max="1" step="0.05" value="' + escapeHtml(String(rain.opacity ?? 0.4)) + '" /><span class="effect-range-value">' + escapeHtml(String(rain.opacity ?? 0.4)) + '</span></div>' +
           '</div>' +
-          '<label class="effect-checkbox"><input type="checkbox" data-effect-field="rainSplash"' + (rain.splash ? ' checked' : '') + ' /> Splash</label>' +
-          '<label class="effect-checkbox"><input type="checkbox" data-effect-field="rainLightning"' + (rain.lightning ? ' checked' : '') + ' /> Lightning</label>' +
+          '<label class="effect-checkbox"><input type="checkbox" data-effect-field="rainLightning"' + (rain.lightning ? ' checked' : '') + ' /> Блискавка</label>' +
+          '<label class="effect-checkbox"><input type="checkbox" data-effect-field="rainSound"' + (rain.sound === false ? '' : ' checked') + ' /> Звук дощу і грому</label>' +
+          '<details class="effect-advanced"><summary>Розширені</summary>' +
+            '<div class="effect-popover-grid">' +
+              '<label class="popover-label">Щільність</label><input class="popover-control" data-effect-field="rainDensity" type="number" min="0" value="' + escapeHtml(String(rain.density ?? 100)) + '" />' +
+              '<label class="popover-label">Швидкість</label><input class="popover-control" data-effect-field="rainSpeed" type="number" min="0" step="0.1" value="' + escapeHtml(String(rain.speed ?? 2)) + '" />' +
+              '<label class="popover-label">Товщина краплі</label><input class="popover-control" data-effect-field="rainDropWidth" type="number" min="1" step="0.5" value="' + escapeHtml(String(rain.dropWidth ?? 2)) + '" />' +
+            '</div>' +
+          '</details>' +
         '</div>' +
         '<div class="effect-options" data-effect-section="snow">' +
-          '<div class="effect-section-title">React Snowfall options</div>' +
+          '<div class="effect-section-title">Сніг</div>' +
           '<div class="effect-popover-grid">' +
-            '<label class="popover-label">Color</label><input class="popover-control" data-effect-field="snowColor" value="' + escapeHtml(snow.color || '#ffffff') + '" />' +
-            '<label class="popover-label">Count</label><input class="popover-control" data-effect-field="snowflakeCount" type="number" min="0" value="' + escapeHtml(String(snow.snowflakeCount ?? 150)) + '" />' +
-            '<label class="popover-label">Radius min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowRadiusMin" type="number" step="0.1" value="' + escapeHtml(String((snow.radius && snow.radius[0]) ?? 0.5)) + '" /><input class="popover-control" data-effect-field="snowRadiusMax" type="number" step="0.1" value="' + escapeHtml(String((snow.radius && snow.radius[1]) ?? 3)) + '" /></div>' +
-            '<label class="popover-label">Speed min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowSpeedMin" type="number" step="0.1" value="' + escapeHtml(String((snow.speed && snow.speed[0]) ?? 1)) + '" /><input class="popover-control" data-effect-field="snowSpeedMax" type="number" step="0.1" value="' + escapeHtml(String((snow.speed && snow.speed[1]) ?? 3)) + '" /></div>' +
-            '<label class="popover-label">Wind min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowWindMin" type="number" step="0.1" value="' + escapeHtml(String((snow.wind && snow.wind[0]) ?? -0.5)) + '" /><input class="popover-control" data-effect-field="snowWindMax" type="number" step="0.1" value="' + escapeHtml(String((snow.wind && snow.wind[1]) ?? 2)) + '" /></div>' +
-            '<label class="popover-label">Change frequency</label><input class="popover-control" data-effect-field="snowChangeFrequency" type="number" min="1" value="' + escapeHtml(String(snow.changeFrequency ?? 200)) + '" />' +
-            '<label class="popover-label">Rotation min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowRotationMin" type="number" step="0.1" value="' + escapeHtml(String((snow.rotationSpeed && snow.rotationSpeed[0]) ?? -1)) + '" /><input class="popover-control" data-effect-field="snowRotationMax" type="number" step="0.1" value="' + escapeHtml(String((snow.rotationSpeed && snow.rotationSpeed[1]) ?? 1)) + '" /></div>' +
-            '<label class="popover-label">Opacity min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowOpacityMin" type="number" min="0" max="1" step="0.05" value="' + escapeHtml(String((snow.opacity && snow.opacity[0]) ?? 1)) + '" /><input class="popover-control" data-effect-field="snowOpacityMax" type="number" min="0" max="1" step="0.05" value="' + escapeHtml(String((snow.opacity && snow.opacity[1]) ?? 1)) + '" /></div>' +
-            '<label class="popover-label">Image URIs</label><input class="popover-control" data-effect-field="snowImageUris" value="' + escapeHtml((snow.imageUris || []).join(', ')) + '" />' +
+            '<label class="popover-label">Кількість сніжинок</label><input class="popover-control" data-effect-field="snowflakeCount" type="number" min="0" value="' + escapeHtml(String(snow.snowflakeCount ?? 150)) + '" />' +
+            '<label class="popover-label">Колір</label><input class="popover-control" data-effect-field="snowColor" value="' + escapeHtml(snow.color || '#ffffff') + '" />' +
           '</div>' +
-          '<label class="effect-checkbox"><input type="checkbox" data-effect-field="snowEnable3D"' + (snow.enable3DRotation ? ' checked' : '') + ' /> Enable 3D rotation</label>' +
+          '<details class="effect-advanced"><summary>Розширені</summary>' +
+            '<div class="effect-popover-grid">' +
+              '<label class="popover-label">Розмір min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowRadiusMin" type="number" step="0.1" value="' + escapeHtml(String((snow.radius && snow.radius[0]) ?? 0.5)) + '" /><input class="popover-control" data-effect-field="snowRadiusMax" type="number" step="0.1" value="' + escapeHtml(String((snow.radius && snow.radius[1]) ?? 3)) + '" /></div>' +
+              '<label class="popover-label">Швидкість min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowSpeedMin" type="number" step="0.1" value="' + escapeHtml(String((snow.speed && snow.speed[0]) ?? 1)) + '" /><input class="popover-control" data-effect-field="snowSpeedMax" type="number" step="0.1" value="' + escapeHtml(String((snow.speed && snow.speed[1]) ?? 3)) + '" /></div>' +
+              '<label class="popover-label">Вітер min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowWindMin" type="number" step="0.1" value="' + escapeHtml(String((snow.wind && snow.wind[0]) ?? -0.5)) + '" /><input class="popover-control" data-effect-field="snowWindMax" type="number" step="0.1" value="' + escapeHtml(String((snow.wind && snow.wind[1]) ?? 2)) + '" /></div>' +
+              '<label class="popover-label">Частота змін</label><input class="popover-control" data-effect-field="snowChangeFrequency" type="number" min="1" value="' + escapeHtml(String(snow.changeFrequency ?? 200)) + '" />' +
+              '<label class="popover-label">Обертання min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowRotationMin" type="number" step="0.1" value="' + escapeHtml(String((snow.rotationSpeed && snow.rotationSpeed[0]) ?? -1)) + '" /><input class="popover-control" data-effect-field="snowRotationMax" type="number" step="0.1" value="' + escapeHtml(String((snow.rotationSpeed && snow.rotationSpeed[1]) ?? 1)) + '" /></div>' +
+              '<label class="popover-label">Прозорість min/max</label><div class="effect-pair"><input class="popover-control" data-effect-field="snowOpacityMin" type="number" min="0" max="1" step="0.05" value="' + escapeHtml(String((snow.opacity && snow.opacity[0]) ?? 1)) + '" /><input class="popover-control" data-effect-field="snowOpacityMax" type="number" min="0" max="1" step="0.05" value="' + escapeHtml(String((snow.opacity && snow.opacity[1]) ?? 1)) + '" /></div>' +
+              '<label class="popover-label">Зображення (URI)</label><input class="popover-control" data-effect-field="snowImageUris" value="' + escapeHtml((snow.imageUris || []).join(', ')) + '" />' +
+            '</div>' +
+            '<label class="effect-checkbox"><input type="checkbox" data-effect-field="snowEnable3D"' + (snow.enable3DRotation ? ' checked' : '') + ' /> 3D-обертання</label>' +
+          '</details>' +
         '</div>' +
         '<div class="effect-options" data-effect-section="fog">' +
-          '<div class="effect-section-title">Fog options</div>' +
+          '<div class="effect-section-title">Туман</div>' +
           '<div class="effect-popover-grid">' +
-            '<label class="popover-label">Preset</label><select class="popover-control" data-effect-field="fogVariant">' +
-              effectOption('light', 'Light fog', fog.variant || (data.intensity >= 60 ? 'dense' : 'light')) +
-              effectOption('dense', 'Dense fog', fog.variant || (data.intensity >= 60 ? 'dense' : 'light')) +
+            '<label class="popover-label">Пресет</label><select class="popover-control" data-effect-field="fogVariant">' +
+              effectOption('light', 'Легкий туман', fog.variant || (data.intensity >= 60 ? 'dense' : 'light')) +
+              effectOption('dense', 'Щільний туман', fog.variant || (data.intensity >= 60 ? 'dense' : 'light')) +
             '</select>' +
           '</div>' +
         '</div>' +
@@ -475,10 +578,32 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
 
     function updateEffectSections() {
       if (!effectPopover) return;
-      var type = selectedValue(effectPopover.querySelector('[data-effect-field="effectType"]'), 'rain');
+      var type = activeEffectTypeValue();
       Array.prototype.slice.call(effectPopover.querySelectorAll('[data-effect-section]')).forEach(function(section) {
         section.classList.toggle('hidden', section.dataset.effectSection !== type);
       });
+      var target = selectedValue(effectPopover.querySelector('[data-effect-field="target"]'), 'screen');
+      Array.prototype.slice.call(effectPopover.querySelectorAll('[data-effect-row="character"]')).forEach(function(node) {
+        node.classList.toggle('hidden', target !== 'character');
+      });
+      var sceneBoundSupported = isSceneBoundEffectType(type);
+      Array.prototype.slice.call(effectPopover.querySelectorAll('[data-effect-row="sceneBoundDuration"]')).forEach(function(node) {
+        node.classList.toggle('hidden', !sceneBoundSupported);
+      });
+      var sceneBoundInput = effectPopover.querySelector('[data-effect-field="sceneBoundDuration"]');
+      var durationInput = effectPopover.querySelector('[data-effect-field="duration"]');
+      if (durationInput) {
+        durationInput.disabled = Boolean(sceneBoundSupported && sceneBoundInput && sceneBoundInput.checked);
+      }
+      afterLayout(function() { positionEffectPopover(activeEffectChip); });
+    }
+
+    function selectEffectTypeChip(button) {
+      if (!effectPopover || !button) return;
+      Array.prototype.slice.call(effectPopover.querySelectorAll('.effect-type-chip')).forEach(function(chip) {
+        chip.classList.toggle('is-active', chip === button);
+      });
+      updateEffectSections();
     }
 
     function findCharacterById(id) {
@@ -1347,6 +1472,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         target: 'screen',
         intensity: 50,
         duration: 8,
+        durationMode: 'scene',
         fadeIn: 0,
         fadeOut: 0
       });
@@ -1601,6 +1727,14 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     });
 
     document.addEventListener('input', function(event) {
+      if (effectPopover && effectPopover.contains(event.target)) {
+        var rangeInput = event.target;
+        if (rangeInput && rangeInput.type === 'range' && rangeInput.parentNode) {
+          var valueNode = rangeInput.parentNode.querySelector('.effect-range-value');
+          if (valueNode) valueNode.textContent = String(rangeInput.value);
+        }
+        return;
+      }
       if (!backgroundPopover || !backgroundPopover.contains(event.target)) return;
       var asset = backgroundPopover.querySelector('#bgAssetInput');
       if (event.target === asset) delete backgroundPopover.dataset.selectedAssetId;
@@ -1611,6 +1745,11 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (effectPopover) {
         var effectTarget = event.target;
         if (effectTarget && effectTarget.closest && effectTarget.closest('.effect-popover')) {
+          var effectTypeButton = effectTarget.closest('.effect-type-chip');
+          if (effectTypeButton) {
+            selectEffectTypeChip(effectTypeButton);
+            return;
+          }
           var effectActionButton = effectTarget.closest('[data-action]');
           if (!effectActionButton) return;
           var effectAction = effectActionButton.dataset.action;
@@ -1620,10 +1759,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
               target: 'screen',
               intensity: 50,
               duration: 8,
+              durationMode: 'scene',
               fadeIn: 0,
               fadeOut: 0,
               rain: {},
-              snow: {}
+              snow: {},
+              fog: {}
             });
             saveNow();
             closeEffectPopover();

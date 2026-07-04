@@ -14,6 +14,10 @@ export interface RainEffectOptions {
   dropWidth?: number;
   splash?: boolean;
   lightning?: boolean;
+  // Ambient rain loop + thunder (thunder only when lightning is on).
+  // undefined = enabled; explicit false disables.
+  sound?: boolean;
+  soundVolume?: number;
 }
 
 export interface SnowEffectOptions {

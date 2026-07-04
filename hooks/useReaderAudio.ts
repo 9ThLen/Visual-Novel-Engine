@@ -4,6 +4,8 @@ import { useIsFocused } from '@react-navigation/native';
 import type { UserSettings } from '../lib/user-settings';
 import type { IAudioManager } from '../lib/audio-interfaces';
 import { enhancedAudioManager as defaultAudioManager } from '../lib/audio-manager-enhanced';
+import { isEffectAmbienceTrack } from '../lib/effect-audio';
+import { useEffectAmbience } from './useEffectAmbience';
 import { resolvePlayableAssetUri } from '../lib/asset-resolver';
 import { getPlaybackAudioLibrary } from '@/stores/audio-library-actions';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from '../lib/error-handler';
@@ -160,6 +162,12 @@ export function useReaderAudio(
     console.log(`[useReaderAudio] ${event}`, context ?? {});
   }, []);
 
+  useEffectAmbience(
+    sceneState?.activeEffects,
+    settings.sfxVolume,
+    isFocused && !blockedByOverlay,
+  );
+
   const applySceneAudio = useCallback(
     (scene: ReaderAudioScene, runtimeState: SceneState | null, sessionId: number) => {
       const generation = ++sceneGenerationRef.current;
@@ -180,7 +188,9 @@ export function useReaderAudio(
       audioManager.stop('voice');
       const activeTracks = audioManager.getPlaybackState() ?? [];
       for (const track of activeTracks) {
-        if (track.trackId !== 'bgm') {
+        // Effect ambience (rain loop, thunder) outlives a single step —
+        // useEffectAmbience owns its lifecycle.
+        if (track.trackId !== 'bgm' && !isEffectAmbienceTrack(track.trackId)) {
           void audioManager.stop(track.trackId, 300);
         }
       }

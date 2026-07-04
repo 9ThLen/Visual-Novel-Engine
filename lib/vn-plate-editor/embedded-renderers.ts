@@ -24,16 +24,48 @@ function technicalSummary(block: Extract<DocumentBlock, { kind: 'technical' }>):
 
 function effectLabel(effectType: string): string {
   const labels: Record<string, string> = {
-    shake: 'Shake',
-    flash: 'Flash',
-    blur: 'Blur',
+    shake: 'Тряска',
+    flash: 'Спалах',
+    blur: 'Розмиття',
     rain: 'Дощ',
-    snow: 'Snow',
-    fog: 'Fog',
-    glitch: 'Glitch',
-    vignette: 'Vignette',
+    snow: 'Сніг',
+    fog: 'Туман',
+    glitch: 'Гліч',
+    vignette: 'Віньєтка',
   };
   return labels[effectType] || 'Ефект';
+}
+
+function effectIcon(effectType: string): string {
+  const icons: Record<string, string> = {
+    shake: '📳',
+    flash: '⚡',
+    blur: '🌀',
+    rain: '🌧',
+    snow: '❄️',
+    fog: '🌫',
+    glitch: '👾',
+    vignette: '⭕',
+  };
+  return icons[effectType] || '✦';
+}
+
+function effectDetails(part: Extract<DocumentInlinePart, { type: 'effect' }>): string {
+  const details: string[] = [];
+  if (part.effectType === 'rain') {
+    const variant = part.rain?.variant || (part.rain?.lightning ? 'storm' : 'rain');
+    const variantLabels: Record<string, string> = { drizzle: 'мряка', storm: 'гроза', fallout: 'fallout' };
+    if (variantLabels[variant]) details.push(variantLabels[variant]);
+  }
+  if (part.effectType === 'fog' && part.fog?.variant) {
+    details.push(part.fog.variant === 'dense' ? 'щільний' : 'легкий');
+  }
+  if (part.durationMode === 'scene') {
+    details.push('до кінця сцени');
+  } else if (Number.isFinite(part.duration) && part.duration > 0) {
+    details.push(`${Math.round(part.duration * 10) / 10}с`);
+  }
+  return details.join(' · ');
 }
 
 function inlinePartToHtml(part: DocumentInlinePart): string {
@@ -41,13 +73,16 @@ function inlinePartToHtml(part: DocumentInlinePart): string {
   const characterId = part.characterId ? ` data-character-id="${escapeHtml(part.characterId)}"` : '';
   const fadeIn = part.fadeIn != null ? ` data-fade-in="${escapeHtml(String(part.fadeIn))}"` : '';
   const fadeOut = part.fadeOut != null ? ` data-fade-out="${escapeHtml(String(part.fadeOut))}"` : '';
+  const durationMode = part.durationMode ? ` data-duration-mode="${escapeHtml(part.durationMode)}"` : '';
   const rain = part.rain ? ` data-rain-options="${escapeHtml(JSON.stringify(part.rain))}"` : '';
   const snow = part.snow ? ` data-snow-options="${escapeHtml(JSON.stringify(part.snow))}"` : '';
   const fog = part.fog ? ` data-fog-options="${escapeHtml(JSON.stringify(part.fog))}"` : '';
+  const details = effectDetails(part);
   return [
-    `<span class="effect-chip" contenteditable="false" draggable="true" tabindex="0" role="button" data-kind="effect" data-id="${escapeHtml(part.id)}" data-effect-type="${escapeHtml(part.effectType)}" data-target="${escapeHtml(part.target)}"${characterId} data-intensity="${escapeHtml(String(part.intensity))}" data-duration="${escapeHtml(String(part.duration))}"${fadeIn}${fadeOut}${rain}${snow}${fog}>`,
-    `<span class="effect-chip-icon">✦</span>`,
+    `<span class="effect-chip" contenteditable="false" draggable="true" tabindex="0" role="button" data-kind="effect" data-id="${escapeHtml(part.id)}" data-effect-type="${escapeHtml(part.effectType)}" data-target="${escapeHtml(part.target)}"${characterId} data-intensity="${escapeHtml(String(part.intensity))}" data-duration="${escapeHtml(String(part.duration))}"${durationMode}${fadeIn}${fadeOut}${rain}${snow}${fog}>`,
+    `<span class="effect-chip-icon">${effectIcon(part.effectType)}</span>`,
     `<span>${escapeHtml(effectLabel(part.effectType))}</span>`,
+    details ? `<span class="effect-chip-details">${escapeHtml(details)}</span>` : '',
     `<span class="effect-chip-menu">⋮</span>`,
     '</span>',
   ].join('');

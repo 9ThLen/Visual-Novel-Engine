@@ -186,6 +186,7 @@ function effectStepToInlinePart(step: TimelineStep): DocumentInlinePart | null {
     characterId: data.characterId,
     intensity: data.intensity,
     duration: data.duration,
+    durationMode: data.durationMode,
     fadeIn: data.fadeIn,
     fadeOut: data.fadeOut,
     rain: data.rain,
@@ -201,6 +202,12 @@ function inlinePartsText(parts: DocumentInlinePart[]): string {
     .join('');
 }
 
+// Inline effect chips cannot carry step conditions or the enabled flag, so
+// steps that use them must stay technical blocks to avoid silent data loss.
+function isInlineSafeEffectStep(step: TimelineStep): boolean {
+  return step.enabled !== false && (step.conditions ?? []).length === 0;
+}
+
 function mergeInlineEffectBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
   const result: DocumentBlock[] = [];
   let bufferedBlocks: DocumentBlock[] = [];
@@ -210,9 +217,9 @@ function mergeInlineEffectBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
   const flush = () => {
     if (!bufferedBlocks.length) return;
     const firstText = bufferedBlocks.find((block): block is DocumentTextBlock => block.kind === 'text');
-    if (hasEffect && firstText) {
+    if (hasEffect) {
       result.push({
-        id: firstText?.id || bufferedBlocks[0].id,
+        id: firstText?.id || generateId('doc_text'),
         kind: 'text',
         sourceStepId: firstText?.sourceStepId,
         sourceStep: firstText?.sourceStep,
@@ -234,7 +241,7 @@ function mergeInlineEffectBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
       continue;
     }
 
-    if (block.kind === 'technical' && block.blockType === 'effect') {
+    if (block.kind === 'technical' && block.blockType === 'effect' && isInlineSafeEffectStep(block.step)) {
       const effectPart = effectStepToInlinePart(block.step);
       if (effectPart) {
         bufferedBlocks.push(block);
@@ -537,6 +544,7 @@ function effectStepFromInlinePart(part: Extract<DocumentInlinePart, { type: 'eff
       characterId: part.characterId,
       intensity: part.intensity,
       duration: part.duration,
+      durationMode: part.durationMode,
       fadeIn: part.fadeIn,
       fadeOut: part.fadeOut,
       rain: part.rain,

@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ActiveEffect } from '@/lib/engine/runtime-types';
 import type { RainEffectVariant } from '@/lib/engine/effect-options';
+import { subscribeToLightning } from '@/lib/engine/lightning-scheduler';
 import Raindrops from './react-weather-effects/rain/raindrops';
 import { weatherData } from './react-weather-effects/rain/rain-utils';
 
@@ -177,27 +178,38 @@ export function ReactWeatherRainEffect({ effect }: { effect: ActiveEffect }) {
           pointerEvents: 'none',
         }}
       />
-      {lightning ? (
-        <>
-          <style>
-            {'@keyframes vne-weather-lightning{0%,88%,100%{opacity:0}89%{opacity:.72}90%{opacity:.06}91%{opacity:.5}93%{opacity:0}}'}
-          </style>
-          <div
-            data-testid="react-weather-rain-lightning"
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(210,232,255,0.95)',
-              mixBlendMode: 'screen',
-              opacity: 0,
-              animation: variant === 'fallout'
-                ? 'vne-weather-lightning 1.4s linear infinite'
-                : 'vne-weather-lightning 4.8s linear infinite',
-              pointerEvents: 'none',
-            }}
-          />
-        </>
-      ) : null}
+      {lightning ? <LightningFlashLayer fast={variant === 'fallout'} /> : null}
     </div>
+  );
+}
+
+function LightningFlashLayer({ fast }: { fast: boolean }) {
+  const [strikeId, setStrikeId] = useState(0);
+
+  useEffect(
+    () => subscribeToLightning((strike) => setStrikeId(strike.id), { fast }),
+    [fast],
+  );
+
+  return (
+    <>
+      <style>
+        {'@keyframes vne-weather-lightning{0%{opacity:.72}12%{opacity:.06}22%{opacity:.5}48%,100%{opacity:0}}'}
+      </style>
+      <div
+        key={strikeId}
+        data-testid="react-weather-rain-lightning"
+        data-strike-id={strikeId}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(210,232,255,0.95)',
+          mixBlendMode: 'screen',
+          opacity: 0,
+          animation: strikeId ? 'vne-weather-lightning 0.9s linear forwards' : 'none',
+          pointerEvents: 'none',
+        }}
+      />
+    </>
   );
 }

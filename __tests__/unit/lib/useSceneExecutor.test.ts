@@ -3,6 +3,7 @@ import type { TimelineStep } from '@/lib/engine/types';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
 
 import { createEffectStep } from '@/lib/engine/event-factory';
+import { SCENE_BOUND_END_TIME } from '@/lib/engine/effect-duration';
 
 describe('useSceneExecutor', () => {
   it('stays advanceable after text typing is completed so the next tap can continue', async () => {
@@ -363,8 +364,35 @@ describe('useSceneExecutor', () => {
     });
 
     const [rain, flash] = result.current.sceneState.activeEffects;
-    expect(rain.endTime - rain.startTime).toBe(8000);
+    expect(rain).toMatchObject({
+      durationMode: 'scene',
+      sceneBound: true,
+      endTime: SCENE_BOUND_END_TIME,
+    });
     expect(flash.endTime - flash.startTime).toBe(350);
+  });
+
+  it('supports explicitly timed weather effects', async () => {
+    const timeline = [
+      createEffectStep({
+        effectType: 'rain',
+        target: 'screen',
+        intensity: 60,
+        duration: 3,
+        durationMode: 'timed',
+      }),
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.sceneState.activeEffects).toHaveLength(1);
+    });
+
+    const [rain] = result.current.sceneState.activeEffects;
+    expect(rain.sceneBound).toBe(false);
+    expect(rain.durationMode).toBe('timed');
+    expect(rain.endTime - rain.startTime).toBe(3000);
   });
 
   it('keeps choices interactive when rain runs before a choice block', async () => {
@@ -525,27 +553,37 @@ describe('useSceneExecutor', () => {
     });
   });
 
-  it('creates weather effect steps with visible default duration', () => {
+  it('creates weather effect steps with scene-bound defaults', () => {
     const rainStep = createEffectStep({ effectType: 'rain' });
     const fogStep = createEffectStep({ effectType: 'fog' });
+    const timedRainStep = createEffectStep({ effectType: 'rain', duration: 3 });
     const blurStep = createEffectStep({ effectType: 'blur' });
     const shakeStep = createEffectStep();
 
     expect(rainStep.data).toMatchObject({
       effectType: 'rain',
       duration: 8,
+      durationMode: 'scene',
     });
     expect(fogStep.data).toMatchObject({
       effectType: 'fog',
       duration: 8,
+      durationMode: 'scene',
+    });
+    expect(timedRainStep.data).toMatchObject({
+      effectType: 'rain',
+      duration: 3,
+      durationMode: 'timed',
     });
     expect(blurStep.data).toMatchObject({
       effectType: 'blur',
       duration: 0.8,
+      durationMode: 'timed',
     });
     expect(shakeStep.data).toMatchObject({
       effectType: 'shake',
       duration: 0.8,
+      durationMode: 'timed',
     });
   });
 

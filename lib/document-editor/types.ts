@@ -41,6 +41,7 @@ export type DocumentInlinePart =
       characterId?: string;
       intensity: number;
       duration: number;
+      durationMode?: 'scene' | 'timed';
       fadeIn?: number;
       fadeOut?: number;
       rain?: RainEffectOptions;

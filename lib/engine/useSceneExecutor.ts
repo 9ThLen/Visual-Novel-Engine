@@ -15,7 +15,12 @@ import type {
 } from './types';
 import type { SceneState } from './runtime-types';
 import { createEmptySceneState, conditionsMet } from './conditionUtils';
-import { isBlockingEffectType, normalizeEffectDuration } from './effect-duration';
+import {
+  isBlockingEffectType,
+  normalizeEffectDuration,
+  normalizeEffectDurationMode,
+  SCENE_BOUND_END_TIME,
+} from './effect-duration';
 
 const YIELDING_BLOCK_TYPES = new Set(['text', 'dialogue', 'choice', 'transition']);
 const MAX_DIALOGUE_HISTORY_ENTRIES = 500;
@@ -215,7 +220,11 @@ export function useSceneExecutor(
         case 'effect': {
           const d = step.data as EffectBlockData;
           const now = Date.now();
-          const duration = normalizeEffectDuration(d.effectType, d.duration);
+          const durationMode = normalizeEffectDurationMode(d.effectType, d.durationMode, d.duration);
+          const sceneBound = durationMode === 'scene';
+          const endTime = sceneBound
+            ? SCENE_BOUND_END_TIME
+            : now + normalizeEffectDuration(d.effectType, d.duration) * 1000;
           nextState.activeEffects = [
             ...nextState.activeEffects,
             {
@@ -223,13 +232,15 @@ export function useSceneExecutor(
               target: d.target,
               characterId: d.characterId,
               intensity: d.intensity,
+              durationMode,
+              sceneBound,
               fadeIn: d.fadeIn,
               fadeOut: d.fadeOut,
               rain: d.rain,
               snow: d.snow,
               fog: d.fog,
               startTime: now,
-              endTime: now + duration * 1000,
+              endTime,
             },
           ];
           break;

@@ -68,10 +68,12 @@ Factories: `lib/engine/event-factory.ts`
 ### Effect
 - **Category:** Effects
 - **Color:** `#ffd93d`
-- **Purpose:** Visual screen effects.
-- **Fields:** `effectType` (shake/flash/blur/rain/snow/glitch/vignette), `target` (screen/character/background), `intensity` (0-100), `duration` (seconds)
+- **Purpose:** Visual screen effects with optional ambience audio.
+- **Fields:** `effectType` (shake/flash/blur/rain/snow/fog/glitch/vignette), `target` (screen/character/background), `intensity` (0-100), `duration` (seconds), `fadeIn`/`fadeOut` (seconds)
+- **Rain options** (`rain`): `variant` (drizzle/rain/storm/fallout), `opacity`, `lightning`, `sound` (bundled rain loop + thunder, on by default; `false` disables), `soundVolume`; advanced: `density`, `speed`, `dropWidth`. Legacy fields (`color`, `wind`, `angle`, `dropLength`, `splash`) are preserved on save but no longer editable in the popover.
+- **Lightning/thunder:** flashes are driven by the shared scheduler in `lib/engine/lightning-scheduler.ts`; thunder claps follow each strike when `sound` is enabled.
 - **Auto-executes:** Yes
-- **Runtime:** Appends to `sceneState.activeEffects[]`
+- **Runtime:** Appends to `sceneState.activeEffects[]`; rain ambience is played by `useEffectAmbience`
 
 ### Music
 - **Category:** Media

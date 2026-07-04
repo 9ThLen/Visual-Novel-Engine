@@ -5,7 +5,7 @@ export function useVisibleEffects(activeEffects: ActiveEffect[]): ActiveEffect[]
   const [now, setNow] = useState(() => Date.now());
   const effectsSignature = useMemo(
     () => activeEffects
-      .map((effect) => `${effect.effectType}:${effect.target}:${effect.characterId ?? ''}:${effect.startTime}:${effect.endTime}`)
+      .map((effect) => `${effect.effectType}:${effect.target}:${effect.characterId ?? ''}:${effect.startTime}:${effect.endTime}:${effect.sceneBound ? 'scene' : 'timed'}`)
       .join('|'),
     [activeEffects],
   );
@@ -15,12 +15,13 @@ export function useVisibleEffects(activeEffects: ActiveEffect[]): ActiveEffect[]
   }, [effectsSignature]);
 
   const visibleEffects = useMemo(
-    () => activeEffects.filter((effect) => effect.endTime >= now),
+    () => activeEffects.filter((effect) => effect.sceneBound || effect.endTime >= now),
     [activeEffects, now],
   );
 
   useEffect(() => {
     const nextEndTime = visibleEffects
+      .filter((effect) => !effect.sceneBound)
       .map((effect) => effect.endTime)
       .sort((a, b) => a - b)[0];
     if (!nextEndTime) return undefined;

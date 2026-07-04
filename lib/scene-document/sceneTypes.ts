@@ -120,6 +120,7 @@ export type EffectNode = {
   characterId?: string;
   intensity?: number;
   durationMs?: number;
+  durationMode?: 'scene' | 'timed';
   rain?: RainEffectOptions;
   snow?: SnowEffectOptions;
   fog?: FogEffectOptions;

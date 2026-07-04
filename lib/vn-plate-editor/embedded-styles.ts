@@ -110,6 +110,11 @@ export function createEmbeddedStyles(): string {
       color: #7c3aed;
       font-weight: 850;
     }
+    .effect-chip-details {
+      color: #8b7bd8;
+      font-size: 12px;
+      font-weight: 600;
+    }
     .character-popover {
       position: absolute;
       z-index: 32;
@@ -277,6 +282,72 @@ export function createEmbeddedStyles(): string {
       grid-template-columns: 1fr 1.45fr;
       gap: 8px 14px;
       align-items: center;
+    }
+    .effect-type-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .effect-type-chip {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      padding: 8px 4px;
+      border: 1px solid #e2ddd4;
+      border-radius: 8px;
+      background: #faf9f7;
+      color: #4b5563;
+      font: 650 12px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    .effect-type-chip:hover {
+      border-color: #c4b5fd;
+      background: #f5f3ff;
+    }
+    .effect-type-chip.is-active {
+      border-color: #7c3aed;
+      background: #f5f3ff;
+      color: #6d28d9;
+      box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.16);
+    }
+    .effect-type-chip-icon {
+      font-size: 17px;
+      line-height: 1;
+    }
+    .effect-range-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .effect-range-row input[type="range"] {
+      flex: 1;
+      accent-color: #7c3aed;
+    }
+    .effect-range-value {
+      min-width: 34px;
+      text-align: right;
+      color: #6d28d9;
+      font-size: 13px;
+      font-weight: 750;
+      font-variant-numeric: tabular-nums;
+    }
+    .effect-advanced {
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px dashed #e5e7eb;
+    }
+    .effect-advanced summary {
+      color: #6b7280;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+    }
+    .effect-advanced[open] summary {
+      margin-bottom: 10px;
+      color: #6d28d9;
     }
     .effect-options {
       margin: 14px 0;

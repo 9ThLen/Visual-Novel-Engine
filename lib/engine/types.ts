@@ -194,6 +194,7 @@ export interface ChoiceBlockData {
 }
 
 export type EffectType = 'shake' | 'flash' | 'blur' | 'rain' | 'snow' | 'fog' | 'glitch' | 'vignette';
+export type EffectDurationMode = 'scene' | 'timed';
 
 export interface EffectBlockData {
   effectType: EffectType;
@@ -201,6 +202,7 @@ export interface EffectBlockData {
   characterId?: string;     // if target = 'character'
   intensity: number;        // 0-100
   duration: number;         // seconds
+  durationMode?: EffectDurationMode;
   fadeIn?: number;          // seconds
   fadeOut?: number;         // seconds
   rain?: RainEffectOptions;

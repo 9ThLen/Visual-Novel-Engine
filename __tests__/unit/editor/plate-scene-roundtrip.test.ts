@@ -62,6 +62,10 @@ function withStepMeta(step: TimelineStep, id: string): TimelineStep {
   };
 }
 
+function withId(step: TimelineStep, id: string): TimelineStep {
+  return { ...step, id };
+}
+
 function cloneThroughPlateBridge(scene: PlateDocumentScene): PlateDocumentScene {
   return JSON.parse(JSON.stringify(scene)) as PlateDocumentScene;
 }
@@ -177,7 +181,7 @@ describe('Plate scene serializer roundtrip', () => {
   it('roundtrips inline effect parts between surrounding text steps', () => {
     const saved = roundtrip(sceneWithTimeline([
       createTextStep({ content: 'Світло ліхтаря ' }),
-      withStepMeta(createEffectStep({
+      withId(createEffectStep({
         effectType: 'rain',
         target: 'screen',
         intensity: 40,
@@ -211,6 +215,81 @@ describe('Plate scene serializer roundtrip', () => {
     });
   });
 
+  it('renders standalone effect steps as inline chips instead of technical blocks', () => {
+    const scene = sceneRecordToPlateDocument(sceneWithTimeline([
+      withId(createMusicStep({ assetId: 'music_theme', action: 'play', volume: 0.8, loop: true, fadeDuration: 1000 }), 'step_music'),
+      withId(createEffectStep({
+        effectType: 'rain',
+        target: 'screen',
+        intensity: 60,
+        duration: 8,
+      }), 'step_rain_standalone'),
+      withId(createEffectStep({
+        effectType: 'snow',
+        target: 'screen',
+        intensity: 30,
+        duration: 8,
+      }), 'step_snow_standalone'),
+      withId(createCameraStep({ action: 'zoom', zoomLevel: 1.4, duration: 1, easing: 'linear' }), 'step_camera'),
+    ]), []);
+
+    const kinds = scene.blocks.map((block) => block.kind);
+    expect(kinds).toEqual(['technical', 'text', 'technical', 'text']);
+
+    const chipBlock = scene.blocks[1];
+    expect(chipBlock.kind).toBe('text');
+    if (chipBlock.kind !== 'text') return;
+    expect(chipBlock.content).toBe('');
+    expect(chipBlock.parts?.map((part) => part.type)).toEqual(['effect', 'effect']);
+
+    const saved = plateDocumentToSceneRecord(
+      sceneWithTimeline([]),
+      normalizePlateDocumentScene(cloneThroughPlateBridge(scene), []).scene,
+      [],
+    );
+    expect(saved.timeline.map((step) => step.id)).toEqual([
+      'step_music',
+      'step_rain_standalone',
+      'step_snow_standalone',
+      'step_camera',
+    ]);
+    expect(saved.timeline[1]).toMatchObject({
+      blockType: 'effect',
+      data: { effectType: 'rain', intensity: 60 },
+    });
+    expect(saved.timeline[2]).toMatchObject({
+      blockType: 'effect',
+      data: { effectType: 'snow', intensity: 30 },
+    });
+  });
+
+  it('keeps effect steps with conditions or disabled state as technical blocks', () => {
+    const conditionedEffect = withStepMeta(createEffectStep({
+      effectType: 'rain',
+      target: 'screen',
+      intensity: 45,
+      duration: 8,
+    }), 'step_rain_conditioned');
+
+    const scene = sceneRecordToPlateDocument(sceneWithTimeline([
+      createTextStep({ content: 'Перед дощем' }),
+      conditionedEffect,
+      createTextStep({ content: 'після дощу' }),
+    ]), []);
+
+    const technicalBlocks = scene.blocks.filter((block) => block.kind === 'technical');
+    expect(technicalBlocks).toHaveLength(1);
+    expect(technicalBlocks[0].kind === 'technical' && technicalBlocks[0].blockType).toBe('effect');
+
+    const saved = roundtrip(sceneWithTimeline([
+      createTextStep({ content: 'Перед дощем' }),
+      conditionedEffect,
+      createTextStep({ content: 'після дощу' }),
+    ]));
+    const savedEffect = saved.timeline.find((step) => step.id === 'step_rain_conditioned');
+    expect(savedEffect).toEqual(conditionedEffect);
+  });
+
   it('preserves inline weather effect chips inside dialogue blocks', () => {
     const record = sceneWithTimeline([]);
     const saved = plateDocumentToSceneRecord(record, {
@@ -233,6 +312,7 @@ describe('Plate scene serializer roundtrip', () => {
               target: 'screen',
               intensity: 75,
               duration: 8,
+              durationMode: 'scene',
               rain: {
                 variant: 'storm',
                 opacity: 0.62,
@@ -267,6 +347,7 @@ describe('Plate scene serializer roundtrip', () => {
         target: 'screen',
         intensity: 75,
         duration: 8,
+        durationMode: 'scene',
         rain: {
           variant: 'storm',
           opacity: 0.62,
@@ -285,7 +366,7 @@ describe('Plate scene serializer roundtrip', () => {
 
   it('roundtrips inline weather effect options at text edges and between chips', () => {
     const saved = roundtrip(sceneWithTimeline([
-      withStepMeta(createEffectStep({
+      withId(createEffectStep({
         effectType: 'rain',
         target: 'background',
         intensity: 80,
@@ -304,10 +385,12 @@ describe('Plate scene serializer roundtrip', () => {
           dropWidth: 2,
           splash: true,
           lightning: true,
+          sound: false,
+          soundVolume: 0.6,
         },
       }), 'step_rain_edge'),
       createTextStep({ content: 'Rain starts here' }),
-      withStepMeta(createEffectStep({
+      withId(createEffectStep({
         effectType: 'snow',
         target: 'screen',
         intensity: 35,
@@ -325,7 +408,7 @@ describe('Plate scene serializer roundtrip', () => {
           imageUris: ['file://flake.png'],
         },
       }), 'step_snow_middle'),
-      withStepMeta(createEffectStep({
+      withId(createEffectStep({
         effectType: 'fog',
         target: 'screen',
         intensity: 65,
@@ -334,7 +417,7 @@ describe('Plate scene serializer roundtrip', () => {
           variant: 'dense',
         },
       }), 'step_fog_dense'),
-      withStepMeta(createEffectStep({
+      withId(createEffectStep({
         effectType: 'flash',
         target: 'screen',
         intensity: 55,
@@ -350,11 +433,14 @@ describe('Plate scene serializer roundtrip', () => {
         effectType: 'rain',
         target: 'background',
         intensity: 80,
+        durationMode: 'timed',
         rain: {
           variant: 'fallout',
           density: 140,
           splash: true,
           lightning: true,
+          sound: false,
+          soundVolume: 0.6,
         },
       },
     });
@@ -363,6 +449,7 @@ describe('Plate scene serializer roundtrip', () => {
       blockType: 'effect',
       data: {
         effectType: 'snow',
+        durationMode: 'timed',
         snow: {
           snowflakeCount: 96,
           enable3DRotation: true,
@@ -375,6 +462,7 @@ describe('Plate scene serializer roundtrip', () => {
       blockType: 'effect',
       data: {
         effectType: 'fog',
+        durationMode: 'scene',
         fog: {
           variant: 'dense',
         },

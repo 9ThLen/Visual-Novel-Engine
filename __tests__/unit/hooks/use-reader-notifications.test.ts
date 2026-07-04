@@ -12,6 +12,14 @@ function rainEffect(endTime: number): ActiveEffect {
   };
 }
 
+function sceneBoundRainEffect(): ActiveEffect {
+  return {
+    ...rainEffect(Number.MAX_SAFE_INTEGER),
+    durationMode: 'scene',
+    sceneBound: true,
+  };
+}
+
 describe('useReaderNotifications', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -64,5 +72,21 @@ describe('useReaderNotifications', () => {
     });
 
     expect(onTransition).toHaveBeenCalledWith('scene-2');
+  });
+
+  it('does not delay completion for scene-bound weather effects', async () => {
+    const onTransition = vi.fn();
+
+    renderHook(() => useReaderNotifications({
+      displaySceneId: 'scene-1',
+      isTransitioning: false,
+      transitionTarget: null,
+      isComplete: true,
+      activeEffects: [sceneBoundRainEffect()],
+      routeOnExecutorComplete: true,
+      onTransition,
+    }));
+
+    expect(onTransition).toHaveBeenCalledWith(null);
   });
 });

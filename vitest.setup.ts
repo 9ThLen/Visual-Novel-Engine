@@ -15,6 +15,7 @@ const aliases = {
   'expo-image': path.join(rootDir, '__mocks__/expo-image.ts'),
   'expo-file-system/legacy': path.join(rootDir, '__mocks__/expo-file-system-legacy.ts'),
   'expo-asset': path.join(rootDir, '__mocks__/expo-asset.ts'),
+  'expo-blur': path.join(rootDir, '__mocks__/expo-blur.ts'),
   'expo-linking': path.join(rootDir, '__mocks__/expo-linking.ts'),
   'expo-modules-core': path.join(rootDir, '__mocks__/expo-modules-core.ts'),
   'expo-router': path.join(rootDir, '__mocks__/expo-router.ts'),

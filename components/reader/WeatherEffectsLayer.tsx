@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View, useWindowDimensions, type DimensionValue } from 'react-native';
 import type { ActiveEffect } from '@/lib/engine/runtime-types';
+import { subscribeToLightning } from '@/lib/engine/lightning-scheduler';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 
 interface WeatherEffectsLayerProps {
@@ -60,23 +61,27 @@ function createParticles(effect: ActiveEffect): WeatherParticle[] {
   });
 }
 
-function LightningLayer() {
+function LightningLayer({ fast }: { fast: boolean }) {
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.delay(3200),
+    let animation: Animated.CompositeAnimation | null = null;
+    const unsubscribe = subscribeToLightning(() => {
+      animation?.stop();
+      animation = Animated.sequence([
         Animated.timing(opacity, { toValue: 0.62, duration: 42, easing: Easing.linear, useNativeDriver: true }),
         Animated.timing(opacity, { toValue: 0, duration: 90, easing: Easing.linear, useNativeDriver: true }),
         Animated.delay(80),
         Animated.timing(opacity, { toValue: 0.28, duration: 36, easing: Easing.linear, useNativeDriver: true }),
         Animated.timing(opacity, { toValue: 0, duration: 150, easing: Easing.linear, useNativeDriver: true }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [opacity]);
+      ]);
+      animation.start();
+    }, { fast });
+    return () => {
+      unsubscribe();
+      animation?.stop();
+    };
+  }, [fast, opacity]);
 
   return (
     <Animated.View
@@ -178,7 +183,7 @@ export function WeatherEffectsLayer({ effects, target = 'screen' }: WeatherEffec
         />
         );
       })}
-      {lightning ? <LightningLayer /> : null}
+      {lightning ? <LightningLayer fast={active.rain?.variant === 'fallout'} /> : null}
     </View>
   );
 }

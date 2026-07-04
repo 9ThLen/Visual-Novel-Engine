@@ -9,6 +9,7 @@ import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { ReaderChoices } from '@/components/reader/ReaderChoices';
 import { EffectsLayerStack, effectsForCharacter, effectsForTarget } from '@/components/reader/EffectsLayerStack';
+import { useShakeOffset } from '@/components/reader/useShakeOffset';
 import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import type { ActiveEffect, CameraRuntimeState } from '@/lib/engine/runtime-types';
@@ -36,12 +37,6 @@ const styles = StyleSheet.create({
 
 function handleBackgroundError(err: unknown) {
   if (__DEV__) console.error('[StoryReader] Background load error:', err);
-}
-
-function strongestIntensity(effects: ActiveEffect[], effectType: ActiveEffect['effectType']): number {
-  return effects
-    .filter((effect) => effect.effectType === effectType)
-    .reduce((max, effect) => Math.max(max, effect.intensity), 0);
 }
 
 interface ReaderDisplayProps {
@@ -215,14 +210,13 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   const backgroundEffects = effectsForTarget(visibleEffects, 'background');
   const characterEffects = effectsForTarget(visibleEffects, 'character');
   const genericCharacterEffects = characterEffects.filter((effect) => !effect.characterId);
-  const hasShake = screenEffects.some((effect) => effect.effectType === 'shake');
-  const shakeOffset = strongestIntensity(screenEffects, 'shake') / 7;
+  const shakeOffset = useShakeOffset(screenEffects);
 
   const cameraTransformStyle = useMemo(() => {
     const camera = cameraState ?? { zoomLevel: 1, panX: 0, panY: 0 };
     const zoom = camera.zoomLevel || 1;
-    const translateX = (camera.panX || 0) * -2 + (hasShake ? shakeOffset : 0);
-    const translateY = (camera.panY || 0) * -2;
+    const translateX = (camera.panX || 0) * -2 + shakeOffset.x;
+    const translateY = (camera.panY || 0) * -2 + shakeOffset.y;
     return {
       transform: [
         { translateX },
@@ -230,7 +224,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         { scale: zoom },
       ],
     };
-  }, [cameraState, hasShake, shakeOffset]);
+  }, [cameraState, shakeOffset.x, shakeOffset.y]);
 
   const dialogueTextStyle = useMemo(() => ({
     fontSize: dialogueFontSize,

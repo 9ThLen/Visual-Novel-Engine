@@ -16,14 +16,9 @@ import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { useReaderAssets } from '@/hooks/useReaderAssets';
 import { EffectsLayerStack, effectsForCharacter, effectsForTarget } from '@/components/reader/EffectsLayerStack';
+import { useShakeOffset } from '@/components/reader/useShakeOffset';
 import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
-import type { ActiveEffect } from '@/lib/engine/runtime-types';
-
-function strongestIntensity(effects: ActiveEffect[], effectType: ActiveEffect['effectType']): number {
-  return effects
-    .filter((effect) => effect.effectType === effectType)
-    .reduce((max, effect) => Math.max(max, effect.intensity), 0);
-}
+import { useEffectAmbience } from '@/hooks/useEffectAmbience';
 
 export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: string }) {
   const router = useRouter();
@@ -32,6 +27,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const insets = useSafeAreaInsets();
   const sceneRecord = useAppStore(selectCanonicalSceneRecord(storyId, sceneId));
   const characterLibrary = useAppStore((s) => s.characterLibraries[storyId] || []);
+  const sfxVolume = useAppStore((s) => s.settings.sfxVolume);
 
   const timeline = useMemo(
     () => sceneRecord?.timeline ?? [],
@@ -40,6 +36,8 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
 
   const { sceneState, currentStepIndex, isComplete, isTyping, advance, selectChoice } =
     useSceneExecutor(timeline);
+
+  useEffectAmbience(sceneState.activeEffects, sfxVolume);
 
   const [displayedText, setDisplayedText] = useState('');
   const [audioService] = useState(() => new AudioPlayerService());
@@ -170,12 +168,11 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
   const backgroundEffects = effectsForTarget(activeEffects, 'background');
   const characterEffects = effectsForTarget(activeEffects, 'character');
   const genericCharacterEffects = characterEffects.filter((effect) => !effect.characterId);
-  const hasShake = screenEffects.some((effect) => effect.effectType === 'shake');
-  const shakeOffset = strongestIntensity(screenEffects, 'shake') / 7;
+  const shakeOffset = useShakeOffset(screenEffects);
   const cameraTransform = {
     transform: [
-      { translateX: -2 * (camera?.panX ?? 0) + (hasShake ? shakeOffset : 0) },
-      { translateY: -2 * (camera?.panY ?? 0) },
+      { translateX: -2 * (camera?.panX ?? 0) + shakeOffset.x },
+      { translateY: -2 * (camera?.panY ?? 0) + shakeOffset.y },
       { scale: camera?.zoomLevel ?? 1 },
     ],
   };
