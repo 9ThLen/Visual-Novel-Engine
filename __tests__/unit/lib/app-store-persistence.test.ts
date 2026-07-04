@@ -265,10 +265,68 @@ describe('app store persistence helpers', () => {
       0,
     ) as Partial<AppStorePersistenceState>;
 
-    expect(APP_STORE_PERSIST_VERSION).toBe(2);
+    expect(APP_STORE_PERSIST_VERSION).toBe(3);
     expect(migrated.mediaLibrary?.map((asset) => asset.id)).toEqual(['image-file', 'image-data']);
     expect(migrated.sceneRecordsByStory?.['story-1']?.['scene-1']).toBeTruthy();
     expect(migrated.storiesMetadata?.[0].characterAuthoringSchemaVersion).toBe(1);
+  });
+
+  it('migrates persisted legacy audio blocks while preserving the app store shape', () => {
+    const legacyScene: SceneRecord = {
+      ...makeSceneRecord(),
+      timeline: [
+        {
+          id: 'music-1',
+          sceneId: 'scene-1',
+          blockType: 'music',
+          order: 0,
+          data: {
+            action: 'play',
+            assetId: 'bgm',
+            volume: 0.6,
+            loop: true,
+            fadeDuration: 1200,
+          },
+        },
+        {
+          id: 'sound-1',
+          sceneId: 'scene-1',
+          blockType: 'sound',
+          order: 1,
+          data: {
+            action: 'stop',
+            assetId: 'rain',
+          },
+        },
+      ] as unknown as SceneRecord['timeline'],
+    };
+    const persisted = {
+      ...makeState(),
+      sceneRecordsByStory: {
+        'story-1': {
+          'scene-1': legacyScene,
+        },
+      },
+    };
+
+    const migrated = migratePersistedAppState(persisted, 2) as Partial<AppStorePersistenceState>;
+    const merged = mergePersistedAppState(persisted, makeState());
+
+    expect(migrated.sceneRecordsByStory?.['story-1']?.['scene-1']?.timeline[0].data).toMatchObject({
+      mode: 'track',
+      assetId: 'bgm',
+      fadeIn: 1.2,
+      boundTo: 'continuous',
+    });
+    expect(migrated.sceneRecordsByStory?.['story-1']?.['scene-1']?.timeline[1].data).toMatchObject({
+      mode: 'silence',
+      assetId: 'rain',
+      loop: true,
+    });
+    expect(merged.sceneRecordsByStory['story-1']['scene-1'].timeline[0].data).toMatchObject({
+      mode: 'track',
+      fadeIn: 1.2,
+    });
   });
 
   it('keeps current fields when older persisted payloads omit them', () => {

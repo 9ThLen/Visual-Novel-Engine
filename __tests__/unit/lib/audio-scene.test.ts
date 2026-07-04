@@ -39,7 +39,15 @@ describe('audio-scene projections', () => {
         {
           id: 'music-1',
           blockType: 'music',
-          data: { action: 'play', assetId: 'track-1', volume: 0.8, loop: true, fadeDuration: 0 },
+          data: {
+            mode: 'track',
+            assetId: 'track-1',
+            volume: 0.8,
+            loop: true,
+            fadeIn: 0,
+            fadeOut: 0.8,
+            boundTo: 'continuous',
+          },
           collapsed: false,
           enabled: true,
         },

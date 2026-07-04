@@ -125,22 +125,27 @@ export function createEffectStep(overrides?: Partial<EffectBlockData>): Timeline
 
 export function createMusicStep(overrides?: Partial<MusicBlockData>): TimelineStep {
   return createStep('music', {
+    mode: 'track',
     assetId: null,
-    action: 'play',
     volume: 0.8,
     loop: true,
-    fadeDuration: 1000,
+    fadeIn: 1,
+    fadeOut: 0.8,
+    boundTo: 'continuous',
     ...overrides,
   });
 }
 
 export function createSoundStep(overrides?: Partial<SoundBlockData>): TimelineStep {
   return createStep('sound', {
+    mode: 'track',
     assetId: null,
-    action: 'play',
     volume: 0.8,
     loop: false,
+    fadeIn: 0,
+    fadeOut: 0.8,
     pitchVariation: 0,
+    boundTo: 'continuous',
     ...overrides,
   });
 }

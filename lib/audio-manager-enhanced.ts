@@ -134,7 +134,8 @@ class EnhancedAudioManager implements IAudioManager {
     opts: {
       volume?: number;
       loop?: boolean;
-      duration?: number;
+      fadeInMs?: number;
+      fadeOutMs?: number;
     } = {},
   ): Promise<void> {
     if (!isReaderAudioSessionActive()) return;

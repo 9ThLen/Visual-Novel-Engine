@@ -3,6 +3,12 @@
  */
 
 import { buildCanonicalSceneRecordsFromLegacyScenes } from '@/lib/scene-operations';
+import {
+  migrateMusicBlockData,
+  migrateSceneRecordMap,
+  migrateSceneRecordTimeline,
+  migrateSoundBlockData,
+} from '@/lib/audio-block-migration';
 import { isSafeUri, StoryValidator, ValidationError } from '@/lib/story-validator';
 import { generateId } from '@/lib/id-utils';
 import {
@@ -75,6 +81,50 @@ function isSafeAssetReference(value: unknown): boolean {
   return uriLike ? isSafeUri(trimmed) : true;
 }
 
+function isAudioMode(value: unknown): boolean {
+  return value === 'track' || value === 'silence';
+}
+
+function isAudioBinding(value: unknown): boolean {
+  return value === 'scene' || value === 'continuous';
+}
+
+function validateMusicData(data: Record<string, unknown>): boolean {
+  if (!isSafeAssetReference(data.assetId)) return false;
+
+  const isNewShape = isAudioMode(data.mode)
+    && isNumber(data.volume)
+    && isBoolean(data.loop)
+    && isNumber(data.fadeIn)
+    && isNumber(data.fadeOut)
+    && isAudioBinding(data.boundTo)
+    && (data.autoFadeAfter === undefined || isNumber(data.autoFadeAfter));
+  if (isNewShape) return true;
+
+  return ['play', 'stop', 'pause', 'fade'].includes(String(data.action))
+    && isNumber(data.volume)
+    && isBoolean(data.loop)
+    && isNumber(data.fadeDuration);
+}
+
+function validateSoundData(data: Record<string, unknown>): boolean {
+  if (!isSafeAssetReference(data.assetId)) return false;
+
+  const isNewShape = isAudioMode(data.mode)
+    && isNumber(data.volume)
+    && isBoolean(data.loop)
+    && isNumber(data.fadeIn)
+    && isNumber(data.fadeOut)
+    && isNumber(data.pitchVariation)
+    && (data.boundTo === undefined || isAudioBinding(data.boundTo));
+  if (isNewShape) return true;
+
+  return ['play', 'stop'].includes(String(data.action))
+    && isNumber(data.volume)
+    && isBoolean(data.loop)
+    && isNumber(data.pitchVariation);
+}
+
 function validateConditions(conditions: unknown): conditions is Condition[] | undefined {
   if (conditions === undefined) return true;
   if (!Array.isArray(conditions)) return false;
@@ -116,11 +166,9 @@ function validateBlockData(blockType: BlockType, data: unknown): boolean {
     case 'effect':
       return isString(d.effectType) && isString(d.target) && isNumber(d.intensity) && isNumber(d.duration);
     case 'music':
-      return isSafeAssetReference(d.assetId) && isString(d.action) && isNumber(d.volume)
-        && isBoolean(d.loop) && isNumber(d.fadeDuration);
+      return validateMusicData(d);
     case 'sound':
-      return isSafeAssetReference(d.assetId) && isString(d.action) && isNumber(d.volume)
-        && isBoolean(d.loop) && isNumber(d.pitchVariation);
+      return validateSoundData(d);
     case 'interactive_object':
       return isString(d.objectId) && isString(d.name) && isSafeAssetReference(d.assetId)
         && asRecord(d.position) !== null && Array.isArray(d.actions)
@@ -164,7 +212,11 @@ function validateCanonicalTimelineStep(step: unknown, sceneId: string, index: nu
   return {
     id: rawStep.id,
     blockType,
-    data: rawStep.data as BlockData,
+    data: blockType === 'music'
+      ? migrateMusicBlockData(rawStep.data)
+      : blockType === 'sound'
+        ? migrateSoundBlockData(rawStep.data)
+        : rawStep.data as BlockData,
     collapsed: rawStep.collapsed,
     enabled: rawStep.enabled,
     conditions: rawStep.conditions ?? [],
@@ -197,7 +249,7 @@ function normalizeImportedSceneRecords(
         ...scene,
         id: scene.id || sceneId,
         storyId,
-        timeline: normalizeEditorTimeline(scene.timeline ?? []),
+        timeline: migrateSceneRecordTimeline(normalizeEditorTimeline(scene.timeline ?? [])),
         createdAt: scene.createdAt ?? timestamp,
         updatedAt: timestamp,
       },
@@ -308,11 +360,11 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
   story.createdAt = Date.now();
   story.updatedAt = Date.now();
 
-  const importedScenes = buildCanonicalSceneRecordsFromLegacyScenes(
+  const importedScenes = migrateSceneRecordMap(buildCanonicalSceneRecordsFromLegacyScenes(
     story.id,
     story.scenes || {},
     story.startSceneId,
-  );
+  ));
   const metadata: StoryMetadata = {
     id: story.id,
     title: story.title,

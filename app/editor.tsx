@@ -99,10 +99,6 @@ export default function EditorScreen() {
     }
   }, [hydrateSceneRecordsForStory, router, t]);
 
-  const handlePlay = useCallback((storyId: string) => {
-    navigateWithViewTransition(() => router.push({ pathname: '/play', params: { storyId } }));
-  }, [router]);
-
   const handleDeleteStory = useCallback((storyId: string) => {
     setStoryIdToDelete(storyId);
   }, []);
@@ -203,9 +199,6 @@ export default function EditorScreen() {
                 <View style={styles.actionRow}>
                   <Button variant="primary" size="sm" onPress={() => handleEditStory(story)}>
                     {t('common.edit')}
-                  </Button>
-                  <Button variant="secondary" size="sm" onPress={() => handlePlay(story.id)}>
-                    {t('common.play')}
                   </Button>
                   <Button variant="ghost" size="sm" onPress={() => handleDeleteStory(story.id)}>
                     {t('common.delete')}

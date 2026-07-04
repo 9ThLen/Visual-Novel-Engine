@@ -47,6 +47,7 @@ interface PlateWebViewEditorProps {
   onCreateNextScene?: (scene: DocumentScene, characters: Character[]) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string) => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
+  onOverlayActiveChange?: (active: boolean) => void;
 }
 
 export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebViewEditorProps>(function PlateWebViewEditor({
@@ -62,11 +63,12 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   onCreateNextScene,
   onUploadBackgroundAsset,
   onUploadAudioAsset,
+  onOverlayActiveChange,
 }: PlateWebViewEditorProps, ref) {
   const minimumFrameHeight = isPhone ? MIN_PHONE_FRAME_HEIGHT : MIN_FRAME_HEIGHT;
-  const [frameHeight, setFrameHeight] = useState(
-    initialHeight && initialHeight > minimumFrameHeight ? initialHeight : minimumFrameHeight,
-  );
+  const initialFrameHeight = initialHeight && initialHeight > minimumFrameHeight ? initialHeight : minimumFrameHeight;
+  const [frameHeight, setFrameHeight] = useState(initialFrameHeight);
+  const [visibleFrameHeight, setVisibleFrameHeight] = useState(initialFrameHeight);
   const [resolvedBackgroundAssets, setResolvedBackgroundAssets] = useState(backgroundAssets);
   const [resolvedAudioAssets, setResolvedAudioAssets] = useState(audioAssets);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -217,8 +219,17 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       if (message?.source !== 'vn-plate-editor' || message.editorId !== editorId) return;
       if (message.type === 'resize') {
         if (Number.isFinite(message.height) && message.height > 0) {
+          const overlayHeight = typeof message.overlayHeight === 'number'
+            && Number.isFinite(message.overlayHeight)
+            && message.overlayHeight > 0
+            ? message.overlayHeight
+            : message.height;
           setFrameHeight((current) => {
             const next = Math.max(minimumFrameHeight, Math.ceil(message.height));
+            return next === current ? current : next;
+          });
+          setVisibleFrameHeight((current) => {
+            const next = Math.max(minimumFrameHeight, Math.ceil(message.height), Math.ceil(overlayHeight));
             return next === current ? current : next;
           });
         }
@@ -300,9 +311,20 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     postBackgroundAssets();
     postAudioAssets();
   }, [postAudioAssets, postBackgroundAssets]);
+  const hasOverlay = visibleFrameHeight > frameHeight + 1;
+
+  useEffect(() => {
+    onOverlayActiveChange?.(hasOverlay);
+  }, [hasOverlay, onOverlayActiveChange]);
 
   return (
-    <View style={[{ alignSelf: 'stretch', overflow: 'visible' }, style, { height: frameHeight }]}>
+    <View
+      style={[
+        { alignSelf: 'stretch', overflow: 'visible', position: 'relative', zIndex: hasOverlay ? 40 : 0 },
+        style,
+        { height: frameHeight },
+      ]}
+    >
       <Iframe
         ref={iframeRef}
         key={editorId}
@@ -310,8 +332,12 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         srcDoc={html}
         onLoad={postAssets}
         style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          zIndex: hasOverlay ? 40 : 0,
           width: '100%',
-          height: frameHeight,
+          height: visibleFrameHeight,
           border: 0,
           background: 'transparent',
           display: 'block',

@@ -1,4 +1,5 @@
 import type { AudioLibraryItem } from '@/lib/audio-types';
+import { migrateSceneRecordsByStory } from '@/lib/audio-block-migration';
 import {
   CHARACTER_AUTHORING_SCHEMA_VERSION,
   migrateCharacterLibraries,
@@ -11,7 +12,7 @@ import type { SaveSlot, StoryMetadata } from '@/lib/story-domain';
 import type { Language } from '@/lib/translations';
 import type { UserSettings } from '@/lib/user-settings';
 
-export const APP_STORE_PERSIST_VERSION = 2;
+export const APP_STORE_PERSIST_VERSION = 3;
 
 export type AppStorePersistenceState = {
   storiesMetadata: StoryMetadata[];
@@ -130,6 +131,9 @@ export function migratePersistedAppState(
   if ('characterLibraries' in migrated) {
     migrated.characterLibraries = migrateCharacterLibraries(migrated.characterLibraries);
   }
+  if ('sceneRecordsByStory' in migrated) {
+    migrated.sceneRecordsByStory = migrateSceneRecordsByStory(migrated.sceneRecordsByStory);
+  }
   if (Array.isArray(migrated.storiesMetadata)) {
     migrated.storiesMetadata = withCharacterSchemaVersion(migrated.storiesMetadata);
   }
@@ -157,6 +161,10 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
       'characterLibraries' in persisted
         ? migrateCharacterLibraries(persisted.characterLibraries)
         : currentState.characterLibraries,
+    sceneRecordsByStory:
+      'sceneRecordsByStory' in persisted
+        ? migrateSceneRecordsByStory(persisted.sceneRecordsByStory)
+        : currentState.sceneRecordsByStory,
     storiesMetadata: withCharacterSchemaVersion(
       Array.isArray(persisted.storiesMetadata)
         ? persisted.storiesMetadata

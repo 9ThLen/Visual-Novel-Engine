@@ -448,6 +448,12 @@ export function createEmbeddedStyles(): string {
       justify-content: flex-end;
       margin: 8px 0 10px;
     }
+    .audio-mode-hint {
+      margin: -6px 0 12px;
+      color: #6b7280;
+      font-size: 12px;
+      line-height: 1.4;
+    }
     .asset-picker {
       margin: 0 0 12px;
       padding: 10px;

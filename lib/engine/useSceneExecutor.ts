@@ -247,15 +247,15 @@ export function useSceneExecutor(
         }
         case 'music': {
           const d = step.data as MusicBlockData;
-          nextState.musicAction = d.action;
+          nextState.musicMode = d.mode;
           nextState.musicLoop = d.loop;
-          nextState.musicFadeDuration = d.fadeDuration;
-          if (d.action === 'play' || d.action === 'fade') {
+          nextState.musicFadeIn = d.fadeIn;
+          nextState.musicFadeOut = d.fadeOut;
+          nextState.musicBoundTo = d.boundTo;
+          nextState.musicAutoFadeAfter = d.autoFadeAfter;
+          if (d.mode === 'track') {
             nextState.musicTrackId = d.assetId;
             nextState.musicPlaying = !!d.assetId;
-            nextState.musicVolume = d.volume;
-          } else if (d.action === 'pause') {
-            nextState.musicPlaying = false;
             nextState.musicVolume = d.volume;
           } else {
             nextState.musicTrackId = null;
@@ -272,10 +272,13 @@ export function useSceneExecutor(
               {
                 id: `${step.id}:${Date.now()}`,
                 assetId: d.assetId,
-                action: d.action,
+                mode: d.mode,
                 volume: d.volume,
                 loop: d.loop,
+                fadeIn: d.fadeIn,
+                fadeOut: d.fadeOut,
                 pitchVariation: d.pitchVariation,
+                boundTo: d.boundTo,
                 timestamp: Date.now(),
               },
             ];

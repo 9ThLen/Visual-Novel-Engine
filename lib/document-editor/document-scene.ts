@@ -205,11 +205,14 @@ function musicStepToInlinePart(step: TimelineStep): DocumentInlinePart | null {
   return {
     type: 'music',
     id: step.id,
-    action: data.action,
+    mode: data.mode,
     assetId: data.assetId,
     volume: data.volume,
     loop: data.loop,
-    fadeDuration: data.fadeDuration,
+    fadeIn: data.fadeIn,
+    fadeOut: data.fadeOut,
+    boundTo: data.boundTo,
+    autoFadeAfter: data.autoFadeAfter,
   };
 }
 
@@ -219,11 +222,14 @@ function soundStepToInlinePart(step: TimelineStep): DocumentInlinePart | null {
   return {
     type: 'sound',
     id: step.id,
-    action: data.action,
+    mode: data.mode,
     assetId: data.assetId,
     volume: data.volume,
     loop: data.loop,
+    fadeIn: data.fadeIn,
+    fadeOut: data.fadeOut,
     pitchVariation: data.pitchVariation,
+    boundTo: data.boundTo,
   };
 }
 
@@ -601,11 +607,14 @@ function effectStepFromInlinePart(part: Extract<DocumentInlinePart, { type: 'eff
 function musicStepFromInlinePart(part: Extract<DocumentInlinePart, { type: 'music' }>): TimelineStep {
   return {
     ...createMusicStep({
-      action: part.action,
+      mode: part.mode,
       assetId: part.assetId,
       volume: part.volume,
       loop: part.loop,
-      fadeDuration: part.fadeDuration,
+      fadeIn: part.fadeIn,
+      fadeOut: part.fadeOut,
+      boundTo: part.boundTo,
+      autoFadeAfter: part.autoFadeAfter,
     }),
     id: part.id,
   };
@@ -614,11 +623,14 @@ function musicStepFromInlinePart(part: Extract<DocumentInlinePart, { type: 'musi
 function soundStepFromInlinePart(part: Extract<DocumentInlinePart, { type: 'sound' }>): TimelineStep {
   return {
     ...createSoundStep({
-      action: part.action,
+      mode: part.mode,
       assetId: part.assetId,
       volume: part.volume,
       loop: part.loop,
+      fadeIn: part.fadeIn,
+      fadeOut: part.fadeOut,
       pitchVariation: part.pitchVariation,
+      boundTo: part.boundTo,
     }),
     id: part.id,
   };

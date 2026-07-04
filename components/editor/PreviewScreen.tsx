@@ -20,6 +20,11 @@ import { useShakeOffset } from '@/components/reader/useShakeOffset';
 import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import { useEffectAmbience } from '@/hooks/useEffectAmbience';
 
+function secondsToMs(value: number | null | undefined, fallbackMs = 0): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallbackMs;
+  return Math.max(0, Math.round(value * 1000));
+}
+
 export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: string }) {
   const router = useRouter();
   const colors = useColors();
@@ -43,6 +48,10 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const [audioService] = useState(() => new AudioPlayerService());
   const typewriterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const playedSoundEventsRef = useRef<Set<string>>(new Set());
+  const prevMusicTrackRef = useRef<string | null>(null);
+  const prevMusicBoundToRef = useRef<'scene' | 'continuous'>('continuous');
+  const prevMusicFadeOutMsRef = useRef(800);
+  const previewAutoFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentStep = timeline[currentStepIndex];
 
@@ -51,6 +60,13 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   }, [currentStep]);
 
   const [backgroundSource, setBackgroundSource] = useState<number | { uri: string } | null>(null);
+
+  const clearPreviewAutoFadeTimer = useCallback(() => {
+    if (previewAutoFadeTimerRef.current) {
+      clearTimeout(previewAutoFadeTimerRef.current);
+      previewAutoFadeTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -70,45 +86,90 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
     return () => { active = false; };
   }, [sceneState.backgroundAssetId]);
 
-  const prevMusicTrackRef = useRef<string | null>(null);
   useEffect(() => {
+    clearPreviewAutoFadeTimer();
     const currentTrack = sceneState.musicTrackId;
-    if (sceneState.musicAction === 'stop') {
-      void audioService.stop('preview-bgm', sceneState.musicFadeDuration ?? 300);
+    const fadeInMs = secondsToMs(sceneState.musicFadeIn, 800);
+    const fadeOutMs = secondsToMs(sceneState.musicFadeOut, 800);
+    const scheduleAutoFade = () => {
+      if (sceneState.musicMode !== 'track' || !sceneState.musicAutoFadeAfter || sceneState.musicAutoFadeAfter <= 0) {
+        return;
+      }
+      previewAutoFadeTimerRef.current = setTimeout(() => {
+        void audioService.stop('preview-bgm', fadeOutMs);
+        prevMusicTrackRef.current = null;
+      }, secondsToMs(sceneState.musicAutoFadeAfter));
+    };
+
+    if (sceneState.musicMode === 'silence') {
+      void audioService.stop('preview-bgm', fadeOutMs);
       prevMusicTrackRef.current = null;
-      return;
-    }
-    if (sceneState.musicAction === 'pause') {
-      void audioService.pause('preview-bgm');
+      prevMusicBoundToRef.current = 'continuous';
       return;
     }
     if (currentTrack && currentTrack !== prevMusicTrackRef.current) {
-      void audioService.play('preview-bgm', currentTrack, {
+      void audioService.crossFade('preview-bgm', currentTrack, {
         volume: typeof sceneState.musicVolume === 'number' ? sceneState.musicVolume : 0.8,
         loop: sceneState.musicLoop ?? true,
-        fadeIn: sceneState.musicFadeDuration,
+        fadeInMs,
+        fadeOutMs,
       });
-    } else if (!currentTrack && prevMusicTrackRef.current) {
-      void audioService.stop('preview-bgm', 300);
+      prevMusicTrackRef.current = currentTrack;
+      prevMusicBoundToRef.current = sceneState.musicBoundTo ?? 'continuous';
+      prevMusicFadeOutMsRef.current = fadeOutMs;
+      scheduleAutoFade();
+      return;
     }
-    prevMusicTrackRef.current = currentTrack;
-  }, [audioService, sceneState.musicAction, sceneState.musicFadeDuration, sceneState.musicLoop, sceneState.musicTrackId, sceneState.musicVolume]);
+    if (currentTrack && currentTrack === prevMusicTrackRef.current) {
+      void audioService.setVolume('preview-bgm', typeof sceneState.musicVolume === 'number' ? sceneState.musicVolume : 0.8);
+      prevMusicBoundToRef.current = sceneState.musicBoundTo ?? 'continuous';
+      prevMusicFadeOutMsRef.current = fadeOutMs;
+      scheduleAutoFade();
+      return;
+    }
+    if (
+      !currentTrack &&
+      sceneState.musicMode === null &&
+      prevMusicTrackRef.current &&
+      prevMusicBoundToRef.current === 'scene'
+    ) {
+      void audioService.stop('preview-bgm', prevMusicFadeOutMsRef.current);
+      prevMusicTrackRef.current = null;
+      prevMusicBoundToRef.current = 'continuous';
+    }
+  }, [
+    audioService,
+    clearPreviewAutoFadeTimer,
+    sceneState.musicAutoFadeAfter,
+    sceneState.musicBoundTo,
+    sceneState.musicFadeIn,
+    sceneState.musicFadeOut,
+    sceneState.musicLoop,
+    sceneState.musicMode,
+    sceneState.musicTrackId,
+    sceneState.musicVolume,
+  ]);
 
   useEffect(() => {
     for (const event of sceneState.soundEvents ?? []) {
       if (!event.assetId || playedSoundEventsRef.current.has(event.id)) continue;
       playedSoundEventsRef.current.add(event.id);
-      if (event.action === 'stop') {
-        void audioService.stop(`preview-sfx:${event.assetId}`, 100);
+      if (event.mode === 'silence') {
+        void audioService.stop(`preview-sfx:${event.assetId}`, secondsToMs(event.fadeOut));
         continue;
       }
       const channelId = event.loop ? `preview-sfx:${event.assetId}` : `preview-sfx:${event.id}`;
       void audioService.play(channelId, event.assetId, {
         volume: event.volume,
         loop: event.loop,
+        fadeIn: secondsToMs(event.fadeIn),
       });
     }
   }, [audioService, sceneState.soundEvents]);
+
+  useEffect(() => {
+    playedSoundEventsRef.current.clear();
+  }, [sceneId]);
 
   const typewriteText = useCallback((text: string) => {
     if (typewriterIntervalRef.current) {
@@ -143,9 +204,10 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
         clearInterval(typewriterIntervalRef.current);
         typewriterIntervalRef.current = null;
       }
+      clearPreviewAutoFadeTimer();
       void audioService.cleanup();
     };
-  }, [audioService]);
+  }, [audioService, clearPreviewAutoFadeTimer]);
 
   const handleAdvance = useCallback(() => {
     advance();

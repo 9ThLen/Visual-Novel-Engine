@@ -5,7 +5,7 @@
  * surrounding document keeps its scroll position stable.
  */
 
-import React, { memo } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import { Text, View, type LayoutChangeEvent } from 'react-native';
 
 import {
@@ -55,6 +55,11 @@ function DocumentSceneFrameImpl({
 }: DocumentSceneFrameProps) {
   const colors = useColors('light');
   const { t } = useI18n();
+  const [isOverlayActive, setIsOverlayActive] = useState(false);
+
+  useEffect(() => {
+    if (!isMounted) setIsOverlayActive(false);
+  }, [isMounted]);
 
   const handleLayout = (event: LayoutChangeEvent) => {
     const { y, height } = event.nativeEvent.layout;
@@ -66,7 +71,13 @@ function DocumentSceneFrameImpl({
   return (
     <View
       onLayout={handleLayout}
-      style={{ width: '100%', maxWidth: isPhone ? undefined : 920, alignSelf: 'center' }}
+      style={{
+        width: '100%',
+        maxWidth: isPhone ? undefined : 920,
+        alignSelf: 'center',
+        position: 'relative',
+        zIndex: isOverlayActive ? 80 : 0,
+      }}
     >
       {isMounted ? (
         <PlateWebViewEditor
@@ -83,6 +94,7 @@ function DocumentSceneFrameImpl({
           onCreateNextScene={onCreateNextScene}
           onUploadBackgroundAsset={onUploadBackgroundAsset}
           onUploadAudioAsset={onUploadAudioAsset}
+          onOverlayActiveChange={setIsOverlayActive}
         />
       ) : (
         <View

@@ -1,4 +1,5 @@
 import type { Character } from '@/lib/character-types';
+import { migrateMusicBlockData, migrateSoundBlockData } from '@/lib/audio-block-migration';
 import {
   createDocumentCharacterDialogueBlock,
   createDocumentTechnicalBlock,
@@ -152,30 +153,34 @@ function normalizeInlinePart(part: unknown): DocumentInlinePart | null {
   }
 
   if (part.type === 'music') {
-    const action = part.action === 'stop' || part.action === 'pause' || part.action === 'fade'
-      ? part.action
-      : 'play';
+    const migrated = migrateMusicBlockData(part);
     return {
       type: 'music',
       id: typeof part.id === 'string' && part.id ? part.id : generateId('inline_music'),
-      action,
-      assetId: stringOrNull(part.assetId),
-      volume: clamp(numberValue(part.volume, 0.8), 0, 1),
-      loop: booleanValue(part.loop, true),
-      fadeDuration: Math.max(0, Math.round(numberValue(part.fadeDuration, 1000))),
+      mode: migrated.mode,
+      assetId: stringOrNull(migrated.assetId),
+      volume: clamp(numberValue(migrated.volume, 0.8), 0, 1),
+      loop: booleanValue(migrated.loop, true),
+      fadeIn: Math.max(0, numberValue(migrated.fadeIn, 1)),
+      fadeOut: Math.max(0, numberValue(migrated.fadeOut, 0.8)),
+      boundTo: migrated.boundTo,
+      autoFadeAfter: migrated.autoFadeAfter,
     };
   }
 
   if (part.type === 'sound') {
-    const action = part.action === 'stop' ? 'stop' : 'play';
+    const migrated = migrateSoundBlockData(part);
     return {
       type: 'sound',
       id: typeof part.id === 'string' && part.id ? part.id : generateId('inline_sound'),
-      action,
-      assetId: stringOrNull(part.assetId),
-      volume: clamp(numberValue(part.volume, 0.8), 0, 1),
-      loop: booleanValue(part.loop, false),
-      pitchVariation: clamp(numberValue(part.pitchVariation, 0), 0, 1),
+      mode: migrated.mode,
+      assetId: stringOrNull(migrated.assetId),
+      volume: clamp(numberValue(migrated.volume, 0.8), 0, 1),
+      loop: booleanValue(migrated.loop, false),
+      fadeIn: Math.max(0, numberValue(migrated.fadeIn, 0)),
+      fadeOut: Math.max(0, numberValue(migrated.fadeOut, 0.8)),
+      pitchVariation: clamp(numberValue(migrated.pitchVariation, 0), 0, 1),
+      boundTo: migrated.boundTo,
     };
   }
 

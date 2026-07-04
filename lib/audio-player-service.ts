@@ -194,21 +194,26 @@ export class AudioPlayerService implements IAudioPlayerService {
         opts: {
             volume?: number;
             loop?: boolean;
-            duration?: number;
+            fadeInMs?: number;
+            fadeOutMs?: number;
         } = {},
     ): Promise<void> {
-        const { volume = 1, loop = true } = opts;
+        const { volume = 1, loop = true, fadeInMs, fadeOutMs } = opts;
         const generation = (this.crossFadeGeneration.get(trackId) ?? 0) + 1;
         this.crossFadeGeneration.set(trackId, generation);
-        this.logDebug('crossFade:begin', { trackId, newUri, volume, loop, generation });
+        this.logDebug('crossFade:begin', { trackId, newUri, volume, loop, fadeInMs, fadeOutMs, generation });
 
         // Check generation BEFORE stopping the old track
         if (this.crossFadeGeneration.get(trackId) !== generation) {
             this.logDebug('crossFade:cancelled', { trackId, generation });
             return;
         }
-        await this._stopInternal(trackId, false);
-        await this.play(trackId, newUri, { volume, loop });
+        await this._stopInternal(trackId, false, fadeOutMs);
+        if (this.crossFadeGeneration.get(trackId) !== generation) {
+            this.logDebug('crossFade:cancelled-after-stop', { trackId, generation });
+            return;
+        }
+        await this.play(trackId, newUri, { volume, loop, fadeIn: fadeInMs });
     }
 
     /** Returns track IDs of all currently playing tracks */

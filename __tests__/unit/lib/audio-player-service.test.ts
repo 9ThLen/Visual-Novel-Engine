@@ -80,4 +80,40 @@ describe('audio-player-service', () => {
       keepAudioSessionActive: true,
     });
   });
+
+  it('crossFade applies fadeOutMs to the old track and fadeInMs to the new track', async () => {
+    vi.useFakeTimers();
+    try {
+      const firstPlayer = createMockPlayer();
+      firstPlayer.playing = true;
+      firstPlayer.volume = 1;
+      const secondPlayer = createMockPlayer();
+      mockCreateAudioPlayer
+        .mockReturnValueOnce(firstPlayer as any)
+        .mockReturnValueOnce(secondPlayer as any);
+
+      const service = new AudioPlayerService();
+
+      await service.play('bgm', 'assets/sounds-sample/music-peaceful.mp3');
+      const crossFade = service.crossFade('bgm', 'assets/sounds-sample/music-eerie.mp3', {
+        volume: 0.7,
+        loop: true,
+        fadeOutMs: 100,
+        fadeInMs: 200,
+      });
+
+      await vi.advanceTimersByTimeAsync(100);
+      await crossFade;
+
+      expect(firstPlayer.pause).toHaveBeenCalled();
+      expect(firstPlayer.remove).toHaveBeenCalled();
+      expect(secondPlayer.volume).toBe(0);
+
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(secondPlayer.volume).toBeCloseTo(0.7);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

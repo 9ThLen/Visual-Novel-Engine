@@ -19,8 +19,8 @@ export function validateSceneNodes(nodes: SceneNode[]): SceneValidationIssue[] {
       return [{ nodeId: node.id, line, severity: 'error' as const, message: 'Background assetId is required.' }];
     }
 
-    if ((node.type === 'music' || node.type === 'sound') && node.action === 'play' && !node.assetId?.trim()) {
-      return [{ nodeId: node.id, line, severity: 'error' as const, message: 'Audio assetId is required for play.' }];
+    if ((node.type === 'music' || node.type === 'sound') && node.mode === 'track' && !node.assetId?.trim()) {
+      return [{ nodeId: node.id, line, severity: 'error' as const, message: 'Audio assetId is required for track mode.' }];
     }
 
     if (node.type === 'choice' && node.options.length < 2) {

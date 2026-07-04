@@ -1,4 +1,5 @@
 import type { SceneRecord } from '@/lib/engine/types';
+import { migrateSceneRecord, migrateSceneRecordMap } from '@/lib/audio-block-migration';
 import { getScenePrefetchSceneIds } from '@/lib/reader-scene-cache';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
 import type { StoryMetadata } from '@/lib/story-domain';
@@ -66,13 +67,15 @@ function normalizeSceneRecordMap(
 ): Record<string, SceneRecord> {
   if (!isRecord(records)) return {};
 
-  return Object.fromEntries(
+  const normalized = Object.fromEntries(
     Object.entries(records).filter(([sceneId, record]) => {
       return sceneId === (record as Partial<SceneRecord> | null)?.id &&
         hasSceneRecordShape(record) &&
         record.storyId === storyId;
     }),
   ) as Record<string, SceneRecord>;
+
+  return migrateSceneRecordMap(normalized);
 }
 
 export function getSceneRecordStorageKey(storyId: string): string {
@@ -194,7 +197,7 @@ export function buildSceneRecordItemPayload(
     version: SCENE_RECORD_STORAGE_VERSION,
     storyId,
     sceneId,
-    record,
+    record: migrateSceneRecord(record),
     updatedAt,
   };
 }
@@ -245,7 +248,7 @@ export function parseSceneRecordItemPayload(
       typeof payload.version === 'number' ? payload.version : SCENE_RECORD_STORAGE_VERSION,
     storyId: payload.storyId,
     sceneId: payload.sceneId,
-    record: payload.record,
+    record: migrateSceneRecord(payload.record),
     updatedAt: typeof payload.updatedAt === 'number' ? payload.updatedAt : 0,
   };
 }

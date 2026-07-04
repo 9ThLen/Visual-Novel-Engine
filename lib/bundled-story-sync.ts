@@ -1,5 +1,6 @@
 import type { Story } from '@/lib/scene-operations';
 import type { AudioScene } from '@/lib/audio-types';
+import { migrateSceneRecordTimeline } from '@/lib/audio-block-migration';
 import { getAudioSceneMusicUri } from '@/lib/audio-scene';
 import type { TimelineStep } from '@/lib/engine/types';
 
@@ -23,7 +24,8 @@ export interface BundledStorySyncSnapshot {
 const READER_YIELDING_BLOCK_TYPES = new Set(['text', 'dialogue', 'choice', 'transition']);
 
 function hasReaderYieldingStep(timeline: TimelineStep[] | undefined): boolean {
-  return Array.isArray(timeline) && timeline.some((step) =>
+  const migratedTimeline = migrateSceneRecordTimeline(timeline);
+  return migratedTimeline.some((step) =>
     step.enabled !== false && READER_YIELDING_BLOCK_TYPES.has(step.blockType)
   );
 }
@@ -54,7 +56,10 @@ export function shouldUpsertBundledStory(
   }
 
   const bundledMusicUri = bundledStartScene.musicUri ?? null;
-  const currentMusicUri = getAudioSceneMusicUri(canonicalRecord);
+  const currentMusicUri = getAudioSceneMusicUri({
+    ...canonicalRecord,
+    timeline: migrateSceneRecordTimeline(canonicalRecord.timeline),
+  });
 
   return bundledMusicUri !== currentMusicUri;
 }

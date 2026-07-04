@@ -172,7 +172,7 @@ function buildLegacySceneTimeline(scene: StoryScene): TimelineStep[] {
     }
 
     if (scene.musicUri) {
-      timeline.push(createMusicStep({ assetId: scene.musicUri, action: 'play' }));
+      timeline.push(createMusicStep({ assetId: scene.musicUri, mode: 'track' }));
     }
 
     for (const object of scene.interactiveObjects || []) {
@@ -244,10 +244,12 @@ function legacySceneToSceneRecordDraft(storyId: string, scene: StoryScene): Scen
       interactiveObjects: scene.interactiveObjects ?? [],
       musicTrackId: scene.musicUri ?? null,
       musicPlaying: !!scene.musicUri,
-      musicAction: scene.musicUri ? 'play' : null,
+      musicMode: scene.musicUri ? 'track' : null,
       musicVolume: 1,
       musicLoop: true,
-      musicFadeDuration: 0,
+      musicFadeIn: 0,
+      musicFadeOut: 0,
+      musicBoundTo: 'continuous',
       variables: {},
       dialogueHistory: [],
       currentChoices: null,

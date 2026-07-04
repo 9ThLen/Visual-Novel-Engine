@@ -170,7 +170,15 @@ describe('useSceneExecutor', () => {
       {
         id: 'sound-1',
         blockType: 'sound',
-        data: { assetId: 'sfx-door', action: 'play', volume: 0.5, loop: false, pitchVariation: 0.2 },
+        data: {
+          mode: 'track',
+          assetId: 'sfx-door',
+          volume: 0.5,
+          loop: false,
+          fadeIn: 0,
+          fadeOut: 0.8,
+          pitchVariation: 0.2,
+        },
         collapsed: false,
         enabled: true,
       } as TimelineStep,
@@ -203,7 +211,7 @@ describe('useSceneExecutor', () => {
     await waitFor(() => {
       expect(result.current.sceneState.soundEvents?.[0]).toMatchObject({
         assetId: 'sfx-door',
-        action: 'play',
+        mode: 'track',
         volume: 0.5,
       });
       expect(result.current.sceneState.cameraState).toMatchObject({

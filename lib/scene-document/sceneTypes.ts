@@ -62,21 +62,27 @@ export type CharacterNode = {
 export type MusicNode = {
   id: string;
   type: 'music';
-  action: 'play' | 'stop' | 'pause' | 'fade';
+  mode: 'track' | 'silence';
   assetId?: string;
   volume?: number;
   loop?: boolean;
-  fadeDuration?: number;
+  fadeIn?: number;
+  fadeOut?: number;
+  boundTo?: 'scene' | 'continuous';
+  autoFadeAfter?: number;
 };
 
 export type SoundNode = {
   id: string;
   type: 'sound';
-  action: 'play' | 'stop';
+  mode: 'track' | 'silence';
   assetId?: string;
   volume?: number;
   loop?: boolean;
+  fadeIn?: number;
+  fadeOut?: number;
   pitchVariation?: number;
+  boundTo?: 'scene' | 'continuous';
 };
 
 export type ChoiceNode = {

@@ -53,16 +53,18 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
 
     function measureHeight() {
       var shell = document.querySelector('.shell');
-      var height = shell
+      return shell
         ? Math.max(shell.scrollHeight || 0, shell.offsetHeight || 0, elementBottom(shell))
         : 0;
+    }
 
+    function measureOverlayHeight() {
+      var height = measureHeight();
       Array.prototype.slice.call(document.querySelectorAll(
         '#slashMenu:not(.hidden), .background-popover, .character-popover, .effect-popover, .audio-popover'
       )).forEach(function(node) {
         height = Math.max(height, elementBottom(node) + 16);
       });
-
       return height;
     }
 
@@ -77,7 +79,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     function postResize() {
       post({
         type: 'resize',
-        height: measureHeight()
+        height: measureHeight(),
+        overlayHeight: measureOverlayHeight()
       });
     }
 
@@ -196,27 +199,33 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         if (isAudioChip(child)) {
           var audioKind = child.dataset.kind === 'sound' ? 'sound' : 'music';
           var audioVolume = Math.max(0, Math.min(1, numberFromDataset(child.dataset.volume, 0.8)));
+          var audioMode = child.dataset.mode === 'silence' || legacyAudioActionIsSilence(child.dataset.action) ? 'silence' : 'track';
+          var audioAssetId = audioKind === 'music' && audioMode === 'silence' ? null : normalizeAssetName(child.dataset.assetId) || null;
           if (audioKind === 'sound') {
             parts.push({
               type: 'sound',
               id: child.dataset.id || uid('inline_sound'),
-              action: child.dataset.action === 'stop' ? 'stop' : 'play',
-              assetId: normalizeAssetName(child.dataset.assetId) || null,
+              mode: audioMode,
+              assetId: audioAssetId,
               volume: audioVolume,
-              loop: child.dataset.loop === 'true',
-              pitchVariation: Math.max(0, Math.min(1, numberFromDataset(child.dataset.pitchVariation, 0)))
+              loop: audioMode === 'silence' ? true : child.dataset.loop === 'true',
+              fadeIn: audioMode === 'silence' ? 0 : Math.max(0, numberFromDataset(child.dataset.fadeIn, 0)),
+              fadeOut: Math.max(0, numberFromDataset(child.dataset.fadeOut, 0.8)),
+              pitchVariation: Math.max(0, Math.min(1, numberFromDataset(child.dataset.pitchVariation, 0))),
+              boundTo: child.dataset.boundTo === 'scene' ? 'scene' : 'continuous'
             });
           } else {
-            var musicAction = child.dataset.action;
-            if (musicAction !== 'stop' && musicAction !== 'pause' && musicAction !== 'fade') musicAction = 'play';
             parts.push({
               type: 'music',
               id: child.dataset.id || uid('inline_music'),
-              action: musicAction,
-              assetId: normalizeAssetName(child.dataset.assetId) || null,
+              mode: audioMode,
+              assetId: audioAssetId,
               volume: audioVolume,
-              loop: child.dataset.loop !== 'false',
-              fadeDuration: Math.max(0, Math.round(numberFromDataset(child.dataset.fadeDuration, 1000)))
+              loop: audioMode === 'silence' ? false : child.dataset.loop !== 'false',
+              fadeIn: audioMode === 'silence' ? 0 : Math.max(0, numberFromDataset(child.dataset.fadeIn, 1)),
+              fadeOut: Math.max(0, numberFromDataset(child.dataset.fadeOut, 0.8)),
+              boundTo: child.dataset.boundTo === 'scene' ? 'scene' : 'continuous',
+              autoFadeAfter: child.dataset.autoFadeAfter ? Math.max(0, numberFromDataset(child.dataset.autoFadeAfter, 0)) : undefined
             });
           }
           return;
@@ -387,16 +396,16 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       }) || null;
     }
 
-    function audioActionLabel(action) {
-      var labels = { play: 'Програти', stop: 'Зупинити', pause: 'Пауза', fade: 'Згасання' };
-      return labels[action] || 'Програти';
-    }
-
     function audioKindLabel(kind) {
       return kind === 'sound' ? 'Звук' : 'Музика';
     }
 
+    function legacyAudioActionIsSilence(action) {
+      return action === 'stop' || action === 'fade' || action === 'pause';
+    }
+
     function audioChipTitle(chip) {
+      if (chip.dataset.mode === 'silence' || legacyAudioActionIsSilence(chip.dataset.action)) return 'Тиша';
       var asset = findAudioAsset(chip.dataset.assetId);
       if (asset) return audioAssetLabel(asset) || asset.name || asset.id;
       return chip.dataset.assetId ? chip.dataset.assetId.replace(/^asset_/, '') : 'Оберіть трек';
@@ -404,13 +413,18 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
 
     function audioChipDetails(chip) {
       var parts = [
-        audioActionLabel(chip.dataset.action || 'play'),
+        chip.dataset.mode === 'silence' || legacyAudioActionIsSilence(chip.dataset.action) ? 'тиша' : 'трек',
         String(Math.round(Math.max(0, Math.min(1, numberFromDataset(chip.dataset.volume, 0.8))) * 100)) + '%'
       ];
       if (chip.dataset.loop === 'true') parts.push('повтор');
+      var fadeIn = numberFromDataset(chip.dataset.fadeIn, 0);
+      var fadeOut = numberFromDataset(chip.dataset.fadeOut, 0);
+      if (fadeIn > 0) parts.push('вхід ' + String(Math.round(fadeIn * 10) / 10) + 'с');
+      if (fadeOut > 0) parts.push('вихід ' + String(Math.round(fadeOut * 10) / 10) + 'с');
       if (chip.dataset.kind === 'music') {
-        var fadeDuration = numberFromDataset(chip.dataset.fadeDuration, 0);
-        if (fadeDuration > 0) parts.push(String(Math.round(fadeDuration / 100) / 10) + 's');
+        parts.push(chip.dataset.boundTo === 'scene' ? 'сцена' : 'наскрізно');
+        var autoFadeAfter = numberFromDataset(chip.dataset.autoFadeAfter, 0);
+        if (autoFadeAfter > 0) parts.push('авто ' + String(Math.round(autoFadeAfter * 10) / 10) + 'с');
       }
       if (chip.dataset.kind === 'sound') {
         var pitch = numberFromDataset(chip.dataset.pitchVariation, 0);
@@ -438,20 +452,25 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (kind === 'sound') {
         return {
           kind: 'sound',
-          action: 'play',
+          mode: 'track',
           assetId: null,
           volume: 0.8,
           loop: false,
+          fadeIn: 0,
+          fadeOut: 0.8,
           pitchVariation: 0
         };
       }
       return {
         kind: 'music',
-        action: 'play',
+        mode: 'track',
         assetId: null,
         volume: 0.8,
         loop: true,
-        fadeDuration: 1000
+        fadeIn: 1,
+        fadeOut: 0.8,
+        boundTo: 'continuous',
+        autoFadeAfter: undefined
       };
     }
 
@@ -474,16 +493,17 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     function audioDataFromChip(chip) {
       var kind = chip.dataset.kind === 'sound' ? 'sound' : 'music';
       var defaults = defaultAudioData(kind);
-      var action = chip.dataset.action || defaults.action;
-      if (kind === 'sound' && action !== 'stop') action = 'play';
-      if (kind === 'music' && action !== 'stop' && action !== 'pause' && action !== 'fade') action = 'play';
+      var mode = chip.dataset.mode === 'silence' || legacyAudioActionIsSilence(chip.dataset.action) ? 'silence' : 'track';
       return {
         kind: kind,
-        action: action,
+        mode: mode,
         assetId: normalizeAssetName(chip.dataset.assetId) || null,
         volume: Math.max(0, Math.min(1, numberFromDataset(chip.dataset.volume, defaults.volume))),
         loop: chip.dataset.loop ? chip.dataset.loop === 'true' : defaults.loop,
-        fadeDuration: Math.max(0, Math.round(numberFromDataset(chip.dataset.fadeDuration, defaults.fadeDuration || 0))),
+        fadeIn: Math.max(0, numberFromDataset(chip.dataset.fadeIn, defaults.fadeIn || 0)),
+        fadeOut: Math.max(0, numberFromDataset(chip.dataset.fadeOut, defaults.fadeOut || 0.8)),
+        boundTo: chip.dataset.boundTo === 'scene' ? 'scene' : 'continuous',
+        autoFadeAfter: chip.dataset.autoFadeAfter ? Math.max(0, numberFromDataset(chip.dataset.autoFadeAfter, 0)) : undefined,
         pitchVariation: Math.max(0, Math.min(1, numberFromDataset(chip.dataset.pitchVariation, defaults.pitchVariation || 0)))
       };
     }
@@ -493,17 +513,26 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var defaults = defaultAudioData(kind);
       chip.className = 'audio-chip audio-chip--' + kind;
       chip.dataset.kind = kind;
-      chip.dataset.action = data.action || defaults.action;
+      chip.dataset.mode = data.mode === 'silence' ? 'silence' : 'track';
+      delete chip.dataset.action;
       chip.dataset.assetId = normalizeAssetName(data.assetId) || '';
       chip.dataset.volume = String(Math.max(0, Math.min(1, Number(data.volume == null ? defaults.volume : data.volume))));
       chip.dataset.loop = data.loop === false ? 'false' : (data.loop === true || defaults.loop ? 'true' : 'false');
+      chip.dataset.fadeIn = String(Math.max(0, Number(data.fadeIn == null ? defaults.fadeIn : data.fadeIn) || 0));
+      chip.dataset.fadeOut = String(Math.max(0, Number(data.fadeOut == null ? defaults.fadeOut : data.fadeOut) || 0));
+      chip.dataset.boundTo = data.boundTo === 'scene' ? 'scene' : 'continuous';
       if (kind === 'music') {
-        chip.dataset.fadeDuration = String(Math.max(0, Math.round(Number(data.fadeDuration == null ? defaults.fadeDuration : data.fadeDuration) || 0)));
+        if (data.autoFadeAfter == null || data.autoFadeAfter === '') {
+          delete chip.dataset.autoFadeAfter;
+        } else {
+          chip.dataset.autoFadeAfter = String(Math.max(0, Number(data.autoFadeAfter) || 0));
+        }
         delete chip.dataset.pitchVariation;
       } else {
         chip.dataset.pitchVariation = String(Math.max(0, Math.min(1, Number(data.pitchVariation == null ? defaults.pitchVariation : data.pitchVariation) || 0)));
-        delete chip.dataset.fadeDuration;
+        delete chip.dataset.autoFadeAfter;
       }
+      delete chip.dataset.fadeDuration;
       renderAudioChipContent(chip);
     }
 
@@ -534,10 +563,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var scrollY = window.scrollY || window.pageYOffset || 0;
       var width = Math.min(420, window.innerWidth - 32);
       var left = scrollX + Math.max(16, Math.min(window.innerWidth - width - 16, rect.right + 12));
-      var height = effectPopover.offsetHeight || 0;
-      var top = scrollY + Math.max(16, Math.min(window.innerHeight - height - 16, rect.top - 16));
+      var top = scrollY + Math.max(16, rect.top - 16);
       effectPopover.style.left = left + 'px';
       effectPopover.style.top = top + 'px';
+      scheduleResize();
     }
 
     function positionAudioPopover(anchor) {
@@ -547,10 +576,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var scrollY = window.scrollY || window.pageYOffset || 0;
       var width = Math.min(420, window.innerWidth - 32);
       var left = scrollX + Math.max(16, Math.min(window.innerWidth - width - 16, rect.right + 12));
-      var height = audioPopover.offsetHeight || 0;
-      var top = scrollY + Math.max(16, Math.min(window.innerHeight - height - 16, rect.top - 16));
+      var top = scrollY + Math.max(16, rect.top - 16);
       audioPopover.style.left = left + 'px';
       audioPopover.style.top = top + 'px';
+      scheduleResize();
     }
 
     function effectDataFromChip(chip) {
@@ -876,8 +905,6 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
 
     function setSelectedAudioAsset(asset) {
       if (!audioPopover || !asset) return;
-      var input = audioPopover.querySelector('#audioAssetInput');
-      if (input) input.value = audioAssetLabel(asset) || asset.name || asset.id;
       audioPopover.dataset.selectedAssetId = asset.id;
       updateAudioPreview(audioPopover, asset.id);
       renderAudioAssetPicker(audioPopover);
@@ -886,46 +913,89 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     function collectAudioForm() {
       if (!audioPopover) return null;
       var kind = audioPopover.dataset.kind === 'sound' ? 'sound' : 'music';
-      var action = selectedValue(audioPopover.querySelector('[data-audio-field="action"]'), 'play');
-      if (kind === 'sound' && action !== 'stop') action = 'play';
-      var assetInput = audioPopover.querySelector('#audioAssetInput');
+      var mode = audioPopover.dataset.mode === 'silence' ? 'silence' : 'track';
       var volumeInput = audioPopover.querySelector('[data-audio-field="volume"]');
       var loopInput = audioPopover.querySelector('[data-audio-field="loop"]');
-      var fadeInput = audioPopover.querySelector('[data-audio-field="fadeDuration"]');
+      var fadeInInput = audioPopover.querySelector('[data-audio-field="fadeIn"]');
+      var fadeOutInput = audioPopover.querySelector('[data-audio-field="fadeOut"]');
+      var autoFadeInput = audioPopover.querySelector('[data-audio-field="autoFadeAfter"]');
       var pitchInput = audioPopover.querySelector('[data-audio-field="pitchVariation"]');
+      var autoFadeValue = autoFadeInput && String(autoFadeInput.value || '').trim();
+      var assetId = normalizeAssetName(audioPopover.dataset.selectedAssetId) || null;
+      if (kind === 'music' && mode === 'silence') assetId = null;
       return {
         kind: kind,
-        action: action,
-        assetId: normalizeAssetName(audioPopover.dataset.selectedAssetId) || normalizeAssetName(assetInput && assetInput.value) || null,
+        mode: mode,
+        assetId: assetId,
         volume: Math.max(0, Math.min(1, numberFromDataset(volumeInput && volumeInput.value, 80) / 100)),
-        loop: Boolean(loopInput && loopInput.checked),
-        fadeDuration: Math.round(parseSecondsInput(fadeInput && fadeInput.value, 1) * 1000),
+        loop: mode === 'silence' ? kind === 'sound' : Boolean(loopInput && loopInput.checked),
+        fadeIn: mode === 'silence' ? 0 : parseSecondsInput(fadeInInput && fadeInInput.value, kind === 'music' ? 1 : 0),
+        fadeOut: parseSecondsInput(fadeOutInput && fadeOutInput.value, 0.8),
+        boundTo: audioPopover.dataset.boundTo === 'scene' ? 'scene' : 'continuous',
+        autoFadeAfter: kind === 'music' && autoFadeValue ? parseSecondsInput(autoFadeValue, 0) : undefined,
         pitchVariation: Math.max(0, Math.min(1, numberFromDataset(pitchInput && pitchInput.value, 0) / 100))
       };
     }
 
-    function renderAudioActionOptions(popover, kind, current) {
-      var select = popover.querySelector('[data-audio-field="action"]');
-      if (!select) return;
-      var value = current || selectedValue(select, 'play');
-      if (kind === 'sound' && value !== 'stop') value = 'play';
-      var options = option('play', 'Програти', value) + option('stop', 'Зупинити', value);
+    function audioModeHintText(kind, mode, loop) {
       if (kind === 'music') {
-        options += option('pause', 'Пауза', value) + option('fade', 'Згасання', value);
+        return mode === 'silence'
+          ? 'Зупиняє музику, що вже грає. Обирати трек не потрібно.'
+          : 'Відтворює обраний трек як фонову музику.';
       }
-      select.innerHTML = options;
+      if (mode === 'silence') {
+        return 'Зупиняє циклічний звук, запущений раніше з того самого файлу. Оберіть той самий трек, який потрібно зупинити.';
+      }
+      return loop
+        ? 'Відтворює обраний звук у циклі, поки його не зупинить блок «Тиша».'
+        : 'Відтворює обраний звук один раз.';
     }
 
     function updateAudioSections() {
       if (!audioPopover) return;
       var kind = audioPopover.dataset.kind === 'sound' ? 'sound' : 'music';
+      var mode = audioPopover.dataset.mode === 'silence' ? 'silence' : 'track';
+      var boundTo = audioPopover.dataset.boundTo === 'scene' ? 'scene' : 'continuous';
+      var loopInput = audioPopover.querySelector('[data-audio-field="loop"]');
+      var loop = Boolean(loopInput && loopInput.checked);
+      if (kind === 'sound' && !loop && mode === 'silence') {
+        mode = 'track';
+        audioPopover.dataset.mode = mode;
+      }
+      var hint = audioPopover.querySelector('[data-audio-mode-hint]');
+      if (hint) hint.textContent = audioModeHintText(kind, mode, loop);
       Array.prototype.slice.call(audioPopover.querySelectorAll('[data-audio-kind-option]')).forEach(function(button) {
         button.classList.toggle('is-active', button.dataset.audioKindOption === kind);
+      });
+      Array.prototype.slice.call(audioPopover.querySelectorAll('[data-audio-mode-option]')).forEach(function(button) {
+        var disabledSilence = kind === 'sound' && button.dataset.audioModeOption === 'silence' && !loop;
+        button.disabled = disabledSilence;
+        button.classList.toggle('hidden', disabledSilence);
+        button.classList.toggle('is-active', button.dataset.audioModeOption === mode);
+      });
+      Array.prototype.slice.call(audioPopover.querySelectorAll('[data-audio-bound-option]')).forEach(function(button) {
+        button.classList.toggle('is-active', button.dataset.audioBoundOption === boundTo);
       });
       Array.prototype.slice.call(audioPopover.querySelectorAll('[data-audio-row]')).forEach(function(node) {
         node.classList.toggle('hidden', node.dataset.audioRow !== kind);
       });
-      renderAudioActionOptions(audioPopover, kind);
+      Array.prototype.slice.call(audioPopover.querySelectorAll('[data-audio-track-section]')).forEach(function(node) {
+        node.classList.toggle('hidden', mode === 'silence');
+      });
+      var hideAssetSection = kind === 'music' && mode === 'silence';
+      Array.prototype.slice.call(audioPopover.querySelectorAll('[data-audio-asset-section]')).forEach(function(node) {
+        if (node.classList.contains('audio-asset-picker')) {
+          if (hideAssetSection) node.classList.add('hidden');
+          return;
+        }
+        node.classList.toggle('hidden', hideAssetSection);
+      });
+      Array.prototype.slice.call(audioPopover.querySelectorAll('[data-audio-bound-section]')).forEach(function(node) {
+        node.classList.toggle('hidden', mode === 'silence' || (kind === 'sound' && !loop));
+      });
+      Array.prototype.slice.call(audioPopover.querySelectorAll('[data-audio-auto-fade-section]')).forEach(function(node) {
+        node.classList.toggle('hidden', kind !== 'music' || mode === 'silence');
+      });
       renderAudioAssetPicker(audioPopover);
       afterLayout(function() { positionAudioPopover(activeAudioChip); });
     }
@@ -949,6 +1019,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var popover = document.createElement('div');
       popover.className = 'audio-popover';
       popover.dataset.kind = kind;
+      popover.dataset.mode = data.mode === 'silence' ? 'silence' : 'track';
+      popover.dataset.boundTo = data.boundTo === 'scene' ? 'scene' : 'continuous';
       popover.dataset.selectedAssetId = data.assetId || '';
       popover.innerHTML =
         '<div class="effect-type-grid audio-kind-grid">' +
@@ -962,32 +1034,42 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           '</button>' +
         '</div>' +
         '<div class="effect-popover-grid">' +
-          '<label class="popover-label">Дія</label>' +
-          '<select class="popover-control" data-audio-field="action"></select>' +
-          '<label class="popover-label" for="audioAssetInput">Трек</label>' +
-          '<input id="audioAssetInput" class="popover-control" value="' + escapeHtml(selectedAsset ? (audioAssetLabel(selectedAsset) || selectedAsset.name || selectedAsset.id) : data.assetId || '') + '" />' +
+          '<label class="popover-label">Режим</label>' +
+          '<div class="effect-type-grid audio-mode-grid">' +
+            '<button type="button" class="effect-type-chip" data-audio-mode-option="track">Трек</button>' +
+            '<button type="button" class="effect-type-chip" data-audio-mode-option="silence">Тиша</button>' +
+          '</div>' +
         '</div>' +
-        '<div class="audio-preview' + (selectedAsset ? '' : ' placeholder') + '">' +
+        '<p class="audio-mode-hint" data-audio-mode-hint></p>' +
+        '<div class="audio-preview' + (selectedAsset ? '' : ' placeholder') + '" data-audio-asset-section>' +
           '<button type="button" class="popover-button" data-action="toggle-audio-preview">Програти</button>' +
           '<div class="audio-preview-copy"><div class="audio-preview-name">' + escapeHtml(selectedAsset ? (audioAssetLabel(selectedAsset) || selectedAsset.name || selectedAsset.id) : 'Трек не вибрано') + '</div><progress class="audio-progress" value="0" max="1"></progress></div>' +
           '<audio preload="metadata" src="' + escapeHtml(selectedAsset && selectedAsset.uri || '') + '"></audio>' +
         '</div>' +
-        '<div class="preview-actions"><button type="button" class="popover-button" data-action="choose-audio">Обрати трек</button></div>' +
-        '<div class="asset-picker audio-asset-picker hidden"></div>' +
+        '<div class="preview-actions" data-audio-asset-section><button type="button" class="popover-button" data-action="choose-audio">Обрати трек</button></div>' +
+        '<div class="asset-picker audio-asset-picker hidden" data-audio-asset-section></div>' +
         '<div class="effect-popover-grid">' +
-          '<label class="popover-label">Гучність</label>' +
-          '<div class="effect-range-row"><input data-audio-field="volume" type="range" min="0" max="100" step="1" value="' + escapeHtml(String(Math.round(data.volume * 100))) + '" /><span class="effect-range-value">' + escapeHtml(String(Math.round(data.volume * 100))) + '</span></div>' +
-          '<label class="popover-label">Повтор</label>' +
-          '<label class="effect-checkbox"><input type="checkbox" data-audio-field="loop"' + (data.loop ? ' checked' : '') + ' /> Увімкнено</label>' +
-          '<label class="popover-label" data-audio-row="music">Згасання (с)</label>' +
-          '<input class="popover-control" data-audio-row="music" data-audio-field="fadeDuration" type="number" min="0" step="0.1" value="' + escapeHtml(String(Math.round(data.fadeDuration / 100) / 10)) + '" />' +
+          '<label class="popover-label" data-audio-track-section>Гучність</label>' +
+          '<div class="effect-range-row" data-audio-track-section><input data-audio-field="volume" type="range" min="0" max="100" step="1" value="' + escapeHtml(String(Math.round(data.volume * 100))) + '" /><span class="effect-range-value">' + escapeHtml(String(Math.round(data.volume * 100))) + '</span></div>' +
+          '<label class="popover-label" data-audio-track-section>Повтор</label>' +
+          '<label class="effect-checkbox" data-audio-track-section><input type="checkbox" data-audio-field="loop"' + (data.loop ? ' checked' : '') + ' /> Увімкнено</label>' +
+          '<label class="popover-label" data-audio-track-section>Наростання (с)</label>' +
+          '<input class="popover-control" data-audio-field="fadeIn" data-audio-track-section type="number" min="0" step="0.1" value="' + escapeHtml(String(data.fadeIn)) + '" />' +
+          '<label class="popover-label">Згасання (с)</label>' +
+          '<input class="popover-control" data-audio-field="fadeOut" type="number" min="0" step="0.1" value="' + escapeHtml(String(data.fadeOut)) + '" />' +
+          '<label class="popover-label" data-audio-bound-section>Прив’язка</label>' +
+          '<div class="effect-type-grid" data-audio-bound-section>' +
+            '<button type="button" class="effect-type-chip" data-audio-bound-option="scene">Сцена</button>' +
+            '<button type="button" class="effect-type-chip" data-audio-bound-option="continuous">Наскрізно</button>' +
+          '</div>' +
+          '<label class="popover-label" data-audio-auto-fade-section>Автозгасання через (с)</label>' +
+          '<input class="popover-control" data-audio-auto-fade-section data-audio-field="autoFadeAfter" type="number" min="0" step="0.1" value="' + escapeHtml(data.autoFadeAfter == null ? '' : String(data.autoFadeAfter)) + '" />' +
           '<label class="popover-label" data-audio-row="sound">Варіація тону</label>' +
           '<div class="effect-range-row" data-audio-row="sound"><input data-audio-field="pitchVariation" type="range" min="0" max="100" step="1" value="' + escapeHtml(String(Math.round(data.pitchVariation * 100))) + '" /><span class="effect-range-value">' + escapeHtml(String(Math.round(data.pitchVariation * 100))) + '</span></div>' +
         '</div>' +
         '<div class="popover-footer"><button type="button" class="popover-button" data-action="reset-audio">Скинути</button><button type="button" class="popover-button primary" data-action="save-audio">Зберегти</button></div>';
       document.body.appendChild(popover);
       audioPopover = popover;
-      renderAudioActionOptions(popover, kind, data.action);
       updateAudioSections();
       var audio = popover.querySelector('audio');
       var progress = popover.querySelector('.audio-progress');
@@ -1000,7 +1082,6 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           if (button) button.textContent = 'Програти';
         });
       }
-      afterLayout(function() { positionAudioPopover(chip); });
     }
 
     function findCharacterById(id) {
@@ -1093,10 +1174,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var scrollY = window.scrollY || window.pageYOffset || 0;
       var width = Math.min(360, window.innerWidth - 32);
       var left = scrollX + Math.max(16, Math.min(window.innerWidth - width - 16, rect.left));
-      var height = characterPopover.offsetHeight || 0;
-      var top = scrollY + Math.max(16, Math.min(window.innerHeight - height - 16, rect.bottom + 8));
+      var top = scrollY + Math.max(16, rect.bottom + 8);
       characterPopover.style.left = left + 'px';
       characterPopover.style.top = top + 'px';
+      scheduleResize();
     }
 
     function spriteNameExists(character, name) {
@@ -1281,10 +1362,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var scrollY = window.scrollY || window.pageYOffset || 0;
       var popoverWidth = Math.min(420, window.innerWidth - 32);
       var left = scrollX + Math.max(16, Math.min(window.innerWidth - popoverWidth - 16, rect.right - popoverWidth));
-      var popoverHeight = backgroundPopover.offsetHeight || 0;
-      var top = scrollY + Math.max(16, Math.min(window.innerHeight - popoverHeight - 16, rect.bottom + 8));
+      var top = scrollY + Math.max(16, rect.bottom + 8);
       backgroundPopover.style.left = left + 'px';
       backgroundPopover.style.top = top + 'px';
+      scheduleResize();
     }
 
     function option(value, label, current) {
@@ -1780,6 +1861,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         menu.style.top = '';
         menu.style.width = '';
         menu.style.maxHeight = '';
+        scheduleResize();
         return;
       }
 
@@ -1814,6 +1896,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
 
       menu.style.left = left + 'px';
       menu.style.top = top + 'px';
+      scheduleResize();
     }
 
     function renderSlashMenu(state) {
@@ -2176,13 +2259,6 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           var audioValueNode = audioInput.parentNode.querySelector('.effect-range-value');
           if (audioValueNode) audioValueNode.textContent = String(audioInput.value);
         }
-        var assetInput = audioPopover.querySelector('#audioAssetInput');
-        if (event.target === assetInput) {
-          delete audioPopover.dataset.selectedAssetId;
-          var asset = findAudioAsset(assetInput && assetInput.value);
-          if (asset) audioPopover.dataset.selectedAssetId = asset.id;
-          updateAudioPreview(audioPopover, asset && asset.id || assetInput && assetInput.value);
-        }
         return;
       }
       if (!backgroundPopover || !backgroundPopover.contains(event.target)) return;
@@ -2240,13 +2316,35 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
             updateAudioSections();
             return;
           }
+          var audioModeButton = audioTarget.closest('[data-audio-mode-option]');
+          if (audioModeButton) {
+            audioPopover.dataset.mode = audioModeButton.dataset.audioModeOption === 'silence' ? 'silence' : 'track';
+            updateAudioSections();
+            return;
+          }
+          var audioBoundButton = audioTarget.closest('[data-audio-bound-option]');
+          if (audioBoundButton) {
+            audioPopover.dataset.boundTo = audioBoundButton.dataset.audioBoundOption === 'scene' ? 'scene' : 'continuous';
+            updateAudioSections();
+            return;
+          }
+          if (audioTarget.closest('[data-audio-field="loop"]')) {
+            updateAudioSections();
+            return;
+          }
           var audioActionButton = audioTarget.closest('[data-action]');
           if (!audioActionButton) return;
           var audioAction = audioActionButton.dataset.action;
           if (audioAction === 'choose-audio') {
             var audioPicker = audioPopover.querySelector('.audio-asset-picker');
-            if (audioPicker) audioPicker.classList.remove('hidden');
-            renderAudioAssetPicker(audioPopover);
+            if (audioPicker) {
+              if (audioPicker.classList.contains('hidden')) {
+                audioPicker.classList.remove('hidden');
+                renderAudioAssetPicker(audioPopover);
+              } else {
+                audioPicker.classList.add('hidden');
+              }
+            }
             scheduleResize();
             return;
           }
@@ -2523,8 +2621,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         renderAllAudioChips();
         if (audioPopover) {
           renderAudioAssetPicker(audioPopover);
-          var audioInput = audioPopover.querySelector('#audioAssetInput');
-          var currentAudioAssetId = audioPopover.dataset.selectedAssetId || normalizeAssetName(audioInput && audioInput.value) || normalizeAssetName(activeAudioChip && activeAudioChip.dataset.assetId);
+          var currentAudioAssetId = audioPopover.dataset.selectedAssetId || normalizeAssetName(activeAudioChip && activeAudioChip.dataset.assetId);
           updateAudioPreview(audioPopover, currentAudioAssetId);
         }
       }

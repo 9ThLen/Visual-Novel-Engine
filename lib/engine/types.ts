@@ -211,19 +211,25 @@ export interface EffectBlockData {
 }
 
 export interface MusicBlockData {
+  mode: 'track' | 'silence';
   assetId: string | null;
-  action: 'play' | 'stop' | 'pause' | 'fade';
   volume: number;           // 0-1
   loop: boolean;
-  fadeDuration: number;     // ms
+  fadeIn: number;           // seconds
+  fadeOut: number;          // seconds
+  boundTo: 'scene' | 'continuous';
+  autoFadeAfter?: number;   // seconds
 }
 
 export interface SoundBlockData {
+  mode: 'track' | 'silence';
   assetId: string | null;
-  action: 'play' | 'stop';
   volume: number;
   loop: boolean;
+  fadeIn: number;           // seconds
+  fadeOut: number;          // seconds
   pitchVariation: number;   // 0-1 random pitch variation
+  boundTo?: 'scene' | 'continuous';
 }
 
 export interface InteractiveObjectBlockData {

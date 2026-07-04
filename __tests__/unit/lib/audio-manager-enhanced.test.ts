@@ -96,7 +96,7 @@ describe('EnhancedAudioManager', () => {
 
     activateReaderAudioSession();
     await manager.play('bgm', 'theme.mp3', { volume: 0.5, loop: true });
-    await manager.crossFade('bgm', 'next.mp3', { duration: 300 });
+    await manager.crossFade('bgm', 'next.mp3', { fadeInMs: 300, fadeOutMs: 400 });
 
     expect(player.play).toHaveBeenCalledWith('bgm', 'theme.mp3', {
       volume: 0.5,
@@ -104,6 +104,6 @@ describe('EnhancedAudioManager', () => {
       fadeIn: undefined,
       metadata: { audioId: undefined, triggerId: undefined },
     });
-    expect(player.crossFade).toHaveBeenCalledWith('bgm', 'next.mp3', { duration: 300 });
+    expect(player.crossFade).toHaveBeenCalledWith('bgm', 'next.mp3', { fadeInMs: 300, fadeOutMs: 400 });
   });
 });

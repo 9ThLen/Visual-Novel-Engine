@@ -86,17 +86,8 @@ function findAudioAsset(
   ) ?? null;
 }
 
-function audioActionLabel(action: string): string {
-  const labels: Record<string, string> = {
-    play: 'Програти',
-    stop: 'Зупинити',
-    pause: 'Пауза',
-    fade: 'Згасання',
-  };
-  return labels[action] || 'Програти';
-}
-
 function audioInlineLabel(part: Extract<DocumentInlinePart, { type: 'music' | 'sound' }>, audioAssets: VNPlateAudioAsset[]): string {
+  if (part.mode === 'silence') return 'Тиша';
   const asset = findAudioAsset(audioAssets, part.assetId);
   if (asset) return audioAssetLabel(asset) || asset.name || asset.id;
   return part.assetId ? part.assetId.replace(/^asset_/, '') : 'Оберіть трек';
@@ -104,12 +95,21 @@ function audioInlineLabel(part: Extract<DocumentInlinePart, { type: 'music' | 's
 
 function audioDetails(part: Extract<DocumentInlinePart, { type: 'music' | 'sound' }>): string {
   const details = [
-    audioActionLabel(part.action),
+    part.mode === 'silence' ? 'тиша' : 'трек',
     `${Math.round(part.volume * 100)}%`,
   ];
   if (part.loop) details.push('повтор');
-  if (part.type === 'music' && part.fadeDuration > 0) {
-    details.push(`${Number((part.fadeDuration / 1000).toFixed(2))}s`);
+  if (part.fadeIn > 0) {
+    details.push(`вхід ${Number(part.fadeIn.toFixed(2))}с`);
+  }
+  if (part.fadeOut > 0) {
+    details.push(`вихід ${Number(part.fadeOut.toFixed(2))}с`);
+  }
+  if (part.type === 'music') {
+    details.push(part.boundTo === 'scene' ? 'сцена' : 'наскрізно');
+    if (part.autoFadeAfter != null && part.autoFadeAfter > 0) {
+      details.push(`авто ${Number(part.autoFadeAfter.toFixed(2))}с`);
+    }
   }
   if (part.type === 'sound' && part.pitchVariation > 0) {
     details.push(`тон ${Math.round(part.pitchVariation * 100)}%`);
@@ -121,14 +121,15 @@ function audioPartToHtml(part: Extract<DocumentInlinePart, { type: 'music' | 'so
   const kindClass = part.type === 'music' ? 'audio-chip--music' : 'audio-chip--sound';
   const icon = part.type === 'music' ? '♪' : 'SFX';
   const assetId = part.assetId || '';
-  const fadeDuration = part.type === 'music'
-    ? ` data-fade-duration="${escapeHtml(String(part.fadeDuration))}"`
+  const boundTo = part.boundTo ? ` data-bound-to="${escapeHtml(part.boundTo)}"` : '';
+  const autoFadeAfter = part.type === 'music' && part.autoFadeAfter != null
+    ? ` data-auto-fade-after="${escapeHtml(String(part.autoFadeAfter))}"`
     : '';
   const pitchVariation = part.type === 'sound'
     ? ` data-pitch-variation="${escapeHtml(String(part.pitchVariation))}"`
     : '';
   return [
-    `<span class="audio-chip ${kindClass}" contenteditable="false" draggable="true" tabindex="0" role="button" data-kind="${escapeHtml(part.type)}" data-id="${escapeHtml(part.id)}" data-action="${escapeHtml(part.action)}" data-asset-id="${escapeHtml(assetId)}" data-volume="${escapeHtml(String(part.volume))}" data-loop="${part.loop ? 'true' : 'false'}"${fadeDuration}${pitchVariation}>`,
+    `<span class="audio-chip ${kindClass}" contenteditable="false" draggable="true" tabindex="0" role="button" data-kind="${escapeHtml(part.type)}" data-id="${escapeHtml(part.id)}" data-mode="${escapeHtml(part.mode)}" data-asset-id="${escapeHtml(assetId)}" data-volume="${escapeHtml(String(part.volume))}" data-loop="${part.loop ? 'true' : 'false'}" data-fade-in="${escapeHtml(String(part.fadeIn))}" data-fade-out="${escapeHtml(String(part.fadeOut))}"${boundTo}${autoFadeAfter}${pitchVariation}>`,
     `<span class="audio-chip-icon">${escapeHtml(icon)}</span>`,
     `<span class="audio-chip-title">${escapeHtml(audioInlineLabel(part, audioAssets))}</span>`,
     `<span class="audio-chip-details">${escapeHtml(audioDetails(part))}</span>`,

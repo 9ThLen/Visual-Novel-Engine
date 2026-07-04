@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 
 import { useReaderAudio } from '../../hooks/useReaderAudio';
 import { enhancedAudioManager } from '../../lib/audio-manager-enhanced';
@@ -7,6 +7,7 @@ import { getPlaybackAudioLibraryPure } from '../../lib/audio-library';
 import { deactivateReaderAudioSession } from '../../lib/reader-audio-session';
 import type { UserSettings } from '../../lib/user-settings';
 import type { AudioTrigger } from '../../lib/audio-types';
+import type { SceneState } from '../../lib/engine/runtime-types';
 
 const { __setIsFocused } = require('@react-navigation/native');
 
@@ -115,7 +116,7 @@ describe('useReaderAudio', () => {
         expect(enhancedAudioManager.crossFade).toHaveBeenCalledWith(
           'bgm',
           '/resolved/music.mp3',
-          { volume: 0.7, duration: 800 },
+          { volume: 0.7, fadeInMs: 800, fadeOutMs: 800, loop: true },
         );
       });
     });
@@ -217,7 +218,7 @@ describe('useReaderAudio', () => {
       expect(enhancedAudioManager.stop).not.toHaveBeenCalledWith('bgm');
     });
 
-    it('should stop runtime BGM when music block action is stop', async () => {
+    it('should stop runtime BGM when music block mode is silence', async () => {
       renderHook(() =>
         useReaderAudio(STORY_ID, createScene(), defaultSettings, {
           sceneState: {
@@ -227,10 +228,12 @@ describe('useReaderAudio', () => {
             activeEffects: [],
             musicTrackId: null,
             musicPlaying: false,
-            musicAction: 'stop',
+            musicMode: 'silence',
             musicVolume: 0.8,
             musicLoop: true,
-            musicFadeDuration: 1200,
+            musicFadeIn: 0,
+            musicFadeOut: 1.2,
+            musicBoundTo: 'continuous',
             variables: {},
             dialogueHistory: [],
             currentChoices: null,
@@ -256,9 +259,11 @@ describe('useReaderAudio', () => {
           {
             id: 'sound-event-1',
             assetId: 'sfx-door',
-            action: 'play' as const,
+            mode: 'track' as const,
             volume: 0.5,
             loop: false,
+            fadeIn: 0,
+            fadeOut: 0.8,
             pitchVariation: 0,
             timestamp: 100,
           },
@@ -283,6 +288,7 @@ describe('useReaderAudio', () => {
         expect(enhancedAudioManager.play).toHaveBeenCalledWith('sfx:sound-event-1', '/resolved/sfx.mp3', {
           volume: 0.3,
           loop: false,
+          fadeIn: 0,
         });
       });
 
@@ -304,9 +310,11 @@ describe('useReaderAudio', () => {
           {
             id: 'sound-event-loop',
             assetId: 'sfx-loop',
-            action: 'play' as const,
+            mode: 'track' as const,
             volume: 1,
             loop: true,
+            fadeIn: 0,
+            fadeOut: 0.8,
             pitchVariation: 0,
             timestamp: 100,
           },
@@ -327,6 +335,7 @@ describe('useReaderAudio', () => {
         expect(enhancedAudioManager.play).toHaveBeenCalledWith('sfx:sfx-loop', '/resolved/loop.mp3', {
           volume: 0.6,
           loop: true,
+          fadeIn: 0,
         });
       });
     });
@@ -336,9 +345,11 @@ describe('useReaderAudio', () => {
       const manySoundEvents = Array.from({ length: 205 }, (_, index) => ({
         id: `sound-event-${index}`,
         assetId: `sfx-${index}`,
-        action: 'play' as const,
+        mode: 'track' as const,
         volume: 1,
         loop: false,
+        fadeIn: 0,
+        fadeOut: 0.8,
         pitchVariation: 0,
         timestamp: index,
       }));
@@ -379,8 +390,218 @@ describe('useReaderAudio', () => {
         expect(enhancedAudioManager.play).toHaveBeenCalledWith('sfx:sound-event-0', '/resolved/sfx.mp3', {
           volume: 0.6,
           loop: false,
+          fadeIn: 0,
         });
       });
+    });
+
+    it('should stop scene-bound bgm when the next scene has no explicit music block', async () => {
+      (resolvePlayableAssetUri as any).mockResolvedValue('/resolved/scene-bound.mp3');
+
+      const sceneBoundState: SceneState = {
+        backgroundAssetId: null,
+        backgroundTransition: 'fade',
+        characters: [],
+        activeEffects: [],
+        musicTrackId: 'scene-bound.mp3',
+        musicPlaying: true,
+        musicMode: 'track',
+        musicVolume: 0.8,
+        musicLoop: true,
+        musicFadeIn: 0.5,
+        musicFadeOut: 0.6,
+        musicBoundTo: 'scene',
+        variables: {},
+        dialogueHistory: [],
+        currentChoices: null,
+        isTransitioning: false,
+        transitionTarget: null,
+      };
+
+      const { rerender } = renderHook(
+        ({ scene, state }) =>
+          useReaderAudio(STORY_ID, scene, defaultSettings, { sceneState: state }),
+        { initialProps: { scene: createScene({ id: 'scene_1' }), state: sceneBoundState } },
+      );
+
+      await waitFor(() => {
+        expect(enhancedAudioManager.crossFade).toHaveBeenCalledWith(
+          'bgm',
+          '/resolved/scene-bound.mp3',
+          { volume: defaultSettings.bgmVolume * 0.8, fadeInMs: 500, fadeOutMs: 600, loop: true },
+        );
+      });
+      vi.clearAllMocks();
+
+      rerender({
+        scene: createScene({ id: 'scene_2' }),
+        state: {
+          ...sceneBoundState,
+          musicTrackId: null,
+          musicPlaying: false,
+          musicMode: null,
+        },
+      });
+
+      await waitFor(() => {
+        expect(enhancedAudioManager.stop).toHaveBeenCalledWith('bgm', 600);
+      });
+      expect(enhancedAudioManager.crossFade).not.toHaveBeenCalled();
+    });
+
+    it('should keep a continuous bgm track playing when the next scene has no explicit music block', async () => {
+      (resolvePlayableAssetUri as any).mockResolvedValue('/resolved/continuous.mp3');
+
+      const continuousState: SceneState = {
+        backgroundAssetId: null,
+        backgroundTransition: 'fade',
+        characters: [],
+        activeEffects: [],
+        musicTrackId: 'continuous.mp3',
+        musicPlaying: true,
+        musicMode: 'track',
+        musicVolume: 0.8,
+        musicLoop: true,
+        musicFadeIn: 0.5,
+        musicFadeOut: 0.6,
+        musicBoundTo: 'continuous',
+        variables: {},
+        dialogueHistory: [],
+        currentChoices: null,
+        isTransitioning: false,
+        transitionTarget: null,
+      };
+
+      const { rerender } = renderHook(
+        ({ scene, state }) =>
+          useReaderAudio(STORY_ID, scene, defaultSettings, { sceneState: state }),
+        { initialProps: { scene: createScene({ id: 'scene_1' }), state: continuousState } },
+      );
+
+      await waitFor(() => {
+        expect(enhancedAudioManager.crossFade).toHaveBeenCalled();
+      });
+      vi.clearAllMocks();
+
+      rerender({
+        scene: createScene({ id: 'scene_2' }),
+        state: {
+          ...continuousState,
+          musicTrackId: null,
+          musicPlaying: false,
+          musicMode: null,
+        },
+      });
+
+      await waitFor(() => {
+        expect(enhancedAudioManager.cancelAllTriggers).toHaveBeenCalled();
+      });
+      expect(enhancedAudioManager.stop).not.toHaveBeenCalledWith('bgm', expect.anything());
+      expect(enhancedAudioManager.crossFade).not.toHaveBeenCalled();
+    });
+
+    it('should auto-fade bgm after the configured autoFadeAfter duration', async () => {
+      vi.useFakeTimers();
+      try {
+        (resolvePlayableAssetUri as any).mockResolvedValue('/resolved/auto-fade.mp3');
+
+        const autoFadeState = {
+          backgroundAssetId: null,
+          backgroundTransition: 'fade',
+          characters: [],
+          activeEffects: [],
+          musicTrackId: 'auto-fade.mp3',
+          musicPlaying: true,
+          musicMode: 'track' as const,
+          musicVolume: 0.8,
+          musicLoop: true,
+          musicFadeIn: 0.5,
+          musicFadeOut: 0.6,
+          musicBoundTo: 'continuous' as const,
+          musicAutoFadeAfter: 3,
+          variables: {},
+          dialogueHistory: [],
+          currentChoices: null,
+          isTransitioning: false,
+          transitionTarget: null,
+        };
+
+        renderHook(() =>
+          useReaderAudio(STORY_ID, createScene({ id: 'scene_1' }), defaultSettings, {
+            sceneState: autoFadeState,
+          }),
+        );
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        expect(enhancedAudioManager.crossFade).toHaveBeenCalled();
+        expect(enhancedAudioManager.stop).not.toHaveBeenCalledWith('bgm', expect.anything());
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(3000);
+        });
+
+        expect(enhancedAudioManager.stop).toHaveBeenCalledWith('bgm', 600);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('should cancel the pending autoFadeAfter timer when the scene changes first', async () => {
+      vi.useFakeTimers();
+      try {
+        (resolvePlayableAssetUri as any).mockResolvedValue('/resolved/auto-fade-2.mp3');
+
+        const autoFadeState: SceneState = {
+          backgroundAssetId: null,
+          backgroundTransition: 'fade',
+          characters: [],
+          activeEffects: [],
+          musicTrackId: 'auto-fade-2.mp3',
+          musicPlaying: true,
+          musicMode: 'track',
+          musicVolume: 0.8,
+          musicLoop: true,
+          musicFadeIn: 0.5,
+          musicFadeOut: 0.6,
+          musicBoundTo: 'continuous',
+          musicAutoFadeAfter: 3,
+          variables: {},
+          dialogueHistory: [],
+          currentChoices: null,
+          isTransitioning: false,
+          transitionTarget: null,
+        };
+
+        const { rerender } = renderHook(
+          ({ scene, state }) =>
+            useReaderAudio(STORY_ID, scene, defaultSettings, { sceneState: state }),
+          { initialProps: { scene: createScene({ id: 'scene_1' }), state: autoFadeState } },
+        );
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        expect(enhancedAudioManager.crossFade).toHaveBeenCalled();
+        vi.clearAllMocks();
+
+        await act(async () => {
+          rerender({
+            scene: createScene({ id: 'scene_2' }),
+            state: { ...autoFadeState, musicAutoFadeAfter: undefined },
+          });
+          await vi.advanceTimersByTimeAsync(0);
+        });
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5000);
+        });
+
+        expect(enhancedAudioManager.stop).not.toHaveBeenCalledWith('bgm', expect.anything());
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('should adjust volume when same bgm track persists', async () => {

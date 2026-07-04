@@ -43,7 +43,15 @@ function makeSceneRecord(overrides: Partial<SceneRecord> = {}): SceneRecord {
       {
         id: 'music-1',
         blockType: 'music',
-        data: { assetId: 'track-1', action: 'play', volume: 0.8, loop: true, fadeDuration: 1000 },
+        data: {
+          mode: 'track',
+          assetId: 'track-1',
+          volume: 0.8,
+          loop: true,
+          fadeIn: 1,
+          fadeOut: 0.8,
+          boundTo: 'continuous',
+        },
         collapsed: false,
         enabled: true,
       },

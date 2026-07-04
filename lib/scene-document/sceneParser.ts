@@ -12,36 +12,82 @@ function parseBoolean(value: string | undefined): boolean | undefined {
   return undefined;
 }
 
+function parseNumber(value: string | undefined): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseBinding(tokens: string[], value: string | undefined): 'scene' | 'continuous' | undefined {
+  if (value === 'scene' || value === 'continuous') return value;
+  if (tokens.includes('scene')) return 'scene';
+  if (tokens.includes('continuous')) return 'continuous';
+  return undefined;
+}
+
 function parseAudio(parts: string[], lineNumber: number): MusicNode | SoundNode | null {
-  const [action, channel, assetId, ...tokens] = parts;
-  if (action !== 'play' && action !== 'stop' && action !== 'fade') return null;
-  if (channel !== 'music' && channel !== 'sfx' && channel !== 'sound') return null;
+  const [command] = parts;
+  let channel: string | undefined;
+  let mode: 'track' | 'silence';
+  let assetId: string | undefined;
+  let tokens: string[];
+
+  if (command === 'play' || command === 'stop' || command === 'fade') {
+    channel = parts[1];
+    if (channel !== 'music' && channel !== 'sfx' && channel !== 'sound') return null;
+    mode = command === 'play' ? 'track' : 'silence';
+    assetId = parts[2];
+    tokens = parts.slice(3);
+  } else if (command === 'silence') {
+    channel = parts[1];
+    if (channel !== 'music' && channel !== 'sfx' && channel !== 'sound') return null;
+    mode = 'silence';
+    assetId = parts[2];
+    tokens = parts.slice(3);
+  } else if (command === 'music' || command === 'sound' || command === 'sfx') {
+    channel = command;
+    mode = 'track';
+    assetId = parts[1];
+    tokens = parts.slice(2);
+  } else {
+    return null;
+  }
 
   const options = new Map(
     tokens
       .map((token) => token.split('='))
       .filter((entry): entry is [string, string] => entry.length === 2),
   );
-  const volume = options.has('volume') ? Number(options.get('volume')) : undefined;
+  const volume = parseNumber(options.get('volume'));
+  const fadeIn = parseNumber(options.get('fadeIn'));
+  const fadeOut = parseNumber(options.get('fadeOut'));
+  const boundTo = parseBinding(tokens, options.get('boundTo'));
 
   if (channel === 'music') {
     return {
       id: nodeId(lineNumber, 'music'),
       type: 'music',
-      action,
-      assetId,
+      mode,
+      assetId: assetId || undefined,
       volume: Number.isFinite(volume) ? volume : undefined,
       loop: tokens.includes('loop') || parseBoolean(options.get('loop')),
+      fadeIn,
+      fadeOut,
+      boundTo,
+      autoFadeAfter: parseNumber(options.get('autoFadeAfter')),
     };
   }
 
   return {
     id: nodeId(lineNumber, 'sound'),
     type: 'sound',
-    action: action === 'stop' ? 'stop' : 'play',
-    assetId,
+    mode,
+    assetId: assetId || undefined,
     volume: Number.isFinite(volume) ? volume : undefined,
     loop: tokens.includes('loop') || parseBoolean(options.get('loop')),
+    fadeIn,
+    fadeOut,
+    pitchVariation: parseNumber(options.get('pitchVariation')),
+    boundTo,
   };
 }
 

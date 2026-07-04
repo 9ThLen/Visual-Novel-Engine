@@ -334,3 +334,39 @@ Preview/Reader.
 - Verify accessibility and export/import behavior.
 - Verify schema marker, i18n coverage, deletion warnings, sprite name scope, and
   current-sprite snapshot semantics.
+
+## Phase 18 - Audio Block Redesign
+
+**Priority:** P1
+**Status:** Complete
+**Plan:** `.planning/phases/18-audio-block-redesign/18-00-PLAN.md` through `.planning/phases/18-audio-block-redesign/18-04-PLAN.md`
+**Context:** `.planning/phases/18-audio-block-redesign/18-CONTEXT.md`
+
+Replace the `action`-based Music/Sound timeline block contract (`play` /
+`stop` / `pause` / `fade`) with an explicit `mode: 'track' | 'silence'` model
+carrying fade-in/fade-out (seconds), scene-vs-continuous binding, and an
+optional auto-fade-after timer, so authoring a music/sound block never
+requires picking an abstract action. Also fixes `AudioPlayerService.crossFade()`
+silently ignoring its fade duration, and moves legacy-block migration to the
+canonical scene-load boundary instead of only the Plate editor bridge.
+
+### Wave 0 - Data Contract And Audio Service Fix
+- Redesign `MusicBlockData`/`SoundBlockData` with `mode`/`boundTo`/`fadeIn`/`fadeOut`/`autoFadeAfter`.
+- Update step factory defaults and `DocumentInlinePart` to match.
+- Make `AudioPlayerService.crossFade()` actually fade both tracks instead of ignoring `duration`.
+
+### Wave 1 - Canonical Migration
+- Add shared `lib/audio-block-migration.ts` mapping legacy `action` values to the new shape.
+- Wire migration into `app-store-persistence.ts`, `bundled-story-sync.ts`, and `story-hooks.ts` import validation.
+
+### Wave 2 - Runtime (Reader And Preview Parity)
+- Update `useSceneExecutor`/`runtime-types` to the new `SceneState` fields.
+- Implement scene-bound auto-stop, continuous persistence, and auto-fade-after in `useReaderAudio`.
+- Bring `PreviewScreen.tsx` to parity so it never diverges from the reader runtime again.
+
+### Wave 3 - Editor UI And Serialization
+- Remove the "Дія" action dropdown from the audio popover; add mode/boundTo/fade-in/fade-out/auto-fade controls.
+- Update chip rendering, Plate bridge normalization, `DocumentInlinePart` conversion, and the text-DSL scene notation.
+
+### Wave 4 - Tests And Full Verification
+- Close remaining coverage gaps and run the full project verification gate.

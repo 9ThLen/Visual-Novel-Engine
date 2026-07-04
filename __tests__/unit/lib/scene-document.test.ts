@@ -27,8 +27,8 @@ describe('scene document parser', () => {
   it('parses background and audio commands', () => {
     expect(parseSceneText('[background forest_day]\n[play music calm_theme loop volume=0.8]\n[play sfx door_knock]')).toEqual([
       expect.objectContaining({ type: 'background', assetId: 'forest_day' }),
-      expect.objectContaining({ type: 'music', action: 'play', assetId: 'calm_theme', loop: true, volume: 0.8 }),
-      expect.objectContaining({ type: 'sound', action: 'play', assetId: 'door_knock' }),
+      expect.objectContaining({ type: 'music', mode: 'track', assetId: 'calm_theme', loop: true, volume: 0.8 }),
+      expect.objectContaining({ type: 'sound', mode: 'track', assetId: 'door_knock' }),
     ]);
   });
 

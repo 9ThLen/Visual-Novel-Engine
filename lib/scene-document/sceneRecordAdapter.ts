@@ -89,11 +89,14 @@ function timelineStepToSceneNode(step: TimelineStep, characters: Character[]): S
     return {
       id: step.id,
       type: 'music',
-      action: data.action,
+      mode: data.mode,
       assetId: data.assetId ?? undefined,
       volume: data.volume,
       loop: data.loop,
-      fadeDuration: data.fadeDuration,
+      fadeIn: data.fadeIn,
+      fadeOut: data.fadeOut,
+      boundTo: data.boundTo,
+      autoFadeAfter: data.autoFadeAfter,
     };
   }
 
@@ -102,11 +105,14 @@ function timelineStepToSceneNode(step: TimelineStep, characters: Character[]): S
     return {
       id: step.id,
       type: 'sound',
-      action: data.action,
+      mode: data.mode,
       assetId: data.assetId ?? undefined,
       volume: data.volume,
       loop: data.loop,
+      fadeIn: data.fadeIn,
+      fadeOut: data.fadeOut,
       pitchVariation: data.pitchVariation,
+      boundTo: data.boundTo,
     };
   }
 
@@ -253,20 +259,26 @@ function sceneNodeToTimelineStep(node: SceneNode, characters: Character[]): Time
   if (node.type === 'music') {
     return [createMusicStep({
       assetId: node.assetId || null,
-      action: node.action,
+      mode: node.mode,
       volume: node.volume ?? 0.8,
-      loop: node.loop ?? node.action === 'play',
-      fadeDuration: node.fadeDuration ?? 1000,
+      loop: node.loop ?? node.mode === 'track',
+      fadeIn: node.fadeIn ?? 1,
+      fadeOut: node.fadeOut ?? 0.8,
+      boundTo: node.boundTo ?? 'continuous',
+      autoFadeAfter: node.autoFadeAfter,
     })];
   }
 
   if (node.type === 'sound') {
     return [createSoundStep({
       assetId: node.assetId || null,
-      action: node.action === 'stop' ? 'stop' : 'play',
+      mode: node.mode,
       volume: node.volume ?? 0.8,
       loop: node.loop ?? false,
+      fadeIn: node.fadeIn ?? 0,
+      fadeOut: node.fadeOut ?? 0.8,
       pitchVariation: node.pitchVariation ?? 0,
+      boundTo: node.boundTo,
     })];
   }
 

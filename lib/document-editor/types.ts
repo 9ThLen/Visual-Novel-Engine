@@ -51,20 +51,26 @@ export type DocumentInlinePart =
   | {
       type: 'music';
       id: string;
-      action: 'play' | 'stop' | 'pause' | 'fade';
+      mode: 'track' | 'silence';
       assetId: string | null;
       volume: number;
       loop: boolean;
-      fadeDuration: number;
+      fadeIn: number;
+      fadeOut: number;
+      boundTo: 'scene' | 'continuous';
+      autoFadeAfter?: number;
     }
   | {
       type: 'sound';
       id: string;
-      action: 'play' | 'stop';
+      mode: 'track' | 'silence';
       assetId: string | null;
       volume: number;
       loop: boolean;
+      fadeIn: number;
+      fadeOut: number;
       pitchVariation: number;
+      boundTo?: 'scene' | 'continuous';
     };
 
 export interface DocumentTextBlock extends BaseDocumentBlock {

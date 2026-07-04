@@ -205,6 +205,54 @@ describe('scene record storage helpers', () => {
     expect(parseSceneRecordStoragePayload({ records: {} })).toBeNull();
   });
 
+  it('migrates legacy audio blocks in per-story and per-scene storage payloads', () => {
+    const legacyScene: SceneRecord = {
+      ...scene('scene-1'),
+      timeline: [
+        {
+          id: 'music-1',
+          sceneId: 'scene-1',
+          blockType: 'music',
+          order: 0,
+          data: { action: 'fade', fadeDuration: 400 },
+        },
+        {
+          id: 'sound-1',
+          sceneId: 'scene-1',
+          blockType: 'sound',
+          order: 1,
+          data: { action: 'stop', assetId: 'rain' },
+        },
+      ] as unknown as SceneRecord['timeline'],
+    };
+
+    const parsedStoryPayload = parseSceneRecordStoragePayload({
+      version: SCENE_RECORD_STORAGE_VERSION,
+      storyId: 'story-1',
+      records: {
+        'scene-1': legacyScene,
+      },
+      updatedAt: 1,
+    });
+    const itemPayload = buildSceneRecordItemPayload('story-1', 'scene-1', legacyScene, 1);
+    const parsedItemPayload = parseSceneRecordItemPayload(itemPayload, 'story-1', 'scene-1');
+
+    expect(parsedStoryPayload?.records['scene-1'].timeline[0].data).toMatchObject({
+      mode: 'silence',
+      fadeIn: 0,
+      fadeOut: 0.4,
+    });
+    expect(parsedStoryPayload?.records['scene-1'].timeline[1].data).toMatchObject({
+      mode: 'silence',
+      assetId: 'rain',
+      loop: true,
+    });
+    expect(parsedItemPayload?.record.timeline[0].data).toMatchObject({
+      mode: 'silence',
+      fadeOut: 0.4,
+    });
+  });
+
   it('merges parsed payloads into sceneRecordsByStory shape', () => {
     const merged = mergeSceneRecordStoragePayloads([
       buildSceneRecordStoragePayload('story-1', { 'scene-1': scene('scene-1') }, 1),

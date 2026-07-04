@@ -35,6 +35,7 @@ export type VNPlateEditorMessage =
       editorId: string;
       type: 'resize';
       height: number;
+      overlayHeight?: number;
     }
   | {
       source: 'vn-plate-editor';

@@ -13,20 +13,28 @@ export function serializeNode(node: SceneNode): string {
         ? `[hide ${node.characterId}]`
         : `[show ${node.characterId}${node.spriteId ? ` ${node.spriteId}` : ''}]`;
     case 'music': {
-      const base = node.action === 'play'
-        ? `[play music ${node.assetId ?? ''}`
-        : `[${node.action} music`;
+      const base = node.mode === 'silence'
+        ? `[silence music${node.assetId ? ` ${node.assetId}` : ''}`
+        : `[music ${node.assetId ?? ''}`;
       const volume = typeof node.volume === 'number' ? ` volume=${node.volume}` : '';
       const loop = node.loop ? ' loop' : '';
-      return `${base}${volume}${loop}]`;
+      const fadeIn = typeof node.fadeIn === 'number' ? ` fadeIn=${node.fadeIn}` : '';
+      const fadeOut = typeof node.fadeOut === 'number' ? ` fadeOut=${node.fadeOut}` : '';
+      const boundTo = node.boundTo ? ` ${node.boundTo}` : '';
+      const autoFadeAfter = typeof node.autoFadeAfter === 'number' ? ` autoFadeAfter=${node.autoFadeAfter}` : '';
+      return `${base}${volume}${loop}${fadeIn}${fadeOut}${boundTo}${autoFadeAfter}]`;
     }
     case 'sound': {
-      const base = node.action === 'play'
-        ? `[play sfx ${node.assetId ?? ''}`
-        : '[stop sfx';
+      const base = node.mode === 'silence'
+        ? `[silence sound${node.assetId ? ` ${node.assetId}` : ''}`
+        : `[sound ${node.assetId ?? ''}`;
       const volume = typeof node.volume === 'number' ? ` volume=${node.volume}` : '';
       const loop = node.loop ? ' loop' : '';
-      return `${base}${volume}${loop}]`;
+      const fadeIn = typeof node.fadeIn === 'number' ? ` fadeIn=${node.fadeIn}` : '';
+      const fadeOut = typeof node.fadeOut === 'number' ? ` fadeOut=${node.fadeOut}` : '';
+      const pitchVariation = typeof node.pitchVariation === 'number' ? ` pitchVariation=${node.pitchVariation}` : '';
+      const boundTo = node.boundTo ? ` ${node.boundTo}` : '';
+      return `${base}${volume}${loop}${fadeIn}${fadeOut}${pitchVariation}${boundTo}]`;
     }
     case 'choice': {
       const options = node.options

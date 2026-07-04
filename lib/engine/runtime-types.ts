@@ -28,8 +28,8 @@ export interface RuntimeChoiceOption {
 }
 
 export type RuntimeEffectType = 'shake' | 'flash' | 'blur' | 'rain' | 'snow' | 'fog' | 'glitch' | 'vignette';
-export type RuntimeMusicAction = 'play' | 'stop' | 'pause' | 'fade';
-export type RuntimeSoundAction = 'play' | 'stop';
+export type RuntimeAudioMode = 'track' | 'silence';
+export type RuntimeAudioBinding = 'scene' | 'continuous';
 export type RuntimeCameraAction = 'zoom' | 'pan' | 'focus' | 'reset';
 export type RuntimeCameraEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
 
@@ -43,10 +43,13 @@ export interface SceneState {
   interactiveObjects?: InteractiveObject[];
   musicTrackId: string | null;
   musicPlaying: boolean;
-  musicAction?: RuntimeMusicAction | null;
+  musicMode?: RuntimeAudioMode | null;
   musicVolume: number;
   musicLoop?: boolean;
-  musicFadeDuration?: number;
+  musicFadeIn?: number;
+  musicFadeOut?: number;
+  musicBoundTo?: RuntimeAudioBinding;
+  musicAutoFadeAfter?: number;
   variables: Record<string, string | number | boolean>;
   dialogueHistory: DialogueHistoryEntry[];
   currentChoices: RuntimeChoiceOption[] | null;
@@ -87,10 +90,13 @@ export interface ActiveEffect {
 export interface SoundRuntimeEvent {
   id: string;
   assetId: string;
-  action: RuntimeSoundAction;
+  mode: RuntimeAudioMode;
   volume: number;
   loop: boolean;
+  fadeIn: number;
+  fadeOut: number;
   pitchVariation: number;
+  boundTo?: RuntimeAudioBinding;
   timestamp: number;
 }
 

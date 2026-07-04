@@ -61,10 +61,13 @@ function buildSoundEventSignature(events: SoundRuntimeEvent[] | undefined): stri
       [
         event.id,
         event.assetId,
-        event.action,
+        event.mode,
         event.volume,
         event.loop,
+        event.fadeIn,
+        event.fadeOut,
         event.pitchVariation,
+        event.boundTo ?? '',
         event.timestamp,
       ].join(':'),
     )
@@ -81,15 +84,51 @@ function rememberPlayedSoundEvent(playedEvents: Set<string>, eventKey: string): 
   }
 }
 
-function getSceneStartMusicUri(scene: ReaderAudioScene | null): string | null {
+function secondsToMs(value: number | null | undefined, fallbackMs = 0): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallbackMs;
+  return Math.max(0, Math.round(value * 1000));
+}
+
+function getSceneStartMusic(scene: ReaderAudioScene | null): {
+  uri: string | null;
+  mode: MusicBlockData['mode'] | null;
+  volume: number;
+  loop: boolean;
+  fadeIn: number;
+  fadeOut: number;
+  boundTo: MusicBlockData['boundTo'];
+  autoFadeAfter?: number;
+  hasExplicitBlock: boolean;
+} {
   const musicStep = scene?.timeline?.find(
     (step: TimelineStep) => step.enabled && step.blockType === 'music',
   );
-  if (!musicStep) return scene?.musicUri?.trim() || null;
+  if (!musicStep) {
+    const legacyUri = scene?.musicUri?.trim() || null;
+    return {
+      uri: legacyUri,
+      mode: legacyUri ? 'track' : null,
+      volume: 1,
+      loop: true,
+      fadeIn: 0.8,
+      fadeOut: 0.8,
+      boundTo: 'continuous',
+      hasExplicitBlock: !!legacyUri,
+    };
+  }
 
   const data = musicStep.data as MusicBlockData;
-  if (data.action !== 'play') return null;
-  return data.assetId?.trim() || null;
+  return {
+    uri: data.mode === 'track' ? data.assetId?.trim() || null : null,
+    mode: data.mode,
+    volume: data.volume,
+    loop: data.loop,
+    fadeIn: data.fadeIn,
+    fadeOut: data.fadeOut,
+    boundTo: data.boundTo,
+    autoFadeAfter: data.autoFadeAfter,
+    hasExplicitBlock: true,
+  };
 }
 
 function resolveRuntimeMusic(
@@ -97,27 +136,29 @@ function resolveRuntimeMusic(
   sceneState: SceneState | null | undefined,
 ): {
   uri: string | null;
-  action: MusicBlockData['action'] | null;
+  mode: MusicBlockData['mode'] | null;
   volume: number;
   loop: boolean;
-  fadeDuration: number;
+  fadeIn: number;
+  fadeOut: number;
+  boundTo: MusicBlockData['boundTo'];
+  autoFadeAfter?: number;
+  hasExplicitBlock: boolean;
 } {
-  if (sceneState?.musicAction) {
+  if (sceneState?.musicMode) {
     return {
-      uri: sceneState.musicTrackId?.trim() || null,
-      action: sceneState.musicAction,
+      uri: sceneState.musicMode === 'track' ? sceneState.musicTrackId?.trim() || null : null,
+      mode: sceneState.musicMode,
       volume: typeof sceneState.musicVolume === 'number' ? sceneState.musicVolume : 1,
       loop: sceneState.musicLoop ?? true,
-      fadeDuration: sceneState.musicFadeDuration ?? 800,
+      fadeIn: sceneState.musicFadeIn ?? 0.8,
+      fadeOut: sceneState.musicFadeOut ?? 0.8,
+      boundTo: sceneState.musicBoundTo ?? 'continuous',
+      autoFadeAfter: sceneState.musicAutoFadeAfter,
+      hasExplicitBlock: true,
     };
   }
-  return {
-    uri: getSceneStartMusicUri(scene),
-    action: null,
-    volume: 1,
-    loop: true,
-    fadeDuration: 800,
-  };
+  return getSceneStartMusic(scene);
 }
 
 /** Stops all reader playback and disables the reader audio session. */
@@ -154,8 +195,18 @@ export function useReaderAudio(
   const soundEventSignature = buildSoundEventSignature(sceneState?.soundEvents);
   const volumesRef = useRef({ bgm: settings.bgmVolume, voice: settings.voiceVolume });
   const currentBgmUriRef = useRef<string | null>(null);
+  const currentBgmBoundToRef = useRef<MusicBlockData['boundTo']>('continuous');
+  const currentBgmFadeOutMsRef = useRef(800);
+  const autoFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playedSoundEventsRef = useRef<Set<string>>(new Set());
   const sceneGenerationRef = useRef(0);
+
+  const clearAutoFadeTimer = useCallback(() => {
+    if (autoFadeTimerRef.current) {
+      clearTimeout(autoFadeTimerRef.current);
+      autoFadeTimerRef.current = null;
+    }
+  }, []);
 
   const logDebug = useCallback((event: string, context?: Record<string, unknown>) => {
     if (!shouldLogDevDiagnostics()) return;
@@ -173,10 +224,14 @@ export function useReaderAudio(
       const generation = ++sceneGenerationRef.current;
       const music = resolveRuntimeMusic(scene, runtimeState);
       const musicUri = music.uri;
+      clearAutoFadeTimer();
       logDebug('applySceneAudio', {
         storyId,
         sceneId: scene.id,
         musicUri,
+        musicMode: music.mode,
+        musicBoundTo: music.boundTo,
+        hasExplicitMusicBlock: music.hasExplicitBlock,
         voiceAudioUri: scene.voiceAudioUri,
         triggerCount: scene.audioTriggers?.length ?? 0,
         sessionId,
@@ -196,12 +251,27 @@ export function useReaderAudio(
       }
 
       const newMusicUri = musicUri;
+      const fadeInMs = secondsToMs(music.fadeIn, 800);
+      const fadeOutMs = secondsToMs(music.fadeOut, 800);
 
-      if (music.action === 'stop') {
-        void audioManager.stop('bgm', music.fadeDuration);
+      const scheduleAutoFade = () => {
+        if (music.mode !== 'track' || !music.autoFadeAfter || music.autoFadeAfter <= 0) return;
+        autoFadeTimerRef.current = setTimeout(() => {
+          if (
+            sceneGenerationRef.current !== generation ||
+            !isReaderAudioSessionValid(sessionId)
+          ) {
+            return;
+          }
+          void audioManager.stop('bgm', fadeOutMs);
+          currentBgmUriRef.current = null;
+        }, secondsToMs(music.autoFadeAfter));
+      };
+
+      if (music.mode === 'silence') {
+        void audioManager.stop('bgm', fadeOutMs);
         currentBgmUriRef.current = null;
-      } else if (music.action === 'pause') {
-        void audioManager.pause('bgm');
+        currentBgmBoundToRef.current = 'continuous';
       } else if (newMusicUri) {
         resolvePlayableAssetUri(newMusicUri).then((uri) => {
           logDebug('bgm:resolved', {
@@ -232,6 +302,9 @@ export function useReaderAudio(
 
           if (currentBgmUriRef.current === uri) {
             void audioManager.setVolume('bgm', volumesRef.current.bgm * music.volume);
+            currentBgmBoundToRef.current = music.boundTo;
+            currentBgmFadeOutMsRef.current = fadeOutMs;
+            scheduleAutoFade();
             logDebug('bgm:reuse-track', {
               sceneId: scene.id,
               resolvedUri: uri,
@@ -243,8 +316,9 @@ export function useReaderAudio(
           void audioManager
             .crossFade('bgm', uri, {
               volume: volumesRef.current.bgm * music.volume,
-              duration: music.fadeDuration || 800,
-              ...(music.action ? { loop: music.loop } : {}),
+              fadeInMs,
+              fadeOutMs,
+              loop: music.loop,
             })
             .catch((err) =>
               ErrorHandler.handle('BGM crossfade failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW),
@@ -255,7 +329,14 @@ export function useReaderAudio(
             bgmVolume: volumesRef.current.bgm * music.volume,
           });
           currentBgmUriRef.current = uri;
+          currentBgmBoundToRef.current = music.boundTo;
+          currentBgmFadeOutMsRef.current = fadeOutMs;
+          scheduleAutoFade();
         });
+      } else if (!music.hasExplicitBlock && currentBgmUriRef.current && currentBgmBoundToRef.current === 'scene') {
+        void audioManager.stop('bgm', currentBgmFadeOutMsRef.current);
+        currentBgmUriRef.current = null;
+        currentBgmBoundToRef.current = 'continuous';
       } else {
         logDebug('bgm:none', { sceneId: scene.id });
       }
@@ -294,8 +375,10 @@ export function useReaderAudio(
         if (!event.assetId || playedSoundEventsRef.current.has(eventKey)) continue;
         rememberPlayedSoundEvent(playedSoundEventsRef.current, eventKey);
         const soundChannelId = event.loop ? `sfx:${event.assetId}` : `sfx:${event.id}`;
-        if (event.action === 'stop') {
-          void audioManager.stop(`sfx:${event.assetId}`, 100);
+        const eventFadeInMs = secondsToMs(event.fadeIn, 0);
+        const eventFadeOutMs = secondsToMs(event.fadeOut, 0);
+        if (event.mode === 'silence') {
+          void audioManager.stop(`sfx:${event.assetId}`, eventFadeOutMs);
           continue;
         }
         resolvePlayableAssetUri(event.assetId).then((uri) => {
@@ -310,6 +393,7 @@ export function useReaderAudio(
             .play(soundChannelId, uri, {
               volume: settings.sfxVolume * event.volume,
               loop: event.loop,
+              fadeIn: eventFadeInMs,
             })
             .catch((err) =>
               ErrorHandler.handle('SFX playback failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW),
@@ -317,7 +401,7 @@ export function useReaderAudio(
         });
       }
     },
-    [audioManager, logDebug, settings.sfxVolume, storyId],
+    [audioManager, clearAutoFadeTimer, logDebug, settings.sfxVolume, storyId],
   );
 
   useEffect(() => {
@@ -348,10 +432,11 @@ export function useReaderAudio(
       activateReaderAudioSession();
       return () => {
         sceneGenerationRef.current += 1;
+        clearAutoFadeTimer();
         currentBgmUriRef.current = null;
         void stopReaderPlayback(audioManager);
       };
-    }, [audioManager]),
+    }, [audioManager, clearAutoFadeTimer]),
   );
 
   useEffect(() => {
@@ -361,6 +446,7 @@ export function useReaderAudio(
   useEffect(() => {
     if (blockedByOverlay) {
       sceneGenerationRef.current += 1;
+      clearAutoFadeTimer();
       currentBgmUriRef.current = null;
       suspendReaderAudioSession();
       void audioManager.cancelAllTriggers();
@@ -372,10 +458,11 @@ export function useReaderAudio(
 
     if (!isFocused || !currentScene) {
       sceneGenerationRef.current += 1;
+      clearAutoFadeTimer();
       currentBgmUriRef.current = null;
       void stopReaderPlayback(audioManager);
     }
-  }, [blockedByOverlay, isFocused, currentScene?.id, audioManager]);
+  }, [blockedByOverlay, isFocused, currentScene?.id, audioManager, clearAutoFadeTimer]);
 
   useEffect(() => {
     if (blockedByOverlay || !isFocused || !currentScene) {
@@ -394,10 +481,13 @@ export function useReaderAudio(
     currentScene?.id,
     sceneState?.musicTrackId,
     sceneState?.musicPlaying,
-    sceneState?.musicAction,
+    sceneState?.musicMode,
     sceneState?.musicVolume,
     sceneState?.musicLoop,
-    sceneState?.musicFadeDuration,
+    sceneState?.musicFadeIn,
+    sceneState?.musicFadeOut,
+    sceneState?.musicBoundTo,
+    sceneState?.musicAutoFadeAfter,
     soundEventSignature,
     currentScene?.voiceAudioUri,
     audioTriggerSignature,
@@ -407,10 +497,11 @@ export function useReaderAudio(
   useEffect(() => {
     return () => {
       sceneGenerationRef.current += 1;
+      clearAutoFadeTimer();
       currentBgmUriRef.current = null;
       void stopReaderPlayback(audioManager);
     };
-  }, [audioManager]);
+  }, [audioManager, clearAutoFadeTimer]);
 
   useEffect(() => {
     audioManager

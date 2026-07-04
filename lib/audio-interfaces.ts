@@ -26,7 +26,7 @@ export interface IAudioPlayerService {
   crossFade(
     trackId: string,
     newUri: string,
-    opts?: { volume?: number; loop?: boolean; duration?: number },
+    opts?: { volume?: number; loop?: boolean; fadeInMs?: number; fadeOutMs?: number },
   ): Promise<void>;
   getActiveTrackIds(): string[];
   getTrackMetadata(trackId: string): Record<string, string | undefined> | undefined;
@@ -84,7 +84,7 @@ export interface IAudioManager {
   crossFade(
     trackId: string,
     newUri: string,
-    opts?: { volume?: number; loop?: boolean; duration?: number },
+    opts?: { volume?: number; loop?: boolean; fadeInMs?: number; fadeOutMs?: number },
   ): Promise<void>;
   isPlaying(trackId: string): boolean;
   getActiveTracksByType(type: AudioLibraryItem['type']): string[];

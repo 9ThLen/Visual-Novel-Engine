@@ -14,5 +14,5 @@ export function getAudioSceneMusicUri(scene: AudioScene): string | null {
   const musicStep = scene.timeline.find((step) => step.enabled && step.blockType === 'music');
   if (!musicStep) return null;
   const data = musicStep.data as MusicBlockData;
-  return data.action === 'play' ? data.assetId ?? null : null;
+  return data.mode === 'track' ? data.assetId ?? null : null;
 }
