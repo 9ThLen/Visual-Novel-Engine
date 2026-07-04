@@ -47,6 +47,24 @@ export type DocumentInlinePart =
       rain?: RainEffectOptions;
       snow?: SnowEffectOptions;
       fog?: FogEffectOptions;
+    }
+  | {
+      type: 'music';
+      id: string;
+      action: 'play' | 'stop' | 'pause' | 'fade';
+      assetId: string | null;
+      volume: number;
+      loop: boolean;
+      fadeDuration: number;
+    }
+  | {
+      type: 'sound';
+      id: string;
+      action: 'play' | 'stop';
+      assetId: string | null;
+      volume: number;
+      loop: boolean;
+      pitchVariation: number;
     };
 
 export interface DocumentTextBlock extends BaseDocumentBlock {

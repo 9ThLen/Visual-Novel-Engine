@@ -215,7 +215,7 @@ describe('Plate scene serializer roundtrip', () => {
     });
   });
 
-  it('renders standalone effect steps as inline chips instead of technical blocks', () => {
+  it('renders standalone music and effect steps as inline chips instead of technical blocks', () => {
     const scene = sceneRecordToPlateDocument(sceneWithTimeline([
       withId(createMusicStep({ assetId: 'music_theme', action: 'play', volume: 0.8, loop: true, fadeDuration: 1000 }), 'step_music'),
       withId(createEffectStep({
@@ -234,13 +234,13 @@ describe('Plate scene serializer roundtrip', () => {
     ]), []);
 
     const kinds = scene.blocks.map((block) => block.kind);
-    expect(kinds).toEqual(['technical', 'text', 'technical', 'text']);
+    expect(kinds).toEqual(['text', 'technical', 'text']);
 
-    const chipBlock = scene.blocks[1];
+    const chipBlock = scene.blocks[0];
     expect(chipBlock.kind).toBe('text');
     if (chipBlock.kind !== 'text') return;
     expect(chipBlock.content).toBe('');
-    expect(chipBlock.parts?.map((part) => part.type)).toEqual(['effect', 'effect']);
+    expect(chipBlock.parts?.map((part) => part.type)).toEqual(['music', 'effect', 'effect']);
 
     const saved = plateDocumentToSceneRecord(
       sceneWithTimeline([]),
@@ -253,6 +253,10 @@ describe('Plate scene serializer roundtrip', () => {
       'step_snow_standalone',
       'step_camera',
     ]);
+    expect(saved.timeline[0]).toMatchObject({
+      blockType: 'music',
+      data: { assetId: 'music_theme', action: 'play', volume: 0.8 },
+    });
     expect(saved.timeline[1]).toMatchObject({
       blockType: 'effect',
       data: { effectType: 'rain', intensity: 60 },
@@ -361,6 +365,88 @@ describe('Plate scene serializer roundtrip', () => {
       speakerName: 'Masha',
       spriteId: 'sprite_neutral',
       text: 'now.',
+    });
+  });
+
+  it('roundtrips inline music and sound chips inside text and dialogue blocks', () => {
+    const record = sceneWithTimeline([]);
+    const saved = plateDocumentToSceneRecord(record, {
+      sceneId: record.id,
+      sceneName: record.name,
+      blocks: [
+        {
+          id: 'doc_text_audio',
+          kind: 'text',
+          content: 'Audio cue.',
+          parts: [
+            { type: 'text', text: 'Start ' },
+            {
+              type: 'music',
+              id: 'step_inline_music',
+              action: 'fade',
+              assetId: 'music_theme',
+              volume: 0.55,
+              loop: true,
+              fadeDuration: 1800,
+            },
+            { type: 'text', text: ' after music.' },
+          ],
+        },
+        {
+          id: 'doc_dialogue_audio',
+          kind: 'dialogue',
+          speakerName: 'Masha',
+          characterId: 'char_masha',
+          spriteId: 'sprite_neutral',
+          text: 'Door opens.',
+          parts: [
+            { type: 'text', text: 'Door ' },
+            {
+              type: 'sound',
+              id: 'step_inline_sound',
+              action: 'play',
+              assetId: 'sfx_door',
+              volume: 0.7,
+              loop: false,
+              pitchVariation: 0.15,
+            },
+            { type: 'text', text: 'opens.' },
+          ],
+        },
+        { id: 'doc_text_empty', kind: 'text', content: '' },
+      ],
+    }, []);
+
+    expect(saved.timeline.map((step) => step.blockType)).toEqual([
+      'text',
+      'music',
+      'text',
+      'character',
+      'dialogue',
+      'sound',
+      'dialogue',
+    ]);
+    expect(saved.timeline[1]).toMatchObject({
+      id: 'step_inline_music',
+      blockType: 'music',
+      data: {
+        action: 'fade',
+        assetId: 'music_theme',
+        volume: 0.55,
+        loop: true,
+        fadeDuration: 1800,
+      },
+    });
+    expect(saved.timeline[5]).toMatchObject({
+      id: 'step_inline_sound',
+      blockType: 'sound',
+      data: {
+        action: 'play',
+        assetId: 'sfx_door',
+        volume: 0.7,
+        loop: false,
+        pitchVariation: 0.15,
+      },
     });
   });
 
@@ -568,6 +654,46 @@ describe('Plate scene serializer roundtrip', () => {
     expect(technical.step.blockType).toBe('music');
   });
 
+  it('normalizes inline audio part actions and numeric ranges from the webview payload', () => {
+    const normalized = normalizePlateDocumentScene({
+      sceneId: 'scene_audio_parts',
+      sceneName: 'Audio Parts',
+      blocks: [
+        {
+          id: 'doc_audio_parts',
+          kind: 'text',
+          content: '',
+          parts: [
+            { type: 'music', id: '', action: 'bad', assetId: '', volume: 3, loop: 'false', fadeDuration: -20 },
+            { type: 'sound', id: 'sound_part', action: 'pause', assetId: 'sfx', volume: -1, loop: 'true', pitchVariation: 4 },
+          ],
+        },
+      ],
+    } as unknown as PlateDocumentScene, []);
+
+    const block = normalized.scene.blocks[0];
+    expect(block.kind).toBe('text');
+    if (block.kind !== 'text') return;
+    expect(block.parts?.[0]).toMatchObject({
+      type: 'music',
+      action: 'play',
+      assetId: null,
+      volume: 1,
+      loop: false,
+      fadeDuration: 0,
+    });
+    expect(block.parts?.[1]).toMatchObject({
+      type: 'sound',
+      id: 'sound_part',
+      action: 'play',
+      assetId: 'sfx',
+      volume: 0,
+      loop: true,
+      pitchVariation: 1,
+    });
+    expect(normalized.scene.blocks[1]).toMatchObject({ kind: 'text', content: '' });
+  });
+
   it('normalizes legacy technical character blocks into dialogue blocks', () => {
     const plateDocument: PlateDocumentScene = {
       sceneId: 'scene_legacy_character',
@@ -767,6 +893,37 @@ describe('Plate scene serializer roundtrip', () => {
     expect(html).toContain('data-intensity="40"');
     expect(html).toContain('Перед дощем ');
     expect(html).toContain(' стало тихо.');
+  });
+
+  it('renders inline audio parts as compact audio chips in embedded HTML', () => {
+    const scene = sceneRecordToPlateDocument(sceneWithTimeline([
+      withId(createMusicStep({ assetId: 'music_theme', action: 'fade', volume: 0.5, loop: true, fadeDuration: 1200 }), 'step_music_theme'),
+      withId(createSoundStep({ assetId: 'sfx_door', action: 'play', volume: 0.7, loop: false, pitchVariation: 0.2 }), 'step_sfx_door'),
+    ]), []);
+
+    const html = createVNPlateEditorHtml({
+      editorId: 'editor_inline_audio',
+      scene,
+      characters: [],
+      backgroundAssets: [],
+      audioAssets: [
+        { id: 'music_theme', name: 'Theme.mp3', uri: 'data:audio/mpeg;base64,AAA=', type: 'music' },
+        { id: 'sfx_door', name: 'Door.wav', uri: 'data:audio/wav;base64,AAA=', type: 'sfx' },
+      ],
+      isPhone: false,
+    });
+
+    expect(html).toContain('class="audio-chip audio-chip--music"');
+    expect(html).toContain('class="audio-chip audio-chip--sound"');
+    expect(html).toContain('data-asset-id="music_theme"');
+    expect(html).toContain('data-fade-duration="1200"');
+    expect(html).toContain('data-pitch-variation="0.2"');
+    expect(html).toContain('Theme');
+    expect(html).toContain('Door');
+    expect(html).toContain('Згасання');
+    expect(html).toContain('Обрати трек');
+    expect(html).toContain("message.type === 'audioAssetsUpdated'");
+    expect(html).toContain("type: 'uploadAudioAsset'");
   });
 
   it('does not render inline background thumbnail when background asset is missing', () => {

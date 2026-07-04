@@ -7,7 +7,7 @@ import {
 import { buildDocumentsResetKey } from '@/lib/document-editor/document-reset-key';
 import type { Character } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
-import type { VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
 import type { PlateDocumentScene } from './types';
 import { sceneRecordToPlateDocument } from './serializers/scene-to-plate';
 import { plateDocumentToSceneRecord } from './serializers/plate-to-scene';
@@ -20,10 +20,12 @@ interface PlateSceneEditorProps {
   sceneCount: number;
   characters: Character[];
   backgroundAssets: VNPlateBackgroundAsset[];
+  audioAssets: VNPlateAudioAsset[];
   protectedCharacterIds?: string[];
   onSave: (sceneRecords: SceneRecord[], characters: Character[]) => void;
   onCreateNextScene?: (sourceSceneId: string, sceneRecords: SceneRecord[], characters: Character[]) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string) => Promise<VNPlateBackgroundAsset | null>;
+  onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
 }
 
 export function PlateSceneEditor({
@@ -34,10 +36,12 @@ export function PlateSceneEditor({
   sceneCount,
   characters,
   backgroundAssets,
+  audioAssets,
   protectedCharacterIds,
   onSave,
   onCreateNextScene,
   onUploadBackgroundAsset,
+  onUploadAudioAsset,
 }: PlateSceneEditorProps) {
   const router = useRouter();
   const initialDocuments = useMemo(
@@ -85,10 +89,12 @@ export function PlateSceneEditor({
       documentsResetKey={documentsResetKey}
       characters={characters}
       backgroundAssets={backgroundAssets}
+      audioAssets={audioAssets}
       protectedCharacterIds={protectedCharacterIds}
       onSave={saveDocuments}
       onCreateNextScene={createNextScene}
       onUploadBackgroundAsset={onUploadBackgroundAsset}
+      onUploadAudioAsset={onUploadAudioAsset}
       onBack={() => router.back()}
       onPreview={(sceneId) => router.push({ pathname: '/preview', params: { storyId, sceneId } })}
       onSaveAndPlay={(sceneId) => router.push({ pathname: '/preview', params: { storyId, sceneId } })}

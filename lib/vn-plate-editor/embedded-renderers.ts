@@ -1,7 +1,7 @@
 import type { Character } from '@/lib/character-types';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import type { BackgroundBlockData, CharacterBlockData } from '@/lib/engine/types';
-import type { VNPlateBackgroundAsset } from './types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset } from './types';
 import { escapeHtml } from './embedded-utils';
 
 function formatTransition(value?: string): string {
@@ -68,8 +68,78 @@ function effectDetails(part: Extract<DocumentInlinePart, { type: 'effect' }>): s
   return details.join(' · ');
 }
 
-function inlinePartToHtml(part: DocumentInlinePart): string {
+function audioAssetLabel(asset: VNPlateAudioAsset): string {
+  return asset.name ? asset.name.replace(/\.[^.]+$/, '') : '';
+}
+
+function findAudioAsset(
+  assets: VNPlateAudioAsset[],
+  value: string | null | undefined,
+): VNPlateAudioAsset | null {
+  const normalized = (value || '').trim();
+  if (!normalized) return null;
+  return assets.find((asset) =>
+    asset.id === normalized
+    || asset.uri === normalized
+    || asset.name === normalized
+    || audioAssetLabel(asset) === normalized
+  ) ?? null;
+}
+
+function audioActionLabel(action: string): string {
+  const labels: Record<string, string> = {
+    play: 'Програти',
+    stop: 'Зупинити',
+    pause: 'Пауза',
+    fade: 'Згасання',
+  };
+  return labels[action] || 'Програти';
+}
+
+function audioInlineLabel(part: Extract<DocumentInlinePart, { type: 'music' | 'sound' }>, audioAssets: VNPlateAudioAsset[]): string {
+  const asset = findAudioAsset(audioAssets, part.assetId);
+  if (asset) return audioAssetLabel(asset) || asset.name || asset.id;
+  return part.assetId ? part.assetId.replace(/^asset_/, '') : 'Оберіть трек';
+}
+
+function audioDetails(part: Extract<DocumentInlinePart, { type: 'music' | 'sound' }>): string {
+  const details = [
+    audioActionLabel(part.action),
+    `${Math.round(part.volume * 100)}%`,
+  ];
+  if (part.loop) details.push('повтор');
+  if (part.type === 'music' && part.fadeDuration > 0) {
+    details.push(`${Number((part.fadeDuration / 1000).toFixed(2))}s`);
+  }
+  if (part.type === 'sound' && part.pitchVariation > 0) {
+    details.push(`тон ${Math.round(part.pitchVariation * 100)}%`);
+  }
+  return details.join(' · ');
+}
+
+function audioPartToHtml(part: Extract<DocumentInlinePart, { type: 'music' | 'sound' }>, audioAssets: VNPlateAudioAsset[]): string {
+  const kindClass = part.type === 'music' ? 'audio-chip--music' : 'audio-chip--sound';
+  const icon = part.type === 'music' ? '♪' : 'SFX';
+  const assetId = part.assetId || '';
+  const fadeDuration = part.type === 'music'
+    ? ` data-fade-duration="${escapeHtml(String(part.fadeDuration))}"`
+    : '';
+  const pitchVariation = part.type === 'sound'
+    ? ` data-pitch-variation="${escapeHtml(String(part.pitchVariation))}"`
+    : '';
+  return [
+    `<span class="audio-chip ${kindClass}" contenteditable="false" draggable="true" tabindex="0" role="button" data-kind="${escapeHtml(part.type)}" data-id="${escapeHtml(part.id)}" data-action="${escapeHtml(part.action)}" data-asset-id="${escapeHtml(assetId)}" data-volume="${escapeHtml(String(part.volume))}" data-loop="${part.loop ? 'true' : 'false'}"${fadeDuration}${pitchVariation}>`,
+    `<span class="audio-chip-icon">${escapeHtml(icon)}</span>`,
+    `<span class="audio-chip-title">${escapeHtml(audioInlineLabel(part, audioAssets))}</span>`,
+    `<span class="audio-chip-details">${escapeHtml(audioDetails(part))}</span>`,
+    `<span class="audio-chip-menu">⋮</span>`,
+    '</span>',
+  ].join('');
+}
+
+function inlinePartToHtml(part: DocumentInlinePart, audioAssets: VNPlateAudioAsset[] = []): string {
   if (part.type === 'text') return escapeHtml(part.text);
+  if (part.type === 'music' || part.type === 'sound') return audioPartToHtml(part, audioAssets);
   const characterId = part.characterId ? ` data-character-id="${escapeHtml(part.characterId)}"` : '';
   const fadeIn = part.fadeIn != null ? ` data-fade-in="${escapeHtml(String(part.fadeIn))}"` : '';
   const fadeOut = part.fadeOut != null ? ` data-fade-out="${escapeHtml(String(part.fadeOut))}"` : '';
@@ -88,9 +158,13 @@ function inlinePartToHtml(part: DocumentInlinePart): string {
   ].join('');
 }
 
-function inlinePartsToHtml(parts: DocumentInlinePart[] | undefined, fallbackText: string): string {
+function inlinePartsToHtml(
+  parts: DocumentInlinePart[] | undefined,
+  fallbackText: string,
+  audioAssets: VNPlateAudioAsset[] = [],
+): string {
   if (parts?.length) {
-    const html = parts.map(inlinePartToHtml).join('');
+    const html = parts.map((part) => inlinePartToHtml(part, audioAssets)).join('');
     return html || '<br>';
   }
   return escapeHtml(fallbackText || '') || '<br>';
@@ -145,9 +219,13 @@ function backgroundBlockToHtml(
   ].join('');
 }
 
-export function blockToHtml(block: DocumentBlock, backgroundAssets: VNPlateBackgroundAsset[] = []): string {
+export function blockToHtml(
+  block: DocumentBlock,
+  backgroundAssets: VNPlateBackgroundAsset[] = [],
+  audioAssets: VNPlateAudioAsset[] = [],
+): string {
   if (block.kind === 'text') {
-    return `<p data-kind="text" data-id="${escapeHtml(block.id)}">${inlinePartsToHtml(block.parts, block.content)}</p>`;
+    return `<p data-kind="text" data-id="${escapeHtml(block.id)}">${inlinePartsToHtml(block.parts, block.content, audioAssets)}</p>`;
   }
 
   if (block.kind === 'dialogue') {
@@ -157,7 +235,7 @@ export function blockToHtml(block: DocumentBlock, backgroundAssets: VNPlateBackg
     return [
       `<p data-kind="dialogue" data-id="${escapeHtml(block.id)}" data-speaker="${escapeHtml(block.speakerName)}" data-character-id="${escapeHtml(characterId)}" data-sprite-id="${escapeHtml(block.spriteId || '')}"${openControls}>`,
       `<span class="speaker-token dialogue-badge" contenteditable="false" tabindex="0" role="button" aria-label="Edit character ${escapeHtml(block.speakerName || 'Character')}" data-character-id="${escapeHtml(characterId)}" data-block-id="${escapeHtml(block.id)}" style="--speaker-color:${escapeHtml(color)}">${escapeHtml(block.speakerName || 'Character')}:</span> `,
-      inlinePartsToHtml(block.parts, block.text),
+      inlinePartsToHtml(block.parts, block.text, audioAssets),
       '</p>',
     ].join('');
   }
@@ -198,6 +276,7 @@ export function blockToHtml(block: DocumentBlock, backgroundAssets: VNPlateBackg
 export function sceneToEditorHtml(
   scene: DocumentScene,
   backgroundAssets: VNPlateBackgroundAsset[] = [],
+  audioAssets: VNPlateAudioAsset[] = [],
   characters: Character[] = [],
 ): string {
   const blocks = scene.blocks.length
@@ -206,8 +285,8 @@ export function sceneToEditorHtml(
   const colorById = new Map(characters.map((character) => [character.id, character.color]));
   return blocks.map((block) => {
     if (block.kind === 'dialogue' && block.characterId && !block.tokenColor) {
-      return blockToHtml({ ...block, tokenColor: colorById.get(block.characterId) }, backgroundAssets);
+      return blockToHtml({ ...block, tokenColor: colorById.get(block.characterId) }, backgroundAssets, audioAssets);
     }
-    return blockToHtml(block, backgroundAssets);
+    return blockToHtml(block, backgroundAssets, audioAssets);
   }).join('');
 }

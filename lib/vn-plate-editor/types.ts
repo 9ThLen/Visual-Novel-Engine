@@ -7,12 +7,21 @@ export interface VNPlateBackgroundAsset {
   uri: string;
 }
 
+export interface VNPlateAudioAsset {
+  id: string;
+  name: string;
+  uri: string;
+  type: 'music' | 'sfx' | 'voice' | 'ambient';
+  duration?: number;
+}
+
 export interface VNPlateEditorPayload {
   editorId: string;
   scene: DocumentScene;
   characters: Character[];
   isPhone: boolean;
   backgroundAssets?: VNPlateBackgroundAsset[];
+  audioAssets?: VNPlateAudioAsset[];
 }
 
 export type VNPlateEditorMessage =
@@ -62,6 +71,13 @@ export type VNPlateEditorMessage =
       type: 'uploadBackgroundAsset';
       name: string;
       dataUri: string;
+    }
+  | {
+      source: 'vn-plate-editor';
+      editorId: string;
+      type: 'uploadAudioAsset';
+      name: string;
+      dataUri: string;
     };
 
 export type VNPlateHostMessage =
@@ -88,4 +104,16 @@ export type VNPlateHostMessage =
       editorId: string;
       type: 'backgroundAssetUploaded';
       asset: VNPlateBackgroundAsset;
+    }
+  | {
+      source: 'vn-plate-host';
+      editorId: string;
+      type: 'audioAssetsUpdated';
+      assets: VNPlateAudioAsset[];
+    }
+  | {
+      source: 'vn-plate-host';
+      editorId: string;
+      type: 'audioAssetUploaded';
+      asset: VNPlateAudioAsset;
     };

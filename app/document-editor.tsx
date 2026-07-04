@@ -13,6 +13,7 @@ import {
   insertSceneAfter,
 } from '@/lib/document-editor/next-scene';
 import { useI18n } from '@/hooks/use-i18n';
+import { getPlaybackAudioLibraryPure } from '@/lib/audio-library';
 import { addAssetToLibraryPure } from '@/lib/media-library-service';
 import {
   selectCanonicalSceneRecord,
@@ -21,7 +22,7 @@ import {
 } from '@/stores/use-app-store';
 import type { Character } from '@/lib/character-types';
 import type { DialogueBlockData, SceneRecord } from '@/lib/engine/types';
-import type { VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
 
 export default function DocumentEditorRoute() {
   const { t } = useI18n();
@@ -47,6 +48,7 @@ export default function DocumentEditorRoute() {
   );
 
   const characters = useAppStore((state) => (storyId ? state.characterLibraries[storyId] || [] : []));
+  const audioLibraries = useAppStore((state) => state.audioLibraries);
   const mediaLibrary = useAppStore((state) => state.mediaLibrary);
   const saveSceneRecord = useAppStore((state) => state.saveSceneRecord);
   const setCharacterLibrary = useAppStore((state) => state.setCharacterLibrary);
@@ -63,6 +65,18 @@ export default function DocumentEditorRoute() {
         uri: asset.uri,
       })),
     [mediaLibrary],
+  );
+  const audioAssets = useMemo<VNPlateAudioAsset[]>(
+    () => storyId
+      ? getPlaybackAudioLibraryPure(storyId, audioLibraries, mediaLibrary).map((asset) => ({
+          id: asset.id,
+          name: asset.name,
+          uri: asset.uri,
+          type: asset.type,
+          duration: asset.duration,
+        }))
+      : [],
+    [audioLibraries, mediaLibrary, storyId],
   );
   const sceneIndex = Math.max(0, orderedScenes.findIndex((scene) => scene.id === sceneId));
   const protectedCharacterIds = useMemo(() => {
@@ -147,6 +161,21 @@ export default function DocumentEditorRoute() {
     };
   };
 
+  const handleUploadAudioAsset = async (name: string, dataUri: string): Promise<VNPlateAudioAsset | null> => {
+    if (!dataUri.startsWith('data:audio/')) return null;
+    const result = await addAssetToLibraryPure(dataUri, name || 'audio.mp3', 'audio', mediaLibrary);
+    setMediaLibrary(result.assets);
+    const playbackAsset = getPlaybackAudioLibraryPure(storyId, audioLibraries, result.assets)
+      .find((asset) => asset.id === result.asset.id);
+    return {
+      id: result.asset.id,
+      name: result.asset.name,
+      uri: result.asset.uri,
+      type: playbackAsset?.type ?? 'sfx',
+      duration: playbackAsset?.duration,
+    };
+  };
+
   const handleCreateNextScene = (
     sourceSceneId: string,
     editedRecords: SceneRecord[],
@@ -179,10 +208,12 @@ export default function DocumentEditorRoute() {
       sceneCount={orderedScenes.length}
       characters={characters}
       backgroundAssets={backgroundAssets}
+      audioAssets={audioAssets}
       protectedCharacterIds={protectedCharacterIds}
       onSave={handleSave}
       onCreateNextScene={handleCreateNextScene}
       onUploadBackgroundAsset={handleUploadBackgroundAsset}
+      onUploadAudioAsset={handleUploadAudioAsset}
     />
   );
 }

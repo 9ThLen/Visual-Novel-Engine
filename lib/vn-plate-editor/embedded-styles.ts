@@ -77,7 +77,8 @@ export function createEmbeddedStyles(): string {
       outline: 2px solid color-mix(in srgb, var(--speaker-color, #ff4d6d) 60%, white);
       outline-offset: 2px;
     }
-    .effect-chip {
+    .effect-chip,
+    .audio-chip {
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -96,24 +97,47 @@ export function createEmbeddedStyles(): string {
       vertical-align: baseline;
       white-space: nowrap;
     }
+    .audio-chip {
+      border-color: #99f6e4;
+      background: #ecfeff;
+      color: #0f766e;
+    }
+    .audio-chip--sound {
+      border-color: #fecaca;
+      background: #fff7ed;
+      color: #b91c1c;
+    }
     .effect-chip:focus,
-    .effect-chip.is-selected {
+    .effect-chip.is-selected,
+    .audio-chip:focus,
+    .audio-chip.is-selected {
       outline: 2px solid rgba(124, 58, 237, 0.24);
       outline-offset: 2px;
     }
-    .effect-chip.is-dragging {
+    .effect-chip.is-dragging,
+    .audio-chip.is-dragging {
       opacity: 0.56;
       cursor: grabbing;
     }
     .effect-chip-icon,
-    .effect-chip-menu {
+    .effect-chip-menu,
+    .audio-chip-icon,
+    .audio-chip-menu {
       color: #7c3aed;
       font-weight: 850;
     }
-    .effect-chip-details {
+    .audio-chip-icon,
+    .audio-chip-menu {
+      color: currentColor;
+    }
+    .effect-chip-details,
+    .audio-chip-details {
       color: #8b7bd8;
       font-size: 12px;
       font-weight: 600;
+    }
+    .audio-chip-details {
+      color: #64748b;
     }
     .character-popover {
       position: absolute;
@@ -251,7 +275,8 @@ export function createEmbeddedStyles(): string {
       background: #ffffff;
       transform: rotate(45deg);
     }
-    .effect-popover {
+    .effect-popover,
+    .audio-popover {
       position: absolute;
       z-index: 34;
       width: min(420px, calc(100vw - 32px));
@@ -265,7 +290,8 @@ export function createEmbeddedStyles(): string {
       font-family: Inter, ui-sans-serif, system-ui, sans-serif;
       color: #111827;
     }
-    .effect-popover::before {
+    .effect-popover::before,
+    .audio-popover::before {
       content: "";
       position: absolute;
       left: -8px;
@@ -276,6 +302,9 @@ export function createEmbeddedStyles(): string {
       border-bottom: 1px solid #ddd8cf;
       background: #ffffff;
       transform: rotate(45deg);
+    }
+    .audio-kind-grid {
+      grid-template-columns: repeat(2, 1fr);
     }
     .effect-popover-grid {
       display: grid;
@@ -473,6 +502,48 @@ export function createEmbeddedStyles(): string {
       background-position: center;
       background-size: cover;
     }
+    .audio-asset-icon {
+      display: grid;
+      place-items: center;
+      width: 46px;
+      height: 34px;
+      border-radius: 5px;
+      background: #e0f2fe;
+      color: #0369a1;
+      font-size: 10px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+    .audio-preview {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: center;
+      margin: 12px 0 8px;
+      padding: 10px;
+      border: 1px solid #d7d0c5;
+      border-radius: 7px;
+      background: #f8fafc;
+    }
+    .audio-preview.placeholder {
+      opacity: 0.72;
+    }
+    .audio-preview-copy {
+      min-width: 0;
+    }
+    .audio-preview-name {
+      overflow: hidden;
+      color: #111827;
+      font-size: 13px;
+      font-weight: 750;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .audio-progress {
+      width: 100%;
+      height: 8px;
+      accent-color: #0f766e;
+    }
     .asset-name {
       overflow: hidden;
       font-size: 12px;
@@ -574,7 +645,8 @@ export function createEmbeddedStyles(): string {
       }
       .background-popover,
       .character-popover,
-      .effect-popover {
+      .effect-popover,
+      .audio-popover {
         position: fixed;
         left: 12px !important;
         right: 12px;
@@ -588,7 +660,8 @@ export function createEmbeddedStyles(): string {
       .popover-grid {
         grid-template-columns: 1fr;
       }
-      .effect-popover::before {
+      .effect-popover::before,
+      .audio-popover::before {
         display: none;
       }
       .effect-popover-grid {

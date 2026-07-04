@@ -13,4 +13,18 @@ describe('PlateWebViewEditor lifecycle contract', () => {
     expect(source).toContain('useImperativeHandle');
     expect(source).toContain("type: 'flush'");
   });
+
+  it('measures intrinsic editor content so iframe height can shrink', () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), 'lib/vn-plate-editor/embedded-script.ts'),
+      'utf8',
+    );
+    const measureHeightBody = source.match(/function measureHeight\(\) \{[\s\S]*?\n    \}/)?.[0] ?? '';
+
+    expect(measureHeightBody).toContain("document.querySelector('.shell')");
+    expect(measureHeightBody).toContain('elementBottom(shell)');
+    expect(measureHeightBody).toContain('#slashMenu:not(.hidden)');
+    expect(measureHeightBody).not.toContain('document.documentElement');
+    expect(measureHeightBody).not.toContain('document.body');
+  });
 });

@@ -12,6 +12,8 @@ import {
   createChoiceStep,
   createDialogueStep,
   createEffectStep,
+  createMusicStep,
+  createSoundStep,
   createTextStep,
 } from '@/lib/engine/event-factory';
 import type {
@@ -20,8 +22,10 @@ import type {
   ChoiceBlockData,
   DialogueBlockData,
   EffectBlockData,
+  MusicBlockData,
   SceneConnection,
   SceneRecord,
+  SoundBlockData,
   TextBlockData,
   TimelineStep,
 } from '@/lib/engine/types';
@@ -195,6 +199,41 @@ function effectStepToInlinePart(step: TimelineStep): DocumentInlinePart | null {
   };
 }
 
+function musicStepToInlinePart(step: TimelineStep): DocumentInlinePart | null {
+  if (step.blockType !== 'music') return null;
+  const data = step.data as MusicBlockData;
+  return {
+    type: 'music',
+    id: step.id,
+    action: data.action,
+    assetId: data.assetId,
+    volume: data.volume,
+    loop: data.loop,
+    fadeDuration: data.fadeDuration,
+  };
+}
+
+function soundStepToInlinePart(step: TimelineStep): DocumentInlinePart | null {
+  if (step.blockType !== 'sound') return null;
+  const data = step.data as SoundBlockData;
+  return {
+    type: 'sound',
+    id: step.id,
+    action: data.action,
+    assetId: data.assetId,
+    volume: data.volume,
+    loop: data.loop,
+    pitchVariation: data.pitchVariation,
+  };
+}
+
+function timelineStepToInlinePart(step: TimelineStep): DocumentInlinePart | null {
+  if (step.blockType === 'effect') return effectStepToInlinePart(step);
+  if (step.blockType === 'music') return musicStepToInlinePart(step);
+  if (step.blockType === 'sound') return soundStepToInlinePart(step);
+  return null;
+}
+
 function inlinePartsText(parts: DocumentInlinePart[]): string {
   return parts
     .filter((part): part is Extract<DocumentInlinePart, { type: 'text' }> => part.type === 'text')
@@ -202,22 +241,22 @@ function inlinePartsText(parts: DocumentInlinePart[]): string {
     .join('');
 }
 
-// Inline effect chips cannot carry step conditions or the enabled flag, so
+// Inline chips cannot carry step conditions or the enabled flag, so
 // steps that use them must stay technical blocks to avoid silent data loss.
-function isInlineSafeEffectStep(step: TimelineStep): boolean {
+function isInlineSafeStep(step: TimelineStep): boolean {
   return step.enabled !== false && (step.conditions ?? []).length === 0;
 }
 
-function mergeInlineEffectBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
+function mergeInlineChipBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
   const result: DocumentBlock[] = [];
   let bufferedBlocks: DocumentBlock[] = [];
   let bufferedParts: DocumentInlinePart[] = [];
-  let hasEffect = false;
+  let hasInlineChip = false;
 
   const flush = () => {
     if (!bufferedBlocks.length) return;
     const firstText = bufferedBlocks.find((block): block is DocumentTextBlock => block.kind === 'text');
-    if (hasEffect) {
+    if (hasInlineChip) {
       result.push({
         id: firstText?.id || generateId('doc_text'),
         kind: 'text',
@@ -231,7 +270,7 @@ function mergeInlineEffectBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
     }
     bufferedBlocks = [];
     bufferedParts = [];
-    hasEffect = false;
+    hasInlineChip = false;
   };
 
   for (const block of blocks) {
@@ -241,12 +280,16 @@ function mergeInlineEffectBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
       continue;
     }
 
-    if (block.kind === 'technical' && block.blockType === 'effect' && isInlineSafeEffectStep(block.step)) {
-      const effectPart = effectStepToInlinePart(block.step);
-      if (effectPart) {
+    if (
+      block.kind === 'technical'
+      && (block.blockType === 'effect' || block.blockType === 'music' || block.blockType === 'sound')
+      && isInlineSafeStep(block.step)
+    ) {
+      const inlinePart = timelineStepToInlinePart(block.step);
+      if (inlinePart) {
         bufferedBlocks.push(block);
-        bufferedParts.push(effectPart);
-        hasEffect = true;
+        bufferedParts.push(inlinePart);
+        hasInlineChip = true;
         continue;
       }
     }
@@ -260,7 +303,7 @@ function mergeInlineEffectBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
 }
 
 export function sceneRecordToDocumentScene(sceneRecord: SceneRecord, characters: Character[] = []): DocumentScene {
-  const blocks = mergeInlineEffectBlocks(sceneRecord.timeline.flatMap((step) => timelineStepToDocumentBlocks(step, characters)));
+  const blocks = mergeInlineChipBlocks(sceneRecord.timeline.flatMap((step) => timelineStepToDocumentBlocks(step, characters)));
   // Always ensure a trailing empty text block exists so the user has
   // somewhere to type (replaces the old separate line-draft input).
   // Avoid duplicating if the last block is already an empty text block.
@@ -555,10 +598,42 @@ function effectStepFromInlinePart(part: Extract<DocumentInlinePart, { type: 'eff
   };
 }
 
+function musicStepFromInlinePart(part: Extract<DocumentInlinePart, { type: 'music' }>): TimelineStep {
+  return {
+    ...createMusicStep({
+      action: part.action,
+      assetId: part.assetId,
+      volume: part.volume,
+      loop: part.loop,
+      fadeDuration: part.fadeDuration,
+    }),
+    id: part.id,
+  };
+}
+
+function soundStepFromInlinePart(part: Extract<DocumentInlinePart, { type: 'sound' }>): TimelineStep {
+  return {
+    ...createSoundStep({
+      action: part.action,
+      assetId: part.assetId,
+      volume: part.volume,
+      loop: part.loop,
+      pitchVariation: part.pitchVariation,
+    }),
+    id: part.id,
+  };
+}
+
+function timelineStepFromInlineChip(part: Exclude<DocumentInlinePart, { type: 'text' }>): TimelineStep {
+  if (part.type === 'effect') return effectStepFromInlinePart(part);
+  if (part.type === 'music') return musicStepFromInlinePart(part);
+  return soundStepFromInlinePart(part);
+}
+
 function timelineFromInlineParts(parts: DocumentInlinePart[]): TimelineStep[] {
   return parts.flatMap((part) => {
     if (part.type === 'text') return textStepFromInlineText(part.text);
-    return [effectStepFromInlinePart(part)];
+    return [timelineStepFromInlineChip(part)];
   });
 }
 
@@ -567,7 +642,7 @@ function timelineFromDialogueInlineParts(
   characters: Character[],
 ): TimelineStep[] {
   return (block.parts ?? []).flatMap((part) => {
-    if (part.type === 'effect') return [effectStepFromInlinePart(part)];
+    if (part.type !== 'text') return [timelineStepFromInlineChip(part)];
     const dialogueStep = dialogueStepForInlineText(block, characters, part.text);
     return dialogueStep ? [dialogueStep] : [];
   });

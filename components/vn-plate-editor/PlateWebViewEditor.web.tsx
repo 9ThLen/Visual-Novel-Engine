@@ -1,10 +1,10 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { resolveAssetUri } from '@/lib/asset-resolver';
+import { resolveAssetUri, resolvePlayableAssetUri } from '@/lib/asset-resolver';
 import { createVNPlateEditorHtml } from '@/lib/vn-plate-editor/embedded-html';
 import { normalizePlateDocumentScene } from '@/lib/vn-plate-editor/scene-normalizer';
-import type { VNPlateBackgroundAsset, VNPlateEditorMessage } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateEditorMessage } from '@/lib/vn-plate-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { DocumentScene } from '@/lib/document-editor/types';
 
@@ -20,6 +20,10 @@ const MIN_FRAME_HEIGHT = 760;
 const MIN_PHONE_FRAME_HEIGHT = 640;
 const FLUSH_TIMEOUT_MS = 800;
 
+export function getMinFrameHeight(isPhone: boolean): number {
+  return isPhone ? MIN_PHONE_FRAME_HEIGHT : MIN_FRAME_HEIGHT;
+}
+
 export interface PlateWebViewEditorSnapshot {
   scene: DocumentScene;
   characters: Character[];
@@ -34,11 +38,15 @@ interface PlateWebViewEditorProps {
   scene: DocumentScene;
   characters: Character[];
   backgroundAssets: VNPlateBackgroundAsset[];
+  audioAssets: VNPlateAudioAsset[];
   isPhone: boolean;
+  /** Seeds the initial frame height (e.g. from a cached layout) to avoid a visible collapse/expand jump on remount. */
+  initialHeight?: number;
   style?: StyleProp<ViewStyle>;
   onChange: (scene: DocumentScene, characters: Character[]) => void;
   onCreateNextScene?: (scene: DocumentScene, characters: Character[]) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string) => Promise<VNPlateBackgroundAsset | null>;
+  onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
 }
 
 export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebViewEditorProps>(function PlateWebViewEditor({
@@ -46,15 +54,21 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   scene,
   characters,
   backgroundAssets,
+  audioAssets,
   isPhone,
+  initialHeight,
   style,
   onChange,
   onCreateNextScene,
   onUploadBackgroundAsset,
+  onUploadAudioAsset,
 }: PlateWebViewEditorProps, ref) {
   const minimumFrameHeight = isPhone ? MIN_PHONE_FRAME_HEIGHT : MIN_FRAME_HEIGHT;
-  const [frameHeight, setFrameHeight] = useState(minimumFrameHeight);
+  const [frameHeight, setFrameHeight] = useState(
+    initialHeight && initialHeight > minimumFrameHeight ? initialHeight : minimumFrameHeight,
+  );
   const [resolvedBackgroundAssets, setResolvedBackgroundAssets] = useState(backgroundAssets);
+  const [resolvedAudioAssets, setResolvedAudioAssets] = useState(audioAssets);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const sceneRef = useRef(scene);
   const charactersRef = useRef(characters);
@@ -64,7 +78,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     timer: ReturnType<typeof setTimeout>;
   }>());
   const html = useMemo(
-    () => createVNPlateEditorHtml({ editorId, scene, characters, backgroundAssets, isPhone }),
+    () => createVNPlateEditorHtml({ editorId, scene, characters, backgroundAssets, audioAssets, isPhone }),
     // Keep iframe srcDoc stable while live scene/character changes flow through postMessage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [editorId, isPhone],
@@ -117,6 +131,26 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     };
   }, [backgroundAssets]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void Promise.all(
+      audioAssets.map(async (asset) => {
+        const resolved = await resolvePlayableAssetUri(asset.uri);
+        return {
+          ...asset,
+          uri: resolved ?? asset.uri,
+        };
+      }),
+    ).then((assets) => {
+      if (!cancelled) setResolvedAudioAssets(assets);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [audioAssets]);
+
   const postBackgroundAssets = useCallback(() => {
     iframeRef.current?.contentWindow?.postMessage({
       source: 'vn-plate-host',
@@ -125,6 +159,15 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       assets: resolvedBackgroundAssets,
     }, '*');
   }, [editorId, resolvedBackgroundAssets]);
+
+  const postAudioAssets = useCallback(() => {
+    iframeRef.current?.contentWindow?.postMessage({
+      source: 'vn-plate-host',
+      editorId,
+      type: 'audioAssetsUpdated',
+      assets: resolvedAudioAssets,
+    }, '*');
+  }, [editorId, resolvedAudioAssets]);
 
   const postCharacters = useCallback(() => {
     iframeRef.current?.contentWindow?.postMessage({
@@ -138,6 +181,10 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   useEffect(() => {
     postBackgroundAssets();
   }, [postBackgroundAssets]);
+
+  useEffect(() => {
+    postAudioAssets();
+  }, [postAudioAssets]);
 
   useEffect(() => {
     postCharacters();
@@ -179,6 +226,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       }
       if (message.type === 'ready') {
         postBackgroundAssets();
+        postAudioAssets();
         return;
       }
       if (message.type === 'uploadBackgroundAsset') {
@@ -189,6 +237,22 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
             editorId,
             type: 'backgroundAssetUploaded',
             asset,
+          }, '*');
+        });
+        return;
+      }
+      if (message.type === 'uploadAudioAsset') {
+        void onUploadAudioAsset?.(message.name, message.dataUri).then(async (asset) => {
+          if (!asset) return;
+          const resolved = await resolvePlayableAssetUri(asset.uri);
+          iframeRef.current?.contentWindow?.postMessage({
+            source: 'vn-plate-host',
+            editorId,
+            type: 'audioAssetUploaded',
+            asset: {
+              ...asset,
+              uri: resolved ?? asset.uri,
+            },
           }, '*');
         });
         return;
@@ -230,7 +294,12 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [editorId, minimumFrameHeight, onChange, onCreateNextScene, onUploadBackgroundAsset, postBackgroundAssets]);
+  }, [editorId, minimumFrameHeight, onChange, onCreateNextScene, onUploadAudioAsset, onUploadBackgroundAsset, postAudioAssets, postBackgroundAssets]);
+
+  const postAssets = useCallback(() => {
+    postBackgroundAssets();
+    postAudioAssets();
+  }, [postAudioAssets, postBackgroundAssets]);
 
   return (
     <View style={[{ alignSelf: 'stretch', overflow: 'visible' }, style, { height: frameHeight }]}>
@@ -239,7 +308,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         key={editorId}
         title="VN Plate editor"
         srcDoc={html}
-        onLoad={postBackgroundAssets}
+        onLoad={postAssets}
         style={{
           width: '100%',
           height: frameHeight,

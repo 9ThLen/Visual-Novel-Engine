@@ -116,6 +116,80 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object';
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function booleanValue(value: unknown, fallback: boolean): boolean {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return fallback;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function normalizeInlinePart(part: unknown): DocumentInlinePart | null {
+  if (!isObject(part)) return null;
+
+  if (part.type === 'text') {
+    return { type: 'text', text: typeof part.text === 'string' ? part.text : '' };
+  }
+
+  if (part.type === 'effect') {
+    return part as DocumentInlinePart;
+  }
+
+  if (part.type === 'music') {
+    const action = part.action === 'stop' || part.action === 'pause' || part.action === 'fade'
+      ? part.action
+      : 'play';
+    return {
+      type: 'music',
+      id: typeof part.id === 'string' && part.id ? part.id : generateId('inline_music'),
+      action,
+      assetId: stringOrNull(part.assetId),
+      volume: clamp(numberValue(part.volume, 0.8), 0, 1),
+      loop: booleanValue(part.loop, true),
+      fadeDuration: Math.max(0, Math.round(numberValue(part.fadeDuration, 1000))),
+    };
+  }
+
+  if (part.type === 'sound') {
+    const action = part.action === 'stop' ? 'stop' : 'play';
+    return {
+      type: 'sound',
+      id: typeof part.id === 'string' && part.id ? part.id : generateId('inline_sound'),
+      action,
+      assetId: stringOrNull(part.assetId),
+      volume: clamp(numberValue(part.volume, 0.8), 0, 1),
+      loop: booleanValue(part.loop, false),
+      pitchVariation: clamp(numberValue(part.pitchVariation, 0), 0, 1),
+    };
+  }
+
+  return null;
+}
+
+function normalizeInlineParts(parts: DocumentInlinePart[] | undefined): DocumentInlinePart[] | undefined {
+  if (!Array.isArray(parts) || !parts.length) return undefined;
+  const normalized = parts
+    .map(normalizeInlinePart)
+    .filter((part): part is DocumentInlinePart => Boolean(part));
+  return normalized.length ? normalized : undefined;
+}
+
 function stripSpeakerPrefixFromParts(
   parts: DocumentInlinePart[] | undefined,
   speakerName: string,
@@ -150,7 +224,7 @@ function textBlockToDialogueBlock(block: Extract<DocumentBlock, { kind: 'text' }
     sourceStepId: block.sourceStepId,
     sourceStep: block.sourceStep,
     text,
-    parts: stripSpeakerPrefixFromParts(block.parts, speakerName),
+    parts: stripSpeakerPrefixFromParts(normalizeInlineParts(block.parts), speakerName),
     openCharacterControls: false,
   };
 }
@@ -166,7 +240,7 @@ function normalizeBlock(block: DocumentBlock, characters: Character[]): Document
       sourceStepId: block.sourceStepId,
       sourceStep: block.sourceStep,
       content: block.content || '',
-      parts: block.parts,
+      parts: normalizeInlineParts(block.parts),
     };
   }
 
@@ -182,7 +256,7 @@ function normalizeBlock(block: DocumentBlock, characters: Character[]): Document
       tokenColor: block.tokenColor,
       openCharacterControls: block.openCharacterControls,
       text: block.text || '',
-      parts: block.parts,
+      parts: normalizeInlineParts(block.parts),
     };
   }
 
@@ -222,7 +296,7 @@ export function normalizePlateDocumentScene(scene: DocumentScene, characters: Ch
     .filter((block): block is DocumentBlock => Boolean(block));
 
   const last = blocks[blocks.length - 1];
-  if (!last || last.kind !== 'text' || last.content.trim() !== '') {
+  if (!last || last.kind !== 'text' || last.content.trim() !== '' || Boolean(last.parts?.length)) {
     blocks.push({
       id: generateId('doc_text'),
       kind: 'text',
