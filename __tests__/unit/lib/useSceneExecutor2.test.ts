@@ -13,7 +13,7 @@ function makeTextStep(id: string, content: string): TimelineStep {
 function makeTransitionStep(id: string, targetSceneId: string): TimelineStep {
   return {
     id, blockType: "transition",
-    data: { targetSceneId, transitionType: "fade", duration: 0.4 },
+    data: { mode: "scene", targetSceneId, transitionType: "fade", duration: 0.4 },
     collapsed: false, enabled: true,
   };
 }

@@ -49,6 +49,23 @@ describe('reader-runtime', () => {
     expect(getNextSceneId(scenes, 'a', 'missing')).toBeNull();
   });
 
+  it('resolves transition modes explicitly', () => {
+    const scenes = {
+      a: toReaderScene(makeScene('a', { connections: [{ outputPort: 'next', targetSceneId: 'b' }] })),
+      b: toReaderScene(makeScene('b')),
+    };
+
+    // 'end' ends the story even when a next connection exists
+    expect(getNextSceneId(scenes, 'a', null, 'end')).toBeNull();
+    expect(getNextSceneId(scenes, 'a', 'b', 'end')).toBeNull();
+    // 'scene' without a valid target ends the story instead of falling back
+    expect(getNextSceneId(scenes, 'a', null, 'scene')).toBeNull();
+    expect(getNextSceneId(scenes, 'a', 'missing', 'scene')).toBeNull();
+    expect(getNextSceneId(scenes, 'a', 'b', 'scene')).toBe('b');
+    // 'next' follows the connection
+    expect(getNextSceneId(scenes, 'a', null, 'next')).toBe('b');
+  });
+
   it('builds typed display pages from text and dialogue steps', () => {
     const textStep: TimelineStep = {
       id: 'text-1',

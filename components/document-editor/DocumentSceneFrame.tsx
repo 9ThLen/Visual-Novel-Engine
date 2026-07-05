@@ -17,7 +17,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import type { Character } from '@/lib/character-types';
 import type { DocumentScene } from '@/lib/document-editor/types';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateSceneRef } from '@/lib/vn-plate-editor/types';
 
 interface DocumentSceneFrameProps {
   scene: DocumentScene;
@@ -25,6 +25,7 @@ interface DocumentSceneFrameProps {
   characters: Character[];
   backgroundAssets: VNPlateBackgroundAsset[];
   audioAssets: VNPlateAudioAsset[];
+  storyScenes: VNPlateSceneRef[];
   isPhone: boolean;
   isMounted: boolean;
   /** Last known rendered height for this scene, used to seed/replace the frame without a visible jump. */
@@ -43,6 +44,7 @@ function DocumentSceneFrameImpl({
   characters,
   backgroundAssets,
   audioAssets,
+  storyScenes,
   isPhone,
   isMounted,
   cachedHeight,
@@ -87,6 +89,7 @@ function DocumentSceneFrameImpl({
           characters={characters}
           backgroundAssets={backgroundAssets}
           audioAssets={audioAssets}
+          scenes={storyScenes}
           isPhone={isPhone}
           initialHeight={cachedHeight}
           style={{ width: '100%', overflow: 'visible' }}

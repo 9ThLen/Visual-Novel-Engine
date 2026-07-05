@@ -13,6 +13,7 @@ import type {
   DocumentTechnicalBlock,
 } from '@/lib/document-editor/types';
 import { generateId } from '@/lib/id-utils';
+import { normalizeTransitionData } from '@/lib/engine/transition-utils';
 import type { BlockType, CharacterBlockData, TimelineStep } from '@/lib/engine/types';
 
 const technicalCommandIds = new Set<DocumentCommandId>([
@@ -94,11 +95,14 @@ function normalizeTechnicalBlock(block: DocumentTechnicalBlock, characters: Char
     const commandId = technicalCommandIds.has(block.commandId)
       ? block.commandId
       : commandIdByBlockType[blockType] || 'effect';
+    const normalizedStep = blockType === 'transition'
+      ? { ...step, data: normalizeTransitionData(step.data) }
+      : step;
     return {
       ...block,
       commandId,
       blockType,
-      step,
+      step: normalizedStep,
       label: block.label || commandId,
       summary: block.summary || commandId,
     };

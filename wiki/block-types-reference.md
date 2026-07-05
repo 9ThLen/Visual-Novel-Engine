@@ -123,11 +123,13 @@ Factories: `lib/engine/event-factory.ts`
 ### Transition
 - **Category:** Effects
 - **Color:** `#3f51b5`
-- **Purpose:** Scene transition effect.
-- **Fields:** `targetSceneId` (null = end story), `transitionType` (fade/dissolve/slide-left/slide-right/slide-up/wipe), `duration` (seconds)
+- **Purpose:** End the current scene: go to the next scene, jump to a specific scene, or end the story.
+- **Fields:** `mode` (`next` = follow the scene's next connection / `scene` = jump to `targetSceneId` / `end` = end the story), `targetSceneId` (only for `mode: scene`), `transitionType` (fade/slide/instant), `duration` (seconds)
 - **Auto-executes:** No — **yields** for player confirmation
-- **Validation:** None
-- **Runtime:** Sets `sceneState.isTransitioning`, `transitionTarget`
+- **Validation:** `mode: scene` requires an existing `targetSceneId` (editor shows a warning for dangling targets)
+- **Runtime:** Sets `sceneState.isTransitioning`, `transitionTarget`, `transitionMode`, `transitionType`, `transitionDuration`; the reader animates scene entry with `transitionType`/`duration`
+- **Connections sync:** the last transition block of a scene owns the `next` connection — `scene` replaces its target, `end` removes it, `next` keeps document order
+- **Legacy migration:** old data without `mode` is normalized via `normalizeTransitionData` (`targetSceneId != null` → `scene`, else `next`; dissolve/wipe → fade, slide-* → slide)
 
 ## Yielding Behavior
 

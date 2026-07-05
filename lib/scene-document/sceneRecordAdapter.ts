@@ -32,6 +32,7 @@ import type {
   VariableBlockData,
 } from '@/lib/engine/types';
 import type { Character } from '@/lib/character-types';
+import { normalizeTransitionData } from '@/lib/engine/transition-utils';
 import type { SceneDocument, SceneNode } from './sceneTypes';
 
 function characterNameForId(characters: Character[], characterId: string): string {
@@ -130,10 +131,11 @@ function timelineStepToSceneNode(step: TimelineStep, characters: Character[]): S
   }
 
   if (step.blockType === 'transition') {
-    const data = step.data as TransitionBlockData;
+    const data = normalizeTransitionData(step.data as TransitionBlockData);
     return {
       id: step.id,
       type: 'transition',
+      mode: data.mode,
       targetSceneId: data.targetSceneId,
       transitionType: data.transitionType,
       duration: data.duration,
@@ -293,11 +295,12 @@ function sceneNodeToTimelineStep(node: SceneNode, characters: Character[]): Time
   }
 
   if (node.type === 'transition') {
-    return [createTransitionStep({
+    return [createTransitionStep(normalizeTransitionData({
+      mode: node.mode,
       targetSceneId: node.targetSceneId ?? null,
-      transitionType: node.transitionType ?? 'fade',
-      duration: node.duration ?? 1,
-    })];
+      transitionType: node.transitionType,
+      duration: node.duration,
+    }))];
   }
 
   if (node.type === 'variable') {
@@ -364,9 +367,19 @@ function sceneDocumentToConnections(document: SceneDocument, nextSceneId?: strin
       }));
   });
 
+  // The first transition node owns the `next` connection, matching executor
+  // behavior: transition halts scene execution.
+  const transitionNode = document.nodes.find((node) => node.type === 'transition');
+  let nextTarget: string | null = nextSceneId ?? null;
+  if (transitionNode && transitionNode.type === 'transition') {
+    const data = normalizeTransitionData(transitionNode);
+    if (data.mode === 'end') nextTarget = null;
+    else if (data.mode === 'scene') nextTarget = data.targetSceneId;
+  }
+
   return [
     ...choiceConnections,
-    ...(nextSceneId ? [{ targetSceneId: nextSceneId, outputPort: 'next', label: 'Next' }] : []),
+    ...(nextTarget ? [{ targetSceneId: nextTarget, outputPort: 'next', label: 'Next' }] : []),
   ];
 }
 

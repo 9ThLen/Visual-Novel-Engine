@@ -11,9 +11,9 @@ import {
 import { buildDocumentsResetKey } from '@/lib/document-editor/document-reset-key';
 import type { DocumentScene } from '@/lib/document-editor/types';
 import type { Character } from '@/lib/character-types';
-import type { SceneRecord } from '@/lib/engine/types';
+import type { SceneRecord, TransitionBlockData } from '@/lib/engine/types';
 import { BLOCK_TYPE_INFO } from '@/lib/engine/types';
-import { createBackgroundStep } from '@/lib/engine/event-factory';
+import { createBackgroundStep, createTransitionStep } from '@/lib/engine/event-factory';
 
 describe('document editor commands', () => {
   it('finds background by Ukrainian image aliases and English aliases', () => {
@@ -296,6 +296,94 @@ describe('document scene parser/compiler', () => {
     ]);
   });
 
+  it('lets a transition block override the next connection', () => {
+    const transitionBlock = (
+      overrides: Partial<TransitionBlockData>,
+      enabled = true,
+      id = 'tech_transition',
+    ) => {
+      const step = createTransitionStep(overrides);
+      return {
+        id,
+        kind: 'technical' as const,
+        commandId: 'transition' as const,
+        blockType: 'transition' as const,
+        label: 'Перехід',
+        summary: '',
+        step: { ...step, enabled },
+      };
+    };
+    const sceneWith = (...blocks: ReturnType<typeof transitionBlock>[]): DocumentScene => ({
+      sceneId: 'scene_1',
+      sceneName: 'Scene 1',
+      blocks,
+    });
+
+    // mode 'scene' replaces the document-order neighbour
+    expect(documentSceneToConnections(
+      sceneWith(transitionBlock({ mode: 'scene', targetSceneId: 'scene_9', transitionType: 'fade', duration: 0.5 })),
+      'scene_2',
+    )).toEqual([{ targetSceneId: 'scene_9', outputPort: 'next', label: 'Next' }]);
+
+    // mode 'end' removes the next connection entirely
+    expect(documentSceneToConnections(
+      sceneWith(transitionBlock({ mode: 'end', targetSceneId: null, transitionType: 'fade', duration: 0.5 })),
+      'scene_2',
+    )).toEqual([]);
+
+    // mode 'next' keeps document order
+    expect(documentSceneToConnections(
+      sceneWith(transitionBlock({ mode: 'next', targetSceneId: null, transitionType: 'fade', duration: 0.5 })),
+      'scene_2',
+    )).toEqual([{ targetSceneId: 'scene_2', outputPort: 'next', label: 'Next' }]);
+
+    // legacy data without mode: explicit target still wins
+    expect(documentSceneToConnections(
+      sceneWith(transitionBlock({ targetSceneId: 'scene_9', transitionType: 'fade', duration: 0.5 })),
+      'scene_2',
+    )).toEqual([{ targetSceneId: 'scene_9', outputPort: 'next', label: 'Next' }]);
+  });
+
+  it('uses the first enabled transition block for the next connection', () => {
+    const transitionBlock = (
+      overrides: Partial<TransitionBlockData>,
+      enabled = true,
+      id = 'tech_transition',
+    ) => {
+      const step = createTransitionStep(overrides);
+      return {
+        id,
+        kind: 'technical' as const,
+        commandId: 'transition' as const,
+        blockType: 'transition' as const,
+        label: 'Перехід',
+        summary: '',
+        step: { ...step, enabled },
+      };
+    };
+    const sceneWith = (...blocks: ReturnType<typeof transitionBlock>[]): DocumentScene => ({
+      sceneId: 'scene_1',
+      sceneName: 'Scene 1',
+      blocks,
+    });
+
+    expect(documentSceneToConnections(
+      sceneWith(
+        transitionBlock({ mode: 'end', targetSceneId: null, transitionType: 'fade', duration: 0.5 }, true, 'first'),
+        transitionBlock({ mode: 'scene', targetSceneId: 'scene_9', transitionType: 'fade', duration: 0.5 }, true, 'second'),
+      ),
+      'scene_2',
+    )).toEqual([]);
+
+    expect(documentSceneToConnections(
+      sceneWith(
+        transitionBlock({ mode: 'end', targetSceneId: null, transitionType: 'fade', duration: 0.5 }, false, 'first'),
+        transitionBlock({ mode: 'scene', targetSceneId: 'scene_9', transitionType: 'fade', duration: 0.5 }, true, 'second'),
+      ),
+      'scene_2',
+    )).toEqual([{ targetSceneId: 'scene_9', outputPort: 'next', label: 'Next' }]);
+  });
+
   it('round-trips canonical background as a document technical chip', () => {
     const sceneRecord: SceneRecord = {
       id: 'scene_1',
@@ -376,4 +464,3 @@ describe('document scene parser/compiler', () => {
     expect(documentScene.blocks.at(-1)).toMatchObject({ kind: 'text', content: '' });
   });
 });
-

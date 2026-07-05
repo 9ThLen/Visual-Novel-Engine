@@ -73,4 +73,18 @@ describe('scene document adapter', () => {
     expect(saved.timeline.map((step) => step.blockType)).toEqual(steps.map((step) => step.blockType));
     expect(saved.timeline).not.toContainEqual(expect.objectContaining({ blockType: 'text', data: expect.objectContaining({ content: '[character]' }) }));
   });
+
+  it('uses the first transition node for the next connection', () => {
+    const source = record([]);
+    const saved = sceneDocumentToSceneRecord(source, {
+      id: 'scene_1',
+      title: 'Scene',
+      nodes: [
+        { id: 'transition_1', type: 'transition', mode: 'end', targetSceneId: null, transitionType: 'fade', duration: 0.5 },
+        { id: 'transition_2', type: 'transition', mode: 'scene', targetSceneId: 'scene_9', transitionType: 'fade', duration: 0.5 },
+      ],
+    }, [], { nextSceneId: 'scene_2' });
+
+    expect(saved.connections).toEqual([]);
+  });
 });

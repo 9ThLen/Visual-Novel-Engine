@@ -105,8 +105,10 @@ export type CommandNode = {
 export type TransitionNode = {
   id: string;
   type: 'transition';
+  /** 'next' = follow next connection, 'scene' = jump to targetSceneId, 'end' = end the story. */
+  mode?: 'next' | 'scene' | 'end';
   targetSceneId: string | null;
-  transitionType?: 'fade' | 'dissolve' | 'slide-left' | 'slide-right' | 'slide-up' | 'wipe';
+  transitionType?: 'fade' | 'slide' | 'instant' | 'dissolve' | 'slide-left' | 'slide-right' | 'slide-up' | 'wipe';
   duration?: number;
 };
 

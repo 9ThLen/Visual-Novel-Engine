@@ -44,8 +44,12 @@ export function serializeNode(node: SceneNode): string {
     }
     case 'command':
       return node.raw;
-    case 'transition':
-      return `[transition ${node.targetSceneId ?? ''}${node.transitionType ? ` ${node.transitionType}` : ''}]`;
+    case 'transition': {
+      const target = node.mode === 'end' ? 'end'
+        : node.mode === 'next' || !node.targetSceneId ? 'next'
+        : node.targetSceneId;
+      return `[transition ${target}${node.transitionType ? ` ${node.transitionType}` : ''}]`;
+    }
     case 'variable':
       return `[variable ${node.variableName}=${String(node.value)}]`;
     case 'effect':

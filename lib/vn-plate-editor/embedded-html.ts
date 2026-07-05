@@ -18,7 +18,7 @@ export function createVNPlateEditorHtml(payload: VNPlateEditorPayload): string {
     <main class="paper">
       <p class="eyebrow">Scene</p>
       <input id="title" class="title" value="${escapeHtml(payload.scene.sceneName)}" />
-      <div id="editor" contenteditable="true" spellcheck="true">${sceneToEditorHtml(payload.scene, payload.backgroundAssets || [], payload.audioAssets || [], payload.characters)}</div>
+      <div id="editor" contenteditable="true" spellcheck="true">${sceneToEditorHtml(payload.scene, payload.backgroundAssets || [], payload.audioAssets || [], payload.characters, payload.scenes || [])}</div>
     </main>
   </div>
   <div id="slashMenu" class="slash-menu hidden"></div>

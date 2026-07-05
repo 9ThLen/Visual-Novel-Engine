@@ -15,7 +15,7 @@ import { useReaderInitialization } from '@/hooks/useReaderInitialization';
 import { buttonFeedback } from '@/lib/ui-feedback';
 import { parseResumeExisting } from '@/lib/reader-launch';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { getTimelineInteractiveObjects } from '@/lib/reader-runtime';
+import { getTimelineInteractiveObjects, type ReaderTransitionEvent } from '@/lib/reader-runtime';
 import { normalizeUserSettings } from '@/lib/user-settings';
 import { createInMemorySceneAccess } from '@/lib/scene-access';
 import { getReaderSceneRecordForNavigation } from '@/lib/reader-scene-cache';
@@ -38,6 +38,7 @@ export default function ReaderScreen() {
   const [showMenu, setShowMenu] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [readerSceneState, setReaderSceneState] = useState<SceneState | null>(null);
+  const [entryTransition, setEntryTransition] = useState<ReaderTransitionEvent | null>(null);
   const [objDialogue, setObjDialogue] = useState<{ text: string; speaker?: string } | null>(null);
   const pendingChoiceRef = useRef<{ sceneId: string; choiceId: string; targetSceneId: string | null } | null>(null);
   const { t } = useI18n();
@@ -61,8 +62,27 @@ export default function ReaderScreen() {
     setReaderSceneState(null);
   }, [playbackState?.currentSceneId]);
 
-  const navigateToScene = useCallback(async (sceneId: string, choicesMade?: { sceneId: string; choiceId: string }[]) => {
-    if (!story || !playbackState) return;
+  const finishStory = useCallback((choicesMade: { sceneId: string; choiceId: string }[]) => {
+    if (!playbackState) return;
+    updatePlaybackState({
+      ...playbackState,
+      isPlaying: false,
+      choicesMade,
+    });
+    void stopReaderPlayback(audioManager);
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/tabs');
+    }
+  }, [playbackState, router, updatePlaybackState]);
+
+  const navigateToScene = useCallback(async (
+    sceneId: string,
+    choicesMade?: { sceneId: string; choiceId: string }[],
+    beforeCommit?: () => void,
+  ): Promise<boolean> => {
+    if (!story || !playbackState) return false;
     await hydrateReaderSceneWindow(story.id, sceneId);
     const appState = useAppStore.getState();
     const sceneAccess = createInMemorySceneAccess(appState);
@@ -76,7 +96,7 @@ export default function ReaderScreen() {
       if (__DEV__) {
         console.warn('[ReaderScreen] navigateToScene: target scene not found', sceneId);
       }
-      return;
+      return false;
     }
     const updated: PlaybackState = {
       storyId: story.id,
@@ -85,10 +105,12 @@ export default function ReaderScreen() {
       currentDialogueIndex: 0,
       choicesMade: choicesMade || playbackState?.choicesMade || [],
     };
+    beforeCommit?.();
     updatePlaybackState(updated);
+    return true;
   }, [story, playbackState, hydrateReaderSceneWindow, updatePlaybackState]);
 
-  const handleTransition = (targetSceneId: string | null) => {
+  const handleTransition = (targetSceneId: string | null, transition?: ReaderTransitionEvent) => {
     if (isLoading || !playbackState) return;
     const pendingChoice = pendingChoiceRef.current;
     pendingChoiceRef.current = null;
@@ -97,20 +119,24 @@ export default function ReaderScreen() {
       : { sceneId: playbackState.currentSceneId, choiceId: 'transition' };
     const updatedChoices = [...playbackState.choicesMade, transitionChoice];
 
-    if (targetSceneId) {
-      void navigateToScene(targetSceneId, updatedChoices);
-    } else {
-      updatePlaybackState({
-        ...playbackState,
-        isPlaying: false,
-        choicesMade: updatedChoices,
+    // Resolve destination: explicit target wins; mode 'next' follows the
+    // scene's next connection; mode 'end' (or nothing to follow) ends the story.
+    const mode = transition?.mode ?? (targetSceneId ? 'scene' : 'end');
+    let resolvedTarget = mode === 'end' ? null : targetSceneId;
+    if (!resolvedTarget && mode === 'next') {
+      resolvedTarget = sceneRecord?.connections?.find((connection) => connection.outputPort === 'next')?.targetSceneId ?? null;
+    }
+
+    if (resolvedTarget) {
+      void navigateToScene(
+        resolvedTarget,
+        updatedChoices,
+        () => setEntryTransition(transition ?? null),
+      ).then((didNavigate) => {
+        if (!didNavigate) finishStory(updatedChoices);
       });
-      void stopReaderPlayback(audioManager);
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace('/tabs');
-      }
+    } else {
+      finishStory(updatedChoices);
     }
   };
 
@@ -190,6 +216,7 @@ export default function ReaderScreen() {
         sceneId={sceneRecord?.id ?? playbackState!.currentSceneId}
         timeline={timeline}
         onTransition={handleTransition}
+        entryTransition={entryTransition}
         onExecutorChoiceSelect={handleExecutorChoiceSelect}
         onSceneStateChange={setReaderSceneState}
         isLoading={isLoading}

@@ -7,11 +7,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getNextBlockingEffectEndTime } from '@/lib/engine/effect-duration';
 import type { ActiveEffect } from '@/lib/engine/runtime-types';
+import type { TransitionMode, TransitionType } from '@/lib/engine/types';
+import {
+  DEFAULT_TRANSITION_DURATION_SEC,
+  DEFAULT_TRANSITION_TYPE,
+} from '@/lib/engine/transition-utils';
+import type { ReaderTransitionEvent } from '@/lib/reader-runtime';
 
 export function useReaderNotifications({
   displaySceneId,
   isTransitioning,
   transitionTarget,
+  transitionMode,
+  transitionType,
+  transitionDuration,
   isComplete,
   activeEffects = [],
   routeOnExecutorComplete,
@@ -20,10 +29,13 @@ export function useReaderNotifications({
   displaySceneId: string;
   isTransitioning: boolean;
   transitionTarget: string | null | undefined,
+  transitionMode?: TransitionMode;
+  transitionType?: TransitionType;
+  transitionDuration?: number;
   isComplete: boolean;
   activeEffects?: ActiveEffect[];
   routeOnExecutorComplete: boolean;
-  onTransition: ((targetSceneId: string | null) => void) | undefined;
+  onTransition: ((targetSceneId: string | null, transition?: ReaderTransitionEvent) => void) | undefined;
 }) {
   const transitionNotifiedRef = useRef<string | null>(null);
   const completeNotifiedRef = useRef<string | null>(null);
@@ -51,20 +63,29 @@ export function useReaderNotifications({
   useEffect(() => {
     if (!isTransitioning) return;
     if (hasActiveBlockingEffect) return;
-    const target = transitionTarget ?? '__end__';
-    const key = `${displaySceneId}:${target}`;
+    const mode: TransitionMode = transitionMode ?? (transitionTarget ? 'scene' : 'next');
+    const key = `${displaySceneId}:${mode}:${transitionTarget ?? '__none__'}`;
     if (transitionNotifiedRef.current === key) return;
     transitionNotifiedRef.current = key;
-    onTransition?.(transitionTarget ?? null);
-  }, [displaySceneId, hasActiveBlockingEffect, isTransitioning, transitionTarget, onTransition]);
+    onTransition?.(transitionTarget ?? null, {
+      mode,
+      transitionType: transitionType ?? DEFAULT_TRANSITION_TYPE,
+      durationSec: transitionDuration ?? DEFAULT_TRANSITION_DURATION_SEC,
+    });
+  }, [displaySceneId, hasActiveBlockingEffect, isTransitioning, transitionTarget, transitionMode, transitionType, transitionDuration, onTransition]);
 
-  // Executor complete notification
+  // Executor complete notification — the scene ran out of steps without an
+  // explicit transition block; follow the scene's next connection if any.
   useEffect(() => {
     if (!routeOnExecutorComplete || !isComplete) return;
     if (hasActiveBlockingEffect) return;
     const key = `${displaySceneId}:complete`;
     if (completeNotifiedRef.current === key) return;
     completeNotifiedRef.current = key;
-    onTransition?.(null);
+    onTransition?.(null, {
+      mode: 'next',
+      transitionType: DEFAULT_TRANSITION_TYPE,
+      durationSec: DEFAULT_TRANSITION_DURATION_SEC,
+    });
   }, [displaySceneId, hasActiveBlockingEffect, isComplete, onTransition, routeOnExecutorComplete]);
 }

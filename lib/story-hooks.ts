@@ -179,7 +179,9 @@ function validateBlockData(blockType: BlockType, data: unknown): boolean {
       return isString(d.variableName) && isString(d.operation)
         && (isString(d.value) || isNumber(d.value) || isBoolean(d.value));
     case 'transition':
-      return isStringOrNull(d.targetSceneId) && isString(d.transitionType) && isNumber(d.duration);
+      // `mode` is optional for legacy stories; normalizeTransitionData derives it at runtime.
+      return isStringOrNull(d.targetSceneId) && isString(d.transitionType) && isNumber(d.duration)
+        && (d.mode === undefined || d.mode === 'next' || d.mode === 'scene' || d.mode === 'end');
     default:
       return false;
   }

@@ -173,6 +173,13 @@ export function DocumentSceneEditor({
     pendingScrollSceneIdRef.current = nextActiveSceneId;
   }, [activeSceneId, characters, dirtySceneIds, documentsResetKey, initialDocuments, sceneRecord.id]);
 
+  // Live scene refs for transition target pickers inside the webview editors —
+  // names come from the in-session documents so renames show up immediately.
+  const storySceneRefs = React.useMemo(
+    () => documentScenes.map((ds) => ({ id: ds.sceneId, name: ds.sceneName || 'Untitled Scene' })),
+    [documentScenes],
+  );
+
   const activeDocument = documentScenes.find((ds) => ds.sceneId === activeSceneId) ?? documentScenes[0];
   const activeSceneIndex = Math.max(0, scenes.findIndex((scene) => scene.id === activeSceneId));
 
@@ -477,6 +484,7 @@ export function DocumentSceneEditor({
               characters={localCharacters}
               backgroundAssets={backgroundAssets}
               audioAssets={audioAssets}
+              storyScenes={storySceneRefs}
               isPhone={isPhone}
               isMounted={mountedSceneIds.has(documentScene.sceneId)}
               cachedHeight={sceneLayoutRef.current.get(documentScene.sceneId)?.height}

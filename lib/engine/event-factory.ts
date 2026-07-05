@@ -7,6 +7,11 @@
 
 import { generateId } from '@/lib/id-utils';
 import { getDefaultEffectDuration, normalizeEffectDurationMode } from './effect-duration';
+import {
+  DEFAULT_TRANSITION_DURATION_SEC,
+  DEFAULT_TRANSITION_TYPE,
+  normalizeTransitionData,
+} from './transition-utils';
 import type {
   TimelineStep,
   BlockType,
@@ -183,12 +188,13 @@ export function createVariableStep(overrides?: Partial<VariableBlockData>): Time
 }
 
 export function createTransitionStep(overrides?: Partial<TransitionBlockData>): TimelineStep {
-  return createStep('transition', {
-    targetSceneId: null,
-    transitionType: 'fade',
-    duration: 1.0,
+  // normalizeTransitionData derives mode from targetSceneId for legacy callers
+  // that pass a target without an explicit mode.
+  return createStep('transition', normalizeTransitionData({
+    transitionType: DEFAULT_TRANSITION_TYPE,
+    duration: DEFAULT_TRANSITION_DURATION_SEC,
     ...overrides,
-  });
+  }));
 }
 
 // ── Block Factory Map ─────────────────────────────────────────────────────

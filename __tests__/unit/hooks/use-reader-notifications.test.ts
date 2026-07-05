@@ -49,7 +49,7 @@ describe('useReaderNotifications', () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(onTransition).toHaveBeenCalledWith(null);
+    expect(onTransition).toHaveBeenCalledWith(null, { mode: 'next', transitionType: 'fade', durationSec: 0.5 });
   });
 
   it('delays scene transitions while a blocking weather effect is active', async () => {
@@ -71,7 +71,7 @@ describe('useReaderNotifications', () => {
       vi.advanceTimersByTime(500);
     });
 
-    expect(onTransition).toHaveBeenCalledWith('scene-2');
+    expect(onTransition).toHaveBeenCalledWith('scene-2', { mode: 'scene', transitionType: 'fade', durationSec: 0.5 });
   });
 
   it('does not delay completion for scene-bound weather effects', async () => {
@@ -87,6 +87,6 @@ describe('useReaderNotifications', () => {
       onTransition,
     }));
 
-    expect(onTransition).toHaveBeenCalledWith(null);
+    expect(onTransition).toHaveBeenCalledWith(null, { mode: 'next', transitionType: 'fade', durationSec: 0.5 });
   });
 });

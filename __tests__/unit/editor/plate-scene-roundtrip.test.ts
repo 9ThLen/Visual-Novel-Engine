@@ -168,8 +168,9 @@ describe('Plate scene serializer roundtrip', () => {
         pulseAnimation: false,
       }), 'step_interactive'),
       withStepMeta(createTransitionStep({
+        mode: 'scene',
         targetSceneId: 'scene_after',
-        transitionType: 'slide-right',
+        transitionType: 'slide',
         duration: 1.5,
       }), 'step_transition'),
     ];

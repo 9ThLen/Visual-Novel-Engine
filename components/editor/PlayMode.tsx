@@ -10,7 +10,7 @@ import { useColors } from '@/hooks/use-colors';
 import { selectSceneRecordMapForStory, useAppStore } from '@/stores/use-app-store';
 import { Button } from '@/components/ui';
 import { StoryReaderResponsive } from '@/components/story-reader-responsive';
-import { getNextSceneId, getStartSceneId } from '@/lib/reader-runtime';
+import { getNextSceneId, getStartSceneId, type ReaderTransitionEvent } from '@/lib/reader-runtime';
 import { useI18n } from '@/hooks/use-i18n';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
@@ -35,6 +35,7 @@ export function PlayMode({ storyId }: PlayModeProps) {
 
   const [playState, setPlayState] = useState<PlayState>('idle');
   const [currentSceneId, setCurrentSceneId] = useState<string | null>(null);
+  const [entryTransition, setEntryTransition] = useState<ReaderTransitionEvent | null>(null);
 
   const currentScene = currentSceneId ? storyRecords[currentSceneId] : null;
 
@@ -50,14 +51,16 @@ export function PlayMode({ storyId }: PlayModeProps) {
     setPlayState('playing');
   }, [startSceneId]);
 
-  const handleTransition = useCallback((targetSceneId: string | null) => {
+  const handleTransition = useCallback((targetSceneId: string | null, transition?: ReaderTransitionEvent) => {
     if (!currentSceneId) {
       setPlayState('finished');
       return;
     }
 
-    const nextSceneId = getNextSceneId(storyRecords, currentSceneId, targetSceneId);
+    const mode = transition?.mode ?? (targetSceneId ? 'scene' : 'next');
+    const nextSceneId = getNextSceneId(storyRecords, currentSceneId, targetSceneId, mode);
     if (nextSceneId) {
+      setEntryTransition(transition ?? null);
       setCurrentSceneId(nextSceneId);
       setPlayState('playing');
       return;
@@ -134,6 +137,7 @@ export function PlayMode({ storyId }: PlayModeProps) {
         timeline={currentScene.timeline || []}
         settings={settings}
         onTransition={handleTransition}
+        entryTransition={entryTransition}
         routeOnExecutorComplete
       />
     </View>

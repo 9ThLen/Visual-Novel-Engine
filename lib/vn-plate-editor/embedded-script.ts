@@ -15,8 +15,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     var activeBackgroundBlock = null;
     var backgroundPopover = null;
     var backgroundDraft = null;
+    var activeTransitionBlock = null;
+    var transitionPopover = null;
+    var transitionDraft = null;
     var backgroundAssets = Array.isArray(payload.backgroundAssets) ? payload.backgroundAssets : [];
     var audioAssets = Array.isArray(payload.audioAssets) ? payload.audioAssets : [];
+    var storyScenes = Array.isArray(payload.scenes) ? payload.scenes : [];
     var characters = Array.isArray(payload.characters) ? payload.characters.slice() : [];
     var characterPopover = null;
     var activeCharacterToken = null;
@@ -61,7 +65,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     function measureOverlayHeight() {
       var height = measureHeight();
       Array.prototype.slice.call(document.querySelectorAll(
-        '#slashMenu:not(.hidden), .background-popover, .character-popover, .effect-popover, .audio-popover'
+        '#slashMenu:not(.hidden), .background-popover, .transition-popover, .character-popover, .effect-popover, .audio-popover'
       )).forEach(function(node) {
         height = Math.max(height, elementBottom(node) + 16);
       });
@@ -1296,14 +1300,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         assetId: normalizeAssetName(node.dataset.assetId) || null,
         transition: node.dataset.transition || 'fade',
         duration: Number.isFinite(durationMs) ? durationMs : 500,
-        delay: Number.isFinite(delay) ? delay : 0,
-        fit: node.dataset.fit || 'cover',
-        position: node.dataset.position || 'center'
+        delay: Number.isFinite(delay) ? delay : 0
       };
     }
 
     function backgroundSummary(data) {
-      return formatTransition(data.transition) + ' · ' + formatSeconds((data.duration || 0) / 1000) + ' · ' + (data.fit || 'cover');
+      return formatTransition(data.transition) + ' · ' + formatSeconds((data.duration || 0) / 1000);
     }
 
     function renderAllBackgroundBlocks() {
@@ -1337,8 +1339,6 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       node.dataset.transition = data.transition || 'fade';
       node.dataset.durationMs = String(Math.max(0, Math.round(Number(data.duration) || 0)));
       node.dataset.delay = String(Math.max(0, Number(data.delay) || 0));
-      node.dataset.fit = data.fit || 'cover';
-      node.dataset.position = data.position || 'center';
       renderBackgroundBlockContent(node);
     }
 
@@ -1407,20 +1407,6 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
             option('dissolve', 'Dissolve', backgroundDraft.transition) +
             option('instant', 'Instant', backgroundDraft.transition) +
             option('wipe', 'Wipe', backgroundDraft.transition) +
-          '</select>' +
-          '<label class="popover-label" for="bgFit">Режим</label>' +
-          '<select id="bgFit" class="popover-control">' +
-            option('cover', 'Cover', backgroundDraft.fit) +
-            option('contain', 'Contain', backgroundDraft.fit) +
-            option('stretch', 'Stretch', backgroundDraft.fit) +
-          '</select>' +
-          '<label class="popover-label" for="bgPosition">Позиція</label>' +
-          '<select id="bgPosition" class="popover-control">' +
-            option('center', 'Center', backgroundDraft.position) +
-            option('top', 'Top', backgroundDraft.position) +
-            option('bottom', 'Bottom', backgroundDraft.position) +
-            option('left', 'Left', backgroundDraft.position) +
-            option('right', 'Right', backgroundDraft.position) +
           '</select>' +
           '<label class="popover-label" for="bgDelay">Затримка</label>' +
           '<input id="bgDelay" class="popover-control" inputmode="decimal" value="" />' +
@@ -1517,17 +1503,195 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (!backgroundPopover) return backgroundDraft || {};
       var asset = backgroundPopover.querySelector('#bgAssetInput');
       var transition = backgroundPopover.querySelector('#bgTransition');
-      var fit = backgroundPopover.querySelector('#bgFit');
-      var position = backgroundPopover.querySelector('#bgPosition');
       var delay = backgroundPopover.querySelector('#bgDelay');
       var duration = backgroundPopover.querySelector('#bgDuration');
       return {
         assetId: normalizeAssetName(backgroundPopover.dataset.selectedAssetId) || normalizeAssetName(asset && asset.value) || null,
         transition: selectedValue(transition, 'fade'),
-        fit: selectedValue(fit, 'cover'),
-        position: selectedValue(position, 'center'),
         delay: parseSecondsInput(delay && delay.value, backgroundDraft ? backgroundDraft.delay : 0),
         duration: Math.round(parseSecondsInput(duration && duration.value, backgroundDraft ? backgroundDraft.duration / 1000 : 0.5) * 1000)
+      };
+    }
+
+    // ── Transition block ────────────────────────────────────────────────
+    var TRANSITION_TYPE_LABELS = { fade: 'Fade', slide: 'Slide', instant: 'Instant' };
+
+    function normalizeTransitionMode(value, targetSceneId) {
+      if (value === 'next' || value === 'scene' || value === 'end') return value;
+      return targetSceneId ? 'scene' : 'next';
+    }
+
+    function transitionDataFromNode(node) {
+      var target = (node.dataset.targetSceneId || '').trim() || null;
+      var mode = normalizeTransitionMode(node.dataset.mode, target);
+      var type = node.dataset.transitionType;
+      if (type !== 'fade' && type !== 'slide' && type !== 'instant') type = 'fade';
+      var duration = Number(node.dataset.duration);
+      if (!Number.isFinite(duration) || duration < 0) duration = 0.5;
+      return {
+        mode: mode,
+        targetSceneId: mode === 'scene' ? target : null,
+        transitionType: type,
+        duration: duration
+      };
+    }
+
+    function findStoryScene(sceneId) {
+      if (!sceneId) return null;
+      return storyScenes.find(function(scene) { return scene.id === sceneId; }) || null;
+    }
+
+    function transitionTargetLabel(data) {
+      if (data.mode === 'end') return 'Кінець історії';
+      if (data.mode === 'scene') {
+        var scene = findStoryScene(data.targetSceneId);
+        return scene && scene.name || data.targetSceneId || 'Сцену не вибрано';
+      }
+      return 'Наступна сцена';
+    }
+
+    function transitionSummary(data) {
+      var summary = (TRANSITION_TYPE_LABELS[data.transitionType] || data.transitionType) + ' · ' + formatSeconds(data.duration);
+      if (data.mode === 'scene' && (!data.targetSceneId || (storyScenes.length > 0 && !findStoryScene(data.targetSceneId)))) {
+        summary += ' · ⚠ сцена не знайдена';
+      }
+      return summary;
+    }
+
+    function renderAllTransitionBlocks() {
+      Array.prototype.slice.call(editor.querySelectorAll('.transition-block')).forEach(function(block) {
+        renderTransitionBlockContent(block);
+      });
+    }
+
+    function renderTransitionBlockContent(node) {
+      var data = transitionDataFromNode(node);
+      node.innerHTML =
+        '<div class="background-copy">' +
+          '<div class="background-command-line">' +
+            '<span class="void-title">/transition</span>' +
+            '<span class="background-asset"></span>' +
+          '</div>' +
+          '<div class="void-summary"></div>' +
+        '</div>' +
+        '<div class="block-actions">' +
+          '<button type="button" class="block-button" data-action="edit-transition">Edit</button>' +
+        '</div>';
+      node.querySelector('.background-asset').textContent = transitionTargetLabel(data);
+      node.querySelector('.void-summary').textContent = transitionSummary(data);
+    }
+
+    function applyTransitionData(node, data) {
+      var target = (data.targetSceneId || '').trim ? (data.targetSceneId || '').trim() : (data.targetSceneId || '');
+      var mode = normalizeTransitionMode(data.mode, target || null);
+      node.dataset.mode = mode;
+      node.dataset.targetSceneId = mode === 'scene' && target ? target : '';
+      node.dataset.transitionType = data.transitionType === 'slide' || data.transitionType === 'instant' ? data.transitionType : 'fade';
+      var duration = Number(data.duration);
+      node.dataset.duration = String(Number.isFinite(duration) && duration >= 0 ? duration : 0.5);
+      renderTransitionBlockContent(node);
+    }
+
+    function closeTransitionPopover() {
+      if (transitionPopover) transitionPopover.remove();
+      transitionPopover = null;
+      transitionDraft = null;
+      if (activeTransitionBlock) activeTransitionBlock.classList.remove('is-editing', 'is-selected');
+      activeTransitionBlock = null;
+      scheduleResize();
+    }
+
+    function positionTransitionPopover() {
+      // Docks to the bottom of the viewport as a sheet (see .transition-popover CSS) —
+      // ending a scene reads naturally as sliding up from the bottom, not a floating bubble.
+      if (!transitionPopover) return;
+      scheduleResize();
+    }
+
+    function renderTransitionScenePicker(popover) {
+      var picker = popover && popover.querySelector('.transition-scene-picker');
+      if (!picker) return;
+      var mode = popover.dataset.mode || 'next';
+      if (mode !== 'scene') {
+        picker.classList.add('hidden');
+        return;
+      }
+      picker.classList.remove('hidden');
+      var selected = popover.dataset.selectedSceneId || '';
+      var currentSceneId = payload.scene && payload.scene.sceneId;
+      var candidates = storyScenes.filter(function(scene) { return scene.id !== currentSceneId; });
+      var items = candidates.length
+        ? candidates.map(function(scene) {
+            var active = scene.id === selected ? ' active' : '';
+            return '<button type="button" class="asset-choice' + active + '" data-action="select-transition-scene" data-scene-id="' + escapeHtml(scene.id) + '">' +
+              '<span class="asset-name">' + escapeHtml(scene.name || scene.id) + '</span>' +
+            '</button>';
+          }).join('')
+        : '<div class="asset-empty">Немає інших сцен. Створіть нову через /new scene.</div>';
+      picker.innerHTML = '<div class="asset-choice-list">' + items + '</div>';
+    }
+
+    function openTransitionPopover(block, anchor) {
+      if (!block) return;
+      closeSlashMenu();
+      if (activeTransitionBlock === block && transitionPopover) {
+        closeTransitionPopover();
+        return;
+      }
+      closeBackgroundPopover();
+      closeEffectPopover();
+      closeAudioPopover();
+      closeTransitionPopover();
+      activeTransitionBlock = block;
+      activeTransitionBlock.classList.add('is-editing', 'is-selected');
+      transitionDraft = transitionDataFromNode(block);
+
+      var popover = document.createElement('div');
+      popover.className = 'background-popover transition-popover';
+      popover.innerHTML =
+        '<label class="popover-label" for="trMode">Куди веде перехід</label>' +
+        '<select id="trMode" class="popover-control">' +
+          option('next', 'Наступна сцена (за порядком)', transitionDraft.mode) +
+          option('scene', 'Конкретна сцена', transitionDraft.mode) +
+          option('end', 'Кінець історії', transitionDraft.mode) +
+        '</select>' +
+        '<div class="transition-scene-picker hidden"></div>' +
+        '<div class="popover-grid">' +
+          '<label class="popover-label" for="trType">Ефект переходу</label>' +
+          '<select id="trType" class="popover-control">' +
+            option('fade', 'Fade', transitionDraft.transitionType) +
+            option('slide', 'Slide', transitionDraft.transitionType) +
+            option('instant', 'Instant', transitionDraft.transitionType) +
+          '</select>' +
+          '<label class="popover-label" for="trDuration">Тривалість</label>' +
+          '<input id="trDuration" class="popover-control" inputmode="decimal" value="" />' +
+        '</div>' +
+        '<p class="popover-help">Перехід завершує сцену: блоки після нього не виконуються.</p>' +
+        '<div class="popover-footer">' +
+          '<button type="button" class="popover-button" data-action="reset-transition">Скинути</button>' +
+          '<button type="button" class="popover-button primary" data-action="save-transition">Зберегти</button>' +
+        '</div>';
+
+      document.body.appendChild(popover);
+      transitionPopover = popover;
+      popover.dataset.mode = transitionDraft.mode;
+      if (transitionDraft.targetSceneId) popover.dataset.selectedSceneId = transitionDraft.targetSceneId;
+      popover.querySelector('#trDuration').value = formatSeconds(transitionDraft.duration);
+      renderTransitionScenePicker(popover);
+      afterLayout(function() { positionTransitionPopover(); });
+    }
+
+    function collectTransitionForm() {
+      if (!transitionPopover) return transitionDraft || {};
+      var modeSelect = transitionPopover.querySelector('#trMode');
+      var typeSelect = transitionPopover.querySelector('#trType');
+      var durationInput = transitionPopover.querySelector('#trDuration');
+      var mode = selectedValue(modeSelect, 'next');
+      return {
+        mode: mode,
+        targetSceneId: mode === 'scene' ? (transitionPopover.dataset.selectedSceneId || null) : null,
+        transitionType: selectedValue(typeSelect, 'fade'),
+        duration: parseSecondsInput(durationInput && durationInput.value, transitionDraft ? transitionDraft.duration : 0.5)
       };
     }
 
@@ -1536,6 +1700,33 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (kind === 'technical') {
         var commandId = node.dataset.command || 'effect';
         var originalTechnical = originalBlockForNode(node);
+        if (commandId === 'transition') {
+          var transitionData = transitionDataFromNode(node);
+          var originalTransitionStep = originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step
+            ? originalTechnical.step
+            : null;
+          var transitionStep = originalTransitionStep
+            ? Object.assign({}, originalTransitionStep, {
+                blockType: 'transition',
+                data: transitionData
+              })
+            : {
+                id: node.dataset.id || uid('step'),
+                blockType: 'transition',
+                data: transitionData,
+                collapsed: false,
+                enabled: true
+              };
+          return {
+            id: node.dataset.id || uid('doc_block'),
+            kind: 'technical',
+            commandId: 'transition',
+            blockType: 'transition',
+            label: 'Перехід',
+            summary: transitionSummary(transitionData),
+            step: transitionStep
+          };
+        }
         if (commandId === 'background') {
           var backgroundData = backgroundDataFromNode(node);
           var originalStep = originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step
@@ -1544,7 +1735,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           var step = originalStep
             ? Object.assign({}, originalStep, {
                 blockType: 'background',
-                data: Object.assign({}, originalStep.data || {}, backgroundData)
+                data: backgroundData
               })
             : {
                 id: node.dataset.id || uid('step'),
@@ -2139,7 +2330,9 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       }
       removeSlashToken(p);
       var block = document.createElement('div');
-      block.className = commandId === 'background' ? 'void-block background-block' : 'void-block';
+      block.className = commandId === 'background' ? 'void-block background-block'
+        : commandId === 'transition' ? 'void-block transition-block'
+        : 'void-block';
       block.contentEditable = 'false';
       block.dataset.kind = 'technical';
       block.dataset.id = uid('doc_block');
@@ -2152,6 +2345,13 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           delay: 0,
           fit: 'cover',
           position: 'center'
+        });
+      } else if (commandId === 'transition') {
+        applyTransitionData(block, {
+          mode: 'next',
+          targetSceneId: null,
+          transitionType: 'fade',
+          duration: 0.5
         });
       } else {
         block.innerHTML = '<div class="void-title">/' + commandId + '</div><div class="void-summary">New block</div>';
@@ -2230,7 +2430,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         return;
       }
       var button = target.closest('[data-action]');
-      var block = target.closest('.background-block');
+      var block = target.closest('.background-block, .transition-block');
       if (!block) return;
       Array.prototype.slice.call(editor.querySelectorAll('.void-block.is-selected')).forEach(function(item) {
         if (item !== block) item.classList.remove('is-selected');
@@ -2241,6 +2441,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (action === 'edit-background' || action === 'pick-background') {
         event.preventDefault();
         openBackgroundPopover(block, button);
+      }
+      if (action === 'edit-transition') {
+        event.preventDefault();
+        openTransitionPopover(block, button);
       }
     });
 
@@ -2430,6 +2634,35 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         if (characterTarget && characterTarget.closest && characterTarget.closest('.speaker-token')) return;
         closeCharacterPopover();
       }
+      if (transitionPopover) {
+        var transitionTarget = event.target;
+        if (transitionTarget && transitionTarget.closest && transitionTarget.closest('.transition-popover')) {
+          var transitionActionButton = transitionTarget.closest('[data-action]');
+          if (!transitionActionButton) return;
+          var transitionAction = transitionActionButton.dataset.action;
+          if (transitionAction === 'select-transition-scene') {
+            transitionPopover.dataset.selectedSceneId = transitionActionButton.dataset.sceneId || '';
+            renderTransitionScenePicker(transitionPopover);
+            return;
+          }
+          if (transitionAction === 'reset-transition' && activeTransitionBlock && transitionDraft) {
+            applyTransitionData(activeTransitionBlock, transitionDraft);
+            saveNow();
+            closeTransitionPopover();
+            return;
+          }
+          if (transitionAction === 'save-transition' && activeTransitionBlock) {
+            applyTransitionData(activeTransitionBlock, collectTransitionForm());
+            saveNow();
+            closeTransitionPopover();
+            return;
+          }
+          return;
+        }
+        if (!(transitionTarget && transitionTarget.closest && transitionTarget.closest('.transition-block'))) {
+          closeTransitionPopover();
+        }
+      }
       if (!backgroundPopover) return;
       var target = event.target;
       if (target && target.closest && target.closest('.background-popover')) {
@@ -2437,7 +2670,15 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         if (!actionButton) return;
         var action = actionButton.dataset.action;
         if (action === 'choose-background') {
-          openAssetPicker();
+          var choosePicker = backgroundPopover.querySelector('.asset-picker');
+          if (choosePicker) {
+            if (choosePicker.classList.contains('hidden')) {
+              openAssetPicker();
+            } else {
+              choosePicker.classList.add('hidden');
+              scheduleResize();
+            }
+          }
           return;
         }
         if (action === 'hide-asset-picker') {
@@ -2474,6 +2715,15 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     });
 
     document.addEventListener('change', function(event) {
+      if (transitionPopover && transitionPopover.contains(event.target)) {
+        var modeSelect = transitionPopover.querySelector('#trMode');
+        if (event.target === modeSelect) {
+          transitionPopover.dataset.mode = selectedValue(modeSelect, 'next');
+          renderTransitionScenePicker(transitionPopover);
+          scheduleResize();
+        }
+        return;
+      }
       if (effectPopover && effectPopover.contains(event.target)) {
         updateEffectSections();
         return;
@@ -2568,6 +2818,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         event.preventDefault();
         closeBackgroundPopover();
       }
+      if (event.key === 'Escape' && transitionPopover) {
+        event.preventDefault();
+        closeTransitionPopover();
+      }
       if (event.key === 'Escape' && characterPopover) {
         event.preventDefault();
         closeCharacterPopover();
@@ -2589,6 +2843,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
 
     window.addEventListener('resize', function() {
       if (activeBackgroundBlock) positionBackgroundPopover(activeBackgroundBlock);
+      if (activeTransitionBlock) positionTransitionPopover();
       if (activeCharacterToken) positionCharacterPopover(activeCharacterToken);
       if (activeEffectChip) positionEffectPopover(activeEffectChip);
       if (activeAudioChip) positionAudioPopover(activeAudioChip);
@@ -2615,6 +2870,11 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           var currentAssetId = backgroundPopover.dataset.selectedAssetId || normalizeAssetName(input && input.value) || normalizeAssetName(backgroundDraft && backgroundDraft.assetId);
           updatePreview(backgroundPopover, currentAssetId);
         }
+      }
+      if (message.type === 'scenesUpdated' && Array.isArray(message.scenes)) {
+        storyScenes = message.scenes;
+        renderAllTransitionBlocks();
+        if (transitionPopover) renderTransitionScenePicker(transitionPopover);
       }
       if (message.type === 'audioAssetsUpdated' && Array.isArray(message.assets)) {
         audioAssets = message.assets;

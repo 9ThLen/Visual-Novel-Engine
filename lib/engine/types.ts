@@ -129,8 +129,6 @@ export interface BackgroundBlockData {
   transition: 'fade' | 'dissolve' | 'instant' | 'wipe';
   duration: number;         // ms, default 500
   delay?: number;           // seconds before transition starts
-  fit?: 'cover' | 'contain' | 'stretch';
-  position?: 'center' | 'top' | 'bottom' | 'left' | 'right';
 }
 
 export interface CharacterBlockData {
@@ -258,9 +256,14 @@ export interface VariableBlockData {
   value: string | number | boolean;
 }
 
+export type TransitionMode = 'next' | 'scene' | 'end';
+export type TransitionType = 'fade' | 'slide' | 'instant';
+
 export interface TransitionBlockData {
-  targetSceneId: string | null;  // null = end of story
-  transitionType: 'fade' | 'dissolve' | 'slide-left' | 'slide-right' | 'slide-up' | 'wipe';
+  /** 'next' = follow the scene's next connection, 'scene' = jump to targetSceneId, 'end' = end the story. */
+  mode: TransitionMode;
+  targetSceneId: string | null;  // only meaningful when mode === 'scene'
+  transitionType: TransitionType;
   duration: number;         // seconds
 }
 

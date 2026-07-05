@@ -28,6 +28,7 @@ import { useColors } from '@/hooks/use-colors';
 import type { UserSettings } from '@/lib/user-settings';
 import type { TimelineStep } from '@/lib/engine/types';
 import type { SceneState } from '@/lib/engine/runtime-types';
+import type { ReaderTransitionEvent } from '@/lib/reader-runtime';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
 import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
 import { DialogueHistory } from './dialogue-history';
@@ -62,7 +63,9 @@ interface Props {
   initialVariables?: Record<string, string | number | boolean>;
   onContinue?: (targetSceneId?: string) => void;
   onExecutorChoiceSelect?: (choice: { sceneId: string; choiceId: string; targetSceneId: string | null }) => void;
-  onTransition?: (targetSceneId: string | null) => void;
+  onTransition?: (targetSceneId: string | null, transition?: ReaderTransitionEvent) => void;
+  /** How to animate into the current scene (set by the host from the previous scene's transition block). */
+  entryTransition?: Pick<ReaderTransitionEvent, 'transitionType' | 'durationSec'> | null;
   isLoading?: boolean;
   settings?: Partial<UserSettings>;
   onHistoryVisibleChange?: (visible: boolean) => void;
@@ -79,6 +82,7 @@ export function StoryReaderResponsive({
   onContinue,
   onExecutorChoiceSelect,
   onTransition,
+  entryTransition,
   isLoading = false,
   settings = {},
   onHistoryVisibleChange,
@@ -167,6 +171,9 @@ export function StoryReaderResponsive({
     displaySceneId,
     isTransitioning: executor.sceneState.isTransitioning,
     transitionTarget: executor.sceneState.transitionTarget,
+    transitionMode: executor.sceneState.transitionMode,
+    transitionType: executor.sceneState.transitionType,
+    transitionDuration: executor.sceneState.transitionDuration,
     isComplete: executor.isComplete,
     activeEffects: executor.sceneState.activeEffects,
     routeOnExecutorComplete,
@@ -187,18 +194,42 @@ export function StoryReaderResponsive({
     onSceneStateChangeRef.current?.(executor.sceneState);
   }, [executor.sceneState]);
 
-  // ── Scene change — fade in ─────────────────────────────────────────────
+  // ── Scene change — entry animation (fade / slide / instant) ───────────
   const sceneOpacity = useSharedValue(1);
   const bgScale = useSharedValue(1);
+  const bgSlideX = useSharedValue(0);
   const uiOpacity = useSharedValue(1);
+  const entryTransitionRef = useRef(entryTransition);
+  entryTransitionRef.current = entryTransition;
 
   useEffect(() => {
     setPageIndex(0);
+    const entry = entryTransitionRef.current;
+    const type = entry?.transitionType ?? 'fade';
+    const durationMs = Math.max(0, Math.round((entry?.durationSec ?? 0.38) * 1000));
+
+    if (type === 'instant' || durationMs === 0) {
+      sceneOpacity.value = 1;
+      bgScale.value = 1;
+      bgSlideX.value = 0;
+      return;
+    }
+
+    if (type === 'slide') {
+      sceneOpacity.value = 0;
+      bgScale.value = 1;
+      bgSlideX.value = 48;
+      sceneOpacity.value = withTiming(1, { duration: durationMs });
+      bgSlideX.value = withTiming(0, { duration: durationMs });
+      return;
+    }
+
     sceneOpacity.value = 0;
     bgScale.value = 1.04;
-    sceneOpacity.value = withTiming(1, { duration: 380 });
-    bgScale.value = withTiming(1, { duration: 700 });
-  }, [displaySceneId, usingExecutor, sceneOpacity, bgScale]);
+    bgSlideX.value = 0;
+    sceneOpacity.value = withTiming(1, { duration: durationMs });
+    bgScale.value = withTiming(1, { duration: Math.max(durationMs, Math.round(durationMs * 1.8)) });
+  }, [displaySceneId, usingExecutor, sceneOpacity, bgScale, bgSlideX]);
 
   // ── Start typewriter on page change ────────────────────────────────────
   useEffect(() => {
@@ -209,7 +240,7 @@ export function StoryReaderResponsive({
   // ── Animated styles ────────────────────────────────────────────────────
   const bgAnimatedStyle = useAnimatedStyle(() => ({
     opacity: sceneOpacity.value,
-    transform: [{ scale: bgScale.value }],
+    transform: [{ scale: bgScale.value }, { translateX: bgSlideX.value }],
   }));
 
   const charactersAnimatedStyle = useAnimatedStyle(() => ({

@@ -1,7 +1,8 @@
 import type { Character } from '@/lib/character-types';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import type { BackgroundBlockData, CharacterBlockData } from '@/lib/engine/types';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset } from './types';
+import { normalizeTransitionData } from '@/lib/engine/transition-utils';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateSceneRef } from './types';
 import { escapeHtml } from './embedded-utils';
 
 function formatTransition(value?: string): string {
@@ -17,7 +18,7 @@ function formatSeconds(durationMs?: number): string {
 function technicalSummary(block: Extract<DocumentBlock, { kind: 'technical' }>): string {
   if (block.blockType === 'background') {
     const data = block.step.data as BackgroundBlockData;
-    return `${formatTransition(data.transition)} · ${formatSeconds(data.duration)} · ${data.fit || 'cover'}`;
+    return `${formatTransition(data.transition)} · ${formatSeconds(data.duration)}`;
   }
   return block.summary || block.label || block.blockType;
 }
@@ -200,11 +201,8 @@ function backgroundBlockToHtml(
   const transition = data.transition || 'fade';
   const duration = Number.isFinite(data.duration) ? data.duration : 500;
   const delay = Number.isFinite(data.delay) ? data.delay : 0;
-  const fit = data.fit || 'cover';
-  const position = data.position || 'center';
-
   return [
-    `<div class="void-block background-block" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="background" data-asset-id="${escapeHtml(assetId)}" data-transition="${escapeHtml(transition)}" data-duration-ms="${escapeHtml(String(duration))}" data-delay="${escapeHtml(String(delay))}" data-fit="${escapeHtml(fit)}" data-position="${escapeHtml(position)}">`,
+    `<div class="void-block background-block" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="background" data-asset-id="${escapeHtml(assetId)}" data-transition="${escapeHtml(transition)}" data-duration-ms="${escapeHtml(String(duration))}" data-delay="${escapeHtml(String(delay))}">`,
     '<div class="background-copy">',
     '<div class="background-command-line">',
     '<span class="void-title">/background</span>',
@@ -220,10 +218,50 @@ function backgroundBlockToHtml(
   ].join('');
 }
 
+const TRANSITION_TYPE_LABELS: Record<string, string> = {
+  fade: 'Fade',
+  slide: 'Slide',
+  instant: 'Instant',
+};
+
+function transitionBlockToHtml(
+  block: Extract<DocumentBlock, { kind: 'technical' }>,
+  scenes: VNPlateSceneRef[],
+): string {
+  const data = normalizeTransitionData(block.step?.data);
+  const targetScene = data.targetSceneId
+    ? scenes.find((scene) => scene.id === data.targetSceneId) ?? null
+    : null;
+  const targetLabel = data.mode === 'end'
+    ? 'Кінець історії'
+    : data.mode === 'scene'
+      ? (targetScene?.name || data.targetSceneId || 'Сцену не вибрано')
+      : 'Наступна сцена';
+  const dangling = data.mode === 'scene' && (!data.targetSceneId || (scenes.length > 0 && !targetScene));
+  const summary = `${TRANSITION_TYPE_LABELS[data.transitionType] || data.transitionType} · ${Number(data.duration.toFixed(2))}s`
+    + (dangling ? ' · ⚠ сцена не знайдена' : '');
+
+  return [
+    `<div class="void-block transition-block" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="transition" data-mode="${escapeHtml(data.mode)}" data-target-scene-id="${escapeHtml(data.targetSceneId || '')}" data-transition-type="${escapeHtml(data.transitionType)}" data-duration="${escapeHtml(String(data.duration))}">`,
+    '<div class="background-copy">',
+    '<div class="background-command-line">',
+    '<span class="void-title">/transition</span>',
+    `<span class="background-asset">${escapeHtml(targetLabel)}</span>`,
+    '</div>',
+    `<div class="void-summary">${escapeHtml(summary)}</div>`,
+    '</div>',
+    '<div class="block-actions">',
+    '<button type="button" class="block-button" data-action="edit-transition">Edit</button>',
+    '</div>',
+    '</div>',
+  ].join('');
+}
+
 export function blockToHtml(
   block: DocumentBlock,
   backgroundAssets: VNPlateBackgroundAsset[] = [],
   audioAssets: VNPlateAudioAsset[] = [],
+  scenes: VNPlateSceneRef[] = [],
 ): string {
   if (block.kind === 'text') {
     return `<p data-kind="text" data-id="${escapeHtml(block.id)}">${inlinePartsToHtml(block.parts, block.content, audioAssets)}</p>`;
@@ -254,6 +292,10 @@ export function blockToHtml(
     return backgroundBlockToHtml(block, backgroundAssets);
   }
 
+  if (block.blockType === 'transition') {
+    return transitionBlockToHtml(block, scenes);
+  }
+
   if (block.blockType === 'character') {
     const data = block.step.data as Partial<CharacterBlockData>;
     const characterId = data.characterId || '';
@@ -279,6 +321,7 @@ export function sceneToEditorHtml(
   backgroundAssets: VNPlateBackgroundAsset[] = [],
   audioAssets: VNPlateAudioAsset[] = [],
   characters: Character[] = [],
+  scenes: VNPlateSceneRef[] = [],
 ): string {
   const blocks = scene.blocks.length
     ? scene.blocks
@@ -286,8 +329,8 @@ export function sceneToEditorHtml(
   const colorById = new Map(characters.map((character) => [character.id, character.color]));
   return blocks.map((block) => {
     if (block.kind === 'dialogue' && block.characterId && !block.tokenColor) {
-      return blockToHtml({ ...block, tokenColor: colorById.get(block.characterId) }, backgroundAssets, audioAssets);
+      return blockToHtml({ ...block, tokenColor: colorById.get(block.characterId) }, backgroundAssets, audioAssets, scenes);
     }
-    return blockToHtml(block, backgroundAssets, audioAssets);
+    return blockToHtml(block, backgroundAssets, audioAssets, scenes);
   }).join('');
 }

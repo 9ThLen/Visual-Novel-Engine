@@ -15,6 +15,12 @@ export interface VNPlateAudioAsset {
   duration?: number;
 }
 
+/** Lightweight reference to another scene in the story (for transition target pickers). */
+export interface VNPlateSceneRef {
+  id: string;
+  name: string;
+}
+
 export interface VNPlateEditorPayload {
   editorId: string;
   scene: DocumentScene;
@@ -22,6 +28,7 @@ export interface VNPlateEditorPayload {
   isPhone: boolean;
   backgroundAssets?: VNPlateBackgroundAsset[];
   audioAssets?: VNPlateAudioAsset[];
+  scenes?: VNPlateSceneRef[];
 }
 
 export type VNPlateEditorMessage =
@@ -111,6 +118,12 @@ export type VNPlateHostMessage =
       editorId: string;
       type: 'audioAssetsUpdated';
       assets: VNPlateAudioAsset[];
+    }
+  | {
+      source: 'vn-plate-host';
+      editorId: string;
+      type: 'scenesUpdated';
+      scenes: VNPlateSceneRef[];
     }
   | {
       source: 'vn-plate-host';

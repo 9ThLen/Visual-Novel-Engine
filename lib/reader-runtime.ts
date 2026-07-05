@@ -4,6 +4,8 @@ import type {
   InteractiveObjectBlockData,
   TextBlockData,
   TimelineStep,
+  TransitionMode,
+  TransitionType,
 } from '@/lib/engine/types';
 import type { SceneImageState } from '@/hooks/useSceneImages';
 import type { InteractiveObject } from '@/lib/interactive-types';
@@ -30,14 +32,35 @@ export function getStartSceneId(
   return Object.values(sceneRecords).find((scene) => scene.isStart)?.id ?? null;
 }
 
+/**
+ * Details of a transition emitted by the executor, passed alongside the
+ * target scene id so hosts can resolve the destination and animate the entry.
+ */
+export interface ReaderTransitionEvent {
+  mode: TransitionMode;
+  transitionType: TransitionType;
+  durationSec: number;
+}
+
+/**
+ * Resolve where a transition leads. Returns the next scene id, or null when
+ * the story ends.
+ *
+ * - mode 'end'   → always null.
+ * - mode 'scene' → the explicit target, or null when it doesn't exist.
+ * - mode 'next'  → the scene's `next` connection, or null when there is none.
+ */
 export function getNextSceneId(
   sceneRecords: Record<string, ReaderScene>,
   currentSceneId: string,
   explicitTargetSceneId?: string | null,
+  mode: TransitionMode = 'next',
 ): string | null {
+  if (mode === 'end') return null;
   if (explicitTargetSceneId) {
     return sceneRecords[explicitTargetSceneId] ? explicitTargetSceneId : null;
   }
+  if (mode === 'scene') return null;
 
   const currentScene = sceneRecords[currentSceneId];
   const nextConnection = currentScene?.connections?.find((connection) => connection.outputPort === 'next');

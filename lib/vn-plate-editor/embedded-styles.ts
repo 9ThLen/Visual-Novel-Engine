@@ -185,7 +185,8 @@ export function createEmbeddedStyles(): string {
       user-select: none;
     }
     .void-block.is-selected,
-    .background-block.is-editing {
+    .background-block.is-editing,
+    .transition-block.is-editing {
       border-color: #60a5fa;
       box-shadow: 0 0 0 1px #60a5fa;
     }
@@ -204,6 +205,36 @@ export function createEmbeddedStyles(): string {
       min-height: 68px;
       padding: 12px 16px;
       background: #fffefa;
+    }
+    .transition-block {
+      min-height: 40px;
+      margin: 8px 0 12px;
+      padding: 8px 12px;
+      background: #fbfaff;
+      border-left: 3px solid #6366f1;
+    }
+    .transition-block .background-command-line {
+      gap: 12px;
+    }
+    .transition-block .void-title {
+      font-size: 13px;
+    }
+    .transition-block .void-summary {
+      font-size: 12px;
+    }
+    .transition-block .block-button {
+      height: 30px;
+      padding: 0 12px;
+      font-size: 12px;
+    }
+    .transition-scene-picker {
+      margin-top: 10px;
+    }
+    .transition-scene-picker .asset-choice {
+      grid-template-columns: 1fr;
+    }
+    .transition-scene-picker.hidden {
+      display: none;
     }
     .background-copy {
       min-width: 0;
@@ -274,6 +305,9 @@ export function createEmbeddedStyles(): string {
       border-top: 1px solid #ddd8cf;
       background: #ffffff;
       transform: rotate(45deg);
+    }
+    .transition-popover::before {
+      display: none;
     }
     .effect-popover,
     .audio-popover {
@@ -639,7 +673,8 @@ export function createEmbeddedStyles(): string {
         border-radius: 16px 16px 0 0;
         padding: 14px;
       }
-      .background-block {
+      .background-block,
+      .transition-block {
         align-items: stretch;
         flex-direction: column;
       }
@@ -676,6 +711,23 @@ export function createEmbeddedStyles(): string {
       .asset-choice-list {
         grid-template-columns: 1fr;
       }
+    }
+    /* Always docks as a bottom sheet, regardless of the scene iframe's own
+       viewport width (each scene renders in its own narrow iframe, which can
+       trip the mobile breakpoint above even on desktop). Kept last so it wins
+       the cascade against the ".background-popover" mobile override. */
+    .transition-popover {
+      position: fixed !important;
+      left: 50% !important;
+      right: auto !important;
+      top: auto !important;
+      bottom: 0 !important;
+      transform: translateX(-50%);
+      width: min(440px, calc(100vw - 24px));
+      max-height: min(70vh, 520px);
+      overflow: auto;
+      border-radius: 14px 14px 0 0;
+      box-shadow: 0 -16px 34px rgba(17, 24, 39, 0.16), 0 -2px 8px rgba(17, 24, 39, 0.08);
     }
   `;
 }

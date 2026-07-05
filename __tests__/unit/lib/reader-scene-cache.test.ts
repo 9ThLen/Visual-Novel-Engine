@@ -12,7 +12,7 @@ function transitionStep(targetSceneId: string | null, enabled = true): TimelineS
   return {
     id: `transition-${targetSceneId ?? 'end'}`,
     blockType: 'transition',
-    data: { targetSceneId, transitionType: 'fade', duration: 0.4 },
+    data: { mode: targetSceneId ? 'scene' : 'end', targetSceneId, transitionType: 'fade', duration: 0.4 },
     collapsed: false,
     enabled,
   };

@@ -1,6 +1,6 @@
 import type { InteractiveObject } from '@/lib/interactive-types';
 import type { FogEffectOptions, RainEffectOptions, SnowEffectOptions } from './effect-options';
-import type { EffectDurationMode } from './types';
+import type { EffectDurationMode, TransitionMode, TransitionType } from './types';
 
 export type RuntimeConditionOperator =
   | '=='
@@ -55,6 +55,11 @@ export interface SceneState {
   currentChoices: RuntimeChoiceOption[] | null;
   isTransitioning: boolean;
   transitionTarget: string | null;
+  /** How the pending transition resolves: follow next connection, explicit scene, or end story. */
+  transitionMode?: TransitionMode;
+  transitionType?: TransitionType;
+  /** Seconds the reader should spend animating into the next scene. */
+  transitionDuration?: number;
   currentStepIndex?: number;
   activeSpeakerCharacterId?: string | null;
   activeSpeakerFocusScale?: number;

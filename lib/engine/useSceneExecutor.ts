@@ -15,6 +15,7 @@ import type {
 } from './types';
 import type { SceneState } from './runtime-types';
 import { createEmptySceneState, conditionsMet } from './conditionUtils';
+import { normalizeTransitionData } from './transition-utils';
 import {
   isBlockingEffectType,
   normalizeEffectDuration,
@@ -313,8 +314,12 @@ export function useSceneExecutor(
           break;
         }
         case 'transition': {
+          const d = normalizeTransitionData(step.data as TransitionBlockData);
           nextState.isTransitioning = true;
-          nextState.transitionTarget = (step.data as TransitionBlockData).targetSceneId;
+          nextState.transitionTarget = d.targetSceneId;
+          nextState.transitionMode = d.mode;
+          nextState.transitionType = d.transitionType;
+          nextState.transitionDuration = d.duration;
           break;
         }
         case 'interactive_object': {
@@ -498,6 +503,8 @@ export function useSceneExecutor(
         currentChoices: null,
         isTransitioning: true,
         transitionTarget: selected.targetSceneId,
+        // A choice without an explicit target falls back to the scene's next connection.
+        transitionMode: selected.targetSceneId ? 'scene' : 'next',
       },
       canAdvance: false,
       currentStepIndex: internalIndexRef.current,

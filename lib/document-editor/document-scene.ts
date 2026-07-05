@@ -16,6 +16,7 @@ import {
   createSoundStep,
   createTextStep,
 } from '@/lib/engine/event-factory';
+import { normalizeTransitionData } from '@/lib/engine/transition-utils';
 import type {
   BackgroundBlockData,
   CharacterBlockData,
@@ -95,7 +96,19 @@ function technicalSummary(step: TimelineStep, characters: Character[]): { label:
 
   if (step.blockType === 'music') return { label: 'Музика', summary: 'налаштування треку' };
   if (step.blockType === 'sound') return { label: 'Звук', summary: 'звуковий ефект' };
-  if (step.blockType === 'transition') return { label: 'Перехід', summary: 'target scene' };
+  if (step.blockType === 'transition') {
+    const data = normalizeTransitionData(step.data);
+    const target = data.mode === 'end'
+      ? 'кінець історії'
+      : data.mode === 'scene'
+        ? (data.targetSceneId || 'сцену не вибрано')
+        : 'наступна сцена';
+    return {
+      label: 'Перехід',
+      summary: `${target} · ${data.transitionType} · ${data.duration}s`,
+      warning: data.mode === 'scene' && !data.targetSceneId ? 'Потрібно вибрати сцену' : undefined,
+    };
+  }
   if (step.blockType === 'variable') return { label: 'Змінна', summary: 'story flag' };
   if (step.blockType === 'effect') return { label: 'Ефект', summary: 'visual effect' };
   if (step.blockType === 'camera') return { label: 'Камера', summary: 'camera movement' };
@@ -826,9 +839,24 @@ export function documentSceneToConnections(documentScene: DocumentScene, nextSce
       }));
   });
 
+  // The first enabled transition block owns the `next` connection, matching
+  // executor behavior: transition halts scene execution.
+  const transitionBlock = documentScene.blocks.find(
+    (block): block is Extract<DocumentBlock, { kind: 'technical' }> =>
+      block.kind === 'technical'
+      && block.step?.blockType === 'transition'
+      && block.step.enabled !== false,
+  );
+  let nextTarget: string | null = nextSceneId ?? null;
+  if (transitionBlock) {
+    const data = normalizeTransitionData(transitionBlock.step.data);
+    if (data.mode === 'end') nextTarget = null;
+    else if (data.mode === 'scene') nextTarget = data.targetSceneId;
+  }
+
   return [
     ...choiceConnections,
-    ...(nextSceneId ? [{ targetSceneId: nextSceneId, outputPort: 'next', label: 'Next' }] : []),
+    ...(nextTarget ? [{ targetSceneId: nextTarget, outputPort: 'next', label: 'Next' }] : []),
   ];
 }
 
