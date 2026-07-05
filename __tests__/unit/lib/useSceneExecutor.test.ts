@@ -35,6 +35,15 @@ describe('useSceneExecutor', () => {
     });
 
     await waitFor(() => {
+      expect(result.current.canAdvance).toBe(true);
+      expect(result.current.sceneState.isTransitioning).toBe(false);
+    });
+
+    act(() => {
+      result.current.advance();
+    });
+
+    await waitFor(() => {
       expect(result.current.sceneState.isTransitioning).toBe(true);
       expect(result.current.sceneState.transitionTarget).toBe('scene-2');
     });
@@ -67,7 +76,7 @@ describe('useSceneExecutor', () => {
     });
   });
 
-  it('halts on transition blocks and exposes the target scene', async () => {
+  it('halts on transition blocks without transitioning until the player confirms', async () => {
     const timeline: TimelineStep[] = [
       { id: 'transition-1', blockType: 'transition', data: { targetSceneId: 'scene-2', transitionType: 'fade', duration: 0.4 }, collapsed: false, enabled: true } as TimelineStep,
     ];
@@ -77,9 +86,50 @@ describe('useSceneExecutor', () => {
     await waitFor(() => {
       expect(result.current.currentStepIndex).toBe(0);
       expect(result.current.canAdvance).toBe(true);
+      expect(result.current.sceneState.isTransitioning).toBe(false);
+    });
+
+    act(() => {
+      result.current.advance();
+    });
+
+    await waitFor(() => {
       expect(result.current.sceneState.isTransitioning).toBe(true);
       expect(result.current.sceneState.transitionTarget).toBe('scene-2');
     });
+  });
+
+  it('ignores a duplicate advance() call after a transition is already confirmed', async () => {
+    // Regression test: RN Web can dispatch a press twice for a single tap.
+    // A stray second advance() call right after the transition-confirming
+    // one used to fall through to the "move to next step" path (since
+    // isHaltedRef was never cleared), pushing the internal index past the
+    // end of the timeline and marking the executor spuriously "complete" —
+    // which fired a second, competing transition.
+    const timeline: TimelineStep[] = [
+      { id: 'transition-1', blockType: 'transition', data: { targetSceneId: 'scene-2', transitionType: 'fade', duration: 0.4 }, collapsed: false, enabled: true } as TimelineStep,
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.canAdvance).toBe(true);
+    });
+
+    act(() => {
+      result.current.advance();
+    });
+
+    await waitFor(() => {
+      expect(result.current.sceneState.isTransitioning).toBe(true);
+    });
+
+    act(() => {
+      result.current.advance();
+    });
+
+    expect(result.current.isComplete).toBe(false);
+    expect(result.current.sceneState.transitionTarget).toBe('scene-2');
   });
 
   it('skips disabled and condition-false steps', async () => {
@@ -120,6 +170,9 @@ describe('useSceneExecutor', () => {
       expect(result.current.isTyping).toBe(true);
     });
 
+    act(() => {
+      result.current.advance();
+    });
     act(() => {
       result.current.advance();
     });

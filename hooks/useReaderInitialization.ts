@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { selectReaderScene, selectReaderStartSceneId, useAppStore } from '@/stores/use-app-store';
+import { selectReaderStartSceneId, useAppStore } from '@/stores/use-app-store';
 import type { Story } from '@/lib/scene-operations';
 import type { PlaybackState } from '@/lib/engine/runtime-types';
-import type { TimelineStep } from '@/lib/engine/types';
+import type { TimelineStep, SceneRecord } from '@/lib/engine/types';
 import demoStory from '@/assets/demo-story.json';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 import { shouldReusePlaybackState } from '@/lib/reader-launch';
-import type { ReaderScene } from '@/lib/reader-scene';
+import { getSceneRecordFromAccess } from '@/lib/scene-access';
+import { toReaderScene } from '@/lib/reader-scene';
 
 export function useReaderInitialization(
   storyIdParam?: string | string[],
@@ -15,10 +16,38 @@ export function useReaderInitialization(
   const storiesMetadata = useAppStore((s) => s.storiesMetadata);
   const currentStoryId = useAppStore((s) => s.currentStoryId);
   const playbackState = useAppStore((s) => s.playbackState);
-  const currentReaderScene = useAppStore((s) =>
+  // Select the raw (stable-by-reference) scene record and derive the
+  // ReaderScene via useMemo below — toReaderScene() builds a new object on
+  // every call, and returning a fresh object straight from a Zustand
+  // selector makes useSyncExternalStore think the snapshot changes on every
+  // render, which causes an infinite render loop ("Maximum update depth
+  // exceeded") even though nothing in the store actually changed.
+  const currentSceneRecord = useAppStore((s) =>
     playbackState
-      ? selectReaderScene(playbackState.storyId, playbackState.currentSceneId)(s)
-      : null,
+      ? getSceneRecordFromAccess(s, playbackState.storyId, playbackState.currentSceneId)
+      : undefined,
+  );
+  // navigateToScene() hydrates the target scene's window *before* committing
+  // the new playbackState, and that window hydration replaces the story's
+  // scene map with a bounded set that may not include the scene still being
+  // displayed. That produces a transient render where playbackState still
+  // points at the old scene but its record has just been evicted — without
+  // this fallback, the still-mounted executor would see an empty timeline,
+  // report itself complete, and fire a bogus "no next connection" transition
+  // that races the real navigation. Keep serving the last known-good record
+  // for the same scene id until playbackState actually moves on.
+  const lastGoodSceneRef = useRef<{ sceneId: string; record: SceneRecord } | null>(null);
+  if (currentSceneRecord && playbackState) {
+    lastGoodSceneRef.current = { sceneId: playbackState.currentSceneId, record: currentSceneRecord };
+  }
+  const effectiveSceneRecord =
+    currentSceneRecord ??
+    (playbackState && lastGoodSceneRef.current?.sceneId === playbackState.currentSceneId
+      ? lastGoodSceneRef.current.record
+      : undefined);
+  const currentReaderScene = useMemo(
+    () => (effectiveSceneRecord ? toReaderScene(effectiveSceneRecord) : null),
+    [effectiveSceneRecord],
   );
   const setCurrentStory = useAppStore((s) => s.loadCurrentStory);
   const updatePlaybackState = useAppStore((s) => s.updatePlaybackState);

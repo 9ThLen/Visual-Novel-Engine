@@ -48,6 +48,12 @@ describe("sync tests", () => {
   it("transition step", () => {
     const { result } = renderHook(() => useSceneExecutor([makeTransitionStep("t1", "scene-2")]));
     expect(result.current.canAdvance).toBe(true);
+    expect(result.current.sceneState.isTransitioning).toBe(false);
+
+    act(() => {
+      result.current.advance();
+    });
+
     expect(result.current.sceneState.isTransitioning).toBe(true);
   });
 

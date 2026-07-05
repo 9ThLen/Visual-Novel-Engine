@@ -684,17 +684,6 @@ export function createEmbeddedStyles(): string {
       .block-actions {
         justify-content: flex-end;
       }
-      .background-popover,
-      .character-popover,
-      .effect-popover,
-      .audio-popover {
-        position: fixed;
-        left: 12px !important;
-        right: 12px;
-        top: auto !important;
-        bottom: 12px;
-        width: auto;
-      }
       .background-popover::before {
         display: none;
       }
@@ -712,22 +701,17 @@ export function createEmbeddedStyles(): string {
         grid-template-columns: 1fr;
       }
     }
-    /* Always docks as a bottom sheet, regardless of the scene iframe's own
-       viewport width (each scene renders in its own narrow iframe, which can
-       trip the mobile breakpoint above even on desktop). Kept last so it wins
-       the cascade against the ".background-popover" mobile override. */
+    /* Transition popovers are anchored in script. Keeping them out of fixed
+       bottom-sheet layout avoids iframe resize feedback loops. */
     .transition-popover {
-      position: fixed !important;
-      left: 50% !important;
+      position: absolute;
       right: auto !important;
-      top: auto !important;
-      bottom: 0 !important;
-      transform: translateX(-50%);
+      bottom: auto !important;
+      transform: none;
       width: min(440px, calc(100vw - 24px));
       max-height: min(70vh, 520px);
       overflow: auto;
-      border-radius: 14px 14px 0 0;
-      box-shadow: 0 -16px 34px rgba(17, 24, 39, 0.16), 0 -2px 8px rgba(17, 24, 39, 0.08);
+      border-radius: 10px;
     }
   `;
 }

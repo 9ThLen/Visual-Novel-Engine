@@ -31,6 +31,8 @@ interface ExecutorState {
   currentStepIndex: number;
   isTyping: boolean;
   canAdvance: boolean;
+  /** Transition reached but not yet confirmed by the player — see advance(). */
+  pendingTransition: TransitionBlockData | null;
 }
 
 interface ExecutorStepResult {
@@ -68,6 +70,7 @@ function createInitialExecutorState(
     currentStepIndex: 0,
     isTyping: false,
     canAdvance: false,
+    pendingTransition: null,
   };
 }
 
@@ -369,6 +372,7 @@ export function useSceneExecutor(
 
       if (result === 'halt') {
         const typing = step.blockType === 'text' || step.blockType === 'dialogue';
+        const isTransitionStep = step.blockType === 'transition';
         let resumeIndex = idx;
 
         if (typing) {
@@ -385,15 +389,23 @@ export function useSceneExecutor(
           }
         }
 
+        // A transition block yields for player confirmation (tap/auto-play/turbo
+        // via advance()) before it actually navigates — don't commit
+        // isTransitioning until then, or the reader jumps scenes on arrival.
         return {
           nextIndex: resumeIndex,
           isHalted: true,
           nextState: {
             ...prev,
-            sceneState: currentState,
+            sceneState: isTransitionStep
+              ? { ...currentState, isTransitioning: false }
+              : currentState,
             currentStepIndex: idx,
             isTyping: typing,
             canAdvance: step.blockType !== 'choice',
+            pendingTransition: isTransitionStep
+              ? normalizeTransitionData(step.data as TransitionBlockData)
+              : null,
           },
         };
       }
@@ -409,6 +421,7 @@ export function useSceneExecutor(
         sceneState: currentState,
         isTyping: false,
         canAdvance: false,
+        pendingTransition: null,
       },
     };
   }, [executeStep]);
@@ -471,6 +484,31 @@ export function useSceneExecutor(
       }
 
       if (sceneState.currentChoices) {
+        return;
+      }
+
+      const pending = execStateRef.current.pendingTransition;
+      if (pending) {
+        // Consuming the pending transition resolves the halt for good — clear
+        // isHaltedRef so a duplicate advance() call (RN Web can dispatch a
+        // press twice before this state change re-renders) is a no-op instead
+        // of falling through to the "move to next step" path below, which
+        // would push internalIndexRef past the timeline end and spuriously
+        // mark the executor complete.
+        isHaltedRef.current = false;
+        updateExecutorState((prev) => ({
+          ...prev,
+          sceneState: {
+            ...prev.sceneState,
+            isTransitioning: true,
+            transitionTarget: pending.targetSceneId,
+            transitionMode: pending.mode,
+            transitionType: pending.transitionType,
+            transitionDuration: pending.duration,
+          },
+          pendingTransition: null,
+          canAdvance: false,
+        }));
         return;
       }
 

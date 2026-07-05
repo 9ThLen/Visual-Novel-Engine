@@ -712,6 +712,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeSlashMenu();
       closeBackgroundPopover();
       closeCharacterPopover();
+      closeTransitionPopover();
       closeAudioPopover();
       if (activeEffectChip === chip && effectPopover) {
         closeEffectPopover();
@@ -1009,6 +1010,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeSlashMenu();
       closeBackgroundPopover();
       closeCharacterPopover();
+      closeTransitionPopover();
       closeEffectPopover();
       if (activeAudioChip === chip && audioPopover) {
         closeAudioPopover();
@@ -1205,6 +1207,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeBackgroundPopover();
       closeEffectPopover();
       closeAudioPopover();
+      closeTransitionPopover();
       closeCharacterPopover();
       activeCharacterToken = token;
       var popover = document.createElement('div');
@@ -1379,6 +1382,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         closeBackgroundPopover();
         return;
       }
+      closeCharacterPopover();
+      closeTransitionPopover();
       closeEffectPopover();
       closeAudioPopover();
       closeBackgroundPopover();
@@ -1601,10 +1606,26 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       scheduleResize();
     }
 
-    function positionTransitionPopover() {
-      // Docks to the bottom of the viewport as a sheet (see .transition-popover CSS) —
-      // ending a scene reads naturally as sliding up from the bottom, not a floating bubble.
-      if (!transitionPopover) return;
+    function positionTransitionPopover(anchor) {
+      if (!transitionPopover || !anchor) return;
+      var rect = anchor.getBoundingClientRect();
+      var scrollX = window.scrollX || window.pageXOffset || 0;
+      var scrollY = window.scrollY || window.pageYOffset || 0;
+      var margin = 16;
+      var gap = 8;
+      var width = Math.min(440, window.innerWidth - margin * 2);
+      var maxHeight = Math.min(520, Math.max(220, window.innerHeight - margin * 2));
+      transitionPopover.style.width = width + 'px';
+      transitionPopover.style.maxHeight = maxHeight + 'px';
+      var popoverHeight = Math.min(transitionPopover.offsetHeight || maxHeight, maxHeight);
+      var left = scrollX + Math.max(margin, Math.min(window.innerWidth - width - margin, rect.right - width));
+      var belowTop = rect.bottom + gap;
+      var aboveTop = rect.top - popoverHeight - gap;
+      var top = belowTop + popoverHeight + margin <= window.innerHeight
+        ? belowTop
+        : Math.max(margin, aboveTop);
+      transitionPopover.style.left = left + 'px';
+      transitionPopover.style.top = (scrollY + top) + 'px';
       scheduleResize();
     }
 
@@ -1641,6 +1662,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeBackgroundPopover();
       closeEffectPopover();
       closeAudioPopover();
+      closeCharacterPopover();
       closeTransitionPopover();
       activeTransitionBlock = block;
       activeTransitionBlock.classList.add('is-editing', 'is-selected');
@@ -1678,7 +1700,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (transitionDraft.targetSceneId) popover.dataset.selectedSceneId = transitionDraft.targetSceneId;
       popover.querySelector('#trDuration').value = formatSeconds(transitionDraft.duration);
       renderTransitionScenePicker(popover);
-      afterLayout(function() { positionTransitionPopover(); });
+      afterLayout(function() { positionTransitionPopover(anchor || block); });
     }
 
     function collectTransitionForm() {

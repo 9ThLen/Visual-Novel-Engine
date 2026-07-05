@@ -213,6 +213,7 @@ export default function ReaderScreen() {
       </Pressable>
 
       <StoryReaderResponsive
+        key={sceneRecord?.id ?? playbackState!.currentSceneId}
         sceneId={sceneRecord?.id ?? playbackState!.currentSceneId}
         timeline={timeline}
         onTransition={handleTransition}
