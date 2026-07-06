@@ -827,6 +827,24 @@ export function documentSceneToTimeline(documentScene: DocumentScene, characters
   });
 }
 
+/**
+ * Resolves the `next` target to persist for a scene on save.
+ *
+ * The scene's existing `next` connection always wins: the document's render
+ * order must never rewrite graph edges (under active-path rendering the
+ * document neighbor of a choice scene is the selected branch's first scene,
+ * and writing it as `next` would corrupt the null-option fallback). The
+ * positional neighbor is only a fallback for scenes that have no `next` yet —
+ * today that weaves appended orphan scenes into the chain on save.
+ */
+export function resolveNextSceneIdForSave(
+  sourceRecord: Pick<SceneRecord, 'connections'>,
+  positionalNextSceneId: string | undefined,
+): string | undefined {
+  const existing = sourceRecord.connections?.find((connection) => connection.outputPort === 'next');
+  return existing?.targetSceneId ?? positionalNextSceneId;
+}
+
 export function documentSceneToConnections(documentScene: DocumentScene, nextSceneId?: string): SceneConnection[] {
   const choiceConnections = documentScene.blocks.flatMap((block) => {
     if (block.kind !== 'choice') return [];

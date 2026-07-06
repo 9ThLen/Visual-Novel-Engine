@@ -6,6 +6,7 @@ import {
   ensureDocumentCharactersInBlocks,
   orderSceneRecordsForDocument,
   parseDraftLineToDocumentBlock,
+  resolveNextSceneIdForSave,
   sceneRecordToDocumentScene,
 } from '@/lib/document-editor/document-scene';
 import { buildDocumentsResetKey } from '@/lib/document-editor/document-reset-key';
@@ -342,6 +343,54 @@ describe('document scene parser/compiler', () => {
       sceneWith(transitionBlock({ targetSceneId: 'scene_9', transitionType: 'fade', duration: 0.5 })),
       'scene_2',
     )).toEqual([{ targetSceneId: 'scene_9', outputPort: 'next', label: 'Next' }]);
+  });
+
+  it('save preserves the existing next connection over the document-order neighbour', () => {
+    // Regression guard for active-path rendering: the document neighbour of a
+    // choice scene is the selected branch's first scene. Persisting it as
+    // `next` would corrupt the null-option fallback (reader semantics: a
+    // choice option with targetSceneId null follows the `next` connection).
+    const choiceScene = {
+      connections: [
+        { targetSceneId: 'scene_branch_a_start', outputPort: 'choice_a', label: 'A' },
+        { targetSceneId: 'scene_fallback', outputPort: 'next', label: 'Next' },
+      ],
+    };
+
+    // Document renders branch A after the choice scene, but `next` must survive.
+    expect(resolveNextSceneIdForSave(choiceScene, 'scene_branch_a_start')).toBe('scene_fallback');
+
+    const connections = documentSceneToConnections(
+      {
+        sceneId: 'scene_1',
+        sceneName: 'Choice scene',
+        blocks: [{
+          id: 'choice_1',
+          kind: 'choice',
+          question: 'Where next?',
+          options: [
+            { id: 'choice_a', text: 'A', targetSceneId: 'scene_branch_a_start' },
+            { id: 'choice_b', text: 'B', targetSceneId: null },
+          ],
+        }],
+      },
+      resolveNextSceneIdForSave(choiceScene, 'scene_branch_a_start'),
+    );
+
+    expect(connections).toEqual([
+      { targetSceneId: 'scene_branch_a_start', outputPort: 'choice_a', label: 'A' },
+      { targetSceneId: 'scene_fallback', outputPort: 'next', label: 'Next' },
+    ]);
+  });
+
+  it('save falls back to the document-order neighbour only for scenes without a next connection', () => {
+    expect(resolveNextSceneIdForSave({ connections: [] }, 'scene_2')).toBe('scene_2');
+    expect(resolveNextSceneIdForSave({ connections: undefined as any }, 'scene_2')).toBe('scene_2');
+    expect(resolveNextSceneIdForSave(
+      { connections: [{ targetSceneId: 'scene_x', outputPort: 'choice_a' }] },
+      'scene_2',
+    )).toBe('scene_2');
+    expect(resolveNextSceneIdForSave({ connections: [] }, undefined)).toBeUndefined();
   });
 
   it('uses the first enabled transition block for the next connection', () => {

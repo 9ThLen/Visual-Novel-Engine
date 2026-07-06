@@ -5,9 +5,10 @@ import {
   DocumentSceneEditor,
 } from '@/components/document-editor/DocumentSceneEditor';
 import { buildDocumentsResetKey } from '@/lib/document-editor/document-reset-key';
+import { resolveNextSceneIdForSave } from '@/lib/document-editor/document-scene';
 import type { Character } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo } from '@/lib/vn-plate-editor/types';
 import type { PlateDocumentScene } from './types';
 import { sceneRecordToPlateDocument } from './serializers/scene-to-plate';
 import { plateDocumentToSceneRecord } from './serializers/plate-to-scene';
@@ -16,6 +17,16 @@ interface PlateSceneEditorProps {
   storyId: string;
   sceneRecord: SceneRecord;
   scenes: SceneRecord[];
+  /** Scenes not reachable on the active path («Поза сюжетом»). */
+  offPathScenes?: SceneRecord[];
+  /** Branch info per choice block on the active path, for the branch switcher. */
+  branchInfo?: VNPlateBranchInfo[];
+  onSelectChoiceOption?: (choiceStepId: string, optionId: string) => void;
+  onStartBranchOption?: (choiceStepId: string, optionId: string) => void;
+  /** incomingCount per scene id, drives the merge-point banners. */
+  incomingCountBySceneId?: Record<string, number>;
+  /** Branch accent color per scene id on the active path (branch tinting). */
+  branchColorBySceneId?: Record<string, string>;
   sceneIndex: number;
   sceneCount: number;
   characters: Character[];
@@ -32,6 +43,12 @@ export function PlateSceneEditor({
   storyId,
   sceneRecord,
   scenes,
+  offPathScenes,
+  branchInfo,
+  onSelectChoiceOption,
+  onStartBranchOption,
+  incomingCountBySceneId,
+  branchColorBySceneId,
   sceneIndex,
   sceneCount,
   characters,
@@ -59,7 +76,7 @@ export function PlateSceneEditor({
       const sourceRecord = recordsById.get(documentScene.sceneId);
       if (!sourceRecord) return [];
       return [plateDocumentToSceneRecord(sourceRecord, documentScene, nextCharacters, {
-        nextSceneId: scenes[index + 1]?.id,
+        nextSceneId: resolveNextSceneIdForSave(sourceRecord, scenes[index + 1]?.id),
       })];
     });
   };
@@ -83,6 +100,12 @@ export function PlateSceneEditor({
       storyId={storyId}
       sceneRecord={sceneRecord}
       scenes={scenes}
+      offPathScenes={offPathScenes}
+      branchInfo={branchInfo}
+      onSelectChoiceOption={onSelectChoiceOption}
+      onStartBranchOption={onStartBranchOption}
+      incomingCountBySceneId={incomingCountBySceneId}
+      branchColorBySceneId={branchColorBySceneId}
       sceneIndex={sceneIndex}
       sceneCount={sceneCount}
       initialDocuments={initialDocuments}

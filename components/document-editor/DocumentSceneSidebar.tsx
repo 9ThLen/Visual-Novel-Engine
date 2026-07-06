@@ -14,12 +14,32 @@ interface DocumentSceneSidebarProps {
   colorScheme?: ColorScheme;
   dirtySceneIds?: Set<string>;
   scenes: SceneRecord[];
+  /** Scenes not reachable on the active story path, shown in a separate «Поза сюжетом» section. */
+  offPathScenes?: SceneRecord[];
+  /** Branch accent color per scene id; renders a small dot next to the scene name. */
+  branchColorBySceneId?: Record<string, string>;
   onScenePress: (sceneId: string) => void;
+  /** Off-path scenes are not in the rendered document, so pressing them navigates instead of scrolling. */
+  onOffPathScenePress?: (sceneId: string) => void;
 }
 
-export function DocumentSceneSidebar({ activeSceneId, colorScheme, dirtySceneIds, scenes, onScenePress }: DocumentSceneSidebarProps) {
+export function DocumentSceneSidebar({
+  activeSceneId,
+  colorScheme,
+  dirtySceneIds,
+  scenes,
+  offPathScenes,
+  branchColorBySceneId,
+  onScenePress,
+  onOffPathScenePress,
+}: DocumentSceneSidebarProps) {
   const colors = useColors(colorScheme);
   const { t } = useI18n();
+
+  // Scenes can appear in both lists when the document appends the off-path
+  // tail (route scene off-path) — keep each scene in one section only.
+  const documentSceneIds = new Set(scenes.map((scene) => scene.id));
+  const extraScenes = (offPathScenes ?? []).filter((scene) => !documentSceneIds.has(scene.id));
 
   return (
     <View style={{ width: 286, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors['surface-1'], padding: 14 }}>
@@ -45,9 +65,21 @@ export function DocumentSceneSidebar({ activeSceneId, colorScheme, dirtySceneIds
             <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
               <SceneThumbnail scene={scene} colorScheme={colorScheme} />
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
-                  {dirtySceneIds?.has(scene.id) ? '* ' : ''}{scene.name || t('document.untitledScene')}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {branchColorBySceneId?.[scene.id] ? (
+                    <View
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: branchColorBySceneId[scene.id],
+                      }}
+                    />
+                  ) : null}
+                  <Text style={{ flex: 1, color: colors.foreground, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
+                    {dirtySceneIds?.has(scene.id) ? '* ' : ''}{scene.name || t('document.untitledScene')}
+                  </Text>
+                </View>
                 <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
                   {t('document.blockCount', { count: scene.timeline.length })}
                 </Text>
@@ -55,6 +87,40 @@ export function DocumentSceneSidebar({ activeSceneId, colorScheme, dirtySceneIds
             </View>
           </Pressable>
         ))}
+
+        {extraScenes.length > 0 ? (
+          <>
+            <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 14, marginBottom: 8 }}>
+              {t('document.offStorySection')}
+            </Text>
+            {extraScenes.map((scene) => (
+              <Pressable
+                key={scene.id}
+                onPress={() => (onOffPathScenePress ?? onScenePress)(scene.id)}
+                style={{
+                  borderRadius: 7,
+                  backgroundColor: 'transparent',
+                  paddingHorizontal: 12,
+                  paddingVertical: 11,
+                  marginBottom: 8,
+                  opacity: 0.72,
+                }}
+              >
+                <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                  <SceneThumbnail scene={scene} colorScheme={colorScheme} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
+                      {dirtySceneIds?.has(scene.id) ? '* ' : ''}{scene.name || t('document.untitledScene')}
+                    </Text>
+                    <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
+                      {t('document.blockCount', { count: scene.timeline.length })}
+                    </Text>
+                  </View>
+                </View>
+              </Pressable>
+            ))}
+          </>
+        ) : null}
       </ScrollView>
     </View>
   );

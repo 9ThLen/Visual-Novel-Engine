@@ -1,4 +1,5 @@
 import type { Character } from '@/lib/character-types';
+import { branchColorForOptionIndex } from '@/lib/document-editor/branch-colors';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import type { BackgroundBlockData, CharacterBlockData } from '@/lib/engine/types';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
@@ -280,10 +281,35 @@ export function blockToHtml(
   }
 
   if (block.kind === 'choice') {
+    const question = block.question || 'Choice';
+    const options = block.options && block.options.length
+      ? block.options
+      : [
+          { id: 'choice_a', text: 'Варіант 1', targetSceneId: null },
+          { id: 'choice_b', text: 'Варіант 2', targetSceneId: null },
+        ];
+    const data = { question, options };
+    const trimmedQuestion = question.trim();
+    const questionHtml = trimmedQuestion && trimmedQuestion !== 'Choice'
+      ? `<div class="void-summary choice-question-summary">${escapeHtml(trimmedQuestion)}</div>`
+      : '';
+    const cards = options.map((option, optionIndex) => {
+      const color = branchColorForOptionIndex(optionIndex);
+      return '<div class="choice-option-card-wrap">'
+        + `<button type="button" class="choice-option-card" data-action="select-branch-option" data-option-id="${escapeHtml(option.id)}">`
+        + `<span class="choice-option-dot" style="background: ${color};"></span>`
+        + `<span class="choice-option-card-text">${escapeHtml(option.text || 'Варіант')}</span>`
+        + '</button>'
+        + '</div>';
+    }).join('');
     return [
-      `<div class="void-block choice-block" contenteditable="false" data-kind="choice" data-id="${escapeHtml(block.id)}">`,
-      '<div class="void-title">/choice</div>',
-      `<div class="void-summary">${escapeHtml(block.question || 'Choice')}</div>`,
+      `<div class="void-block choice-block" contenteditable="false" data-kind="choice" data-id="${escapeHtml(block.id)}" data-choice="${escapeHtml(JSON.stringify(data))}">`,
+      '<div class="choice-block-header">',
+      '<span class="void-title">/choice</span>',
+      '<button type="button" class="block-button" data-action="edit-choice">Edit</button>',
+      '</div>',
+      questionHtml,
+      `<div class="choice-options-grid">${cards}</div>`,
       '</div>',
     ].join('');
   }

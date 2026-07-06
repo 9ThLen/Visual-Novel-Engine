@@ -7,6 +7,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Animated,
+  Easing,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -34,7 +36,7 @@ import {
   computeMountDelta,
   seedMountedSceneIds,
 } from '@/lib/document-editor/scene-mount-range';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo } from '@/lib/vn-plate-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { DocumentScene } from '@/lib/document-editor/types';
 import type { SceneRecord } from '@/lib/engine/types';
@@ -43,6 +45,18 @@ interface DocumentSceneEditorProps {
   storyId: string;
   sceneRecord: SceneRecord;
   scenes: SceneRecord[];
+  /** Scenes not reachable on the active path, listed in the sidebar under «Поза сюжетом». */
+  offPathScenes?: SceneRecord[];
+  /** Branch info per choice block, forwarded to webview editors for the branch switcher. */
+  branchInfo?: VNPlateBranchInfo[];
+  /** Called after dirty editors are flushed and saved; the host then re-renders the new branch. */
+  onSelectChoiceOption?: (choiceStepId: string, optionId: string) => void;
+  /** Called after dirty editors are flushed and saved; the host creates a new scene for the option. */
+  onStartBranchOption?: (choiceStepId: string, optionId: string) => void;
+  /** incomingCount per scene id, drives the merge-point banners. */
+  incomingCountBySceneId?: Record<string, number>;
+  /** Branch accent color per scene id on the active path (branch tinting). */
+  branchColorBySceneId?: Record<string, string>;
   sceneIndex: number;
   sceneCount: number;
   initialDocuments: DocumentScene[];
@@ -86,6 +100,12 @@ export function DocumentSceneEditor({
   storyId,
   sceneRecord,
   scenes,
+  offPathScenes,
+  branchInfo,
+  onSelectChoiceOption,
+  onStartBranchOption,
+  incomingCountBySceneId,
+  branchColorBySceneId,
   sceneIndex,
   sceneCount,
   initialDocuments,
@@ -132,6 +152,8 @@ export function DocumentSceneEditor({
   const prevResetKeyRef = useRef(documentsResetKey);
   const prevRouteSceneIdRef = useRef(sceneRecord.id);
   const savingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Starts at 1 so the initial mount renders without an entrance animation.
+  const branchSwitchAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     mountedSceneIdsRef.current = mountedSceneIds;
@@ -171,14 +193,34 @@ export function DocumentSceneEditor({
     editorRefsRef.current.clear();
     setMountedSceneIds(seedMountedSceneIds(initialDocuments.map((ds) => ds.sceneId), nextActiveSceneId));
     pendingScrollSceneIdRef.current = nextActiveSceneId;
-  }, [activeSceneId, characters, dirtySceneIds, documentsResetKey, initialDocuments, sceneRecord.id]);
 
-  // Live scene refs for transition target pickers inside the webview editors —
-  // names come from the in-session documents so renames show up immediately.
-  const storySceneRefs = React.useMemo(
-    () => documentScenes.map((ds) => ({ id: ds.sceneId, name: ds.sceneName || 'Untitled Scene' })),
-    [documentScenes],
-  );
+    // Slide-and-fade the rebuilt document in so a branch switch reads as a
+    // content change rather than a flicker. Opacity/transform only — layout
+    // and the scroll restore logic above are unaffected.
+    branchSwitchAnim.setValue(0);
+    Animated.timing(branchSwitchAnim, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  }, [activeSceneId, branchSwitchAnim, characters, dirtySceneIds, documentsResetKey, initialDocuments, sceneRecord.id]);
+
+  // Live scene refs for transition/choice target pickers inside the webview
+  // editors — names come from the in-session documents so renames show up
+  // immediately. Off-path scenes («Поза сюжетом») are appended so a branch
+  // can be merged back into them; they are not editable here, so their
+  // record names are current.
+  const storySceneRefs = React.useMemo(() => {
+    const refs = documentScenes.map((ds) => ({ id: ds.sceneId, name: ds.sceneName || 'Untitled Scene' }));
+    const inDocument = new Set(documentScenes.map((ds) => ds.sceneId));
+    for (const scene of offPathScenes ?? []) {
+      if (!inDocument.has(scene.id)) {
+        refs.push({ id: scene.id, name: scene.name || 'Untitled Scene' });
+      }
+    }
+    return refs;
+  }, [documentScenes, offPathScenes]);
 
   const activeDocument = documentScenes.find((ds) => ds.sceneId === activeSceneId) ?? documentScenes[0];
   const activeSceneIndex = Math.max(0, scenes.findIndex((scene) => scene.id === activeSceneId));
@@ -313,6 +355,44 @@ export function DocumentSceneEditor({
       savingTimerRef.current = null;
     }, 250);
   }, [documentsWithDrafts, flushDirtyMountedEditors, onSave]);
+
+  const handleSelectChoiceOption = useCallback(async (choiceStepId: string, optionId: string) => {
+    if (!onSelectChoiceOption) return;
+    // Flush unsaved edits and persist BEFORE switching the branch: the switch
+    // replaces initialDocuments/documentsResetKey, and the reset effect both
+    // skips while the active scene is dirty and drops draft snapshots.
+    await handleSave();
+    onSelectChoiceOption(choiceStepId, optionId);
+  }, [handleSave, onSelectChoiceOption]);
+
+  // Ref-stable wrapper so passing it to every (memoized) DocumentSceneFrame
+  // doesn't defeat React.memo when handleSave's identity changes.
+  const selectChoiceOptionImplRef = useRef(handleSelectChoiceOption);
+  selectChoiceOptionImplRef.current = handleSelectChoiceOption;
+  const stableSelectChoiceOption = useCallback((choiceStepId: string, optionId: string) => {
+    void selectChoiceOptionImplRef.current(choiceStepId, optionId);
+  }, []);
+
+  const handleStartBranchOption = useCallback(async (choiceStepId: string, optionId: string) => {
+    if (!onStartBranchOption) return;
+    // Same flush-then-mutate contract as branch switching: the host will
+    // rewrite the choice scene's record and reset the document.
+    await handleSave();
+    onStartBranchOption(choiceStepId, optionId);
+  }, [handleSave, onStartBranchOption]);
+
+  const startBranchOptionImplRef = useRef(handleStartBranchOption);
+  startBranchOptionImplRef.current = handleStartBranchOption;
+  const stableStartBranchOption = useCallback((choiceStepId: string, optionId: string) => {
+    void startBranchOptionImplRef.current(choiceStepId, optionId);
+  }, []);
+
+  const handleOffPathScenePress = useCallback(async (nextSceneId: string) => {
+    // Off-path scenes are not rendered in the current document — reopen the
+    // route on that scene so it gets appended and becomes editable.
+    await handleSave();
+    router.push({ pathname: '/document-editor', params: { storyId, sceneId: nextSceneId } });
+  }, [handleSave, router, storyId]);
 
   const handlePlateChangeImpl = useCallback((_sceneId: string, nextScene: DocumentScene, nextCharacters: Character[]) => {
     applyDraftSnapshot({ scene: nextScene, characters: nextCharacters });
@@ -455,7 +535,10 @@ export function DocumentSceneEditor({
             colorScheme={documentColorScheme}
             dirtySceneIds={dirtySceneIds}
             scenes={scenes}
+            offPathScenes={offPathScenes}
+            branchColorBySceneId={branchColorBySceneId}
             onScenePress={handleScenePress}
+            onOffPathScenePress={handleOffPathScenePress}
           />
         ) : null}
 
@@ -469,13 +552,26 @@ export function DocumentSceneEditor({
             paddingHorizontal: isPhone ? 0 : 28,
             paddingTop: isPhone ? 0 : 28,
             paddingBottom: isPhone ? insets.bottom + 20 : 36,
-            gap: isPhone ? 18 : 34,
           }}
           keyboardShouldPersistTaps="handled"
           onLayout={handleViewportLayout}
           onScroll={handleScroll}
           scrollEventThrottle={16}
         >
+          <Animated.View
+            style={{
+              gap: isPhone ? 18 : 34,
+              opacity: branchSwitchAnim,
+              transform: [
+                {
+                  translateY: branchSwitchAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [14, 0],
+                  }),
+                },
+              ],
+            }}
+          >
           {documentScenes.map((documentScene) => (
             <DocumentSceneFrame
               key={documentScene.sceneId}
@@ -485,6 +581,11 @@ export function DocumentSceneEditor({
               backgroundAssets={backgroundAssets}
               audioAssets={audioAssets}
               storyScenes={storySceneRefs}
+              branchInfo={branchInfo}
+              onSelectChoiceOption={stableSelectChoiceOption}
+              onStartBranchOption={stableStartBranchOption}
+              incomingCount={incomingCountBySceneId?.[documentScene.sceneId]}
+              branchColor={branchColorBySceneId?.[documentScene.sceneId]}
               isPhone={isPhone}
               isMounted={mountedSceneIds.has(documentScene.sceneId)}
               cachedHeight={sceneLayoutRef.current.get(documentScene.sceneId)?.height}
@@ -496,6 +597,7 @@ export function DocumentSceneEditor({
               onFrameLayout={getOnFrameLayout(documentScene.sceneId)}
             />
           ))}
+          </Animated.View>
         </ScrollView>
 
         {!isPhone ? (

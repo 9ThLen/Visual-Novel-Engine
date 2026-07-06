@@ -133,7 +133,7 @@ describe('useReaderInitialization', () => {
     // completed and fire a bogus transition.
     const sceneA = makeSceneRecord('scene-a', 'story-1');
     sceneA.timeline = [
-      { id: 'step-1', blockType: 'text', data: { content: 'hello' }, collapsed: false, enabled: true },
+      { id: 'step-1', blockType: 'text', data: { content: 'hello', typewriterSpeed: 0.5, anchorTo: 'background' }, collapsed: false, enabled: true },
     ];
 
     useAppStore.setState({

@@ -183,7 +183,7 @@ export interface DialogueBlockData {
 export interface ChoiceOption {
   id: string;
   text: string;
-  targetSceneId: string | null;  // null = end scene
+  targetSceneId: string | null;  // null = follow the scene's next connection (see useSceneExecutor)
   condition?: Condition;
 }
 

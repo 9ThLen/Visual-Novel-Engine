@@ -17,7 +17,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import type { Character } from '@/lib/character-types';
 import type { DocumentScene } from '@/lib/document-editor/types';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateSceneRef } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateSceneRef } from '@/lib/vn-plate-editor/types';
 
 interface DocumentSceneFrameProps {
   scene: DocumentScene;
@@ -26,6 +26,13 @@ interface DocumentSceneFrameProps {
   backgroundAssets: VNPlateBackgroundAsset[];
   audioAssets: VNPlateAudioAsset[];
   storyScenes: VNPlateSceneRef[];
+  branchInfo?: VNPlateBranchInfo[];
+  onSelectChoiceOption?: (choiceStepId: string, optionId: string) => void;
+  onStartBranchOption?: (choiceStepId: string, optionId: string) => void;
+  /** Distinct scenes with a connection into this one; ≥2 renders the merge-point banner. */
+  incomingCount?: number;
+  /** Accent color of the branch this scene belongs to; renders a left stripe. */
+  branchColor?: string;
   isPhone: boolean;
   isMounted: boolean;
   /** Last known rendered height for this scene, used to seed/replace the frame without a visible jump. */
@@ -45,6 +52,11 @@ function DocumentSceneFrameImpl({
   backgroundAssets,
   audioAssets,
   storyScenes,
+  branchInfo,
+  onSelectChoiceOption,
+  onStartBranchOption,
+  incomingCount,
+  branchColor,
   isPhone,
   isMounted,
   cachedHeight,
@@ -81,6 +93,42 @@ function DocumentSceneFrameImpl({
         zIndex: isOverlayActive ? 80 : 0,
       }}
     >
+      {branchColor ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: isPhone ? 2 : -12,
+            top: 4,
+            bottom: 4,
+            width: 3,
+            borderRadius: 2,
+            backgroundColor: branchColor,
+            opacity: 0.85,
+          }}
+        />
+      ) : null}
+      {(incomingCount ?? 0) >= 2 ? (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            marginBottom: 6,
+            borderRadius: 8,
+            backgroundColor: colors['surface-1'],
+            borderWidth: 1,
+            borderColor: colors.border,
+            alignSelf: 'flex-start',
+          }}
+        >
+          <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600' }}>
+            {t('document.mergePointBanner', { count: String(incomingCount) })}
+          </Text>
+        </View>
+      ) : null}
       {isMounted ? (
         <PlateWebViewEditor
           ref={registerEditorRef}
@@ -90,6 +138,9 @@ function DocumentSceneFrameImpl({
           backgroundAssets={backgroundAssets}
           audioAssets={audioAssets}
           scenes={storyScenes}
+          branchInfo={branchInfo}
+          onSelectChoiceOption={onSelectChoiceOption}
+          onStartBranchOption={onStartBranchOption}
           isPhone={isPhone}
           initialHeight={cachedHeight}
           style={{ width: '100%', overflow: 'visible' }}

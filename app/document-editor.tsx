@@ -6,7 +6,9 @@ import {
   PlateSceneEditor,
 } from '@/components/editor/plate/PlateSceneEditor';
 import { ScreenContainer } from '@/components/screen-container';
-import { orderSceneRecordsForDocument } from '@/lib/document-editor/document-scene';
+import { startBranchScene } from '@/lib/document-editor/branch-actions';
+import { computeBranchColorBySceneId } from '@/lib/document-editor/branch-colors';
+import { expandActivePath } from '@/lib/document-editor/story-path';
 import {
   connectSourceToNext,
   createNextSceneRecordAfter,
@@ -20,6 +22,7 @@ import {
   selectSceneRecordsForStory,
   useAppStore,
 } from '@/stores/use-app-store';
+import { selectBranchSelections, useBranchSelections } from '@/stores/use-branch-selections';
 import type { Character } from '@/lib/character-types';
 import type { DialogueBlockData, SceneRecord } from '@/lib/engine/types';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
@@ -55,7 +58,30 @@ export default function DocumentEditorRoute() {
   const setMediaLibrary = useAppStore((state) => state.setMediaLibrary);
   const reorderScenes = useAppStore((state) => state.reorderScenes);
   const updateStoryMetadata = useAppStore((state) => state.updateStoryMetadata);
-  const orderedScenes = useMemo(() => orderSceneRecordsForDocument(scenes), [scenes]);
+  const branchSelections = useBranchSelections(useMemo(() => selectBranchSelections(storyId), [storyId]));
+  const selectChoiceOption = useBranchSelections((state) => state.selectChoiceOption);
+  const activePath = useMemo(() => expandActivePath(scenes, branchSelections), [branchSelections, scenes]);
+  const orderedScenes = useMemo(() => {
+    // The document renders the active path. If the route scene fell off it
+    // (orphaned tail, or the author opened a scene from «Поза сюжетом»), append
+    // the off-path scenes so the target scene is still reachable and editable.
+    const onActivePath = !sceneId || activePath.activeScenes.some((scene) => scene.id === sceneId);
+    return onActivePath
+      ? activePath.activeScenes
+      : [...activePath.activeScenes, ...activePath.offPathScenes];
+  }, [activePath, sceneId]);
+  const branchInfo = useMemo(
+    () => Object.values(activePath.branchInfoByChoiceStepId),
+    [activePath.branchInfoByChoiceStepId],
+  );
+  const incomingCountBySceneId = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const [id, metadata] of Object.entries(activePath.metadataBySceneId)) {
+      counts[id] = metadata.incomingCount;
+    }
+    return counts;
+  }, [activePath.metadataBySceneId]);
+  const branchColorBySceneId = useMemo(() => computeBranchColorBySceneId(activePath), [activePath]);
   const backgroundAssets = useMemo<VNPlateBackgroundAsset[]>(
     () => mediaLibrary
       .filter((asset) => asset.type === 'image')
@@ -181,7 +207,12 @@ export default function DocumentEditorRoute() {
     editedRecords: SceneRecord[],
     nextCharacters: Character[],
   ) => {
-    const recordsById = new Map(orderedScenes.map((scene) => [scene.id, scene]));
+    // Base everything on ALL story scenes, not just the rendered active path:
+    // scene numbering, sceneCount metadata, and the reorder list must include
+    // off-path scenes («Поза сюжетом») or they would be renumbered/pushed to
+    // the end and the story metadata would undercount.
+    const allScenes = selectSceneRecordsForStory(storyId)(useAppStore.getState());
+    const recordsById = new Map(allScenes.map((scene) => [scene.id, scene]));
     editedRecords.forEach((record) => recordsById.set(record.id, record));
 
     const sourceRecord = recordsById.get(sourceSceneId);
@@ -190,7 +221,11 @@ export default function DocumentEditorRoute() {
     const nextScene = createNextSceneRecordAfter(sourceRecord, [...recordsById.values()]);
     const withNextScene = [...recordsById.values(), nextScene];
     const connectedRecords = connectSourceToNext(withNextScene, sourceSceneId, nextScene.id);
-    const nextOrder = insertSceneAfter(orderedScenes.map((scene) => scene.id), sourceSceneId, nextScene.id);
+    const nextOrder = insertSceneAfter(
+      [...recordsById.keys()],
+      sourceSceneId,
+      nextScene.id,
+    );
 
     setCharacterLibrary(storyId, nextCharacters);
     connectedRecords.forEach((record) => saveSceneRecord(record));
@@ -199,11 +234,41 @@ export default function DocumentEditorRoute() {
     router.push({ pathname: '/document-editor', params: { storyId, sceneId: nextScene.id } });
   };
 
+  const handleSelectChoiceOption = (choiceStepId: string, optionId: string) => {
+    selectChoiceOption(storyId, choiceStepId, optionId);
+  };
+
+  const handleStartBranchOption = (choiceStepId: string, optionId: string) => {
+    // The editor flushed and saved right before invoking this callback, so
+    // this component's `scenes` snapshot may predate that save — read fresh.
+    const freshScenes = selectSceneRecordsForStory(storyId)(useAppStore.getState());
+    const result = startBranchScene(freshScenes, choiceStepId, optionId);
+    if (!result) return;
+
+    saveSceneRecord(result.updatedSourceScene);
+    saveSceneRecord(result.newScene);
+    const nextOrder = insertSceneAfter(
+      freshScenes.map((scene) => scene.id),
+      result.updatedSourceScene.id,
+      result.newScene.id,
+    );
+    reorderScenes(storyId, nextOrder);
+    updateStoryMetadata(storyId, { sceneCount: freshScenes.length + 1 });
+    selectChoiceOption(storyId, choiceStepId, optionId);
+    router.push({ pathname: '/document-editor', params: { storyId, sceneId: result.newScene.id } });
+  };
+
   return (
     <PlateSceneEditor
       storyId={storyId}
       sceneRecord={sceneRecord}
       scenes={orderedScenes}
+      offPathScenes={activePath.offPathScenes}
+      branchInfo={branchInfo}
+      onSelectChoiceOption={handleSelectChoiceOption}
+      onStartBranchOption={handleStartBranchOption}
+      incomingCountBySceneId={incomingCountBySceneId}
+      branchColorBySceneId={branchColorBySceneId}
       sceneIndex={sceneIndex}
       sceneCount={orderedScenes.length}
       characters={characters}

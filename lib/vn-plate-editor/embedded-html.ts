@@ -1,4 +1,4 @@
-import { embeddedCommands } from './embedded-commands';
+import { getEmbeddedCommands } from './embedded-commands';
 import { sceneToEditorHtml } from './embedded-renderers';
 import { createEmbeddedScript } from './embedded-script';
 import { createEmbeddedStyles } from './embedded-styles';
@@ -6,6 +6,8 @@ import type { VNPlateEditorPayload } from './types';
 import { escapeHtml } from './embedded-utils';
 
 export function createVNPlateEditorHtml(payload: VNPlateEditorPayload): string {
+  const commands = getEmbeddedCommands(payload.language);
+
   return `<!doctype html>
 <html>
 <head>
@@ -22,7 +24,7 @@ export function createVNPlateEditorHtml(payload: VNPlateEditorPayload): string {
     </main>
   </div>
   <div id="slashMenu" class="slash-menu hidden"></div>
-  <script>${createEmbeddedScript(payload, embeddedCommands)}</script>
+  <script>${createEmbeddedScript(payload, commands)}</script>
 </body>
 </html>`;
 }

@@ -6,6 +6,7 @@ import { Button, ConfirmDialog } from '@/components/ui';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
+import { computeOrphanedByDeletion } from '@/lib/document-editor/branch-actions';
 import { createSceneRecordFromEditorDraft } from '@/lib/editor-scene-draft';
 import type { BlockType, SceneRecord } from '@/lib/engine/types';
 import { generateId } from '@/lib/id-utils';
@@ -131,6 +132,16 @@ export function SceneManager({ storyId }: SceneManagerProps) {
     deleteSceneRecord(storyId, sceneToDelete.id);
     setSceneToDelete(null);
   }, [deleteSceneRecord, sceneToDelete, storyId]);
+
+  // Scenes reachable only through the scene being deleted would end up in
+  // «Поза сюжетом» — warn about the orphaned tail before confirming.
+  const deleteSceneMessage = useMemo(() => {
+    const base = t('editor.confirmDeleteSceneMessage', { name: sceneToDelete?.name ?? '' });
+    if (!sceneToDelete) return base;
+    const orphaned = computeOrphanedByDeletion(Object.values(storyRecords), sceneToDelete.id);
+    if (!orphaned.length) return base;
+    return base + '\n\n' + t('editor.confirmDeleteSceneOrphanWarning', { count: String(orphaned.length) });
+  }, [sceneToDelete, storyRecords, t]);
 
   const handleSetStart = useCallback((sceneId: string) => {
     setStartScene(storyId, sceneId);
@@ -340,7 +351,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
       <ConfirmDialog
         visible={sceneToDelete !== null}
         title={t('editor.confirmDeleteSceneTitle')}
-        message={t('editor.confirmDeleteSceneMessage', { name: sceneToDelete?.name ?? '' })}
+        message={deleteSceneMessage}
         confirmLabel={t('common.delete')}
         onConfirm={confirmDeleteScene}
         onCancel={() => setSceneToDelete(null)}

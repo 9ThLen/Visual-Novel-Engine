@@ -86,6 +86,29 @@ describe('computeMountDelta', () => {
     expect(toUnmount).toEqual(['b']);
   });
 
+  it('never unmounts mounted scenes that are no longer in order (branch switch must reset, not delta)', () => {
+    // After a branch switch the old branch's scenes disappear from `order`.
+    // computeMountDelta only iterates `order`, so stale mounted ids are left
+    // untouched — the host must rebuild the mounted set via the reset path
+    // (seedMountedSceneIds), not rely on incremental deltas.
+    const order = ['a', 'branch_b_1'];
+    const layout = layoutOf({
+      a: { y: 0, height: 800 },
+      branch_b_1: { y: 800, height: 800 },
+    });
+
+    const { toMount, toUnmount } = computeMountDelta({
+      order,
+      layout,
+      scrollY: 0,
+      viewportHeight: 800,
+      mounted: new Set(['a', 'branch_a_1', 'branch_a_2']),
+    });
+
+    expect(toMount).toEqual(['branch_b_1']);
+    expect(toUnmount).toEqual([]);
+  });
+
   it('does not re-mount a scene that is already mounted', () => {
     const order = ['a'];
     const layout = layoutOf({ a: { y: 0, height: 800 } });

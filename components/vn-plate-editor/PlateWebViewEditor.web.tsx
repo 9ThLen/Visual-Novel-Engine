@@ -1,10 +1,12 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 
+import { useI18n } from '@/hooks/use-i18n';
 import { resolveAssetUri, resolvePlayableAssetUri } from '@/lib/asset-resolver';
+import { getEmbeddedCommands } from '@/lib/vn-plate-editor/embedded-commands';
 import { createVNPlateEditorHtml } from '@/lib/vn-plate-editor/embedded-html';
 import { normalizePlateDocumentScene } from '@/lib/vn-plate-editor/scene-normalizer';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateEditorMessage, VNPlateSceneRef } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateEditorMessage, VNPlateSceneRef } from '@/lib/vn-plate-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { DocumentScene } from '@/lib/document-editor/types';
 
@@ -41,6 +43,8 @@ interface PlateWebViewEditorProps {
   audioAssets: VNPlateAudioAsset[];
   /** All scenes of the story (id + name) for transition target pickers. */
   scenes?: VNPlateSceneRef[];
+  /** Branch info for choice blocks on the active path (branch switcher). */
+  branchInfo?: VNPlateBranchInfo[];
   isPhone: boolean;
   /** Seeds the initial frame height (e.g. from a cached layout) to avoid a visible collapse/expand jump on remount. */
   initialHeight?: number;
@@ -50,6 +54,10 @@ interface PlateWebViewEditorProps {
   onUploadBackgroundAsset?: (name: string, dataUri: string) => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onOverlayActiveChange?: (active: boolean) => void;
+  /** The author asked to switch the rendered branch of a choice block. */
+  onSelectChoiceOption?: (choiceStepId: string, optionId: string) => void;
+  /** The author asked to create a new scene as the target of an empty choice option. */
+  onStartBranchOption?: (choiceStepId: string, optionId: string) => void;
 }
 
 export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebViewEditorProps>(function PlateWebViewEditor({
@@ -59,6 +67,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   backgroundAssets,
   audioAssets,
   scenes,
+  branchInfo,
   isPhone,
   initialHeight,
   style,
@@ -67,7 +76,10 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   onUploadBackgroundAsset,
   onUploadAudioAsset,
   onOverlayActiveChange,
+  onSelectChoiceOption,
+  onStartBranchOption,
 }: PlateWebViewEditorProps, ref) {
+  const { language } = useI18n();
   const minimumFrameHeight = isPhone ? MIN_PHONE_FRAME_HEIGHT : MIN_FRAME_HEIGHT;
   const initialFrameHeight = initialHeight && initialHeight > minimumFrameHeight ? initialHeight : minimumFrameHeight;
   const [frameHeight, setFrameHeight] = useState(initialFrameHeight);
@@ -83,7 +95,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     timer: ReturnType<typeof setTimeout>;
   }>());
   const html = useMemo(
-    () => createVNPlateEditorHtml({ editorId, scene, characters, backgroundAssets, audioAssets, scenes, isPhone }),
+    () => createVNPlateEditorHtml({ editorId, scene, characters, backgroundAssets, audioAssets, scenes, isPhone, language }),
     // Keep iframe srcDoc stable while live scene/character changes flow through postMessage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [editorId, isPhone],
@@ -184,9 +196,36 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     }, '*');
   }, [editorId, scenes]);
 
+  const postBranchInfo = useCallback(() => {
+    if (!branchInfo) return;
+    iframeRef.current?.contentWindow?.postMessage({
+      source: 'vn-plate-host',
+      editorId,
+      type: 'branchInfoUpdated',
+      branchInfo,
+    }, '*');
+  }, [branchInfo, editorId]);
+
+  useEffect(() => {
+    postBranchInfo();
+  }, [postBranchInfo]);
+
+  const postCommands = useCallback(() => {
+    iframeRef.current?.contentWindow?.postMessage({
+      source: 'vn-plate-host',
+      editorId,
+      type: 'commandsUpdated',
+      commands: getEmbeddedCommands(language),
+    }, '*');
+  }, [editorId, language]);
+
   useEffect(() => {
     postScenes();
   }, [postScenes]);
+
+  useEffect(() => {
+    postCommands();
+  }, [postCommands]);
 
   const postCharacters = useCallback(() => {
     iframeRef.current?.contentWindow?.postMessage({
@@ -255,7 +294,17 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       if (message.type === 'ready') {
         postBackgroundAssets();
         postAudioAssets();
+        postCommands();
         postScenes();
+        postBranchInfo();
+        return;
+      }
+      if (message.type === 'selectChoiceOption') {
+        onSelectChoiceOption?.(message.choiceStepId, message.optionId);
+        return;
+      }
+      if (message.type === 'startBranchOption') {
+        onStartBranchOption?.(message.choiceStepId, message.optionId);
         return;
       }
       if (message.type === 'uploadBackgroundAsset') {
@@ -323,13 +372,14 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [editorId, minimumFrameHeight, onChange, onCreateNextScene, onUploadAudioAsset, onUploadBackgroundAsset, postAudioAssets, postBackgroundAssets]);
+  }, [editorId, minimumFrameHeight, onChange, onCreateNextScene, onUploadAudioAsset, onUploadBackgroundAsset, postAudioAssets, postBackgroundAssets, postCommands]);
 
   const postAssets = useCallback(() => {
     postBackgroundAssets();
     postAudioAssets();
+    postCommands();
     postScenes();
-  }, [postAudioAssets, postBackgroundAssets, postScenes]);
+  }, [postAudioAssets, postBackgroundAssets, postCommands, postScenes]);
   const hasOverlay = visibleFrameHeight > frameHeight + 1;
 
   useEffect(() => {

@@ -18,6 +18,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     var activeTransitionBlock = null;
     var transitionPopover = null;
     var transitionDraft = null;
+    var activeChoiceBlock = null;
+    var choicePopover = null;
+    var choiceDraft = null;
+    var branchInfo = [];
+    // Must stay in sync with BRANCH_COLOR_PALETTE in lib/document-editor/branch-colors.ts
+    var branchPalette = ['#d97706', '#2563eb', '#7c3aed', '#0d9488', '#db2777', '#65a30d'];
     var backgroundAssets = Array.isArray(payload.backgroundAssets) ? payload.backgroundAssets : [];
     var audioAssets = Array.isArray(payload.audioAssets) ? payload.audioAssets : [];
     var storyScenes = Array.isArray(payload.scenes) ? payload.scenes : [];
@@ -714,6 +720,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeCharacterPopover();
       closeTransitionPopover();
       closeAudioPopover();
+      closeChoicePopover();
       if (activeEffectChip === chip && effectPopover) {
         closeEffectPopover();
         return;
@@ -1012,6 +1019,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeCharacterPopover();
       closeTransitionPopover();
       closeEffectPopover();
+      closeChoicePopover();
       if (activeAudioChip === chip && audioPopover) {
         closeAudioPopover();
         return;
@@ -1208,6 +1216,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeEffectPopover();
       closeAudioPopover();
       closeTransitionPopover();
+      closeChoicePopover();
       closeCharacterPopover();
       activeCharacterToken = token;
       var popover = document.createElement('div');
@@ -1386,6 +1395,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeTransitionPopover();
       closeEffectPopover();
       closeAudioPopover();
+      closeChoicePopover();
       closeBackgroundPopover();
       activeBackgroundBlock = block;
       activeBackgroundBlock.classList.add('is-editing', 'is-selected');
@@ -1663,6 +1673,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeEffectPopover();
       closeAudioPopover();
       closeCharacterPopover();
+      closeChoicePopover();
       closeTransitionPopover();
       activeTransitionBlock = block;
       activeTransitionBlock.classList.add('is-editing', 'is-selected');
@@ -1715,6 +1726,255 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         transitionType: selectedValue(typeSelect, 'fade'),
         duration: parseSecondsInput(durationInput && durationInput.value, transitionDraft ? transitionDraft.duration : 0.5)
       };
+    }
+
+    // ── Choice block ────────────────────────────────────────────────────
+    function choiceDataFromNode(node) {
+      var parsed = null;
+      try { parsed = node.dataset.choice ? JSON.parse(node.dataset.choice) : null; } catch (e) { parsed = null; }
+      if (!parsed || !Array.isArray(parsed.options) || !parsed.options.length) {
+        var original = originalBlockForNode(node);
+        if (original && original.kind === 'choice' && Array.isArray(original.options) && original.options.length) {
+          parsed = { question: original.question, options: original.options };
+        }
+      }
+      if (!parsed || !Array.isArray(parsed.options) || !parsed.options.length) {
+        parsed = {
+          question: (parsed && parsed.question) || 'Choice',
+          options: [
+            { id: uid('choice'), text: 'Варіант 1', targetSceneId: null },
+            { id: uid('choice'), text: 'Варіант 2', targetSceneId: null }
+          ]
+        };
+      }
+      return {
+        question: String(parsed.question || 'Choice'),
+        options: parsed.options.map(function(o) {
+          return { id: o.id || uid('choice'), text: String(o.text || ''), targetSceneId: o.targetSceneId || null };
+        })
+      };
+    }
+
+    function cloneChoiceData(data) {
+      return {
+        question: data.question,
+        options: data.options.map(function(o) { return Object.assign({}, o); })
+      };
+    }
+
+    function choiceOptionTargetLabel(o) {
+      if (!o.targetSceneId) return 'Наступна сцена (за замовчуванням)';
+      var scene = findStoryScene(o.targetSceneId);
+      return scene ? (scene.name || scene.id) : '⚠ сцена не знайдена';
+    }
+
+    function findBranchInfoForBlock(node) {
+      var id = node && node.dataset ? node.dataset.id : null;
+      if (!id || !Array.isArray(branchInfo)) return null;
+      return branchInfo.find(function(info) { return info.choiceStepId === id; }) || null;
+    }
+
+    function renderChoiceBranchSwitcher(node) {
+      var existingGrid = node.querySelector('.choice-options-grid');
+      if (existingGrid) existingGrid.remove();
+      var existingWarning = node.querySelector('.choice-branch-warning');
+      if (existingWarning) existingWarning.remove();
+
+      var data = choiceDataFromNode(node);
+      var info = findBranchInfoForBlock(node);
+      var infoByOptionId = {};
+      if (info && Array.isArray(info.options)) {
+        info.options.forEach(function(o) { infoByOptionId[o.optionId] = o; });
+      }
+
+      var cards = data.options.map(function(option, optionIndex) {
+        var meta = infoByOptionId[option.id] || {};
+        var isActive = Boolean(info) && option.id === info.selectedOptionId;
+        var color = branchPalette[optionIndex % branchPalette.length];
+        var classes = 'choice-option-card' + (isActive ? ' is-active' : '') + (meta.isBroken ? ' is-broken' : '');
+        var cardStyle = isActive ? ' style="border-color: ' + color + '; box-shadow: 0 0 0 1px ' + color + ';"' : '';
+        var badges = '';
+        if (isActive) badges += '<span class="choice-branch-badge choice-branch-badge-active">активна гілка</span>';
+        if (meta.isBroken) badges += '<span class="choice-branch-badge choice-branch-badge-broken">ціль не знайдена</span>';
+        else if (meta.isEmpty) badges += '<span class="choice-branch-badge choice-branch-badge-empty">гілка порожня</span>';
+        var startButton = '';
+        if (meta.isEmpty || meta.isBroken) {
+          startButton = '<button type="button" class="choice-branch-start" data-action="start-branch-option" data-option-id="' + escapeHtml(option.id) + '">+ почати гілку</button>';
+        }
+        return '<div class="choice-option-card-wrap">' +
+          '<button type="button" class="' + classes + '"' + cardStyle + ' data-action="select-branch-option" data-option-id="' + escapeHtml(option.id) + '">' +
+            '<span class="choice-option-dot" style="background: ' + color + ';"></span>' +
+            '<span class="choice-option-card-text">' + escapeHtml(option.text || 'Варіант') + '</span>' +
+            (badges ? '<span class="choice-option-card-badges">' + badges + '</span>' : '') +
+          '</button>' +
+          startButton +
+        '</div>';
+      }).join('');
+
+      node.insertAdjacentHTML('beforeend', '<div class="choice-options-grid">' + cards + '</div>');
+
+      if (info && info.warning === 'danglingTarget') {
+        var warning = document.createElement('div');
+        warning.className = 'choice-branch-warning';
+        warning.textContent = 'Обрана гілка веде до неіснуючої сцени';
+        node.appendChild(warning);
+      }
+    }
+
+    function renderChoiceBlockContent(node) {
+      var data = choiceDataFromNode(node);
+      node.dataset.choice = JSON.stringify(data);
+      var trimmedQuestion = String(data.question || '').trim();
+      var questionHtml = (trimmedQuestion && trimmedQuestion !== 'Choice')
+        ? '<div class="void-summary choice-question-summary">' + escapeHtml(trimmedQuestion) + '</div>'
+        : '';
+      node.innerHTML =
+        '<div class="choice-block-header">' +
+          '<span class="void-title">/choice</span>' +
+          '<button type="button" class="block-button" data-action="edit-choice">Edit</button>' +
+        '</div>' +
+        questionHtml;
+      renderChoiceBranchSwitcher(node);
+    }
+
+    function renderAllChoiceBlocks() {
+      Array.prototype.slice.call(editor.querySelectorAll('.choice-block')).forEach(function(block) {
+        renderChoiceBlockContent(block);
+      });
+    }
+
+    function closeChoicePopover() {
+      if (choicePopover) choicePopover.remove();
+      choicePopover = null;
+      choiceDraft = null;
+      if (activeChoiceBlock) activeChoiceBlock.classList.remove('is-editing', 'is-selected');
+      activeChoiceBlock = null;
+      scheduleResize();
+    }
+
+    function positionChoicePopover(anchor) {
+      if (!choicePopover || !anchor) return;
+      var rect = anchor.getBoundingClientRect();
+      var scrollX = window.scrollX || window.pageXOffset || 0;
+      var scrollY = window.scrollY || window.pageYOffset || 0;
+      var margin = 16;
+      var gap = 8;
+      var width = Math.min(440, window.innerWidth - margin * 2);
+      var maxHeight = Math.min(520, Math.max(220, window.innerHeight - margin * 2));
+      choicePopover.style.width = width + 'px';
+      choicePopover.style.maxHeight = maxHeight + 'px';
+      var popoverHeight = Math.min(choicePopover.offsetHeight || maxHeight, maxHeight);
+      var left = scrollX + Math.max(margin, Math.min(window.innerWidth - width - margin, rect.right - width));
+      var belowTop = rect.bottom + gap;
+      var aboveTop = rect.top - popoverHeight - gap;
+      var top = belowTop + popoverHeight + margin <= window.innerHeight
+        ? belowTop
+        : Math.max(margin, aboveTop);
+      choicePopover.style.left = left + 'px';
+      choicePopover.style.top = (scrollY + top) + 'px';
+      scheduleResize();
+    }
+
+    function syncChoiceDraftFromDom() {
+      if (!choicePopover || !choiceDraft) return;
+      var questionField = choicePopover.querySelector('#choiceQuestion');
+      if (questionField) choiceDraft.question = questionField.value;
+      Array.prototype.slice.call(choicePopover.querySelectorAll('.choice-option-text')).forEach(function(input) {
+        var optionId = input.dataset.optionId;
+        var found = choiceDraft.options.find(function(o) { return o.id === optionId; });
+        if (found) found.text = input.value;
+      });
+    }
+
+    function renderChoiceScenePicker(row, optionId) {
+      var picker = row.querySelector('.choice-scene-picker');
+      if (!picker) return;
+      var isActive = choicePopover.dataset.activeOptionId === optionId;
+      if (!isActive) {
+        picker.classList.add('hidden');
+        picker.innerHTML = '';
+        return;
+      }
+      picker.classList.remove('hidden');
+      var option = choiceDraft.options.find(function(o) { return o.id === optionId; });
+      var selected = option ? option.targetSceneId : null;
+      var currentSceneId = payload.scene && payload.scene.sceneId;
+      var candidates = storyScenes.filter(function(scene) { return scene.id !== currentSceneId; });
+      var nextActive = !selected ? ' active' : '';
+      var items = '<button type="button" class="asset-choice' + nextActive + '" data-action="select-choice-scene" data-option-id="' + escapeHtml(optionId) + '" data-scene-id="">' +
+        '<span class="asset-name">Наступна сцена (за замовчуванням)</span>' +
+      '</button>' + candidates.map(function(scene) {
+        var active = scene.id === selected ? ' active' : '';
+        return '<button type="button" class="asset-choice' + active + '" data-action="select-choice-scene" data-option-id="' + escapeHtml(optionId) + '" data-scene-id="' + escapeHtml(scene.id) + '">' +
+          '<span class="asset-name">' + escapeHtml(scene.name || scene.id) + '</span>' +
+        '</button>';
+      }).join('');
+      picker.innerHTML = '<div class="asset-choice-list">' + items + '</div>';
+    }
+
+    function renderChoiceOptionsList() {
+      if (!choicePopover || !choiceDraft) return;
+      var list = choicePopover.querySelector('.choice-options-list');
+      if (!list) return;
+      list.innerHTML = choiceDraft.options.map(function(o) {
+        return '<div class="choice-option-row" data-option-id="' + escapeHtml(o.id) + '">' +
+          '<input type="text" class="choice-option-text popover-control" data-option-id="' + escapeHtml(o.id) + '" value="' + escapeHtml(o.text) + '" placeholder="Текст варіанту" />' +
+          '<button type="button" class="popover-button choice-option-target" data-action="toggle-choice-scene-picker" data-option-id="' + escapeHtml(o.id) + '">→ ' + escapeHtml(choiceOptionTargetLabel(o)) + '</button>' +
+          '<button type="button" class="choice-option-remove" data-action="remove-choice-option" data-option-id="' + escapeHtml(o.id) + '" aria-label="Видалити варіант">✕</button>' +
+          '<div class="choice-scene-picker hidden"></div>' +
+        '</div>';
+      }).join('');
+      Array.prototype.slice.call(list.querySelectorAll('.choice-option-row')).forEach(function(row) {
+        renderChoiceScenePicker(row, row.dataset.optionId);
+      });
+      scheduleResize();
+    }
+
+    function openChoicePopover(block, anchor) {
+      if (!block) return;
+      closeSlashMenu();
+      if (activeChoiceBlock === block && choicePopover) {
+        closeChoicePopover();
+        return;
+      }
+      closeBackgroundPopover();
+      closeEffectPopover();
+      closeAudioPopover();
+      closeCharacterPopover();
+      closeTransitionPopover();
+      closeChoicePopover();
+      activeChoiceBlock = block;
+      activeChoiceBlock.classList.add('is-editing', 'is-selected');
+      choiceDraft = cloneChoiceData(choiceDataFromNode(block));
+
+      var popover = document.createElement('div');
+      popover.className = 'background-popover choice-popover';
+      popover.innerHTML =
+        '<label class="popover-label" for="choiceQuestion">Питання</label>' +
+        '<textarea id="choiceQuestion" class="popover-control choice-question-input" rows="2" placeholder="Що обирає гравець?"></textarea>' +
+        '<div class="choice-options-list"></div>' +
+        '<button type="button" class="popover-button" data-action="add-choice-option">+ Додати варіант</button>' +
+        '<p class="popover-help">Варіант без вибраної сцени веде на наступну сцену документа.</p>' +
+        '<div class="popover-footer">' +
+          '<button type="button" class="popover-button" data-action="cancel-choice">Скасувати</button>' +
+          '<button type="button" class="popover-button primary" data-action="save-choice">Зберегти</button>' +
+        '</div>';
+
+      document.body.appendChild(popover);
+      choicePopover = popover;
+      popover.querySelector('#choiceQuestion').value = choiceDraft.question;
+      renderChoiceOptionsList();
+      afterLayout(function() { positionChoicePopover(anchor || block); });
+    }
+
+    function applyChoiceData(node, data) {
+      var options = data.options.filter(function(o) { return o.text.trim() !== ''; });
+      if (!options.length) options = data.options.slice(0, 1);
+      node.dataset.choice = JSON.stringify({
+        question: (data.question || 'Choice').trim() || 'Choice',
+        options: options
+      });
+      renderChoiceBlockContent(node);
     }
 
     function serializeBlock(node) {
@@ -1795,20 +2055,19 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       }
       if (kind === 'choice') {
         var originalChoice = originalBlockForNode(node);
+        var choiceData = choiceDataFromNode(node);
         if (originalChoice && originalChoice.kind === 'choice') {
           return Object.assign({}, originalChoice, {
             id: node.dataset.id || originalChoice.id,
-            question: textOf(node) || originalChoice.question || 'Choice'
+            question: choiceData.question,
+            options: choiceData.options
           });
         }
         return {
           id: node.dataset.id || uid('doc_choice'),
           kind: 'choice',
-          question: textOf(node) || 'Choice',
-          options: [
-            { id: uid('choice'), text: 'Option 1', targetSceneId: null },
-            { id: uid('choice'), text: 'Option 2', targetSceneId: null }
-          ]
+          question: choiceData.question,
+          options: choiceData.options
         };
       }
       if (kind === 'dialogue') {
@@ -2452,7 +2711,27 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         return;
       }
       var button = target.closest('[data-action]');
-      var block = target.closest('.background-block, .transition-block');
+      if (button && button.dataset.action === 'start-branch-option') {
+        event.preventDefault();
+        var startBlock = button.closest('.choice-block');
+        var startChoiceStepId = startBlock && startBlock.dataset ? startBlock.dataset.id : null;
+        var startOptionId = button.dataset.optionId;
+        if (startChoiceStepId && startOptionId) {
+          post({ type: 'startBranchOption', choiceStepId: startChoiceStepId, optionId: startOptionId });
+        }
+        return;
+      }
+      if (button && button.dataset.action === 'select-branch-option') {
+        event.preventDefault();
+        var switcherBlock = button.closest('.choice-block');
+        var choiceStepId = switcherBlock && switcherBlock.dataset ? switcherBlock.dataset.id : null;
+        var optionId = button.dataset.optionId;
+        if (choiceStepId && optionId) {
+          post({ type: 'selectChoiceOption', choiceStepId: choiceStepId, optionId: optionId });
+        }
+        return;
+      }
+      var block = target.closest('.background-block, .transition-block, .choice-block');
       if (!block) return;
       Array.prototype.slice.call(editor.querySelectorAll('.void-block.is-selected')).forEach(function(item) {
         if (item !== block) item.classList.remove('is-selected');
@@ -2467,6 +2746,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (action === 'edit-transition') {
         event.preventDefault();
         openTransitionPopover(block, button);
+      }
+      if (action === 'edit-choice') {
+        event.preventDefault();
+        openChoicePopover(block, button);
       }
     });
 
@@ -2685,6 +2968,60 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           closeTransitionPopover();
         }
       }
+      if (choicePopover) {
+        var choiceTarget = event.target;
+        if (choiceTarget && choiceTarget.closest && choiceTarget.closest('.choice-popover')) {
+          var choiceActionButton = choiceTarget.closest('[data-action]');
+          if (!choiceActionButton) return;
+          var choiceAction = choiceActionButton.dataset.action;
+          if (choiceAction === 'toggle-choice-scene-picker') {
+            syncChoiceDraftFromDom();
+            var toggleOptionId = choiceActionButton.dataset.optionId;
+            choicePopover.dataset.activeOptionId = choicePopover.dataset.activeOptionId === toggleOptionId ? '' : toggleOptionId;
+            renderChoiceOptionsList();
+            return;
+          }
+          if (choiceAction === 'select-choice-scene') {
+            syncChoiceDraftFromDom();
+            var targetOptionId = choiceActionButton.dataset.optionId;
+            var targetOption = choiceDraft.options.find(function(o) { return o.id === targetOptionId; });
+            if (targetOption) targetOption.targetSceneId = choiceActionButton.dataset.sceneId || null;
+            choicePopover.dataset.activeOptionId = '';
+            renderChoiceOptionsList();
+            return;
+          }
+          if (choiceAction === 'add-choice-option') {
+            syncChoiceDraftFromDom();
+            choiceDraft.options.push({ id: uid('choice'), text: 'Варіант', targetSceneId: null });
+            renderChoiceOptionsList();
+            return;
+          }
+          if (choiceAction === 'remove-choice-option') {
+            syncChoiceDraftFromDom();
+            if (choiceDraft.options.length > 1) {
+              var removeOptionId = choiceActionButton.dataset.optionId;
+              choiceDraft.options = choiceDraft.options.filter(function(o) { return o.id !== removeOptionId; });
+            }
+            renderChoiceOptionsList();
+            return;
+          }
+          if (choiceAction === 'cancel-choice') {
+            closeChoicePopover();
+            return;
+          }
+          if (choiceAction === 'save-choice' && activeChoiceBlock) {
+            syncChoiceDraftFromDom();
+            applyChoiceData(activeChoiceBlock, choiceDraft);
+            saveNow();
+            closeChoicePopover();
+            return;
+          }
+          return;
+        }
+        if (!(choiceTarget && choiceTarget.closest && choiceTarget.closest('.choice-block'))) {
+          closeChoicePopover();
+        }
+      }
       if (!backgroundPopover) return;
       var target = event.target;
       if (target && target.closest && target.closest('.background-popover')) {
@@ -2844,6 +3181,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         event.preventDefault();
         closeTransitionPopover();
       }
+      if (event.key === 'Escape' && choicePopover) {
+        event.preventDefault();
+        closeChoicePopover();
+      }
       if (event.key === 'Escape' && characterPopover) {
         event.preventDefault();
         closeCharacterPopover();
@@ -2897,6 +3238,18 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         storyScenes = message.scenes;
         renderAllTransitionBlocks();
         if (transitionPopover) renderTransitionScenePicker(transitionPopover);
+        renderAllChoiceBlocks();
+        if (choicePopover) renderChoiceOptionsList();
+      }
+      if (message.type === 'commandsUpdated' && Array.isArray(message.commands)) {
+        commands = message.commands;
+        if (activeSlash) renderSlashMenu(activeSlash);
+      }
+      if (message.type === 'branchInfoUpdated' && Array.isArray(message.branchInfo)) {
+        branchInfo = message.branchInfo;
+        Array.prototype.slice.call(editor.querySelectorAll('.choice-block')).forEach(function(block) {
+          renderChoiceBranchSwitcher(block);
+        });
       }
       if (message.type === 'audioAssetsUpdated' && Array.isArray(message.assets)) {
         audioAssets = message.assets;
@@ -2984,6 +3337,9 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
 
     ensureParagraph();
     transformAllDialogueIfNeeded();
+    Array.prototype.slice.call(editor.querySelectorAll('.choice-block')).forEach(function(block) {
+      renderChoiceBranchSwitcher(block);
+    });
     var firstOpenToken = editor.querySelector('[data-open-character-controls="true"] .speaker-token');
     if (firstOpenToken) {
       window.setTimeout(function() {
