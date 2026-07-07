@@ -31,7 +31,7 @@ interface DocumentSceneFrameProps {
   onStartBranchOption?: (choiceStepId: string, optionId: string) => void;
   /** Distinct scenes with a connection into this one; ≥2 renders the merge-point banner. */
   incomingCount?: number;
-  /** Accent color of the branch this scene belongs to; renders a left stripe. */
+  /** Accent color of the branch this scene belongs to; tints the page shadow inside the webview. */
   branchColor?: string;
   isPhone: boolean;
   isMounted: boolean;
@@ -93,21 +93,6 @@ function DocumentSceneFrameImpl({
         zIndex: isOverlayActive ? 80 : 0,
       }}
     >
-      {branchColor ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            left: isPhone ? 2 : -12,
-            top: 4,
-            bottom: 4,
-            width: 3,
-            borderRadius: 2,
-            backgroundColor: branchColor,
-            opacity: 0.85,
-          }}
-        />
-      ) : null}
       {(incomingCount ?? 0) >= 2 ? (
         <View
           style={{
@@ -139,6 +124,7 @@ function DocumentSceneFrameImpl({
           audioAssets={audioAssets}
           scenes={storyScenes}
           branchInfo={branchInfo}
+          branchColor={branchColor}
           onSelectChoiceOption={onSelectChoiceOption}
           onStartBranchOption={onStartBranchOption}
           isPhone={isPhone}
@@ -156,7 +142,7 @@ function DocumentSceneFrameImpl({
             height: placeholderHeight,
             borderRadius: 10,
             borderWidth: 1,
-            borderColor: colors.border,
+            borderColor: branchColor ?? colors.border,
             backgroundColor: colors['surface-1'],
             alignItems: 'center',
             paddingTop: 28,

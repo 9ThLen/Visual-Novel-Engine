@@ -38,7 +38,7 @@ export interface BranchInfo {
 }
 
 export interface ScenePathMetadata {
-  /** Number of distinct scenes with a connection into this scene (whole graph, not just active path). */
+  /** Number of distinct scenes that can reach this one following reader semantics (whole graph, not just active path). */
   incomingCount: number;
   isMergePoint: boolean;
   /**
@@ -47,6 +47,12 @@ export interface ScenePathMetadata {
    * neutral. Used for branch tinting.
    */
   viaChoice?: { choiceStepId: string; optionId: string };
+  /**
+   * Full chain of choice edges this scene sits inside on the active path,
+   * outermost first (viaChoice is the last entry). Cleared at merge points.
+   * Used to blend branch tints for nested branches.
+   */
+  viaChoiceTrail?: Array<{ choiceStepId: string; optionId: string }>;
 }
 
 export interface ActivePathResult {
@@ -74,14 +80,27 @@ function findNextConnectionTarget(scene: SceneRecord): string | undefined {
   return scene.connections?.find((connection) => connection.outputPort === 'next')?.targetSceneId;
 }
 
+/**
+ * Counts, per scene, how many distinct scenes can actually reach it following
+ * reader semantics. A `next` connection on a scene whose choice options all
+ * have explicit targets is dead — the reader never follows it — so it must not
+ * count, or every scene downstream of a linear `next` chain would look like a
+ * merge point and branch tinting would never appear.
+ */
 function computeIncomingCounts(scenes: SceneRecord[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const scene of scenes) {
-    const targets = new Set(
-      (scene.connections ?? [])
-        .map((connection) => connection.targetSceneId)
-        .filter((targetId): targetId is string => Boolean(targetId)),
-    );
+    const nextTarget = findNextConnectionTarget(scene);
+    const choiceStep = findChoiceStep(scene);
+    const targets = new Set<string>();
+    if (choiceStep) {
+      for (const option of (choiceStep.data as ChoiceBlockData).options) {
+        const target = option.targetSceneId ?? nextTarget;
+        if (target) targets.add(target);
+      }
+    } else if (nextTarget) {
+      targets.add(nextTarget);
+    }
     for (const targetId of targets) {
       counts.set(targetId, (counts.get(targetId) ?? 0) + 1);
     }
@@ -116,7 +135,7 @@ export function expandActivePath(
   const visited = new Set<string>();
 
   let current: SceneRecord | undefined = scenes.find((scene) => scene.isStart) ?? scenes[0];
-  let viaChoice: ScenePathMetadata['viaChoice'];
+  let viaChoiceTrail: NonNullable<ScenePathMetadata['viaChoiceTrail']> = [];
 
   while (current && !visited.has(current.id)) {
     visited.add(current.id);
@@ -124,11 +143,12 @@ export function expandActivePath(
 
     const incomingCount = incomingCounts.get(current.id) ?? 0;
     const isMergePoint = incomingCount > 1;
-    if (isMergePoint) viaChoice = undefined;
+    if (isMergePoint) viaChoiceTrail = [];
+    const viaChoice = viaChoiceTrail[viaChoiceTrail.length - 1];
     metadataBySceneId[current.id] = {
       incomingCount,
       isMergePoint,
-      ...(viaChoice ? { viaChoice } : {}),
+      ...(viaChoice ? { viaChoice, viaChoiceTrail } : {}),
     };
 
     const nextTargetId = findNextConnectionTarget(current);
@@ -173,7 +193,7 @@ export function expandActivePath(
         current = undefined;
         continue;
       }
-      viaChoice = { choiceStepId: choiceStep.id, optionId: selected.id };
+      viaChoiceTrail = [...viaChoiceTrail, { choiceStepId: choiceStep.id, optionId: selected.id }];
       branchInfoByChoiceStepId[choiceStep.id] = branchInfo;
       current = target;
       continue;

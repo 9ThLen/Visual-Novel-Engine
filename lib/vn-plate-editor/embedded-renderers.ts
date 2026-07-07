@@ -1,5 +1,5 @@
 import type { Character } from '@/lib/character-types';
-import { branchColorForOptionIndex } from '@/lib/document-editor/branch-colors';
+import { branchColorForOptionIndex, branchShadowColor } from '@/lib/document-editor/branch-colors';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import type { BackgroundBlockData, CharacterBlockData } from '@/lib/engine/types';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
@@ -295,8 +295,9 @@ export function blockToHtml(
       : '';
     const cards = options.map((option, optionIndex) => {
       const color = branchColorForOptionIndex(optionIndex);
+      const cardStyle = `--branch-color: ${color}; --branch-shadow: ${branchShadowColor(color, 0.22)}; --branch-shadow-strong: ${branchShadowColor(color, 0.32)};`;
       return '<div class="choice-option-card-wrap">'
-        + `<button type="button" class="choice-option-card" data-action="select-branch-option" data-option-id="${escapeHtml(option.id)}">`
+        + `<button type="button" class="choice-option-card" style="${cardStyle}" data-action="select-branch-option" data-option-id="${escapeHtml(option.id)}">`
         + `<span class="choice-option-dot" style="background: ${color};"></span>`
         + `<span class="choice-option-card-text">${escapeHtml(option.text || 'Варіант')}</span>`
         + '</button>'

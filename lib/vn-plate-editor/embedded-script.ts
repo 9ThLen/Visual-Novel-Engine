@@ -24,6 +24,13 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     var branchInfo = [];
     // Must stay in sync with BRANCH_COLOR_PALETTE in lib/document-editor/branch-colors.ts
     var branchPalette = ['#d97706', '#2563eb', '#7c3aed', '#0d9488', '#db2777', '#65a30d'];
+    // Mirrors branchShadowColor in lib/document-editor/branch-colors.ts — keep in sync
+    function branchShadow(hexColor, alpha) {
+      var r = parseInt(hexColor.slice(1, 3), 16);
+      var g = parseInt(hexColor.slice(3, 5), 16);
+      var b = parseInt(hexColor.slice(5, 7), 16);
+      return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+    }
     var backgroundAssets = Array.isArray(payload.backgroundAssets) ? payload.backgroundAssets : [];
     var audioAssets = Array.isArray(payload.audioAssets) ? payload.audioAssets : [];
     var storyScenes = Array.isArray(payload.scenes) ? payload.scenes : [];
@@ -1792,7 +1799,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         var isActive = Boolean(info) && option.id === info.selectedOptionId;
         var color = branchPalette[optionIndex % branchPalette.length];
         var classes = 'choice-option-card' + (isActive ? ' is-active' : '') + (meta.isBroken ? ' is-broken' : '');
-        var cardStyle = isActive ? ' style="border-color: ' + color + '; box-shadow: 0 0 0 1px ' + color + ';"' : '';
+        var cardStyle = ' style="--branch-color: ' + color + '; --branch-shadow: ' + branchShadow(color, 0.22) + '; --branch-shadow-strong: ' + branchShadow(color, 0.32) + ';"';
         var badges = '';
         if (isActive) badges += '<span class="choice-branch-badge choice-branch-badge-active">активна гілка</span>';
         if (meta.isBroken) badges += '<span class="choice-branch-badge choice-branch-badge-broken">ціль не знайдена</span>';
@@ -3250,6 +3257,17 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         Array.prototype.slice.call(editor.querySelectorAll('.choice-block')).forEach(function(block) {
           renderChoiceBranchSwitcher(block);
         });
+      }
+      if (message.type === 'branchColorUpdated') {
+        var paper = document.querySelector('.paper');
+        if (paper) {
+          var pageColor = typeof message.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(message.color) ? message.color : null;
+          if (pageColor) {
+            paper.style.setProperty('--page-branch-shadow', branchShadow(pageColor, 0.35));
+          } else {
+            paper.style.removeProperty('--page-branch-shadow');
+          }
+        }
       }
       if (message.type === 'audioAssetsUpdated' && Array.isArray(message.assets)) {
         audioAssets = message.assets;

@@ -23,7 +23,8 @@ export function createEmbeddedStyles(): string {
       background: #fffefa;
       border: 1px solid #ddd8cf;
       border-radius: 8px;
-      box-shadow: 0 18px 48px rgba(31, 41, 55, 0.16), 0 2px 8px rgba(31, 41, 55, 0.08);
+      box-shadow: 0 18px 48px var(--page-branch-shadow, rgba(31, 41, 55, 0.16)), 0 2px 8px rgba(31, 41, 55, 0.08);
+      transition: box-shadow 0.35s ease;
     }
     .eyebrow {
       margin: 0 0 8px;
@@ -287,14 +288,19 @@ export function createEmbeddedStyles(): string {
       color: #111827;
       text-align: left;
       cursor: pointer;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+      box-shadow: 0 4px 14px var(--branch-shadow, rgba(15, 23, 42, 0.08));
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, transform 0.15s ease;
     }
     .choice-option-card:hover {
-      border-color: #cbd5e1;
+      border-color: var(--branch-color, #cbd5e1);
       background: #f8fafc;
+      box-shadow: 0 6px 20px var(--branch-shadow-strong, rgba(15, 23, 42, 0.14));
+      transform: translateY(-1px);
     }
     .choice-option-card.is-active {
       background: #eff6ff;
+      border-color: var(--branch-color, #60a5fa);
+      box-shadow: 0 0 0 1px var(--branch-color, #60a5fa), 0 8px 24px var(--branch-shadow-strong, rgba(37, 99, 235, 0.28));
     }
     .choice-option-card.is-broken {
       border-color: #fca5a5;
@@ -839,7 +845,9 @@ export function createEmbeddedStyles(): string {
     .hidden { display: none; }
     @media (max-width: 760px) {
       .shell { padding: 0; }
-      .paper { min-height: 620px; border: 0; border-radius: 0; padding: 28px 24px 80px; box-shadow: none; }
+      /* The paper fills the frame edge-to-edge here, so an outer shadow would be
+         clipped by the iframe — use an inset glow for the branch tint instead. */
+      .paper { min-height: 620px; border: 0; border-radius: 0; padding: 28px 24px 80px; box-shadow: inset 0 0 46px var(--page-branch-shadow, transparent); }
       .title { font-size: 30px; }
       .slash-menu {
         position: fixed;

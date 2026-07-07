@@ -45,6 +45,8 @@ interface PlateWebViewEditorProps {
   scenes?: VNPlateSceneRef[];
   /** Branch info for choice blocks on the active path (branch switcher). */
   branchInfo?: VNPlateBranchInfo[];
+  /** Accent color of the branch this scene belongs to; tints the page shadow inside the webview. */
+  branchColor?: string;
   isPhone: boolean;
   /** Seeds the initial frame height (e.g. from a cached layout) to avoid a visible collapse/expand jump on remount. */
   initialHeight?: number;
@@ -68,6 +70,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   audioAssets,
   scenes,
   branchInfo,
+  branchColor,
   isPhone,
   initialHeight,
   style,
@@ -210,6 +213,19 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     postBranchInfo();
   }, [postBranchInfo]);
 
+  const postBranchColor = useCallback(() => {
+    iframeRef.current?.contentWindow?.postMessage({
+      source: 'vn-plate-host',
+      editorId,
+      type: 'branchColorUpdated',
+      color: branchColor ?? null,
+    }, '*');
+  }, [branchColor, editorId]);
+
+  useEffect(() => {
+    postBranchColor();
+  }, [postBranchColor]);
+
   const postCommands = useCallback(() => {
     iframeRef.current?.contentWindow?.postMessage({
       source: 'vn-plate-host',
@@ -297,6 +313,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         postCommands();
         postScenes();
         postBranchInfo();
+        postBranchColor();
         return;
       }
       if (message.type === 'selectChoiceOption') {
