@@ -7,6 +7,7 @@ import {
 } from '@/components/editor/plate/PlateSceneEditor';
 import { ScreenContainer } from '@/components/screen-container';
 import { startBranchScene } from '@/lib/document-editor/branch-actions';
+import { buildBranchBreadcrumbTrail } from '@/lib/document-editor/branch-breadcrumb';
 import { computeBranchColorBySceneId } from '@/lib/document-editor/branch-colors';
 import { expandActivePath } from '@/lib/document-editor/story-path';
 import {
@@ -82,6 +83,7 @@ export default function DocumentEditorRoute() {
     return counts;
   }, [activePath.metadataBySceneId]);
   const branchColorBySceneId = useMemo(() => computeBranchColorBySceneId(activePath), [activePath]);
+  const branchBreadcrumbTrail = useMemo(() => buildBranchBreadcrumbTrail(activePath), [activePath]);
   const backgroundAssets = useMemo<VNPlateBackgroundAsset[]>(
     () => mediaLibrary
       .filter((asset) => asset.type === 'image')
@@ -269,6 +271,7 @@ export default function DocumentEditorRoute() {
       onStartBranchOption={handleStartBranchOption}
       incomingCountBySceneId={incomingCountBySceneId}
       branchColorBySceneId={branchColorBySceneId}
+      branchBreadcrumbTrail={branchBreadcrumbTrail}
       sceneIndex={sceneIndex}
       sceneCount={orderedScenes.length}
       characters={characters}

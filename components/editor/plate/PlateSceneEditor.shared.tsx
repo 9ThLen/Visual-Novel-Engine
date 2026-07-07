@@ -6,6 +6,7 @@ import {
 } from '@/components/document-editor/DocumentSceneEditor';
 import { buildDocumentsResetKey } from '@/lib/document-editor/document-reset-key';
 import { resolveNextSceneIdForSave } from '@/lib/document-editor/document-scene';
+import type { BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
 import type { Character } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo } from '@/lib/vn-plate-editor/types';
@@ -27,6 +28,8 @@ interface PlateSceneEditorProps {
   incomingCountBySceneId?: Record<string, number>;
   /** Branch accent color per scene id on the active path (branch tinting). */
   branchColorBySceneId?: Record<string, string>;
+  /** Choice crumbs for the whole active path, for the breadcrumb bar. */
+  branchBreadcrumbTrail?: BranchBreadcrumbItem[];
   sceneIndex: number;
   sceneCount: number;
   characters: Character[];
@@ -49,6 +52,7 @@ export function PlateSceneEditor({
   onStartBranchOption,
   incomingCountBySceneId,
   branchColorBySceneId,
+  branchBreadcrumbTrail,
   sceneIndex,
   sceneCount,
   characters,
@@ -106,6 +110,7 @@ export function PlateSceneEditor({
       onStartBranchOption={onStartBranchOption}
       incomingCountBySceneId={incomingCountBySceneId}
       branchColorBySceneId={branchColorBySceneId}
+      branchBreadcrumbTrail={branchBreadcrumbTrail}
       sceneIndex={sceneIndex}
       sceneCount={sceneCount}
       initialDocuments={initialDocuments}

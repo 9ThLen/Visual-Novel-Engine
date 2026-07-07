@@ -5,7 +5,7 @@
  * and iframe count stay bounded regardless of story length.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -20,6 +20,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DocumentBranchBreadcrumb } from '@/components/document-editor/DocumentBranchBreadcrumb';
 import { DocumentEditorHeader } from '@/components/document-editor/DocumentEditorHeader';
 import { DocumentInspectorPanel } from '@/components/document-editor/DocumentInspectorPanel';
 import { DocumentSceneFrame } from '@/components/document-editor/DocumentSceneFrame';
@@ -30,6 +31,7 @@ import type {
 } from '@/components/vn-plate-editor/PlateWebViewEditor';
 import { useColors } from '@/hooks/use-colors';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
+import { crumbsForSceneIndex, type BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
 import { ensureDocumentCharactersInBlocks } from '@/lib/document-editor/document-scene';
 import {
   computeActiveSceneId,
@@ -57,6 +59,8 @@ interface DocumentSceneEditorProps {
   incomingCountBySceneId?: Record<string, number>;
   /** Branch accent color per scene id on the active path (branch tinting). */
   branchColorBySceneId?: Record<string, string>;
+  /** Choice crumbs for the whole active path; sliced here by the scrolled-to scene. */
+  branchBreadcrumbTrail?: BranchBreadcrumbItem[];
   sceneIndex: number;
   sceneCount: number;
   initialDocuments: DocumentScene[];
@@ -106,6 +110,7 @@ export function DocumentSceneEditor({
   onStartBranchOption,
   incomingCountBySceneId,
   branchColorBySceneId,
+  branchBreadcrumbTrail,
   sceneIndex,
   sceneCount,
   initialDocuments,
@@ -183,7 +188,17 @@ export function DocumentSceneEditor({
     prevRouteSceneIdRef.current = sceneRecord.id;
     if (!routeSceneChanged && dirtySceneIds.has(activeSceneId)) return;
 
-    const nextActiveSceneId = routeSceneChanged ? sceneRecord.id : activeSceneId;
+    // Clamp to a scene that exists in the rebuilt document: switching an
+    // ancestor branch (e.g. from the breadcrumb) can drop the scene the
+    // author was viewing off the active path, and a stale activeSceneId
+    // would leak into preview/save-and-play routes and the scroll seed.
+    const documentSceneIds = new Set(initialDocuments.map((ds) => ds.sceneId));
+    let nextActiveSceneId = routeSceneChanged ? sceneRecord.id : activeSceneId;
+    if (!documentSceneIds.has(nextActiveSceneId)) {
+      nextActiveSceneId = documentSceneIds.has(sceneRecord.id)
+        ? sceneRecord.id
+        : initialDocuments[0]?.sceneId ?? nextActiveSceneId;
+    }
     setDocumentScenes(initialDocuments);
     setLocalCharacters(characters);
     localCharactersRef.current = characters;
@@ -224,6 +239,18 @@ export function DocumentSceneEditor({
 
   const activeDocument = documentScenes.find((ds) => ds.sceneId === activeSceneId) ?? documentScenes[0];
   const activeSceneIndex = Math.max(0, scenes.findIndex((scene) => scene.id === activeSceneId));
+
+  // Breadcrumb crumbs for the scene currently in view. Off-path scenes
+  // («Поза сюжетом») are appended after the active path in `scenes`, so the
+  // choices of the path do not lead to them — show a neutral breadcrumb.
+  const isActiveSceneOffPath = useMemo(
+    () => (offPathScenes ?? []).some((scene) => scene.id === activeSceneId),
+    [activeSceneId, offPathScenes],
+  );
+  const breadcrumbCrumbs = useMemo(() => {
+    if (!branchBreadcrumbTrail?.length || isActiveSceneOffPath) return [];
+    return crumbsForSceneIndex(branchBreadcrumbTrail, activeSceneIndex);
+  }, [activeSceneIndex, branchBreadcrumbTrail, isActiveSceneOffPath]);
 
   const applyDraftSnapshot = useCallback((snapshot: PlateWebViewEditorSnapshot, dirty = true) => {
     draftRegistryRef.current.set(snapshot.scene.sceneId, snapshot);
@@ -542,6 +569,18 @@ export function DocumentSceneEditor({
           />
         ) : null}
 
+        <View style={{ flex: 1 }}>
+        <DocumentBranchBreadcrumb
+          colorScheme={documentColorScheme}
+          isPhone={isPhone}
+          crumbs={breadcrumbCrumbs}
+          currentLabel={activeDocument?.sceneName || sceneRecord.name}
+          branchInfo={branchInfo}
+          onSelectChoiceOption={stableSelectChoiceOption}
+          onStartBranchOption={stableStartBranchOption}
+          onNavigateToScene={handleScenePress}
+          startSceneId={scenes[0]?.id}
+        />
         <ScrollView
           ref={scrollViewRef}
           style={{
@@ -599,6 +638,7 @@ export function DocumentSceneEditor({
           ))}
           </Animated.View>
         </ScrollView>
+        </View>
 
         {!isPhone ? (
           <DocumentInspectorPanel colorScheme={documentColorScheme} scene={activeDocument ?? null} />
