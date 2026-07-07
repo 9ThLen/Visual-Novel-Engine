@@ -5,7 +5,7 @@
   "author": "Visual Novel Engine - Full Feature Demo",
   "startSceneId": "scene_1",
   "createdAt": 1744740000000,
-  "updatedAt": 1744740000000,
+  "updatedAt": 1783425600000,
   "scenes": {
     "scene_1": {
       "id": "scene_1",
@@ -76,6 +76,11 @@
           "id": "choice_1_2",
           "text": "Read the sign first",
           "nextSceneId": "scene_1_sign"
+        },
+        {
+          "id": "choice_1_3",
+          "text": "Open sprite calibration room",
+          "nextSceneId": "scene_character_lab"
         }
       ]
     },
@@ -91,6 +96,63 @@
           "id": "choice_1s_1",
           "text": "Enter the museum",
           "nextSceneId": "scene_2"
+        }
+      ]
+    },
+    "scene_character_lab": {
+      "id": "scene_character_lab",
+      "text": "A side gallery has been reserved for character calibration. Four full-body sprites stand across the stage so the engine can be checked for PNG loading, transparency, slot positions, and overlap behavior.\n\nUse this room when comparing character framing on desktop, tablet, and phone layouts.",
+      "backgroundImageUri": "assets/background/bg-museum-entrance.png",
+      "animatedBackground": {
+        "type": "particles",
+        "config": {
+          "particleCount": 30,
+          "color": "#9AD7FF",
+          "speed": 0.35
+        }
+      },
+      "characters": [
+        {
+          "id": "char_demo_analyst",
+          "uri": "assets/charakters/char-demo-analyst.png",
+          "name": "Noah",
+          "position": "far-left",
+          "expression": "neutral"
+        },
+        {
+          "id": "char_demo_curator",
+          "uri": "assets/charakters/char-demo-curator.png",
+          "name": "Vivienne",
+          "position": "left",
+          "expression": "confident"
+        },
+        {
+          "id": "char_demo_maker",
+          "uri": "assets/charakters/char-demo-maker.png",
+          "name": "Kai",
+          "position": "right",
+          "expression": "cheerful"
+        },
+        {
+          "id": "char_demo_oracle",
+          "uri": "assets/charakters/char-demo-oracle.png",
+          "name": "Seraphine",
+          "position": "far-right",
+          "expression": "calm"
+        }
+      ],
+      "voiceAudioUri": null,
+      "musicUri": "assets/sounds-sample/music-magical.mp3",
+      "choices": [
+        {
+          "id": "choice_lab_1",
+          "text": "Enter the museum",
+          "nextSceneId": "scene_2"
+        },
+        {
+          "id": "choice_lab_2",
+          "text": "Return to the entrance",
+          "nextSceneId": "scene_1"
         }
       ]
     },
@@ -339,7 +401,7 @@
       "characters": [
         {
           "id": "char_librarian",
-          "uri": "assets/charakters/char-librarian.png",
+          "uri": "assets/charakters/char-demo-oracle.png",
           "name": "Ancient Librarian",
           "position": "right",
           "expression": "reading"
@@ -427,7 +489,7 @@
       "characters": [
         {
           "id": "char_librarian",
-          "uri": "assets/charakters/char-librarian.png",
+          "uri": "assets/charakters/char-demo-oracle.png",
           "name": "Ancient Librarian",
           "position": "center",
           "expression": "wise"
@@ -455,7 +517,7 @@
       "characters": [
         {
           "id": "char_librarian",
-          "uri": "assets/charakters/char-librarian.png",
+          "uri": "assets/charakters/char-demo-oracle.png",
           "name": "Ancient Librarian",
           "position": "center",
           "expression": "explaining"
@@ -591,7 +653,7 @@
         },
         {
           "id": "char_librarian",
-          "uri": "assets/charakters/char-librarian.png",
+          "uri": "assets/charakters/char-demo-oracle.png",
           "name": "Ancient Librarian",
           "position": "right",
           "expression": "happy"

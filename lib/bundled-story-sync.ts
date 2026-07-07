@@ -17,7 +17,7 @@ type BundledAudioScene = AudioScene & {
 };
 
 export interface BundledStorySyncSnapshot {
-  storiesMetadata: { id: string }[];
+  storiesMetadata: { id: string; updatedAt?: unknown }[];
   sceneRecordsByStory: Record<string, Record<string, BundledAudioScene>>;
 }
 
@@ -37,7 +37,16 @@ export function shouldUpsertBundledStory(
   const storyId = bundledStory.id;
   const startSceneId = bundledStory.startSceneId;
 
-  if (!snapshot.storiesMetadata.some((story) => story.id === storyId)) {
+  const existingMetadata = snapshot.storiesMetadata.find((story) => story.id === storyId);
+  if (!existingMetadata) {
+    return true;
+  }
+
+  if (
+    typeof bundledStory.updatedAt === 'number'
+    && typeof existingMetadata.updatedAt === 'number'
+    && bundledStory.updatedAt > existingMetadata.updatedAt
+  ) {
     return true;
   }
 

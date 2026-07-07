@@ -3,7 +3,7 @@
  */
 
 import type { Story, StoryScene, Choice } from '@/lib/scene-operations';
-import type { CharacterSprite } from './character-types';
+import type { CharacterPosition, CharacterSprite } from './character-types';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
 import { Platform } from 'react-native';
 
@@ -49,6 +49,26 @@ export class ValidationError extends Error {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+const SAFE_CHARACTER_POSITIONS = new Set<CharacterPosition>([
+  'left',
+  'center',
+  'right',
+  'far-left',
+  'far-right',
+]);
+
+function validateCharacterPosition(value: unknown): CharacterPosition | undefined {
+  return typeof value === 'string' && SAFE_CHARACTER_POSITIONS.has(value as CharacterPosition)
+    ? value as CharacterPosition
+    : undefined;
+}
+
+function validateCharacterScale(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 3
+    ? value
+    : undefined;
 }
 
 /**
@@ -170,11 +190,20 @@ export class StoryValidator {
     }
     const characters: CharacterSprite[] = rawCharacters.map((c: unknown) => {
       if (isRecord(c) && c.id && typeof c.uri === 'string') {
+        const position = validateCharacterPosition(c.position);
+        const scale = validateCharacterScale(c.scale);
+        const expression = typeof c.expression === 'string'
+          ? this.sanitizeString(c.expression)
+          : undefined;
+
         return {
           id: this.sanitizeString(String(c.id)),
           name: c.name ? this.sanitizeString(String(c.name)) : this.sanitizeString(String(c.id)),
           uri: this.validateUri(c.uri) || '',
           createdAt: typeof c.createdAt === 'number' ? c.createdAt : Date.now(),
+          ...(position ? { position } : {}),
+          ...(scale ? { scale } : {}),
+          ...(expression ? { expression } : {}),
         };
       }
       const str = this.sanitizeString(String(c));

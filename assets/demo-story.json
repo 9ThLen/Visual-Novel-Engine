@@ -5,7 +5,7 @@
   "author": "Visual Novel Engine Demo",
   "startSceneId": "scene_1",
   "createdAt": 1711900000000,
-  "updatedAt": 1711900000000,
+  "updatedAt": 1783425600000,
   "scenes": {
     "scene_1": {
       "id": "scene_1",
@@ -165,7 +165,7 @@
         {
           "id": "librarian",
           "name": "Librarian",
-          "uri": "assets/charakters/char-librarian.png"
+          "uri": "assets/charakters/char-demo-oracle.png"
         }
       ],
       "voiceAudioUri": null,
@@ -240,6 +240,11 @@
           "id": "choice_13_1",
           "text": "Return to Home",
           "nextSceneId": "scene_1"
+        },
+        {
+          "id": "choice_13_2",
+          "text": "Open character sprite calibration",
+          "nextSceneId": "scene_character_calibration"
         }
       ]
     },
@@ -251,7 +256,7 @@
         {
           "id": "librarian",
           "name": "Librarian",
-          "uri": "assets/charakters/char-librarian.png"
+          "uri": "assets/charakters/char-demo-oracle.png"
         }
       ],
       "voiceAudioUri": null,
@@ -277,7 +282,7 @@
         {
           "id": "librarian",
           "name": "Librarian",
-          "uri": "assets/charakters/char-librarian.png"
+          "uri": "assets/charakters/char-demo-oracle.png"
         }
       ],
       "voiceAudioUri": null,
@@ -292,6 +297,55 @@
           "id": "choice_15_2",
           "text": "Refuse and explore alone",
           "nextSceneId": "scene_5"
+        }
+      ]
+    },
+    "scene_character_calibration": {
+      "id": "scene_character_calibration",
+      "text": "A projection circle opens in the library and four guest sprites step into fixed stage slots.\n\nThis scene is a character-system calibration check: four tall transparent PNG sprites are visible at once so spacing, edge cleanup, z-order, and full-body framing can be inspected quickly.",
+      "backgroundImageUri": "assets/background/bg-grand-hall.png",
+      "characters": [
+        {
+          "id": "char_demo_analyst",
+          "name": "Noah",
+          "uri": "assets/charakters/char-demo-analyst.png",
+          "position": "far-left",
+          "expression": "neutral"
+        },
+        {
+          "id": "char_demo_curator",
+          "name": "Vivienne",
+          "uri": "assets/charakters/char-demo-curator.png",
+          "position": "left",
+          "expression": "confident"
+        },
+        {
+          "id": "char_demo_maker",
+          "name": "Kai",
+          "uri": "assets/charakters/char-demo-maker.png",
+          "position": "right",
+          "expression": "cheerful"
+        },
+        {
+          "id": "char_demo_oracle",
+          "name": "Seraphine",
+          "uri": "assets/charakters/char-demo-oracle.png",
+          "position": "far-right",
+          "expression": "calm"
+        }
+      ],
+      "voiceAudioUri": null,
+      "musicUri": "assets/sounds-sample/music-peaceful.mp3",
+      "choices": [
+        {
+          "id": "choice_calibration_1",
+          "text": "Return to demo ending",
+          "nextSceneId": "scene_13"
+        },
+        {
+          "id": "choice_calibration_2",
+          "text": "Restart the library demo",
+          "nextSceneId": "scene_1"
         }
       ]
     }

@@ -37,6 +37,18 @@ describe('shouldUpsertBundledStory', () => {
     ).toBe(true);
   });
 
+  it('returns true when bundled story metadata is newer than persisted metadata', () => {
+    expect(
+      shouldUpsertBundledStory(
+        {
+          storiesMetadata: [{ id: bundledStory.id, updatedAt: 0 }],
+          sceneRecordsByStory: {},
+        },
+        { ...bundledStory, updatedAt: 2 },
+      ),
+    ).toBe(true);
+  });
+
   it('returns true when persisted canonical start scene lost bundled music', () => {
     expect(
       shouldUpsertBundledStory(

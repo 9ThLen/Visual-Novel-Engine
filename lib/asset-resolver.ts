@@ -103,9 +103,17 @@ const BUNDLED_ASSETS: Record<string, number> = {
   'assets/charakters/char-guide.png': require('../assets/charakters/char-guide.png'),
   'assets/charakters/char-librarian.png': require('../assets/charakters/char-librarian.png'),
   'assets/charakters/char-reflection.png': require('../assets/charakters/char-reflection.png'),
+  'assets/charakters/char-demo-analyst.png': require('../assets/charakters/char-demo-analyst.png'),
+  'assets/charakters/char-demo-curator.png': require('../assets/charakters/char-demo-curator.png'),
+  'assets/charakters/char-demo-maker.png': require('../assets/charakters/char-demo-maker.png'),
+  'assets/charakters/char-demo-oracle.png': require('../assets/charakters/char-demo-oracle.png'),
   'char-guide': require('../assets/charakters/char-guide.png'),
   'char-librarian': require('../assets/charakters/char-librarian.png'),
   'char-reflection': require('../assets/charakters/char-reflection.png'),
+  'char-demo-analyst': require('../assets/charakters/char-demo-analyst.png'),
+  'char-demo-curator': require('../assets/charakters/char-demo-curator.png'),
+  'char-demo-maker': require('../assets/charakters/char-demo-maker.png'),
+  'char-demo-oracle': require('../assets/charakters/char-demo-oracle.png'),
 
   // Splash screen assets
   'assets/splash-screens/splash-chapter1.png': require('../assets/splash-screens/splash-chapter1.png'),
