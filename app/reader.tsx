@@ -7,7 +7,7 @@ import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { ReaderMenu } from '@/components/ReaderMenu';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
-import type { PlaybackState, SceneState } from '@/lib/engine/runtime-types';
+import type { RuntimeVariables, SceneState } from '@/lib/engine/runtime-types';
 import { enhancedAudioManager as audioManager } from '@/lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '@/lib/asset-resolver';
 import { useReaderAudio, stopReaderPlayback } from '@/hooks/useReaderAudio';
@@ -15,7 +15,7 @@ import { useReaderInitialization } from '@/hooks/useReaderInitialization';
 import { buttonFeedback } from '@/lib/ui-feedback';
 import { parseResumeExisting } from '@/lib/reader-launch';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { getTimelineInteractiveObjects, type ReaderTransitionEvent } from '@/lib/reader-runtime';
+import { buildNextPlaybackState, getTimelineInteractiveObjects, normalizeRuntimeVariables, type ReaderTransitionEvent } from '@/lib/reader-runtime';
 import { normalizeUserSettings } from '@/lib/user-settings';
 import { createInMemorySceneAccess } from '@/lib/scene-access';
 import { getReaderSceneRecordForNavigation } from '@/lib/reader-scene-cache';
@@ -41,6 +41,7 @@ export default function ReaderScreen() {
   const [entryTransition, setEntryTransition] = useState<ReaderTransitionEvent | null>(null);
   const [objDialogue, setObjDialogue] = useState<{ text: string; speaker?: string } | null>(null);
   const pendingChoiceRef = useRef<{ sceneId: string; choiceId: string; targetSceneId: string | null } | null>(null);
+  const latestVariablesRef = useRef<RuntimeVariables>({});
   const { t } = useI18n();
 
   const { isLoading, sceneRecord, timeline, story, playbackState, updatePlaybackState } = useReaderInitialization(
@@ -58,6 +59,15 @@ export default function ReaderScreen() {
   });
 
   useEffect(() => {
+    latestVariablesRef.current = normalizeRuntimeVariables(playbackState?.variables);
+  }, [playbackState?.storyId, playbackState?.currentSceneId, playbackState?.variables]);
+
+  const handleSceneStateChange = useCallback((sceneState: SceneState) => {
+    latestVariablesRef.current = normalizeRuntimeVariables(sceneState.variables);
+    setReaderSceneState(sceneState);
+  }, []);
+
+  useEffect(() => {
     setObjDialogue(null);
     setReaderSceneState(null);
   }, [playbackState?.currentSceneId]);
@@ -68,6 +78,7 @@ export default function ReaderScreen() {
       ...playbackState,
       isPlaying: false,
       choicesMade,
+      variables: normalizeRuntimeVariables(latestVariablesRef.current),
     });
     void stopReaderPlayback(audioManager);
     if (router.canGoBack()) {
@@ -98,13 +109,12 @@ export default function ReaderScreen() {
       }
       return false;
     }
-    const updated: PlaybackState = {
-      storyId: story.id,
-      currentSceneId: sceneId,
-      isPlaying: true,
-      currentDialogueIndex: 0,
-      choicesMade: choicesMade || playbackState?.choicesMade || [],
-    };
+    const updated = buildNextPlaybackState(
+      playbackState,
+      sceneId,
+      choicesMade,
+      latestVariablesRef.current,
+    );
     beforeCommit?.();
     updatePlaybackState(updated);
     return true;
@@ -219,7 +229,8 @@ export default function ReaderScreen() {
         onTransition={handleTransition}
         entryTransition={entryTransition}
         onExecutorChoiceSelect={handleExecutorChoiceSelect}
-        onSceneStateChange={setReaderSceneState}
+        onSceneStateChange={handleSceneStateChange}
+        initialVariables={playbackState?.variables ?? latestVariablesRef.current}
         isLoading={isLoading}
         settings={settings}
         onHistoryVisibleChange={setHistoryOpen}

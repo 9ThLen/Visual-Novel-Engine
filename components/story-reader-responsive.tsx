@@ -27,7 +27,7 @@ import {
 import { useColors } from '@/hooks/use-colors';
 import type { UserSettings } from '@/lib/user-settings';
 import type { TimelineStep } from '@/lib/engine/types';
-import type { SceneState } from '@/lib/engine/runtime-types';
+import type { RuntimeVariables, SceneState } from '@/lib/engine/runtime-types';
 import type { ReaderTransitionEvent } from '@/lib/reader-runtime';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
 import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
@@ -60,7 +60,7 @@ function extractSpeaker(text: string): { speaker: string | null; body: string } 
 interface Props {
   sceneId?: string;
   timeline?: TimelineStep[];
-  initialVariables?: Record<string, string | number | boolean>;
+  initialVariables?: RuntimeVariables;
   onContinue?: (targetSceneId?: string) => void;
   onExecutorChoiceSelect?: (choice: { sceneId: string; choiceId: string; targetSceneId: string | null }) => void;
   onTransition?: (targetSceneId: string | null, transition?: ReaderTransitionEvent) => void;

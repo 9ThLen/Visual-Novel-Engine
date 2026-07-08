@@ -61,10 +61,11 @@ pnpm ios
 
 ## Documentation
 
-- `docs/SCENE-MODEL-CONTRACT.md` documents the canonical scene contract.
-- `docs/WEB_DEPLOYMENT.md` documents the web export and GitHub Pages deployment path.
-- `docs/research/` contains product research that is still useful as background material.
-- `wiki/` is the compact project knowledge base. Historical session logs, old plans, stale reports, and generated tool environments were removed from active documentation.
+- `wiki/` is the compact project knowledge base: `wiki/index.md` lists the active pages (`overview.md`, `architecture-reference.md`, `stores-reference.md`, `block-types-reference.md`, and more). Start there.
+- `wiki/final-migration-audit.md` tracks the current migration status and cleanup boundaries.
+- `PRODUCT.md` describes product purpose, brand, and design principles.
+- `DESIGN_SYSTEM.md` documents theme tokens and the color system.
+- `AGENTS.md` holds AI-agent rules and project-specific pitfalls.
 
 ## Development Rules
 

@@ -153,6 +153,35 @@ describe('useSceneExecutor', () => {
     });
   });
 
+  it('evaluates step conditions against seeded initial variables', async () => {
+    const visible: TimelineStep = {
+      id: 'condition-true',
+      blockType: 'text',
+      data: { content: 'Visible from saved state', typewriterSpeed: 0.5, anchorTo: 'background' },
+      collapsed: false,
+      enabled: true,
+      conditions: [{ variableName: 'flag', operator: '==', value: true }],
+    } as TimelineStep;
+    const fallback = {
+      id: 'fallback',
+      blockType: 'text' as const,
+      data: { content: 'Fallback', typewriterSpeed: 0.5, anchorTo: 'background' as const },
+      collapsed: false,
+      enabled: true,
+    };
+
+    const { result } = renderHook(() => useSceneExecutor(
+      [visible, fallback] as TimelineStep[],
+      { initialVariables: { flag: true } },
+    ));
+
+    await waitFor(() => {
+      expect(result.current.currentStepIndex).toBe(0);
+      expect(result.current.sceneState.variables.flag).toBe(true);
+      expect(result.current.isTyping).toBe(true);
+    });
+  });
+
   it('resets when middle step data changes without changing first or last id', async () => {
     const makeTimeline = (content: string): TimelineStep[] => [
       { id: 'background-1', blockType: 'background', data: { assetId: 'bg-1', transition: 'fade', duration: 500 }, collapsed: false, enabled: true } as TimelineStep,

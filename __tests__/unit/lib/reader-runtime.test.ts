@@ -1,6 +1,9 @@
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import { toReaderScene } from '@/lib/reader-scene';
 import {
+  buildCanonicalLoadSnapshot,
+  buildCanonicalSaveSlot,
+  buildNextPlaybackState,
   getNextSceneId,
   getStartSceneId,
   getTimelineDisplayPages,
@@ -90,5 +93,73 @@ describe('reader-runtime', () => {
     expect(toReaderChoices([{ id: 'a', text: 'A', targetSceneId: 'scene-a' }])).toEqual([
       { id: 'a', text: 'A', nextSceneId: 'scene-a', targetSceneId: 'scene-a', index: 0 },
     ]);
+  });
+
+  it('builds next playback state with carried variables', () => {
+    const previous = {
+      storyId: 'story-1',
+      currentSceneId: 'scene-1',
+      isPlaying: true,
+      currentDialogueIndex: 3,
+      choicesMade: [{ sceneId: 'scene-1', choiceId: 'choice-a' }],
+      variables: { flag: true },
+    };
+
+    expect(buildNextPlaybackState(
+      previous,
+      'scene-2',
+      [{ sceneId: 'scene-1', choiceId: 'choice-b' }],
+      { score: 2, _last_choice: 'choice-b' },
+    )).toEqual({
+      storyId: 'story-1',
+      currentSceneId: 'scene-2',
+      isPlaying: true,
+      currentDialogueIndex: 0,
+      choicesMade: [{ sceneId: 'scene-1', choiceId: 'choice-b' }],
+      variables: { score: 2, _last_choice: 'choice-b' },
+    });
+  });
+
+  it('saves and loads canonical variables while legacy slots load with empty variables', () => {
+    const snapshot = {
+      storiesMetadata: [
+        {
+          id: 'story-1',
+          title: 'Story',
+          startSceneId: 'scene-1',
+          createdAt: 1,
+          updatedAt: 1,
+          sceneCount: 1,
+        },
+      ],
+      sceneRecordsByStory: {
+        'story-1': {
+          'scene-1': toReaderScene(makeScene('scene-1')),
+        },
+      },
+    };
+    const playbackState = {
+      storyId: 'story-1',
+      currentSceneId: 'scene-1',
+      isPlaying: true,
+      currentDialogueIndex: 0,
+      choicesMade: [{ sceneId: 'scene-1', choiceId: 'choice-a' }],
+      variables: { flag: true, score: 7 },
+    };
+
+    const slot = buildCanonicalSaveSlot('slot-1', snapshot, playbackState);
+    expect(slot?.variables).toEqual({ flag: true, score: 7 });
+
+    const loaded = slot ? buildCanonicalLoadSnapshot(snapshot, slot) : null;
+    expect(loaded?.playbackState.variables).toEqual({ flag: true, score: 7 });
+
+    const legacyLoaded = buildCanonicalLoadSnapshot(snapshot, {
+      id: 'legacy',
+      storyId: 'story-1',
+      sceneId: 'scene-1',
+      choicesMade: [],
+      timestamp: 1,
+    });
+    expect(legacyLoaded?.playbackState.variables).toEqual({});
   });
 });

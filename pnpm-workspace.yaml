@@ -9,3 +9,7 @@ onlyBuiltDependencies:
 patchedDependencies:
   react-native-css-interop: patches/react-native-css-interop.patch
   "@expo/cli": patches/@expo__cli@54.0.24.patch
+
+allowBuilds:
+  esbuild: set this to true or false
+  unrs-resolver: set this to true or false

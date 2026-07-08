@@ -9,6 +9,8 @@
 
 ## 2026-06-15 — GSD Fix Round
 
+> Note: `hooks/use-story-state.ts` referenced in the migrations below was later removed during the 2026-07-02 stabilization cleanup (see `final-migration-audit.md`). Active code now calls `useAppStore()` directly.
+
 ### Hardcoded Colors Fixed
 - `components/editor/PreviewScreen.tsx:237` — replaced `#fff` → `colors.surface` (flash effect)
 - `components/reader/ReaderDisplay.tsx:233` — replaced `#ffffff` → `colors.surface` (flash effect)

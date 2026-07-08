@@ -10,7 +10,7 @@ import type {
 import type { SceneImageState } from '@/hooks/useSceneImages';
 import type { InteractiveObject } from '@/lib/interactive-types';
 import type { StoryMetadata } from '@/lib/story-domain';
-import type { PlaybackState } from '@/lib/engine/runtime-types';
+import type { PlaybackState, RuntimeVariables } from '@/lib/engine/runtime-types';
 import type { SaveSlot } from '@/lib/story-domain';
 import { toSaveSlotMeta, type ReaderScene } from '@/lib/reader-scene';
 
@@ -140,6 +140,27 @@ export interface ReaderRuntimeSnapshot {
   sceneRecordsByStory: Record<string, Record<string, ReaderScene>>;
 }
 
+export function normalizeRuntimeVariables(variables: unknown): RuntimeVariables {
+  if (!variables || typeof variables !== 'object' || Array.isArray(variables)) return {};
+  return { ...(variables as RuntimeVariables) };
+}
+
+export function buildNextPlaybackState(
+  previous: PlaybackState,
+  sceneId: string,
+  choicesMade: { sceneId: string; choiceId: string }[] | undefined,
+  variables: RuntimeVariables | undefined,
+): PlaybackState {
+  return {
+    storyId: previous.storyId,
+    currentSceneId: sceneId,
+    isPlaying: true,
+    currentDialogueIndex: 0,
+    choicesMade: choicesMade ?? previous.choicesMade,
+    variables: normalizeRuntimeVariables(variables),
+  };
+}
+
 export function buildCanonicalSaveSlot(
   slotId: string,
   snapshot: ReaderRuntimeSnapshot,
@@ -155,6 +176,7 @@ export function buildCanonicalSaveSlot(
     storyId: playbackState.storyId,
     sceneId: playbackState.currentSceneId,
     choicesMade: playbackState.choicesMade,
+    variables: normalizeRuntimeVariables(playbackState.variables),
     timestamp: Date.now(),
     sceneName: sceneMeta.sceneName,
     thumbnailUri: sceneMeta.thumbnailUri,
@@ -180,6 +202,7 @@ export function buildCanonicalLoadSnapshot(
       isPlaying: true,
       currentDialogueIndex: 0,
       choicesMade: slot.choicesMade,
+      variables: normalizeRuntimeVariables(slot.variables),
     },
   };
 }

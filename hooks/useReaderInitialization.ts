@@ -150,6 +150,7 @@ export function useReaderInitialization(
         isPlaying: true,
         currentDialogueIndex: 0,
         choicesMade: [],
+        variables: {},
       };
       updatePlaybackState(newPlaybackState);
 

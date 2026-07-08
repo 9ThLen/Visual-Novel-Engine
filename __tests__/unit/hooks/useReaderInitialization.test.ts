@@ -64,6 +64,7 @@ describe('useReaderInitialization', () => {
         isPlaying: true,
         currentDialogueIndex: 0,
         choicesMade: [],
+        variables: {},
       },
       hydrateReaderSceneWindow,
       loadCurrentStory: vi.fn(async (storyId: string | null) => {
@@ -103,6 +104,7 @@ describe('useReaderInitialization', () => {
         isPlaying: true,
         currentDialogueIndex: 0,
         choicesMade: [],
+        variables: {},
       },
       hydrateReaderSceneWindow,
       loadCurrentStory: vi.fn(async (storyId: string | null) => {
@@ -145,6 +147,7 @@ describe('useReaderInitialization', () => {
         isPlaying: true,
         currentDialogueIndex: 0,
         choicesMade: [],
+        variables: {},
       },
       sceneRecordsByStory: { 'story-1': { 'scene-a': sceneA } },
       hydrateReaderSceneWindow: vi.fn(async () => true),
@@ -181,6 +184,7 @@ describe('useReaderInitialization', () => {
         isPlaying: true,
         currentDialogueIndex: 0,
         choicesMade: [],
+        variables: {},
       },
     });
     rerender();

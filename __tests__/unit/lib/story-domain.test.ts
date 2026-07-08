@@ -47,6 +47,7 @@ function makePlaybackState(overrides: Partial<PlaybackState> = {}): PlaybackStat
     isPlaying: false,
     currentDialogueIndex: 0,
     choicesMade: [],
+    variables: {},
     ...overrides,
   };
 }
@@ -147,6 +148,15 @@ describe('StoryDomain.createSaveSlot', () => {
     const slot = StoryDomain.createSaveSlot('slot-3', story, playbackState);
 
     expect(slot.choicesMade).toEqual(choicesMade);
+  });
+
+  it('copies variables from playbackState', () => {
+    const story = makeStory();
+    const playbackState = makePlaybackState({ variables: { flag: true, score: 3 } });
+
+    const slot = StoryDomain.createSaveSlot('slot-vars', story, playbackState);
+
+    expect(slot.variables).toEqual({ flag: true, score: 3 });
   });
 
   it('extracts first line of scene text truncated to 100 characters', () => {

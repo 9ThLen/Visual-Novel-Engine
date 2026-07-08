@@ -74,6 +74,7 @@ function makeState(): AppStorePersistenceState {
       isPlaying: true,
       currentDialogueIndex: 0,
       choicesMade: [],
+      variables: {},
     },
     settings: {
       bgmVolume: 0.7,
@@ -341,6 +342,24 @@ describe('app store persistence helpers', () => {
     expect(merged.mediaLibrary).toBe(currentState.mediaLibrary);
     expect(merged.characterLibraries).toBe(currentState.characterLibraries);
     expect(merged.sceneRecordsByStory).toBe(currentState.sceneRecordsByStory);
+  });
+
+  it('normalizes older persisted playback state without variables', () => {
+    const currentState = makeState();
+    const merged = mergePersistedAppState(
+      {
+        playbackState: {
+          storyId: 'story-1',
+          currentSceneId: 'scene-1',
+          isPlaying: true,
+          currentDialogueIndex: 0,
+          choicesMade: [],
+        },
+      },
+      currentState,
+    );
+
+    expect(merged.playbackState?.variables).toEqual({});
   });
 
   it('roundtrips a small uploaded background asset through persistence and rehydrate', () => {

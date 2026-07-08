@@ -88,6 +88,7 @@ describe('app store slices', () => {
       isPlaying: true,
       currentDialogueIndex: 0,
       choicesMade: [],
+      variables: {},
     });
     await slice.loadCurrentStory(null);
 
@@ -141,6 +142,7 @@ describe('app store slices', () => {
         isPlaying: true,
         currentDialogueIndex: 0,
         choicesMade: [{ sceneId: 'scene-1', choiceId: 'choice-1' }],
+        variables: { flag: true },
       },
       storiesMetadata: [
         {
@@ -166,6 +168,7 @@ describe('app store slices', () => {
     expect(loaded?.storyId).toBe('story-1');
     expect(loaded?.playbackState.currentSceneId).toBe('scene-1');
     expect(loaded?.playbackState.choicesMade).toEqual([{ sceneId: 'scene-1', choiceId: 'choice-1' }]);
+    expect(loaded?.playbackState.variables).toEqual({ flag: true });
     expect(harness.state.currentStoryId).toBe('story-1');
     expect(harness.state.playbackState?.currentSceneId).toBe('scene-1');
   });
@@ -182,6 +185,7 @@ describe('app store slices', () => {
         isPlaying: true,
         currentDialogueIndex: 0,
         choicesMade: [],
+        variables: {},
       },
       storiesMetadata: [
         {

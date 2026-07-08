@@ -107,6 +107,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object';
 }
 
+function normalizePlaybackState(playbackState: unknown): PlaybackState | null {
+  if (!isRecord(playbackState)) {
+    return null;
+  }
+
+  return {
+    ...(playbackState as unknown as PlaybackState),
+    variables: isRecord(playbackState.variables)
+      ? { ...(playbackState.variables as PlaybackState['variables']) }
+      : {},
+  };
+}
+
 function withCharacterSchemaVersion(stories: StoryMetadata[]): StoryMetadata[] {
   return stories.map((story) => ({
     ...story,
@@ -136,6 +149,9 @@ export function migratePersistedAppState(
   }
   if (Array.isArray(migrated.storiesMetadata)) {
     migrated.storiesMetadata = withCharacterSchemaVersion(migrated.storiesMetadata);
+  }
+  if ('playbackState' in migrated) {
+    migrated.playbackState = normalizePlaybackState(migrated.playbackState);
   }
 
   return migrated;
@@ -170,6 +186,10 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
         ? persisted.storiesMetadata
         : currentState.storiesMetadata,
     ),
+    playbackState:
+      'playbackState' in persisted
+        ? normalizePlaybackState(persisted.playbackState)
+        : currentState.playbackState,
     sceneRecordHydration: currentState.sceneRecordHydration,
   };
 }

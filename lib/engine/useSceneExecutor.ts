@@ -13,7 +13,7 @@ import type {
   VariableBlockData,
   TransitionBlockData,
 } from './types';
-import type { SceneState } from './runtime-types';
+import type { RuntimeVariables, SceneState } from './runtime-types';
 import { createEmptySceneState, conditionsMet } from './conditionUtils';
 import { normalizeTransitionData } from './transition-utils';
 import {
@@ -44,7 +44,7 @@ interface ExecutorStepResult {
 type LookaheadAction = 'preload' | 'skip' | 'stop';
 
 export interface UseSceneExecutorOptions {
-  initialVariables?: Record<string, string | number | boolean>;
+  initialVariables?: RuntimeVariables;
 }
 
 export interface UseSceneExecutorReturn {
@@ -60,7 +60,7 @@ export interface UseSceneExecutorReturn {
 const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 function createInitialExecutorState(
-  initialVariables?: Record<string, string | number | boolean>,
+  initialVariables?: RuntimeVariables,
 ): ExecutorState {
   return {
     sceneState: {
@@ -84,11 +84,11 @@ function lookaheadActionForStep(step: TimelineStep, state: SceneState): Lookahea
 }
 
 function evaluateVariable(
-  variables: Record<string, string | number | boolean>,
+  variables: RuntimeVariables,
   varName: string,
   operation: 'set' | 'add' | 'subtract' | 'multiply' | 'toggle',
   value: string | number | boolean,
-): Record<string, string | number | boolean> {
+): RuntimeVariables {
   if (RESERVED_KEYS.has(varName)) {
     if (__DEV__) {
       console.warn('[useSceneExecutor] attempted to set reserved variable key:', varName);

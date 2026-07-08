@@ -10,8 +10,10 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Asset } from 'expo-asset';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
+import { StoryHealthCard } from '@/components/story-home/StoryHealthCard';
 import { ConfirmDialog } from '@/components/ui';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
@@ -24,7 +26,9 @@ import { pickImageFromDevice } from '@/lib/pick-image';
 import { saveStoryExport } from '@/lib/export-story-file';
 import { exportStory, MAX_STORY_TAGS, MAX_STORY_TAG_LENGTH, sanitizeStoryTags } from '@/lib/story-hooks';
 import { computeStoryStats } from '@/lib/story-stats';
+import { runStoryDoctor } from '@/lib/story-doctor';
 import { validateSceneGraph } from '@/lib/document-editor/scene-graph-validator';
+import { getPlaybackAudioLibraryPure } from '@/lib/audio-library';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
 import type { StoryMetadata } from '@/lib/story-domain';
 import type { SceneRecord } from '@/lib/engine/types';
@@ -35,6 +39,18 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
   day: 'numeric',
   year: 'numeric',
 });
+
+const rabbitsPattern = require('../assets/background/bg-rabbits-pattern-soft.png');
+const rabbitsPatternUri = Asset.fromModule(rabbitsPattern).uri;
+const rabbitsPatternBackground = Platform.select({
+  web: {
+    backgroundImage: rabbitsPatternUri ? `url("${rabbitsPatternUri}")` : undefined,
+    backgroundPosition: 'top center',
+    backgroundRepeat: 'repeat',
+    backgroundSize: '560px 560px',
+  },
+  default: {},
+}) as object;
 
 // Soft elevation for the light "paper" surfaces. Web gets a crisp layered
 // box-shadow; native falls back to platform shadow props.
@@ -305,8 +321,26 @@ export default function StoryHomeScreen() {
   const characterCount = useAppStore((state) =>
     storyId ? state.characterLibraries[storyId]?.length ?? 0 : 0,
   );
+  const characterLibrary = useAppStore((state) =>
+    storyId ? state.characterLibraries[storyId] ?? [] : [],
+  );
+  const audioLibraries = useAppStore((state) => state.audioLibraries);
+  const mediaLibrary = useAppStore((state) => state.mediaLibrary);
 
   const stats = useMemo(() => computeStoryStats(sceneRecords), [sceneRecords]);
+  const storyDoctorAudioAssets = useMemo(
+    () => storyId ? getPlaybackAudioLibraryPure(storyId, audioLibraries, mediaLibrary) : [],
+    [audioLibraries, mediaLibrary, storyId],
+  );
+  const storyDoctorReport = useMemo(
+    () => runStoryDoctor({
+      scenes: sceneRecords,
+      mediaAssets: mediaLibrary,
+      audioAssets: storyDoctorAudioAssets,
+      characters: characterLibrary,
+    }),
+    [characterLibrary, mediaLibrary, sceneRecords, storyDoctorAudioAssets],
+  );
   const readiness = useMemo(() => {
     const issues = validateSceneGraph(sceneRecords);
     const has = (type: string) => issues.some((issue) => issue.type === type);
@@ -346,6 +380,18 @@ export default function StoryHomeScreen() {
     const scenesById = useAppStore.getState().sceneRecordsByStory[story.id];
     const sceneId = getPaperEditorSceneId(story, scenesById);
     if (!sceneId) {
+      showToast(t('document.invalidRoute'), 'error');
+      return;
+    }
+    navigateWithViewTransition(() =>
+      router.push({ pathname: '/document-editor', params: { storyId: story.id, sceneId } }),
+    );
+  }, [story, router, t]);
+
+  const handleOpenHealthScene = useCallback((sceneId: string) => {
+    if (!story) return;
+    const scenesById = useAppStore.getState().sceneRecordsByStory[story.id];
+    if (!scenesById?.[sceneId]) {
       showToast(t('document.invalidRoute'), 'error');
       return;
     }
@@ -557,6 +603,12 @@ export default function StoryHomeScreen() {
       edges={['top', 'left', 'right', 'bottom']}
       style={{ backgroundColor: colors.background }}
     >
+      <View
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[StyleSheet.absoluteFillObject, styles.rabbitsPattern, rabbitsPatternBackground]}
+      />
       <ScrollView
         contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
         showsVerticalScrollIndicator={false}
@@ -668,6 +720,13 @@ export default function StoryHomeScreen() {
             <StatTile colors={colors} iconName="text" value={stats.words} label={t('storyHome.statWords')} />
             <StatTile colors={colors} iconName="list" value={stats.choices} label={t('storyHome.statChoices')} />
             <StatTile colors={colors} iconName="character" value={characterCount} label={t('storyHome.statCharacters')} />
+            <StoryHealthCard
+              colors={colors}
+              report={storyDoctorReport}
+              scenes={sceneRecords}
+              onOpenScene={handleOpenHealthScene}
+              style={shadowCard}
+            />
           </View>
         ) : null}
 
@@ -694,6 +753,9 @@ export default function StoryHomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  rabbitsPattern: {
+    opacity: 0.72,
+  },
   content: {
     paddingBottom: spacing['2xl'],
     gap: spacing.lg,

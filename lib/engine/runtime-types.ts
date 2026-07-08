@@ -50,7 +50,7 @@ export interface SceneState {
   musicFadeOut?: number;
   musicBoundTo?: RuntimeAudioBinding;
   musicAutoFadeAfter?: number;
-  variables: Record<string, string | number | boolean>;
+  variables: RuntimeVariables;
   dialogueHistory: DialogueHistoryEntry[];
   currentChoices: RuntimeChoiceOption[] | null;
   isTransitioning: boolean;
@@ -122,10 +122,13 @@ export interface DialogueHistoryEntry {
   timestamp: number;
 }
 
+export type RuntimeVariables = Record<string, string | number | boolean>;
+
 export interface PlaybackState {
   storyId: string;
   currentSceneId: string;
   isPlaying: boolean;
   currentDialogueIndex: number;
   choicesMade: { sceneId: string; choiceId: string }[];
+  variables: RuntimeVariables;
 }

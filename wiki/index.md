@@ -15,6 +15,7 @@ Last updated: 2026-07-02
 | `engine-reference.md` | Engine API: useSceneExecutor and condition utilities |
 | `stores-reference.md` | Zustand stores, state shape, actions, selectors |
 | `audio-system.md` | Audio manager architecture, services, triggers |
+| `sri-strategy.md` | CSP and Subresource Integrity policy for web bundle |
 | `testing-guide.md` | Test structure, patterns, coverage, commands |
 | `final-migration-audit.md` | Current migration status and cleanup boundaries |
 | `changelog.md` | History of significant changes |

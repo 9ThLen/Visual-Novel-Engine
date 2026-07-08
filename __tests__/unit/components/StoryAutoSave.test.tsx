@@ -62,6 +62,7 @@ describe('StoryAutoSave', () => {
         isPlaying: true,
         currentDialogueIndex: 0,
         choicesMade: [],
+        variables: { flag: true },
       },
       syncAutoSave,
     });
@@ -78,6 +79,7 @@ describe('StoryAutoSave', () => {
       sceneId: 'scene-1',
       storyTitle: 'Active story',
       sceneName: 'scene-1',
+      variables: { flag: true },
     }));
   });
 });

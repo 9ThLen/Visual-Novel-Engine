@@ -60,5 +60,5 @@ export function useAutoSave({
         timeoutRef.current = null;
       }
     };
-  }, [playbackState?.currentSceneId, playbackState?.isPlaying, playbackState?.currentDialogueIndex, playbackState?.choicesMade, enabled]);
+  }, [playbackState?.currentSceneId, playbackState?.isPlaying, playbackState?.currentDialogueIndex, playbackState?.choicesMade, playbackState?.variables, enabled]);
 }

@@ -222,5 +222,146 @@
   },
   "time.daysAgo": {
     "en": "d ago", "uk": "дн тому", "pl": "dni temu"
+  },
+  "editor.inspector.open": {
+    "en": "Open scene inspector", "uk": "Відкрити інспектор сцени"
+  },
+  "editor.inspector.close": {
+    "en": "Close scene inspector", "uk": "Закрити інспектор сцени"
+  },
+  "editor.inspector.title": {
+    "en": "Inspector", "uk": "Інспектор"
+  },
+  "editor.inspector.position": {
+    "en": "Position", "uk": "Позиція"
+  },
+  "editor.inspector.step": {
+    "en": "Step {current} / {total}", "uk": "Крок {current} / {total}"
+  },
+  "editor.inspector.blockType": {
+    "en": "Block: {type}", "uk": "Блок: {type}"
+  },
+  "editor.inspector.typing": {
+    "en": "Typing", "uk": "Друкується"
+  },
+  "editor.inspector.complete": {
+    "en": "Complete", "uk": "Завершено"
+  },
+  "editor.inspector.variables": {
+    "en": "Variables", "uk": "Змінні"
+  },
+  "editor.inspector.noVariables": {
+    "en": "No variables", "uk": "Немає змінних"
+  },
+  "editor.inspector.choices": {
+    "en": "Choices", "uk": "Вибори"
+  },
+  "editor.inspector.noChoices": {
+    "en": "No active choices", "uk": "Немає активних виборів"
+  },
+  "editor.inspector.choiceTarget": {
+    "en": "Target: {target}", "uk": "Ціль: {target}"
+  },
+  "editor.inspector.choiceNext": {
+    "en": "next scene", "uk": "наступна сцена"
+  },
+  "editor.inspector.choiceCondition": {
+    "en": "Condition: {condition}", "uk": "Умова: {condition}"
+  },
+  "editor.inspector.effects": {
+    "en": "Effects", "uk": "Ефекти"
+  },
+  "editor.inspector.noEffects": {
+    "en": "No active effects", "uk": "Немає активних ефектів"
+  },
+  "editor.inspector.effectSummary": {
+    "en": "{type} · intensity {intensity} · {seconds}s left", "uk": "{type} · інтенсивність {intensity} · залишилось {seconds}с"
+  },
+  "editor.inspector.effectSummaryNoTime": {
+    "en": "{type} · intensity {intensity}", "uk": "{type} · інтенсивність {intensity}"
+  },
+  "editor.inspector.music": {
+    "en": "Music", "uk": "Музика"
+  },
+  "editor.inspector.musicNone": {
+    "en": "None", "uk": "Немає"
+  },
+  "editor.inspector.musicPlaying": {
+    "en": "Playing", "uk": "Грає"
+  },
+  "editor.inspector.musicStopped": {
+    "en": "Stopped", "uk": "Зупинено"
+  },
+  "editor.inspector.musicVolume": {
+    "en": "Volume: {volume}", "uk": "Гучність: {volume}"
+  },
+  "editor.inspector.transition": {
+    "en": "Transition", "uk": "Перехід"
+  },
+  "editor.inspector.transitionSummary": {
+    "en": "Mode: {mode} · Type: {type} · Target: {target}", "uk": "Режим: {mode} · Тип: {type} · Ціль: {target}"
+  },
+  "storyDoctor.title": {
+    "en": "Story health", "uk": "Стан історії"
+  },
+  "storyDoctor.clean": {
+    "en": "No issues found", "uk": "Проблем не знайдено"
+  },
+  "storyDoctor.issueCount": {
+    "en": "{errors} errors / {warnings} warnings", "uk": "{errors} помилок / {warnings} попереджень"
+  },
+  "storyDoctor.general": {
+    "en": "General", "uk": "Загальне"
+  },
+  "storyDoctor.openSceneIssue": {
+    "en": "Open issue in {scene}", "uk": "Відкрити проблему в сцені {scene}"
+  },
+  "storyDoctor.issue.noStartScene": {
+    "en": "No start scene is set.", "uk": "Стартову сцену не задано."
+  },
+  "storyDoctor.issue.danglingChoiceTarget": {
+    "en": "Choice points to deleted scene {targetSceneId}.", "uk": "Вибір веде до видаленої сцени {targetSceneId}."
+  },
+  "storyDoctor.issue.danglingNextTarget": {
+    "en": "Next link points to deleted scene {targetSceneId}.", "uk": "Наступне посилання веде до видаленої сцени {targetSceneId}."
+  },
+  "storyDoctor.issue.unreachableScene": {
+    "en": "Scene is unreachable from the start.", "uk": "Сцена недосяжна зі старту."
+  },
+  "storyDoctor.issue.emptyScene": {
+    "en": "Scene timeline is empty.", "uk": "Шкала часу сцени порожня."
+  },
+  "storyDoctor.issue.emptyText": {
+    "en": "Text block has no content.", "uk": "Текстовий блок не має вмісту."
+  },
+  "storyDoctor.issue.emptyDialogue": {
+    "en": "Dialogue block has an empty line.", "uk": "Блок діалогу має порожній рядок."
+  },
+  "storyDoctor.issue.emptyChoice": {
+    "en": "Choice has no options.", "uk": "Вибір не має варіантів."
+  },
+  "storyDoctor.issue.emptyChoiceOption": {
+    "en": "Choice option text is empty.", "uk": "Текст варіанта вибору порожній."
+  },
+  "storyDoctor.issue.missingBackgroundAsset": {
+    "en": "Background asset is missing: {assetId}.", "uk": "Фоновий актив відсутній: {assetId}."
+  },
+  "storyDoctor.issue.missingCharacterSprite": {
+    "en": "Character sprite is missing: {spriteId}.", "uk": "Спрайт персонажа відсутній: {spriteId}."
+  },
+  "storyDoctor.issue.missingMusicAsset": {
+    "en": "Music asset is missing: {assetId}.", "uk": "Музичний актив відсутній: {assetId}."
+  },
+  "storyDoctor.issue.missingSoundAsset": {
+    "en": "Sound asset is missing: {assetId}.", "uk": "Звуковий актив відсутній: {assetId}."
+  },
+  "storyDoctor.issue.possiblyUndefinedVariable": {
+    "en": "Variable is read before being written: {variableName}.", "uk": "Змінну прочитано до запису: {variableName}."
+  },
+  "storyDoctor.issue.unreadVariable": {
+    "en": "Variable is written but never read: {variableName}.", "uk": "Змінну записано, але її не читають: {variableName}."
+  },
+  "storyDoctor.issue.deadEnd": {
+    "en": "Scene has no outgoing path or explicit ending.", "uk": "Сцена не має вихідного шляху або явного завершення."
   }
 }

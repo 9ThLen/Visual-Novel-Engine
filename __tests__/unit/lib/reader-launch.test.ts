@@ -15,6 +15,7 @@ describe('reader-launch', () => {
       isPlaying: true,
       currentDialogueIndex: 0,
       choicesMade: [],
+      variables: {},
     };
 
     expect(shouldReusePlaybackState(playbackState, 'story-1', true)).toBe(true);

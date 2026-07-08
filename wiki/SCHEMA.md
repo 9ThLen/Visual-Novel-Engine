@@ -15,6 +15,7 @@ This wiki is intentionally small. It should describe the current project, not pr
 | `hooks-reference.md` | Custom hooks reference |
 | `stores-reference.md` | Zustand stores: state shape, actions, selectors |
 | `audio-system.md` | Audio manager architecture, services, triggers |
+| `sri-strategy.md` | CSP and Subresource Integrity policy for web bundle |
 | `testing-guide.md` | Test structure, patterns, coverage, how to run |
 | `final-migration-audit.md` | Current migration status and cleanup boundaries |
 | `SCHEMA.md` | This maintenance policy |

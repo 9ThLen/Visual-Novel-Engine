@@ -12,6 +12,7 @@ import { useI18n } from '@/hooks/use-i18n';
 import { getTimelineDisplayPages } from '@/lib/reader-runtime';
 import { withAlpha } from '@/lib/_core/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { PreviewInspector } from '@/components/editor/PreviewInspector';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { useReaderAssets } from '@/hooks/useReaderAssets';
@@ -421,6 +422,14 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
           {currentStepIndex + 1}/{timeline.length}
         </Text>
       </View>
+
+      <PreviewInspector
+        sceneState={sceneState}
+        timeline={timeline}
+        currentStepIndex={currentStepIndex}
+        isTyping={isTyping}
+        isComplete={isComplete}
+      />
     </View>
   );
 }

@@ -1,4 +1,4 @@
-import type { PlaybackState } from './engine/runtime-types';
+import type { PlaybackState, RuntimeVariables } from './engine/runtime-types';
 import type { SceneRecord } from './engine/types';
 import type { Character } from './character-types';
 
@@ -49,6 +49,7 @@ export interface SaveSlot {
   storyId: string;
   sceneId: string;
   choicesMade: { sceneId: string; choiceId: string }[];
+  variables?: RuntimeVariables;
   timestamp: number;
   sceneName?: string;
   thumbnailUri?: string;
@@ -81,6 +82,7 @@ export const StoryDomain = {
       storyId: story.id,
       sceneId: playbackState.currentSceneId,
       choicesMade: playbackState.choicesMade,
+      variables: playbackState.variables,
       timestamp: Date.now(),
       sceneName: sceneTitle,
       thumbnailUri: currentScene?.backgroundImageUri || undefined,
