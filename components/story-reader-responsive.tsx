@@ -17,7 +17,7 @@
  *  • useReaderNotifications — transition/complete side effects
  *  • useDialogueHistory — history state management
  */
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { View, useWindowDimensions } from 'react-native';
 import {
   useSharedValue,
@@ -260,13 +260,17 @@ export function StoryReaderResponsive({
   const { speaker } = extractSpeaker(pages[pageIndex] ?? '');
   const displaySpeaker = temporaryDialogue?.speaker ?? speaker;
   const displayText = temporaryDialogue?.text ?? displayedText;
-  const handleDisplayTap = () => {
+  const handleDisplayTap = useCallback(() => {
     if (temporaryDialogue) {
       setTemporaryDialogue(null);
       return;
     }
+    if (!isTyping && pageIndex < pages.length - 1) {
+      setPageIndex((index) => Math.min(index + 1, pages.length - 1));
+      return;
+    }
     handleTap();
-  };
+  }, [handleTap, isTyping, pageIndex, pages.length, temporaryDialogue]);
 
   // ── Choice selection ───────────────────────────────────────────────────
   const handleSelectChoice = (choiceId: string) => {

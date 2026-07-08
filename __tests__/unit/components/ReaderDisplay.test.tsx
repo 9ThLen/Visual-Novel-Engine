@@ -44,6 +44,16 @@ describe('ReaderDisplay', () => {
     expect(onTap).toHaveBeenCalledTimes(1);
   });
 
+  it('calls onTap when the dialogue panel is pressed', () => {
+    const onTap = vi.fn();
+
+    render(<ReaderDisplay {...baseProps} onTap={onTap} />);
+
+    fireEvent.click(screen.getByText('The room is quiet.'));
+
+    expect(onTap).toHaveBeenCalledTimes(1);
+  });
+
   it('renders choices after typing completes and selects by choice id', () => {
     const onSelectChoice = vi.fn();
 

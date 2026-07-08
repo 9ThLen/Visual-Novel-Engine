@@ -23,7 +23,12 @@ import {
   selectSceneRecordsForStory,
   useAppStore,
 } from '@/stores/use-app-store';
-import { selectBranchSelections, useBranchSelections } from '@/stores/use-branch-selections';
+import {
+  selectBranchSelections,
+  selectDocumentViewMode,
+  useBranchSelections,
+  type DocumentViewMode,
+} from '@/stores/use-branch-selections';
 import type { Character } from '@/lib/character-types';
 import type { DialogueBlockData, SceneRecord } from '@/lib/engine/types';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
@@ -61,8 +66,12 @@ export default function DocumentEditorRoute() {
   const updateStoryMetadata = useAppStore((state) => state.updateStoryMetadata);
   const branchSelections = useBranchSelections(useMemo(() => selectBranchSelections(storyId), [storyId]));
   const selectChoiceOption = useBranchSelections((state) => state.selectChoiceOption);
+  const viewMode = useBranchSelections(useMemo(() => selectDocumentViewMode(storyId), [storyId]));
+  const setDocumentViewMode = useBranchSelections((state) => state.setDocumentViewMode);
   const activePath = useMemo(() => expandActivePath(scenes, branchSelections), [branchSelections, scenes]);
   const orderedScenes = useMemo(() => {
+    // «Всі сцени»: every scene in story order, no branch filtering.
+    if (viewMode === 'all') return scenes;
     // The document renders the active path. If the route scene fell off it
     // (orphaned tail, or the author opened a scene from «Поза сюжетом»), append
     // the off-path scenes so the target scene is still reachable and editable.
@@ -70,7 +79,7 @@ export default function DocumentEditorRoute() {
     return onActivePath
       ? activePath.activeScenes
       : [...activePath.activeScenes, ...activePath.offPathScenes];
-  }, [activePath, sceneId]);
+  }, [activePath, sceneId, scenes, viewMode]);
   const branchInfo = useMemo(
     () => Object.values(activePath.branchInfoByChoiceStepId),
     [activePath.branchInfoByChoiceStepId],
@@ -240,6 +249,10 @@ export default function DocumentEditorRoute() {
     selectChoiceOption(storyId, choiceStepId, optionId);
   };
 
+  const handleSetViewMode = (mode: DocumentViewMode) => {
+    setDocumentViewMode(storyId, mode);
+  };
+
   const handleStartBranchOption = (choiceStepId: string, optionId: string) => {
     // The editor flushed and saved right before invoking this callback, so
     // this component's `scenes` snapshot may predate that save — read fresh.
@@ -265,13 +278,15 @@ export default function DocumentEditorRoute() {
       storyId={storyId}
       sceneRecord={sceneRecord}
       scenes={orderedScenes}
-      offPathScenes={activePath.offPathScenes}
+      offPathScenes={viewMode === 'all' ? [] : activePath.offPathScenes}
       branchInfo={branchInfo}
       onSelectChoiceOption={handleSelectChoiceOption}
       onStartBranchOption={handleStartBranchOption}
       incomingCountBySceneId={incomingCountBySceneId}
-      branchColorBySceneId={branchColorBySceneId}
-      branchBreadcrumbTrail={branchBreadcrumbTrail}
+      branchColorBySceneId={viewMode === 'all' ? undefined : branchColorBySceneId}
+      branchBreadcrumbTrail={viewMode === 'all' ? undefined : branchBreadcrumbTrail}
+      viewMode={viewMode}
+      onSetViewMode={handleSetViewMode}
       sceneIndex={sceneIndex}
       sceneCount={orderedScenes.length}
       characters={characters}

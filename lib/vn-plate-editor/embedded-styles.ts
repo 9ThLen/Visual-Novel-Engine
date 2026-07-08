@@ -783,6 +783,17 @@ export function createEmbeddedStyles(): string {
       font-size: 13px;
       text-align: center;
     }
+    .asset-error {
+      margin: -2px 0 10px;
+      padding: 8px 10px;
+      border: 1px solid #fecaca;
+      border-radius: 7px;
+      background: #fef2f2;
+      color: #b91c1c;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.4;
+    }
     .popover-grid {
       display: grid;
       grid-template-columns: 1fr 1.45fr;

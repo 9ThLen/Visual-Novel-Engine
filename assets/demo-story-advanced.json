@@ -5,7 +5,7 @@
   "author": "Visual Novel Engine - Full Feature Demo",
   "startSceneId": "scene_1",
   "createdAt": 1744740000000,
-  "updatedAt": 1783425600000,
+  "updatedAt": 1783429200000,
   "scenes": {
     "scene_1": {
       "id": "scene_1",
@@ -56,7 +56,7 @@
           "pulseAnimation": true,
           "actions": [
             {
-              "type": "scene",
+              "type": "scene_transition",
               "targetSceneId": "scene_2"
             },
             {
@@ -231,7 +231,7 @@
           "requiredItems": ["crystal_key", "ancient_compass", "phoenix_feather"],
           "actions": [
             {
-              "type": "scene",
+              "type": "scene_transition",
               "targetSceneId": "scene_final"
             },
             {
@@ -435,7 +435,7 @@
           "pulseAnimation": true,
           "actions": [
             {
-              "type": "scene",
+              "type": "scene_transition",
               "targetSceneId": "scene_5_upper_library"
             },
             {

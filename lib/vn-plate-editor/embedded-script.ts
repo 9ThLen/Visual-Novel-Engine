@@ -1216,6 +1216,72 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       return base + ' ' + index;
     }
 
+    function characterSpriteMessage(key) {
+      var uk = payload.language === 'uk';
+      var messages = {
+        format: uk
+          ? 'Для спрайта персонажа використайте PNG або WebP з прозорістю.'
+          : 'Use a PNG or WebP image with transparency for character sprites.',
+        size: uk
+          ? 'Файл спрайта має бути не більшим за 5 MB.'
+          : 'Character sprite file must be 5 MB or smaller.',
+        dimensions: uk
+          ? 'Розмір спрайта має бути не більшим за 4096 x 4096 px.'
+          : 'Character sprite dimensions must be 4096 x 4096 px or smaller.',
+        transparency: uk
+          ? 'Спрайт персонажа має бути PNG/WebP з прозорим фоном.'
+          : 'Character sprite must be a PNG/WebP image with a transparent background.',
+        verify: uk
+          ? 'Не вдалося перевірити прозорість зображення.'
+          : 'Could not verify image transparency.'
+      };
+      return messages[key] || messages.verify;
+    }
+
+    function characterSpriteErrorElement() {
+      return characterPopover ? characterPopover.querySelector('.asset-error') : null;
+    }
+
+    function setCharacterSpriteError(message) {
+      var error = characterSpriteErrorElement();
+      if (!error) return;
+      error.textContent = message;
+      error.style.display = 'block';
+      scheduleResize();
+    }
+
+    function clearCharacterSpriteError() {
+      var error = characterSpriteErrorElement();
+      if (!error) return;
+      error.textContent = '';
+      error.style.display = 'none';
+      scheduleResize();
+    }
+
+    function isAllowedCharacterSpriteFile(file) {
+      var type = String(file && file.type || '').toLowerCase();
+      if (type) return type === 'image/png' || type === 'image/webp';
+      var name = String(file && file.name || '').toLowerCase();
+      return name.endsWith('.png') || name.endsWith('.webp');
+    }
+
+    function isFullyOpaqueImage(img) {
+      var width = img.naturalWidth || img.width || 0;
+      var height = img.naturalHeight || img.height || 0;
+      if (!width || !height) throw new Error('Invalid image dimensions');
+      var canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      var context = canvas.getContext && canvas.getContext('2d');
+      if (!context) throw new Error('Canvas 2D context is unavailable');
+      context.drawImage(img, 0, 0, width, height);
+      var pixels = context.getImageData(0, 0, width, height).data;
+      for (var i = 3; i < pixels.length; i += 4) {
+        if (pixels[i] < 255) return false;
+      }
+      return true;
+    }
+
     function renderCharacterPopover(token) {
       var character = findCharacterById(token && token.dataset.characterId);
       if (!character) return;
@@ -1244,7 +1310,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         '<div class="sprite-list">' + spriteRows + '</div>' +
         '<input class="popover-control" data-field="sprite-name" placeholder="Sprite name" />' +
         '<div class="preview-actions"><button type="button" class="popover-button" data-action="upload-character-sprite">Upload sprite</button><button type="button" class="popover-button" data-action="delete-character-sprite">Delete selected</button></div>' +
-        '<input class="character-sprite-file" type="file" accept="image/*" hidden />' +
+        '<div class="asset-error" role="alert" style="display:none"></div>' +
+        '<input class="character-sprite-file" type="file" accept="image/png,image/webp" hidden />' +
         '<label class="popover-label">Position</label>' +
         '<select class="popover-control" data-field="character-position">' +
           option('far-left', 'Far left', character.authoring && character.authoring.currentPosition) +
@@ -1258,6 +1325,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         '<div class="popover-footer"><button type="button" class="popover-button" data-action="close-character">Close</button><button type="button" class="popover-button primary" data-action="save-character">Save</button></div>';
       document.body.appendChild(popover);
       characterPopover = popover;
+      clearCharacterSpriteError();
       afterLayout(function() { positionCharacterPopover(token); });
       post({ type: 'openCharacterPopover', characterId: character.id, blockId: token.dataset.blockId || '' });
     }
@@ -3097,19 +3165,76 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (characterPopover && characterPopover.contains(event.target)) {
         var spriteUploadInput = event.target;
         if (!spriteUploadInput || !spriteUploadInput.classList || !spriteUploadInput.classList.contains('character-sprite-file')) return;
+        clearCharacterSpriteError();
+        function resetSpriteUploadInput() {
+          if (spriteUploadInput) spriteUploadInput.value = '';
+        }
         var spriteFile = spriteUploadInput.files && spriteUploadInput.files[0];
-        if (!spriteFile || !String(spriteFile.type || '').startsWith('image/')) return;
-        if (spriteFile.size > 5 * 1024 * 1024) return;
+        if (!spriteFile) {
+          resetSpriteUploadInput();
+          return;
+        }
+        if (!isAllowedCharacterSpriteFile(spriteFile)) {
+          setCharacterSpriteError(characterSpriteMessage('format'));
+          resetSpriteUploadInput();
+          return;
+        }
+        if (spriteFile.size > 5 * 1024 * 1024) {
+          setCharacterSpriteError(characterSpriteMessage('size'));
+          resetSpriteUploadInput();
+          return;
+        }
         var uploadCharacter = activeCharacterToken && findCharacterById(activeCharacterToken.dataset.characterId);
-        if (!uploadCharacter) return;
+        if (!uploadCharacter) {
+          resetSpriteUploadInput();
+          return;
+        }
+        var uploadCharacterId = uploadCharacter.id;
+        var uploadToken = activeCharacterToken;
+        function spriteUploadIsStillActive() {
+          return Boolean(characterPopover && activeCharacterToken === uploadToken && findCharacterById(uploadCharacterId) === uploadCharacter);
+        }
         var spriteNameInput = characterPopover.querySelector('[data-field="sprite-name"]');
         var reader = new FileReader();
+        reader.onerror = function() {
+          if (spriteUploadIsStillActive()) setCharacterSpriteError(characterSpriteMessage('verify'));
+          resetSpriteUploadInput();
+        };
         reader.onload = function() {
+          if (!spriteUploadIsStillActive()) {
+            resetSpriteUploadInput();
+            return;
+          }
           var dataUri = String(reader.result || '');
-          if (!dataUri) return;
+          if (!dataUri) {
+            setCharacterSpriteError(characterSpriteMessage('verify'));
+            resetSpriteUploadInput();
+            return;
+          }
           var img = new Image();
           img.onload = function() {
-            if (img.naturalWidth > 4096 || img.naturalHeight > 4096) return;
+            if (!spriteUploadIsStillActive()) {
+              resetSpriteUploadInput();
+              return;
+            }
+            if (img.naturalWidth > 4096 || img.naturalHeight > 4096) {
+              setCharacterSpriteError(characterSpriteMessage('dimensions'));
+              resetSpriteUploadInput();
+              return;
+            }
+            var fullyOpaque = false;
+            try {
+              fullyOpaque = isFullyOpaqueImage(img);
+            } catch (error) {
+              setCharacterSpriteError(characterSpriteMessage('verify'));
+              resetSpriteUploadInput();
+              return;
+            }
+            if (fullyOpaque) {
+              setCharacterSpriteError(characterSpriteMessage('transparency'));
+              resetSpriteUploadInput();
+              return;
+            }
             var sprite = {
               id: uid('sprite'),
               name: uniqueSpriteName(uploadCharacter, spriteNameInput && spriteNameInput.value || spriteFile.name || 'Sprite'),
@@ -3123,8 +3248,13 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
             });
             var paragraph = activeCharacterToken && activeCharacterToken.closest('p');
             if (paragraph) paragraph.dataset.spriteId = sprite.id;
+            resetSpriteUploadInput();
             renderCharacterPopover(activeCharacterToken);
             saveNow();
+          };
+          img.onerror = function() {
+            if (spriteUploadIsStillActive()) setCharacterSpriteError(characterSpriteMessage('verify'));
+            resetSpriteUploadInput();
           };
           img.src = dataUri;
         };

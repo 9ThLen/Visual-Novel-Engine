@@ -30,6 +30,9 @@ interface PlateSceneEditorProps {
   branchColorBySceneId?: Record<string, string>;
   /** Choice crumbs for the whole active path, for the breadcrumb bar. */
   branchBreadcrumbTrail?: BranchBreadcrumbItem[];
+  /** 'path' renders the active branch path; 'all' renders every scene sequentially. */
+  viewMode?: 'path' | 'all';
+  onSetViewMode?: (mode: 'path' | 'all') => void;
   sceneIndex: number;
   sceneCount: number;
   characters: Character[];
@@ -53,6 +56,8 @@ export function PlateSceneEditor({
   incomingCountBySceneId,
   branchColorBySceneId,
   branchBreadcrumbTrail,
+  viewMode,
+  onSetViewMode,
   sceneIndex,
   sceneCount,
   characters,
@@ -111,6 +116,8 @@ export function PlateSceneEditor({
       incomingCountBySceneId={incomingCountBySceneId}
       branchColorBySceneId={branchColorBySceneId}
       branchBreadcrumbTrail={branchBreadcrumbTrail}
+      viewMode={viewMode}
+      onSetViewMode={onSetViewMode}
       sceneIndex={sceneIndex}
       sceneCount={sceneCount}
       initialDocuments={initialDocuments}

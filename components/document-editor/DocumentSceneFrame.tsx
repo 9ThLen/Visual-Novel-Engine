@@ -5,7 +5,7 @@
  * surrounding document keeps its scroll position stable.
  */
 
-import React, { memo, useEffect, useState } from 'react';
+import React, { memo, useEffect, useRef, useState } from 'react';
 import { Text, View, type LayoutChangeEvent } from 'react-native';
 
 import {
@@ -43,6 +43,12 @@ interface DocumentSceneFrameProps {
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   registerEditorRef: (handle: PlateWebViewEditorHandle | null) => void;
   onFrameLayout: (y: number, height: number) => void;
+  /**
+   * Bumped by the host after a document rebuild wipes its layout map. React
+   * Native Web's onLayout does not re-fire for frames whose geometry did not
+   * change, so each bump triggers an explicit DOM re-measure.
+   */
+  measureVersion?: number;
 }
 
 function DocumentSceneFrameImpl({
@@ -66,14 +72,36 @@ function DocumentSceneFrameImpl({
   onUploadAudioAsset,
   registerEditorRef,
   onFrameLayout,
+  measureVersion,
 }: DocumentSceneFrameProps) {
   const colors = useColors('light');
   const { t } = useI18n();
   const [isOverlayActive, setIsOverlayActive] = useState(false);
+  const frameRef = useRef<View>(null);
+  const onFrameLayoutRef = useRef(onFrameLayout);
+  onFrameLayoutRef.current = onFrameLayout;
 
   useEffect(() => {
     if (!isMounted) setIsOverlayActive(false);
   }, [isMounted]);
+
+  // Re-measure on mount and on every measureVersion bump. On web the View ref
+  // is the DOM element; offsetTop/offsetHeight match the y/height onLayout
+  // reports (both relative to the direct parent). A ResizeObserver on the
+  // frame AND its parent keeps the host's layout map fresh when React Native
+  // Web's onLayout does not re-fire: observing the parent catches position
+  // shifts caused by sibling frames growing above this one.
+  useEffect(() => {
+    const node = frameRef.current as unknown as HTMLElement | null;
+    if (!node || typeof node.offsetTop !== 'number' || typeof node.offsetHeight !== 'number') return;
+    const report = () => onFrameLayoutRef.current(node.offsetTop, node.offsetHeight);
+    report();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(report);
+    observer.observe(node);
+    if (node.parentElement) observer.observe(node.parentElement);
+    return () => observer.disconnect();
+  }, [measureVersion]);
 
   const handleLayout = (event: LayoutChangeEvent) => {
     const { y, height } = event.nativeEvent.layout;
@@ -84,6 +112,7 @@ function DocumentSceneFrameImpl({
 
   return (
     <View
+      ref={frameRef}
       onLayout={handleLayout}
       style={{
         width: '100%',

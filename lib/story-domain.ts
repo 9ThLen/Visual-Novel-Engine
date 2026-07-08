@@ -11,6 +11,7 @@ export interface StoryMetadata {
   createdAt: number;
   updatedAt: number;
   thumbnailUri?: string;
+  tags?: string[];
   sceneCount: number;
   sceneOrder?: string[];
   characterAuthoringSchemaVersion?: number;

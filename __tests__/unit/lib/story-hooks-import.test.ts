@@ -110,6 +110,23 @@ describe('importStory', () => {
     expect(imported.sceneCount).toBe(1);
   });
 
+  it('sanitizes and preserves tags on legacy JSON import', async () => {
+    const imported = await importStory(JSON.stringify({
+      id: 'legacy-story',
+      title: 'Legacy Tagged',
+      startSceneId: 'scene-1',
+      tags: ['  Drama  ', 'drama', '', 5, 'Sci-Fi'],
+      scenes: {
+        'scene-1': { id: 'scene-1', text: 'Legacy text', characters: [], choices: [], musicUri: null },
+      },
+      createdAt: 1,
+      updatedAt: 1,
+    }));
+
+    const meta = useAppStore.getState().storiesMetadata.find((s) => s.id === imported.id);
+    expect(meta?.tags).toEqual(['Drama', 'Sci-Fi']);
+  });
+
   it('rejects unsafe canonical thumbnail URIs', async () => {
     await expect(importStory(JSON.stringify({
       title: 'Unsafe Import',
@@ -157,6 +174,73 @@ describe('importStory', () => {
 
     expect(imported.scenes['scene-1'].timeline.some((step) => step.id === 'text-step')).toBe(true);
     expect(imported.scenes['scene-1'].timeline.some((step) => step.id === 'bad-step')).toBe(false);
+  });
+
+  it('sanitizes tags on import: trims, drops non-strings/empties, dedupes, caps count', async () => {
+    const messyTags = [
+      '  Fantasy  ',
+      'fantasy',            // duplicate (case-insensitive) of trimmed 'Fantasy'
+      '',
+      '   ',
+      42,                   // non-string
+      null,
+      'Adventure',
+      ...Array.from({ length: 30 }, (_, i) => `extra-${i}`),
+    ];
+
+    const imported = await importStory(JSON.stringify({
+      title: 'Tagged Import',
+      startSceneId: 'scene-1',
+      tags: messyTags,
+      scenes: { 'scene-1': { id: 'scene-1', timeline: [] } },
+    }));
+
+    const meta = useAppStore.getState().storiesMetadata.find((s) => s.id === imported.id);
+    const tags = meta?.tags ?? [];
+    expect(tags).toContain('Fantasy');
+    expect(tags).toContain('Adventure');
+    expect(tags.filter((tag) => tag.toLowerCase() === 'fantasy')).toHaveLength(1);
+    expect(tags.every((tag) => typeof tag === 'string' && tag.trim().length > 0)).toBe(true);
+    expect(tags.length).toBeLessThanOrEqual(20);
+  });
+
+  it('omits tags entirely when none are usable', async () => {
+    const imported = await importStory(JSON.stringify({
+      title: 'No Tags',
+      startSceneId: 'scene-1',
+      tags: ['', '   ', 7],
+      scenes: { 'scene-1': { id: 'scene-1', timeline: [] } },
+    }));
+
+    const meta = useAppStore.getState().storiesMetadata.find((s) => s.id === imported.id);
+    expect(meta?.tags).toBeUndefined();
+  });
+
+  it('round-trips tags through export then import', async () => {
+    useAppStore.setState({
+      storiesMetadata: [{
+        id: 'story_tags',
+        title: 'Tagged Story',
+        tags: ['Romance', 'Mystery'],
+        startSceneId: 'scene-1',
+        createdAt: 1,
+        updatedAt: 1,
+        sceneCount: 1,
+      }],
+      sceneRecordsByStory: {
+        story_tags: {
+          'scene-1': { id: 'scene-1', storyId: 'story_tags', timeline: [] } as never,
+        },
+      },
+      characterLibraries: {},
+    });
+
+    const exportedJson = await exportStory('story_tags', useAppStore.getState());
+    expect(JSON.parse(exportedJson).tags).toEqual(['Romance', 'Mystery']);
+
+    const reimported = await importStory(exportedJson);
+    const meta = useAppStore.getState().storiesMetadata.find((s) => s.id === reimported.id);
+    expect(meta?.tags).toEqual(['Romance', 'Mystery']);
   });
 
   it('exports character colors, sprite names, and authoring metadata', async () => {

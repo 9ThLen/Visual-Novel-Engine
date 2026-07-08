@@ -61,6 +61,10 @@ interface DocumentSceneEditorProps {
   branchColorBySceneId?: Record<string, string>;
   /** Choice crumbs for the whole active path; sliced here by the scrolled-to scene. */
   branchBreadcrumbTrail?: BranchBreadcrumbItem[];
+  /** 'path' renders the active branch path; 'all' renders every scene sequentially. */
+  viewMode?: 'path' | 'all';
+  /** Called after dirty editors are flushed and saved; the host re-renders in the new mode. */
+  onSetViewMode?: (mode: 'path' | 'all') => void;
   sceneIndex: number;
   sceneCount: number;
   initialDocuments: DocumentScene[];
@@ -83,6 +87,14 @@ interface DocumentSceneEditorProps {
  * renders, so DocumentSceneFrame's React.memo isn't defeated by the parent
  * re-creating a fresh function on every render.
  */
+/**
+ * Quiet period after the pinned scene's y stops moving before the pending
+ * scroll pin is released. The pin itself has no absolute time limit — frames
+ * (iframes) above the target can keep mounting and shifting it for many
+ * seconds; a user scroll releases it immediately.
+ */
+const PENDING_SCROLL_SETTLE_MS = 900;
+
 function useSceneCallback<Args extends unknown[]>(
   handler: (sceneId: string, ...args: Args) => void,
 ): (sceneId: string) => (...args: Args) => void {
@@ -111,6 +123,8 @@ export function DocumentSceneEditor({
   incomingCountBySceneId,
   branchColorBySceneId,
   branchBreadcrumbTrail,
+  viewMode,
+  onSetViewMode,
   sceneIndex,
   sceneCount,
   initialDocuments,
@@ -141,6 +155,10 @@ export function DocumentSceneEditor({
   const [mountedSceneIds, setMountedSceneIds] = useState<Set<string>>(() =>
     seedMountedSceneIds(initialDocuments.map((ds) => ds.sceneId), sceneRecord.id),
   );
+  // Bumped whenever sceneLayoutRef is wiped (document rebuild) so every frame
+  // re-measures itself — RNW's onLayout does not re-fire for frames whose
+  // geometry did not change, which would leave the layout map empty forever.
+  const [measureVersion, setMeasureVersion] = useState(0);
 
   const editorRefsRef = useRef(new Map<string, PlateWebViewEditorHandle>());
   const draftRegistryRef = useRef(new Map<string, PlateWebViewEditorSnapshot>());
@@ -152,6 +170,13 @@ export function DocumentSceneEditor({
   const scrollYRef = useRef(0);
   const viewportHeightRef = useRef(0);
   const pendingScrollSceneIdRef = useRef<string | null>(sceneRecord.id);
+  // While a pending scroll target is set, every frame layout re-pins the
+  // scroll to it: scenes mounting ABOVE the target keep shifting its y, and a
+  // single scrollTo would leave the viewport on a neighboring scene (e.g.
+  // after toggling «Всі сцени»). Released once the target's y has been quiet
+  // for PENDING_SCROLL_SETTLE_MS, or as soon as the user scrolls themselves.
+  const pendingScrollDeadlineRef = useRef<number>(Date.now() + PENDING_SCROLL_SETTLE_MS);
+  const pendingScrollLastYRef = useRef<number | null>(null);
   const recomputeScheduledRef = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const prevResetKeyRef = useRef(documentsResetKey);
@@ -206,8 +231,11 @@ export function DocumentSceneEditor({
     draftRegistryRef.current.clear();
     sceneLayoutRef.current.clear();
     editorRefsRef.current.clear();
+    setMeasureVersion((version) => version + 1);
     setMountedSceneIds(seedMountedSceneIds(initialDocuments.map((ds) => ds.sceneId), nextActiveSceneId));
     pendingScrollSceneIdRef.current = nextActiveSceneId;
+    pendingScrollDeadlineRef.current = Date.now() + PENDING_SCROLL_SETTLE_MS;
+    pendingScrollLastYRef.current = null;
 
     // Slide-and-fade the rebuilt document in so a branch switch reads as a
     // content change rather than a flicker. Opacity/transform only — layout
@@ -414,6 +442,21 @@ export function DocumentSceneEditor({
     void startBranchOptionImplRef.current(choiceStepId, optionId);
   }, []);
 
+  const handleSetViewMode = useCallback(async (mode: 'path' | 'all') => {
+    if (!onSetViewMode || mode === viewMode) return;
+    // Same flush-then-mutate contract as branch switching: the mode change
+    // rebuilds initialDocuments, and the reset effect keeps the author on the
+    // scene they were viewing (activeSceneId survives the rebuild).
+    await handleSave();
+    onSetViewMode(mode);
+  }, [handleSave, onSetViewMode, viewMode]);
+
+  const setViewModeImplRef = useRef(handleSetViewMode);
+  setViewModeImplRef.current = handleSetViewMode;
+  const stableSetViewMode = useCallback((mode: 'path' | 'all') => {
+    void setViewModeImplRef.current(mode);
+  }, []);
+
   const handleOffPathScenePress = useCallback(async (nextSceneId: string) => {
     // Off-path scenes are not rendered in the current document — reopen the
     // route on that scene so it gets appended and becomes editable.
@@ -451,7 +494,9 @@ export function DocumentSceneEditor({
     // Anti-jump: if a scene fully above the current scroll position changed
     // height (e.g. its iframe resized after mounting), shift the scroll
     // offset by the same delta so on-screen content doesn't visibly move.
-    if (prev && prev.height !== height && y < scrollYRef.current) {
+    // Skipped while a pending scroll target is pinned — the pin below already
+    // keeps the viewport anchored to the target scene.
+    if (!pendingScrollSceneIdRef.current && prev && prev.height !== height && y < scrollYRef.current) {
       const delta = height - prev.height;
       if (delta !== 0) {
         const nextScrollY = Math.max(0, scrollYRef.current + delta);
@@ -460,10 +505,25 @@ export function DocumentSceneEditor({
       }
     }
 
-    if (pendingScrollSceneIdRef.current === sceneId) {
-      pendingScrollSceneIdRef.current = null;
-      scrollYRef.current = y;
-      scrollViewRef.current?.scrollTo({ y, animated: false });
+    // Pin the viewport to the pending target on every layout event: frames
+    // mounting above the target shift its y after the first scroll, and a
+    // one-shot scrollTo would land on a neighboring scene. Each shift of the
+    // target's y restarts the quiet period; once y has been stable for the
+    // whole period, the pin is released.
+    const pendingSceneId = pendingScrollSceneIdRef.current;
+    if (pendingSceneId) {
+      const target = sceneLayoutRef.current.get(pendingSceneId);
+      if (target) {
+        if (pendingScrollLastYRef.current !== target.y) {
+          pendingScrollLastYRef.current = target.y;
+          pendingScrollDeadlineRef.current = Date.now() + PENDING_SCROLL_SETTLE_MS;
+          scrollYRef.current = target.y;
+          scrollViewRef.current?.scrollTo({ y: target.y, animated: false });
+        } else if (Date.now() >= pendingScrollDeadlineRef.current) {
+          pendingScrollSceneIdRef.current = null;
+          pendingScrollLastYRef.current = null;
+        }
+      }
     }
 
     scheduleMountRecompute();
@@ -515,11 +575,19 @@ export function DocumentSceneEditor({
       scrollViewRef.current?.scrollTo({ y: entry.y, animated: true });
     } else {
       pendingScrollSceneIdRef.current = nextSceneId;
+      pendingScrollDeadlineRef.current = Date.now() + PENDING_SCROLL_SETTLE_MS;
+      pendingScrollLastYRef.current = null;
     }
   }, []);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = event.nativeEvent.contentOffset.y;
+    // A scroll that doesn't match the last programmatic position is the user
+    // scrolling — release the pending pin instead of yanking them back.
+    if (pendingScrollSceneIdRef.current && Math.abs(y - scrollYRef.current) > 4) {
+      pendingScrollSceneIdRef.current = null;
+      pendingScrollLastYRef.current = null;
+    }
     scrollYRef.current = y;
     const order = documentScenesRef.current.map((ds) => ds.sceneId);
     const nextActive = computeActiveSceneId({ order, layout: sceneLayoutRef.current, scrollY: y });
@@ -579,7 +647,8 @@ export function DocumentSceneEditor({
           onSelectChoiceOption={stableSelectChoiceOption}
           onStartBranchOption={stableStartBranchOption}
           onNavigateToScene={handleScenePress}
-          startSceneId={scenes[0]?.id}
+          viewMode={viewMode}
+          onSetViewMode={stableSetViewMode}
         />
         <ScrollView
           ref={scrollViewRef}
@@ -634,6 +703,7 @@ export function DocumentSceneEditor({
               onUploadAudioAsset={onUploadAudioAsset}
               registerEditorRef={getRegisterEditorRef(documentScene.sceneId)}
               onFrameLayout={getOnFrameLayout(documentScene.sceneId)}
+              measureVersion={measureVersion}
             />
           ))}
           </Animated.View>

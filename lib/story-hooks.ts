@@ -49,6 +49,31 @@ function buildCanonicalStory(
   };
 }
 
+export const MAX_STORY_TAGS = 20;
+export const MAX_STORY_TAG_LENGTH = 40;
+
+/**
+ * Normalize a raw tag list into a clean, bounded array: strings only, trimmed,
+ * length-capped, de-duplicated case-insensitively, and limited in count.
+ * Returns undefined when nothing usable remains so the field can be omitted.
+ */
+export function sanitizeStoryTags(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue;
+    const trimmed = entry.trim().slice(0, MAX_STORY_TAG_LENGTH);
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push(trimmed);
+    if (tags.length >= MAX_STORY_TAGS) break;
+  }
+  return tags.length > 0 ? tags : undefined;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -336,6 +361,7 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
       createdAt: timestamp,
       updatedAt: timestamp,
       thumbnailUri: typeof raw.thumbnailUri === 'string' ? raw.thumbnailUri : undefined,
+      tags: sanitizeStoryTags(raw.tags),
       sceneCount: Object.keys(importedScenes).length,
       characterAuthoringSchemaVersion: CHARACTER_AUTHORING_SCHEMA_VERSION,
     };
@@ -376,6 +402,7 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
     createdAt: story.createdAt,
     updatedAt: story.updatedAt,
     thumbnailUri: story.thumbnailUri,
+    tags: sanitizeStoryTags(raw.tags),
     sceneCount: Object.keys(importedScenes).length,
     characterAuthoringSchemaVersion: CHARACTER_AUTHORING_SCHEMA_VERSION,
   };

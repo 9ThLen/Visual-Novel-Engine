@@ -322,12 +322,12 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
             </View>
           ) : null}
 
-          <View className="p-4 min-h-[80]">
+          <Pressable className="p-4 min-h-[80]" onPress={onTap} accessible={false}>
             <Text style={dialogueTextStyle}>
               {displayedText}
               {isTyping && <Text style={cursorStyle}>|</Text>}
             </Text>
-          </View>
+          </Pressable>
 
           {!isTyping && (
             <ReaderChoices

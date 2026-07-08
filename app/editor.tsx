@@ -15,7 +15,8 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import { StoryMetadata } from '@/lib/story-domain';
-import type { SceneRecord } from '@/lib/engine/types';
+import { pickStoryFile } from '@/lib/pick-story-file';
+import { importStory } from '@/lib/story-hooks';
 import { showToast } from '@/lib/toast-store';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { useAppStore } from '@/stores/use-app-store';
@@ -26,17 +27,6 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
 });
 
-function getPaperEditorSceneId(
-  story: StoryMetadata,
-  scenesById: Record<string, SceneRecord> | undefined,
-): string | null {
-  if (story.startSceneId && scenesById?.[story.startSceneId]) {
-    return story.startSceneId;
-  }
-  const scenes = Object.values(scenesById ?? {});
-  return scenes.find((scene) => scene.isStart)?.id ?? scenes[0]?.id ?? null;
-}
-
 export default function EditorScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -45,11 +35,11 @@ export default function EditorScreen() {
   const storiesMetadata = useAppStore((state) => state.storiesMetadata);
   const createStory = useAppStore((state) => state.createStory);
   const deleteStory = useAppStore((state) => state.deleteStory);
-  const hydrateSceneRecordsForStory = useAppStore((state) => state.hydrateSceneRecordsForStory);
 
   const [showNewStoryForm, setShowNewStoryForm] = useState(false);
   const [newStoryTitle, setNewStoryTitle] = useState('');
   const [storyIdToDelete, setStoryIdToDelete] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const storyColumns = useMemo(() => {
     if (Platform.OS !== 'web') return 1;
@@ -81,23 +71,31 @@ export default function EditorScreen() {
     }
   }, [newStoryTitle, createStory, router, t]);
 
-  const handleEditStory = useCallback(async (story: StoryMetadata) => {
+  const handleEditStory = useCallback((story: StoryMetadata) => {
+    navigateWithViewTransition(() => router.push({
+      pathname: '/story-home',
+      params: { storyId: story.id },
+    }));
+  }, [router]);
+
+  const handleImport = useCallback(async () => {
+    if (importing) return;
+    setImporting(true);
     try {
-      await hydrateSceneRecordsForStory(story.id);
-      const sceneRecordsByStory = useAppStore.getState().sceneRecordsByStory;
-      const sceneId = getPaperEditorSceneId(story, sceneRecordsByStory[story.id]);
-      if (!sceneId) {
-        showToast(t('document.invalidRoute'), 'error');
-        return;
-      }
+      const json = await pickStoryFile();
+      if (!json) return;
+      const imported = await importStory(json);
+      showToast(t('editor.importSuccess'), 'success');
       navigateWithViewTransition(() => router.push({
-        pathname: '/document-editor',
-        params: { storyId: story.id, sceneId },
+        pathname: '/story-home',
+        params: { storyId: imported.id },
       }));
     } catch {
-      showToast(t('document.invalidRoute'), 'error');
+      showToast(t('editor.importFailed'), 'error');
+    } finally {
+      setImporting(false);
     }
-  }, [hydrateSceneRecordsForStory, router, t]);
+  }, [importing, router, t]);
 
   const handleDeleteStory = useCallback((storyId: string) => {
     setStoryIdToDelete(storyId);
@@ -128,14 +126,25 @@ export default function EditorScreen() {
               {t('editor.workspaceSubtitle')}
             </Text>
           </View>
-          <Button
-            variant="primary"
-            size="base"
-            onPress={() => setShowNewStoryForm(!showNewStoryForm)}
-            accessibilityLabel={showNewStoryForm ? t('common.cancel') : t('editor.createNew')}
-          >
-            {showNewStoryForm ? t('common.cancel') : t('editor.createNew')}
-          </Button>
+          <View style={styles.heroActions}>
+            <Button
+              variant="primary"
+              size="base"
+              onPress={() => setShowNewStoryForm(!showNewStoryForm)}
+              accessibilityLabel={showNewStoryForm ? t('common.cancel') : t('editor.createNew')}
+            >
+              {showNewStoryForm ? t('common.cancel') : t('editor.createNew')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="base"
+              onPress={handleImport}
+              disabled={importing}
+              accessibilityLabel={t('editor.import')}
+            >
+              {t('editor.import')}
+            </Button>
+          </View>
 
           <View style={styles.statsRow}>
             <View style={[styles.statCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -242,6 +251,11 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   heroCopy: {
+    gap: spacing.sm,
+  },
+  heroActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   eyebrow: {

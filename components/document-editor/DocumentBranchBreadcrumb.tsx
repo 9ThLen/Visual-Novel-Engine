@@ -33,10 +33,12 @@ interface DocumentBranchBreadcrumbProps {
   onSelectChoiceOption?: (choiceStepId: string, optionId: string) => void;
   /** Empty branch: create a scene for this option, then switch to it. */
   onStartBranchOption?: (choiceStepId: string, optionId: string) => void;
-  /** Tap on «Початок» / a crumb word context — scroll the document to a scene. */
+  /** Double tap on a crumb word — scroll the document to its choice scene. */
   onNavigateToScene?: (sceneId: string) => void;
-  /** First scene of the story, target of the «Початок» crumb. */
-  startSceneId?: string;
+  /** 'path' renders the active branch path; 'all' renders every scene sequentially. */
+  viewMode?: 'path' | 'all';
+  /** Toggle from the «Всі сцени» crumb; the author stays on the current scene. */
+  onSetViewMode?: (mode: 'path' | 'all') => void;
 }
 
 function Separator({ color }: { color: string }) {
@@ -56,11 +58,13 @@ export function DocumentBranchBreadcrumb({
   onSelectChoiceOption,
   onStartBranchOption,
   onNavigateToScene,
-  startSceneId,
+  viewMode = 'path',
+  onSetViewMode,
 }: DocumentBranchBreadcrumbProps) {
   const colors = useColors(colorScheme);
   const { t } = useI18n();
   const [openChoiceStepId, setOpenChoiceStepId] = useState<string | null>(null);
+  const [isViewModePanelOpen, setViewModePanelOpen] = useState(false);
 
   const branchInfoByChoiceStepId = useMemo(() => {
     const map: Record<string, VNPlateBranchInfo> = {};
@@ -94,6 +98,7 @@ export function DocumentBranchBreadcrumb({
     const now = Date.now();
     const last = lastCrumbPressRef.current;
     lastCrumbPressRef.current = { choiceStepId: crumb.choiceStepId, time: now };
+    setViewModePanelOpen(false);
     if (last && last.choiceStepId === crumb.choiceStepId && now - last.time < 320) {
       lastCrumbPressRef.current = null;
       setOpenChoiceStepId(null);
@@ -102,6 +107,29 @@ export function DocumentBranchBreadcrumb({
     }
     setOpenChoiceStepId((current) => (current === crumb.choiceStepId ? null : crumb.choiceStepId));
   }, [onNavigateToScene]);
+
+  const toggleViewMode = useCallback(() => {
+    setViewModePanelOpen(false);
+    onSetViewMode?.(viewMode === 'all' ? 'path' : 'all');
+  }, [onSetViewMode, viewMode]);
+
+  // «Всі сцени»: single tap opens the note panel with the toggle; a double tap
+  // toggles the mode right away. Neither navigates — the author stays on the
+  // scene they were viewing.
+  const lastViewModePressRef = useRef<number | null>(null);
+
+  const handleViewModeCrumbPress = useCallback(() => {
+    const now = Date.now();
+    const last = lastViewModePressRef.current;
+    lastViewModePressRef.current = now;
+    setOpenChoiceStepId(null);
+    if (last !== null && now - last < 320) {
+      lastViewModePressRef.current = null;
+      toggleViewMode();
+      return;
+    }
+    setViewModePanelOpen((current) => !current);
+  }, [toggleViewMode]);
 
   const handleOptionPress = useCallback(
     (info: VNPlateBranchInfo, optionId: string) => {
@@ -144,14 +172,32 @@ export function DocumentBranchBreadcrumb({
         >
           <Pressable
             accessibilityRole="button"
-            disabled={!onNavigateToScene || !startSceneId}
-            onPress={() => startSceneId && onNavigateToScene?.(startSceneId)}
+            accessibilityLabel={t('document.breadcrumb.a11yAllScenes')}
+            disabled={!onSetViewMode}
+            onPress={handleViewModeCrumbPress}
             hitSlop={6}
+            style={{
+              borderBottomWidth: 2,
+              borderBottomColor: viewMode === 'all' || isViewModePanelOpen ? colors.foreground : 'transparent',
+              paddingBottom: 1,
+            }}
           >
-            <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '600' }}>
-              {t('document.breadcrumb.start')}
+            <Text
+              style={{
+                color: viewMode === 'all' ? colors.foreground : colors.muted,
+                fontSize: 13,
+                fontWeight: viewMode === 'all' ? '700' : '600',
+              }}
+            >
+              {t('document.breadcrumb.allScenes')}
             </Text>
           </Pressable>
+
+          {viewMode === 'all' ? (
+            <Text style={{ color: colors.muted, fontSize: 11, paddingLeft: 8 }} numberOfLines={1}>
+              {t('document.breadcrumb.allScenesNote')}
+            </Text>
+          ) : null}
 
           {crumbs.map((crumb) => {
             const isOpen = crumb.choiceStepId === openChoiceStepId;
@@ -183,6 +229,55 @@ export function DocumentBranchBreadcrumb({
           </Text>
         </ScrollView>
       </View>
+
+      {isViewModePanelOpen ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: isPhone ? 10 : 18,
+            right: isPhone ? 10 : undefined,
+            minWidth: isPhone ? undefined : 280,
+            maxWidth: 420,
+            marginTop: 6,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors['surface-1'],
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            gap: 10,
+            shadowColor: '#000000',
+            shadowOpacity: 0.12,
+            shadowRadius: 18,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 8,
+          }}
+        >
+          <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>
+            {t('document.breadcrumb.allScenesNote')}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={toggleViewMode}
+            style={({ pressed }) => ({
+              alignSelf: 'flex-start',
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              backgroundColor: pressed ? colors.background : 'transparent',
+            })}
+          >
+            <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '700' }}>
+              {viewMode === 'all'
+                ? t('document.breadcrumb.showActivePath')
+                : t('document.breadcrumb.showAllScenes')}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {openInfo ? (
         <View
