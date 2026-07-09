@@ -73,6 +73,24 @@ describe('ReaderDisplay', () => {
     expect(onSelectChoice).toHaveBeenCalledWith('right');
   });
 
+  it('applies reader font scale to the dialogue text style', () => {
+    render(<ReaderDisplay {...baseProps} readerFontScale={1.3} />);
+
+    const dialogueText = screen.getByTestId('reader-dialogue-text');
+
+    expect(dialogueText.style.fontSize).toBe('20.8px');
+    expect(dialogueText.style.lineHeight).toBe('34.32');
+  });
+
+  it('keeps the default dialogue line height unchanged', () => {
+    render(<ReaderDisplay {...baseProps} />);
+
+    const dialogueText = screen.getByTestId('reader-dialogue-text');
+
+    expect(dialogueText.style.fontSize).toBe('16px');
+    expect(dialogueText.style.lineHeight).toBe('26.4');
+  });
+
   it('does not render choices while text is typing', () => {
     render(
       <ReaderDisplay

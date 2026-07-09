@@ -6,7 +6,9 @@ import type { useColors } from '@/hooks/use-colors';
 import type { ImageSource } from '@/hooks/useSceneImages';
 import type { ReaderChoice } from '@/lib/reader-runtime';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
+import type { ReaderFontScale, ReaderLineHeightScale } from '@/lib/user-settings';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
+import { RichText } from '@/components/RichText';
 import { ReaderChoices } from '@/components/reader/ReaderChoices';
 import { EffectsLayerStack, effectsForCharacter, effectsForTarget } from '@/components/reader/EffectsLayerStack';
 import { useShakeOffset } from '@/components/reader/useShakeOffset';
@@ -16,6 +18,8 @@ import type { ActiveEffect, CameraRuntimeState } from '@/lib/engine/runtime-type
 import type { InteractiveObject } from '@/lib/interactive-types';
 
 const DIALOGUE_MARGIN_BOTTOM = 28;
+const DIALOGUE_LINE_HEIGHT_MULTIPLIER = 1.65;
+const DEFAULT_READER_LINE_HEIGHT_SCALE = 1.2;
 const TAPPABLE_AREA_STYLE = { flex: 1 };
 const CURSOR_STYLE = { opacity: 0.8 };
 const BACKGROUND_PLACEHOLDER = { blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' };
@@ -47,7 +51,11 @@ interface ReaderDisplayProps {
   colors: ReturnType<typeof useColors>;
   dialogueAnimatedStyle: StyleProp<ViewStyle>;
   dialogueFontSize: number;
+  readerFontScale?: ReaderFontScale;
+  readerLineHeightScale?: ReaderLineHeightScale;
   displayedText: string;
+  /** Visible-character limit for the typewriter reveal; omit to show all text. */
+  visibleCount?: number;
   fallbackColor: string;
   getChoiceAccessibilityLabel: (text: string) => string;
   continueAccessibilityLabel: string;
@@ -178,7 +186,10 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   colors,
   dialogueAnimatedStyle,
   dialogueFontSize,
+  readerFontScale = 1.0,
+  readerLineHeightScale = DEFAULT_READER_LINE_HEIGHT_SCALE,
   displayedText,
+  visibleCount,
   fallbackColor,
   getChoiceAccessibilityLabel,
   continueAccessibilityLabel,
@@ -211,6 +222,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   const characterEffects = effectsForTarget(visibleEffects, 'character');
   const genericCharacterEffects = characterEffects.filter((effect) => !effect.characterId);
   const shakeOffset = useShakeOffset(screenEffects);
+  const scaledDialogueFontSize = dialogueFontSize * readerFontScale;
 
   const cameraTransformStyle = useMemo(() => {
     const camera = cameraState ?? { zoomLevel: 1, panX: 0, panY: 0 };
@@ -227,11 +239,13 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   }, [cameraState, shakeOffset.x, shakeOffset.y]);
 
   const dialogueTextStyle = useMemo(() => ({
-    fontSize: dialogueFontSize,
-    lineHeight: dialogueFontSize * 1.65,
+    fontSize: scaledDialogueFontSize,
+    lineHeight: scaledDialogueFontSize
+      * DIALOGUE_LINE_HEIGHT_MULTIPLIER
+      * (readerLineHeightScale / DEFAULT_READER_LINE_HEIGHT_SCALE),
     color: colors.foreground,
     fontWeight: '400' as const,
-  }), [colors.foreground, dialogueFontSize]);
+  }), [colors.foreground, readerLineHeightScale, scaledDialogueFontSize]);
 
   const cursorStyle = useMemo(
     () => [CURSOR_STYLE, { color: colors.primary }],
@@ -323,8 +337,8 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
           ) : null}
 
           <Pressable className="p-4 min-h-[80]" onPress={onTap} accessible={false}>
-            <Text style={dialogueTextStyle}>
-              {displayedText}
+            <Text testID="reader-dialogue-text" style={dialogueTextStyle}>
+              <RichText text={displayedText} visibleCount={visibleCount} />
               {isTyping && <Text style={cursorStyle}>|</Text>}
             </Text>
           </Pressable>
@@ -333,7 +347,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
             <ReaderChoices
               choices={choices}
               colors={colors}
-              fontSize={dialogueFontSize}
+              fontSize={scaledDialogueFontSize}
               getAccessibilityLabel={getChoiceAccessibilityLabel}
               onSelectChoice={onSelectChoice}
             />

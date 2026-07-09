@@ -1,0 +1,87 @@
+import type { SceneRecord } from '@/lib/engine/types';
+import { createPersistentStorage } from '@/lib/persistent-storage';
+import type { SceneRecordStorageLike } from '@/lib/scene-record-storage';
+import {
+  createSnapshot,
+  restoreSnapshot,
+  type SnapshotMeta,
+  type SnapshotStoryMetadata,
+} from '@/lib/story-snapshots';
+import { allTranslations } from '@/lib/translations';
+import type { AppStoreGet, AppStoreSet } from '@/stores/app-store-slices/types';
+
+/** i18n key for the automatic snapshot taken right before a restore. */
+const BEFORE_RESTORE_KEY = 'storySnapshots.beforeRestore';
+
+export interface SnapshotsSlice {
+  createStorySnapshot: (
+    storyId: string,
+    name: string,
+    automatic?: boolean,
+  ) => Promise<SnapshotMeta | null>;
+  restoreStorySnapshot: (storyId: string, snapshotId: string) => Promise<boolean>;
+}
+
+function resolveBeforeRestoreName(get: AppStoreGet): string {
+  const language = get().language;
+  return (
+    allTranslations[language]?.[BEFORE_RESTORE_KEY] ??
+    allTranslations.en[BEFORE_RESTORE_KEY] ??
+    'Before restore'
+  );
+}
+
+function toStoryMetadataSubset(get: AppStoreGet, storyId: string): SnapshotStoryMetadata | null {
+  const story = get().storiesMetadata.find((item) => item.id === storyId);
+  if (!story) return null;
+  return {
+    title: story.title,
+    startSceneId: story.startSceneId,
+    sceneOrder: story.sceneOrder,
+    tags: story.tags,
+  };
+}
+
+export function createSnapshotsSlice(
+  set: AppStoreSet,
+  get: AppStoreGet,
+  storage: SceneRecordStorageLike = createPersistentStorage(),
+): SnapshotsSlice {
+  return {
+    createStorySnapshot: async (storyId, name, automatic = false) => {
+      // Snapshots must capture the whole story, not just a hydrated window.
+      await get().hydrateSceneRecordsForStory(storyId);
+      const scenes = get().getScenesForStory(storyId);
+      return createSnapshot(storage, storyId, name, scenes, {
+        automatic,
+        story: toStoryMetadataSubset(get, storyId),
+      });
+    },
+
+    restoreStorySnapshot: async (storyId, snapshotId) => {
+      // Make the restore itself undoable before we touch anything.
+      await get().createStorySnapshot(storyId, resolveBeforeRestoreName(get), true);
+
+      // Build the full scene set up front; a failed read throws here and leaves
+      // the live story untouched.
+      const scenes = await restoreSnapshot(storage, storyId, snapshotId);
+      const records: Record<string, SceneRecord> = Object.fromEntries(
+        scenes.map((record) => [record.id, record]),
+      );
+
+      // Replace in memory; the persist middleware writes these through the
+      // existing canonical scene-save path (no second write path).
+      set((state) => ({
+        sceneRecordsByStory: { ...state.sceneRecordsByStory, [storyId]: records },
+        sceneRecordHydration: { ...state.sceneRecordHydration, [storyId]: 'full' },
+        storiesMetadata: state.storiesMetadata.map((metadata) =>
+          metadata.id === storyId
+            ? { ...metadata, sceneCount: scenes.length, updatedAt: Date.now() }
+            : metadata,
+        ),
+      }));
+
+      return true;
+    },
+  };
+}

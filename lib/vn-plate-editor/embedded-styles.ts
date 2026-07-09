@@ -240,15 +240,15 @@ export function createEmbeddedStyles(): string {
     }
     .choice-block {
       display: flex;
-      flex-direction: column;
-      align-items: stretch;
+      flex-direction: row;
+      align-items: center;
       gap: 12px;
       min-height: 0;
-      margin: 14px 0 18px;
-      padding: 16px 18px;
+      margin: 10px 0 14px;
+      padding: 12px 14px;
       background: #ffffff;
       border: 1px solid #e5e0d5;
-      border-radius: 12px;
+      border-radius: 7px;
     }
     .choice-block .void-title {
       font-size: 13px;
@@ -256,17 +256,21 @@ export function createEmbeddedStyles(): string {
     .choice-block-header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 14px;
+      flex: 0 0 auto;
     }
     .choice-question-summary {
+      flex: 0 1 180px;
       margin: 0;
+      font-size: 12px;
+      line-height: 1.35;
       white-space: normal;
     }
     .choice-options-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 12px;
+      flex: 1 1 auto;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      min-width: 0;
     }
     .choice-option-card-wrap {
       display: flex;
@@ -277,30 +281,31 @@ export function createEmbeddedStyles(): string {
     }
     .choice-option-card {
       display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 8px;
+      flex-direction: row;
+      align-items: center;
+      gap: 10px;
       width: 100%;
-      padding: 14px 16px;
+      min-height: 42px;
+      padding: 8px 12px;
       border: 1px solid #e2e8f0;
-      border-radius: 10px;
+      border-radius: 7px;
       background: #fbfbfa;
       color: #111827;
       text-align: left;
       cursor: pointer;
-      box-shadow: 0 4px 14px var(--branch-shadow, rgba(15, 23, 42, 0.08));
+      box-shadow: none;
       transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, transform 0.15s ease;
     }
     .choice-option-card:hover {
       border-color: var(--branch-color, #cbd5e1);
       background: #f8fafc;
-      box-shadow: 0 6px 20px var(--branch-shadow-strong, rgba(15, 23, 42, 0.14));
+      box-shadow: 0 3px 10px var(--branch-shadow-strong, rgba(15, 23, 42, 0.12));
       transform: translateY(-1px);
     }
     .choice-option-card.is-active {
       background: #eff6ff;
       border-color: var(--branch-color, #60a5fa);
-      box-shadow: 0 0 0 1px var(--branch-color, #60a5fa), 0 8px 24px var(--branch-shadow-strong, rgba(37, 99, 235, 0.28));
+      box-shadow: 0 0 0 1px var(--branch-color, #60a5fa);
     }
     .choice-option-card.is-broken {
       border-color: #fca5a5;
@@ -314,14 +319,23 @@ export function createEmbeddedStyles(): string {
     }
     .choice-option-card-text {
       font-weight: 700;
-      font-size: 14px;
-      line-height: 1.4;
+      font-size: 13px;
+      line-height: 1.3;
       color: #111827;
     }
     .choice-option-card-badges {
       display: flex;
       flex-wrap: wrap;
+      margin-left: auto;
       gap: 6px;
+    }
+    .choice-block-actions {
+      flex: 0 0 auto;
+    }
+    .choice-block .block-button {
+      height: 34px;
+      padding: 0 14px;
+      font-size: 13px;
     }
     .choice-options-list {
       display: flex;
@@ -371,6 +385,9 @@ export function createEmbeddedStyles(): string {
       grid-template-columns: 1fr;
     }
     .choice-branch-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       padding: 1px 7px;
       border-radius: 999px;
       font-size: 10px;
@@ -378,8 +395,43 @@ export function createEmbeddedStyles(): string {
       text-transform: none;
     }
     .choice-branch-badge-active {
-      background: #f59e0b;
-      color: #ffffff;
+      position: relative;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      background: transparent;
+      color: #64748b;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .choice-branch-check {
+      line-height: 1;
+    }
+    .choice-branch-badge-label {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      z-index: 4;
+      width: max-content;
+      padding: 3px 7px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #374151;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.2;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-2px);
+      transition: opacity 0.12s ease, transform 0.12s ease;
+      white-space: nowrap;
+    }
+    .choice-option-card.is-active:hover .choice-branch-badge-label,
+    .choice-option-card.is-active:focus-visible .choice-branch-badge-label {
+      opacity: 1;
+      transform: translateY(0);
     }
     .choice-branch-badge-broken {
       background: #fee2e2;
@@ -853,6 +905,14 @@ export function createEmbeddedStyles(): string {
     .slash-title { display: block; font-weight: 750; }
     .slash-desc { display: block; margin-top: 1px; color: #6b7280; font-size: 12px; }
     .slash-alias { color: #6b7280; font-size: 12px; }
+    .slash-group-label {
+      padding: 10px 10px 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #9ca3af;
+    }
     .hidden { display: none; }
     @media (max-width: 760px) {
       .shell { padding: 0; }
@@ -881,6 +941,13 @@ export function createEmbeddedStyles(): string {
       }
       .block-actions {
         justify-content: flex-end;
+      }
+      .choice-block {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .choice-options-grid {
+        grid-template-columns: 1fr;
       }
       .background-popover::before {
         display: none;

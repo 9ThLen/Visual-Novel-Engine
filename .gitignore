@@ -86,3 +86,6 @@ test-results/
 graphify-out/
 _graphify_scope/
 graphify-scope/
+
+# TokenSave code-graph index
+.tokensave/

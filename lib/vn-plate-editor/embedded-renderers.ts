@@ -307,10 +307,12 @@ export function blockToHtml(
       `<div class="void-block choice-block" contenteditable="false" data-kind="choice" data-id="${escapeHtml(block.id)}" data-choice="${escapeHtml(JSON.stringify(data))}">`,
       '<div class="choice-block-header">',
       '<span class="void-title">/choice</span>',
-      '<button type="button" class="block-button" data-action="edit-choice">Edit</button>',
       '</div>',
       questionHtml,
       `<div class="choice-options-grid">${cards}</div>`,
+      '<div class="block-actions choice-block-actions">',
+      '<button type="button" class="block-button" data-action="edit-choice">Edit</button>',
+      '</div>',
       '</div>',
     ].join('');
   }

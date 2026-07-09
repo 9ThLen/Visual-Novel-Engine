@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/lib/theme-provider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { StoryAutoSave } from "@/components/StoryAutoSave";
 import { ReaderAudioRouteGuard } from "@/components/ReaderAudioRouteGuard";
+import { PlayerModeRouteGuard } from "@/components/PlayerModeRouteGuard";
 import { MigrationErrorBanner } from "@/components/MigrationErrorBanner";
 import { ToastViewport } from "@/components/ui";
 import { useEffect } from "react";
@@ -40,6 +41,7 @@ export default function RootLayout() {
         <ThemeProvider>
           <StoryAutoSave />
           <ReaderAudioRouteGuard />
+          <PlayerModeRouteGuard />
           <MigrationErrorBanner />
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="tabs" />

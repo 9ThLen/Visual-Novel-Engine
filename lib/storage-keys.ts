@@ -41,6 +41,21 @@ export const STORAGE_KEYS = {
   CANONICAL_SCENE_RECORD: (storyId: string, sceneId: string) =>
     `${PREFIX}scene_record_${encodeURIComponent(storyId)}_${encodeURIComponent(sceneId)}`,
 
+  // Author-local playtest coverage (per story)
+  STORY_COVERAGE: (storyId: string) => `${PREFIX}story_coverage_${encodeURIComponent(storyId)}`,
+
+  // Local version snapshots (per story). The index holds meta only; each
+  // snapshot stores a manifest plus one key per scene so bodies never share a
+  // single giant blob.
+  STORY_SNAPSHOT_INDEX: (storyId: string) =>
+    `${PREFIX}story_snapshot_index_${encodeURIComponent(storyId)}`,
+  STORY_SNAPSHOT_MANIFEST: (storyId: string, snapshotId: string) =>
+    `${PREFIX}story_snapshot_${encodeURIComponent(storyId)}_${encodeURIComponent(snapshotId)}`,
+  STORY_SNAPSHOT_SCENE: (storyId: string, snapshotId: string, sceneId: string) =>
+    `${PREFIX}story_snapshot_scene_${encodeURIComponent(storyId)}_${encodeURIComponent(
+      snapshotId,
+    )}_${encodeURIComponent(sceneId)}`,
+
 } as const;
 
 /**

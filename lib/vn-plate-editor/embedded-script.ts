@@ -1869,7 +1869,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         var classes = 'choice-option-card' + (isActive ? ' is-active' : '') + (meta.isBroken ? ' is-broken' : '');
         var cardStyle = ' style="--branch-color: ' + color + '; --branch-shadow: ' + branchShadow(color, 0.22) + '; --branch-shadow-strong: ' + branchShadow(color, 0.32) + ';"';
         var badges = '';
-        if (isActive) badges += '<span class="choice-branch-badge choice-branch-badge-active">активна гілка</span>';
+        if (isActive) badges += '<span class="choice-branch-badge choice-branch-badge-active" aria-label="активна гілка"><span class="choice-branch-check" aria-hidden="true">&#10003;</span><span class="choice-branch-badge-label">активна гілка</span></span>';
         if (meta.isBroken) badges += '<span class="choice-branch-badge choice-branch-badge-broken">ціль не знайдена</span>';
         else if (meta.isEmpty) badges += '<span class="choice-branch-badge choice-branch-badge-empty">гілка порожня</span>';
         var startButton = '';
@@ -1886,7 +1886,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         '</div>';
       }).join('');
 
-      node.insertAdjacentHTML('beforeend', '<div class="choice-options-grid">' + cards + '</div>');
+      var actions = node.querySelector('.choice-block-actions');
+      if (actions) {
+        actions.insertAdjacentHTML('beforebegin', '<div class="choice-options-grid">' + cards + '</div>');
+      } else {
+        node.insertAdjacentHTML('beforeend', '<div class="choice-options-grid">' + cards + '</div>');
+      }
 
       if (info && info.warning === 'danglingTarget') {
         var warning = document.createElement('div');
@@ -1906,9 +1911,11 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       node.innerHTML =
         '<div class="choice-block-header">' +
           '<span class="void-title">/choice</span>' +
-          '<button type="button" class="block-button" data-action="edit-choice">Edit</button>' +
         '</div>' +
-        questionHtml;
+        questionHtml +
+        '<div class="block-actions choice-block-actions">' +
+          '<button type="button" class="block-button" data-action="edit-choice">Edit</button>' +
+        '</div>';
       renderChoiceBranchSwitcher(node);
     }
 
@@ -2259,6 +2266,110 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       return block;
     }
 
+    function isEditableLineElement(node) {
+      return Boolean(node && node.tagName === 'P' && (!node.classList || !node.classList.contains('void-block')));
+    }
+
+    function selectedVoidBlock() {
+      return editor.querySelector('.void-block.is-selected');
+    }
+
+    function deselectAllVoidBlocks() {
+      Array.prototype.slice.call(editor.querySelectorAll('.void-block.is-selected')).forEach(function(item) {
+        item.classList.remove('is-selected');
+        item.removeAttribute('aria-selected');
+      });
+    }
+
+    function selectVoidBlock(block) {
+      if (!block || !editor.contains(block)) return;
+      deselectAllVoidBlocks();
+      block.classList.add('is-selected');
+      block.setAttribute('aria-selected', 'true');
+    }
+
+    function ensureEditableParagraph() {
+      var existing = editor.querySelector('p');
+      if (existing) return existing;
+      var p = document.createElement('p');
+      p.dataset.kind = 'text';
+      p.dataset.id = uid('doc_text');
+      p.appendChild(document.createElement('br'));
+      editor.appendChild(p);
+      return p;
+    }
+
+    function deleteVoidBlock(block) {
+      if (!block || !editor.contains(block)) return false;
+      if (activeBackgroundBlock === block) closeBackgroundPopover();
+      if (activeTransitionBlock === block) closeTransitionPopover();
+      if (activeChoiceBlock === block) closeChoicePopover();
+
+      var next = block.nextElementSibling;
+      var previous = block.previousElementSibling;
+      block.remove();
+
+      var target = isEditableLineElement(next) ? next : isEditableLineElement(previous) ? previous : ensureEditableParagraph();
+      moveCaretToEnd(target);
+      ensureParagraph();
+      scheduleResize();
+      saveNow();
+      return true;
+    }
+
+    function rangeTextBeforeCaret(selection, line) {
+      if (!selection || !selection.rangeCount || !line || !line.contains(selection.anchorNode)) return null;
+      var range = document.createRange();
+      range.selectNodeContents(line);
+      range.setEnd(selection.anchorNode, selection.anchorOffset);
+      return range.toString();
+    }
+
+    function rangeTextAfterCaret(selection, line) {
+      if (!selection || !selection.rangeCount || !line || !line.contains(selection.anchorNode)) return null;
+      var range = document.createRange();
+      range.selectNodeContents(line);
+      range.setStart(selection.anchorNode, selection.anchorOffset);
+      return range.toString();
+    }
+
+    function isCaretAtStartOfLine(selection, line) {
+      var text = rangeTextBeforeCaret(selection, line);
+      return text != null && text.length === 0;
+    }
+
+    function isCaretAtEndOfLine(selection, line) {
+      var text = rangeTextAfterCaret(selection, line);
+      return text != null && text.length === 0;
+    }
+
+    function handleVoidBlockBoundaryKey(event) {
+      if ((event.key !== 'Backspace' && event.key !== 'Delete') || event.altKey || event.ctrlKey || event.metaKey) return false;
+      var selected = selectedVoidBlock();
+      if (selected) {
+        event.preventDefault();
+        deleteVoidBlock(selected);
+        return true;
+      }
+
+      var selection = window.getSelection();
+      if (!selection || !selection.isCollapsed || !selection.anchorNode) return false;
+      var line = editableLineForNode(selection.anchorNode);
+      if (!line) return false;
+
+      var candidate = null;
+      if (event.key === 'Backspace' && isCaretAtStartOfLine(selection, line)) {
+        candidate = line.previousElementSibling;
+      } else if (event.key === 'Delete' && isCaretAtEndOfLine(selection, line)) {
+        candidate = line.nextElementSibling;
+      }
+      if (!candidate || !candidate.classList || !candidate.classList.contains('void-block')) return false;
+
+      event.preventDefault();
+      selectVoidBlock(candidate);
+      return true;
+    }
+
     function nearestEditableLine() {
       var selection = window.getSelection();
       if (!selection || !selection.anchorNode) return null;
@@ -2455,11 +2566,16 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       }
       activeIndex = Math.min(activeIndex, items.length - 1);
       menu.innerHTML = items.map(function(command, index) {
-        return '<button class="slash-item ' + (index === activeIndex ? 'active' : '') + '" data-id="' + command.id + '">' +
-          '<span class="slash-icon">' + command.title.slice(0, 2) + '</span>' +
-          '<span><span class="slash-title">' + command.title + '</span><span class="slash-desc">' + command.description + '</span></span>' +
-          '<span class="slash-alias">/' + command.id + '</span>' +
-        '</button>';
+        var previous = index > 0 ? items[index - 1] : null;
+        var groupHeader = command.group && (!previous || previous.group !== command.group)
+          ? '<div class="slash-group-label">' + (command.groupLabel || '') + '</div>'
+          : '';
+        return groupHeader +
+          '<button class="slash-item ' + (index === activeIndex ? 'active' : '') + '" data-id="' + command.id + '">' +
+            '<span class="slash-icon">' + command.title.slice(0, 2) + '</span>' +
+            '<span><span class="slash-title">' + command.title + '</span><span class="slash-desc">' + command.description + '</span></span>' +
+            '<span class="slash-alias">/' + command.id + '</span>' +
+          '</button>';
       }).join('');
       menu.classList.remove('hidden');
       afterLayout(function() { positionSlashMenu(state); });
@@ -2684,6 +2800,52 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         saveNow();
         return;
       }
+      if (commandId === 'choiceTwoBranches') {
+        removeSlashToken(p);
+        var choiceSnippetBlock = document.createElement('div');
+        choiceSnippetBlock.className = 'void-block choice-block';
+        choiceSnippetBlock.contentEditable = 'false';
+        choiceSnippetBlock.dataset.kind = 'choice';
+        choiceSnippetBlock.dataset.id = uid('doc_choice');
+        renderChoiceBlockContent(choiceSnippetBlock);
+        p.insertAdjacentElement('afterend', choiceSnippetBlock);
+        var afterChoiceSnippet = document.createElement('p');
+        afterChoiceSnippet.dataset.kind = 'text';
+        afterChoiceSnippet.dataset.id = uid('doc_text');
+        afterChoiceSnippet.appendChild(document.createElement('br'));
+        choiceSnippetBlock.insertAdjacentElement('afterend', afterChoiceSnippet);
+        closeSlashMenu();
+        moveCaretToEnd(afterChoiceSnippet);
+        scheduleResize();
+        saveNow();
+        return;
+      }
+      if (commandId === 'sceneEnding') {
+        removeSlashToken(p);
+        var endingSnippetBlock = document.createElement('div');
+        endingSnippetBlock.className = 'void-block transition-block';
+        endingSnippetBlock.contentEditable = 'false';
+        endingSnippetBlock.dataset.kind = 'technical';
+        endingSnippetBlock.dataset.id = uid('doc_block');
+        endingSnippetBlock.dataset.command = 'transition';
+        applyTransitionData(endingSnippetBlock, {
+          mode: 'end',
+          targetSceneId: null,
+          transitionType: 'fade',
+          duration: 0.5
+        });
+        p.insertAdjacentElement('afterend', endingSnippetBlock);
+        var afterEndingSnippet = document.createElement('p');
+        afterEndingSnippet.dataset.kind = 'text';
+        afterEndingSnippet.dataset.id = uid('doc_text');
+        afterEndingSnippet.appendChild(document.createElement('br'));
+        endingSnippetBlock.insertAdjacentElement('afterend', afterEndingSnippet);
+        closeSlashMenu();
+        moveCaretToEnd(afterEndingSnippet);
+        scheduleResize();
+        saveNow();
+        return;
+      }
       removeSlashToken(p);
       var block = document.createElement('div');
       block.className = commandId === 'background' ? 'void-block background-block'
@@ -2806,12 +2968,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         }
         return;
       }
-      var block = target.closest('.background-block, .transition-block, .choice-block');
-      if (!block) return;
-      Array.prototype.slice.call(editor.querySelectorAll('.void-block.is-selected')).forEach(function(item) {
-        if (item !== block) item.classList.remove('is-selected');
-      });
-      block.classList.add('is-selected');
+      var block = target.closest('.void-block');
+      if (!block) {
+        if (target.closest('p')) deselectAllVoidBlocks();
+        return;
+      }
+      selectVoidBlock(block);
       if (!button) return;
       var action = button.dataset.action;
       if (action === 'edit-background' || action === 'pick-background') {
@@ -3310,6 +3472,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           return;
         }
       }
+      if (handleVoidBlockBoundaryKey(event)) return;
       if (event.key === 'Escape' && backgroundPopover) {
         event.preventDefault();
         closeBackgroundPopover();
@@ -3333,6 +3496,9 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (event.key === 'Escape' && audioPopover) {
         event.preventDefault();
         closeAudioPopover();
+      }
+      if (event.key === 'Escape') {
+        deselectAllVoidBlocks();
       }
       var target = event.target;
       if (target && target.classList && target.classList.contains('speaker-token') && (event.key === 'Enter' || event.key === ' ')) {
@@ -3442,6 +3608,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     });
 
     editor.addEventListener('input', function() {
+      deselectAllVoidBlocks();
       ensureParagraph();
       transformDialogueIfNeeded();
       transformAllDialogueIfNeeded();

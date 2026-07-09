@@ -19,7 +19,25 @@ import { buildNextPlaybackState, getTimelineInteractiveObjects, normalizeRuntime
 import { normalizeUserSettings } from '@/lib/user-settings';
 import { createInMemorySceneAccess } from '@/lib/scene-access';
 import { getReaderSceneRecordForNavigation } from '@/lib/reader-scene-cache';
+import { createPersistentStorage } from '@/lib/persistent-storage';
+import {
+  incrementChoiceCount,
+  loadCoverage,
+  recordChoiceTaken,
+  recordSceneVisit,
+  saveCoverage,
+  type StoryCoverage,
+} from '@/lib/story-coverage';
 import { useAppStore } from '@/stores/use-app-store';
+
+function findChoiceStepIdForOption(sceneRecord: { timeline?: { id: string; blockType: string; enabled?: boolean; data: unknown }[] } | null | undefined, optionId: string): string | null {
+  for (const step of sceneRecord?.timeline ?? []) {
+    if (step.enabled === false || step.blockType !== 'choice') continue;
+    const options = (step.data as { options?: { id: string }[] }).options ?? [];
+    if (options.some((option) => option.id === optionId)) return step.id;
+  }
+  return null;
+}
 
 function useReaderRouteParams(): { storyId: string | null; resumeExisting: boolean } {
   const { storyId, resume } = useLocalSearchParams();
@@ -40,8 +58,17 @@ export default function ReaderScreen() {
   const [readerSceneState, setReaderSceneState] = useState<SceneState | null>(null);
   const [entryTransition, setEntryTransition] = useState<ReaderTransitionEvent | null>(null);
   const [objDialogue, setObjDialogue] = useState<{ text: string; speaker?: string } | null>(null);
-  const pendingChoiceRef = useRef<{ sceneId: string; choiceId: string; targetSceneId: string | null } | null>(null);
+  const pendingChoiceRef = useRef<{ sceneId: string; choiceId: string; stepId: string | null; targetSceneId: string | null } | null>(null);
   const latestVariablesRef = useRef<RuntimeVariables>({});
+  const coverageStorageRef = useRef<ReturnType<typeof createPersistentStorage> | null>(null);
+  if (!coverageStorageRef.current) coverageStorageRef.current = createPersistentStorage();
+  const coverageStoryIdRef = useRef<string | null>(null);
+  const coverageCacheRef = useRef<StoryCoverage | null>(null);
+  const coverageLoadRef = useRef<Promise<StoryCoverage> | null>(null);
+  const coverageSaveChainRef = useRef<Promise<void>>(Promise.resolve());
+  const coverageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const coverageMutationsRef = useRef<((coverage: StoryCoverage) => StoryCoverage)[]>([]);
+  const lastRecordedSceneRef = useRef<string | null>(null);
   const { t } = useI18n();
 
   const { isLoading, sceneRecord, timeline, story, playbackState, updatePlaybackState } = useReaderInitialization(
@@ -61,6 +88,64 @@ export default function ReaderScreen() {
   useEffect(() => {
     latestVariablesRef.current = normalizeRuntimeVariables(playbackState?.variables);
   }, [playbackState?.storyId, playbackState?.currentSceneId, playbackState?.variables]);
+
+  const enqueueCoverageUpdate = useCallback((
+    storyIdForCoverage: string,
+    mutation: (coverage: StoryCoverage) => StoryCoverage,
+  ) => {
+    if (coverageStoryIdRef.current !== storyIdForCoverage) {
+      coverageStoryIdRef.current = storyIdForCoverage;
+      coverageCacheRef.current = null;
+      coverageLoadRef.current = null;
+      coverageMutationsRef.current = [];
+      lastRecordedSceneRef.current = null;
+      if (coverageTimerRef.current) {
+        clearTimeout(coverageTimerRef.current);
+        coverageTimerRef.current = null;
+      }
+    }
+
+    coverageMutationsRef.current.push(mutation);
+    if (coverageTimerRef.current) return;
+
+    coverageTimerRef.current = setTimeout(() => {
+      coverageTimerRef.current = null;
+      const mutations = coverageMutationsRef.current.splice(0);
+      if (mutations.length === 0) return;
+
+      coverageSaveChainRef.current = coverageSaveChainRef.current.then(async () => {
+        const storage = coverageStorageRef.current!;
+        const loaded = coverageCacheRef.current
+          ?? await (coverageLoadRef.current ??= loadCoverage(storage, storyIdForCoverage));
+        const next = mutations.reduce((current, apply) => apply(current), loaded);
+        coverageCacheRef.current = next;
+        await saveCoverage(storage, storyIdForCoverage, next);
+      }).catch(() => {});
+    }, 0);
+  }, []);
+
+  const recordCoverageCommit = useCallback((
+    storyIdForCoverage: string,
+    sceneId: string | null,
+    choice?: { sceneId: string; stepId: string | null; optionId: string } | null,
+  ) => {
+    if (sceneId) lastRecordedSceneRef.current = sceneId;
+    enqueueCoverageUpdate(storyIdForCoverage, (coverage) => {
+      let next = coverage;
+      if (sceneId) next = recordSceneVisit(next, sceneId);
+      if (choice?.stepId) {
+        next = recordChoiceTaken(next, choice.sceneId, choice.stepId, choice.optionId);
+        next = incrementChoiceCount(next, choice.sceneId, choice.stepId, choice.optionId);
+      }
+      return next;
+    });
+  }, [enqueueCoverageUpdate]);
+
+  useEffect(() => {
+    if (!story?.id || !playbackState?.currentSceneId) return;
+    if (lastRecordedSceneRef.current === playbackState.currentSceneId) return;
+    recordCoverageCommit(story.id, playbackState.currentSceneId);
+  }, [story?.id, playbackState?.currentSceneId, recordCoverageCommit]);
 
   const handleSceneStateChange = useCallback((sceneState: SceneState) => {
     latestVariablesRef.current = normalizeRuntimeVariables(sceneState.variables);
@@ -92,6 +177,7 @@ export default function ReaderScreen() {
     sceneId: string,
     choicesMade?: { sceneId: string; choiceId: string }[],
     beforeCommit?: () => void,
+    coverageChoice?: { sceneId: string; stepId: string | null; optionId: string } | null,
   ): Promise<boolean> => {
     if (!story || !playbackState) return false;
     await hydrateReaderSceneWindow(story.id, sceneId);
@@ -116,9 +202,10 @@ export default function ReaderScreen() {
       latestVariablesRef.current,
     );
     beforeCommit?.();
+    recordCoverageCommit(story.id, sceneId, coverageChoice);
     updatePlaybackState(updated);
     return true;
-  }, [story, playbackState, hydrateReaderSceneWindow, updatePlaybackState]);
+  }, [story, playbackState, hydrateReaderSceneWindow, recordCoverageCommit, updatePlaybackState]);
 
   const handleTransition = (targetSceneId: string | null, transition?: ReaderTransitionEvent) => {
     if (isLoading || !playbackState) return;
@@ -137,22 +224,46 @@ export default function ReaderScreen() {
       resolvedTarget = sceneRecord?.connections?.find((connection) => connection.outputPort === 'next')?.targetSceneId ?? null;
     }
 
+    // Record the taken choice without a scene visit. This is used when the story ends
+    // here (no target) or when navigation fails before it could commit coverage.
+    const recordPendingChoiceOnly = () => {
+      if (story?.id && pendingChoice) {
+        recordCoverageCommit(story.id, null, {
+          sceneId: pendingChoice.sceneId,
+          stepId: pendingChoice.stepId,
+          optionId: pendingChoice.choiceId,
+        });
+      }
+    };
+
     if (resolvedTarget) {
       void navigateToScene(
         resolvedTarget,
         updatedChoices,
         () => setEntryTransition(transition ?? null),
+        pendingChoice
+          ? { sceneId: pendingChoice.sceneId, stepId: pendingChoice.stepId, optionId: pendingChoice.choiceId }
+          : null,
       ).then((didNavigate) => {
-        if (!didNavigate) finishStory(updatedChoices);
+        if (!didNavigate) {
+          // navigateToScene bailed before committing coverage. Record the
+          // choice here so a broken target link doesn't drop it from coverage.
+          recordPendingChoiceOnly();
+          finishStory(updatedChoices);
+        }
       });
     } else {
+      recordPendingChoiceOnly();
       finishStory(updatedChoices);
     }
   };
 
   const handleExecutorChoiceSelect = useCallback((choice: { sceneId: string; choiceId: string; targetSceneId: string | null }) => {
-    pendingChoiceRef.current = choice;
-  }, []);
+    pendingChoiceRef.current = {
+      ...choice,
+      stepId: findChoiceStepIdForOption(sceneRecord, choice.choiceId),
+    };
+  }, [sceneRecord]);
 
   const handleObjectSceneTransition = (sceneId: string) => {
     void navigateToScene(sceneId);

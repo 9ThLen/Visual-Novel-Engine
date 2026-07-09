@@ -1,12 +1,27 @@
 import { buildCanonicalLoadSnapshot, buildCanonicalSaveSlot } from '@/lib/reader-runtime';
 import { buildScopedReaderRuntimeSnapshot } from '@/lib/reader-runtime-snapshot';
+import type { SaveSlot } from '@/lib/story-domain';
 import type { AppActions } from '@/stores/app-store-types';
 import type { AppStoreGet, AppStoreSet } from '@/stores/app-store-slices/types';
+
+const QUICK_SAVE_SLOT_PREFIX = 'quick-';
 
 export type SavesSliceActions = Pick<
   AppActions,
   'deleteSaveSlot' | 'loadGame' | 'saveGame' | 'syncAutoSave'
 >;
+
+export function getQuickSaveSlotId(storyId: string): string {
+  return `${QUICK_SAVE_SLOT_PREFIX}${storyId}`;
+}
+
+export function isQuickSaveSlotId(slotId: string): boolean {
+  return slotId.startsWith(QUICK_SAVE_SLOT_PREFIX);
+}
+
+export function upsertSaveSlot(saveSlots: SaveSlot[], newSlot: SaveSlot): SaveSlot[] {
+  return [...saveSlots.filter((slot) => slot.id !== newSlot.id), newSlot];
+}
 
 export function createSavesSlice(set: AppStoreSet, get: AppStoreGet): SavesSliceActions {
   return {
@@ -25,7 +40,7 @@ export function createSavesSlice(set: AppStoreSet, get: AppStoreGet): SavesSlice
       if (!newSlot) return false;
 
       set((current) => ({
-        saveSlots: [...current.saveSlots.filter((slot) => slot.id !== slotId), newSlot],
+        saveSlots: upsertSaveSlot(current.saveSlots, newSlot),
       }));
       return true;
     },
@@ -54,7 +69,7 @@ export function createSavesSlice(set: AppStoreSet, get: AppStoreGet): SavesSlice
 
     syncAutoSave: (newSlot) =>
       set((state) => ({
-        saveSlots: [...state.saveSlots.filter((slot) => slot.id !== 'autosave'), newSlot],
+        saveSlots: upsertSaveSlot(state.saveSlots, newSlot),
       })),
   };
 }

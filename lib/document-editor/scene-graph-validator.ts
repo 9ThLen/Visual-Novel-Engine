@@ -1,4 +1,5 @@
-import type { ChoiceBlockData, SceneRecord, TimelineStep } from '@/lib/engine/types';
+import type { ChoiceBlockData, SceneRecord } from '@/lib/engine/types';
+import { collectReachableSceneIds, isEnabledChoiceStep } from './scene-graph-traversal';
 
 /**
  * Whole-graph structural validation for the document editor.
@@ -44,10 +45,6 @@ export type SceneGraphIssue =
   | DanglingNextTargetIssue
   | UnreachableSceneIssue;
 
-function isEnabledChoiceStep(step: TimelineStep): step is TimelineStep & { data: ChoiceBlockData } {
-  return step.blockType === 'choice' && step.enabled !== false;
-}
-
 /**
  * Finds dangling targets: an enabled choice option's explicit targetSceneId
  * that references a scene missing from the list, and a `next` connection
@@ -92,54 +89,16 @@ function findDanglingTargets(
 }
 
 /**
- * Collects every outgoing edge target from a scene: all connection targets
- * (regardless of outputPort) and every enabled choice option's explicit
- * target. Used for full-graph reachability, which is more permissive than
- * the single active path — any edge can be taken, not just the currently
- * selected branch.
- */
-function outgoingTargets(scene: SceneRecord): string[] {
-  const targets: string[] = [];
-  for (const connection of scene.connections ?? []) {
-    targets.push(connection.targetSceneId);
-  }
-  for (const step of scene.timeline) {
-    if (!isEnabledChoiceStep(step)) continue;
-    const data = step.data as ChoiceBlockData;
-    for (const option of data.options) {
-      if (option.targetSceneId) targets.push(option.targetSceneId);
-    }
-  }
-  return targets;
-}
-
-/**
  * Finds scenes not reachable from the start scene (isStart, falling back to
  * scenes[0]) by following every edge in the graph. This is full-graph
  * reachability — it does not respect the author's current choice selections
  * the way story-path's active path does.
  */
-function findUnreachableScenes(scenes: SceneRecord[], byId: Map<string, SceneRecord>): UnreachableSceneIssue[] {
+function findUnreachableScenes(scenes: SceneRecord[]): UnreachableSceneIssue[] {
   const start = scenes.find((scene) => scene.isStart) ?? scenes[0];
   if (!start) return [];
 
-  const visited = new Set<string>();
-  const queue: string[] = [start.id];
-
-  while (queue.length > 0) {
-    const currentId = queue.shift() as string;
-    if (visited.has(currentId)) continue;
-    visited.add(currentId);
-
-    const scene = byId.get(currentId);
-    if (!scene) continue;
-
-    for (const targetId of outgoingTargets(scene)) {
-      if (!visited.has(targetId) && byId.has(targetId)) {
-        queue.push(targetId);
-      }
-    }
-  }
+  const visited = collectReachableSceneIds(scenes, start.id);
 
   return scenes
     .filter((scene) => !visited.has(scene.id))
@@ -165,7 +124,7 @@ export function validateSceneGraph(scenes: SceneRecord[]): SceneGraphIssue[] {
   const byId = new Map(scenes.map((scene) => [scene.id, scene]));
 
   issues.push(...findDanglingTargets(scenes, byId));
-  issues.push(...findUnreachableScenes(scenes, byId));
+  issues.push(...findUnreachableScenes(scenes));
 
   return issues;
 }

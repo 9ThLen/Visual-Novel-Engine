@@ -12,7 +12,10 @@ import type { BlockType, SceneRecord } from '@/lib/engine/types';
 import { generateId } from '@/lib/id-utils';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import { selectSceneRecordMapForStory, useAppStore } from '@/stores/use-app-store';
+import { SceneGraphView } from './SceneGraphView';
 import { SceneSelector } from './SceneSelector';
+
+type SceneManagerViewMode = 'list' | 'graph';
 
 interface SceneManagerProps {
   storyId: string;
@@ -58,6 +61,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
   const story = storiesMetadata.find((metadata) => metadata.id === storyId);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<SceneManagerViewMode>('list');
   const [showSceneSelector, setShowSceneSelector] = useState(false);
   const [showNewSceneForm, setShowNewSceneForm] = useState(false);
   const [newSceneName, setNewSceneName] = useState('');
@@ -79,6 +83,13 @@ export function SceneManager({ storyId }: SceneManagerProps) {
   }, [storyRecords, searchQuery]);
 
   const startSceneId = scenes.find((scene) => scene.isStart)?.id || story?.startSceneId;
+
+  // The graph always visualizes the whole story, unaffected by the list search.
+  const allScenes = useMemo(() => Object.values(storyRecords), [storyRecords]);
+  const graphStartSceneId = useMemo(
+    () => allScenes.find((scene) => scene.isStart)?.id ?? story?.startSceneId ?? null,
+    [allScenes, story?.startSceneId],
+  );
 
   const openSceneEditor = useCallback((sceneId: string) => {
     navigateWithViewTransition(() => router.push({
@@ -252,8 +263,33 @@ export function SceneManager({ storyId }: SceneManagerProps) {
             </Button>
           </>
         )}
+
+        <View style={styles.viewToggle}>
+          <Button
+            variant={viewMode === 'list' ? 'primary' : 'ghost'}
+            size="sm"
+            onPress={() => setViewMode('list')}
+          >
+            {t('editor.sceneManager.viewList')}
+          </Button>
+          <Button
+            variant={viewMode === 'graph' ? 'primary' : 'ghost'}
+            size="sm"
+            onPress={() => setViewMode('graph')}
+          >
+            {t('editor.sceneManager.viewGraph')}
+          </Button>
+        </View>
       </View>
 
+      {viewMode === 'graph' ? (
+        <SceneGraphView
+          scenes={allScenes}
+          startSceneId={graphStartSceneId}
+          onSelectScene={openSceneEditor}
+          emptyLabel={t('editor.sceneManager.graphEmpty')}
+        />
+      ) : (
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
         {scenes.length === 0 ? (
           <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -329,6 +365,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
           ))
         )}
       </ScrollView>
+      )}
 
       <View style={[styles.bottomBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         <Text style={[styles.bottomMeta, { color: colors.muted }]}>
@@ -401,6 +438,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     gap: spacing.sm,
     borderBottomWidth: 1,
+  },
+  viewToggle: {
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
   searchInput: {
     flex: 1,

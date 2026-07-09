@@ -60,6 +60,8 @@ function createBaseSnapshot() {
       sfxVolume: 0.7,
       textSpeed: 0.5,
       textSize: 'medium',
+      readerFontScale: 1,
+      readerLineHeightScale: 1.2,
       autoPlay: false,
     },
     saveSlots: [],
