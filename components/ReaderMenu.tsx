@@ -4,12 +4,22 @@ import { useRouter } from 'expo-router';
 import { useColors } from '@/hooks/use-colors';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { buttonFeedback } from '@/lib/ui-feedback';
+import { showToast } from '@/lib/toast-store';
 import { useI18n } from '@/hooks/use-i18n';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
+import { getQuickSaveSlotId } from '@/stores/app-store-slices/saves-slice';
+import { useAppStore } from '@/stores/use-app-store';
 
 interface ReaderMenuProps {
   visible: boolean;
   onClose: () => void;
+}
+
+interface ReaderMenuItem {
+  label: string;
+  icon: IconSymbolName;
+  action: () => void | Promise<void>;
+  disabled?: boolean;
 }
 
 export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
@@ -18,6 +28,18 @@ export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
   const { t } = useI18n();
   const { width: screenWidth } = useWindowDimensions();
   const menuWidth = Math.min(320, screenWidth - 32);
+  const currentStoryId = useAppStore((state) => state.currentStoryId);
+  const playbackState = useAppStore((state) => state.playbackState);
+  const saveSlots = useAppStore((state) => state.saveSlots);
+  const saveGame = useAppStore((state) => state.saveGame);
+  const loadGame = useAppStore((state) => state.loadGame);
+  const hydrateSceneRecordsForStory = useAppStore((state) => state.hydrateSceneRecordsForStory);
+
+  const activeStoryId = playbackState?.storyId ?? currentStoryId;
+  const quickSlotId = activeStoryId ? getQuickSaveSlotId(activeStoryId) : null;
+  const quickSaveSlot = quickSlotId
+    ? saveSlots.find((slot) => slot.id === quickSlotId) ?? null
+    : null;
 
   if (!visible) return null;
 
@@ -26,7 +48,51 @@ export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
     void stopReaderPlayback();
   };
 
-  const menuItems = [
+  const handleQuickSave = async () => {
+    if (!activeStoryId || !playbackState) {
+      showToast(t('save.noActiveStory'), 'error');
+      return;
+    }
+
+    try {
+      await hydrateSceneRecordsForStory(activeStoryId);
+      const saved = saveGame(getQuickSaveSlotId(activeStoryId));
+      if (!saved) {
+        showToast(t('common.error'), 'error');
+        return;
+      }
+      showToast(t('save.success'), 'success');
+      onClose();
+    } catch {
+      showToast(t('common.error'), 'error');
+    }
+  };
+
+  const handleQuickLoad = async () => {
+    if (!quickSaveSlot) return;
+
+    try {
+      await hydrateSceneRecordsForStory(quickSaveSlot.storyId);
+      const loaded = loadGame(quickSaveSlot.id);
+      if (!loaded) {
+        showToast(t('common.error'), 'error');
+        return;
+      }
+      showToast(t('save.loadSuccess'), 'success');
+      onClose();
+      void stopReaderPlayback();
+      router.replace({
+        pathname: '/reader',
+        params: { storyId: quickSaveSlot.storyId, resume: '1' },
+      });
+    } catch {
+      showToast(t('common.error'), 'error');
+    }
+  };
+
+  const menuItems: ReaderMenuItem[] = [
+    { label: t('reader.quickSave'), icon: 'save', action: handleQuickSave },
+    { label: t('reader.quickLoad'), icon: 'load', action: handleQuickLoad, disabled: !quickSaveSlot },
     { label: t('reader.saveLoad'), icon: 'save' as IconSymbolName, action: () => { leaveReader(); router.push('../save-load'); } },
     { label: t('menu.settings'), icon: 'settings' as IconSymbolName, action: () => { leaveReader(); router.push('../settings'); } },
     {
@@ -65,13 +131,20 @@ export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
         {menuItems.map((item) => (
           <Pressable
             key={item.label}
-              style={({ pressed }) => [
-                styles.menuItem,
-                { backgroundColor: pressed ? colors.hover : colors.surfaceElevated },
-              ]}
+            disabled={item.disabled}
+            accessibilityRole="button"
+            accessibilityLabel={item.label}
+            accessibilityState={{ disabled: item.disabled }}
+            style={({ pressed }) => [
+              styles.menuItem,
+              {
+                backgroundColor: pressed && !item.disabled ? colors.hover : colors.surfaceElevated,
+                opacity: item.disabled ? 0.45 : 1,
+              },
+            ]}
             onPress={() => {
-              buttonFeedback();
-              item.action();
+              void buttonFeedback();
+              void item.action();
             }}
           >
             <IconSymbol name={item.icon} size={18} color={colors.foreground} />

@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Asset } from 'expo-asset';
 import {
   Image,
   Platform,
@@ -10,10 +11,12 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { Asset } from 'expo-asset';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
+import { AssetUsageCard } from '@/components/story-home/AssetUsageCard';
+import { ChoiceStatisticsCard } from '@/components/story-home/ChoiceStatisticsCard';
 import { StoryHealthCard } from '@/components/story-home/StoryHealthCard';
+import { StorySnapshotsCard } from '@/components/story-home/StorySnapshotsCard';
 import { ConfirmDialog } from '@/components/ui';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
@@ -27,6 +30,15 @@ import { saveStoryExport } from '@/lib/export-story-file';
 import { exportStory, MAX_STORY_TAGS, MAX_STORY_TAG_LENGTH, sanitizeStoryTags } from '@/lib/story-hooks';
 import { computeStoryStats } from '@/lib/story-stats';
 import { runStoryDoctor } from '@/lib/story-doctor';
+import { createPersistentStorage } from '@/lib/persistent-storage';
+import {
+  EMPTY_STORY_COVERAGE,
+  computeCoverageReport,
+  getChoiceStats,
+  loadCoverage,
+  saveCoverage,
+  type StoryCoverage,
+} from '@/lib/story-coverage';
 import { validateSceneGraph } from '@/lib/document-editor/scene-graph-validator';
 import { getPlaybackAudioLibraryPure } from '@/lib/audio-library';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
@@ -41,7 +53,8 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 const rabbitsPattern = require('../assets/background/bg-rabbits-pattern-soft.png');
-const rabbitsPatternUri = Asset.fromModule(rabbitsPattern).uri;
+const rabbitsPatternAsset = Asset.fromModule(rabbitsPattern);
+const rabbitsPatternUri = rabbitsPatternAsset.localUri ?? rabbitsPatternAsset.uri;
 const rabbitsPatternBackground = Platform.select({
   web: {
     backgroundImage: rabbitsPatternUri ? `url("${rabbitsPatternUri}")` : undefined,
@@ -209,6 +222,9 @@ export default function StoryHomeScreen() {
   const hydrateSceneRecordsForStory = useAppStore((state) => state.hydrateSceneRecordsForStory);
   const updateStoryMetadata = useAppStore((state) => state.updateStoryMetadata);
   const [hydrated, setHydrated] = useState(false);
+  const coverageStorageRef = useRef<ReturnType<typeof createPersistentStorage> | null>(null);
+  if (!coverageStorageRef.current) coverageStorageRef.current = createPersistentStorage();
+  const [coverage, setCoverage] = useState<StoryCoverage>(EMPTY_STORY_COVERAGE);
 
   const story = useMemo(
     () => storiesMetadata.find((item) => item.id === storyId) ?? null,
@@ -294,6 +310,7 @@ export default function StoryHomeScreen() {
   }, [story, updateStoryMetadata]);
 
   const [showExportWarning, setShowExportWarning] = useState(false);
+  const [showResetCoverage, setShowResetCoverage] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const handleExport = useCallback(async () => {
@@ -341,6 +358,14 @@ export default function StoryHomeScreen() {
     }),
     [characterLibrary, mediaLibrary, sceneRecords, storyDoctorAudioAssets],
   );
+  const coverageReport = useMemo(
+    () => computeCoverageReport(sceneRecords, coverage),
+    [coverage, sceneRecords],
+  );
+  const choiceStatsReport = useMemo(
+    () => getChoiceStats(sceneRecords, coverage),
+    [coverage, sceneRecords],
+  );
   const readiness = useMemo(() => {
     const issues = validateSceneGraph(sceneRecords);
     const has = (type: string) => issues.some((issue) => issue.type === type);
@@ -367,6 +392,23 @@ export default function StoryHomeScreen() {
       cancelled = true;
     };
   }, [storyId, hydrateSceneRecordsForStory]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      if (!storyId) {
+        setCoverage(EMPTY_STORY_COVERAGE);
+        return undefined;
+      }
+      void loadCoverage(coverageStorageRef.current, storyId)
+        .then((loaded) => {
+          if (!cancelled) setCoverage(loaded);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [storyId]),
+  );
 
   const handleBack = useCallback(() => {
     navigateWithViewTransition(() => {
@@ -406,6 +448,15 @@ export default function StoryHomeScreen() {
       router.push({ pathname: '/reader', params: { storyId: story.id, resume: '0' } }),
     );
   }, [story, router]);
+
+  const handleResetCoverage = useCallback(() => {
+    if (!story) return;
+    setShowResetCoverage(false);
+    setCoverage(EMPTY_STORY_COVERAGE);
+    void saveCoverage(coverageStorageRef.current!, story.id, EMPTY_STORY_COVERAGE)
+      .then(() => showToast(t('storyCoverage.resetSuccess'), 'success'))
+      .catch(() => showToast(t('storyCoverage.resetFailed'), 'error'));
+  }, [story, t]);
 
   if (!story) {
     return (
@@ -671,7 +722,6 @@ export default function StoryHomeScreen() {
             </View>
 
             <View style={styles.heroCopy}>
-              <Text style={[styles.eyebrow, { color: colors.primary }]}>{t('storyHome.eyebrow')}</Text>
               <Text style={[styles.heroTitle, { color: colors.foreground }]} numberOfLines={3}>
                 {story.title || t('storyHome.untitled')}
               </Text>
@@ -723,10 +773,26 @@ export default function StoryHomeScreen() {
             <StoryHealthCard
               colors={colors}
               report={storyDoctorReport}
+              coverageReport={coverageReport}
+              scenes={sceneRecords}
+              onOpenScene={handleOpenHealthScene}
+              onResetCoverage={() => setShowResetCoverage(true)}
+              style={shadowCard}
+            />
+            <ChoiceStatisticsCard
+              colors={colors}
+              report={choiceStatsReport}
+              onReset={() => setShowResetCoverage(true)}
+              style={shadowCard}
+            />
+            <AssetUsageCard
+              colors={colors}
+              storyId={story.id}
               scenes={sceneRecords}
               onOpenScene={handleOpenHealthScene}
               style={shadowCard}
             />
+            <StorySnapshotsCard colors={colors} storyId={story.id} style={shadowCard} />
           </View>
         ) : null}
 
@@ -747,6 +813,14 @@ export default function StoryHomeScreen() {
         confirmLabel={t('storyHome.export')}
         onConfirm={handleExport}
         onCancel={() => setShowExportWarning(false)}
+      />
+      <ConfirmDialog
+        visible={showResetCoverage}
+        title={t('storyCoverage.resetTitle')}
+        message={t('storyCoverage.resetMessage')}
+        confirmLabel={t('storyCoverage.reset')}
+        onConfirm={handleResetCoverage}
+        onCancel={() => setShowResetCoverage(false)}
       />
     </ScreenContainer>
   );
@@ -859,12 +933,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: spacing.sm,
     minWidth: 0,
-  },
-  eyebrow: {
-    ...typeScale.caption,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
   },
   heroTitle: {
     fontSize: 34,

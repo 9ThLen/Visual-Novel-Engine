@@ -15,7 +15,9 @@ import {
   getPointerEventsStyle,
   shouldUseNativeDriverForPlatform,
 } from '@/lib/react-native-web-interop';
+import type { ReaderFontScale, ReaderLineHeightScale } from '@/lib/user-settings';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { RichText } from '@/components/RichText';
 
 export interface HistoryEntry {
   id: string;
@@ -28,9 +30,21 @@ interface Props {
   visible: boolean;
   entries: HistoryEntry[];
   onClose: () => void;
+  readerFontScale?: ReaderFontScale;
+  readerLineHeightScale?: ReaderLineHeightScale;
 }
 
-export function DialogueHistory({ visible, entries, onClose }: Props) {
+const HISTORY_FONT_SIZE = 14;
+const HISTORY_LINE_HEIGHT = 21;
+const DEFAULT_READER_LINE_HEIGHT_SCALE = 1.2;
+
+export function DialogueHistory({
+  visible,
+  entries,
+  onClose,
+  readerFontScale = 1.0,
+  readerLineHeightScale = DEFAULT_READER_LINE_HEIGHT_SCALE,
+}: Props) {
   const colors = useColors();
   const { t } = useI18n();
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -54,6 +68,14 @@ export function DialogueHistory({ visible, entries, onClose }: Props) {
   });
 
   const reversedEntries = useMemo(() => [...entries].reverse(), [entries]);
+  const historyTextStyle = useMemo(
+    () => ({
+      fontSize: HISTORY_FONT_SIZE * readerFontScale,
+      color: colors.foreground,
+      lineHeight: HISTORY_LINE_HEIGHT * readerFontScale * (readerLineHeightScale / DEFAULT_READER_LINE_HEIGHT_SCALE),
+    }),
+    [colors.foreground, readerFontScale, readerLineHeightScale],
+  );
 
   const renderEntry = useCallback(
     ({ item, index }: { item: HistoryEntry; index: number }) => (
@@ -63,15 +85,15 @@ export function DialogueHistory({ visible, entries, onClose }: Props) {
             {item.speaker}
           </Text>
         ) : null}
-        <Text style={{ fontSize: 14, color: colors.foreground, lineHeight: 21 }}>
-          {item.text}
+        <Text style={historyTextStyle}>
+          <RichText text={item.text} />
         </Text>
         {index < entries.length - 1 && (
           <View style={{ height: 1, backgroundColor: colors.border, marginTop: 12 }} />
         )}
       </View>
     ),
-    [colors, entries.length]
+    [colors, entries.length, historyTextStyle]
   );
 
   if (!visible) return null;

@@ -1,18 +1,22 @@
 import type { AudioLibraryItem } from '@/lib/audio-types';
 import type { Character } from '@/lib/character-types';
 import {
+  buildAssetUsageReport,
+  collectAssetReferences,
+  toSpriteUsageAssetId,
+  type AssetReference,
+  type AssetUsageKind,
+  type AvailableAsset,
+} from '@/lib/asset-usage';
+import {
   validateSceneGraph,
   type SceneGraphIssue,
 } from '@/lib/document-editor/scene-graph-validator';
 import type {
-  BackgroundBlockData,
-  CharacterBlockData,
   ChoiceBlockData,
   Condition,
   DialogueBlockData,
-  MusicBlockData,
   SceneRecord,
-  SoundBlockData,
   TextBlockData,
   TimelineStep,
   TransitionBlockData,
@@ -67,33 +71,6 @@ function isUriLikeAssetRef(assetRef: string): boolean {
     || assetRef.startsWith('/')
     || assetRef.startsWith('assets/')
     || assetRef.startsWith('bundle://');
-}
-
-function makeAssetIdSet(assets: LibraryAsset[] | undefined, type: LibraryAsset['type']): Set<string> {
-  return new Set((assets ?? []).filter((asset) => asset.type === type).flatMap((asset) => [asset.id, asset.uri]));
-}
-
-function makeAudioIdSet(audioAssets: AudioLibraryItem[] | undefined): Set<string> {
-  return new Set((audioAssets ?? []).flatMap((asset) => [asset.id, asset.uri]));
-}
-
-function canResolveAsset(assetRef: string | null | undefined, knownRefs: Set<string>): boolean {
-  if (!assetRef) return true;
-  if (isUriLikeAssetRef(assetRef)) return true;
-  return knownRefs.has(assetRef);
-}
-
-function canResolveCharacterSprite(
-  data: CharacterBlockData,
-  characters: Character[] | undefined,
-  imageRefs: Set<string>,
-): boolean {
-  if (!data.spriteId) return true;
-  if (canResolveAsset(data.spriteId, imageRefs)) return true;
-
-  const character = (characters ?? []).find((item) => item.id === data.characterId);
-  if (!character) return false;
-  return character.sprites.some((sprite) => sprite.id === data.spriteId || sprite.uri === data.spriteId);
 }
 
 function mapGraphIssue(issue: SceneGraphIssue): StoryDoctorFinding {
@@ -191,74 +168,6 @@ function addEmptyContentFindings(scene: SceneRecord, findings: StoryDoctorFindin
             messageKey: 'storyDoctor.issue.emptyChoiceOption',
           });
         }
-      }
-    }
-  }
-}
-
-function addMissingAssetFindings(
-  scene: SceneRecord,
-  findings: StoryDoctorFinding[],
-  imageRefs: Set<string>,
-  audioRefs: Set<string>,
-  characters: Character[] | undefined,
-): void {
-  for (const step of scene.timeline ?? []) {
-    if (!isEnabled(step)) continue;
-
-    if (step.blockType === 'background') {
-      const data = step.data as BackgroundBlockData;
-      if (data.assetId && !canResolveAsset(data.assetId, imageRefs)) {
-        findings.push({
-          severity: 'error',
-          sceneId: scene.id,
-          stepId: step.id,
-          code: 'asset.missingBackground',
-          messageKey: 'storyDoctor.issue.missingBackgroundAsset',
-          messageParams: { assetId: data.assetId },
-        });
-      }
-    }
-
-    if (step.blockType === 'character') {
-      const data = step.data as CharacterBlockData;
-      if (data.spriteId && !canResolveCharacterSprite(data, characters, imageRefs)) {
-        findings.push({
-          severity: 'error',
-          sceneId: scene.id,
-          stepId: step.id,
-          code: 'asset.missingCharacterSprite',
-          messageKey: 'storyDoctor.issue.missingCharacterSprite',
-          messageParams: { spriteId: data.spriteId },
-        });
-      }
-    }
-
-    if (step.blockType === 'music') {
-      const data = step.data as MusicBlockData;
-      if (data.mode === 'track' && data.assetId && !canResolveAsset(data.assetId, audioRefs)) {
-        findings.push({
-          severity: 'error',
-          sceneId: scene.id,
-          stepId: step.id,
-          code: 'asset.missingMusic',
-          messageKey: 'storyDoctor.issue.missingMusicAsset',
-          messageParams: { assetId: data.assetId },
-        });
-      }
-    }
-
-    if (step.blockType === 'sound') {
-      const data = step.data as SoundBlockData;
-      if (data.mode === 'track' && data.assetId && !canResolveAsset(data.assetId, audioRefs)) {
-        findings.push({
-          severity: 'error',
-          sceneId: scene.id,
-          stepId: step.id,
-          code: 'asset.missingSound',
-          messageKey: 'storyDoctor.issue.missingSoundAsset',
-          messageParams: { assetId: data.assetId },
-        });
       }
     }
   }
@@ -374,19 +283,105 @@ function summarize(findings: StoryDoctorFinding[]): StoryDoctorSummary {
   );
 }
 
+function audioKind(type: AudioLibraryItem['type']): AssetUsageKind {
+  return type === 'music' ? 'music' : 'sound';
+}
+
+function buildAvailableAssetsForDoctor(input: StoryDoctorInput): AvailableAsset[] {
+  const mediaAssets: AvailableAsset[] = (input.mediaAssets ?? []).map((asset) => ({
+    id: asset.id,
+    kind: asset.type === 'image' ? 'background' : 'sound',
+    name: asset.name,
+    aliases: [asset.uri],
+  }));
+  const audioAssets: AvailableAsset[] = (input.audioAssets ?? []).map((asset) => ({
+    id: asset.id,
+    kind: audioKind(asset.type),
+    name: asset.name,
+    aliases: [asset.uri],
+  }));
+  const spriteAssets: AvailableAsset[] = (input.characters ?? []).flatMap((character) =>
+    character.sprites.map((sprite) => ({
+      id: toSpriteUsageAssetId(character.id, sprite.id),
+      kind: 'sprite' as const,
+      name: `${character.name} / ${sprite.name}`,
+      aliases: [sprite.id, sprite.uri],
+    })),
+  );
+
+  return [...mediaAssets, ...audioAssets, ...spriteAssets];
+}
+
+function spriteIdFromUsageAssetId(assetId: string): string {
+  const separatorIndex = assetId.indexOf(':');
+  return separatorIndex === -1 ? assetId : assetId.slice(separatorIndex + 1);
+}
+
+function findingForBrokenReference(reference: AssetReference): StoryDoctorFinding {
+  switch (reference.kind) {
+    case 'background':
+      return {
+        severity: 'error',
+        sceneId: reference.sceneId,
+        stepId: reference.stepId,
+        code: 'asset.missingBackground',
+        messageKey: 'storyDoctor.issue.missingBackgroundAsset',
+        messageParams: { assetId: reference.assetId },
+      };
+    case 'sprite':
+      return {
+        severity: 'error',
+        sceneId: reference.sceneId,
+        stepId: reference.stepId,
+        code: 'asset.missingCharacterSprite',
+        messageKey: 'storyDoctor.issue.missingCharacterSprite',
+        messageParams: { spriteId: spriteIdFromUsageAssetId(reference.assetId) },
+      };
+    case 'music':
+      return {
+        severity: 'error',
+        sceneId: reference.sceneId,
+        stepId: reference.stepId,
+        code: 'asset.missingMusic',
+        messageKey: 'storyDoctor.issue.missingMusicAsset',
+        messageParams: { assetId: reference.assetId },
+      };
+    case 'sound':
+      return {
+        severity: 'error',
+        sceneId: reference.sceneId,
+        stepId: reference.stepId,
+        code: 'asset.missingSound',
+        messageKey: 'storyDoctor.issue.missingSoundAsset',
+        messageParams: { assetId: reference.assetId },
+      };
+    case 'object':
+      return {
+        severity: 'error',
+        sceneId: reference.sceneId,
+        stepId: reference.stepId,
+        code: 'asset.missingObject',
+        messageKey: 'storyDoctor.issue.missingObjectAsset',
+        messageParams: { assetId: reference.assetId },
+      };
+  }
+}
+
+function addMissingAssetFindings(input: StoryDoctorInput, findings: StoryDoctorFinding[]): void {
+  const references = collectAssetReferences(input.scenes ?? [])
+    .filter((reference) => reference.enabled && !isUriLikeAssetRef(reference.assetId));
+  const report = buildAssetUsageReport(references, buildAvailableAssetsForDoctor(input));
+  findings.push(...report.brokenReferences.map(findingForBrokenReference));
+}
+
 export function runStoryDoctor(input: StoryDoctorInput): StoryDoctorReport {
   const scenes = input.scenes ?? [];
   const findings: StoryDoctorFinding[] = validateSceneGraph(scenes).map(mapGraphIssue);
-  const imageRefs = makeAssetIdSet(input.mediaAssets, 'image');
-  const audioRefs = new Set([
-    ...makeAssetIdSet(input.mediaAssets, 'audio'),
-    ...makeAudioIdSet(input.audioAssets),
-  ]);
 
   for (const scene of scenes) {
     addEmptyContentFindings(scene, findings);
-    addMissingAssetFindings(scene, findings, imageRefs, audioRefs, input.characters);
   }
+  addMissingAssetFindings(input, findings);
   addVariableFindings(scenes, findings);
   addDeadEndFindings(scenes, findings);
 

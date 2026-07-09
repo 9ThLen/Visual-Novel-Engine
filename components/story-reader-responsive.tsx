@@ -48,6 +48,7 @@ import { useDialogueHistory } from '@/hooks/useDialogueHistory';
 import { enhancedAudioManager } from '@/lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '@/lib/asset-resolver';
 import { useAppStore } from '@/stores/use-app-store';
+import { richTextLength, stripRichText } from '@/lib/rich-text';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -101,7 +102,13 @@ export function StoryReaderResponsive({
     currentStoryId ? state.characterLibraries[currentStoryId] || [] : []
   );
 
-  const { textSpeed = 0.5, textSize = 'medium', autoPlay = false } = settings;
+  const {
+    textSpeed = 0.5,
+    textSize = 'medium',
+    autoPlay = false,
+    readerFontScale = 1.0,
+    readerLineHeightScale = 1.2,
+  } = settings;
 
   // ── Executor ──────────────────────────────────────────────────────────
   const executor = useSceneExecutor(timeline ?? [], { initialVariables });
@@ -232,9 +239,12 @@ export function StoryReaderResponsive({
   }, [displaySceneId, usingExecutor, sceneOpacity, bgScale, bgSlideX]);
 
   // ── Start typewriter on page change ────────────────────────────────────
+  // Feed the typewriter the STRIPPED body so it counts and reveals visible
+  // characters only — markup chars are never timed or flashed. The rich body
+  // (with markup) is rendered separately, sliced by the visible-char count.
   useEffect(() => {
     const { body } = extractSpeaker(pages[pageIndex] ?? '');
-    startTypewriter(body);
+    startTypewriter(stripRichText(body));
   }, [pageIndex, pages, startTypewriter]);
 
   // ── Animated styles ────────────────────────────────────────────────────
@@ -257,9 +267,15 @@ export function StoryReaderResponsive({
     textSize === 'large' ? fontSize.lg :
     fontSize.md;
 
-  const { speaker } = extractSpeaker(pages[pageIndex] ?? '');
+  const { speaker, body: richBody } = extractSpeaker(pages[pageIndex] ?? '');
   const displaySpeaker = temporaryDialogue?.speaker ?? speaker;
-  const displayText = temporaryDialogue?.text ?? displayedText;
+  // Full rich text (with markup) to render; the typewriter's revealed prefix
+  // length (`displayedText.length`, counted on stripped text) is the visible
+  // count. Interactive dialogue bypasses the typewriter, so it shows in full.
+  const displayText = temporaryDialogue?.text ?? richBody;
+  const visibleCount = temporaryDialogue
+    ? richTextLength(temporaryDialogue.text)
+    : displayedText.length;
   const handleDisplayTap = useCallback(() => {
     if (temporaryDialogue) {
       setTemporaryDialogue(null);
@@ -320,7 +336,10 @@ export function StoryReaderResponsive({
         colors={colors}
         dialogueAnimatedStyle={dialogueAnimatedStyle}
         dialogueFontSize={dialogueFontSize}
+        readerFontScale={readerFontScale}
+        readerLineHeightScale={readerLineHeightScale}
         displayedText={displayText}
+        visibleCount={visibleCount}
         fallbackColor={colors.background}
         getChoiceAccessibilityLabel={(text) => t('reader.choiceLabel', { text })}
         continueAccessibilityLabel={t('reader.continueReading')}
@@ -357,6 +376,8 @@ export function StoryReaderResponsive({
         visible={showHistory}
         entries={history}
         onClose={closeHistory}
+        readerFontScale={readerFontScale}
+        readerLineHeightScale={readerLineHeightScale}
       />
     </View>
   );

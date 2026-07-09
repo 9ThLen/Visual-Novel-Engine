@@ -2,7 +2,7 @@ import { initialAppState } from '@/stores/app-store-initial-state';
 import { createLibrariesSlice } from '@/stores/app-store-slices/libraries-slice';
 import { createPlaybackSlice } from '@/stores/app-store-slices/playback-slice';
 import { createPreferencesSlice } from '@/stores/app-store-slices/preferences-slice';
-import { createSavesSlice } from '@/stores/app-store-slices/saves-slice';
+import { createSavesSlice, getQuickSaveSlotId, upsertSaveSlot } from '@/stores/app-store-slices/saves-slice';
 import { createSceneSlice } from '@/stores/app-store-slices/scene-slice';
 import { createStorySlice } from '@/stores/app-store-slices/story-slice';
 import {
@@ -10,6 +10,7 @@ import {
   buildSceneRecordStoragePayload,
 } from '@/lib/scene-record-storage';
 import type { SceneRecord } from '@/lib/engine/types';
+import type { SaveSlot } from '@/lib/story-domain';
 import type { AppStore } from '@/stores/app-store-types';
 import type { AppStoreGet, AppStoreSet } from '@/stores/app-store-slices/types';
 
@@ -225,6 +226,41 @@ describe('app store slices', () => {
     slice.deleteSaveSlot('autosave');
 
     expect(harness.state.saveSlots).toEqual([]);
+  });
+
+  it('builds deterministic quick-save ids and overwrites matching slots', () => {
+    const quickSlotId = getQuickSaveSlotId('story-1');
+    const firstQuickSlot: SaveSlot = {
+      id: quickSlotId,
+      storyId: 'story-1',
+      sceneId: 'scene-1',
+      choicesMade: [],
+      variables: { mood: 'calm' },
+      timestamp: 1,
+    };
+    const replacementQuickSlot: SaveSlot = {
+      ...firstQuickSlot,
+      sceneId: 'scene-2',
+      variables: { mood: 'tense' },
+      timestamp: 2,
+    };
+    const manualSlot: SaveSlot = {
+      id: 'slot-1',
+      storyId: 'story-1',
+      sceneId: 'scene-1',
+      choicesMade: [],
+      timestamp: 1,
+    };
+
+    const slots = upsertSaveSlot([firstQuickSlot, manualSlot], replacementQuickSlot);
+
+    expect(quickSlotId).toBe('quick-story-1');
+    expect(getQuickSaveSlotId('story-1')).toBe(quickSlotId);
+    expect(slots.map((slot) => slot.id)).toEqual(['slot-1', quickSlotId]);
+    expect(slots.find((slot) => slot.id === quickSlotId)).toMatchObject({
+      sceneId: 'scene-2',
+      variables: { mood: 'tense' },
+    });
   });
 
   it('creates a canonical story seed', () => {

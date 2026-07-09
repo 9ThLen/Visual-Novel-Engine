@@ -4,6 +4,7 @@ import type {
   SceneRecord,
   TextBlockData,
 } from '@/lib/engine/types';
+import { stripRichText } from '@/lib/rich-text';
 
 export interface StoryStats {
   scenes: number;
@@ -12,7 +13,8 @@ export interface StoryStats {
 }
 
 function countWords(text: string): number {
-  const trimmed = text.trim();
+  // Strip inline markup so bold/italic/color characters don't inflate counts.
+  const trimmed = stripRichText(text).trim();
   if (!trimmed) return 0;
   return trimmed.split(/\s+/).length;
 }

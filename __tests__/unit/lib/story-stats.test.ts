@@ -41,6 +41,27 @@ describe('computeStoryStats', () => {
     });
   });
 
+  it('does not count inline markup characters as words', () => {
+    const plain = [
+      scene('s1', [
+        { id: 't1', blockType: 'text', data: { content: 'Hello brave world' }, collapsed: false, enabled: true },
+      ] as unknown as SceneRecord['timeline']),
+    ];
+    const marked = [
+      scene('s1', [
+        {
+          id: 't1',
+          blockType: 'text',
+          data: { content: 'Hello **brave** [color=#ff0000]world[/color]' },
+          collapsed: false,
+          enabled: true,
+        },
+      ] as unknown as SceneRecord['timeline']),
+    ];
+    expect(computeStoryStats(marked).words).toBe(3);
+    expect(computeStoryStats(marked).words).toBe(computeStoryStats(plain).words);
+  });
+
   it('ignores whitespace-only text', () => {
     const scenes = [
       scene('s1', [

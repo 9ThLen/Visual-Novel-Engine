@@ -15,14 +15,16 @@ import { useI18n } from '@/hooks/use-i18n';
 import { Button, ConfirmDialog, IconSymbol } from '@/components/ui';
 import { showToast } from '@/lib/toast-store';
 import { typeScale } from '@/lib/design-tokens';
+import { isQuickSaveSlotId } from '@/stores/app-store-slices/saves-slice';
 
-function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
+function ReservedSaveSlot({ slot, slotId, label, colors, t, onLoad, onDelete }: {
   slot: SaveSlot;
+  slotId: string;
+  label: string;
   colors: ReturnType<typeof useColors>;
   t: (key: string, params?: Record<string, string | number>, fallback?: string) => string;
   onLoad: (id: string) => void; onDelete: (id: string) => void;
 }) {
-  const slotId = 'autosave';
   return (
     <View style={[{ backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, marginBottom: 12, borderWidth: 1, overflow: 'hidden' }]}>
       {slot.thumbnailUri ? (
@@ -46,6 +48,9 @@ function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
       )}
       <View className="p-3">
         <View className="gap-1.5 mb-3">
+          <Text style={[{ color: colors.primary }, { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 }]}>
+            {label}
+          </Text>
           <Text style={[{ color: colors.foreground }, { fontSize: 14, fontWeight: 'bold' }]} numberOfLines={1}>
             {slot.storyTitle || slot.storyId}
           </Text>
@@ -62,7 +67,7 @@ function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
             size="sm"
             onPress={() => onLoad(slotId)}
             className="flex-1"
-            accessibilityLabel={t('save.loadSlotLabel', { slot: 'Auto-Save' })}
+            accessibilityLabel={t('save.loadSlotLabel', { slot: label })}
             icon={<IconSymbol name="load" size={16} color={colors['text-inverse']} />}
           >
             {t('save.loadButton')}
@@ -73,7 +78,7 @@ function AutoSaveSlot({ slot, colors, t, onLoad, onDelete }: {
             onPress={() => onDelete(slotId)}
             style={{ borderColor: colors.error }}
             textStyle={{ color: colors.error }}
-            accessibilityLabel={t('save.deleteSlotLabel', { slot: 'Auto-Save' })}
+            accessibilityLabel={t('save.deleteSlotLabel', { slot: label })}
             icon={<IconSymbol name="delete" size={16} color={colors.error} />}
           >
             {t('common.delete')}
@@ -306,6 +311,12 @@ export default function SaveLoadScreen() {
   );
 
   const autoSaveSlot = saveSlots.find((s) => s.id === 'autosave');
+  const quickSaveSlots = useMemo(
+    () => saveSlots
+      .filter((slot) => isQuickSaveSlotId(slot.id))
+      .sort((a, b) => b.timestamp - a.timestamp),
+    [saveSlots],
+  );
 
   const renderSlot = useCallback(
     ({ item, index }: { item: SaveSlot | null; index: number }) => renderSaveSlot({ item, index }),
@@ -349,13 +360,35 @@ export default function SaveLoadScreen() {
         </Button>
       </View>
 
+      {activeTab === 'load' && quickSaveSlots.length > 0 && (
+        <View className="mb-4">
+          <Text style={[{ color: colors.muted }, { fontSize: 12, fontWeight: '600', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 }]}>
+            {t('save.quickSave')}
+          </Text>
+          {quickSaveSlots.map((slot) => (
+            <ReservedSaveSlot
+              key={slot.id}
+              slot={slot}
+              slotId={slot.id}
+              label={t('save.quickSave')}
+              colors={colors}
+              t={t}
+              onLoad={handleLoadFromSlot}
+              onDelete={handleDeleteSlot}
+            />
+          ))}
+        </View>
+      )}
+
       {activeTab === 'load' && autoSaveSlot && (
         <View className="mb-4">
           <Text style={[{ color: colors.muted }, { fontSize: 12, fontWeight: '600', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 }]}>
             {t('save.autosave')}
           </Text>
-          <AutoSaveSlot
+          <ReservedSaveSlot
             slot={autoSaveSlot}
+            slotId="autosave"
+            label={t('save.autosave')}
             colors={colors}
             t={t}
             onLoad={handleLoadFromSlot}

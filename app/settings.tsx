@@ -11,7 +11,11 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
 import { useAppStore } from '@/stores/use-app-store';
-import { normalizeUserSettings } from '@/lib/user-settings';
+import {
+  normalizeUserSettings,
+  readerFontScaleOptions,
+  readerLineHeightScaleOptions,
+} from '@/lib/user-settings';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { LanguageSelector } from '@/components/LanguageSelector';
@@ -125,6 +129,53 @@ export default function SettingsScreen() {
   );
 
   // ── Text size selector ───────────────────────────────────────────────────
+  const SegmentedNumberRow = <T extends number>({
+    label,
+    value,
+    options,
+    onValueChange,
+    icon,
+    formatOption,
+  }: {
+    label: string;
+    value: T;
+    options: readonly T[];
+    onValueChange: (v: T) => void;
+    icon?: IconSymbolName;
+    formatOption: (v: T) => string;
+  }) => (
+    <View>
+      <Text style={{ fontSize: 14, color: colors.foreground, fontWeight: '500', marginBottom: 10 }}>
+        {icon ? <IconSymbol name={icon} size={14} color={colors.foreground} /> : null} {label}
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {options.map((option) => (
+          <Pressable
+            key={option}
+            style={({ pressed }) => ({
+              flex: 1,
+              paddingVertical: 10,
+              borderRadius: 8,
+              borderWidth: 1.5,
+              backgroundColor: value === option ? colors.primary : 'transparent',
+              borderColor: value === option ? colors.primary : colors.border,
+              alignItems: 'center',
+              opacity: pressed ? 0.8 : 1,
+            })}
+            onPress={() => onValueChange(option)}
+            accessibilityRole="button"
+            accessibilityLabel={label}
+            accessibilityState={{ selected: value === option }}
+          >
+            <Text style={{ color: value === option ? colors['text-inverse'] : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+              {formatOption(option)}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+
   const sizes = ['small', 'medium', 'large'] as const;
 
   return (
@@ -195,6 +246,24 @@ export default function SettingsScreen() {
               ))}
             </View>
           </View>
+          <Divider />
+          <SegmentedNumberRow
+            label={t('settings.readerFontScale')}
+            icon="text"
+            value={settings.readerFontScale}
+            options={readerFontScaleOptions}
+            onValueChange={(v) => updateSettings({ readerFontScale: v })}
+            formatOption={(v) => `${Math.round(v * 100)}%`}
+          />
+          <Divider />
+          <SegmentedNumberRow
+            label={t('settings.readerLineHeightScale')}
+            icon="list"
+            value={settings.readerLineHeightScale}
+            options={readerLineHeightScaleOptions}
+            onValueChange={(v) => updateSettings({ readerLineHeightScale: v })}
+            formatOption={(v) => `${Math.round(v * 100)}%`}
+          />
         </Section>
 
         {/* Playback */}

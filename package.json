@@ -16,7 +16,8 @@
     "test:coverage": "vitest run --coverage",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "qr": "node scripts/generate_qr.mjs"
+    "qr": "node scripts/generate_qr.mjs",
+    "export:story": "node scripts/export-story-web.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

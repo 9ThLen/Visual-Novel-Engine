@@ -25,6 +25,15 @@
   "menu.back": {
     "en": "Back", "uk": "Назад", "pl": "Wstecz"
   },
+  "reader.saveLoad": {
+    "en": "Save / Load", "uk": "Зберегти / завантажити"
+  },
+  "reader.quickSave": {
+    "en": "Quick save", "uk": "Швидке збереження"
+  },
+  "reader.quickLoad": {
+    "en": "Quick load", "uk": "Швидке завантаження"
+  },
   "save.title": {
     "en": "Save Game", "uk": "Зберегти Гру", "pl": "Zapisz Grę"
   },
@@ -39,6 +48,9 @@
   },
   "save.autosave": {
     "en": "Auto-Save", "uk": "Автозбереження", "pl": "Autozapis"
+  },
+  "save.quickSave": {
+    "en": "Quick Save", "uk": "Швидке збереження"
   },
   "save.manual": {
     "en": "Manual Saves", "uk": "Ручні Збереження", "pl": "Ręczne Zapisy"
@@ -109,6 +121,12 @@
   },
   "settings.textSize": {
     "en": "Text Size", "uk": "Розмір Тексту", "pl": "Rozmiar Tekstu"
+  },
+  "settings.readerFontScale": {
+    "en": "Reader Font Scale", "uk": "Масштаб шрифту читача"
+  },
+  "settings.readerLineHeightScale": {
+    "en": "Reader Line Spacing", "uk": "Міжрядковий інтервал читача"
   },
   "settings.autoPlay": {
     "en": "Auto-Play", "uk": "Автопрогравання", "pl": "Autoodtwarzanie"
@@ -301,6 +319,63 @@
   "editor.inspector.transitionSummary": {
     "en": "Mode: {mode} · Type: {type} · Target: {target}", "uk": "Режим: {mode} · Тип: {type} · Ціль: {target}"
   },
+  "assetUsage.title": {
+    "en": "Asset usage", "uk": "Використання активів"
+  },
+  "assetUsage.summary": {
+    "en": "{assets} assets / {unused} unused / {broken} broken", "uk": "{assets} активів / {unused} не використано / {broken} зламано"
+  },
+  "assetUsage.assets": {
+    "en": "Assets", "uk": "Активи"
+  },
+  "assetUsage.unused": {
+    "en": "Unused", "uk": "Не використано"
+  },
+  "assetUsage.broken": {
+    "en": "Broken", "uk": "Зламано"
+  },
+  "assetUsage.usedAssets": {
+    "en": "Used assets", "uk": "Використані активи"
+  },
+  "assetUsage.unusedAssets": {
+    "en": "Unused assets", "uk": "Невикористані активи"
+  },
+  "assetUsage.brokenReferences": {
+    "en": "Broken references", "uk": "Зламані посилання"
+  },
+  "assetUsage.noUsedAssets": {
+    "en": "No asset references yet.", "uk": "Посилань на активи ще немає."
+  },
+  "assetUsage.noUnusedAssets": {
+    "en": "No unused assets.", "uk": "Невикористаних активів немає."
+  },
+  "assetUsage.noBrokenReferences": {
+    "en": "No broken references.", "uk": "Зламаних посилань немає."
+  },
+  "assetUsage.referenceLocation": {
+    "en": "Used in {scene}", "uk": "Використано в {scene}"
+  },
+  "assetUsage.disabled": {
+    "en": "Disabled", "uk": "Вимкнено"
+  },
+  "assetUsage.openBrokenReference": {
+    "en": "Open broken reference in {scene}", "uk": "Відкрити зламане посилання в сцені {scene}"
+  },
+  "assetUsage.kind.background": {
+    "en": "Background", "uk": "Фон"
+  },
+  "assetUsage.kind.sprite": {
+    "en": "Sprite", "uk": "Спрайт"
+  },
+  "assetUsage.kind.music": {
+    "en": "Music", "uk": "Музика"
+  },
+  "assetUsage.kind.sound": {
+    "en": "SFX", "uk": "SFX"
+  },
+  "assetUsage.kind.object": {
+    "en": "Object", "uk": "Об’єкт"
+  },
   "storyDoctor.title": {
     "en": "Story health", "uk": "Стан історії"
   },
@@ -355,6 +430,9 @@
   "storyDoctor.issue.missingSoundAsset": {
     "en": "Sound asset is missing: {assetId}.", "uk": "Звуковий актив відсутній: {assetId}."
   },
+  "storyDoctor.issue.missingObjectAsset": {
+    "en": "Object asset is missing: {assetId}.", "uk": "Актив об’єкта відсутній: {assetId}."
+  },
   "storyDoctor.issue.possiblyUndefinedVariable": {
     "en": "Variable is read before being written: {variableName}.", "uk": "Змінну прочитано до запису: {variableName}."
   },
@@ -363,5 +441,137 @@
   },
   "storyDoctor.issue.deadEnd": {
     "en": "Scene has no outgoing path or explicit ending.", "uk": "Сцена не має вихідного шляху або явного завершення."
+  },
+  "storyCoverage.title": {
+    "en": "Playtest coverage", "uk": "Покриття плейтесту"
+  },
+  "storyCoverage.summary": {
+    "en": "{visited}/{total} scenes seen, {choices} choice options never taken", "uk": "Переглянуто сцен: {visited}/{total}, не вибрано варіантів: {choices}"
+  },
+  "storyCoverage.unvisitedScenes": {
+    "en": "{count} scenes never visited", "uk": "Невідвіданих сцен: {count}"
+  },
+  "storyCoverage.untakenChoices": {
+    "en": "{count} choices never taken", "uk": "Невибраних варіантів: {count}"
+  },
+  "storyCoverage.unvisitedScenesTitle": {
+    "en": "Scenes never visited", "uk": "Невідвідані сцени"
+  },
+  "storyCoverage.untakenChoicesTitle": {
+    "en": "Choices never taken", "uk": "Невибрані варіанти"
+  },
+  "storyCoverage.choiceItem": {
+    "en": "{scene}: {choice}", "uk": "{scene}: {choice}"
+  },
+  "storyCoverage.openScene": {
+    "en": "Open unvisited scene {scene}", "uk": "Відкрити невідвідану сцену {scene}"
+  },
+  "storyCoverage.openChoice": {
+    "en": "Open choice {choice} in {scene}", "uk": "Відкрити вибір {choice} у сцені {scene}"
+  },
+  "storyCoverage.toggleDetails": {
+    "en": "Show playtest coverage details", "uk": "Показати деталі покриття плейтесту"
+  },
+  "storyCoverage.complete": {
+    "en": "All reachable scenes and choice options have been covered.", "uk": "Усі досяжні сцени та варіанти вибору покрито."
+  },
+  "storyCoverage.reset": {
+    "en": "Reset", "uk": "Скинути"
+  },
+  "storyCoverage.resetTitle": {
+    "en": "Reset playtest coverage", "uk": "Скинути покриття плейтесту"
+  },
+  "storyCoverage.resetMessage": {
+    "en": "This clears local visit coverage and choice statistics for this story. Story content is not changed.", "uk": "Це очистить локальне покриття та статистику виборів для цієї історії. Вміст історії не зміниться."
+  },
+  "storyCoverage.resetSuccess": {
+    "en": "Playtest coverage reset", "uk": "Покриття плейтесту скинуто"
+  },
+  "storyCoverage.resetFailed": {
+    "en": "Could not reset playtest coverage", "uk": "Не вдалося скинути покриття плейтесту"
+  },
+  "choiceStats.title": {
+    "en": "Choice statistics", "uk": "Статистика виборів"
+  },
+  "choiceStats.summary": {
+    "en": "{count} local picks recorded", "uk": "Зафіксовано локальних виборів: {count}"
+  },
+  "choiceStats.choiceStep": {
+    "en": "Choice {stepId}", "uk": "Вибір {stepId}"
+  },
+  "choiceStats.optionStats": {
+    "en": "{count}x ({percentage}%)", "uk": "{count}x ({percentage}%)"
+  },
+  "choiceStats.reset": {
+    "en": "Reset statistics", "uk": "Скинути статистику", "pl": "Zresetuj statystyki"
+  },
+  "storySnapshots.title": {
+    "en": "Version snapshots", "uk": "Знімки версій", "pl": "Migawki wersji"
+  },
+  "storySnapshots.summary": {
+    "en": "{count} of {max} saved", "uk": "{count} з {max} збережено", "pl": "{count} z {max} zapisanych"
+  },
+  "storySnapshots.namePlaceholder": {
+    "en": "Snapshot name…", "uk": "Назва знімка…", "pl": "Nazwa migawki…"
+  },
+  "storySnapshots.create": {
+    "en": "Create snapshot", "uk": "Створити знімок", "pl": "Utwórz migawkę"
+  },
+  "storySnapshots.defaultName": {
+    "en": "Snapshot", "uk": "Знімок", "pl": "Migawka"
+  },
+  "storySnapshots.created": {
+    "en": "Snapshot created", "uk": "Знімок створено", "pl": "Utworzono migawkę"
+  },
+  "storySnapshots.createFailed": {
+    "en": "Could not create snapshot", "uk": "Не вдалося створити знімок", "pl": "Nie udało się utworzyć migawki"
+  },
+  "storySnapshots.capHint": {
+    "en": "Keeping the {max} most recent — older automatic snapshots are replaced first.", "uk": "Зберігаються {max} найновіших — старіші автоматичні знімки замінюються першими.", "pl": "Zachowujemy {max} najnowszych — starsze automatyczne migawki są usuwane najpierw."
+  },
+  "storySnapshots.empty": {
+    "en": "No snapshots yet. Create one before a big edit.", "uk": "Знімків ще немає. Створіть один перед великим редагуванням.", "pl": "Brak migawek. Utwórz jedną przed dużą edycją."
+  },
+  "storySnapshots.autoBadge": {
+    "en": "Auto", "uk": "Авто", "pl": "Auto"
+  },
+  "storySnapshots.itemMeta": {
+    "en": "{when} · {scenes} scenes · {words} words", "uk": "{when} · сцен: {scenes} · слів: {words}", "pl": "{when} · sceny: {scenes} · słowa: {words}"
+  },
+  "storySnapshots.restore": {
+    "en": "Restore", "uk": "Відновити", "pl": "Przywróć"
+  },
+  "storySnapshots.restoreLabel": {
+    "en": "Restore snapshot {name}", "uk": "Відновити знімок {name}", "pl": "Przywróć migawkę {name}"
+  },
+  "storySnapshots.restoreTitle": {
+    "en": "Restore snapshot", "uk": "Відновити знімок", "pl": "Przywróć migawkę"
+  },
+  "storySnapshots.restoreMessage": {
+    "en": "Replace all current scenes with the snapshot “{name}”? An automatic snapshot of the current version is saved first, so you can undo this.", "uk": "Замінити всі поточні сцени знімком «{name}»? Спершу зберігається автоматичний знімок поточної версії, тож цю дію можна скасувати.", "pl": "Zastąpić wszystkie bieżące sceny migawką „{name}”? Najpierw zapisujemy automatyczną migawkę bieżącej wersji, więc można to cofnąć."
+  },
+  "storySnapshots.restored": {
+    "en": "Snapshot restored", "uk": "Знімок відновлено", "pl": "Przywrócono migawkę"
+  },
+  "storySnapshots.restoreFailed": {
+    "en": "Could not restore snapshot", "uk": "Не вдалося відновити знімок", "pl": "Nie udało się przywrócić migawki"
+  },
+  "storySnapshots.deleteLabel": {
+    "en": "Delete snapshot {name}", "uk": "Видалити знімок {name}", "pl": "Usuń migawkę {name}"
+  },
+  "storySnapshots.deleteTitle": {
+    "en": "Delete snapshot", "uk": "Видалити знімок", "pl": "Usuń migawkę"
+  },
+  "storySnapshots.deleteMessage": {
+    "en": "Delete the snapshot “{name}”? This cannot be undone.", "uk": "Видалити знімок «{name}»? Цю дію не можна скасувати.", "pl": "Usunąć migawkę „{name}”? Tej operacji nie można cofnąć."
+  },
+  "storySnapshots.deleted": {
+    "en": "Snapshot deleted", "uk": "Знімок видалено", "pl": "Usunięto migawkę"
+  },
+  "storySnapshots.deleteFailed": {
+    "en": "Could not delete snapshot", "uk": "Не вдалося видалити знімок", "pl": "Nie udało się usunąć migawki"
+  },
+  "storySnapshots.beforeRestore": {
+    "en": "Before restore", "uk": "Перед відновленням", "pl": "Przed przywróceniem"
   }
 }

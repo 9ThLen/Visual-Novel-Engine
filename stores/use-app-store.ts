@@ -49,6 +49,7 @@ import { createPlaybackSlice } from '@/stores/app-store-slices/playback-slice';
 import { createPreferencesSlice } from '@/stores/app-store-slices/preferences-slice';
 import { createSavesSlice } from '@/stores/app-store-slices/saves-slice';
 import { createSceneSlice } from '@/stores/app-store-slices/scene-slice';
+import { createSnapshotsSlice } from '@/stores/app-store-slices/snapshots-slice';
 import { createStorySlice } from '@/stores/app-store-slices/story-slice';
 
 function hasSceneRecords(records: Record<string, SceneRecord> | undefined): boolean {
@@ -94,6 +95,7 @@ export const useAppStore = create<AppStore>()(
       ...createSavesSlice(set, get),
       ...createStorySlice(set),
       ...createSceneSlice(set, get),
+      ...createSnapshotsSlice(set, get),
 
       migrateFromLegacyKeys: async () => {
         try {

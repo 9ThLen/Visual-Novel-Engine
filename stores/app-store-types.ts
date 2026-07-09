@@ -4,6 +4,7 @@ import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { SaveSlot, StoryMetadata } from '@/lib/story-domain';
 import type { SceneRecord, SceneConnection } from '@/lib/engine/types';
 import type { SceneRecordContentUpdates } from '@/lib/scene-operations';
+import type { SnapshotMeta } from '@/lib/story-snapshots';
 import type { Character } from '@/lib/character-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { AudioLibraryItem } from '@/lib/audio-types';
@@ -66,6 +67,12 @@ export interface AppActions {
   deleteSceneRecord: (storyId: string, sceneId: string) => void;
   setStartScene: (storyId: string, sceneId: string) => void;
   reorderScenes: (storyId: string, sceneIds: string[]) => void;
+  createStorySnapshot: (
+    storyId: string,
+    name: string,
+    automatic?: boolean,
+  ) => Promise<SnapshotMeta | null>;
+  restoreStorySnapshot: (storyId: string, snapshotId: string) => Promise<boolean>;
 }
 
 export type AppStore = AppState & AppActions;
