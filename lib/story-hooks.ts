@@ -190,6 +190,8 @@ function validateBlockData(blockType: BlockType, data: unknown): boolean {
       });
     case 'effect':
       return isString(d.effectType) && isString(d.target) && isNumber(d.intensity) && isNumber(d.duration);
+    case 'stop_effect':
+      return isString(d.effectType) && (d.target === undefined || isString(d.target));
     case 'music':
       return validateMusicData(d);
     case 'sound':
@@ -207,6 +209,12 @@ function validateBlockData(blockType: BlockType, data: unknown): boolean {
       // `mode` is optional for legacy stories; normalizeTransitionData derives it at runtime.
       return isStringOrNull(d.targetSceneId) && isString(d.transitionType) && isNumber(d.duration)
         && (d.mode === undefined || d.mode === 'next' || d.mode === 'scene' || d.mode === 'end');
+    case 'label':
+      return isString(d.name);
+    case 'goto':
+      return isString(d.targetLabel)
+        && (d.elseTargetLabel === undefined || isStringOrNull(d.elseTargetLabel))
+        && (d.condition === undefined || d.condition === null || validateConditions([d.condition]));
     default:
       return false;
   }

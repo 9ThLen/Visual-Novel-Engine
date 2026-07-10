@@ -16,6 +16,8 @@ import type {
   ChoiceBlockData,
   Condition,
   DialogueBlockData,
+  GotoBlockData,
+  LabelBlockData,
   SceneRecord,
   TextBlockData,
   TimelineStep,
@@ -202,6 +204,10 @@ function addVariableFindings(scenes: SceneRecord[], findings: StoryDoctorFinding
           writes.set(variableName, { sceneId: scene.id, stepId: step.id });
         }
       }
+
+      if (step.blockType === 'goto') {
+        collectConditionReads([(step.data as GotoBlockData).condition ?? undefined], reads, scene.id, step.id);
+      }
     }
   }
 
@@ -367,6 +373,66 @@ function findingForBrokenReference(reference: AssetReference): StoryDoctorFindin
   }
 }
 
+function addLabelFindings(scene: SceneRecord, findings: StoryDoctorFinding[]): void {
+  const labelNames = new Set<string>();
+  const duplicates = new Set<string>();
+
+  for (const step of scene.timeline ?? []) {
+    if (!isEnabled(step) || step.blockType !== 'label') continue;
+    const name = (step.data as LabelBlockData).name?.trim();
+    if (!name) {
+      findings.push({
+        severity: 'error',
+        sceneId: scene.id,
+        stepId: step.id,
+        code: 'branching.emptyLabel',
+        messageKey: 'storyDoctor.issue.emptyLabel',
+      });
+      continue;
+    }
+    if (labelNames.has(name) && !duplicates.has(name)) {
+      duplicates.add(name);
+      findings.push({
+        severity: 'error',
+        sceneId: scene.id,
+        stepId: step.id,
+        code: 'branching.duplicateLabel',
+        messageKey: 'storyDoctor.issue.duplicateLabel',
+        messageParams: { labelName: name },
+      });
+    }
+    labelNames.add(name);
+  }
+
+  for (const step of scene.timeline ?? []) {
+    if (!isEnabled(step) || step.blockType !== 'goto') continue;
+    const data = step.data as GotoBlockData;
+    const targets = [data.targetLabel, data.elseTargetLabel ?? ''];
+    if (isBlank(data.targetLabel)) {
+      findings.push({
+        severity: 'error',
+        sceneId: scene.id,
+        stepId: step.id,
+        code: 'branching.emptyGotoTarget',
+        messageKey: 'storyDoctor.issue.emptyGotoTarget',
+      });
+    }
+    for (const target of targets) {
+      const name = target?.trim();
+      if (name && !labelNames.has(name)) {
+        findings.push({
+          severity: 'error',
+          sceneId: scene.id,
+          stepId: step.id,
+          code: 'branching.danglingGotoTarget',
+          messageKey: 'storyDoctor.issue.danglingGotoTarget',
+          messageParams: { labelName: name },
+        });
+      }
+    }
+  }
+}
+
 function addMissingAssetFindings(input: StoryDoctorInput, findings: StoryDoctorFinding[]): void {
   const references = collectAssetReferences(input.scenes ?? [])
     .filter((reference) => reference.enabled && !isUriLikeAssetRef(reference.assetId));
@@ -380,6 +446,7 @@ export function runStoryDoctor(input: StoryDoctorInput): StoryDoctorReport {
 
   for (const scene of scenes) {
     addEmptyContentFindings(scene, findings);
+    addLabelFindings(scene, findings);
   }
   addMissingAssetFindings(input, findings);
   addVariableFindings(scenes, findings);

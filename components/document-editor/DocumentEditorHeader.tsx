@@ -19,6 +19,10 @@ interface DocumentEditorHeaderProps {
   onPreview: () => void;
   onSave: () => void;
   onSaveAndPlay: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 export function DocumentEditorHeader({
@@ -33,6 +37,10 @@ export function DocumentEditorHeader({
   onPreview,
   onSave,
   onSaveAndPlay,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
 }: DocumentEditorHeaderProps) {
   const colors = useColors(colorScheme);
   const { t } = useI18n();
@@ -74,6 +82,29 @@ export function DocumentEditorHeader({
             {t('document.sceneCounter', { current: sceneIndex + 1, total: Math.max(sceneCount, 1) })}
           </Text>
         ) : null}
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+        <Pressable
+          onPress={onUndo}
+          disabled={!canUndo}
+          accessibilityRole="button"
+          accessibilityLabel={t('editor.undo')}
+          accessibilityHint="Ctrl+Z"
+          style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', opacity: canUndo ? 1 : 0.35 }}
+        >
+          <IconSymbol name="undo" size={22} color={colors.foreground} />
+        </Pressable>
+        <Pressable
+          onPress={onRedo}
+          disabled={!canRedo}
+          accessibilityRole="button"
+          accessibilityLabel={t('editor.redo')}
+          accessibilityHint="Ctrl+Y"
+          style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', opacity: canRedo ? 1 : 0.35 }}
+        >
+          <IconSymbol name="redo" size={22} color={colors.foreground} />
+        </Pressable>
       </View>
 
       {isPhone ? (

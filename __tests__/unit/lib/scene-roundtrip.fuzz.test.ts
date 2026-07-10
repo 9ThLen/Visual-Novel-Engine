@@ -117,24 +117,24 @@ describe('scene canonical/document roundtrip fuzz', () => {
     });
   });
 
-  it.skip.each(multilineTextSeeds)(
-    'seed %i documents known text split data loss',
-    () => {
-      // BUG: sceneRecordToDocumentScene splits TextBlockData.content on newlines,
-      // trims each line, and documentSceneToTimeline saves separate text steps.
-      // The lost field is timeline[n].data.content for blockType "text":
-      // embedded "\n" boundaries and surrounding whitespace do not survive.
-    },
+  it.each(multilineTextSeeds)(
+    'seed %i preserves multiline text through the Plate bridge',
+    (seed) => withSeed(seed, () => {
+      const record = generateSceneRecord(createSeededRng(seed), {
+        variant: seed, multilineText: true, includeKnownLossyDocumentBlocks: false,
+      });
+      expect(roundtripThroughPlateDocument(record)).toEqual(expectedPlateRoundtrip(record));
+    }),
   );
 
-  it.skip.each(seeds)(
-    'seed %i documents known character-step data loss in all-block Plate bridge case',
-    () => {
-      // BUG: canonical TimelineStep entries with blockType "character" are
-      // converted by normalizePlateDocumentScene into dialogue authoring blocks.
-      // The lost fields are step.id, conditions, and CharacterBlockData action,
-      // delay, duration, transition, effect, and generatedByInlineDialogue.
-    },
+  it.each(seeds)(
+    'seed %i preserves character steps through the all-block Plate bridge',
+    (seed) => withSeed(seed, () => {
+      const record = generateSceneRecord(createSeededRng(seed), {
+        variant: seed, multilineText: false, includeKnownLossyDocumentBlocks: true,
+      });
+      expect(roundtripThroughPlateDocument(record)).toEqual(expectedPlateRoundtrip(record));
+    }),
   );
 
   it.each(seeds)(

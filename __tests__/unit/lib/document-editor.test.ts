@@ -468,7 +468,7 @@ describe('document scene parser/compiler', () => {
     expect(documentSceneToTimeline(documentScene)[0]?.blockType).toBe('background');
   });
 
-  it('splits legacy multiline text into narration and dialogue blocks', () => {
+  it('keeps persisted multiline text in one lossless document block', () => {
     const sceneRecord: SceneRecord = {
       id: 'scene_1',
       storyId: 'story_1',
@@ -509,7 +509,11 @@ describe('document scene parser/compiler', () => {
     };
 
     const documentScene = sceneRecordToDocumentScene(sceneRecord, []);
-    expect(documentScene.blocks.map((block) => block.kind)).toEqual(['text', 'dialogue', 'dialogue', 'text']);
+    expect(documentScene.blocks.map((block) => block.kind)).toEqual(['text', 'text']);
+    expect(documentScene.blocks[0]).toMatchObject({
+      kind: 'text',
+      content: (sceneRecord.timeline[0].data as { content: string }).content,
+    });
     expect(documentScene.blocks.at(-1)).toMatchObject({ kind: 'text', content: '' });
   });
 });

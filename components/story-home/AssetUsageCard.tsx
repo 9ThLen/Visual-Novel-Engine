@@ -17,6 +17,7 @@ import type { Character } from '@/lib/character-types';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { LibraryAsset } from '@/lib/media-library-service';
+import { getStoryImageAssets } from '@/lib/story-image-library';
 import { useAppStore } from '@/stores/use-app-store';
 
 interface AssetUsageCardProps {
@@ -32,12 +33,11 @@ function audioKind(type: AudioLibraryItem['type']): AssetUsageKind {
 }
 
 function buildAvailableAssets(
-  mediaLibrary: LibraryAsset[],
+  imageAssets: LibraryAsset[],
   audioLibrary: AudioLibraryItem[],
   characters: Character[],
 ): AvailableAsset[] {
-  const imageAssets = mediaLibrary
-    .filter((asset) => asset.type === 'image')
+  const backgroundAssets = imageAssets
     .map((asset) => ({
       id: asset.id,
       kind: 'background' as const,
@@ -59,7 +59,7 @@ function buildAvailableAssets(
     })),
   );
 
-  return [...imageAssets, ...audioAssets, ...spriteAssets];
+  return [...backgroundAssets, ...audioAssets, ...spriteAssets];
 }
 
 function SectionToggle({
@@ -136,6 +136,7 @@ export const AssetUsageCard = React.memo(function AssetUsageCard({
 }: AssetUsageCardProps) {
   const { t } = useI18n();
   const mediaLibrary = useAppStore((state) => state.mediaLibrary);
+  const imageAssetIdsByStory = useAppStore((state) => state.imageAssetIdsByStory);
   const storyAudioLibrary = useAppStore((state) => state.audioLibraries[storyId] ?? []);
   const characters = useAppStore((state) => state.characterLibraries[storyId] ?? []);
   const [usedExpanded, setUsedExpanded] = useState(false);
@@ -146,9 +147,13 @@ export const AssetUsageCard = React.memo(function AssetUsageCard({
     () => buildPlaybackAudioLibraryItems(storyAudioLibrary, mediaLibrary),
     [mediaLibrary, storyAudioLibrary],
   );
+  const storyImageAssets = useMemo(
+    () => getStoryImageAssets(storyId, imageAssetIdsByStory, mediaLibrary),
+    [imageAssetIdsByStory, mediaLibrary, storyId],
+  );
   const availableAssets = useMemo(
-    () => buildAvailableAssets(mediaLibrary, playbackAudioLibrary, characters),
-    [characters, mediaLibrary, playbackAudioLibrary],
+    () => buildAvailableAssets(storyImageAssets, playbackAudioLibrary, characters),
+    [characters, playbackAudioLibrary, storyImageAssets],
   );
   const references = useMemo(() => collectAssetReferences(scenes), [scenes]);
   const report = useMemo(

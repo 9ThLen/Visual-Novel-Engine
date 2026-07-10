@@ -41,7 +41,9 @@ import {
 } from '@/lib/story-coverage';
 import { validateSceneGraph } from '@/lib/document-editor/scene-graph-validator';
 import { getPlaybackAudioLibraryPure } from '@/lib/audio-library';
+import { collectAssetReferences } from '@/lib/asset-usage';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
+import { getStoryImageAssets } from '@/lib/story-image-library';
 import type { StoryMetadata } from '@/lib/story-domain';
 import type { SceneRecord } from '@/lib/engine/types';
 import { selectSceneRecordsForStory, useAppStore } from '@/stores/use-app-store';
@@ -343,8 +345,30 @@ export default function StoryHomeScreen() {
   );
   const audioLibraries = useAppStore((state) => state.audioLibraries);
   const mediaLibrary = useAppStore((state) => state.mediaLibrary);
+  const imageAssetIdsByStory = useAppStore((state) => state.imageAssetIdsByStory);
+  const addImageAssetToStory = useAppStore((state) => state.addImageAssetToStory);
+  const removeImageAssetFromStory = useAppStore((state) => state.removeImageAssetFromStory);
 
   const stats = useMemo(() => computeStoryStats(sceneRecords), [sceneRecords]);
+  const storyImageAssets = useMemo(
+    () => storyId ? getStoryImageAssets(storyId, imageAssetIdsByStory, mediaLibrary) : [],
+    [imageAssetIdsByStory, mediaLibrary, storyId],
+  );
+  const imageUsageCountById = useMemo(() => {
+    const counts = new Map<string, number>();
+    const imageIdByReference = new Map<string, string>();
+    storyImageAssets.forEach((asset) => {
+      imageIdByReference.set(asset.id, asset.id);
+      imageIdByReference.set(asset.uri, asset.id);
+    });
+    collectAssetReferences(sceneRecords)
+      .filter((reference) => reference.kind === 'background')
+      .forEach((reference) => {
+        const imageAssetId = imageIdByReference.get(reference.assetId);
+        if (imageAssetId) counts.set(imageAssetId, (counts.get(imageAssetId) ?? 0) + 1);
+      });
+    return counts;
+  }, [sceneRecords, storyImageAssets]);
   const storyDoctorAudioAssets = useMemo(
     () => storyId ? getPlaybackAudioLibraryPure(storyId, audioLibraries, mediaLibrary) : [],
     [audioLibraries, mediaLibrary, storyId],
@@ -352,11 +376,11 @@ export default function StoryHomeScreen() {
   const storyDoctorReport = useMemo(
     () => runStoryDoctor({
       scenes: sceneRecords,
-      mediaAssets: mediaLibrary,
+      mediaAssets: storyImageAssets,
       audioAssets: storyDoctorAudioAssets,
       characters: characterLibrary,
     }),
-    [characterLibrary, mediaLibrary, sceneRecords, storyDoctorAudioAssets],
+    [characterLibrary, sceneRecords, storyDoctorAudioAssets, storyImageAssets],
   );
   const coverageReport = useMemo(
     () => computeCoverageReport(sceneRecords, coverage),
@@ -379,6 +403,27 @@ export default function StoryHomeScreen() {
   }, [sceneRecords, story?.description, story?.thumbnailUri]);
   const readyCount = readiness.filter((item) => item.ok).length;
   const allReady = readyCount === readiness.length;
+  const [imageToRemove, setImageToRemove] = useState<string | null>(null);
+
+  const handleAddStoryImage = useCallback(async () => {
+    if (!story) return;
+    try {
+      const picked = await pickImageFromDevice();
+      if (!picked) return;
+      const asset = await addAssetToLibrary(picked.uri, picked.name, 'image');
+      addImageAssetToStory(story.id, asset.id);
+      showToast(t('storyHome.imageAdded'), 'success');
+    } catch {
+      showToast(t('storyHome.imageAddFailed'), 'error');
+    }
+  }, [addImageAssetToStory, story, t]);
+
+  const handleRemoveStoryImage = useCallback(() => {
+    if (!story || !imageToRemove) return;
+    removeImageAssetFromStory(story.id, imageToRemove);
+    setImageToRemove(null);
+    showToast(t('storyHome.imageRemoved'), 'success');
+  }, [imageToRemove, removeImageAssetFromStory, story, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -632,6 +677,57 @@ export default function StoryHomeScreen() {
     </View>
   ) : null;
 
+  const imageLibraryCard = (
+    <View style={[styles.card, cardBase, shadowCard]}>
+      <SectionHeader
+        colors={colors}
+        iconName="gallery"
+        title={t('storyHome.imageLibrary')}
+        right={
+          <ActionButton
+            colors={colors}
+            label={t('storyHome.addImage')}
+            iconName="add"
+            tone="soft"
+            size="sm"
+            onPress={handleAddStoryImage}
+          />
+        }
+      />
+      <Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.imageLibraryHint')}</Text>
+      {storyImageAssets.length === 0 ? (
+        <Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.imageLibraryEmpty')}</Text>
+      ) : (
+        <View style={styles.imageLibraryGrid}>
+          {storyImageAssets.map((asset) => {
+            const usageCount = imageUsageCountById.get(asset.id) ?? 0;
+            return (
+              <View key={asset.id} style={[styles.imageLibraryItem, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <Image source={{ uri: asset.uri }} style={styles.imageLibraryThumbnail} resizeMode="cover" />
+                <View style={styles.imageLibraryCopy}>
+                  <Text style={[styles.imageLibraryName, { color: colors.foreground }]} numberOfLines={1}>{asset.name}</Text>
+                  {usageCount > 0 ? (
+                    <Text style={[styles.imageLibraryUsage, { color: colors.muted }]}>
+                      {t('storyHome.imageUsage', { count: usageCount })}
+                    </Text>
+                  ) : null}
+                </View>
+                <Pressable
+                  onPress={() => setImageToRemove(asset.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('storyHome.removeImage', { name: asset.name })}
+                  style={({ pressed }) => [styles.imageRemoveButton, { opacity: pressed ? 0.65 : 1 }]}
+                >
+                  <IconSymbol name="delete" size={17} color={colors.danger} />
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+
   const backupCard = (
     <View style={[styles.card, cardBase, shadowCard]}>
       <SectionHeader colors={colors} iconName="save" title={t('storyHome.backup')} />
@@ -801,6 +897,7 @@ export default function StoryHomeScreen() {
           <View style={wide ? styles.mainLeft : undefined}>{detailsCard}</View>
           <View style={[wide ? styles.mainRight : undefined, styles.rightStack]}>
             {readinessCard}
+            {imageLibraryCard}
             {backupCard}
           </View>
         </View>
@@ -821,6 +918,17 @@ export default function StoryHomeScreen() {
         confirmLabel={t('storyCoverage.reset')}
         onConfirm={handleResetCoverage}
         onCancel={() => setShowResetCoverage(false)}
+      />
+      <ConfirmDialog
+        visible={Boolean(imageToRemove)}
+        title={t('storyHome.removeImageTitle')}
+        message={t('storyHome.removeImageMessage', {
+          name: storyImageAssets.find((asset) => asset.id === imageToRemove)?.name ?? '',
+          usage: imageUsageCountById.get(imageToRemove ?? '') ?? 0,
+        })}
+        confirmLabel={t('common.delete')}
+        onConfirm={handleRemoveStoryImage}
+        onCancel={() => setImageToRemove(null)}
       />
     </ScreenContainer>
   );
@@ -1159,6 +1267,44 @@ const styles = StyleSheet.create({
   checkLabel: {
     flex: 1,
     ...typeScale.label,
+  },
+
+  // Story image library
+  imageLibraryGrid: {
+    gap: spacing.sm,
+  },
+  imageLibraryItem: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+  },
+  imageLibraryThumbnail: {
+    width: 52,
+    height: 44,
+    borderRadius: radius.sm,
+    backgroundColor: '#e2e8f0',
+  },
+  imageLibraryCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  imageLibraryName: {
+    ...typeScale.label,
+    fontWeight: '700',
+  },
+  imageLibraryUsage: {
+    ...typeScale.caption,
+  },
+  imageRemoveButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Main responsive grid

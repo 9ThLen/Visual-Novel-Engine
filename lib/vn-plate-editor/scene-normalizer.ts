@@ -27,6 +27,9 @@ const technicalCommandIds = new Set<DocumentCommandId>([
   'effect',
   'camera',
   'interactive_object',
+  'label',
+  'goto',
+  'stopEffect',
 ]);
 
 const commandIdByBlockType: Record<BlockType, DocumentCommandId> = {
@@ -36,12 +39,15 @@ const commandIdByBlockType: Record<BlockType, DocumentCommandId> = {
   dialogue: 'effect',
   choice: 'effect',
   effect: 'effect',
+  stop_effect: 'stopEffect',
   music: 'music',
   sound: 'sound',
   interactive_object: 'interactive_object',
   camera: 'camera',
   variable: 'variable',
   transition: 'transition',
+  label: 'label',
+  goto: 'goto',
 };
 
 function isTimelineStep(value: unknown): value is TimelineStep {

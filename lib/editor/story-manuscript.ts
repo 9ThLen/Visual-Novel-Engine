@@ -26,12 +26,18 @@ function toManuscriptBlockLabel(blockType: SceneRecord['timeline'][number]['bloc
       return 'Sound';
     case 'effect':
       return 'Effect';
+    case 'stop_effect':
+      return 'Stop Effect';
     case 'transition':
       return 'Transition';
     case 'camera':
       return 'Camera';
     case 'variable':
       return 'Variable';
+    case 'label':
+      return 'Label';
+    case 'goto':
+      return 'Go To';
     case 'interactive_object':
       return 'Interactive Object';
     default:

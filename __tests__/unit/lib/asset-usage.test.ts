@@ -36,6 +36,8 @@ function makeStep(overrides: Partial<TimelineStep> & { id: string; blockType: Ti
     camera: { action: 'reset', duration: 0, easing: 'linear' },
     variable: { variableName: 'flag', operation: 'set', value: true },
     transition: { mode: 'end', targetSceneId: null, transitionType: 'fade', duration: 0.2 },
+    label: { name: 'checkpoint' },
+    goto: { targetLabel: 'checkpoint', condition: null, elseTargetLabel: null },
   };
 
   return {

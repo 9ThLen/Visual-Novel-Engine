@@ -5,7 +5,9 @@ import {
   createChoiceStep,
   createDialogueStep,
   createEffectStep,
+  createGotoStep,
   createInteractiveObjectStep,
+  createLabelStep,
   createMusicStep,
   createSoundStep,
   createTextStep,
@@ -63,6 +65,12 @@ describe('scene document adapter', () => {
       createInteractiveObjectStep({ objectId: 'obj' }),
       createCameraStep({ action: 'zoom' }),
       createVariableStep({ variableName: 'flag', operation: 'set', value: true }),
+      createLabelStep({ name: 'checkpoint' }),
+      createGotoStep({
+        targetLabel: 'checkpoint',
+        condition: { variableName: 'flag', operator: '==', value: true },
+        elseTargetLabel: 'fallback',
+      }),
       createTransitionStep({ targetSceneId: 'scene_2' }),
     ];
 
@@ -71,6 +79,11 @@ describe('scene document adapter', () => {
     const saved = sceneDocumentToSceneRecord(source, document, []);
 
     expect(saved.timeline.map((step) => step.blockType)).toEqual(steps.map((step) => step.blockType));
+    expect(saved.timeline.find((step) => step.blockType === 'goto')?.data).toEqual({
+      targetLabel: 'checkpoint',
+      condition: { variableName: 'flag', operator: '==', value: true },
+      elseTargetLabel: 'fallback',
+    });
     expect(saved.timeline).not.toContainEqual(expect.objectContaining({ blockType: 'text', data: expect.objectContaining({ content: '[character]' }) }));
   });
 

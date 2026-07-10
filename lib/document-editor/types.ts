@@ -12,8 +12,11 @@ export type DocumentCommandId =
   | 'transition'
   | 'variable'
   | 'effect'
+  | 'stopEffect'
   | 'camera'
-  | 'interactive_object';
+  | 'interactive_object'
+  | 'label'
+  | 'goto';
 
 export interface DocumentScene {
   sceneId: string;

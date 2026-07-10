@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
+import { showToast } from '@/lib/toast-store';
 
 type StorageLike = {
   getItem: (key: string) => string | null | Promise<string | null>;
@@ -13,25 +14,6 @@ function createNoopStorage(): StorageLike {
     setItem: () => {},
     removeItem: () => {},
   };
-}
-
-function compactPersistedAppState(value: string): string | null {
-  try {
-    const parsed = JSON.parse(value);
-    if (!parsed || typeof parsed !== 'object' || !parsed.state || typeof parsed.state !== 'object') {
-      return null;
-    }
-
-    return JSON.stringify({
-      ...parsed,
-      state: {
-        ...parsed.state,
-        mediaLibrary: [],
-      },
-    });
-  } catch {
-    return null;
-  }
 }
 
 function createSafeWebStorage(storage: Storage): StorageLike {
@@ -58,15 +40,7 @@ function createSafeWebStorage(storage: Storage): StorageLike {
       try {
         storage.setItem(key, value);
       } catch (error) {
-        const compactedValue = key === STORAGE_KEYS.APP_STATE ? compactPersistedAppState(value) : null;
-        if (compactedValue) {
-          try {
-            storage.setItem(key, compactedValue);
-            return;
-          } catch {
-          }
-        }
-
+        showToast('Storage is full. Your latest changes were not saved; existing media was kept.', 'error');
         if (__DEV__) console.warn('[Storage] setItem skipped:', key, error);
       }
     },

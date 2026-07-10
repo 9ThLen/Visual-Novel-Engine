@@ -46,9 +46,12 @@ export const BLOCK_CATEGORY_MAP: Record<BlockType, BlockCategory> = {
   music: 'media',
   sound: 'media',
   effect: 'effects',
+  stop_effect: 'effects',
   camera: 'effects',
   transition: 'effects',
   variable: 'logic',
+  label: 'logic',
+  goto: 'logic',
 };
 
 // ── Block Types (UI-level) ──────────────────────────────────────────────
@@ -60,12 +63,15 @@ export type BlockType =
   | 'dialogue'
   | 'choice'
   | 'effect'
+  | 'stop_effect'
   | 'music'
   | 'sound'
   | 'interactive_object'
   | 'camera'
   | 'variable'
-  | 'transition';
+  | 'transition'
+  | 'label'
+  | 'goto';
 
 export interface BlockTypeInfo {
   type: BlockType;
@@ -85,12 +91,15 @@ export const BLOCK_TYPE_INFO: Record<BlockType, BlockTypeInfo> = {
   dialogue:          { type: 'dialogue',          label: 'Dialogue',          description: 'Runtime character dialogue; author via Character lines',  icon: 'voice', color: '#9b59b6', bgColor: '#9b59b620', disabled: true },
   choice:            { type: 'choice',            label: 'Choice',            description: 'Player choice branch',         icon: 'timeline', color: '#e91e63', bgColor: '#e91e6320' },
   effect:            { type: 'effect',            label: 'Effect',            description: 'Visual/screen effects',        icon: 'lightning', color: '#ffd93d', bgColor: '#ffd93d20' },
+  stop_effect:       { type: 'stop_effect',       label: 'Stop Effect',       description: 'Stop active visual effects',   icon: 'lightning', color: '#ff7043', bgColor: '#ff704320' },
   music:             { type: 'music',             label: 'Music',             description: 'Play/stop background music',   icon: 'music', color: '#ff6b6b', bgColor: '#ff6b6b20' },
   sound:             { type: 'sound',             label: 'Sound',             description: 'Play sound effect',            icon: 'sound', color: '#ef5350', bgColor: '#ef535020' },
   interactive_object:{ type: 'interactive_object',label: 'Interactive Object', description: 'Clickable scene object',       icon: 'location', color: '#00bcd4', bgColor: '#00bcd420' },
   camera:            { type: 'camera',            label: 'Camera',            description: 'Camera zoom/pan/focus',        icon: 'camera', color: '#009688', bgColor: '#00968820' },
   variable:          { type: 'variable',          label: 'Variable',          description: 'Set/modify a variable',         icon: 'settings', color: '#8bc34a', bgColor: '#8bc34a20' },
   transition:        { type: 'transition',        label: 'Transition',        description: 'Scene transition effect',       icon: 'timeline', color: '#3f51b5', bgColor: '#3f51b520' },
+  label:             { type: 'label',             label: 'Label',             description: 'Jump target inside the scene',  icon: 'location', color: '#795548', bgColor: '#79554820' },
+  goto:              { type: 'goto',              label: 'Go To',             description: 'Jump to a label, optionally by condition', icon: 'timeline', color: '#607d8b', bgColor: '#607d8b20' },
 };
 
 // ── Timeline Step ────────────────────────────────────────────────────────
@@ -117,12 +126,15 @@ export type BlockData =
   | DialogueBlockData
   | ChoiceBlockData
   | EffectBlockData
+  | StopEffectBlockData
   | MusicBlockData
   | SoundBlockData
   | InteractiveObjectBlockData
   | CameraBlockData
   | VariableBlockData
-  | TransitionBlockData;
+  | TransitionBlockData
+  | LabelBlockData
+  | GotoBlockData;
 
 export interface BackgroundBlockData {
   assetId: string | null;
@@ -208,6 +220,15 @@ export interface EffectBlockData {
   fog?: FogEffectOptions;
 }
 
+export type StopEffectTargetFilter = 'screen' | 'character' | 'background' | 'all';
+
+export interface StopEffectBlockData {
+  /** Effect type to stop; 'all' clears every active effect. */
+  effectType: EffectType | 'all';
+  /** Optional filter by effect target; absent or 'all' matches any target. */
+  target?: StopEffectTargetFilter;
+}
+
 export interface MusicBlockData {
   mode: 'track' | 'silence';
   assetId: string | null;
@@ -265,6 +286,20 @@ export interface TransitionBlockData {
   targetSceneId: string | null;  // only meaningful when mode === 'scene'
   transitionType: TransitionType;
   duration: number;         // seconds
+}
+
+export interface LabelBlockData {
+  /** Unique-within-the-scene jump target name. Executes as a no-op. */
+  name: string;
+}
+
+export interface GotoBlockData {
+  /** Label name to jump to when the condition passes (or unconditionally). */
+  targetLabel: string;
+  /** Optional guard — absent/null means the jump always happens. */
+  condition?: Condition | null;
+  /** Label to jump to when the condition fails; absent/null falls through. */
+  elseTargetLabel?: string | null;
 }
 
 // ── Conditions ────────────────────────────────────────────────────────────

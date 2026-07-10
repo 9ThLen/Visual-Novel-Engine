@@ -30,6 +30,7 @@ import type {
   PlateWebViewEditorSnapshot,
 } from '@/components/vn-plate-editor/PlateWebViewEditor';
 import { useColors } from '@/hooks/use-colors';
+import { useEditorShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { crumbsForSceneIndex, type BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
 import { ensureDocumentCharactersInBlocks } from '@/lib/document-editor/document-scene';
@@ -152,6 +153,7 @@ export function DocumentSceneEditor({
   const [activeSceneId, setActiveSceneId] = useState(sceneRecord.id);
   const [dirtySceneIds, setDirtySceneIds] = useState<Set<string>>(() => new Set());
   const [isSaving, setIsSaving] = useState(false);
+  const [historyStateByScene, setHistoryStateByScene] = useState<Record<string, { canUndo: boolean; canRedo: boolean }>>({});
   const [mountedSceneIds, setMountedSceneIds] = useState<Set<string>>(() =>
     seedMountedSceneIds(initialDocuments.map((ds) => ds.sceneId), sceneRecord.id),
   );
@@ -534,6 +536,26 @@ export function DocumentSceneEditor({
   const getRegisterEditorRef = useSceneCallback(registerEditorRefImpl);
   const getOnFrameLayout = useSceneCallback(handleFrameLayoutImpl);
 
+  const handleUndo = useCallback(() => {
+    editorRefsRef.current.get(activeSceneIdRef.current)?.undo();
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    editorRefsRef.current.get(activeSceneIdRef.current)?.redo();
+  }, []);
+
+  useEditorShortcuts({ onUndo: handleUndo, onRedo: handleRedo });
+
+  const handleHistoryStateImpl = useCallback((sceneId: string, canUndo: boolean, canRedo: boolean) => {
+    setHistoryStateByScene((current) => {
+      const previous = current[sceneId];
+      if (previous?.canUndo === canUndo && previous.canRedo === canRedo) return current;
+      return { ...current, [sceneId]: { canUndo, canRedo } };
+    });
+  }, []);
+  const getOnHistoryStateChange = useSceneCallback(handleHistoryStateImpl);
+  const activeHistoryState = historyStateByScene[activeSceneId] ?? { canUndo: false, canRedo: false };
+
   const handleBack = useCallback(async () => {
     await handleSave();
     if (onBack) {
@@ -621,6 +643,10 @@ export function DocumentSceneEditor({
         onPreview={handlePreview}
         onSave={handleSave}
         onSaveAndPlay={handleSaveAndPlay}
+        canUndo={activeHistoryState.canUndo}
+        canRedo={activeHistoryState.canRedo}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
       />
 
       <View style={{ flex: 1, flexDirection: isPhone ? 'column' : 'row' }}>
@@ -702,6 +728,7 @@ export function DocumentSceneEditor({
               onUploadBackgroundAsset={onUploadBackgroundAsset}
               onUploadAudioAsset={onUploadAudioAsset}
               registerEditorRef={getRegisterEditorRef(documentScene.sceneId)}
+              onHistoryStateChange={getOnHistoryStateChange(documentScene.sceneId)}
               onFrameLayout={getOnFrameLayout(documentScene.sceneId)}
               measureVersion={measureVersion}
             />

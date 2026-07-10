@@ -6,12 +6,15 @@ import type {
   DialogueBlockData,
   ChoiceBlockData,
   EffectBlockData,
+  StopEffectBlockData,
   MusicBlockData,
   SoundBlockData,
   InteractiveObjectBlockData,
   CameraBlockData,
   VariableBlockData,
   TransitionBlockData,
+  LabelBlockData,
+  GotoBlockData,
 } from './types';
 import type { RuntimeVariables, SceneState } from './runtime-types';
 import { createEmptySceneState, conditionsMet } from './conditionUtils';
@@ -25,6 +28,25 @@ import {
 
 const YIELDING_BLOCK_TYPES = new Set(['text', 'dialogue', 'choice', 'transition']);
 const MAX_DIALOGUE_HISTORY_ENTRIES = 500;
+const MAX_ROLLBACK_DEPTH = 100;
+/**
+ * Upper bound on steps executed in one pass. Goto blocks can jump backward,
+ * so a mis-authored loop with no yield point in it would otherwise spin
+ * forever; hitting the cap ends the scene instead.
+ */
+const MAX_STEPS_PER_PASS = 1000;
+
+/** Index of the enabled label with the given name, or -1. */
+function findLabelIndex(steps: TimelineStep[], name: string): number {
+  const normalizedName = name.trim();
+  if (!normalizedName) return -1;
+  return steps.findIndex(
+    (step) =>
+      step.blockType === 'label' &&
+      step.enabled &&
+      (step.data as LabelBlockData).name.trim() === normalizedName,
+  );
+}
 
 interface ExecutorState {
   sceneState: SceneState;
@@ -41,6 +63,16 @@ interface ExecutorStepResult {
   isHalted: boolean;
 }
 
+/**
+ * A halted executor state captured right before the player advances past it.
+ * ExecutorState is replaced immutably on every commit, so snapshots hold
+ * plain references — restoring one is a single state commit.
+ */
+interface RollbackSnapshot {
+  execState: ExecutorState;
+  internalIndex: number;
+}
+
 type LookaheadAction = 'preload' | 'skip' | 'stop';
 
 export interface UseSceneExecutorOptions {
@@ -53,7 +85,11 @@ export interface UseSceneExecutorReturn {
   isComplete: boolean;
   isTyping: boolean;
   canAdvance: boolean;
+  /** True when rollback() can restore a previous yield point in this scene. */
+  canRollback: boolean;
   advance: () => void;
+  /** Restore the most recent yield point the player advanced past. */
+  rollback: () => void;
   selectChoice: (optionId: string) => void;
 }
 
@@ -128,6 +164,7 @@ export function useSceneExecutor(
 
   const internalIndexRef = useRef(0);
   const isHaltedRef = useRef(false);
+  const rollbackStackRef = useRef<RollbackSnapshot[]>([]);
   const timelineRef = useRef(timeline);
   const advanceGuardRef = useRef(false);
   const initialVariablesRef = useRef(options?.initialVariables);
@@ -249,6 +286,15 @@ export function useSceneExecutor(
           ];
           break;
         }
+        case 'stop_effect': {
+          const d = step.data as StopEffectBlockData;
+          nextState.activeEffects = nextState.activeEffects.filter((effect) => {
+            const typeMatches = d.effectType === 'all' || effect.effectType === d.effectType;
+            const targetMatches = !d.target || d.target === 'all' || effect.target === d.target;
+            return !(typeMatches && targetMatches);
+          });
+          break;
+        }
         case 'music': {
           const d = step.data as MusicBlockData;
           nextState.musicMode = d.mode;
@@ -364,9 +410,40 @@ export function useSceneExecutor(
   const computeNextExecutorState = useCallback((prev: ExecutorState, startIndex: number, steps: TimelineStep[]): ExecutorStepResult => {
     let currentState: SceneState = { ...prev.sceneState, currentChoices: null };
     let idx = startIndex;
+    let executedSteps = 0;
 
     while (idx < steps.length) {
+      if (++executedSteps > MAX_STEPS_PER_PASS) {
+        if (__DEV__) {
+          console.warn('[useSceneExecutor] step budget exceeded — likely a goto loop with no yield point; ending scene');
+        }
+        idx = steps.length;
+        break;
+      }
+
       const step = steps[idx];
+
+      // Goto is control flow, not scene state: it moves the cursor, so it is
+      // resolved here rather than in executeStep. Step-level `conditions`
+      // gate the block itself; `data.condition` picks between the two targets.
+      if (step.blockType === 'goto') {
+        if (step.enabled && conditionsMet(step.conditions, currentState.variables)) {
+          const d = step.data as GotoBlockData;
+          const passes = !d.condition || conditionsMet([d.condition], currentState.variables);
+          const target = passes ? d.targetLabel : d.elseTargetLabel ?? '';
+          const targetIdx = findLabelIndex(steps, target);
+          if (targetIdx >= 0) {
+            idx = targetIdx + 1;
+            continue;
+          }
+          if (__DEV__ && target) {
+            console.warn('[useSceneExecutor] goto target label not found, falling through:', target);
+          }
+        }
+        idx++;
+        continue;
+      }
+
       const { nextState, result } = executeStep(step, currentState);
       currentState = nextState;
 
@@ -446,6 +523,7 @@ export function useSceneExecutor(
     internalIndexRef.current = 0;
     isHaltedRef.current = false;
     advanceGuardRef.current = false;
+    rollbackStackRef.current = [];
     const initialState = createInitialExecutorState(initialVariablesRef.current);
     execStateRef.current = initialState;
     const { nextState, nextIndex, isHalted } = computeNextExecutorState(
@@ -516,6 +594,18 @@ export function useSceneExecutor(
         return;
       }
 
+      // Leaving a yield point — capture it so rollback() can come back here.
+      // Choice and transition halts never reach this path (they navigate away
+      // and the per-scene executor remounts), so only text/dialogue halts are
+      // ever stacked.
+      rollbackStackRef.current.push({
+        execState: execStateRef.current,
+        internalIndex: internalIndexRef.current,
+      });
+      if (rollbackStackRef.current.length > MAX_ROLLBACK_DEPTH) {
+        rollbackStackRef.current.shift();
+      }
+
       isHaltedRef.current = false;
       internalIndexRef.current = internalIndexRef.current + 1;
       processNext();
@@ -523,6 +613,18 @@ export function useSceneExecutor(
       advanceGuardRef.current = false;
     }
   }, [isTyping, sceneState.currentChoices, processNext, updateExecutorState]);
+
+  const rollback = useCallback(() => {
+    const snapshot = rollbackStackRef.current.pop();
+    if (!snapshot) return;
+    // Snapshots are always halted states (advance() only stacks when leaving
+    // a halt), so restoring one re-arms the same yield point: the executor
+    // waits for the player exactly as it did the first time. Variables,
+    // dialogue history, and audio-facing state travel with the snapshot.
+    internalIndexRef.current = snapshot.internalIndex;
+    isHaltedRef.current = true;
+    commitExecutorState(snapshot.execState);
+  }, [commitExecutorState]);
 
   const selectChoice = useCallback((optionId: string) => {
     const currentChoices = execStateRef.current.sceneState.currentChoices;
@@ -555,7 +657,11 @@ export function useSceneExecutor(
     isComplete,
     isTyping,
     canAdvance,
+    // Every push/pop is paired with a state commit, so this reads fresh on
+    // the render that follows each stack change.
+    canRollback: rollbackStackRef.current.length > 0,
     advance,
+    rollback,
     selectChoice,
   };
 }

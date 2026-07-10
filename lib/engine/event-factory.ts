@@ -23,12 +23,15 @@ import type {
   ChoiceBlockData,
   ChoiceOption,
   EffectBlockData,
+  StopEffectBlockData,
   MusicBlockData,
   SoundBlockData,
   InteractiveObjectBlockData,
   CameraBlockData,
   VariableBlockData,
   TransitionBlockData,
+  LabelBlockData,
+  GotoBlockData,
   BlockData,
 } from './types';
 
@@ -128,6 +131,14 @@ export function createEffectStep(overrides?: Partial<EffectBlockData>): Timeline
   });
 }
 
+export function createStopEffectStep(overrides?: Partial<StopEffectBlockData>): TimelineStep {
+  return createStep('stop_effect', {
+    effectType: 'all',
+    target: 'all',
+    ...overrides,
+  });
+}
+
 export function createMusicStep(overrides?: Partial<MusicBlockData>): TimelineStep {
   return createStep('music', {
     mode: 'track',
@@ -197,6 +208,22 @@ export function createTransitionStep(overrides?: Partial<TransitionBlockData>): 
   }));
 }
 
+export function createLabelStep(overrides?: Partial<LabelBlockData>): TimelineStep {
+  return createStep('label', {
+    name: '',
+    ...overrides,
+  });
+}
+
+export function createGotoStep(overrides?: Partial<GotoBlockData>): TimelineStep {
+  return createStep('goto', {
+    targetLabel: '',
+    condition: null,
+    elseTargetLabel: null,
+    ...overrides,
+  });
+}
+
 // ── Block Factory Map ─────────────────────────────────────────────────────
 
 type BlockFactory = () => TimelineStep;
@@ -208,12 +235,15 @@ const BLOCK_FACTORY_MAP: Record<BlockType, BlockFactory> = {
   dialogue:           () => createDialogueStep(),
   choice:             () => createChoiceStep(),
   effect:             () => createEffectStep(),
+  stop_effect:        () => createStopEffectStep(),
   music:              () => createMusicStep(),
   sound:              () => createSoundStep(),
   interactive_object: () => createInteractiveObjectStep(),
   camera:             () => createCameraStep(),
   variable:           () => createVariableStep(),
   transition:         () => createTransitionStep(),
+  label:              () => createLabelStep(),
+  goto:               () => createGotoStep(),
 };
 
 export function createBlockStep(blockType: BlockType): TimelineStep {

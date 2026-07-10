@@ -30,6 +30,7 @@ import {
   migrateCharacterLibraries,
   migrateCharacterLibrary,
 } from '@/lib/character-migration';
+import { migrateStoryImageAssetIds } from '@/lib/story-image-library';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 import { normalizeUserSettings, type UserSettings } from '@/lib/user-settings';
@@ -192,6 +193,12 @@ export const useAppStore = create<AppStore>()(
                   ...characterLibraries,
                 })
               : migrateCharacterLibraries(current.characterLibraries),
+            imageAssetIdsByStory: migrateStoryImageAssetIds(
+              current.imageAssetIdsByStory,
+              mergedSceneRecordsByStory,
+              current.mediaLibrary,
+              Object.keys(current.imageAssetIdsByStory).length === 0,
+            ),
             language,
             isLoaded: true,
           });

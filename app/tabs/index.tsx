@@ -28,6 +28,7 @@ import { shouldUpsertBundledStory } from '@/lib/bundled-story-sync';
 import { createBundledStorySyncPayload } from '@/lib/bundled-story-upsert';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import type { Story } from '@/lib/scene-operations';
+import { migrateStoryImageAssetIds } from '@/lib/story-image-library';
 
 import { buttonFeedback } from '@/lib/ui-feedback';
 
@@ -200,6 +201,18 @@ export default function HomeScreen() {
     } catch (error) {
       initError = initError ?? error;
       ErrorHandler.handle('Failed to seed media library', error, ErrorCategory.STORAGE);
+    }
+
+    // Seeded and legacy images become visible only in stories that already
+    // reference them as backgrounds; unrelated media remains hidden.
+    if (Object.keys(useAppStore.getState().imageAssetIdsByStory).length === 0) {
+      useAppStore.setState((state) => ({
+        imageAssetIdsByStory: migrateStoryImageAssetIds(
+          state.imageAssetIdsByStory,
+          state.sceneRecordsByStory,
+          state.mediaLibrary,
+        ),
+      }));
     }
 
     if (initError && __DEV__) {

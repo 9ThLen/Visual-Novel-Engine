@@ -34,6 +34,8 @@ function makeStep(overrides: Partial<TimelineStep> & { id: string; blockType: Ti
     camera: { action: 'reset', duration: 0, easing: 'linear' },
     variable: { variableName: 'visited', operation: 'set', value: true },
     transition: { mode: 'end', targetSceneId: null, transitionType: 'fade', duration: 0.2 },
+    label: { name: 'checkpoint' },
+    goto: { targetLabel: 'checkpoint', condition: null, elseTargetLabel: null },
   };
 
   return {
@@ -296,6 +298,75 @@ describe('runStoryDoctor', () => {
       expect.objectContaining({ code: 'flow.deadEnd', severity: 'warning' }),
     ]));
     expect(endingReport.findings.some((finding) => finding.code === 'flow.deadEnd')).toBe(false);
+  });
+
+  it('validates labels and goto targets within a scene', () => {
+    const report = runStoryDoctor({
+      scenes: [
+        makeScene({
+          id: 'start',
+          isStart: true,
+          timeline: [
+            makeStep({ id: 'label-empty', blockType: 'label', data: { name: '' } }),
+            makeStep({ id: 'label-1', blockType: 'label', data: { name: 'twice' } }),
+            makeStep({ id: 'label-2', blockType: 'label', data: { name: 'twice' } }),
+            makeStep({ id: 'goto-empty', blockType: 'goto', data: { targetLabel: '', condition: null, elseTargetLabel: null } }),
+            makeStep({ id: 'goto-dangling', blockType: 'goto', data: { targetLabel: 'missing', condition: null, elseTargetLabel: null } }),
+            endStep(),
+          ],
+        }),
+      ],
+    });
+
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'branching.emptyLabel', stepId: 'label-empty', severity: 'error' }),
+      expect.objectContaining({ code: 'branching.duplicateLabel', stepId: 'label-2', messageParams: { labelName: 'twice' } }),
+      expect.objectContaining({ code: 'branching.emptyGotoTarget', stepId: 'goto-empty', severity: 'error' }),
+      expect.objectContaining({ code: 'branching.danglingGotoTarget', stepId: 'goto-dangling', messageParams: { labelName: 'missing' } }),
+    ]));
+  });
+
+  it('accepts a well-formed label/goto pair and reads its condition variable', () => {
+    const report = runStoryDoctor({
+      scenes: [
+        makeScene({
+          id: 'start',
+          isStart: true,
+          timeline: [
+            makeStep({ id: 'var-1', blockType: 'variable', data: { variableName: 'score', operation: 'set', value: 1 } }),
+            makeStep({
+              id: 'goto-1',
+              blockType: 'goto',
+              data: { targetLabel: 'ending', condition: { variableName: 'score', operator: '>=', value: 3 }, elseTargetLabel: null },
+            }),
+            makeStep({ id: 'label-1', blockType: 'label', data: { name: 'ending' } }),
+            endStep(),
+          ],
+        }),
+      ],
+    });
+
+    expect(report.findings.some((finding) => finding.code.startsWith('branching.'))).toBe(false);
+    // The goto condition counts as a read, so `score` is not "unread".
+    expect(report.findings.some((finding) => finding.code === 'variable.unread')).toBe(false);
+  });
+
+  it('uses the same trimmed label identity as the executor', () => {
+    const report = runStoryDoctor({
+      scenes: [
+        makeScene({
+          id: 'start',
+          isStart: true,
+          timeline: [
+            makeStep({ id: 'goto-1', blockType: 'goto', data: { targetLabel: ' checkpoint ', condition: null, elseTargetLabel: null } }),
+            makeStep({ id: 'label-1', blockType: 'label', data: { name: 'checkpoint' } }),
+            endStep(),
+          ],
+        }),
+      ],
+    });
+
+    expect(report.findings.some((finding) => finding.code === 'branching.danglingGotoTarget')).toBe(false);
   });
 
   it('summary counts match findings', () => {

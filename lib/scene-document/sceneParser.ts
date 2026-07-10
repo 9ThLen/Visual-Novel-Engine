@@ -1,5 +1,17 @@
 import { getCharacterColor } from './characterColor';
-import type { ChoiceNode, MusicNode, SceneNode, SoundNode } from './sceneTypes';
+import type { ChoiceNode, GotoNode, MusicNode, SceneNode, SoundNode, StopEffectNode } from './sceneTypes';
+
+const GOTO_OPERATORS = new Set<NonNullable<GotoNode['condition']>['operator']>(
+  ['==', '!=', '>', '<', '>=', '<=', 'contains', 'isEmpty', 'has', 'not_has'],
+);
+
+const STOP_EFFECT_TYPES = new Set<StopEffectNode['effectType']>(
+  ['shake', 'flash', 'blur', 'rain', 'snow', 'fog', 'glitch', 'vignette', 'all'],
+);
+
+const STOP_EFFECT_TARGETS = new Set<NonNullable<StopEffectNode['target']>>(
+  ['screen', 'character', 'background', 'all'],
+);
 
 function nodeId(lineNumber: number, type: SceneNode['type']): string {
   return `scene_${type}_${lineNumber}`;
@@ -113,13 +125,66 @@ function parseChoice(raw: string, lineNumber: number): ChoiceNode {
   };
 }
 
+function tokenizeCommand(body: string): string[] {
+  return body.match(/"(?:\\.|[^"\\])*"|\S+/g) ?? [];
+}
+
+function parseConditionValue(raw: string): string | number | boolean {
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  if (raw !== '' && Number.isFinite(Number(raw))) return Number(raw);
+  if (raw.startsWith('"')) {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed === 'string') return parsed;
+    } catch {
+      // Keep malformed quoted input as text so validation/import remains non-destructive.
+    }
+  }
+  return raw;
+}
+
+function parseTextToken(raw: string): string {
+  if (!raw.startsWith('"')) return raw;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'string' ? parsed : raw;
+  } catch {
+    return raw;
+  }
+}
+
+function parseGoto(parts: string[], lineNumber: number): GotoNode | null {
+  const ifIndex = parts.indexOf('if', 2);
+  const elseIndex = parts.indexOf('else', Math.max(ifIndex + 1, 2));
+  const operator = ifIndex >= 0 ? parts[ifIndex + 2] : undefined;
+  if (ifIndex >= 0 && (!operator || !GOTO_OPERATORS.has(operator as NonNullable<GotoNode['condition']>['operator']))) {
+    return null;
+  }
+  const condition = ifIndex >= 0 && operator && GOTO_OPERATORS.has(operator as NonNullable<GotoNode['condition']>['operator'])
+    ? {
+        variableName: parts[ifIndex + 1] ?? '',
+        operator: operator as NonNullable<GotoNode['condition']>['operator'],
+        value: parseConditionValue(parts.slice(ifIndex + 3, elseIndex >= 0 ? elseIndex : undefined).join(' ')),
+      }
+    : null;
+
+  return {
+    id: nodeId(lineNumber, 'goto'),
+    type: 'goto',
+    targetLabel: parseTextToken(parts[1] ?? ''),
+    condition,
+    elseTargetLabel: elseIndex >= 0 ? parseTextToken(parts[elseIndex + 1] ?? '') || null : null,
+  };
+}
+
 function parseSceneLine(line: string, lineNumber: number): SceneNode | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
 
   const bracketMatch = /^\[(.+)\]$/.exec(trimmed);
   if (bracketMatch) {
-    const parts = bracketMatch[1].split(/\s+/).filter(Boolean);
+    const parts = tokenizeCommand(bracketMatch[1]);
     const [command] = parts;
 
     if (command === 'background') {
@@ -134,6 +199,32 @@ function parseSceneLine(line: string, lineNumber: number): SceneNode | null {
     if (audio) return audio;
 
     if (command === 'choice') return parseChoice(trimmed, lineNumber);
+
+    if (command === 'label') {
+      return {
+        id: nodeId(lineNumber, 'label'),
+        type: 'label',
+        name: parseTextToken(parts.slice(1).join(' ')),
+      };
+    }
+
+    if (command === 'goto') {
+      const goto = parseGoto(parts, lineNumber);
+      if (goto) return goto;
+    }
+
+    if (command === 'stop_effect') {
+      const effectType = (parts[1] ?? 'all') as StopEffectNode['effectType'];
+      const target = parts[2] as StopEffectNode['target'] | undefined;
+      if (STOP_EFFECT_TYPES.has(effectType) && (!target || STOP_EFFECT_TARGETS.has(target))) {
+        return {
+          id: nodeId(lineNumber, 'stop_effect'),
+          type: 'stop_effect',
+          effectType,
+          target,
+        };
+      }
+    }
 
     return {
       id: nodeId(lineNumber, 'command'),

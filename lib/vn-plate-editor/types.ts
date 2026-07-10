@@ -67,6 +67,13 @@ export type VNPlateEditorMessage =
   | {
       source: 'vn-plate-editor';
       editorId: string;
+      type: 'historyState';
+      canUndo: boolean;
+      canRedo: boolean;
+    }
+  | {
+      source: 'vn-plate-editor';
+      editorId: string;
       type: 'resize';
       height: number;
       overlayHeight?: number;
@@ -135,6 +142,11 @@ export type VNPlateHostMessage =
       editorId: string;
       type: 'flush';
       requestId: string;
+    }
+  | {
+      source: 'vn-plate-host';
+      editorId: string;
+      type: 'undo' | 'redo';
     }
   | {
       source: 'vn-plate-host';

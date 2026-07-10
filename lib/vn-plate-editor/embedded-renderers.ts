@@ -1,7 +1,7 @@
 import type { Character } from '@/lib/character-types';
 import { branchColorForOptionIndex, branchShadowColor } from '@/lib/document-editor/branch-colors';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
-import type { BackgroundBlockData, CharacterBlockData } from '@/lib/engine/types';
+import type { BackgroundBlockData, CharacterBlockData, GotoBlockData, LabelBlockData, StopEffectBlockData } from '@/lib/engine/types';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateSceneRef } from './types';
 import { escapeHtml } from './embedded-utils';
@@ -258,6 +258,73 @@ function transitionBlockToHtml(
   ].join('');
 }
 
+function labelBlockToHtml(block: Extract<DocumentBlock, { kind: 'technical' }>): string {
+  const data = (block.step?.data ?? {}) as Partial<LabelBlockData>;
+  const name = data.name || '';
+  return [
+    `<div class="void-block label-block" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="label" data-label-name="${escapeHtml(name)}">`,
+    '<div class="background-copy">',
+    '<div class="background-command-line">',
+    '<span class="void-title">/label</span>',
+    `<span class="background-asset">${escapeHtml(name || 'Без назви')}</span>`,
+    '</div>',
+    '<div class="void-summary">Точка переходу всередині сцени</div>',
+    '</div>',
+    '<div class="block-actions">',
+    '<button type="button" class="block-button" data-action="edit-label">Edit</button>',
+    '</div>',
+    '</div>',
+  ].join('');
+}
+
+function gotoBlockToHtml(block: Extract<DocumentBlock, { kind: 'technical' }>): string {
+  const data = (block.step?.data ?? {}) as Partial<GotoBlockData>;
+  const targetLabel = data.targetLabel || '';
+  const elseTargetLabel = data.elseTargetLabel || '';
+  const condition = data.condition ?? null;
+  const conditionAttr = condition ? ` data-condition="${escapeHtml(JSON.stringify(condition))}"` : '';
+  const conditionSummary = condition
+    ? `якщо ${condition.variableName} ${condition.operator} ${String(condition.value)}`
+    : 'завжди';
+  const summary = conditionSummary + (elseTargetLabel ? ` · інакше → ${elseTargetLabel}` : '');
+  return [
+    `<div class="void-block goto-block" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="goto" data-target-label="${escapeHtml(targetLabel)}" data-else-target-label="${escapeHtml(elseTargetLabel)}"${conditionAttr}>`,
+    '<div class="background-copy">',
+    '<div class="background-command-line">',
+    '<span class="void-title">/goto</span>',
+    `<span class="background-asset">${escapeHtml(targetLabel ? `→ ${targetLabel}` : 'Мітку не вибрано')}</span>`,
+    '</div>',
+    `<div class="void-summary">${escapeHtml(summary)}</div>`,
+    '</div>',
+    '<div class="block-actions">',
+    '<button type="button" class="block-button" data-action="edit-goto">Edit</button>',
+    '</div>',
+    '</div>',
+  ].join('');
+}
+
+function stopEffectBlockToHtml(block: Extract<DocumentBlock, { kind: 'technical' }>): string {
+  const data = (block.step?.data ?? {}) as Partial<StopEffectBlockData>;
+  const effectType = data.effectType || 'all';
+  const target = data.target || 'all';
+  const typeSummary = effectType === 'all' ? 'Усі ефекти' : effectLabel(effectType);
+  const targetSummary = target === 'all' ? '' : ` · ${target}`;
+  return [
+    `<div class="void-block stop-effect-block" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="stopEffect" data-effect-type="${escapeHtml(effectType)}" data-target="${escapeHtml(target)}">`,
+    '<div class="background-copy">',
+    '<div class="background-command-line">',
+    '<span class="void-title">/stop-effect</span>',
+    `<span class="background-asset">${escapeHtml(typeSummary + targetSummary)}</span>`,
+    '</div>',
+    '<div class="void-summary">Зупинити активні візуальні ефекти</div>',
+    '</div>',
+    '<div class="block-actions">',
+    '<button type="button" class="block-button" data-action="edit-stop-effect">Edit</button>',
+    '</div>',
+    '</div>',
+  ].join('');
+}
+
 export function blockToHtml(
   block: DocumentBlock,
   backgroundAssets: VNPlateBackgroundAsset[] = [],
@@ -323,6 +390,18 @@ export function blockToHtml(
 
   if (block.blockType === 'transition') {
     return transitionBlockToHtml(block, scenes);
+  }
+
+  if (block.blockType === 'label') {
+    return labelBlockToHtml(block);
+  }
+
+  if (block.blockType === 'goto') {
+    return gotoBlockToHtml(block);
+  }
+
+  if (block.blockType === 'stop_effect') {
+    return stopEffectBlockToHtml(block);
   }
 
   if (block.blockType === 'character') {

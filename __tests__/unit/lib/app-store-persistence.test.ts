@@ -106,6 +106,7 @@ function makeState(): AppStorePersistenceState {
         addedAt: 1,
       },
     ],
+    imageAssetIdsByStory: {},
   };
 }
 
@@ -268,8 +269,9 @@ describe('app store persistence helpers', () => {
       0,
     ) as Partial<AppStorePersistenceState>;
 
-    expect(APP_STORE_PERSIST_VERSION).toBe(3);
+    expect(APP_STORE_PERSIST_VERSION).toBe(4);
     expect(migrated.mediaLibrary?.map((asset) => asset.id)).toEqual(['image-file', 'image-data']);
+    expect(migrated.imageAssetIdsByStory).toEqual({});
     expect(migrated.sceneRecordsByStory?.['story-1']?.['scene-1']).toBeTruthy();
     expect(migrated.storiesMetadata?.[0].characterAuthoringSchemaVersion).toBe(1);
   });

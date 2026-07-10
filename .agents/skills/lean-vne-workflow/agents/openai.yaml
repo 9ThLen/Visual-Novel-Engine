@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lean VNE Workflow"
+  short_description: "Keep Visual Novel Engine work targeted and token-efficient."
+  default_prompt: "Use $lean-vne-workflow to make a focused, validated change in this Visual Novel Engine repository."

@@ -11,8 +11,13 @@ import type { LibraryAsset } from '@/lib/media-library-service';
 import type { SaveSlot, StoryMetadata } from '@/lib/story-domain';
 import type { Language } from '@/lib/translations';
 import type { UserSettings } from '@/lib/user-settings';
+import {
+  migrateStoryImageAssetIds,
+  normalizeStoryImageAssetIds,
+  type StoryImageAssetIds,
+} from '@/lib/story-image-library';
 
-export const APP_STORE_PERSIST_VERSION = 3;
+export const APP_STORE_PERSIST_VERSION = 4;
 
 export type AppStorePersistenceState = {
   storiesMetadata: StoryMetadata[];
@@ -26,6 +31,7 @@ export type AppStorePersistenceState = {
   characterLibraries: Record<string, Character[]>;
   language: Language;
   mediaLibrary: LibraryAsset[];
+  imageAssetIdsByStory: StoryImageAssetIds;
 };
 
 export const MAX_DATA_URI_ASSET_BYTES = 256 * 1024;
@@ -100,6 +106,7 @@ export function buildPersistedAppState(state: AppStorePersistenceState): AppStor
     characterLibraries: state.characterLibraries,
     language: state.language,
     mediaLibrary: getPersistableMediaLibrary(state.mediaLibrary),
+    imageAssetIdsByStory: state.imageAssetIdsByStory,
   };
 }
 
@@ -137,6 +144,7 @@ export function migratePersistedAppState(
   }
 
   const migrated: Partial<AppStorePersistenceState> = { ...persistedState };
+  const needsStoryImageMigration = !('imageAssetIdsByStory' in migrated);
 
   if ('mediaLibrary' in migrated) {
     migrated.mediaLibrary = getPersistableMediaLibrary(migrated.mediaLibrary);
@@ -147,6 +155,12 @@ export function migratePersistedAppState(
   if ('sceneRecordsByStory' in migrated) {
     migrated.sceneRecordsByStory = migrateSceneRecordsByStory(migrated.sceneRecordsByStory);
   }
+  migrated.imageAssetIdsByStory = migrateStoryImageAssetIds(
+    migrated.imageAssetIdsByStory,
+    migrated.sceneRecordsByStory ?? {},
+    getPersistableMediaLibrary(migrated.mediaLibrary),
+    needsStoryImageMigration,
+  );
   if (Array.isArray(migrated.storiesMetadata)) {
     migrated.storiesMetadata = withCharacterSchemaVersion(migrated.storiesMetadata);
   }
@@ -173,6 +187,18 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
       'mediaLibrary' in persisted
         ? getPersistableMediaLibrary(persisted.mediaLibrary)
         : currentState.mediaLibrary,
+    imageAssetIdsByStory: migrateStoryImageAssetIds(
+      'imageAssetIdsByStory' in persisted
+        ? normalizeStoryImageAssetIds(persisted.imageAssetIdsByStory)
+        : currentState.imageAssetIdsByStory,
+      'sceneRecordsByStory' in persisted
+        ? migrateSceneRecordsByStory(persisted.sceneRecordsByStory)
+        : currentState.sceneRecordsByStory,
+      'mediaLibrary' in persisted
+        ? getPersistableMediaLibrary(persisted.mediaLibrary)
+        : currentState.mediaLibrary,
+      false,
+    ),
     characterLibraries:
       'characterLibraries' in persisted
         ? migrateCharacterLibraries(persisted.characterLibraries)

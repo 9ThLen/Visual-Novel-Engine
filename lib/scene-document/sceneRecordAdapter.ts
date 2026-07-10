@@ -7,9 +7,12 @@ import {
   createDialogueEntry,
   createDialogueStep,
   createEffectStep,
+  createGotoStep,
   createInteractiveObjectStep,
+  createLabelStep,
   createMusicStep,
   createSoundStep,
+  createStopEffectStep,
   createTextStep,
   createTransitionStep,
   createVariableStep,
@@ -21,11 +24,14 @@ import type {
   ChoiceBlockData,
   DialogueBlockData,
   EffectBlockData,
+  GotoBlockData,
   InteractiveObjectBlockData,
+  LabelBlockData,
   MusicBlockData,
   SceneConnection,
   SceneRecord,
   SoundBlockData,
+  StopEffectBlockData,
   TextBlockData,
   TimelineStep,
   TransitionBlockData,
@@ -153,6 +159,26 @@ function timelineStepToSceneNode(step: TimelineStep, characters: Character[]): S
     };
   }
 
+  if (step.blockType === 'label') {
+    const data = step.data as LabelBlockData;
+    return {
+      id: step.id,
+      type: 'label',
+      name: data.name,
+    };
+  }
+
+  if (step.blockType === 'goto') {
+    const data = step.data as GotoBlockData;
+    return {
+      id: step.id,
+      type: 'goto',
+      targetLabel: data.targetLabel,
+      condition: data.condition ?? null,
+      elseTargetLabel: data.elseTargetLabel ?? null,
+    };
+  }
+
   if (step.blockType === 'effect') {
     const data = step.data as EffectBlockData;
     return {
@@ -167,6 +193,16 @@ function timelineStepToSceneNode(step: TimelineStep, characters: Character[]): S
       rain: data.rain,
       snow: data.snow,
       fog: data.fog,
+    };
+  }
+
+  if (step.blockType === 'stop_effect') {
+    const data = step.data as StopEffectBlockData;
+    return {
+      id: step.id,
+      type: 'stop_effect',
+      effectType: data.effectType,
+      target: data.target,
     };
   }
 
@@ -308,6 +344,25 @@ function sceneNodeToTimelineStep(node: SceneNode, characters: Character[]): Time
       variableName: node.variableName,
       operation: node.operation,
       value: node.value,
+    })];
+  }
+
+  if (node.type === 'label') {
+    return [createLabelStep({ name: node.name })];
+  }
+
+  if (node.type === 'goto') {
+    return [createGotoStep({
+      targetLabel: node.targetLabel,
+      condition: node.condition ?? null,
+      elseTargetLabel: node.elseTargetLabel ?? null,
+    })];
+  }
+
+  if (node.type === 'stop_effect') {
+    return [createStopEffectStep({
+      effectType: node.effectType,
+      target: node.target ?? 'all',
     })];
   }
 

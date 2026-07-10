@@ -7,11 +7,14 @@ import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 interface ReaderControlsProps {
   autoPlayActive: boolean;
   canAdvance: boolean;
+  canGoBack: boolean;
   colors: ReturnType<typeof useColors>;
   hasChoices: boolean;
   isTyping: boolean;
   labels: {
     auto: string;
+    back: string;
+    goBack: string;
     log: string;
     openHistory: string;
     skip: string;
@@ -20,6 +23,7 @@ interface ReaderControlsProps {
     stopAuto: string;
     tapToContinue: string;
   };
+  onBack: () => void;
   onOpenHistory: () => void;
   onSetTurbo: (turbo: boolean) => void;
   onToggleAutoPlay: () => void;
@@ -66,10 +70,12 @@ const ControlButton = React.memo(function ControlButton({
 export const ReaderControls = React.memo(function ReaderControls({
   autoPlayActive,
   canAdvance,
+  canGoBack,
   colors,
   hasChoices,
   isTyping,
   labels,
+  onBack,
   onOpenHistory,
   onSetTurbo,
   onToggleAutoPlay,
@@ -100,6 +106,27 @@ export const ReaderControls = React.memo(function ReaderControls({
       </View>
 
       <View className="flex-row gap-2 items-center">
+        <Pressable
+          style={{
+            borderRadius: 6,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: 'transparent',
+            opacity: canGoBack ? 1 : 0.35,
+          }}
+          disabled={!canGoBack}
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel={labels.goBack}
+          accessibilityState={{ disabled: !canGoBack }}
+          accessibilityHint={t('reader.hints.rollback')}
+        >
+          <Text className="text-xs font-semibold" style={{ color: colors.muted }}>
+            {`< ${labels.back}`}
+          </Text>
+        </Pressable>
         {!isTyping && canAdvance && !hasChoices && (
           <Text style={[{ color: colors.muted }, { fontSize: 12 }]}>
             {labels.tapToContinue} v

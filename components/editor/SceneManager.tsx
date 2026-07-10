@@ -53,7 +53,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
 
   const storiesMetadata = useAppStore((state) => state.storiesMetadata);
   const saveSceneRecord = useAppStore((state) => state.saveSceneRecord);
-  const deleteSceneRecord = useAppStore((state) => state.deleteSceneRecord);
+  const deleteScene = useAppStore((state) => state.deleteScene);
   const setStartScene = useAppStore((state) => state.setStartScene);
   const updateSceneConnection = useAppStore((state) => state.updateSceneConnection);
   const storyRecords = useAppStore(selectSceneRecordMapForStory(storyId));
@@ -140,9 +140,9 @@ export function SceneManager({ storyId }: SceneManagerProps) {
 
   const confirmDeleteScene = useCallback(() => {
     if (!sceneToDelete) return;
-    deleteSceneRecord(storyId, sceneToDelete.id);
+    deleteScene(storyId, sceneToDelete.id);
     setSceneToDelete(null);
-  }, [deleteSceneRecord, sceneToDelete, storyId]);
+  }, [deleteScene, sceneToDelete, storyId]);
 
   // Scenes reachable only through the scene being deleted would end up in
   // «Поза сюжетом» — warn about the orphaned tail before confirming.

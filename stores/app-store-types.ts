@@ -8,6 +8,7 @@ import type { SnapshotMeta } from '@/lib/story-snapshots';
 import type { Character } from '@/lib/character-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { AudioLibraryItem } from '@/lib/audio-types';
+import type { StoryImageAssetIds } from '@/lib/story-image-library';
 
 export interface AppState {
   storiesMetadata: StoryMetadata[];
@@ -21,6 +22,7 @@ export interface AppState {
   characterLibraries: Record<string, Character[]>;
   language: Language;
   mediaLibrary: LibraryAsset[];
+  imageAssetIdsByStory: StoryImageAssetIds;
   isLoaded: boolean;
   migrationError: string | null;
 }
@@ -44,6 +46,8 @@ export interface AppActions {
   setCharacterLibrary: (storyId: string, characters: Character[]) => void;
   setAudioLibrary: (storyId: string, items: AudioLibraryItem[]) => void;
   setMediaLibrary: (assets: LibraryAsset[]) => void;
+  addImageAssetToStory: (storyId: string, assetId: string) => void;
+  removeImageAssetFromStory: (storyId: string, assetId: string) => void;
 
   hydrateReaderSceneWindow: (
     storyId: string,
@@ -64,7 +68,6 @@ export interface AppActions {
     targetSceneId: string,
     outputPort?: string
   ) => void;
-  deleteSceneRecord: (storyId: string, sceneId: string) => void;
   setStartScene: (storyId: string, sceneId: string) => void;
   reorderScenes: (storyId: string, sceneIds: string[]) => void;
   createStorySnapshot: (

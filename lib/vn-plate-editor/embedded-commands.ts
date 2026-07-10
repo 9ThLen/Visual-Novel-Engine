@@ -23,7 +23,10 @@ const EMBEDDED_COMMANDS: (EmbeddedCommand & { id: DocumentCommandId })[] = [
   { id: 'sound', blockType: 'sound', title: 'Sound', description: 'Play sound effect' },
   { id: 'transition', blockType: 'transition', title: 'Transition', description: 'Move to another scene' },
   { id: 'variable', blockType: 'variable', title: 'Variable', description: 'Set or modify a story variable' },
+  { id: 'label', blockType: 'label', title: 'Label', description: 'Mark a jump target inside the scene' },
+  { id: 'goto', blockType: 'goto', title: 'Go to', description: 'Jump to a label, optionally by condition' },
   { id: 'effect', blockType: 'effect', title: 'Effect', description: 'Add a visual effect' },
+  { id: 'stopEffect', blockType: 'stop_effect', title: 'Stop effect', description: 'Stop active visual effects' },
   { id: 'camera', blockType: 'camera', title: 'Camera', description: 'Control camera movement' },
   { id: 'interactive_object', blockType: 'interactive_object', title: 'Object', description: 'Add an interactive object' },
 ];
@@ -41,7 +44,10 @@ const COMMAND_TRANSLATION_KEYS: Record<DocumentCommandId, { title: string; descr
   sound: { title: 'document.command.sound', description: 'document.command.sound.description' },
   transition: { title: 'document.command.transition', description: 'document.command.transition.description' },
   variable: { title: 'document.command.variable', description: 'document.command.variable.description' },
+  label: { title: 'document.command.label', description: 'document.command.label.description' },
+  goto: { title: 'document.command.goto', description: 'document.command.goto.description' },
   effect: { title: 'document.command.effect', description: 'document.command.effect.description' },
+  stopEffect: { title: 'document.command.stopEffect', description: 'document.command.stopEffect.description' },
   camera: { title: 'document.command.camera', description: 'document.command.camera.description' },
   interactive_object: { title: 'document.command.interactive_object', description: 'document.command.interactive_object.description' },
 };

@@ -13,6 +13,8 @@ import { useAppStore } from '@/stores/use-app-store';
 interface ReaderMenuProps {
   visible: boolean;
   onClose: () => void;
+  /** Called after a load replaces playback state so route-local history can be discarded. */
+  onPlaybackReplaced?: () => void;
 }
 
 interface ReaderMenuItem {
@@ -22,7 +24,7 @@ interface ReaderMenuItem {
   disabled?: boolean;
 }
 
-export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
+export function ReaderMenu({ visible, onClose, onPlaybackReplaced }: ReaderMenuProps) {
   const router = useRouter();
   const colors = useColors();
   const { t } = useI18n();
@@ -78,6 +80,7 @@ export function ReaderMenu({ visible, onClose }: ReaderMenuProps) {
         showToast(t('common.error'), 'error');
         return;
       }
+      onPlaybackReplaced?.();
       showToast(t('save.loadSuccess'), 'success');
       onClose();
       void stopReaderPlayback();

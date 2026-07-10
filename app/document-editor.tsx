@@ -18,6 +18,7 @@ import {
 import { useI18n } from '@/hooks/use-i18n';
 import { getPlaybackAudioLibraryPure } from '@/lib/audio-library';
 import { addAssetToLibraryPure } from '@/lib/media-library-service';
+import { getStoryImageAssets } from '@/lib/story-image-library';
 import {
   selectCanonicalSceneRecord,
   selectSceneRecordsForStory,
@@ -59,9 +60,11 @@ export default function DocumentEditorRoute() {
   const characters = useAppStore((state) => (storyId ? state.characterLibraries[storyId] || [] : []));
   const audioLibraries = useAppStore((state) => state.audioLibraries);
   const mediaLibrary = useAppStore((state) => state.mediaLibrary);
+  const imageAssetIdsByStory = useAppStore((state) => state.imageAssetIdsByStory);
   const saveSceneRecord = useAppStore((state) => state.saveSceneRecord);
   const setCharacterLibrary = useAppStore((state) => state.setCharacterLibrary);
   const setMediaLibrary = useAppStore((state) => state.setMediaLibrary);
+  const addImageAssetToStory = useAppStore((state) => state.addImageAssetToStory);
   const reorderScenes = useAppStore((state) => state.reorderScenes);
   const updateStoryMetadata = useAppStore((state) => state.updateStoryMetadata);
   const branchSelections = useBranchSelections(useMemo(() => selectBranchSelections(storyId), [storyId]));
@@ -94,14 +97,13 @@ export default function DocumentEditorRoute() {
   const branchColorBySceneId = useMemo(() => computeBranchColorBySceneId(activePath), [activePath]);
   const branchBreadcrumbTrail = useMemo(() => buildBranchBreadcrumbTrail(activePath), [activePath]);
   const backgroundAssets = useMemo<VNPlateBackgroundAsset[]>(
-    () => mediaLibrary
-      .filter((asset) => asset.type === 'image')
+    () => getStoryImageAssets(storyId ?? '', imageAssetIdsByStory, mediaLibrary)
       .map((asset) => ({
         id: asset.id,
         name: asset.name,
         uri: asset.uri,
       })),
-    [mediaLibrary],
+    [imageAssetIdsByStory, mediaLibrary, storyId],
   );
   const audioAssets = useMemo<VNPlateAudioAsset[]>(
     () => storyId
@@ -191,6 +193,7 @@ export default function DocumentEditorRoute() {
     if (!dataUri.startsWith('data:image/')) return null;
     const result = await addAssetToLibraryPure(dataUri, name || 'background.png', 'image', mediaLibrary);
     setMediaLibrary(result.assets);
+    addImageAssetToStory(storyId, result.asset.id);
     return {
       id: result.asset.id,
       name: result.asset.name,

@@ -8,6 +8,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     var commands = ${jsonForScript(commands)};
     var editor = document.getElementById('editor');
     var title = document.getElementById('title');
+    var lastHistoryTarget = editor;
     var menu = document.getElementById('slashMenu');
     var saveTimer = 0;
     var resizeTimer = 0;
@@ -21,6 +22,12 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     var activeChoiceBlock = null;
     var choicePopover = null;
     var choiceDraft = null;
+    var activeLabelBlock = null;
+    var labelPopover = null;
+    var labelDraft = null;
+    var activeGotoBlock = null;
+    var gotoPopover = null;
+    var gotoDraft = null;
     var branchInfo = [];
     // Must stay in sync with BRANCH_COLOR_PALETTE in lib/document-editor/branch-colors.ts
     var branchPalette = ['#d97706', '#2563eb', '#7c3aed', '#0d9488', '#db2777', '#65a30d'];
@@ -60,6 +67,15 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     function scheduleSave() {
       window.clearTimeout(saveTimer);
       saveTimer = window.setTimeout(saveNow, 260);
+    }
+
+    function postHistoryState() {
+      var canQueryHistory = typeof document.queryCommandEnabled === 'function';
+      post({
+        type: 'historyState',
+        canUndo: canQueryHistory && document.queryCommandEnabled('undo'),
+        canRedo: canQueryHistory && document.queryCommandEnabled('redo')
+      });
     }
 
     function elementBottom(node) {
@@ -728,6 +744,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeTransitionPopover();
       closeAudioPopover();
       closeChoicePopover();
+      closeLabelPopover();
+      closeGotoPopover();
       if (activeEffectChip === chip && effectPopover) {
         closeEffectPopover();
         return;
@@ -1027,6 +1045,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeTransitionPopover();
       closeEffectPopover();
       closeChoicePopover();
+      closeLabelPopover();
+      closeGotoPopover();
       if (activeAudioChip === chip && audioPopover) {
         closeAudioPopover();
         return;
@@ -1290,6 +1310,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeAudioPopover();
       closeTransitionPopover();
       closeChoicePopover();
+      closeLabelPopover();
+      closeGotoPopover();
       closeCharacterPopover();
       activeCharacterToken = token;
       var popover = document.createElement('div');
@@ -1471,6 +1493,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeEffectPopover();
       closeAudioPopover();
       closeChoicePopover();
+      closeLabelPopover();
+      closeGotoPopover();
       closeBackgroundPopover();
       activeBackgroundBlock = block;
       activeBackgroundBlock.classList.add('is-editing', 'is-selected');
@@ -1480,13 +1504,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       popover.className = 'background-popover';
       popover.innerHTML =
         '<label class="popover-label" for="bgAssetInput">Назва фону</label>' +
-        '<input id="bgAssetInput" class="popover-control" value="" list="backgroundAssets" />' +
-        '<datalist id="backgroundAssets">' +
-          '<option value="forest_night"></option>' +
-          '<option value="city_evening"></option>' +
-          '<option value="school_day"></option>' +
-          '<option value="room_night"></option>' +
-        '</datalist>' +
+        '<input id="bgAssetInput" class="popover-control" value="" />' +
         '<div class="background-preview"></div>' +
         '<div class="preview-actions"><button type="button" class="popover-button" data-action="choose-background">Обрати</button></div>' +
         '<div class="asset-picker hidden"></div>' +
@@ -1749,6 +1767,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeAudioPopover();
       closeCharacterPopover();
       closeChoicePopover();
+      closeLabelPopover();
+      closeGotoPopover();
       closeTransitionPopover();
       activeTransitionBlock = block;
       activeTransitionBlock.classList.add('is-editing', 'is-selected');
@@ -1800,6 +1820,290 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         targetSceneId: mode === 'scene' ? (transitionPopover.dataset.selectedSceneId || null) : null,
         transitionType: selectedValue(typeSelect, 'fade'),
         duration: parseSecondsInput(durationInput && durationInput.value, transitionDraft ? transitionDraft.duration : 0.5)
+      };
+    }
+
+    // ── Label / Goto blocks ─────────────────────────────────────────────
+    var GOTO_OPERATORS = ['==', '!=', '>', '<', '>=', '<=', 'contains', 'isEmpty', 'has', 'not_has'];
+
+    function labelDataFromNode(node) {
+      return { name: (node.dataset.labelName || '').trim() };
+    }
+
+    function sceneLabelNames() {
+      var names = [];
+      Array.prototype.slice.call(editor.querySelectorAll('.label-block')).forEach(function(block) {
+        var name = (block.dataset.labelName || '').trim();
+        if (name && names.indexOf(name) === -1) names.push(name);
+      });
+      return names;
+    }
+
+    function renderLabelBlockContent(node) {
+      var data = labelDataFromNode(node);
+      node.innerHTML =
+        '<div class="background-copy">' +
+          '<div class="background-command-line">' +
+            '<span class="void-title">/label</span>' +
+            '<span class="background-asset"></span>' +
+          '</div>' +
+          '<div class="void-summary">Точка переходу всередині сцени</div>' +
+        '</div>' +
+        '<div class="block-actions">' +
+          '<button type="button" class="block-button" data-action="edit-label">Edit</button>' +
+        '</div>';
+      node.querySelector('.background-asset').textContent = data.name || 'Без назви';
+    }
+
+    function applyLabelData(node, data) {
+      node.dataset.labelName = (data.name || '').trim();
+      renderLabelBlockContent(node);
+      renderAllGotoBlocks();
+    }
+
+    function gotoDataFromNode(node) {
+      var condition = null;
+      try { condition = node.dataset.condition ? JSON.parse(node.dataset.condition) : null; } catch (e) { condition = null; }
+      if (!condition || !condition.variableName) condition = null;
+      return {
+        targetLabel: (node.dataset.targetLabel || '').trim(),
+        elseTargetLabel: (node.dataset.elseTargetLabel || '').trim() || null,
+        condition: condition
+      };
+    }
+
+    function gotoSummary(data) {
+      var known = sceneLabelNames();
+      var summary = data.condition
+        ? 'якщо ' + data.condition.variableName + ' ' + data.condition.operator + ' ' + String(data.condition.value)
+        : 'завжди';
+      if (data.elseTargetLabel) summary += ' · інакше → ' + data.elseTargetLabel;
+      var dangling = [data.targetLabel, data.elseTargetLabel].some(function(target) {
+        return target && known.indexOf(target) === -1;
+      });
+      if (dangling) summary += ' · ⚠ мітку не знайдено';
+      return summary;
+    }
+
+    function renderGotoBlockContent(node) {
+      var data = gotoDataFromNode(node);
+      node.innerHTML =
+        '<div class="background-copy">' +
+          '<div class="background-command-line">' +
+            '<span class="void-title">/goto</span>' +
+            '<span class="background-asset"></span>' +
+          '</div>' +
+          '<div class="void-summary"></div>' +
+        '</div>' +
+        '<div class="block-actions">' +
+          '<button type="button" class="block-button" data-action="edit-goto">Edit</button>' +
+        '</div>';
+      node.querySelector('.background-asset').textContent = data.targetLabel ? '→ ' + data.targetLabel : 'Мітку не вибрано';
+      node.querySelector('.void-summary').textContent = gotoSummary(data);
+    }
+
+    function renderAllGotoBlocks() {
+      Array.prototype.slice.call(editor.querySelectorAll('.goto-block')).forEach(function(block) {
+        renderGotoBlockContent(block);
+      });
+    }
+
+    function applyGotoData(node, data) {
+      node.dataset.targetLabel = (data.targetLabel || '').trim();
+      node.dataset.elseTargetLabel = (data.elseTargetLabel || '').trim ? (data.elseTargetLabel || '').trim() : (data.elseTargetLabel || '');
+      if (data.condition && data.condition.variableName) {
+        node.dataset.condition = JSON.stringify(data.condition);
+      } else {
+        delete node.dataset.condition;
+      }
+      renderGotoBlockContent(node);
+    }
+
+    function positionBranchPopover(popover, anchor) {
+      if (!popover || !anchor) return;
+      var rect = anchor.getBoundingClientRect();
+      var scrollX = window.scrollX || window.pageXOffset || 0;
+      var scrollY = window.scrollY || window.pageYOffset || 0;
+      var margin = 16;
+      var gap = 8;
+      var width = Math.min(440, window.innerWidth - margin * 2);
+      var maxHeight = Math.min(520, Math.max(220, window.innerHeight - margin * 2));
+      popover.style.width = width + 'px';
+      popover.style.maxHeight = maxHeight + 'px';
+      var popoverHeight = Math.min(popover.offsetHeight || maxHeight, maxHeight);
+      var left = scrollX + Math.max(margin, Math.min(window.innerWidth - width - margin, rect.right - width));
+      var belowTop = rect.bottom + gap;
+      var aboveTop = rect.top - popoverHeight - gap;
+      var top = belowTop + popoverHeight + margin <= window.innerHeight
+        ? belowTop
+        : Math.max(margin, aboveTop);
+      popover.style.left = left + 'px';
+      popover.style.top = (scrollY + top) + 'px';
+      scheduleResize();
+    }
+
+    function closeLabelPopover() {
+      if (labelPopover) labelPopover.remove();
+      labelPopover = null;
+      labelDraft = null;
+      if (activeLabelBlock) activeLabelBlock.classList.remove('is-editing', 'is-selected');
+      activeLabelBlock = null;
+      scheduleResize();
+    }
+
+    function openLabelPopover(block, anchor) {
+      if (!block) return;
+      closeSlashMenu();
+      if (activeLabelBlock === block && labelPopover) {
+        closeLabelPopover();
+        return;
+      }
+      closeBackgroundPopover();
+      closeEffectPopover();
+      closeAudioPopover();
+      closeCharacterPopover();
+      closeChoicePopover();
+      closeTransitionPopover();
+      closeGotoPopover();
+      closeLabelPopover();
+      activeLabelBlock = block;
+      activeLabelBlock.classList.add('is-editing', 'is-selected');
+      labelDraft = labelDataFromNode(block);
+
+      var popover = document.createElement('div');
+      popover.className = 'background-popover label-popover';
+      popover.innerHTML =
+        '<label class="popover-label" for="lbName">Назва мітки</label>' +
+        '<input id="lbName" class="popover-control" value="" placeholder="напр. after_fight" />' +
+        '<p class="popover-help">Блок /goto зможе стрибнути сюди в межах цієї сцени.</p>' +
+        '<div class="popover-footer">' +
+          '<button type="button" class="popover-button" data-action="reset-label">Скинути</button>' +
+          '<button type="button" class="popover-button primary" data-action="save-label">Зберегти</button>' +
+        '</div>';
+
+      document.body.appendChild(popover);
+      labelPopover = popover;
+      popover.querySelector('#lbName').value = labelDraft.name;
+      afterLayout(function() {
+        positionBranchPopover(labelPopover, anchor || block);
+        var input = labelPopover && labelPopover.querySelector('#lbName');
+        if (input) input.focus();
+      });
+    }
+
+    function collectLabelForm() {
+      if (!labelPopover) return labelDraft || { name: '' };
+      var input = labelPopover.querySelector('#lbName');
+      return { name: (input && input.value || '').trim() };
+    }
+
+    function closeGotoPopover() {
+      if (gotoPopover) gotoPopover.remove();
+      gotoPopover = null;
+      gotoDraft = null;
+      if (activeGotoBlock) activeGotoBlock.classList.remove('is-editing', 'is-selected');
+      activeGotoBlock = null;
+      scheduleResize();
+    }
+
+    function gotoLabelOptions(selected, allowEmptyLabel) {
+      var names = sceneLabelNames();
+      if (selected && names.indexOf(selected) === -1) names.push(selected);
+      var html = option('', allowEmptyLabel, escapeHtml(selected || ''));
+      names.forEach(function(name) {
+        html += option(escapeHtml(name), escapeHtml(name), escapeHtml(selected || ''));
+      });
+      return html;
+    }
+
+    function updateGotoConditionSection() {
+      if (!gotoPopover) return;
+      var mode = selectedValue(gotoPopover.querySelector('#gtCondMode'), 'always');
+      var section = gotoPopover.querySelector('.goto-condition-section');
+      if (section) section.classList.toggle('hidden', mode !== 'if');
+      scheduleResize();
+    }
+
+    function openGotoPopover(block, anchor) {
+      if (!block) return;
+      closeSlashMenu();
+      if (activeGotoBlock === block && gotoPopover) {
+        closeGotoPopover();
+        return;
+      }
+      closeBackgroundPopover();
+      closeEffectPopover();
+      closeAudioPopover();
+      closeCharacterPopover();
+      closeChoicePopover();
+      closeTransitionPopover();
+      closeLabelPopover();
+      closeGotoPopover();
+      activeGotoBlock = block;
+      activeGotoBlock.classList.add('is-editing', 'is-selected');
+      gotoDraft = gotoDataFromNode(block);
+
+      var condition = gotoDraft.condition;
+      var operatorOptions = GOTO_OPERATORS.map(function(op) {
+        return option(op, op, condition ? condition.operator : '==');
+      }).join('');
+
+      var popover = document.createElement('div');
+      popover.className = 'background-popover goto-popover';
+      popover.innerHTML =
+        '<label class="popover-label" for="gtTarget">Стрибнути до мітки</label>' +
+        '<select id="gtTarget" class="popover-control">' + gotoLabelOptions(gotoDraft.targetLabel, 'Мітку не вибрано') + '</select>' +
+        '<label class="popover-label" for="gtCondMode">Умова</label>' +
+        '<select id="gtCondMode" class="popover-control">' +
+          option('always', 'Завжди (без умови)', condition ? 'if' : 'always') +
+          option('if', 'Якщо змінна…', condition ? 'if' : 'always') +
+        '</select>' +
+        '<div class="goto-condition-section' + (condition ? '' : ' hidden') + '">' +
+          '<div class="popover-grid">' +
+            '<label class="popover-label" for="gtVar">Змінна</label>' +
+            '<input id="gtVar" class="popover-control" value="" placeholder="напр. score" />' +
+            '<label class="popover-label" for="gtOp">Оператор</label>' +
+            '<select id="gtOp" class="popover-control">' + operatorOptions + '</select>' +
+            '<label class="popover-label" for="gtValue">Значення</label>' +
+            '<input id="gtValue" class="popover-control" value="" placeholder="напр. 3" />' +
+            '<label class="popover-label" for="gtElse">Інакше → мітка</label>' +
+            '<select id="gtElse" class="popover-control">' + gotoLabelOptions(gotoDraft.elseTargetLabel || '', 'Продовжити далі') + '</select>' +
+          '</div>' +
+        '</div>' +
+        '<p class="popover-help">Мітки додаються блоком /label у цій сцені.</p>' +
+        '<div class="popover-footer">' +
+          '<button type="button" class="popover-button" data-action="reset-goto">Скинути</button>' +
+          '<button type="button" class="popover-button primary" data-action="save-goto">Зберегти</button>' +
+        '</div>';
+
+      document.body.appendChild(popover);
+      gotoPopover = popover;
+      if (condition) {
+        popover.querySelector('#gtVar').value = condition.variableName;
+        popover.querySelector('#gtValue').value = String(condition.value);
+      }
+      afterLayout(function() { positionBranchPopover(gotoPopover, anchor || block); });
+    }
+
+    function collectGotoForm() {
+      if (!gotoPopover) return gotoDraft || { targetLabel: '', condition: null, elseTargetLabel: null };
+      var target = selectedValue(gotoPopover.querySelector('#gtTarget'), '');
+      var mode = selectedValue(gotoPopover.querySelector('#gtCondMode'), 'always');
+      if (mode !== 'if') {
+        return { targetLabel: target, condition: null, elseTargetLabel: null };
+      }
+      var variableInput = gotoPopover.querySelector('#gtVar');
+      var valueInput = gotoPopover.querySelector('#gtValue');
+      var variableName = (variableInput && variableInput.value || '').trim();
+      var rawValue = (valueInput && valueInput.value || '').trim();
+      var numeric = rawValue !== '' && !isNaN(Number(rawValue));
+      var value = rawValue === 'true' ? true : rawValue === 'false' ? false : numeric ? Number(rawValue) : rawValue;
+      return {
+        targetLabel: target,
+        condition: variableName
+          ? { variableName: variableName, operator: selectedValue(gotoPopover.querySelector('#gtOp'), '=='), value: value }
+          : null,
+        elseTargetLabel: selectedValue(gotoPopover.querySelector('#gtElse'), '') || null
       };
     }
 
@@ -1857,6 +2161,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
 
       var data = choiceDataFromNode(node);
       var info = findBranchInfoForBlock(node);
+      var activeBranchLabel = payload.language === 'uk' ? 'активна гілка' : 'active branch';
       var infoByOptionId = {};
       if (info && Array.isArray(info.options)) {
         info.options.forEach(function(o) { infoByOptionId[o.optionId] = o; });
@@ -1869,7 +2174,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         var classes = 'choice-option-card' + (isActive ? ' is-active' : '') + (meta.isBroken ? ' is-broken' : '');
         var cardStyle = ' style="--branch-color: ' + color + '; --branch-shadow: ' + branchShadow(color, 0.22) + '; --branch-shadow-strong: ' + branchShadow(color, 0.32) + ';"';
         var badges = '';
-        if (isActive) badges += '<span class="choice-branch-badge choice-branch-badge-active" aria-label="активна гілка"><span class="choice-branch-check" aria-hidden="true">&#10003;</span><span class="choice-branch-badge-label">активна гілка</span></span>';
+        if (isActive) badges += '<span class="choice-branch-badge choice-branch-badge-active" aria-label="' + activeBranchLabel + '"><span class="choice-branch-check" aria-hidden="true">&#10003;</span><span class="choice-branch-badge-label">' + activeBranchLabel + '</span></span>';
         if (meta.isBroken) badges += '<span class="choice-branch-badge choice-branch-badge-broken">ціль не знайдена</span>';
         else if (meta.isEmpty) badges += '<span class="choice-branch-badge choice-branch-badge-empty">гілка порожня</span>';
         var startButton = '';
@@ -2024,6 +2329,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeAudioPopover();
       closeCharacterPopover();
       closeTransitionPopover();
+      closeLabelPopover();
+      closeGotoPopover();
       closeChoicePopover();
       activeChoiceBlock = block;
       activeChoiceBlock.classList.add('is-editing', 'is-selected');
@@ -2116,6 +2423,59 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
             label: 'Background',
             summary: backgroundSummary(backgroundData),
             step: step
+          };
+        }
+        if (commandId === 'label') {
+          var labelData = labelDataFromNode(node);
+          var originalLabelStep = originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step
+            ? originalTechnical.step
+            : null;
+          var labelStep = originalLabelStep
+            ? Object.assign({}, originalLabelStep, { blockType: 'label', data: { name: labelData.name } })
+            : {
+                id: node.dataset.id || uid('step'),
+                blockType: 'label',
+                data: { name: labelData.name },
+                collapsed: false,
+                enabled: true
+              };
+          return {
+            id: node.dataset.id || uid('doc_block'),
+            kind: 'technical',
+            commandId: 'label',
+            blockType: 'label',
+            label: 'Мітка',
+            summary: labelData.name || 'без назви',
+            step: labelStep
+          };
+        }
+        if (commandId === 'goto') {
+          var gotoData = gotoDataFromNode(node);
+          var originalGotoStep = originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step
+            ? originalTechnical.step
+            : null;
+          var gotoStepData = {
+            targetLabel: gotoData.targetLabel,
+            condition: gotoData.condition,
+            elseTargetLabel: gotoData.elseTargetLabel
+          };
+          var gotoStep = originalGotoStep
+            ? Object.assign({}, originalGotoStep, { blockType: 'goto', data: gotoStepData })
+            : {
+                id: node.dataset.id || uid('step'),
+                blockType: 'goto',
+                data: gotoStepData,
+                collapsed: false,
+                enabled: true
+              };
+          return {
+            id: node.dataset.id || uid('doc_block'),
+            kind: 'technical',
+            commandId: 'goto',
+            blockType: 'goto',
+            label: 'Перейти',
+            summary: gotoSummary(gotoData),
+            step: gotoStep
           };
         }
         if (originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step) {
@@ -2304,10 +2664,14 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (activeBackgroundBlock === block) closeBackgroundPopover();
       if (activeTransitionBlock === block) closeTransitionPopover();
       if (activeChoiceBlock === block) closeChoicePopover();
+      if (activeLabelBlock === block) closeLabelPopover();
+      if (activeGotoBlock === block) closeGotoPopover();
 
+      var wasLabelBlock = block.classList.contains('label-block');
       var next = block.nextElementSibling;
       var previous = block.previousElementSibling;
       block.remove();
+      if (wasLabelBlock) renderAllGotoBlocks();
 
       var target = isEditableLineElement(next) ? next : isEditableLineElement(previous) ? previous : ensureEditableParagraph();
       moveCaretToEnd(target);
@@ -2850,6 +3214,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var block = document.createElement('div');
       block.className = commandId === 'background' ? 'void-block background-block'
         : commandId === 'transition' ? 'void-block transition-block'
+        : commandId === 'label' ? 'void-block label-block'
+        : commandId === 'goto' ? 'void-block goto-block'
         : 'void-block';
       block.contentEditable = 'false';
       block.dataset.kind = 'technical';
@@ -2871,6 +3237,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           transitionType: 'fade',
           duration: 0.5
         });
+      } else if (commandId === 'label') {
+        applyLabelData(block, { name: '' });
+      } else if (commandId === 'goto') {
+        applyGotoData(block, { targetLabel: '', condition: null, elseTargetLabel: null });
       } else {
         block.innerHTML = '<div class="void-title">/' + commandId + '</div><div class="void-summary">New block</div>';
       }
@@ -2976,9 +3346,17 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       selectVoidBlock(block);
       if (!button) return;
       var action = button.dataset.action;
-      if (action === 'edit-background' || action === 'pick-background') {
+      if (action === 'edit-background') {
         event.preventDefault();
         openBackgroundPopover(block, button);
+        return;
+      }
+      if (action === 'pick-background') {
+        event.preventDefault();
+        openBackgroundPopover(block, button);
+        var backgroundFileInput = backgroundPopover && backgroundPopover.querySelector('.asset-file-input');
+        if (backgroundFileInput) backgroundFileInput.click();
+        return;
       }
       if (action === 'edit-transition') {
         event.preventDefault();
@@ -2987,6 +3365,14 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (action === 'edit-choice') {
         event.preventDefault();
         openChoicePopover(block, button);
+      }
+      if (action === 'edit-label') {
+        event.preventDefault();
+        openLabelPopover(block, button);
+      }
+      if (action === 'edit-goto') {
+        event.preventDefault();
+        openGotoPopover(block, button);
       }
     });
 
@@ -3205,6 +3591,54 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           closeTransitionPopover();
         }
       }
+      if (labelPopover) {
+        var labelTarget = event.target;
+        if (labelTarget && labelTarget.closest && labelTarget.closest('.label-popover')) {
+          var labelActionButton = labelTarget.closest('[data-action]');
+          if (!labelActionButton) return;
+          var labelAction = labelActionButton.dataset.action;
+          if (labelAction === 'reset-label' && activeLabelBlock && labelDraft) {
+            applyLabelData(activeLabelBlock, labelDraft);
+            saveNow();
+            closeLabelPopover();
+            return;
+          }
+          if (labelAction === 'save-label' && activeLabelBlock) {
+            applyLabelData(activeLabelBlock, collectLabelForm());
+            saveNow();
+            closeLabelPopover();
+            return;
+          }
+          return;
+        }
+        if (!(labelTarget && labelTarget.closest && labelTarget.closest('.label-block'))) {
+          closeLabelPopover();
+        }
+      }
+      if (gotoPopover) {
+        var gotoTarget = event.target;
+        if (gotoTarget && gotoTarget.closest && gotoTarget.closest('.goto-popover')) {
+          var gotoActionButton = gotoTarget.closest('[data-action]');
+          if (!gotoActionButton) return;
+          var gotoAction = gotoActionButton.dataset.action;
+          if (gotoAction === 'reset-goto' && activeGotoBlock && gotoDraft) {
+            applyGotoData(activeGotoBlock, gotoDraft);
+            saveNow();
+            closeGotoPopover();
+            return;
+          }
+          if (gotoAction === 'save-goto' && activeGotoBlock) {
+            applyGotoData(activeGotoBlock, collectGotoForm());
+            saveNow();
+            closeGotoPopover();
+            return;
+          }
+          return;
+        }
+        if (!(gotoTarget && gotoTarget.closest && gotoTarget.closest('.goto-block'))) {
+          closeGotoPopover();
+        }
+      }
       if (choicePopover) {
         var choiceTarget = event.target;
         if (choiceTarget && choiceTarget.closest && choiceTarget.closest('.choice-popover')) {
@@ -3311,6 +3745,13 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     });
 
     document.addEventListener('change', function(event) {
+      if (gotoPopover && gotoPopover.contains(event.target)) {
+        var condModeSelect = gotoPopover.querySelector('#gtCondMode');
+        if (event.target === condModeSelect) {
+          updateGotoConditionSection();
+        }
+        return;
+      }
       if (transitionPopover && transitionPopover.contains(event.target)) {
         var modeSelect = transitionPopover.querySelector('#trMode');
         if (event.target === modeSelect) {
@@ -3485,6 +3926,14 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         event.preventDefault();
         closeChoicePopover();
       }
+      if (event.key === 'Escape' && labelPopover) {
+        event.preventDefault();
+        closeLabelPopover();
+      }
+      if (event.key === 'Escape' && gotoPopover) {
+        event.preventDefault();
+        closeGotoPopover();
+      }
       if (event.key === 'Escape' && characterPopover) {
         event.preventDefault();
         closeCharacterPopover();
@@ -3510,6 +3959,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     window.addEventListener('resize', function() {
       if (activeBackgroundBlock) positionBackgroundPopover(activeBackgroundBlock);
       if (activeTransitionBlock) positionTransitionPopover();
+      if (activeLabelBlock) positionBranchPopover(labelPopover, activeLabelBlock);
+      if (activeGotoBlock) positionBranchPopover(gotoPopover, activeGotoBlock);
       if (activeCharacterToken) positionCharacterPopover(activeCharacterToken);
       if (activeEffectChip) positionEffectPopover(activeEffectChip);
       if (activeAudioChip) positionAudioPopover(activeAudioChip);
@@ -3523,6 +3974,14 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (message.type === 'flush' && message.requestId) {
         var snapshot = buildSnapshot();
         post(Object.assign({ type: 'flushed', requestId: message.requestId }, snapshot));
+      }
+      if (message.type === 'undo' || message.type === 'redo') {
+        lastHistoryTarget.focus();
+        if (typeof document.execCommand === 'function') document.execCommand(message.type);
+        ensureParagraph();
+        scheduleResize();
+        saveNow();
+        window.setTimeout(postHistoryState, 0);
       }
       if (message.type === 'charactersUpdated' && Array.isArray(message.characters)) {
         characters = message.characters.map(migrateCharacter);
@@ -3617,6 +4076,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       else closeSlashMenu();
       scheduleResize();
       scheduleSave();
+      window.setTimeout(postHistoryState, 0);
     });
 
     editor.addEventListener('keydown', function(event) {
@@ -3643,7 +4103,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     title.addEventListener('input', function() {
       scheduleResize();
       scheduleSave();
+      window.setTimeout(postHistoryState, 0);
     });
+    editor.addEventListener('focus', function() { lastHistoryTarget = editor; });
+    title.addEventListener('focus', function() { lastHistoryTarget = title; });
     document.addEventListener('selectionchange', function() {
       if (document.activeElement !== editor) return;
       var slash = currentSlashQuery();
@@ -3668,5 +4131,6 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     }
     postResize();
     post({ type: 'ready' });
+    postHistoryState();
   `;
 }

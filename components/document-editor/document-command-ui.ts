@@ -9,7 +9,10 @@ export const documentCommandIcons: Record<DocumentCommand['id'], IconSymbolName>
   sound: 'sound',
   transition: 'chevron.right',
   variable: 'settings',
+  label: 'location',
+  goto: 'timeline',
   effect: 'lightning',
+  stopEffect: 'lightning',
   camera: 'preview',
   interactive_object: 'blocks',
 };

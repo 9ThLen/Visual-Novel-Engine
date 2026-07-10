@@ -506,31 +506,31 @@
     "en": "Reset statistics", "uk": "Скинути статистику", "pl": "Zresetuj statystyki"
   },
   "storySnapshots.title": {
-    "en": "Version snapshots", "uk": "Знімки версій", "pl": "Migawki wersji"
+    "en": "Version snapshots", "uk": "Збережені версії новели", "pl": "Migawki wersji"
   },
   "storySnapshots.summary": {
     "en": "{count} of {max} saved", "uk": "{count} з {max} збережено", "pl": "{count} z {max} zapisanych"
   },
   "storySnapshots.namePlaceholder": {
-    "en": "Snapshot name…", "uk": "Назва знімка…", "pl": "Nazwa migawki…"
+    "en": "Snapshot name…", "uk": "Назва версії…", "pl": "Nazwa migawki…"
   },
   "storySnapshots.create": {
-    "en": "Create snapshot", "uk": "Створити знімок", "pl": "Utwórz migawkę"
+    "en": "Create snapshot", "uk": "Зберегти поточну версію", "pl": "Utwórz migawkę"
   },
   "storySnapshots.defaultName": {
-    "en": "Snapshot", "uk": "Знімок", "pl": "Migawka"
+    "en": "Snapshot", "uk": "Збережена версія", "pl": "Migawka"
   },
   "storySnapshots.created": {
-    "en": "Snapshot created", "uk": "Знімок створено", "pl": "Utworzono migawkę"
+    "en": "Snapshot created", "uk": "Поточну версію збережено", "pl": "Utworzono migawkę"
   },
   "storySnapshots.createFailed": {
-    "en": "Could not create snapshot", "uk": "Не вдалося створити знімок", "pl": "Nie udało się utworzyć migawki"
+    "en": "Could not create snapshot", "uk": "Не вдалося зберегти поточну версію", "pl": "Nie udało się utworzyć migawki"
   },
   "storySnapshots.capHint": {
-    "en": "Keeping the {max} most recent — older automatic snapshots are replaced first.", "uk": "Зберігаються {max} найновіших — старіші автоматичні знімки замінюються першими.", "pl": "Zachowujemy {max} najnowszych — starsze automatyczne migawki są usuwane najpierw."
+    "en": "Keeping the {max} most recent — older automatic snapshots are replaced first.", "uk": "Зберігаються {max} найновіших версій — старіші автоматичні версії замінюються першими.", "pl": "Zachowujemy {max} najnowszych — starsze automatyczne migawki są usuwane najpierw."
   },
   "storySnapshots.empty": {
-    "en": "No snapshots yet. Create one before a big edit.", "uk": "Знімків ще немає. Створіть один перед великим редагуванням.", "pl": "Brak migawek. Utwórz jedną przed dużą edycją."
+    "en": "No snapshots yet. Create one before a big edit.", "uk": "Збережених версій ще немає. Збережіть поточну версію перед великим редагуванням.", "pl": "Brak migawek. Utwórz jedną przed dużą edycją."
   },
   "storySnapshots.autoBadge": {
     "en": "Auto", "uk": "Авто", "pl": "Auto"
@@ -542,34 +542,34 @@
     "en": "Restore", "uk": "Відновити", "pl": "Przywróć"
   },
   "storySnapshots.restoreLabel": {
-    "en": "Restore snapshot {name}", "uk": "Відновити знімок {name}", "pl": "Przywróć migawkę {name}"
+    "en": "Restore snapshot {name}", "uk": "Відновити версію {name}", "pl": "Przywróć migawkę {name}"
   },
   "storySnapshots.restoreTitle": {
-    "en": "Restore snapshot", "uk": "Відновити знімок", "pl": "Przywróć migawkę"
+    "en": "Restore snapshot", "uk": "Відновити версію", "pl": "Przywróć migawkę"
   },
   "storySnapshots.restoreMessage": {
-    "en": "Replace all current scenes with the snapshot “{name}”? An automatic snapshot of the current version is saved first, so you can undo this.", "uk": "Замінити всі поточні сцени знімком «{name}»? Спершу зберігається автоматичний знімок поточної версії, тож цю дію можна скасувати.", "pl": "Zastąpić wszystkie bieżące sceny migawką „{name}”? Najpierw zapisujemy automatyczną migawkę bieżącej wersji, więc można to cofnąć."
+    "en": "Replace all current scenes with the snapshot “{name}”? An automatic snapshot of the current version is saved first, so you can undo this.", "uk": "Замінити всі поточні сцени версією «{name}»? Спершу автоматично зберігається поточна версія, тож цю дію можна скасувати.", "pl": "Zastąpić wszystkie bieżące sceny migawką „{name}”? Najpierw zapisujemy automatyczną migawkę bieżącej wersji, więc można to cofnąć."
   },
   "storySnapshots.restored": {
-    "en": "Snapshot restored", "uk": "Знімок відновлено", "pl": "Przywrócono migawkę"
+    "en": "Snapshot restored", "uk": "Версію відновлено", "pl": "Przywrócono migawkę"
   },
   "storySnapshots.restoreFailed": {
-    "en": "Could not restore snapshot", "uk": "Не вдалося відновити знімок", "pl": "Nie udało się przywrócić migawki"
+    "en": "Could not restore snapshot", "uk": "Не вдалося відновити версію", "pl": "Nie udało się przywrócić migawki"
   },
   "storySnapshots.deleteLabel": {
-    "en": "Delete snapshot {name}", "uk": "Видалити знімок {name}", "pl": "Usuń migawkę {name}"
+    "en": "Delete snapshot {name}", "uk": "Видалити версію {name}", "pl": "Usuń migawkę {name}"
   },
   "storySnapshots.deleteTitle": {
-    "en": "Delete snapshot", "uk": "Видалити знімок", "pl": "Usuń migawkę"
+    "en": "Delete snapshot", "uk": "Видалити версію", "pl": "Usuń migawkę"
   },
   "storySnapshots.deleteMessage": {
-    "en": "Delete the snapshot “{name}”? This cannot be undone.", "uk": "Видалити знімок «{name}»? Цю дію не можна скасувати.", "pl": "Usunąć migawkę „{name}”? Tej operacji nie można cofnąć."
+    "en": "Delete the snapshot “{name}”? This cannot be undone.", "uk": "Видалити версію «{name}»? Цю дію не можна скасувати.", "pl": "Usunąć migawkę „{name}”? Tej operacji nie można cofnąć."
   },
   "storySnapshots.deleted": {
-    "en": "Snapshot deleted", "uk": "Знімок видалено", "pl": "Usunięto migawkę"
+    "en": "Snapshot deleted", "uk": "Версію видалено", "pl": "Usunięto migawkę"
   },
   "storySnapshots.deleteFailed": {
-    "en": "Could not delete snapshot", "uk": "Не вдалося видалити знімок", "pl": "Nie udało się usunąć migawki"
+    "en": "Could not delete snapshot", "uk": "Не вдалося видалити версію", "pl": "Nie udało się usunąć migawki"
   },
   "storySnapshots.beforeRestore": {
     "en": "Before restore", "uk": "Перед відновленням", "pl": "Przed przywróceniem"

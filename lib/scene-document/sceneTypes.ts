@@ -21,8 +21,11 @@ export type SceneNode =
   | TransitionNode
   | VariableNode
   | EffectNode
+  | StopEffectNode
   | CameraNode
   | InteractiveObjectNode
+  | LabelNode
+  | GotoNode
   | CommandNode;
 
 export type NarrationNode = {
@@ -112,6 +115,24 @@ export type TransitionNode = {
   duration?: number;
 };
 
+export type LabelNode = {
+  id: string;
+  type: 'label';
+  name: string;
+};
+
+export type GotoNode = {
+  id: string;
+  type: 'goto';
+  targetLabel: string;
+  condition?: {
+    variableName: string;
+    operator: '==' | '!=' | '>' | '<' | '>=' | '<=' | 'contains' | 'isEmpty' | 'has' | 'not_has';
+    value: string | number | boolean;
+  } | null;
+  elseTargetLabel?: string | null;
+};
+
 export type VariableNode = {
   id: string;
   type: 'variable';
@@ -132,6 +153,13 @@ export type EffectNode = {
   rain?: RainEffectOptions;
   snow?: SnowEffectOptions;
   fog?: FogEffectOptions;
+};
+
+export type StopEffectNode = {
+  id: string;
+  type: 'stop_effect';
+  effectType: 'shake' | 'flash' | 'blur' | 'rain' | 'snow' | 'fog' | 'glitch' | 'vignette' | 'all';
+  target?: 'screen' | 'character' | 'background' | 'all';
 };
 
 export type CameraNode = {

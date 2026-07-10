@@ -42,6 +42,7 @@ interface DocumentSceneFrameProps {
   onUploadBackgroundAsset?: (name: string, dataUri: string) => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   registerEditorRef: (handle: PlateWebViewEditorHandle | null) => void;
+  onHistoryStateChange: (canUndo: boolean, canRedo: boolean) => void;
   onFrameLayout: (y: number, height: number) => void;
   /**
    * Bumped by the host after a document rebuild wipes its layout map. React
@@ -71,6 +72,7 @@ function DocumentSceneFrameImpl({
   onUploadBackgroundAsset,
   onUploadAudioAsset,
   registerEditorRef,
+  onHistoryStateChange,
   onFrameLayout,
   measureVersion,
 }: DocumentSceneFrameProps) {
@@ -164,6 +166,7 @@ function DocumentSceneFrameImpl({
           onUploadBackgroundAsset={onUploadBackgroundAsset}
           onUploadAudioAsset={onUploadAudioAsset}
           onOverlayActiveChange={setIsOverlayActive}
+          onHistoryStateChange={onHistoryStateChange}
         />
       ) : (
         <View

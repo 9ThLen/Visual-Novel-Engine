@@ -13,6 +13,7 @@ export const initialAppState: AppState = {
   characterLibraries: {},
   language: 'en',
   mediaLibrary: [],
+  imageAssetIdsByStory: {},
   isLoaded: false,
   migrationError: null,
 };

@@ -314,38 +314,41 @@ export async function persistSceneRecordsByStory(
   );
   const previousItemIndexByStory = Object.fromEntries(previousItemIndexes);
 
+  // Commit canonical payloads before publishing their global index. A crash can
+  // leave unreachable new payloads, but never an index that points at missing data.
+  await Promise.all(buildSceneRecordStorageEntries(sceneRecordsByStory, updatedAt).map((entry) =>
+    storage.setItem(entry.key, JSON.stringify(entry.payload)),
+  ));
+  await storage.setItem(STORAGE_KEYS.CANONICAL_SCENE_RECORD_INDEX, JSON.stringify(nextIndex));
+
+  // Invalidate sidecar indexes while their items are replaced. Readers fall back
+  // to the already-committed canonical payload until the new item index is published.
+  await Promise.all(Object.keys(sceneRecordsByStory).map((storyId) =>
+    storage.removeItem(getSceneRecordIdIndexStorageKey(storyId)),
+  ));
+  for (const [storyId, records] of Object.entries(sceneRecordsByStory)) {
+    const normalizedRecords = normalizeSceneRecordMap(storyId, records);
+    await Promise.all(Object.entries(normalizedRecords).flatMap(([sceneId, record]) => {
+      const payload = buildSceneRecordItemPayload(storyId, sceneId, record, updatedAt);
+      return payload
+        ? [storage.setItem(getSceneRecordItemStorageKey(storyId, sceneId), JSON.stringify(payload))]
+        : [];
+    }));
+    await storage.setItem(
+      getSceneRecordIdIndexStorageKey(storyId),
+      JSON.stringify(buildSceneRecordItemIndex(storyId, normalizedRecords, updatedAt)),
+    );
+  }
+
   await Promise.all([
     ...staleStoryIds.map((storyId) => storage.removeItem(getSceneRecordStorageKey(storyId))),
     ...staleStoryIds.map((storyId) => storage.removeItem(getSceneRecordIdIndexStorageKey(storyId))),
-    ...staleStoryIds.flatMap((storyId) =>
-      (previousItemIndexByStory[storyId]?.sceneIds ?? []).map((sceneId) =>
-        storage.removeItem(getSceneRecordItemStorageKey(storyId, sceneId)),
-      ),
-    ),
-    ...buildSceneRecordStorageEntries(sceneRecordsByStory).map((entry) =>
-      storage.setItem(entry.key, JSON.stringify(entry.payload)),
-    ),
-    ...Object.entries(sceneRecordsByStory).flatMap(([storyId, records]) => {
-      const normalizedRecords = normalizeSceneRecordMap(storyId, records);
-      const nextSceneIds = new Set(Object.keys(normalizedRecords));
-      const previousSceneIds = previousItemIndexByStory[storyId]?.sceneIds ?? [];
-      const staleSceneIds = previousSceneIds.filter((sceneId) => !nextSceneIds.has(sceneId));
-      const index = buildSceneRecordItemIndex(storyId, normalizedRecords, updatedAt);
-
-      return [
-        ...staleSceneIds.map((sceneId) =>
-          storage.removeItem(getSceneRecordItemStorageKey(storyId, sceneId)),
-        ),
-        ...Object.entries(normalizedRecords).flatMap(([sceneId, record]) => {
-          const payload = buildSceneRecordItemPayload(storyId, sceneId, record, updatedAt);
-          return payload
-            ? [storage.setItem(getSceneRecordItemStorageKey(storyId, sceneId), JSON.stringify(payload))]
-            : [];
-        }),
-        storage.setItem(getSceneRecordIdIndexStorageKey(storyId), JSON.stringify(index)),
-      ];
+    ...itemIndexStoryIds.flatMap((storyId) => {
+      const nextIds = new Set(Object.keys(sceneRecordsByStory[storyId] ?? {}));
+      return (previousItemIndexByStory[storyId]?.sceneIds ?? [])
+        .filter((sceneId) => !nextIds.has(sceneId))
+        .map((sceneId) => storage.removeItem(getSceneRecordItemStorageKey(storyId, sceneId)));
     }),
-    storage.setItem(STORAGE_KEYS.CANONICAL_SCENE_RECORD_INDEX, JSON.stringify(nextIndex)),
   ]);
 }
 
@@ -365,12 +368,15 @@ export async function loadSceneRecordForStory(
   storyId: string,
   sceneId: string,
 ): Promise<SceneRecord | null> {
-  const itemPayload = parseSceneRecordItemPayload(
-    await storage.getItem(getSceneRecordItemStorageKey(storyId, sceneId)),
-    storyId,
-    sceneId,
+  const itemIndex = parseSceneRecordItemIndex(
+    await storage.getItem(getSceneRecordIdIndexStorageKey(storyId)), storyId,
   );
-  if (itemPayload) {
+  const itemPayload = itemIndex?.sceneIds.includes(sceneId)
+    ? parseSceneRecordItemPayload(
+        await storage.getItem(getSceneRecordItemStorageKey(storyId, sceneId)), storyId, sceneId,
+      )
+    : null;
+  if (itemPayload && itemPayload.updatedAt === itemIndex?.updatedAt) {
     return itemPayload.record;
   }
 
@@ -385,13 +391,16 @@ export async function loadReaderSceneRecordWindow(
   maxPrefetchScenes = 4,
 ): Promise<Record<string, SceneRecord>> {
   let fallbackRecords: Record<string, SceneRecord> | null = null;
+  const itemIndex = parseSceneRecordItemIndex(
+    await storage.getItem(getSceneRecordIdIndexStorageKey(storyId)), storyId,
+  );
   const loadScene = async (targetSceneId: string): Promise<SceneRecord | null> => {
-    const itemPayload = parseSceneRecordItemPayload(
-      await storage.getItem(getSceneRecordItemStorageKey(storyId, targetSceneId)),
-      storyId,
-      targetSceneId,
-    );
-    if (itemPayload) {
+    const itemPayload = itemIndex?.sceneIds.includes(targetSceneId)
+      ? parseSceneRecordItemPayload(
+          await storage.getItem(getSceneRecordItemStorageKey(storyId, targetSceneId)), storyId, targetSceneId,
+        )
+      : null;
+    if (itemPayload && itemPayload.updatedAt === itemIndex?.updatedAt) {
       return itemPayload.record;
     }
 

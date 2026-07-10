@@ -72,6 +72,10 @@ interface Props {
   onHistoryVisibleChange?: (visible: boolean) => void;
   onSceneStateChange?: (sceneState: SceneState) => void;
   routeOnExecutorComplete?: boolean;
+  /** True when the host can roll back to a previous scene (see onRollbackScene). */
+  canRollbackScene?: boolean;
+  /** Called when Back is pressed at the very start of the scene — the host may restore the previous scene. */
+  onRollbackScene?: () => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -89,6 +93,8 @@ export function StoryReaderResponsive({
   onHistoryVisibleChange,
   onSceneStateChange,
   routeOnExecutorComplete = false,
+  canRollbackScene = false,
+  onRollbackScene,
 }: Props) {
   const colors = useColors();
   const { t } = useI18n();
@@ -238,6 +244,16 @@ export function StoryReaderResponsive({
     bgScale.value = withTiming(1, { duration: Math.max(durationMs, Math.round(durationMs * 1.8)) });
   }, [displaySceneId, usingExecutor, sceneOpacity, bgScale, bgSlideX]);
 
+  // ── Rollback: land on the LAST page of the restored block ─────────────
+  // Engine rollback moves currentStepIndex to a previous block whose pages
+  // recompute asynchronously; this flag defers the page jump until they have.
+  const jumpToLastPageRef = useRef(false);
+  useEffect(() => {
+    if (!jumpToLastPageRef.current) return;
+    jumpToLastPageRef.current = false;
+    setPageIndex(Math.max(0, pages.length - 1));
+  }, [pages]);
+
   // ── Start typewriter on page change ────────────────────────────────────
   // Feed the typewriter the STRIPPED body so it counts and reveals visible
   // characters only — markup chars are never timed or flashed. The rich body
@@ -288,6 +304,27 @@ export function StoryReaderResponsive({
     handleTap();
   }, [handleTap, isTyping, pageIndex, pages.length, temporaryDialogue]);
 
+  // ── Back: page → engine yield point → previous scene (host) ───────────
+  const canGoBack =
+    !!temporaryDialogue || pageIndex > 0 || executor.canRollback || canRollbackScene;
+
+  const handleBack = useCallback(() => {
+    if (temporaryDialogue) {
+      setTemporaryDialogue(null);
+      return;
+    }
+    if (pageIndex > 0) {
+      setPageIndex((index) => Math.max(0, index - 1));
+      return;
+    }
+    if (executor.canRollback) {
+      jumpToLastPageRef.current = true;
+      executor.rollback();
+      return;
+    }
+    onRollbackScene?.();
+  }, [temporaryDialogue, pageIndex, executor, onRollbackScene]);
+
   // ── Choice selection ───────────────────────────────────────────────────
   const handleSelectChoice = (choiceId: string) => {
     const choice = displayChoices.find((item) => item.id === choiceId);
@@ -305,11 +342,14 @@ export function StoryReaderResponsive({
     <ReaderControls
       autoPlayActive={autoPlayActive}
       canAdvance={executor.canAdvance}
+      canGoBack={canGoBack}
       colors={colors}
       hasChoices={hasChoices}
       isTyping={isTyping}
       labels={{
         auto: t('reader.auto'),
+        back: t('reader.back'),
+        goBack: t('reader.goBack'),
         log: t('reader.log'),
         openHistory: t('reader.openHistory'),
         skip: t('reader.skip'),
@@ -318,6 +358,7 @@ export function StoryReaderResponsive({
         stopAuto: t('reader.stopAuto'),
         tapToContinue: t('reader.tapToContinue'),
       }}
+      onBack={handleBack}
       onOpenHistory={openHistory}
       onSetTurbo={setTurbo}
       onToggleAutoPlay={toggleAutoPlay}

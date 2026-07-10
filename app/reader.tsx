@@ -7,7 +7,7 @@ import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { ReaderMenu } from '@/components/ReaderMenu';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
-import type { RuntimeVariables, SceneState } from '@/lib/engine/runtime-types';
+import type { PlaybackState, RuntimeVariables, SceneState } from '@/lib/engine/runtime-types';
 import { enhancedAudioManager as audioManager } from '@/lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '@/lib/asset-resolver';
 import { useReaderAudio, stopReaderPlayback } from '@/hooks/useReaderAudio';
@@ -39,6 +39,20 @@ function findChoiceStepIdForOption(sceneRecord: { timeline?: { id: string; block
   return null;
 }
 
+const MAX_SCENE_ROLLBACK_DEPTH = 20;
+
+interface ReaderSceneLocation {
+  storyId: string;
+  sceneId: string;
+}
+
+function isSameSceneLocation(
+  left: ReaderSceneLocation | null,
+  right: ReaderSceneLocation | null,
+): boolean {
+  return left?.storyId === right?.storyId && left?.sceneId === right?.sceneId;
+}
+
 function useReaderRouteParams(): { storyId: string | null; resumeExisting: boolean } {
   const { storyId, resume } = useLocalSearchParams();
   return {
@@ -60,6 +74,15 @@ export default function ReaderScreen() {
   const [objDialogue, setObjDialogue] = useState<{ text: string; speaker?: string } | null>(null);
   const pendingChoiceRef = useRef<{ sceneId: string; choiceId: string; stepId: string | null; targetSceneId: string | null } | null>(null);
   const latestVariablesRef = useRef<RuntimeVariables>({});
+  // Scene-entry snapshots for cross-scene rollback. Each entry is the
+  // playbackState the scene was entered with (variables at entry), so
+  // restoring one replays that scene from step 0 — the same semantics as
+  // loading a save. Cleared whenever the scene changes outside our own
+  // navigation (initial mount, quick load, resume).
+  const sceneHistoryRef = useRef<PlaybackState[]>([]);
+  const [sceneHistoryDepth, setSceneHistoryDepth] = useState(0);
+  const expectedSceneRef = useRef<ReaderSceneLocation | null>(null);
+  const sceneRollbackInFlightRef = useRef(false);
   const coverageStorageRef = useRef<ReturnType<typeof createPersistentStorage> | null>(null);
   if (!coverageStorageRef.current) coverageStorageRef.current = createPersistentStorage();
   const coverageStoryIdRef = useRef<string | null>(null);
@@ -147,6 +170,63 @@ export default function ReaderScreen() {
     recordCoverageCommit(story.id, playbackState.currentSceneId);
   }, [story?.id, playbackState?.currentSceneId, recordCoverageCommit]);
 
+  const clearSceneHistory = useCallback(() => {
+    sceneHistoryRef.current = [];
+    setSceneHistoryDepth(0);
+  }, []);
+
+  const pushSceneHistory = useCallback((snapshot: PlaybackState) => {
+    sceneHistoryRef.current.push(snapshot);
+    if (sceneHistoryRef.current.length > MAX_SCENE_ROLLBACK_DEPTH) {
+      sceneHistoryRef.current.shift();
+    }
+    setSceneHistoryDepth(sceneHistoryRef.current.length);
+  }, []);
+
+  const popSceneHistory = useCallback(() => {
+    const snapshot = sceneHistoryRef.current.pop() ?? null;
+    setSceneHistoryDepth(sceneHistoryRef.current.length);
+    return snapshot;
+  }, []);
+
+  // Detect scene changes we didn't drive (initial load, story switch, resume):
+  // rollback history from a different path would be misleading, so drop it.
+  useEffect(() => {
+    const location = playbackState
+      ? { storyId: playbackState.storyId, sceneId: playbackState.currentSceneId }
+      : null;
+    if (!isSameSceneLocation(location, expectedSceneRef.current)) {
+      clearSceneHistory();
+    }
+    expectedSceneRef.current = location;
+  }, [playbackState?.storyId, playbackState?.currentSceneId, clearSceneHistory]);
+
+  const handleRollbackScene = useCallback(() => {
+    if (sceneRollbackInFlightRef.current) return;
+    const previous = sceneHistoryRef.current[sceneHistoryRef.current.length - 1];
+    if (!previous) return;
+    sceneRollbackInFlightRef.current = true;
+    void (async () => {
+      try {
+        await hydrateReaderSceneWindow(previous.storyId, previous.currentSceneId);
+        popSceneHistory();
+        latestVariablesRef.current = normalizeRuntimeVariables(previous.variables);
+        // Re-entering via rollback is not a new visit for coverage.
+        lastRecordedSceneRef.current = previous.currentSceneId;
+        expectedSceneRef.current = {
+          storyId: previous.storyId,
+          sceneId: previous.currentSceneId,
+        };
+        setEntryTransition(null);
+        updatePlaybackState(previous);
+      } catch {
+        // Hydration failed — keep the snapshot so the player can retry.
+      } finally {
+        sceneRollbackInFlightRef.current = false;
+      }
+    })();
+  }, [hydrateReaderSceneWindow, popSceneHistory, updatePlaybackState]);
+
   const handleSceneStateChange = useCallback((sceneState: SceneState) => {
     latestVariablesRef.current = normalizeRuntimeVariables(sceneState.variables);
     setReaderSceneState(sceneState);
@@ -203,9 +283,11 @@ export default function ReaderScreen() {
     );
     beforeCommit?.();
     recordCoverageCommit(story.id, sceneId, coverageChoice);
+    pushSceneHistory(playbackState);
+    expectedSceneRef.current = { storyId: story.id, sceneId };
     updatePlaybackState(updated);
     return true;
-  }, [story, playbackState, hydrateReaderSceneWindow, recordCoverageCommit, updatePlaybackState]);
+  }, [story, playbackState, hydrateReaderSceneWindow, recordCoverageCommit, pushSceneHistory, updatePlaybackState]);
 
   const handleTransition = (targetSceneId: string | null, transition?: ReaderTransitionEvent) => {
     if (isLoading || !playbackState) return;
@@ -307,6 +389,7 @@ export default function ReaderScreen() {
       <ReaderMenu
         visible={showMenu}
         onClose={() => setShowMenu(false)}
+        onPlaybackReplaced={clearSceneHistory}
       />
 
       <Pressable
@@ -346,6 +429,8 @@ export default function ReaderScreen() {
         settings={settings}
         onHistoryVisibleChange={setHistoryOpen}
         routeOnExecutorComplete={true}
+        canRollbackScene={sceneHistoryDepth > 0}
+        onRollbackScene={handleRollbackScene}
       />
 
       {interactiveObjects.length > 0 && (

@@ -266,6 +266,20 @@ function openCharacterPopover(api: EmbeddedHarnessApi) {
 // parses its contents. Compiling it with the Function constructor (without
 // executing) catches syntax errors introduced by edits to the template.
 describe('createEmbeddedScript', () => {
+  it('offers every condition operator supported by goto blocks', () => {
+    const script = createEmbeddedScript({
+      editorId: 'operator_test',
+      scene: { sceneId: 'scene_1', sceneName: 'Scene 1', blocks: [] },
+      characters: [],
+      isPhone: false,
+      backgroundAssets: [],
+      audioAssets: [],
+      scenes: [],
+    }, getEmbeddedCommands('en'));
+
+    expect(script).toContain("['==', '!=', '>', '<', '>=', '<=', 'contains', 'isEmpty', 'has', 'not_has']");
+  });
+
   it('generates syntactically valid JavaScript', () => {
     const script = createEmbeddedScript({
       editorId: 'editor_test',

@@ -23,10 +23,13 @@ import type {
   ChoiceBlockData,
   DialogueBlockData,
   EffectBlockData,
+  GotoBlockData,
+  LabelBlockData,
   MusicBlockData,
   SceneConnection,
   SceneRecord,
   SoundBlockData,
+  StopEffectBlockData,
   TextBlockData,
   TimelineStep,
 } from '@/lib/engine/types';
@@ -71,6 +74,9 @@ function commandIdForStep(step: TimelineStep): DocumentCommandId {
   if (step.blockType === 'variable') return 'variable';
   if (step.blockType === 'camera') return 'camera';
   if (step.blockType === 'interactive_object') return 'interactive_object';
+  if (step.blockType === 'label') return 'label';
+  if (step.blockType === 'goto') return 'goto';
+  if (step.blockType === 'stop_effect') return 'stopEffect';
   return 'effect';
 }
 
@@ -110,7 +116,32 @@ function technicalSummary(step: TimelineStep, characters: Character[]): { label:
     };
   }
   if (step.blockType === 'variable') return { label: 'Змінна', summary: 'story flag' };
+  if (step.blockType === 'label') {
+    const data = step.data as LabelBlockData;
+    return {
+      label: 'Мітка',
+      summary: data.name || 'без назви',
+      warning: data.name ? undefined : 'Потрібно вказати назву мітки',
+    };
+  }
+  if (step.blockType === 'goto') {
+    const data = step.data as GotoBlockData;
+    const condition = data.condition
+      ? `якщо ${data.condition.variableName} ${data.condition.operator} ${String(data.condition.value)}`
+      : 'завжди';
+    return {
+      label: 'Перейти',
+      summary: `→ ${data.targetLabel || 'мітку не вибрано'} · ${condition}${data.elseTargetLabel ? ` · інакше → ${data.elseTargetLabel}` : ''}`,
+      warning: data.targetLabel ? undefined : 'Потрібно вибрати мітку',
+    };
+  }
   if (step.blockType === 'effect') return { label: 'Ефект', summary: 'visual effect' };
+  if (step.blockType === 'stop_effect') {
+    const data = step.data as StopEffectBlockData;
+    const typeLabel = data.effectType === 'all' ? 'усі ефекти' : data.effectType;
+    const targetLabel = !data.target || data.target === 'all' ? '' : ` · ${data.target}`;
+    return { label: 'Стоп-ефект', summary: `${typeLabel}${targetLabel}` };
+  }
   if (step.blockType === 'camera') return { label: 'Камера', summary: 'camera movement' };
   if (step.blockType === 'interactive_object') return { label: "Об'єкт", summary: 'interactive hotspot' };
 
@@ -167,6 +198,7 @@ function timelineStepToDocumentBlock(step: TimelineStep, characters: Character[]
     id: step.id,
     kind: 'technical',
     sourceStepId: step.id,
+    sourceStep: step,
     commandId: commandIdForStep(step),
     blockType: step.blockType,
     step,
@@ -175,21 +207,9 @@ function timelineStepToDocumentBlock(step: TimelineStep, characters: Character[]
 }
 
 function timelineStepToDocumentBlocks(step: TimelineStep, characters: Character[]): DocumentBlock[] {
-  if (step.blockType === 'character' && (step.data as CharacterBlockData).generatedByInlineDialogue) {
-    return [];
-  }
+  // Persist every canonical character step so an editor save is lossless.
 
-  if (step.blockType !== 'text') {
-    return [timelineStepToDocumentBlock(step, characters)];
-  }
-
-  const data = step.data as TextBlockData;
-  const lines = data.content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (lines.length <= 1) {
-    return [timelineStepToDocumentBlock(step, characters)];
-  }
-
-  return lines.map((line) => parseDraftLineToDocumentBlock(line, characters));
+  return [timelineStepToDocumentBlock(step, characters)];
 }
 
 function effectStepToInlinePart(step: TimelineStep): DocumentInlinePart | null {
@@ -778,6 +798,19 @@ export function documentSceneToTimeline(documentScene: DocumentScene, characters
     }
 
     if (block.kind === 'dialogue') {
+      if (block.sourceStep?.blockType === 'character') {
+        const sourceData = block.sourceStep.data as CharacterBlockData;
+        const step: TimelineStep = {
+          ...block.sourceStep,
+          data: {
+            ...sourceData,
+            characterId: block.characterId ?? sourceData.characterId,
+            spriteId: block.spriteId ?? sourceData.spriteId,
+          },
+        };
+        applyExplicitCharacterState(step, visibleCharacters, currentSpriteByCharacter, currentPositionByCharacter);
+        return [step];
+      }
       const characterSteps = generatedCharacterStepsForDialogue(
         block,
         characters,

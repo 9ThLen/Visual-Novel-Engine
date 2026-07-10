@@ -1,5 +1,13 @@
 import type { SceneDocument, SceneNode } from './sceneTypes';
 
+function serializeConditionValue(value: string | number | boolean): string {
+  return typeof value === 'string' ? JSON.stringify(value) : String(value);
+}
+
+function serializeIdentifier(value: string): string {
+  return /[\s"\\]/.test(value) ? JSON.stringify(value) : value;
+}
+
 export function serializeNode(node: SceneNode): string {
   switch (node.type) {
     case 'dialogue':
@@ -52,8 +60,19 @@ export function serializeNode(node: SceneNode): string {
     }
     case 'variable':
       return `[variable ${node.variableName}=${String(node.value)}]`;
+    case 'label':
+      return `[label ${serializeIdentifier(node.name)}]`;
+    case 'goto': {
+      const condition = node.condition
+        ? ` if ${node.condition.variableName} ${node.condition.operator} ${serializeConditionValue(node.condition.value)}`
+        : '';
+      const elseTarget = node.elseTargetLabel ? ` else ${serializeIdentifier(node.elseTargetLabel)}` : '';
+      return `[goto ${serializeIdentifier(node.targetLabel)}${condition}${elseTarget}]`;
+    }
     case 'effect':
       return `[effect ${node.effectType}${node.intensity != null ? ` ${node.intensity}` : ''}${node.durationMs != null ? ` ${node.durationMs}` : ''}]`;
+    case 'stop_effect':
+      return `[stop_effect ${node.effectType}${node.target && node.target !== 'all' ? ` ${node.target}` : ''}]`;
     case 'camera':
       return node.action === 'pan'
         ? `[camera pan ${node.panX ?? 0} ${node.panY ?? 0}]`

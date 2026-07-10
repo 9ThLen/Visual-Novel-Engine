@@ -41,7 +41,6 @@ export interface SceneSlice {
     targetSceneId: string,
     outputPort?: string
   ) => void;
-  deleteSceneRecord: (storyId: string, sceneId: string) => void;
   setStartScene: (storyId: string, sceneId: string) => void;
   reorderScenes: (storyId: string, sceneIds: string[]) => void;
 }
@@ -193,9 +192,6 @@ export function createSceneSlice(
 
     removeSceneConnection: (storyId, fromSceneId, targetSceneId, outputPort) =>
       set((s) => removeCanonicalConnection(s, storyId, fromSceneId, targetSceneId, outputPort)),
-
-    deleteSceneRecord: (storyId, sceneId) =>
-      set((s) => applyCanonicalSceneDelete(s, storyId, sceneId)),
 
     setStartScene: (storyId, sceneId) =>
       set((s) => syncCanonicalStartScene(s, storyId, { preferredStartSceneId: sceneId })),

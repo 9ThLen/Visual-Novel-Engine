@@ -33,6 +33,8 @@ export interface PlateWebViewEditorSnapshot {
 
 export interface PlateWebViewEditorHandle {
   flush: () => Promise<PlateWebViewEditorSnapshot>;
+  undo: () => void;
+  redo: () => void;
 }
 
 interface PlateWebViewEditorProps {
@@ -56,6 +58,7 @@ interface PlateWebViewEditorProps {
   onUploadBackgroundAsset?: (name: string, dataUri: string) => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onOverlayActiveChange?: (active: boolean) => void;
+  onHistoryStateChange?: (canUndo: boolean, canRedo: boolean) => void;
   /** The author asked to switch the rendered branch of a choice block. */
   onSelectChoiceOption?: (choiceStepId: string, optionId: string) => void;
   /** The author asked to create a new scene as the target of an empty choice option. */
@@ -79,6 +82,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   onUploadBackgroundAsset,
   onUploadAudioAsset,
   onOverlayActiveChange,
+  onHistoryStateChange,
   onSelectChoiceOption,
   onStartBranchOption,
 }: PlateWebViewEditorProps, ref) {
@@ -281,6 +285,8 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         }, '*');
       });
     },
+    undo: () => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'undo' }, '*'),
+    redo: () => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'redo' }, '*'),
   }), [editorId]);
 
   useEffect(() => {
@@ -314,6 +320,10 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         postScenes();
         postBranchInfo();
         postBranchColor();
+        return;
+      }
+      if (message.type === 'historyState') {
+        onHistoryStateChange?.(message.canUndo, message.canRedo);
         return;
       }
       if (message.type === 'selectChoiceOption') {
@@ -389,7 +399,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [editorId, minimumFrameHeight, onChange, onCreateNextScene, onUploadAudioAsset, onUploadBackgroundAsset, postAudioAssets, postBackgroundAssets, postCommands]);
+  }, [editorId, minimumFrameHeight, onChange, onCreateNextScene, onHistoryStateChange, onSelectChoiceOption, onStartBranchOption, onUploadAudioAsset, onUploadBackgroundAsset, postAudioAssets, postBackgroundAssets, postBranchColor, postBranchInfo, postCommands, postScenes]);
 
   const postAssets = useCallback(() => {
     postBackgroundAssets();

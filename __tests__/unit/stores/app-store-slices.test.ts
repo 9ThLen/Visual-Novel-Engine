@@ -6,6 +6,7 @@ import { createSavesSlice, getQuickSaveSlotId, upsertSaveSlot } from '@/stores/a
 import { createSceneSlice } from '@/stores/app-store-slices/scene-slice';
 import { createStorySlice } from '@/stores/app-store-slices/story-slice';
 import {
+  buildSceneRecordItemIndex,
   buildSceneRecordItemPayload,
   buildSceneRecordStoragePayload,
 } from '@/lib/scene-record-storage';
@@ -442,6 +443,10 @@ describe('app store slices', () => {
     const scene2 = makeSceneRecord('scene-2');
     const storageValues = new Map([
       [
+        'vne_scene_record_ids_story-1',
+        JSON.stringify(buildSceneRecordItemIndex('story-1', { 'scene-1': scene1, 'scene-2': scene2 }, 1)),
+      ],
+      [
         'vne_scene_record_story-1_scene-1',
         JSON.stringify(buildSceneRecordItemPayload('story-1', 'scene-1', scene1, 1)),
       ],
@@ -498,6 +503,14 @@ describe('app store slices', () => {
       },
     });
     const storageValues = new Map([
+      [
+        'vne_scene_record_ids_story-1',
+        JSON.stringify(buildSceneRecordItemIndex(
+          'story-1',
+          { 'scene-1': oldScene1, 'scene-2': scene2, 'scene-3': scene3 },
+          1,
+        )),
+      ],
       [
         'vne_scene_record_story-1_scene-1',
         JSON.stringify(buildSceneRecordItemPayload('story-1', 'scene-1', oldScene1, 1)),

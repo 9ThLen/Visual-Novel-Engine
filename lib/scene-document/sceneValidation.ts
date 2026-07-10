@@ -27,6 +27,19 @@ export function validateSceneNodes(nodes: SceneNode[]): SceneValidationIssue[] {
       return [{ nodeId: node.id, line, severity: 'error' as const, message: 'Choice needs at least two options.' }];
     }
 
+    if (node.type === 'label' && !node.name.trim()) {
+      return [{ nodeId: node.id, line, severity: 'error' as const, message: 'Label name is required.' }];
+    }
+
+    if (node.type === 'goto') {
+      if (!node.targetLabel.trim()) {
+        return [{ nodeId: node.id, line, severity: 'error' as const, message: 'Goto target label is required.' }];
+      }
+      if (node.condition && !node.condition.variableName.trim()) {
+        return [{ nodeId: node.id, line, severity: 'error' as const, message: 'Goto condition variable is required.' }];
+      }
+    }
+
     if (node.type === 'command') {
       return [{ nodeId: node.id, line, severity: 'warning' as const, message: 'Unknown command will be saved as text.' }];
     }

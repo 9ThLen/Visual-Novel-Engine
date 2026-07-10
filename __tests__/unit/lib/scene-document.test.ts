@@ -52,6 +52,45 @@ describe('scene document serializer', () => {
 
     expect(serializeScene(scene)).toBe('Маша: Привіт!\n[background forest_day]');
   });
+
+  it('roundtrips labels and conditional gotos without losing types or values', () => {
+    const scene: SceneDocument = {
+      id: 'scene_1',
+      title: 'Scene',
+      nodes: [
+        { id: 'label_1', type: 'label', name: 'chapter end' },
+        {
+          id: 'goto_1',
+          type: 'goto',
+          targetLabel: 'chapter end',
+          condition: { variableName: 'inventory', operator: 'contains', value: 'silver key' },
+          elseTargetLabel: 'fallback',
+        },
+      ],
+    };
+
+    expect(parseSceneText(serializeScene(scene))).toEqual([
+      expect.objectContaining({ type: 'label', name: 'chapter end' }),
+      expect.objectContaining({
+        type: 'goto',
+        targetLabel: 'chapter end',
+        condition: { variableName: 'inventory', operator: 'contains', value: 'silver key' },
+        elseTargetLabel: 'fallback',
+      }),
+    ]);
+  });
+
+  it.each(['==', '!=', '>', '<', '>=', '<=', 'contains', 'isEmpty', 'has', 'not_has'] as const)(
+    'parses the %s goto operator',
+    (operator) => {
+      expect(parseSceneText(`[goto done if flag ${operator} true]`)).toEqual([
+        expect.objectContaining({
+          type: 'goto',
+          condition: { variableName: 'flag', operator, value: true },
+        }),
+      ]);
+    },
+  );
 });
 
 describe('scene document character colors', () => {
@@ -76,6 +115,13 @@ describe('scene document validation', () => {
         severity: 'warning',
         message: 'Unknown command will be saved as text.',
       }),
+    ]);
+  });
+
+  it('validates required label and goto fields', () => {
+    expect(validateSceneNodes(parseSceneText('[label]\n[goto]'))).toEqual([
+      expect.objectContaining({ severity: 'error', message: 'Label name is required.' }),
+      expect.objectContaining({ severity: 'error', message: 'Goto target label is required.' }),
     ]);
   });
 });
