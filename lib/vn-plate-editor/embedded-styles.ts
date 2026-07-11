@@ -208,6 +208,40 @@ export function createEmbeddedStyles(): string {
       padding: 12px 16px;
       background: #fffefa;
     }
+    .stop-effect-block {
+      display: inline-flex;
+      min-height: 0;
+      margin: 4px 2px;
+      padding: 3px 8px;
+      gap: 6px;
+      border-color: #fecaca;
+      border-radius: 6px;
+      background: #fef2f2;
+      cursor: pointer;
+      vertical-align: baseline;
+    }
+    .stop-effect-block:hover { background: #fee2e2; }
+    .stop-effect-block .void-title,
+    .stop-effect-block .background-asset { font-size: 13px; }
+    .interactive-object-block {
+      display: inline-flex;
+      width: auto;
+      max-width: min(100%, 520px);
+      min-height: 0;
+      margin: 5px 2px 9px;
+      padding: 5px 6px 5px 8px;
+      gap: 8px;
+      border-color: #bae6fd;
+      border-radius: 8px;
+      background: #f0f9ff;
+      cursor: pointer;
+      vertical-align: middle;
+    }
+    .interactive-object-block:hover { background: #e0f2fe; }
+    .interactive-object-icon { color: #0284c7; font-size: 16px; line-height: 1; }
+    .interactive-object-copy { display: flex; min-width: 0; align-items: baseline; gap: 7px; }
+    .interactive-object-name { color: #0f172a; font-size: 13px; font-weight: 700; white-space: nowrap; }
+    .interactive-object-meta { color: #475569; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .transition-block {
       min-height: 40px;
       margin: 8px 0 12px;

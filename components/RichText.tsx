@@ -15,10 +15,14 @@ import { Text, type TextStyle } from 'react-native';
 import { parseRichText, sliceRichText, type RichTextSpan } from '@/lib/rich-text';
 
 function spanStyle(span: RichTextSpan): TextStyle {
+  const decorations = [span.underline ? 'underline' : '', span.strikethrough ? 'line-through' : '']
+    .filter(Boolean)
+    .join(' ');
   return {
     fontWeight: span.bold ? '700' : undefined,
     fontStyle: span.italic ? 'italic' : undefined,
     color: span.color,
+    textDecorationLine: decorations ? decorations as TextStyle['textDecorationLine'] : undefined,
   };
 }
 

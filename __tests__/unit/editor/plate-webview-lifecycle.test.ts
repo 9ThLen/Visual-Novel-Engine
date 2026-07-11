@@ -9,7 +9,9 @@ describe('PlateWebViewEditor lifecycle contract', () => {
     );
 
     expect(source).toContain('const html = useMemo');
-    expect(source).toContain('[editorId, isPhone]');
+    // srcDoc rebuilds only on identity/layout inputs plus the shared-script
+    // fallback flag — never on live scene/character snapshots.
+    expect(source).toContain('[editorId, isPhone, forceInlineHtml]');
     expect(source).toContain('useImperativeHandle');
     expect(source).toContain("type: 'flush'");
     expect(source).toContain('visibleFrameHeight');
@@ -48,5 +50,29 @@ describe('PlateWebViewEditor lifecycle contract', () => {
     expect(positionTransitionBody).toContain("transitionPopover.style.top = (scrollY + top) + 'px'");
     expect(styles).not.toMatch(/\.transition-popover\s*\{[\s\S]*?position:\s*fixed/);
     expect(styles).not.toMatch(/(?:\.background-popover|\.character-popover|\.effect-popover|\.audio-popover)[^{]*\{[^}]*position:\s*fixed/);
+  });
+});
+
+describe('document formatting bridge', () => {
+  it('connects header commands through the active iframe and returns format state', () => {
+    const header = fs.readFileSync(
+      path.join(process.cwd(), 'components/document-editor/DocumentEditorHeader.tsx'),
+      'utf8',
+    );
+    const host = fs.readFileSync(
+      path.join(process.cwd(), 'components/vn-plate-editor/PlateWebViewEditor.web.tsx'),
+      'utf8',
+    );
+    const embedded = fs.readFileSync(
+      path.join(process.cwd(), 'lib/vn-plate-editor/embedded-script.ts'),
+      'utf8',
+    );
+
+    expect(header).toContain("onFormatText('color', color)");
+    expect(host).toContain("type: 'formatText', command, value");
+    expect(host).toContain("message.type === 'formatState'");
+    expect(embedded).toContain("message.type === 'formatText'");
+    expect(embedded).toContain("command === 'color' ? 'foreColor'");
+    expect(embedded).toContain("type: 'formatState'");
   });
 });

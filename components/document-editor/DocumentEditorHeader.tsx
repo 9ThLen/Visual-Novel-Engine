@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui';
@@ -6,6 +6,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import type { ColorScheme } from '@/constants/theme';
+import type { VNPlateFormatCommand, VNPlateFormatState } from '@/lib/vn-plate-editor/types';
 
 interface DocumentEditorHeaderProps {
   activeTitle: string;
@@ -23,6 +24,8 @@ interface DocumentEditorHeaderProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  formatState: VNPlateFormatState;
+  onFormatText: (command: VNPlateFormatCommand, value?: string) => void;
 }
 
 export function DocumentEditorHeader({
@@ -41,9 +44,14 @@ export function DocumentEditorHeader({
   canRedo,
   onUndo,
   onRedo,
+  formatState,
+  onFormatText,
 }: DocumentEditorHeaderProps) {
   const colors = useColors(colorScheme);
   const { t } = useI18n();
+  const [showColors, setShowColors] = useState(false);
+  const textColors = ['#111827', '#dc2626', '#d97706', '#2563eb', '#7c3aed', '#059669'];
+  const toolSize = isPhone ? 34 : 36;
 
   return (
     <View
@@ -56,6 +64,7 @@ export function DocumentEditorHeader({
         borderBottomColor: colors.border,
         backgroundColor: colors['surface-1'],
         flexDirection: 'row',
+        flexWrap: isPhone ? 'wrap' : 'nowrap',
         alignItems: 'center',
         gap: isPhone ? 14 : 10,
       }}
@@ -105,6 +114,96 @@ export function DocumentEditorHeader({
         >
           <IconSymbol name="redo" size={22} color={colors.foreground} />
         </Pressable>
+      </View>
+
+      <View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: isPhone ? 'center' : 'flex-start',
+        gap: 2,
+        padding: 3,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.background,
+        flexBasis: isPhone ? '100%' : undefined,
+        ...(isPhone ? ({ order: 2 } as any) : {}),
+        position: 'relative',
+      }}>
+        {([
+          ['bold', 'B', t('editor.format.bold')],
+          ['italic', 'I', t('editor.format.italic')],
+          ['underline', 'U', t('editor.format.underline')],
+          ['strikethrough', 'S', t('editor.format.strikethrough')],
+          ['alignLeft', '', t('editor.format.alignLeft')],
+          ['alignCenter', '', t('editor.format.alignCenter')],
+          ['alignRight', '', t('editor.format.alignRight')],
+          ['clear', '', t('editor.format.clear')],
+        ] as const).map(([command, label, accessibilityLabel]) => {
+          const active = command === 'alignLeft' ? formatState.alignment === 'left'
+            : command === 'alignCenter' ? formatState.alignment === 'center'
+            : command === 'alignRight' ? formatState.alignment === 'right'
+            : command !== 'clear' && formatState[command];
+          return (
+            <Pressable
+              key={command}
+              onPress={() => onFormatText(command)}
+              disabled={!formatState.canFormat}
+              accessibilityRole="button"
+              accessibilityLabel={accessibilityLabel}
+              accessibilityState={{ disabled: !formatState.canFormat, selected: active }}
+              style={{
+                width: toolSize,
+                height: toolSize,
+                borderRadius: 6,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: active ? colors['surface-2'] : 'transparent',
+                opacity: formatState.canFormat ? 1 : 0.35,
+              }}
+            >
+              {command === 'alignLeft' || command === 'alignCenter' || command === 'alignRight' || command === 'clear' ? (
+                <IconSymbol
+                  name={command === 'alignLeft' ? 'format.align.left' : command === 'alignCenter' ? 'format.align.center' : command === 'alignRight' ? 'format.align.right' : 'format.clear'}
+                  size={19}
+                  color={colors.foreground}
+                />
+              ) : <Text style={{
+                color: colors.foreground,
+                fontSize: 16,
+                fontWeight: command === 'bold' ? '800' : '600',
+                fontStyle: command === 'italic' ? 'italic' : 'normal',
+                textDecorationLine: command === 'underline' ? 'underline' : command === 'strikethrough' ? 'line-through' : 'none',
+              }}>
+                {label}
+              </Text>}
+            </Pressable>
+          );
+        })}
+        <Pressable
+          onPress={() => setShowColors((current) => !current)}
+          disabled={!formatState.canFormat}
+          accessibilityRole="button"
+          accessibilityLabel={t('editor.format.color')}
+          accessibilityState={{ disabled: !formatState.canFormat, expanded: showColors }}
+          style={{ width: toolSize, height: toolSize, borderRadius: 6, alignItems: 'center', justifyContent: 'center', opacity: formatState.canFormat ? 1 : 0.35 }}
+        >
+          <Text style={{ color: formatState.color ?? colors.foreground, fontSize: 16, fontWeight: '800', textDecorationLine: 'underline' }}>A</Text>
+        </Pressable>
+        {showColors && formatState.canFormat ? (
+          <View style={{ position: 'absolute', top: toolSize + 10, right: 0, zIndex: 20, flexDirection: 'row', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors['surface-1'] }}>
+            {textColors.map((color) => (
+              <Pressable
+                key={color}
+                onPress={() => { onFormatText('color', color); setShowColors(false); }}
+                accessibilityRole="button"
+                accessibilityLabel={t('editor.format.colorValue', { color })}
+                accessibilityState={{ selected: formatState.color === color }}
+                style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: color, borderWidth: formatState.color === color ? 3 : 1, borderColor: formatState.color === color ? colors.primary : colors.border }}
+              />
+            ))}
+          </View>
+        ) : null}
       </View>
 
       {isPhone ? (

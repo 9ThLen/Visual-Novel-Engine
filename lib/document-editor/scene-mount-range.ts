@@ -27,8 +27,8 @@ export interface MountDeltaResult {
   toUnmount: string[];
 }
 
-const DEFAULT_MOUNT_LEAD_FACTOR = 1.5;
-const DEFAULT_KEEP_LEAD_FACTOR = 3;
+const DEFAULT_MOUNT_LEAD_FACTOR = 2.5;
+const DEFAULT_KEEP_LEAD_FACTOR = 5;
 const FALLBACK_VIEWPORT_HEIGHT = 800;
 
 /**

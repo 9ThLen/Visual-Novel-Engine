@@ -46,6 +46,7 @@ function makeStep(overrides: Partial<TimelineStep> & { id: string; blockType: Ti
     transition: { mode: 'end', targetSceneId: null, transitionType: 'fade', duration: 0.2 },
     label: { name: 'checkpoint' },
     goto: { targetLabel: 'checkpoint', condition: null, elseTargetLabel: null },
+    stop_effect: { effectType: 'all', target: 'all' },
   };
 
   return {

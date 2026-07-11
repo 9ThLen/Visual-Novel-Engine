@@ -3,6 +3,8 @@ import {
   stripRichText,
   richTextLength,
   sliceRichText,
+  richTextAlignment,
+  withRichTextAlignment,
 } from '@/lib/rich-text';
 
 describe('parseRichText', () => {
@@ -27,6 +29,25 @@ describe('parseRichText', () => {
       { text: 'a ' },
       { text: 'b', italic: true },
       { text: ' c' },
+    ]);
+  });
+
+  it('parses combined bold and italic', () => {
+    expect(parseRichText('***both***')).toEqual([{ text: 'both', bold: true, italic: true }]);
+  });
+
+  it('parses underline and strikethrough', () => {
+    expect(parseRichText('[u]under[/u] [s]gone[/s]')).toEqual([
+      { text: 'under', underline: true },
+      { text: ' ' },
+      { text: 'gone', strikethrough: true },
+    ]);
+  });
+
+  it('supports nested underline and bold', () => {
+    expect(parseRichText('[u]under **bold**[/u]')).toEqual([
+      { text: 'under ', underline: true },
+      { text: 'bold', underline: true, bold: true },
     ]);
   });
 
@@ -95,6 +116,18 @@ describe('stripRichText', () => {
 
   it('returns empty string for empty input', () => {
     expect(stripRichText('')).toBe('');
+  });
+});
+
+describe('rich text alignment', () => {
+  it('extracts alignment without exposing its marker as text', () => {
+    expect(richTextAlignment('[align=center]Hello')).toBe('center');
+    expect(stripRichText('[align=center]Hello')).toBe('Hello');
+  });
+
+  it('replaces and clears an existing alignment marker', () => {
+    expect(withRichTextAlignment('[align=center]Hello', 'right')).toBe('[align=right]Hello');
+    expect(withRichTextAlignment('[align=right]Hello', 'left')).toBe('Hello');
   });
 });
 

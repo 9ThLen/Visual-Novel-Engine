@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { SaveSlot } from '@/lib/story-domain';
 import { buildCanonicalSaveSlot, type ReaderRuntimeSnapshot } from '../lib/reader-runtime';
+import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 
 interface AutoSaveProps {
   playbackState: PlaybackState | null;
@@ -50,7 +51,7 @@ export function useAutoSave({
       if (!newSlot) return;
 
       onAutoSaveRef.current(newSlot).catch((err) => {
-        if (__DEV__) console.error('[AutoSave] Save failed:', err);
+        ErrorHandler.handle('Auto-save failed', err, ErrorCategory.STORAGE);
       });
     }, 2000);
 

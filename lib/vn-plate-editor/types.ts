@@ -58,6 +58,27 @@ export interface VNPlateEditorPayload {
   scenes?: VNPlateSceneRef[];
 }
 
+export type VNPlateFormatCommand =
+  | 'bold'
+  | 'italic'
+  | 'underline'
+  | 'strikethrough'
+  | 'alignLeft'
+  | 'alignCenter'
+  | 'alignRight'
+  | 'color'
+  | 'clear';
+
+export interface VNPlateFormatState {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strikethrough: boolean;
+  alignment: 'left' | 'center' | 'right';
+  color: string | null;
+  canFormat: boolean;
+}
+
 export type VNPlateEditorMessage =
   | {
       source: 'vn-plate-editor';
@@ -70,6 +91,12 @@ export type VNPlateEditorMessage =
       type: 'historyState';
       canUndo: boolean;
       canRedo: boolean;
+    }
+  | {
+      source: 'vn-plate-editor';
+      editorId: string;
+      type: 'formatState';
+      state: VNPlateFormatState;
     }
   | {
       source: 'vn-plate-editor';
@@ -147,6 +174,13 @@ export type VNPlateHostMessage =
       source: 'vn-plate-host';
       editorId: string;
       type: 'undo' | 'redo';
+    }
+  | {
+      source: 'vn-plate-host';
+      editorId: string;
+      type: 'formatText';
+      command: VNPlateFormatCommand;
+      value?: string;
     }
   | {
       source: 'vn-plate-host';

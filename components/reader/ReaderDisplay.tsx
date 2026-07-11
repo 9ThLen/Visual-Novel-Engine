@@ -16,6 +16,7 @@ import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import type { ActiveEffect, CameraRuntimeState } from '@/lib/engine/runtime-types';
 import type { InteractiveObject } from '@/lib/interactive-types';
+import { richTextAlignment } from '@/lib/rich-text';
 
 const DIALOGUE_MARGIN_BOTTOM = 28;
 const DIALOGUE_LINE_HEIGHT_MULTIPLIER = 1.65;
@@ -245,7 +246,8 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
       * (readerLineHeightScale / DEFAULT_READER_LINE_HEIGHT_SCALE),
     color: colors.foreground,
     fontWeight: '400' as const,
-  }), [colors.foreground, readerLineHeightScale, scaledDialogueFontSize]);
+    textAlign: richTextAlignment(displayedText),
+  }), [colors.foreground, displayedText, readerLineHeightScale, scaledDialogueFontSize]);
 
   const cursorStyle = useMemo(
     () => [CURSOR_STYLE, { color: colors.primary }],

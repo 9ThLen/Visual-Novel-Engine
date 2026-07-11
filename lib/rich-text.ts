@@ -24,18 +24,38 @@ export interface RichTextSpan {
   text: string;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
   color?: string;
 }
 
 interface ActiveStyle {
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
   color?: string;
 }
 
 const BOLD_MARK = '**';
 const COLOR_OPEN = '[color=';
 const COLOR_CLOSE = '[/color]';
+const ALIGNMENT_PREFIX = /^\[align=(left|center|right)\]/;
+
+export type RichTextAlignment = 'left' | 'center' | 'right';
+
+export function richTextAlignment(input: string): RichTextAlignment {
+  return input.match(ALIGNMENT_PREFIX)?.[1] as RichTextAlignment | undefined ?? 'left';
+}
+
+export function withoutRichTextAlignment(input: string): string {
+  return input.replace(ALIGNMENT_PREFIX, '');
+}
+
+export function withRichTextAlignment(input: string, alignment: RichTextAlignment): string {
+  const text = withoutRichTextAlignment(input);
+  return alignment === 'left' ? text : `[align=${alignment}]${text}`;
+}
 
 function isValidColor(value: string): boolean {
   return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value);
@@ -64,6 +84,8 @@ function pushSpan(out: RichTextSpan[], text: string, style: ActiveStyle): void {
   const span: RichTextSpan = { text };
   if (style.bold) span.bold = true;
   if (style.italic) span.italic = true;
+  if (style.underline) span.underline = true;
+  if (style.strikethrough) span.strikethrough = true;
   if (style.color) span.color = style.color;
   out.push(span);
 }
@@ -77,6 +99,30 @@ function parseInto(input: string, style: ActiveStyle, out: RichTextSpan[]): void
   };
 
   while (i < input.length) {
+    const inlineTags = [
+      { open: '[u]', close: '[/u]', style: { underline: true } },
+      { open: '[s]', close: '[/s]', style: { strikethrough: true } },
+    ];
+    const inlineTag = inlineTags.find((tag) => input.startsWith(tag.open, i));
+    if (inlineTag) {
+      const close = input.indexOf(inlineTag.close, i + inlineTag.open.length);
+      if (close !== -1) {
+        flush();
+        parseInto(input.slice(i + inlineTag.open.length, close), { ...style, ...inlineTag.style }, out);
+        i = close + inlineTag.close.length;
+        continue;
+      }
+    }
+
+    if (input.startsWith('***', i)) {
+      const close = input.indexOf('***', i + 3);
+      if (close !== -1) {
+        flush();
+        parseInto(input.slice(i + 3, close), { ...style, bold: true, italic: true }, out);
+        i = close + 3;
+        continue;
+      }
+    }
     // Bold: **...**
     if (input.startsWith(BOLD_MARK, i)) {
       const close = input.indexOf(BOLD_MARK, i + 2);
@@ -143,7 +189,8 @@ function parseInto(input: string, style: ActiveStyle, out: RichTextSpan[]): void
  */
 export function parseRichText(input: string): RichTextSpan[] {
   const out: RichTextSpan[] = [];
-  if (input) parseInto(input, {}, out);
+  const text = withoutRichTextAlignment(input);
+  if (text) parseInto(text, {}, out);
   return out;
 }
 

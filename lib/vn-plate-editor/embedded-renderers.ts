@@ -1,10 +1,23 @@
 import type { Character } from '@/lib/character-types';
 import { branchColorForOptionIndex, branchShadowColor } from '@/lib/document-editor/branch-colors';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
-import type { BackgroundBlockData, CharacterBlockData, GotoBlockData, LabelBlockData, StopEffectBlockData } from '@/lib/engine/types';
+import type { BackgroundBlockData, CharacterBlockData, GotoBlockData, InteractiveObjectBlockData, LabelBlockData, StopEffectBlockData } from '@/lib/engine/types';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateSceneRef } from './types';
 import { escapeHtml } from './embedded-utils';
+import { parseRichText, richTextAlignment } from '@/lib/rich-text';
+
+function richTextToHtml(text: string): string {
+  return parseRichText(text).map((span) => {
+    let value = escapeHtml(span.text);
+    if (span.bold) value = `<strong>${value}</strong>`;
+    if (span.italic) value = `<em>${value}</em>`;
+    if (span.underline) value = `<u>${value}</u>`;
+    if (span.strikethrough) value = `<s>${value}</s>`;
+    if (span.color) value = `<span style="color:${escapeHtml(span.color)}">${value}</span>`;
+    return value;
+  }).join('');
+}
 
 function formatTransition(value?: string): string {
   if (!value) return 'Fade';
@@ -141,7 +154,7 @@ function audioPartToHtml(part: Extract<DocumentInlinePart, { type: 'music' | 'so
 }
 
 function inlinePartToHtml(part: DocumentInlinePart, audioAssets: VNPlateAudioAsset[] = []): string {
-  if (part.type === 'text') return escapeHtml(part.text);
+  if (part.type === 'text') return richTextToHtml(part.text);
   if (part.type === 'music' || part.type === 'sound') return audioPartToHtml(part, audioAssets);
   const characterId = part.characterId ? ` data-character-id="${escapeHtml(part.characterId)}"` : '';
   const fadeIn = part.fadeIn != null ? ` data-fade-in="${escapeHtml(String(part.fadeIn))}"` : '';
@@ -170,7 +183,13 @@ function inlinePartsToHtml(
     const html = parts.map((part) => inlinePartToHtml(part, audioAssets)).join('');
     return html || '<br>';
   }
-  return escapeHtml(fallbackText || '') || '<br>';
+  return richTextToHtml(fallbackText || '') || '<br>';
+}
+
+function blockAlignmentStyle(parts: DocumentInlinePart[] | undefined, fallbackText: string): string {
+  const firstText = parts?.find((part): part is Extract<DocumentInlinePart, { type: 'text' }> => part.type === 'text')?.text;
+  const alignment = richTextAlignment(firstText ?? fallbackText);
+  return alignment === 'left' ? '' : ` style="text-align:${alignment}"`;
 }
 
 function assetLabel(asset: VNPlateBackgroundAsset): string {
@@ -311,16 +330,24 @@ function stopEffectBlockToHtml(block: Extract<DocumentBlock, { kind: 'technical'
   const targetSummary = target === 'all' ? '' : ` · ${target}`;
   return [
     `<div class="void-block stop-effect-block" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="stopEffect" data-effect-type="${escapeHtml(effectType)}" data-target="${escapeHtml(target)}">`,
-    '<div class="background-copy">',
-    '<div class="background-command-line">',
     '<span class="void-title">/stop-effect</span>',
     `<span class="background-asset">${escapeHtml(typeSummary + targetSummary)}</span>`,
     '</div>',
-    '<div class="void-summary">Зупинити активні візуальні ефекти</div>',
-    '</div>',
-    '<div class="block-actions">',
-    '<button type="button" class="block-button" data-action="edit-stop-effect">Edit</button>',
-    '</div>',
+  ].join('');
+}
+
+function interactiveObjectBlockToHtml(block: Extract<DocumentBlock, { kind: 'technical' }>): string {
+  const data = block.step.data as InteractiveObjectBlockData;
+  const position = data.position || { x: 50, y: 50, width: 10, height: 10 };
+  const actionCount = Array.isArray(data.actions) ? data.actions.length : 0;
+  const flags = [data.oneTimeOnly ? 'once' : '', data.pulseAnimation ? 'pulse' : ''].filter(Boolean).join(' · ');
+  return [
+    `<div class="void-block interactive-object-block" contenteditable="false" tabindex="0" role="button" aria-label="Edit interactive object ${escapeHtml(data.name || 'New Object')}" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="interactive_object" data-object="${escapeHtml(JSON.stringify(data))}">`,
+    '<span class="interactive-object-icon" aria-hidden="true">◎</span>',
+    '<span class="interactive-object-copy">',
+    `<span class="interactive-object-name">${escapeHtml(data.name || 'New Object')}</span>`,
+    `<span class="interactive-object-meta">${escapeHtml(`${position.x}%, ${position.y}% · ${position.width}×${position.height}% · ${actionCount} actions${flags ? ` · ${flags}` : ''}`)}</span>`,
+    '</span>',
     '</div>',
   ].join('');
 }
@@ -332,7 +359,7 @@ export function blockToHtml(
   scenes: VNPlateSceneRef[] = [],
 ): string {
   if (block.kind === 'text') {
-    return `<p data-kind="text" data-id="${escapeHtml(block.id)}">${inlinePartsToHtml(block.parts, block.content, audioAssets)}</p>`;
+    return `<p data-kind="text" data-id="${escapeHtml(block.id)}"${blockAlignmentStyle(block.parts, block.content)}>${inlinePartsToHtml(block.parts, block.content, audioAssets)}</p>`;
   }
 
   if (block.kind === 'dialogue') {
@@ -340,7 +367,7 @@ export function blockToHtml(
     const color = block.tokenColor || '#ff4d6d';
     const openControls = block.openCharacterControls ? ' data-open-character-controls="true"' : '';
     return [
-      `<p data-kind="dialogue" data-id="${escapeHtml(block.id)}" data-speaker="${escapeHtml(block.speakerName)}" data-character-id="${escapeHtml(characterId)}" data-sprite-id="${escapeHtml(block.spriteId || '')}"${openControls}>`,
+      `<p data-kind="dialogue" data-id="${escapeHtml(block.id)}" data-speaker="${escapeHtml(block.speakerName)}" data-character-id="${escapeHtml(characterId)}" data-sprite-id="${escapeHtml(block.spriteId || '')}"${openControls}${blockAlignmentStyle(block.parts, block.text)}>`,
       `<span class="speaker-token dialogue-badge" contenteditable="false" tabindex="0" role="button" aria-label="Edit character ${escapeHtml(block.speakerName || 'Character')}" data-character-id="${escapeHtml(characterId)}" data-block-id="${escapeHtml(block.id)}" style="--speaker-color:${escapeHtml(color)}">${escapeHtml(block.speakerName || 'Character')}:</span> `,
       inlinePartsToHtml(block.parts, block.text, audioAssets),
       '</p>',
@@ -402,6 +429,10 @@ export function blockToHtml(
 
   if (block.blockType === 'stop_effect') {
     return stopEffectBlockToHtml(block);
+  }
+
+  if (block.blockType === 'interactive_object') {
+    return interactiveObjectBlockToHtml(block);
   }
 
   if (block.blockType === 'character') {

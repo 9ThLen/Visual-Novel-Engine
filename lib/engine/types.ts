@@ -114,9 +114,6 @@ export interface TimelineStep {
   conditions?: Condition[]; // Conditional execution
 }
 
-// Explicit aliases make the canonical contract visible at import sites.
-export type CanonicalTimelineStep = TimelineStep;
-
 // ── Block Data (union of all block payloads) ─────────────────────────────
 
 export type BlockData =
@@ -367,8 +364,6 @@ export interface SceneRecord extends ProjectScene {
   createdAt: number;
   updatedAt: number;
 }
-
-export type CanonicalSceneRecord = SceneRecord;
 
 export interface ProjectVariable {
   id: string;

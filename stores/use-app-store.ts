@@ -71,7 +71,7 @@ function mergeSceneRecordsByStory(
       const imported = importedSceneRecords[storyId];
       const current = currentSceneRecords[storyId];
 
-      if (hasSceneRecords(imported)) return [storyId, imported] as const;
+      if (hasSceneRecords(imported)) return [storyId, { ...(current || {}), ...imported }] as const;
       return [storyId, current || imported || {}] as const;
     })
   );
@@ -104,7 +104,7 @@ export const useAppStore = create<AppStore>()(
           const TIMEOUT_MS = 10_000;
           const timeoutPromise = new Promise<null>((_, reject) =>
             setTimeout(() => reject(new Error('migrateFromLegacyKeys timed out')), TIMEOUT_MS)
-);
+          );
 
           const [storiesJson, saveSlotsJson, settingsJson, blockTreeJson, langJson] =
             await Promise.race([
@@ -233,6 +233,13 @@ export const useAppStore = create<AppStore>()(
     }
   )
 );
+
+export async function persistAppStoreStateNow(): Promise<void> {
+  await createAppStoreStorage().setItem(STORAGE_KEYS.APP_STATE, JSON.stringify({
+    state: buildPersistedAppState(useAppStore.getState()),
+    version: APP_STORE_PERSIST_VERSION,
+  }));
+}
 
 export const selectStoryMetadata = (storyId: string) => (state: AppState) =>
   getStoryMetadataFromAccess(state, storyId);

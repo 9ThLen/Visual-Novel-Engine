@@ -1,4 +1,5 @@
 import type { DocumentCommandId } from '@/lib/document-editor/types';
+import { DOCUMENT_COMMANDS } from '@/lib/document-editor/commands';
 import { allTranslations, type Language } from '@/lib/translations';
 
 /** Multi-block templates offered in a dedicated "Snippets" section of the slash menu. */
@@ -9,6 +10,7 @@ export interface EmbeddedCommand {
   blockType: string;
   title: string;
   description: string;
+  aliases?: string[];
   /** Slash-menu section this command is grouped under; omitted for the default command list. */
   group?: 'snippet';
   /** Localized section header, present only when `group` is set. */
@@ -68,11 +70,13 @@ const SNIPPET_GROUP_LABEL_FALLBACK = 'Snippets';
 
 export function getEmbeddedCommands(language: Language = 'en'): EmbeddedCommand[] {
   const translations = allTranslations[language] ?? allTranslations.en;
+  const aliasesByCommandId = new Map(DOCUMENT_COMMANDS.map((command) => [command.id, command.aliases]));
 
   const commands = EMBEDDED_COMMANDS.map((command) => {
     const keys = COMMAND_TRANSLATION_KEYS[command.id];
     return {
       ...command,
+      aliases: aliasesByCommandId.get(command.id),
       title: translations[keys.title] ?? command.title,
       description: translations[keys.description] ?? command.description,
     };

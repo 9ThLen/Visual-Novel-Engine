@@ -5,8 +5,9 @@ import { useI18n } from '@/hooks/use-i18n';
 import { resolveAssetUri, resolvePlayableAssetUri } from '@/lib/asset-resolver';
 import { getEmbeddedCommands } from '@/lib/vn-plate-editor/embedded-commands';
 import { createVNPlateEditorHtml } from '@/lib/vn-plate-editor/embedded-html';
+import { getSharedEditorAssets } from '@/lib/vn-plate-editor/shared-assets';
 import { normalizePlateDocumentScene } from '@/lib/vn-plate-editor/scene-normalizer';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateEditorMessage, VNPlateSceneRef } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateEditorMessage, VNPlateFormatCommand, VNPlateFormatState, VNPlateSceneRef } from '@/lib/vn-plate-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { DocumentScene } from '@/lib/document-editor/types';
 
@@ -35,6 +36,7 @@ export interface PlateWebViewEditorHandle {
   flush: () => Promise<PlateWebViewEditorSnapshot>;
   undo: () => void;
   redo: () => void;
+  formatText: (command: VNPlateFormatCommand, value?: string) => void;
 }
 
 interface PlateWebViewEditorProps {
@@ -59,6 +61,7 @@ interface PlateWebViewEditorProps {
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onOverlayActiveChange?: (active: boolean) => void;
   onHistoryStateChange?: (canUndo: boolean, canRedo: boolean) => void;
+  onFormatStateChange?: (state: VNPlateFormatState) => void;
   /** The author asked to switch the rendered branch of a choice block. */
   onSelectChoiceOption?: (choiceStepId: string, optionId: string) => void;
   /** The author asked to create a new scene as the target of an empty choice option. */
@@ -83,6 +86,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   onUploadAudioAsset,
   onOverlayActiveChange,
   onHistoryStateChange,
+  onFormatStateChange,
   onSelectChoiceOption,
   onStartBranchOption,
 }: PlateWebViewEditorProps, ref) {
@@ -101,12 +105,35 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     resolve: (snapshot: PlateWebViewEditorSnapshot) => void;
     timer: ReturnType<typeof setTimeout>;
   }>());
+  // Safety net for the shared-script path: if the boot script never reports
+  // 'ready' (e.g. a strict CSP blocking blob: URLs), rebuild the frame with
+  // the fully inlined srcDoc instead of leaving a dead editor.
+  const [forceInlineHtml, setForceInlineHtml] = useState(false);
+  const readyRef = useRef(false);
   const html = useMemo(
-    () => createVNPlateEditorHtml({ editorId, scene, characters, backgroundAssets, audioAssets, scenes, isPhone, language }),
+    () => {
+      const shared = forceInlineHtml ? null : getSharedEditorAssets();
+      // On a fallback rebuild, seed from the latest snapshot refs so edits
+      // made before the rebuild are not lost.
+      const currentScene = sceneRef.current ?? scene;
+      const currentCharacters = charactersRef.current ?? characters;
+      return createVNPlateEditorHtml(
+        { editorId, scene: currentScene, characters: currentCharacters, backgroundAssets, audioAssets, scenes, isPhone, language },
+        shared ?? undefined,
+      );
+    },
     // Keep iframe srcDoc stable while live scene/character changes flow through postMessage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editorId, isPhone],
+    [editorId, isPhone, forceInlineHtml],
   );
+
+  useEffect(() => {
+    if (forceInlineHtml || !getSharedEditorAssets()) return;
+    const timer = setTimeout(() => {
+      if (!readyRef.current) setForceInlineHtml(true);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [forceInlineHtml]);
 
   useEffect(() => {
     sceneRef.current = scene;
@@ -287,6 +314,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     },
     undo: () => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'undo' }, '*'),
     redo: () => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'redo' }, '*'),
+    formatText: (command, value) => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'formatText', command, value }, '*'),
   }), [editorId]);
 
   useEffect(() => {
@@ -314,6 +342,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         return;
       }
       if (message.type === 'ready') {
+        readyRef.current = true;
         postBackgroundAssets();
         postAudioAssets();
         postCommands();
@@ -324,6 +353,10 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       }
       if (message.type === 'historyState') {
         onHistoryStateChange?.(message.canUndo, message.canRedo);
+        return;
+      }
+      if (message.type === 'formatState') {
+        onFormatStateChange?.(message.state);
         return;
       }
       if (message.type === 'selectChoiceOption') {
@@ -399,7 +432,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [editorId, minimumFrameHeight, onChange, onCreateNextScene, onHistoryStateChange, onSelectChoiceOption, onStartBranchOption, onUploadAudioAsset, onUploadBackgroundAsset, postAudioAssets, postBackgroundAssets, postBranchColor, postBranchInfo, postCommands, postScenes]);
+  }, [editorId, minimumFrameHeight, onChange, onCreateNextScene, onFormatStateChange, onHistoryStateChange, onSelectChoiceOption, onStartBranchOption, onUploadAudioAsset, onUploadBackgroundAsset, postAudioAssets, postBackgroundAssets, postBranchColor, postBranchInfo, postCommands, postScenes]);
 
   const postAssets = useCallback(() => {
     postBackgroundAssets();

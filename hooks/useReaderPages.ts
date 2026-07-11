@@ -6,6 +6,7 @@
  */
 import { useMemo } from 'react';
 import type { TimelineStep } from '@/lib/engine/types';
+import { richTextAlignment, withRichTextAlignment } from '@/lib/rich-text';
 
 export interface ReaderPageState {
   pages: string[];
@@ -31,7 +32,8 @@ export function useReaderPages(
     if (!currentBlock) return [''];
     if (currentBlock.blockType === 'text') {
       const d = currentBlock.data as { content: string };
-      return d.content.split('\n\n').filter(Boolean);
+      const alignment = richTextAlignment(d.content);
+      return d.content.split('\n\n').filter(Boolean).map((page) => withRichTextAlignment(page, alignment));
     }
     if (currentBlock.blockType === 'dialogue') {
       const d = currentBlock.data as { entries: { text: string }[] };

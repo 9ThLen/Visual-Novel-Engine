@@ -7,34 +7,10 @@
  */
 import { isCanonicalStoryShape, type PlayerConfig } from '@/lib/player-mode';
 import type { Story } from '@/lib/scene-operations';
-import type { SceneRecord } from '@/lib/engine/types';
 import { useAppStore } from '@/stores/use-app-store';
 import { StoryValidator } from '@/lib/story-validator';
-import { createBundledStorySyncPayload } from '@/lib/bundled-story-upsert';
-import { StoryDomain, type CanonicalStory, type StoryMetadata } from '@/lib/story-domain';
-
-function upsertStory(
-  metadata: StoryMetadata,
-  sceneRecords: Record<string, SceneRecord>,
-  characterLibrary?: CanonicalStory['characterLibrary'],
-): void {
-  useAppStore.setState((state) => ({
-    storiesMetadata: state.storiesMetadata.some((item) => item.id === metadata.id)
-      ? state.storiesMetadata.map((item) => (item.id === metadata.id ? metadata : item))
-      : [...state.storiesMetadata, metadata],
-    sceneRecordsByStory: {
-      ...state.sceneRecordsByStory,
-      [metadata.id]: sceneRecords,
-    },
-    sceneRecordHydration: {
-      ...state.sceneRecordHydration,
-      [metadata.id]: 'full',
-    },
-    characterLibraries: characterLibrary && characterLibrary.length > 0
-      ? { ...state.characterLibraries, [metadata.id]: characterLibrary }
-      : state.characterLibraries,
-  }));
-}
+import { createBundledStorySyncPayload, upsertBundledStory } from '@/lib/bundled-story-upsert';
+import { StoryDomain, type CanonicalStory } from '@/lib/story-domain';
 
 /**
  * Seed the player-mode story into the store and return its id (for routing).
@@ -45,7 +21,7 @@ export function seedPlayerStory(config: PlayerConfig): string {
   if (isCanonicalStoryShape(config.story)) {
     const story = config.story as CanonicalStory;
     const metadata = StoryDomain.extractMetadata(story);
-    upsertStory(metadata, story.scenes, story.characterLibrary);
+    upsertBundledStory(metadata, story.scenes, story.characterLibrary);
     return story.id;
   }
 
@@ -53,7 +29,7 @@ export function seedPlayerStory(config: PlayerConfig): string {
   // stories go through at boot.
   const validated = StoryValidator.validateStory(config.story as Story);
   const { metadata, sceneRecords } = createBundledStorySyncPayload(validated);
-  upsertStory(metadata, sceneRecords);
+  upsertBundledStory(metadata, sceneRecords);
   return metadata.id;
 }
 

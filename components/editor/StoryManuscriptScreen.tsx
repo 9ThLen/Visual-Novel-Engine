@@ -55,21 +55,24 @@ export function StoryManuscriptScreen({
     () => buildStoryManuscript(storyMetadata, sceneRecords),
     [sceneRecords, storyMetadata]
   );
-  const baseSnapshot = useMemo(() => JSON.stringify(baseManuscript), [baseManuscript]);
 
   const [draft, setDraft] = useState(baseManuscript);
   const [activeSceneId, setActiveSceneId] = useState<string | null>(baseManuscript.scenes[0]?.sceneId ?? null);
   const [isSaving, setIsSaving] = useState(false);
+  // Edit-tracking flag instead of JSON.stringify-ing the whole draft on every
+  // keystroke — serializing a large story per change made typing lag.
+  const [isDirty, setIsDirty] = useState(false);
 
   useEffect(() => {
     setDraft(baseManuscript);
     setActiveSceneId(baseManuscript.scenes[0]?.sceneId ?? null);
+    setIsDirty(false);
   }, [baseManuscript]);
 
-  const isDirty = useMemo(() => JSON.stringify(draft) !== baseSnapshot, [baseSnapshot, draft]);
   const useSidebarLayout = layout.screenWidth >= 960;
 
   const updateScene = useCallback((sceneId: string, updater: (currentScene: StoryManuscriptScene) => StoryManuscriptScene) => {
+    setIsDirty(true);
     setDraft((currentDraft) => ({
       ...currentDraft,
       scenes: currentDraft.scenes.map((scene) => (scene.sceneId === sceneId ? updater(scene) : scene)),
@@ -88,6 +91,7 @@ export function StoryManuscriptScreen({
   }, [updateScene]);
 
   const handleMoveBlock = useCallback((sceneId: string, fromIndex: number, toIndex: number) => {
+    setIsDirty(true);
     setDraft((currentDraft) => moveStoryManuscriptSceneBlock(currentDraft, sceneId, fromIndex, toIndex));
   }, []);
 
@@ -122,6 +126,7 @@ export function StoryManuscriptScreen({
     try {
       const updatedScenes = applyStoryManuscriptChanges(draft, sceneRecords);
       updatedScenes.forEach((scene) => saveSceneRecord(scene));
+      setIsDirty(false);
       showToast(t('manuscript.saveSuccess'), 'success');
     } finally {
       setIsSaving(false);
@@ -130,6 +135,7 @@ export function StoryManuscriptScreen({
 
   const handleDiscard = useCallback(() => {
     setDraft(baseManuscript);
+    setIsDirty(false);
   }, [baseManuscript]);
 
   return (

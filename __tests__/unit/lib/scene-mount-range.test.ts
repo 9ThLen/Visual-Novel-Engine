@@ -28,8 +28,8 @@ describe('computeMountDelta', () => {
       mounted: new Set(),
     });
 
-    // mountLead = 1.5 * 800 = 1200, so viewBottom+lead = 800+1200 = 2000 -> a,b,c qualify, d/e do not
-    expect(toMount.sort()).toEqual(['a', 'b', 'c']);
+    // mountLead = 2.5 * 800 = 2000, so viewBottom+lead = 800+2000 = 2800 -> a..d qualify, e does not
+    expect(toMount.sort()).toEqual(['a', 'b', 'c', 'd']);
   });
 
   it('leaves scenes with unknown layout untouched', () => {

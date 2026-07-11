@@ -2,13 +2,23 @@ import type { VNPlateEditorPayload } from './types';
 import type { EmbeddedCommand } from './embedded-commands';
 import { jsonForScript } from './embedded-utils';
 
-export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: EmbeddedCommand[]): string {
-  return `
-    var payload = ${jsonForScript(payload)};
-    var commands = ${jsonForScript(commands)};
+/**
+ * The static body of the embedded editor script. It only reads `payload` and
+ * `commands` as free variables, so it can either be prefixed with two `var`
+ * declarations (inline mode, one copy per iframe) or wrapped in a boot
+ * function that is served once from a shared Blob URL and reused by every
+ * scene iframe (see createEmbeddedBootScript).
+ */
+const EMBEDDED_SCRIPT_BODY = `
     var editor = document.getElementById('editor');
     var title = document.getElementById('title');
     var lastHistoryTarget = editor;
+    var historyUndo = [];
+    var historyRedo = [];
+    var historyCurrent = null;
+    var historyTextGroup = null;
+    var HISTORY_LIMIT = 100;
+    var HISTORY_GROUP_MS = 1200;
     var menu = document.getElementById('slashMenu');
     var saveTimer = 0;
     var resizeTimer = 0;
@@ -28,6 +38,9 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     var activeGotoBlock = null;
     var gotoPopover = null;
     var gotoDraft = null;
+    var activeStopEffectBlock = null;
+    var stopEffectPopover = null;
+    var stopEffectDraft = null;
     var branchInfo = [];
     // Must stay in sync with BRANCH_COLOR_PALETTE in lib/document-editor/branch-colors.ts
     var branchPalette = ['#d97706', '#2563eb', '#7c3aed', '#0d9488', '#db2777', '#65a30d'];
@@ -69,13 +82,117 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       saveTimer = window.setTimeout(saveNow, 260);
     }
 
-    function postHistoryState() {
-      var canQueryHistory = typeof document.queryCommandEnabled === 'function';
-      post({
-        type: 'historyState',
-        canUndo: canQueryHistory && document.queryCommandEnabled('undo'),
-        canRedo: canQueryHistory && document.queryCommandEnabled('redo')
+    function historySnapshot() {
+      var clone = editor.cloneNode(true);
+      Array.prototype.slice.call(clone.querySelectorAll('.is-editing, .is-selected')).forEach(function(node) {
+        node.classList.remove('is-editing', 'is-selected');
       });
+      var selection = window.getSelection();
+      var selectionElement = selection && selection.anchorNode
+        ? (selection.anchorNode.nodeType === Node.ELEMENT_NODE ? selection.anchorNode : selection.anchorNode.parentElement)
+        : null;
+      var selectionBlock = selectionElement && selectionElement.closest ? selectionElement.closest('[data-id]') : null;
+      return {
+        html: clone.innerHTML,
+        title: title.value,
+        target: lastHistoryTarget === title ? 'title' : 'editor',
+        blockId: selectionBlock ? selectionBlock.dataset.id : null
+      };
+    }
+
+    function historySnapshotEquals(a, b) {
+      return Boolean(a && b && a.html === b.html && a.title === b.title);
+    }
+
+    function postHistoryState() {
+      post({ type: 'historyState', canUndo: historyUndo.length > 0, canRedo: historyRedo.length > 0 });
+    }
+
+    function pushHistory(stack, snapshot) {
+      stack.push(snapshot);
+      if (stack.length > HISTORY_LIMIT) stack.shift();
+    }
+
+    function recordHistoryChange(kind, inputType, data) {
+      var next = historySnapshot();
+      if (!historyCurrent) {
+        historyCurrent = next;
+        return;
+      }
+      if (historySnapshotEquals(historyCurrent, next)) return;
+
+      var now = Date.now();
+      var target = next.target;
+      var startsNewTextGroup = kind !== 'text' || !historyTextGroup
+        || historyTextGroup.target !== target
+        || historyTextGroup.inputType !== inputType
+        || now - historyTextGroup.time > HISTORY_GROUP_MS;
+
+      if (startsNewTextGroup) pushHistory(historyUndo, historyCurrent);
+      historyRedo = [];
+      historyCurrent = next;
+
+      if (kind === 'text') {
+        historyTextGroup = { target: target, inputType: inputType, time: now };
+        if (/\s/.test(data || '') || inputType === 'insertParagraph' || inputType === 'insertLineBreak'
+          || inputType === 'insertFromPaste' || inputType === 'insertFromDrop') {
+          historyTextGroup = null;
+        }
+      } else {
+        historyTextGroup = null;
+      }
+      postHistoryState();
+    }
+
+    function closeHistoryOverlays() {
+      closeSlashMenu();
+      closeBackgroundPopover();
+      closeTransitionPopover();
+      closeChoicePopover();
+      closeLabelPopover();
+      closeGotoPopover();
+      closeStopEffectPopover();
+      closeCharacterPopover();
+      closeEffectPopover();
+      closeAudioPopover();
+    }
+
+    function restoreHistorySnapshot(snapshot) {
+      closeHistoryOverlays();
+      editor.innerHTML = snapshot.html;
+      title.value = snapshot.title;
+      deselectAllVoidBlocks();
+      ensureParagraph();
+      renderAllBackgroundBlocks();
+      renderAllTransitionBlocks();
+      renderAllAudioChips();
+      renderAllChoiceBlocks();
+      renderAllGotoBlocks();
+      lastHistoryTarget = snapshot.target === 'title' ? title : editor;
+      lastHistoryTarget.focus();
+      if (lastHistoryTarget === editor) {
+        var editableChildren = Array.prototype.slice.call(editor.children).filter(isEditableLineElement);
+        var historyEditable = editableChildren.find(function(node) { return node.dataset.id === snapshot.blockId; })
+          || editableChildren[editableChildren.length - 1];
+        if (historyEditable) moveCaretToEnd(historyEditable);
+      }
+      historyCurrent = historySnapshot();
+      historyTextGroup = null;
+      scheduleResize();
+      saveSnapshotNow();
+      postHistoryState();
+    }
+
+    function undoHistory() {
+      if (!historyUndo.length) return;
+      pushHistory(historyRedo, historyCurrent || historySnapshot());
+      restoreHistorySnapshot(historyUndo.pop());
+    }
+
+    function redoHistory() {
+      if (!historyRedo.length) return;
+      pushHistory(historyUndo, historyCurrent || historySnapshot());
+      restoreHistorySnapshot(historyRedo.pop());
     }
 
     function elementBottom(node) {
@@ -202,6 +319,104 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       }
     }
 
+    function serializeRichTextNode(node) {
+      if (!node) return '';
+      if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+      if (node.nodeName === 'BR') return '\\n';
+      var value = Array.prototype.slice.call(node.childNodes).map(serializeRichTextNode).join('');
+      var tag = (node.nodeName || '').toLowerCase();
+      var style = node.style || {};
+      if (tag === 'strong' || tag === 'b' || style.fontWeight === 'bold' || Number(style.fontWeight) >= 600) value = '**' + value + '**';
+      if (tag === 'em' || tag === 'i' || style.fontStyle === 'italic') value = '*' + value + '*';
+      if (tag === 'u' || String(style.textDecoration || style.textDecorationLine || '').indexOf('underline') >= 0) value = '[u]' + value + '[/u]';
+      if (tag === 's' || tag === 'strike' || String(style.textDecoration || style.textDecorationLine || '').indexOf('line-through') >= 0) value = '[s]' + value + '[/s]';
+      var color = normalizedCssColor(style.color);
+      if (color) value = '[color=' + color + ']' + value + '[/color]';
+      return value;
+    }
+
+    function alignmentForNode(node) {
+      var value = String(node && node.style && node.style.textAlign || '').toLowerCase();
+      return value === 'center' || value === 'right' ? value : 'left';
+    }
+
+    function withAlignmentMarker(text, alignment) {
+      var plain = String(text || '').replace(/^\[align=(?:left|center|right)\]/, '');
+      return alignment === 'left' ? plain : '[align=' + alignment + ']' + plain;
+    }
+
+    function normalizedCssColor(value) {
+      var color = String(value || '').trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(color)) return color.toLowerCase();
+      var channels = color.match(/\d+/g);
+      if (!channels || channels.length < 3) return null;
+      return '#' + channels.slice(0, 3).map(function(part) {
+        return Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, '0');
+      }).join('');
+    }
+
+    var savedFormatRange = null;
+
+    function selectionIsInEditor() {
+      var selection = window.getSelection();
+      if (!selection || !selection.rangeCount || !selection.anchorNode) return false;
+      var anchor = selection.anchorNode.nodeType === Node.ELEMENT_NODE ? selection.anchorNode : selection.anchorNode.parentElement;
+      return Boolean(anchor && editor.contains(anchor) && !(anchor.closest && anchor.closest('[contenteditable="false"]')));
+    }
+
+    function rememberFormatSelection() {
+      var selection = window.getSelection();
+      if (selectionIsInEditor() && selection && selection.rangeCount) {
+        savedFormatRange = selection.getRangeAt(0).cloneRange();
+      }
+    }
+
+    function restoreFormatSelection() {
+      if (!savedFormatRange || !editor.contains(savedFormatRange.commonAncestorContainer)) return false;
+      editor.focus({ preventScroll: true });
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(savedFormatRange);
+      return true;
+    }
+
+    function postFormatState() {
+      var canFormat = selectionIsInEditor();
+      var selection = window.getSelection();
+      var anchor = canFormat && selection.anchorNode
+        ? (selection.anchorNode.nodeType === Node.ELEMENT_NODE ? selection.anchorNode : selection.anchorNode.parentElement)
+        : null;
+      var block = anchor && anchor.closest ? anchor.closest('p[data-kind]') : null;
+      post({
+        type: 'formatState',
+        state: {
+          canFormat: canFormat,
+          bold: canFormat && document.queryCommandState('bold'),
+          italic: canFormat && document.queryCommandState('italic'),
+          underline: canFormat && document.queryCommandState('underline'),
+          strikethrough: canFormat && document.queryCommandState('strikeThrough'),
+          alignment: alignmentForNode(block),
+          color: canFormat ? normalizedCssColor(document.queryCommandValue('foreColor')) : null
+        }
+      });
+    }
+
+    function applyFormatCommand(command, value) {
+      if ((!selectionIsInEditor() && !restoreFormatSelection()) || typeof document.execCommand !== 'function') return;
+      var nativeCommand = command === 'strikethrough' ? 'strikeThrough'
+        : command === 'alignLeft' ? 'justifyLeft'
+        : command === 'alignCenter' ? 'justifyCenter'
+        : command === 'alignRight' ? 'justifyRight'
+        : command === 'color' ? 'foreColor'
+        : command === 'clear' ? 'removeFormat'
+        : command;
+      document.execCommand(nativeCommand, false, command === 'color' ? value : null);
+      rememberFormatSelection();
+      recordHistoryChange('structural', '', '');
+      saveSnapshotNow();
+      postFormatState();
+    }
+
     function serializeInlineParts(node) {
       var parts = [];
       Array.prototype.slice.call(node.childNodes).forEach(function(child) {
@@ -267,10 +482,20 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           return;
         }
         if (child.nodeName !== 'BR' && child.textContent) {
-          parts.push({ type: 'text', text: child.textContent });
+          parts.push({ type: 'text', text: serializeRichTextNode(child) });
         }
       });
-      return parts;
+      var alignment = alignmentForNode(node);
+      var markedAlignment = false;
+      return parts.map(function(part) {
+        if (part.type !== 'text') return part;
+        var text = String(part.text || '').replace(/^\[align=(?:left|center|right)\]/, '');
+        if (!markedAlignment) {
+          markedAlignment = true;
+          text = withAlignmentMarker(text, alignment);
+        }
+        return Object.assign({}, part, { text: text });
+      });
     }
 
     function hasInlineChipPart(parts) {
@@ -746,6 +971,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeChoicePopover();
       closeLabelPopover();
       closeGotoPopover();
+      closeStopEffectPopover();
       if (activeEffectChip === chip && effectPopover) {
         closeEffectPopover();
         return;
@@ -1047,6 +1273,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeChoicePopover();
       closeLabelPopover();
       closeGotoPopover();
+      closeStopEffectPopover();
       if (activeAudioChip === chip && audioPopover) {
         closeAudioPopover();
         return;
@@ -1312,6 +1539,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeChoicePopover();
       closeLabelPopover();
       closeGotoPopover();
+      closeStopEffectPopover();
       closeCharacterPopover();
       activeCharacterToken = token;
       var popover = document.createElement('div');
@@ -1495,6 +1723,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeChoicePopover();
       closeLabelPopover();
       closeGotoPopover();
+      closeStopEffectPopover();
       closeBackgroundPopover();
       activeBackgroundBlock = block;
       activeBackgroundBlock.classList.add('is-editing', 'is-selected');
@@ -1769,6 +1998,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeChoicePopover();
       closeLabelPopover();
       closeGotoPopover();
+      closeStopEffectPopover();
       closeTransitionPopover();
       activeTransitionBlock = block;
       activeTransitionBlock.classList.add('is-editing', 'is-selected');
@@ -1965,6 +2195,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeChoicePopover();
       closeTransitionPopover();
       closeGotoPopover();
+      closeStopEffectPopover();
       closeLabelPopover();
       activeLabelBlock = block;
       activeLabelBlock.classList.add('is-editing', 'is-selected');
@@ -2039,6 +2270,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeTransitionPopover();
       closeLabelPopover();
       closeGotoPopover();
+      closeStopEffectPopover();
       activeGotoBlock = block;
       activeGotoBlock.classList.add('is-editing', 'is-selected');
       gotoDraft = gotoDataFromNode(block);
@@ -2104,6 +2336,105 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
           ? { variableName: variableName, operator: selectedValue(gotoPopover.querySelector('#gtOp'), '=='), value: value }
           : null,
         elseTargetLabel: selectedValue(gotoPopover.querySelector('#gtElse'), '') || null
+      };
+    }
+
+    // ── Stop-effect block ───────────────────────────────────────────────
+    var STOP_EFFECT_TYPES = ['shake', 'flash', 'blur', 'rain', 'snow', 'fog', 'glitch', 'vignette'];
+    var STOP_EFFECT_TARGET_LABELS = {
+      all: 'Будь-яка ціль',
+      screen: 'Екран',
+      character: 'Персонаж',
+      background: 'Фон'
+    };
+
+    function stopEffectDataFromNode(node) {
+      var effectType = (node.dataset.effectType || 'all').trim();
+      var target = (node.dataset.target || 'all').trim();
+      if (effectType !== 'all' && STOP_EFFECT_TYPES.indexOf(effectType) === -1) effectType = 'all';
+      if (!STOP_EFFECT_TARGET_LABELS[target]) target = 'all';
+      return { effectType: effectType, target: target };
+    }
+
+    function stopEffectSummaryText(data) {
+      var typeText = data.effectType === 'all' ? 'Усі ефекти' : effectChipLabel(data.effectType);
+      return typeText + (data.target === 'all' ? '' : ' · ' + data.target);
+    }
+
+    function renderStopEffectBlockContent(node) {
+      var data = stopEffectDataFromNode(node);
+      node.innerHTML =
+        '<span class="void-title">/stop-effect</span>' +
+        '<span class="background-asset"></span>';
+      node.querySelector('.background-asset').textContent = stopEffectSummaryText(data);
+    }
+
+    function applyStopEffectData(node, data) {
+      node.dataset.effectType = data.effectType || 'all';
+      node.dataset.target = data.target || 'all';
+      renderStopEffectBlockContent(node);
+    }
+
+    function closeStopEffectPopover() {
+      if (stopEffectPopover) stopEffectPopover.remove();
+      stopEffectPopover = null;
+      stopEffectDraft = null;
+      if (activeStopEffectBlock) activeStopEffectBlock.classList.remove('is-editing', 'is-selected');
+      activeStopEffectBlock = null;
+      scheduleResize();
+    }
+
+    function openStopEffectPopover(block, anchor) {
+      if (!block) return;
+      closeSlashMenu();
+      if (activeStopEffectBlock === block && stopEffectPopover) {
+        closeStopEffectPopover();
+        return;
+      }
+      closeBackgroundPopover();
+      closeEffectPopover();
+      closeAudioPopover();
+      closeCharacterPopover();
+      closeChoicePopover();
+      closeTransitionPopover();
+      closeLabelPopover();
+      closeGotoPopover();
+      closeStopEffectPopover();
+      activeStopEffectBlock = block;
+      activeStopEffectBlock.classList.add('is-editing', 'is-selected');
+      stopEffectDraft = stopEffectDataFromNode(block);
+
+      var typeOptions = option('all', 'Усі ефекти', stopEffectDraft.effectType);
+      STOP_EFFECT_TYPES.forEach(function(type) {
+        typeOptions += option(type, effectChipLabel(type), stopEffectDraft.effectType);
+      });
+      var targetOptions = Object.keys(STOP_EFFECT_TARGET_LABELS).map(function(target) {
+        return option(target, STOP_EFFECT_TARGET_LABELS[target], stopEffectDraft.target);
+      }).join('');
+
+      var popover = document.createElement('div');
+      popover.className = 'background-popover stop-effect-popover';
+      popover.innerHTML =
+        '<label class="popover-label" for="seType">Який ефект зупинити</label>' +
+        '<select id="seType" class="popover-control">' + typeOptions + '</select>' +
+        '<label class="popover-label" for="seTarget">Ціль</label>' +
+        '<select id="seTarget" class="popover-control">' + targetOptions + '</select>' +
+        '<p class="popover-help">Прибирає відповідні активні ефекти з екрана.</p>' +
+        '<div class="popover-footer">' +
+          '<button type="button" class="popover-button" data-action="reset-stop-effect">Скинути</button>' +
+          '<button type="button" class="popover-button primary" data-action="save-stop-effect">Зберегти</button>' +
+        '</div>';
+
+      document.body.appendChild(popover);
+      stopEffectPopover = popover;
+      afterLayout(function() { positionBranchPopover(stopEffectPopover, anchor || block); });
+    }
+
+    function collectStopEffectForm() {
+      if (!stopEffectPopover) return stopEffectDraft || { effectType: 'all', target: 'all' };
+      return {
+        effectType: selectedValue(stopEffectPopover.querySelector('#seType'), 'all'),
+        target: selectedValue(stopEffectPopover.querySelector('#seTarget'), 'all')
       };
     }
 
@@ -2331,6 +2662,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       closeTransitionPopover();
       closeLabelPopover();
       closeGotoPopover();
+      closeStopEffectPopover();
       closeChoicePopover();
       activeChoiceBlock = block;
       activeChoiceBlock.classList.add('is-editing', 'is-selected');
@@ -2478,6 +2810,43 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
             step: gotoStep
           };
         }
+        if (commandId === 'stopEffect') {
+          var stopEffectData = stopEffectDataFromNode(node);
+          var originalStopEffectStep = originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step
+            ? originalTechnical.step
+            : null;
+          var stopEffectStep = originalStopEffectStep
+            ? Object.assign({}, originalStopEffectStep, { blockType: 'stop_effect', data: stopEffectData })
+            : {
+                id: node.dataset.id || uid('step'),
+                blockType: 'stop_effect',
+                data: stopEffectData,
+                collapsed: false,
+                enabled: true
+              };
+          return {
+            id: node.dataset.id || uid('doc_block'),
+            kind: 'technical',
+            commandId: 'stopEffect',
+            blockType: 'stop_effect',
+            label: 'Стоп-ефект',
+            summary: stopEffectSummaryText(stopEffectData),
+            step: stopEffectStep
+          };
+        }
+        if (commandId === 'interactive_object' && originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step) {
+          var interactiveData = jsonFromDataset(node.dataset.object) || originalTechnical.step.data || {};
+          return {
+            id: id,
+            kind: 'technical',
+            sourceStepId: originalTechnical.sourceStepId || id,
+            blockType: 'interactive_object',
+            commandId: 'interactive_object',
+            label: interactiveData.name || "Об'єкт",
+            summary: '',
+            step: Object.assign({}, originalTechnical.step, { blockType: 'interactive_object', data: interactiveData })
+          };
+        }
         if (originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step) {
           return Object.assign({}, originalTechnical, {
             id: node.dataset.id || originalTechnical.id,
@@ -2517,7 +2886,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         var speaker = node.dataset.speaker || '';
         var badge = node.querySelector('.speaker-token') || node.querySelector('.dialogue-badge');
         var dialogueParts = serializeInlineParts(node);
-        var text = hasInlineChipPart(dialogueParts) ? inlinePartsText(dialogueParts) : textWithoutBadge(node, badge);
+        var text = inlinePartsText(dialogueParts);
         var characterId = node.dataset.characterId || (badge && badge.dataset.characterId) || null;
         var character = findCharacterById(characterId);
         if (originalDialogue && originalDialogue.kind === 'dialogue') {
@@ -2549,7 +2918,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       }
       var originalText = originalBlockForNode(node);
       var textParts = serializeInlineParts(node);
-      var content = hasInlineChipPart(textParts) ? inlinePartsText(textParts) : textOf(node);
+      var content = inlinePartsText(textParts);
       if (originalText && originalText.kind === 'text') {
         var nextText = Object.assign({}, originalText, {
           id: node.dataset.id || originalText.id,
@@ -2593,10 +2962,15 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       };
     }
 
-    function saveNow() {
+    function saveSnapshotNow() {
       scheduleResize();
       var snapshot = buildSnapshot();
       post(Object.assign({ type: 'save' }, snapshot));
+    }
+
+    function saveNow() {
+      recordHistoryChange('structural', '', '');
+      saveSnapshotNow();
     }
 
     function ensureParagraph() {
@@ -2666,6 +3040,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (activeChoiceBlock === block) closeChoicePopover();
       if (activeLabelBlock === block) closeLabelPopover();
       if (activeGotoBlock === block) closeGotoPopover();
+      if (activeStopEffectBlock === block) closeStopEffectPopover();
 
       var wasLabelBlock = block.classList.contains('label-block');
       var next = block.nextElementSibling;
@@ -2857,7 +3232,6 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       var beforeSlash = offsetText.slice(0, slash);
       if (/\\S$/.test(beforeSlash)) return null;
       var query = offsetText.slice(slash + 1);
-      if (/\\s/.test(query)) return null;
       var rect = range.getBoundingClientRect();
       return { paragraph: p, query: query, rect: rect };
     }
@@ -2865,7 +3239,9 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
     function commandMatches(command, query) {
       if (!query) return true;
       var q = query.toLowerCase();
-      return command.id.toLowerCase().indexOf(q) >= 0 || command.title.toLowerCase().indexOf(q) >= 0;
+      return command.id.toLowerCase().indexOf(q) >= 0 ||
+        command.title.toLowerCase().indexOf(q) >= 0 ||
+        (command.aliases || []).some(function(alias) { return alias.toLowerCase().indexOf(q) >= 0; });
     }
 
     function clamp(value, min, max) {
@@ -3216,6 +3592,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         : commandId === 'transition' ? 'void-block transition-block'
         : commandId === 'label' ? 'void-block label-block'
         : commandId === 'goto' ? 'void-block goto-block'
+        : commandId === 'stopEffect' ? 'void-block stop-effect-block'
         : 'void-block';
       block.contentEditable = 'false';
       block.dataset.kind = 'technical';
@@ -3241,6 +3618,8 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         applyLabelData(block, { name: '' });
       } else if (commandId === 'goto') {
         applyGotoData(block, { targetLabel: '', condition: null, elseTargetLabel: null });
+      } else if (commandId === 'stopEffect') {
+        applyStopEffectData(block, { effectType: 'all', target: 'all' });
       } else {
         block.innerHTML = '<div class="void-title">/' + commandId + '</div><div class="void-summary">New block</div>';
       }
@@ -3344,8 +3723,13 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         return;
       }
       selectVoidBlock(block);
-      if (!button) return;
-      var action = button.dataset.action;
+      if (block.classList.contains('stop-effect-block')) {
+        event.preventDefault();
+        openStopEffectPopover(block, block);
+        return;
+      }
+      if (!button && !block.classList.contains('interactive-object-block')) return;
+      var action = button ? button.dataset.action : 'edit-interactive-object';
       if (action === 'edit-background') {
         event.preventDefault();
         openBackgroundPopover(block, button);
@@ -3373,6 +3757,30 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (action === 'edit-goto') {
         event.preventDefault();
         openGotoPopover(block, button);
+      }
+      if (action === 'edit-interactive-object') {
+        event.preventDefault();
+        var objectData = jsonFromDataset(block.dataset.object) || {};
+        var name = window.prompt('Object name', objectData.name || 'New Object');
+        if (name === null) return;
+        var position = objectData.position || { x: 50, y: 50, width: 10, height: 10 };
+        var geometry = window.prompt('Position and size: x, y, width, height (%)', [position.x, position.y, position.width, position.height].join(', '));
+        if (geometry === null) return;
+        var values = geometry.split(',').map(function(value) { return Number(value.trim()); });
+        if (values.length !== 4 || values.some(function(value) { return !Number.isFinite(value); })) {
+          window.alert('Enter four numbers separated by commas.');
+          return;
+        }
+        objectData.name = name.trim() || 'New Object';
+        objectData.position = { x: values[0], y: values[1], width: Math.max(1, values[2]), height: Math.max(1, values[3]) };
+        objectData.oneTimeOnly = window.confirm('Should this object work only once?');
+        objectData.pulseAnimation = window.confirm('Show the pulse animation?');
+        block.dataset.object = JSON.stringify(objectData);
+        var nameNode = block.querySelector('.interactive-object-name');
+        var metaNode = block.querySelector('.interactive-object-meta');
+        if (nameNode) nameNode.textContent = objectData.name;
+        if (metaNode) metaNode.textContent = objectData.position.x + '%, ' + objectData.position.y + '% · ' + objectData.position.width + '×' + objectData.position.height + '% · ' + (objectData.actions || []).length + ' actions' + (objectData.oneTimeOnly ? ' · once' : '') + (objectData.pulseAnimation ? ' · pulse' : '');
+        saveNow();
       }
     });
 
@@ -3637,6 +4045,30 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         }
         if (!(gotoTarget && gotoTarget.closest && gotoTarget.closest('.goto-block'))) {
           closeGotoPopover();
+        }
+      }
+      if (stopEffectPopover) {
+        var stopEffectTarget = event.target;
+        if (stopEffectTarget && stopEffectTarget.closest && stopEffectTarget.closest('.stop-effect-popover')) {
+          var stopEffectActionButton = stopEffectTarget.closest('[data-action]');
+          if (!stopEffectActionButton) return;
+          var stopEffectAction = stopEffectActionButton.dataset.action;
+          if (stopEffectAction === 'reset-stop-effect' && activeStopEffectBlock && stopEffectDraft) {
+            applyStopEffectData(activeStopEffectBlock, stopEffectDraft);
+            saveNow();
+            closeStopEffectPopover();
+            return;
+          }
+          if (stopEffectAction === 'save-stop-effect' && activeStopEffectBlock) {
+            applyStopEffectData(activeStopEffectBlock, collectStopEffectForm());
+            saveNow();
+            closeStopEffectPopover();
+            return;
+          }
+          return;
+        }
+        if (!(stopEffectTarget && stopEffectTarget.closest && stopEffectTarget.closest('.stop-effect-block'))) {
+          closeStopEffectPopover();
         }
       }
       if (choicePopover) {
@@ -3934,6 +4366,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         event.preventDefault();
         closeGotoPopover();
       }
+      if (event.key === 'Escape' && stopEffectPopover) {
+        event.preventDefault();
+        closeStopEffectPopover();
+      }
       if (event.key === 'Escape' && characterPopover) {
         event.preventDefault();
         closeCharacterPopover();
@@ -3961,6 +4397,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (activeTransitionBlock) positionTransitionPopover();
       if (activeLabelBlock) positionBranchPopover(labelPopover, activeLabelBlock);
       if (activeGotoBlock) positionBranchPopover(gotoPopover, activeGotoBlock);
+      if (activeStopEffectBlock) positionBranchPopover(stopEffectPopover, activeStopEffectBlock);
       if (activeCharacterToken) positionCharacterPopover(activeCharacterToken);
       if (activeEffectChip) positionEffectPopover(activeEffectChip);
       if (activeAudioChip) positionAudioPopover(activeAudioChip);
@@ -3976,13 +4413,10 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
         post(Object.assign({ type: 'flushed', requestId: message.requestId }, snapshot));
       }
       if (message.type === 'undo' || message.type === 'redo') {
-        lastHistoryTarget.focus();
-        if (typeof document.execCommand === 'function') document.execCommand(message.type);
-        ensureParagraph();
-        scheduleResize();
-        saveNow();
-        window.setTimeout(postHistoryState, 0);
+        if (message.type === 'undo') undoHistory();
+        else redoHistory();
       }
+      if (message.type === 'formatText') applyFormatCommand(message.command, message.value);
       if (message.type === 'charactersUpdated' && Array.isArray(message.characters)) {
         characters = message.characters.map(migrateCharacter);
       }
@@ -4066,7 +4500,7 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       }
     });
 
-    editor.addEventListener('input', function() {
+    editor.addEventListener('input', function(event) {
       deselectAllVoidBlocks();
       ensureParagraph();
       transformDialogueIfNeeded();
@@ -4075,11 +4509,27 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       if (slash) renderSlashMenu(slash);
       else closeSlashMenu();
       scheduleResize();
+      recordHistoryChange('text', event.inputType || 'input', event.data || '');
       scheduleSave();
-      window.setTimeout(postHistoryState, 0);
     });
 
     editor.addEventListener('keydown', function(event) {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) redoHistory();
+        else undoHistory();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        redoHistory();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && ['b', 'i', 'u'].indexOf(event.key.toLowerCase()) >= 0) {
+        event.preventDefault();
+        applyFormatCommand(event.key.toLowerCase() === 'b' ? 'bold' : event.key.toLowerCase() === 'i' ? 'italic' : 'underline');
+        return;
+      }
       if (!activeSlash) return;
       var items = menu.querySelectorAll('.slash-item');
       if (event.key === 'ArrowDown') {
@@ -4100,14 +4550,27 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       }
     });
 
-    title.addEventListener('input', function() {
+    title.addEventListener('input', function(event) {
       scheduleResize();
+      recordHistoryChange('text', event.inputType || 'input', event.data || '');
       scheduleSave();
-      window.setTimeout(postHistoryState, 0);
+    });
+    title.addEventListener('keydown', function(event) {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      if (event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) redoHistory();
+        else undoHistory();
+      } else if (event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        redoHistory();
+      }
     });
     editor.addEventListener('focus', function() { lastHistoryTarget = editor; });
     title.addEventListener('focus', function() { lastHistoryTarget = title; });
     document.addEventListener('selectionchange', function() {
+      rememberFormatSelection();
+      postFormatState();
       if (document.activeElement !== editor) return;
       var slash = currentSlashQuery();
       if (slash) renderSlashMenu(slash);
@@ -4130,7 +4593,27 @@ export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: Em
       resizeObserver.observe(document.documentElement);
     }
     postResize();
+    historyCurrent = historySnapshot();
     post({ type: 'ready' });
     postHistoryState();
+    postFormatState();
   `;
+
+export function createEmbeddedScript(payload: VNPlateEditorPayload, commands: EmbeddedCommand[]): string {
+  return `
+    var payload = ${jsonForScript(payload)};
+    var commands = ${jsonForScript(commands)};
+${EMBEDDED_SCRIPT_BODY}`;
+}
+
+/**
+ * Payload-free variant of the editor script: exposes the whole editor as
+ * window.__VN_PLATE_BOOT(payload, commands). Served once from a shared Blob
+ * URL so the browser parses/compiles the ~200KB body a single time instead of
+ * once per scene iframe.
+ */
+export function createEmbeddedBootScript(): string {
+  return `window.__VN_PLATE_BOOT = function (payload, commands) {
+${EMBEDDED_SCRIPT_BODY}
+};`;
 }

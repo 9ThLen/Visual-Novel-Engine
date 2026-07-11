@@ -71,6 +71,7 @@ interface ExecutorStepResult {
 interface RollbackSnapshot {
   execState: ExecutorState;
   internalIndex: number;
+  stepId: string;
 }
 
 type LookaheadAction = 'preload' | 'skip' | 'stop';
@@ -601,6 +602,7 @@ export function useSceneExecutor(
       rollbackStackRef.current.push({
         execState: execStateRef.current,
         internalIndex: internalIndexRef.current,
+        stepId: timelineRef.current[execStateRef.current.currentStepIndex]?.id ?? '',
       });
       if (rollbackStackRef.current.length > MAX_ROLLBACK_DEPTH) {
         rollbackStackRef.current.shift();
@@ -617,6 +619,10 @@ export function useSceneExecutor(
   const rollback = useCallback(() => {
     const snapshot = rollbackStackRef.current.pop();
     if (!snapshot) return;
+    if (timelineRef.current[snapshot.execState.currentStepIndex]?.id !== snapshot.stepId) {
+      rollbackStackRef.current = [];
+      return;
+    }
     // Snapshots are always halted states (advance() only stacks when leaving
     // a halt), so restoring one re-arms the same yield point: the executor
     // waits for the player exactly as it did the first time. Variables,

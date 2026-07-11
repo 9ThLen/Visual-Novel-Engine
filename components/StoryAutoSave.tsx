@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useAutoSave } from '@/hooks/useAutoSave';
-import { useAppStore } from '@/stores/use-app-store';
+import { persistAppStoreStateNow, useAppStore } from '@/stores/use-app-store';
 import type { ReaderRuntimeSnapshot } from '@/lib/reader-runtime';
 import { buildScopedReaderRuntimeSnapshot } from '@/lib/reader-runtime-snapshot';
 
@@ -22,6 +22,7 @@ export function StoryAutoSave() {
     runtimeSnapshot: runtimeSnapshot ?? emptySnapshot,
     onAutoSave: async (newSlot) => {
       syncAutoSave(newSlot);
+      await persistAppStoreStateNow();
     },
     enabled: !!playbackState?.isPlaying,
   });

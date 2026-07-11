@@ -7,6 +7,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { HistoryEntry } from '@/components/dialogue-history';
 
+const MAX_DIALOGUE_HISTORY_ENTRIES = 500;
+
 export function useDialogueHistory({
   isTyping,
   pageIndex,
@@ -39,7 +41,7 @@ export function useDialogueHistory({
           text: body,
           sceneId: displaySceneId,
         },
-      ];
+      ].slice(-MAX_DIALOGUE_HISTORY_ENTRIES);
     });
   }, [isTyping, pageIndex, displaySceneId, pages, extractSpeaker]);
 

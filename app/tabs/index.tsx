@@ -25,7 +25,7 @@ import demoStoryAdvanced from '@/assets/demo-story-advanced.json';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 import { StoryValidator } from '@/lib/story-validator';
 import { shouldUpsertBundledStory } from '@/lib/bundled-story-sync';
-import { createBundledStorySyncPayload } from '@/lib/bundled-story-upsert';
+import { createBundledStorySyncPayload, upsertBundledStory } from '@/lib/bundled-story-upsert';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import type { Story } from '@/lib/scene-operations';
 import { migrateStoryImageAssetIds } from '@/lib/story-image-library';
@@ -40,19 +40,7 @@ interface StoryCardProps {
 function syncBundledStory(story: Story): void {
   const { metadata, sceneRecords } = createBundledStorySyncPayload(story);
 
-  useAppStore.setState((state) => ({
-    storiesMetadata: state.storiesMetadata.some((item) => item.id === metadata.id)
-      ? state.storiesMetadata.map((item) => (item.id === metadata.id ? metadata : item))
-      : [...state.storiesMetadata, metadata],
-    sceneRecordsByStory: {
-      ...state.sceneRecordsByStory,
-      [metadata.id]: sceneRecords,
-    },
-    sceneRecordHydration: {
-      ...state.sceneRecordHydration,
-      [metadata.id]: 'full',
-    },
-  }));
+  upsertBundledStory(metadata, sceneRecords);
 }
 
 const StoryCard = memo(function StoryCard({ item, onPress }: StoryCardProps) {
@@ -221,14 +209,6 @@ export default function HomeScreen() {
 
     setIsInitialized(true);
   }, [migrateLegacyKeys, hydrateReaderSceneWindow]);
-
-  // Safety timeout: force-show UI after 8 seconds even if initialization hangs
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsInitialized(true);
-    }, 8_000);
-    return () => clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     initializeApp();

@@ -17,7 +17,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import type { Character } from '@/lib/character-types';
 import type { DocumentScene } from '@/lib/document-editor/types';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateSceneRef } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatState, VNPlateSceneRef } from '@/lib/vn-plate-editor/types';
 
 interface DocumentSceneFrameProps {
   scene: DocumentScene;
@@ -43,6 +43,7 @@ interface DocumentSceneFrameProps {
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   registerEditorRef: (handle: PlateWebViewEditorHandle | null) => void;
   onHistoryStateChange: (canUndo: boolean, canRedo: boolean) => void;
+  onFormatStateChange: (state: VNPlateFormatState) => void;
   onFrameLayout: (y: number, height: number) => void;
   /**
    * Bumped by the host after a document rebuild wipes its layout map. React
@@ -73,6 +74,7 @@ function DocumentSceneFrameImpl({
   onUploadAudioAsset,
   registerEditorRef,
   onHistoryStateChange,
+  onFormatStateChange,
   onFrameLayout,
   measureVersion,
 }: DocumentSceneFrameProps) {
@@ -167,6 +169,7 @@ function DocumentSceneFrameImpl({
           onUploadAudioAsset={onUploadAudioAsset}
           onOverlayActiveChange={setIsOverlayActive}
           onHistoryStateChange={onHistoryStateChange}
+          onFormatStateChange={onFormatStateChange}
         />
       ) : (
         <View

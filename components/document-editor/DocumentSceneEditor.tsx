@@ -34,12 +34,13 @@ import { useEditorShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { crumbsForSceneIndex, type BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
 import { ensureDocumentCharactersInBlocks } from '@/lib/document-editor/document-scene';
+import { loadSceneHeights, persistSceneHeight } from '@/lib/document-editor/scene-height-cache';
 import {
   computeActiveSceneId,
   computeMountDelta,
   seedMountedSceneIds,
 } from '@/lib/document-editor/scene-mount-range';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatCommand, VNPlateFormatState } from '@/lib/vn-plate-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { DocumentScene } from '@/lib/document-editor/types';
 import type { SceneRecord } from '@/lib/engine/types';
@@ -154,6 +155,7 @@ export function DocumentSceneEditor({
   const [dirtySceneIds, setDirtySceneIds] = useState<Set<string>>(() => new Set());
   const [isSaving, setIsSaving] = useState(false);
   const [historyStateByScene, setHistoryStateByScene] = useState<Record<string, { canUndo: boolean; canRedo: boolean }>>({});
+  const [formatStateByScene, setFormatStateByScene] = useState<Record<string, VNPlateFormatState>>({});
   const [mountedSceneIds, setMountedSceneIds] = useState<Set<string>>(() =>
     seedMountedSceneIds(initialDocuments.map((ds) => ds.sceneId), sceneRecord.id),
   );
@@ -165,6 +167,9 @@ export function DocumentSceneEditor({
   const editorRefsRef = useRef(new Map<string, PlateWebViewEditorHandle>());
   const draftRegistryRef = useRef(new Map<string, PlateWebViewEditorSnapshot>());
   const sceneLayoutRef = useRef(new Map<string, { y: number; height: number }>());
+  // Heights measured in previous sessions: placeholders and fresh iframes
+  // start at their real height, so scrolling doesn't shift as frames mount.
+  const persistedHeights = useMemo(() => loadSceneHeights(storyId), [storyId]);
   const mountedSceneIdsRef = useRef(mountedSceneIds);
   const documentScenesRef = useRef(documentScenes);
   const activeSceneIdRef = useRef(activeSceneId);
@@ -493,6 +498,13 @@ export function DocumentSceneEditor({
     const prev = sceneLayoutRef.current.get(sceneId);
     sceneLayoutRef.current.set(sceneId, { y, height });
 
+    // Remember real (live editor) heights across sessions so placeholders are
+    // exact next time. Placeholder frames are skipped — persisting their
+    // min/estimated height would overwrite a real measurement.
+    if (mountedSceneIdsRef.current.has(sceneId)) {
+      persistSceneHeight(storyId, sceneId, height);
+    }
+
     // Anti-jump: if a scene fully above the current scroll position changed
     // height (e.g. its iframe resized after mounting), shift the scroll
     // offset by the same delta so on-screen content doesn't visibly move.
@@ -529,7 +541,7 @@ export function DocumentSceneEditor({
     }
 
     scheduleMountRecompute();
-  }, [scheduleMountRecompute]);
+  }, [scheduleMountRecompute, storyId]);
 
   const getOnChange = useSceneCallback(handlePlateChangeImpl);
   const getOnCreateNextScene = useSceneCallback(handleCreateNextSceneImpl);
@@ -555,6 +567,22 @@ export function DocumentSceneEditor({
   }, []);
   const getOnHistoryStateChange = useSceneCallback(handleHistoryStateImpl);
   const activeHistoryState = historyStateByScene[activeSceneId] ?? { canUndo: false, canRedo: false };
+  const handleFormatStateImpl = useCallback((sceneId: string, state: VNPlateFormatState) => {
+    setFormatStateByScene((current) => ({ ...current, [sceneId]: state }));
+  }, []);
+  const getOnFormatStateChange = useSceneCallback(handleFormatStateImpl);
+  const activeFormatState = formatStateByScene[activeSceneId] ?? {
+    bold: false,
+    italic: false,
+    underline: false,
+    strikethrough: false,
+    alignment: 'left',
+    color: null,
+    canFormat: false,
+  };
+  const handleFormatText = useCallback((command: VNPlateFormatCommand, value?: string) => {
+    editorRefsRef.current.get(activeSceneIdRef.current)?.formatText(command, value);
+  }, []);
 
   const handleBack = useCallback(async () => {
     await handleSave();
@@ -647,6 +675,8 @@ export function DocumentSceneEditor({
         canRedo={activeHistoryState.canRedo}
         onUndo={handleUndo}
         onRedo={handleRedo}
+        formatState={activeFormatState}
+        onFormatText={handleFormatText}
       />
 
       <View style={{ flex: 1, flexDirection: isPhone ? 'column' : 'row' }}>
@@ -722,13 +752,14 @@ export function DocumentSceneEditor({
               branchColor={branchColorBySceneId?.[documentScene.sceneId]}
               isPhone={isPhone}
               isMounted={mountedSceneIds.has(documentScene.sceneId)}
-              cachedHeight={sceneLayoutRef.current.get(documentScene.sceneId)?.height}
+              cachedHeight={sceneLayoutRef.current.get(documentScene.sceneId)?.height ?? persistedHeights[documentScene.sceneId]}
               onChange={getOnChange(documentScene.sceneId)}
               onCreateNextScene={getOnCreateNextScene(documentScene.sceneId)}
               onUploadBackgroundAsset={onUploadBackgroundAsset}
               onUploadAudioAsset={onUploadAudioAsset}
               registerEditorRef={getRegisterEditorRef(documentScene.sceneId)}
               onHistoryStateChange={getOnHistoryStateChange(documentScene.sceneId)}
+              onFormatStateChange={getOnFormatStateChange(documentScene.sceneId)}
               onFrameLayout={getOnFrameLayout(documentScene.sceneId)}
               measureVersion={measureVersion}
             />

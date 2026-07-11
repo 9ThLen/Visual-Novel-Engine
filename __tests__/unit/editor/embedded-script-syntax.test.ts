@@ -4,8 +4,12 @@ import { createEmbeddedScript } from '@/lib/vn-plate-editor/embedded-script';
 
 interface EmbeddedHarnessApi {
   insertCommand: (id: string) => void;
+  commandMatches: (command: ReturnType<typeof getEmbeddedCommands>[number], query: string) => boolean;
   renderCharacterPopover: (node: HTMLElement) => void;
   getCharacters: () => unknown[];
+  undoHistory: () => void;
+  redoHistory: () => void;
+  saveNow: () => void;
 }
 
 function evalEmbeddedScriptForHarness(
@@ -17,8 +21,12 @@ function evalEmbeddedScriptForHarness(
       ${createEmbeddedScript(payload, commands)}
       window.__embeddedHarnessApi = {
         insertCommand: insertCommand,
+        commandMatches: commandMatches,
         renderCharacterPopover: renderCharacterPopover,
-        getCharacters: function() { return characters; }
+        getCharacters: function() { return characters; },
+        undoHistory: undoHistory,
+        redoHistory: redoHistory,
+        saveNow: saveNow
       };
     })();
   `);
@@ -266,6 +274,34 @@ function openCharacterPopover(api: EmbeddedHarnessApi) {
 // parses its contents. Compiling it with the Function constructor (without
 // executing) catches syntax errors introduced by edits to the template.
 describe('createEmbeddedScript', () => {
+  it('undoes one text group at a time and keeps structural block changes atomic', () => {
+    const harness = createVoidBlockHarness();
+    const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+    const editor = document.getElementById('editor') as HTMLElement;
+    const paragraph = editor.querySelector('p') as HTMLParagraphElement;
+
+    paragraph.textContent = 'first';
+    paragraph.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: 'first' }));
+    paragraph.textContent = 'first ';
+    paragraph.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ' ' }));
+    paragraph.textContent = 'first second';
+    paragraph.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: 'second' }));
+
+    api.undoHistory();
+    expect(editor.textContent).toBe('first');
+    api.redoHistory();
+    expect(editor.textContent).toBe('first second');
+
+    appendVoidBlock(editor, 'block_atomic', 'background', 'background-block');
+    api.saveNow();
+    expect(editor.querySelector('[data-id="block_atomic"]')).not.toBeNull();
+    api.undoHistory();
+    expect(editor.querySelector('[data-id="block_atomic"]')).toBeNull();
+    expect(editor.textContent).toBe('first second');
+
+    harness.cleanup();
+  });
+
   it('offers every condition operator supported by goto blocks', () => {
     const script = createEmbeddedScript({
       editorId: 'operator_test',
@@ -394,6 +430,22 @@ describe('createEmbeddedScript', () => {
 
     expect(html).toContain('"title":"Фон"');
     expect(html).toContain('"description":"Змінити фонове зображення"');
+  });
+
+  it('matches embedded slash commands by single- and multi-word aliases', () => {
+    const commands = getEmbeddedCommands('en');
+    const stopEffect = commands.find((command) => command.id === 'stopEffect');
+    expect(stopEffect).toBeDefined();
+
+    const harness = createSnippetHarness();
+    try {
+      expect(harness.api.commandMatches(stopEffect!, 'stop')).toBe(true);
+      expect(harness.api.commandMatches(stopEffect!, 'clear effect')).toBe(true);
+      expect(harness.api.commandMatches(stopEffect!, 'зупинити ефект')).toBe(true);
+      expect(harness.api.commandMatches(stopEffect!, 'missing')).toBe(false);
+    } finally {
+      harness.cleanup();
+    }
   });
 
   it('registers the choiceTwoBranches and sceneEnding snippets under a Snippets group', () => {
