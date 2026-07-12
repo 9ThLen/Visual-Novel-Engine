@@ -5,6 +5,7 @@ import { Button } from '@/components/ui';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
+import { withAlpha } from '@/lib/_core/theme';
 import type { ColorScheme } from '@/constants/theme';
 import type { VNPlateFormatCommand, VNPlateFormatState } from '@/lib/vn-plate-editor/types';
 
@@ -26,6 +27,8 @@ interface DocumentEditorHeaderProps {
   onRedo: () => void;
   formatState: VNPlateFormatState;
   onFormatText: (command: VNPlateFormatCommand, value?: string) => void;
+  focusMode: boolean;
+  onToggleFocusMode: () => void;
 }
 
 export function DocumentEditorHeader({
@@ -46,12 +49,15 @@ export function DocumentEditorHeader({
   onRedo,
   formatState,
   onFormatText,
+  focusMode,
+  onToggleFocusMode,
 }: DocumentEditorHeaderProps) {
   const colors = useColors(colorScheme);
   const { t } = useI18n();
   const [showColors, setShowColors] = useState(false);
   const textColors = ['#111827', '#dc2626', '#d97706', '#2563eb', '#7c3aed', '#059669'];
   const toolSize = isPhone ? 34 : 36;
+  // Header groups: back+title (flex) · center tools · actions (flex) — centered toolbar.
 
   return (
     <View
@@ -69,30 +75,47 @@ export function DocumentEditorHeader({
         gap: isPhone ? 14 : 10,
       }}
     >
-      {isPhone ? (
-        <Pressable
-          onPress={onBack}
-          accessibilityRole="button"
-          accessibilityLabel={t('menu.back')}
-          style={{ width: 38, height: 44, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <IconSymbol name="chevron.left" size={34} color={colors.foreground} />
-        </Pressable>
-      ) : (
-        <Button variant="ghost" size="sm" onPress={onBack}>{t('menu.back')}</Button>
-      )}
-
-      <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: isPhone ? 20 : 16, fontWeight: '800' }}>
-          {activeTitle}
-        </Text>
+      <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: isPhone ? 14 : 10 }}>
         {isPhone ? (
-          <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 2 }}>
-            {t('document.sceneCounter', { current: sceneIndex + 1, total: Math.max(sceneCount, 1) })}
+          <Pressable
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel={t('menu.back')}
+            style={{ width: 38, height: 44, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <IconSymbol name="chevron.left" size={34} color={colors.foreground} />
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel={t('menu.back')}
+            style={{
+              height: 36,
+              paddingHorizontal: 12,
+              borderRadius: 8,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: withAlpha(colors.primary, 0.08),
+            }}
+          >
+            <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>{t('menu.back')}</Text>
+          </Pressable>
+        )}
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: isPhone ? 20 : 16, fontWeight: '800' }}>
+            {activeTitle}
           </Text>
-        ) : null}
+          {isPhone ? (
+            <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 2 }}>
+              {t('document.sceneCounter', { current: sceneIndex + 1, total: Math.max(sceneCount, 1) })}
+            </Text>
+          ) : null}
+        </View>
       </View>
 
+      {!focusMode ? (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
         <Pressable
           onPress={onUndo}
@@ -115,7 +138,9 @@ export function DocumentEditorHeader({
           <IconSymbol name="redo" size={22} color={colors.foreground} />
         </Pressable>
       </View>
+      ) : null}
 
+      {!focusMode ? (
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -205,6 +230,7 @@ export function DocumentEditorHeader({
           </View>
         ) : null}
       </View>
+      ) : null}
 
       {isPhone ? (
         <>
@@ -236,12 +262,32 @@ export function DocumentEditorHeader({
           </Pressable>
         </>
       ) : (
-        <>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 }}>
+          <Pressable
+            onPress={onToggleFocusMode}
+            accessibilityRole="button"
+            accessibilityLabel={focusMode ? t('editor.exitFocus') : t('editor.focusMode')}
+            accessibilityState={{ selected: focusMode }}
+            style={{
+              height: 36,
+              paddingHorizontal: 12,
+              borderRadius: 8,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: focusMode ? withAlpha(colors.primary, 0.1) : colors['surface-1'],
+            }}
+          >
+            <Text style={{ color: focusMode ? colors.primary : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+              {focusMode ? t('editor.exitFocus') : t('editor.focusMode')}
+            </Text>
+          </Pressable>
           <Button variant="secondary" size="sm" onPress={onPreview}>
             {t('editor.preview')}
           </Button>
           <Button variant="primary" size="sm" onPress={onSave} loading={isSaving}>{t('common.save')}</Button>
-        </>
+        </View>
       )}
     </View>
   );

@@ -50,6 +50,7 @@ const MAPPING = {
   stop: "stop",
   location: "place",
   lightning: "bolt",
+  scissors: "content-cut",
   add: "add",
   undo: "undo",
   redo: "redo",

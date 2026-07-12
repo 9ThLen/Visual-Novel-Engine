@@ -18,8 +18,8 @@ describe('story reader platform styles', () => {
     });
   });
 
-  it('uses theme foreground color when provided for speaker text', () => {
-    expect(getStoryReaderSpeakerTextStyle({ foreground: 'oklch(22% 0.02 80)' })).toEqual({
+  it('uses theme name text color when provided for speaker text', () => {
+    expect(getStoryReaderSpeakerTextStyle({ nameText: 'oklch(22% 0.02 80)' })).toEqual({
       color: 'oklch(22% 0.02 80)',
     });
   });

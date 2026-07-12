@@ -44,7 +44,7 @@ export const ReaderChoices = React.memo(function ReaderChoices({
           <Text
             className="text-center font-medium leading-5"
             style={{
-              color: colors.foreground,
+              color: colors.choiceText,
               fontSize,
             }}
             numberOfLines={3}

@@ -880,6 +880,11 @@ export function createEmbeddedStyles(): string {
       font-weight: 700;
       line-height: 1.4;
     }
+    .asset-error.is-info {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
     .popover-grid {
       display: grid;
       grid-template-columns: 1fr 1.45fr;

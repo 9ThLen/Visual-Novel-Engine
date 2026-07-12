@@ -17,9 +17,9 @@ export function getStoryReaderContainerStyle(
 }
 
 export function getStoryReaderSpeakerTextStyle(
-  colors?: { foreground?: string }
+  colors?: { nameText?: string }
 ): Pick<TextStyle, 'color'> {
   return {
-    color: colors?.foreground ?? undefined,
+    color: colors?.nameText ?? undefined,
   };
 }

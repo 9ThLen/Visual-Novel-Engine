@@ -26,6 +26,7 @@ import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { showToast } from '@/lib/toast-store';
 import { pickImageFromDevice } from '@/lib/pick-image';
+import { isBackgroundRemovalSupported, removeImageBackground } from '@/lib/remove-background';
 import { saveStoryExport } from '@/lib/export-story-file';
 import { exportStory, MAX_STORY_TAGS, MAX_STORY_TAG_LENGTH, sanitizeStoryTags } from '@/lib/story-hooks';
 import { computeStoryStats } from '@/lib/story-stats';
@@ -196,7 +197,7 @@ function StatTile({
   label: string;
 }) {
   return (
-    <View style={[styles.statCard, { backgroundColor: colors['surface-1'], borderColor: colors.border }, shadowCard]}>
+    <View style={[styles.statCard, { backgroundColor: withAlpha(colors.primary, 0.06) }]}>
       <View style={[styles.statIcon, { backgroundColor: withAlpha(colors.primary, 0.1) }]}>
         <IconSymbol name={iconName} size={16} color={colors.primary} />
       </View>
@@ -379,8 +380,9 @@ export default function StoryHomeScreen() {
       mediaAssets: storyImageAssets,
       audioAssets: storyDoctorAudioAssets,
       characters: characterLibrary,
+      metadata: story ?? undefined,
     }),
-    [characterLibrary, sceneRecords, storyDoctorAudioAssets, storyImageAssets],
+    [characterLibrary, sceneRecords, story, storyDoctorAudioAssets, storyImageAssets],
   );
   const coverageReport = useMemo(
     () => computeCoverageReport(sceneRecords, coverage),
@@ -417,6 +419,26 @@ export default function StoryHomeScreen() {
       showToast(t('storyHome.imageAddFailed'), 'error');
     }
   }, [addImageAssetToStory, story, t]);
+
+  const [removingBgAssetId, setRemovingBgAssetId] = useState<string | null>(null);
+
+  const handleRemoveImageBackground = useCallback(async (asset: { id: string; name: string; uri: string }) => {
+    if (!story || removingBgAssetId) return;
+    setRemovingBgAssetId(asset.id);
+    showToast(t('storyHome.removingBackground'), 'info');
+    try {
+      const resultUri = await removeImageBackground(asset.uri);
+      const baseName = asset.name.replace(/\.(png|jpe?g|webp)$/i, '');
+      const newAsset = await addAssetToLibrary(resultUri, `${baseName} (cutout).png`, 'image');
+      addImageAssetToStory(story.id, newAsset.id);
+      showToast(t('storyHome.backgroundRemoved'), 'success');
+    } catch (error) {
+      console.error('[remove-background]', error);
+      showToast(t('storyHome.backgroundRemoveFailed'), 'error');
+    } finally {
+      setRemovingBgAssetId(null);
+    }
+  }, [addImageAssetToStory, removingBgAssetId, story, t]);
 
   const handleRemoveStoryImage = useCallback(() => {
     if (!story || !imageToRemove) return;
@@ -474,6 +496,13 @@ export default function StoryHomeScreen() {
       router.push({ pathname: '/document-editor', params: { storyId: story.id, sceneId } }),
     );
   }, [story, router, t]);
+
+  const handleCustomizeTheme = useCallback(() => {
+    if (!story) return;
+    navigateWithViewTransition(() =>
+      router.push({ pathname: '/theme-studio', params: { storyId: story.id } }),
+    );
+  }, [story, router]);
 
   const handleOpenHealthScene = useCallback((sceneId: string) => {
     if (!story) return;
@@ -712,6 +741,20 @@ export default function StoryHomeScreen() {
                     </Text>
                   ) : null}
                 </View>
+                {isBackgroundRemovalSupported() ? (
+                  <Pressable
+                    onPress={() => handleRemoveImageBackground(asset)}
+                    disabled={removingBgAssetId !== null}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('storyHome.removeBackgroundAction', { name: asset.name })}
+                    style={({ pressed }) => [
+                      styles.imageRemoveButton,
+                      { opacity: pressed || removingBgAssetId === asset.id ? 0.45 : removingBgAssetId ? 0.3 : 1 },
+                    ]}
+                  >
+                    <IconSymbol name="scissors" size={17} color={colors.primary} />
+                  </Pressable>
+                ) : null}
                 <Pressable
                   onPress={() => setImageToRemove(asset.id)}
                   accessibilityRole="button"
@@ -839,6 +882,14 @@ export default function StoryHomeScreen() {
                   {t('common.updated')} {dateFormatter.format(new Date(story.updatedAt))}
                 </Text>
               </View>
+              {hydrated ? (
+                <View style={styles.heroStats}>
+                  <StatTile colors={colors} iconName="manuscript" value={stats.scenes} label={t('storyHome.statScenes')} />
+                  <StatTile colors={colors} iconName="text" value={stats.words} label={t('storyHome.statWords')} />
+                  <StatTile colors={colors} iconName="list" value={stats.choices} label={t('storyHome.statChoices')} />
+                  <StatTile colors={colors} iconName="character" value={characterCount} label={t('storyHome.statCharacters')} />
+                </View>
+              ) : null}
               <View style={styles.heroActions}>
                 <ActionButton
                   colors={colors}
@@ -854,53 +905,69 @@ export default function StoryHomeScreen() {
                   tone="outline"
                   onPress={handleEditText}
                 />
+                <ActionButton
+                  colors={colors}
+                  label={t('storyHome.customizeTheme')}
+                  iconName="palette"
+                  tone="outline"
+                  onPress={handleCustomizeTheme}
+                />
               </View>
             </View>
           </View>
         </View>
 
-        {/* Statistics */}
-        {hydrated ? (
-          <View style={styles.statGrid}>
-            <StatTile colors={colors} iconName="manuscript" value={stats.scenes} label={t('storyHome.statScenes')} />
-            <StatTile colors={colors} iconName="text" value={stats.words} label={t('storyHome.statWords')} />
-            <StatTile colors={colors} iconName="list" value={stats.choices} label={t('storyHome.statChoices')} />
-            <StatTile colors={colors} iconName="character" value={characterCount} label={t('storyHome.statCharacters')} />
-            <StoryHealthCard
-              colors={colors}
-              report={storyDoctorReport}
-              coverageReport={coverageReport}
-              scenes={sceneRecords}
-              onOpenScene={handleOpenHealthScene}
-              onResetCoverage={() => setShowResetCoverage(true)}
-              style={shadowCard}
-            />
-            <ChoiceStatisticsCard
-              colors={colors}
-              report={choiceStatsReport}
-              onReset={() => setShowResetCoverage(true)}
-              style={shadowCard}
-            />
-            <AssetUsageCard
-              colors={colors}
-              storyId={story.id}
-              scenes={sceneRecords}
-              onOpenScene={handleOpenHealthScene}
-              style={shadowCard}
-            />
-            <StorySnapshotsCard colors={colors} storyId={story.id} style={shadowCard} />
-          </View>
-        ) : null}
-
-        {/* Details + readiness/backup */}
+        {/* Editable story details stay close to the story identity. */}
         <View style={wide ? styles.mainGridRow : styles.mainGridColumn}>
           <View style={wide ? styles.mainLeft : undefined}>{detailsCard}</View>
           <View style={[wide ? styles.mainRight : undefined, styles.rightStack]}>
             {readinessCard}
             {imageLibraryCard}
-            {backupCard}
           </View>
         </View>
+
+        {/* Recovery actions belong together and keep independent heights. */}
+        <View style={wide ? styles.mainGridRow : styles.mainGridColumn}>
+          <View style={wide ? styles.mainLeft : undefined}>
+            <StorySnapshotsCard colors={colors} storyId={story.id} style={[styles.standaloneCard, shadowCard]} />
+          </View>
+          <View style={wide ? styles.mainRight : undefined}>{backupCard}</View>
+        </View>
+
+        {/* Variable-length reports use independent columns so expanding one
+            report never stretches or displaces cards in the other columns. */}
+        {hydrated ? (
+          <View style={wide ? styles.analyticsRow : styles.analyticsColumn}>
+            <View style={styles.analyticsLane}>
+              <ChoiceStatisticsCard
+                colors={colors}
+                report={choiceStatsReport}
+                onReset={() => setShowResetCoverage(true)}
+                style={[styles.standaloneCard, shadowCard]}
+              />
+            </View>
+            <View style={styles.analyticsLane}>
+              <StoryHealthCard
+                colors={colors}
+                report={storyDoctorReport}
+                coverageReport={coverageReport}
+                scenes={sceneRecords}
+                onOpenScene={handleOpenHealthScene}
+                onResetCoverage={() => setShowResetCoverage(true)}
+                style={[styles.standaloneCard, shadowCard]}
+              />
+            </View>
+            <View style={styles.analyticsLane}>
+              <AssetUsageCard
+                colors={colors}
+                storyId={story.id}
+                scenes={sceneRecords}
+                onOpenScene={handleOpenHealthScene}
+                style={[styles.standaloneCard, shadowCard]}
+              />
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
 
       <ConfirmDialog
@@ -1076,6 +1143,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.md,
   },
+  heroStats: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
 
   // Action buttons
   action: {
@@ -1186,37 +1259,31 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
 
-  // Stats
-  statGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
+  // Compact story metrics are part of the hero instead of separate cards.
   statCard: {
-    flexGrow: 1,
-    flexBasis: 130,
-    minWidth: 120,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-    gap: spacing.xs,
+    minWidth: 104,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
   statIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: radius.md,
+    width: 28,
+    height: 28,
+    borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xs,
   },
   statValue: {
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: 17,
+    lineHeight: 20,
     fontWeight: '800',
   },
   statLabel: {
     ...typeScale.caption,
+    flexShrink: 1,
   },
 
   // Readiness
@@ -1325,6 +1392,24 @@ const styles = StyleSheet.create({
   },
   rightStack: {
     gap: spacing.lg,
+  },
+  analyticsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.lg,
+  },
+  analyticsColumn: {
+    gap: spacing.lg,
+  },
+  analyticsLane: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.lg,
+  },
+  standaloneCard: {
+    flexGrow: 0,
+    flexBasis: 'auto',
+    minWidth: 0,
   },
 
   // Not found

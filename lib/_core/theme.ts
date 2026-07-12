@@ -86,9 +86,12 @@ export type RuntimePalette = SchemePaletteItem & {
   'foreground-inverse': string;
   // VN Reader
   dialogueBg: string;
+  dialogueText: string;
+  dialogueBorder: string;
   nameBg: string;
   nameText: string;
   choiceBg: string;
+  choiceText: string;
   choiceBorder: string;
   choiceHover: string;
   // Overlays
@@ -136,9 +139,12 @@ function buildRuntimePalette(scheme: ColorScheme): RuntimePalette {
     surfaceElevated: base['surface-1'],
     // VN Reader
     dialogueBg: x('dialogue-bg') || 'rgba(15,14,23,0.92)',
+    dialogueText: x('dialogue-text') || base.foreground,
+    dialogueBorder: x('dialogue-border') || base.border,
     nameBg: x('name-bg') || 'rgba(15,14,23,0.95)',
     nameText: x('name-text') || base.foreground,
     choiceBg: x('choice-bg') || 'rgba(124,58,237,0.12)',
+    choiceText: x('choice-text') || base.foreground,
     choiceBorder: x('choice-border') || base.primary,
     choiceHover: x('choice-hover') || 'rgba(124,58,237,0.25)',
     // Overlays

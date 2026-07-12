@@ -161,6 +161,13 @@ export type VNPlateEditorMessage =
       type: 'uploadAudioAsset';
       name: string;
       dataUri: string;
+    }
+  | {
+      source: 'vn-plate-editor';
+      editorId: string;
+      type: 'removeBackground';
+      requestId: string;
+      dataUri: string;
     };
 
 export type VNPlateHostMessage =
@@ -229,4 +236,12 @@ export type VNPlateHostMessage =
       editorId: string;
       type: 'audioAssetUploaded';
       asset: VNPlateAudioAsset;
+    }
+  | {
+      source: 'vn-plate-host';
+      editorId: string;
+      type: 'backgroundRemoved';
+      requestId: string;
+      /** Transparent PNG data: URI; null when removal failed or is unsupported. */
+      dataUri: string | null;
     };

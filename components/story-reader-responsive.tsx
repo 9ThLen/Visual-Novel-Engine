@@ -24,7 +24,7 @@ import {
   useAnimatedStyle,
   withTiming,
 } from 'react-native-reanimated';
-import { useColors } from '@/hooks/use-colors';
+import { useReaderColors } from '@/hooks/use-reader-colors';
 import type { UserSettings } from '@/lib/user-settings';
 import type { TimelineStep } from '@/lib/engine/types';
 import type { RuntimeVariables, SceneState } from '@/lib/engine/runtime-types';
@@ -96,13 +96,13 @@ export function StoryReaderResponsive({
   canRollbackScene = false,
   onRollbackScene,
 }: Props) {
-  const colors = useColors();
   const { t } = useI18n();
   const dims = useWindowDimensions();
   const layout = getReaderLayout(dims);
   const fontSize = getResponsiveFontSize(dims);
   const firstTimelineStepId = timeline?.[0]?.id;
   const currentStoryId = useAppStore((state) => state.currentStoryId);
+  const colors = useReaderColors(currentStoryId ?? undefined);
   const storyIdForCharacters = currentStoryId ?? 'current';
   const characterLibrary = useAppStore((state) =>
     currentStoryId ? state.characterLibraries[currentStoryId] || [] : []
@@ -395,7 +395,7 @@ export function StoryReaderResponsive({
         readerControls={readerControls}
         resolvedCharUris={resolvedCharUris}
         speaker={displaySpeaker}
-        speakerTextStyle={getStoryReaderSpeakerTextStyle(colors)}
+        speakerTextStyle={getStoryReaderSpeakerTextStyle({ nameText: colors.nameText })}
         instances={characterInstances}
         activeSpeakerCharacterId={executor.sceneState.activeSpeakerCharacterId ?? null}
         activeSpeakerFocusScale={executor.sceneState.activeSpeakerFocusScale}

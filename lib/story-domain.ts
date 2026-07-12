@@ -1,6 +1,7 @@
 import type { PlaybackState, RuntimeVariables } from './engine/runtime-types';
 import type { SceneRecord } from './engine/types';
 import type { Character } from './character-types';
+import { sanitizeStoryTheme, type StoryReaderTheme } from './story-theme';
 
 export interface StoryMetadata {
   id: string;
@@ -15,6 +16,25 @@ export interface StoryMetadata {
   sceneCount: number;
   sceneOrder?: string[];
   characterAuthoringSchemaVersion?: number;
+  theme?: StoryReaderTheme;
+}
+
+/**
+ * The single normalization funnel for story metadata. Runs at every data-entry
+ * boundary (import, bundled/player-mode seeding, persist hydration) so a broken
+ * value from any source is cleaned before it reaches the store. Idempotent — safe
+ * to run on already-normalized metadata — and the place to add future per-field
+ * normalization so every boundary picks it up automatically.
+ */
+export function normalizeStoryMetadata(metadata: StoryMetadata): StoryMetadata {
+  const theme = sanitizeStoryTheme(metadata.theme);
+  const normalized: StoryMetadata = { ...metadata };
+  if (theme) {
+    normalized.theme = theme;
+  } else {
+    delete normalized.theme;
+  }
+  return normalized;
 }
 
 export interface StoryMetadataInput extends Omit<StoryMetadata, 'sceneCount'> {

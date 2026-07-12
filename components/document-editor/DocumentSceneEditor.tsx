@@ -154,6 +154,9 @@ export function DocumentSceneEditor({
   const [activeSceneId, setActiveSceneId] = useState(sceneRecord.id);
   const [dirtySceneIds, setDirtySceneIds] = useState<Set<string>>(() => new Set());
   const [isSaving, setIsSaving] = useState(false);
+  // Distraction-free writing: hides the sidebar, breadcrumb, inspector, and
+  // the header's undo/redo + formatting tools, leaving only the document.
+  const [focusMode, setFocusMode] = useState(false);
   const [historyStateByScene, setHistoryStateByScene] = useState<Record<string, { canUndo: boolean; canRedo: boolean }>>({});
   const [formatStateByScene, setFormatStateByScene] = useState<Record<string, VNPlateFormatState>>({});
   const [mountedSceneIds, setMountedSceneIds] = useState<Set<string>>(() =>
@@ -677,10 +680,12 @@ export function DocumentSceneEditor({
         onRedo={handleRedo}
         formatState={activeFormatState}
         onFormatText={handleFormatText}
+        focusMode={focusMode}
+        onToggleFocusMode={() => setFocusMode((current) => !current)}
       />
 
       <View style={{ flex: 1, flexDirection: isPhone ? 'column' : 'row' }}>
-        {!isPhone ? (
+        {!isPhone && !focusMode ? (
           <DocumentSceneSidebar
             activeSceneId={activeSceneId}
             colorScheme={documentColorScheme}
@@ -694,6 +699,7 @@ export function DocumentSceneEditor({
         ) : null}
 
         <View style={{ flex: 1 }}>
+        {!focusMode ? (
         <DocumentBranchBreadcrumb
           colorScheme={documentColorScheme}
           isPhone={isPhone}
@@ -706,6 +712,7 @@ export function DocumentSceneEditor({
           viewMode={viewMode}
           onSetViewMode={stableSetViewMode}
         />
+        ) : null}
         <ScrollView
           ref={scrollViewRef}
           style={{
@@ -768,7 +775,7 @@ export function DocumentSceneEditor({
         </ScrollView>
         </View>
 
-        {!isPhone ? (
+        {!isPhone && !focusMode ? (
           <DocumentInspectorPanel colorScheme={documentColorScheme} scene={activeDocument ?? null} />
         ) : null}
       </View>

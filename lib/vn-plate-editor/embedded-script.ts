@@ -1467,8 +1467,14 @@ const EMBEDDED_SCRIPT_BODY = `
       var uk = payload.language === 'uk';
       var messages = {
         format: uk
-          ? 'Для спрайта персонажа використайте PNG або WebP з прозорістю.'
-          : 'Use a PNG or WebP image with transparency for character sprites.',
+          ? 'Для спрайта персонажа використайте зображення PNG, WebP або JPEG.'
+          : 'Use a PNG, WebP or JPEG image for character sprites.',
+        removingBg: uk
+          ? 'Вирізаю фон… Перше використання завантажує модель (~40 МБ).'
+          : 'Removing background… First use downloads the model (~40 MB).',
+        removeBgFailed: uk
+          ? 'Не вдалося вирізати фон автоматично. Завантажте PNG/WebP з прозорим фоном.'
+          : 'Automatic background removal failed. Upload a PNG/WebP with a transparent background.',
         size: uk
           ? 'Файл спрайта має бути не більшим за 5 MB.'
           : 'Character sprite file must be 5 MB or smaller.',
@@ -1489,10 +1495,11 @@ const EMBEDDED_SCRIPT_BODY = `
       return characterPopover ? characterPopover.querySelector('.asset-error') : null;
     }
 
-    function setCharacterSpriteError(message) {
+    function setCharacterSpriteError(message, isInfo) {
       var error = characterSpriteErrorElement();
       if (!error) return;
       error.textContent = message;
+      error.classList.toggle('is-info', Boolean(isInfo));
       error.style.display = 'block';
       scheduleResize();
     }
@@ -1501,15 +1508,41 @@ const EMBEDDED_SCRIPT_BODY = `
       var error = characterSpriteErrorElement();
       if (!error) return;
       error.textContent = '';
+      error.classList.remove('is-info');
       error.style.display = 'none';
       scheduleResize();
     }
 
     function isAllowedCharacterSpriteFile(file) {
+      // JPEG is allowed too: opaque images go through host-side background
+      // removal instead of being rejected.
       var type = String(file && file.type || '').toLowerCase();
-      if (type) return type === 'image/png' || type === 'image/webp';
+      if (type) return type === 'image/png' || type === 'image/webp' || type === 'image/jpeg';
       var name = String(file && file.name || '').toLowerCase();
-      return name.endsWith('.png') || name.endsWith('.webp');
+      return name.endsWith('.png') || name.endsWith('.webp') || name.endsWith('.jpg') || name.endsWith('.jpeg');
+    }
+
+    var pendingBackgroundRemovals = {};
+
+    /**
+     * Ask the host to cut the background out of an image (ISNet runs on the
+     * host side). The callback receives a transparent PNG data: URI, or null
+     * on failure/timeout. First run may download the model, hence the long
+     * timeout.
+     */
+    function requestBackgroundRemoval(dataUri, callback) {
+      var requestId = uid('rmbg');
+      var timer = window.setTimeout(function() {
+        if (pendingBackgroundRemovals[requestId]) {
+          delete pendingBackgroundRemovals[requestId];
+          callback(null);
+        }
+      }, 120000);
+      pendingBackgroundRemovals[requestId] = function(resultUri) {
+        window.clearTimeout(timer);
+        callback(resultUri);
+      };
+      post({ type: 'removeBackground', requestId: requestId, dataUri: dataUri });
     }
 
     function isFullyOpaqueImage(img) {
@@ -1561,7 +1594,7 @@ const EMBEDDED_SCRIPT_BODY = `
         '<input class="popover-control" data-field="sprite-name" placeholder="Sprite name" />' +
         '<div class="preview-actions"><button type="button" class="popover-button" data-action="upload-character-sprite">Upload sprite</button><button type="button" class="popover-button" data-action="delete-character-sprite">Delete selected</button></div>' +
         '<div class="asset-error" role="alert" style="display:none"></div>' +
-        '<input class="character-sprite-file" type="file" accept="image/png,image/webp" hidden />' +
+        '<input class="character-sprite-file" type="file" accept="image/png,image/webp,image/jpeg" hidden />' +
         '<label class="popover-label">Position</label>' +
         '<select class="popover-control" data-field="character-position">' +
           option('far-left', 'Far left', character.authoring && character.authoring.currentPosition) +
@@ -4265,27 +4298,41 @@ const EMBEDDED_SCRIPT_BODY = `
               resetSpriteUploadInput();
               return;
             }
+            function addSpriteWithUri(spriteUri) {
+              var sprite = {
+                id: uid('sprite'),
+                name: uniqueSpriteName(uploadCharacter, spriteNameInput && spriteNameInput.value || spriteFile.name || 'Sprite'),
+                uri: spriteUri,
+                createdAt: Date.now()
+              };
+              uploadCharacter.sprites = (uploadCharacter.sprites || []).concat([sprite]);
+              uploadCharacter.defaultSpriteId = uploadCharacter.defaultSpriteId || sprite.id;
+              uploadCharacter.authoring = Object.assign({}, uploadCharacter.authoring || {}, {
+                currentSpriteId: sprite.id
+              });
+              var paragraph = activeCharacterToken && activeCharacterToken.closest('p');
+              if (paragraph) paragraph.dataset.spriteId = sprite.id;
+              renderCharacterPopover(activeCharacterToken);
+              saveNow();
+            }
             if (fullyOpaque) {
-              setCharacterSpriteError(characterSpriteMessage('transparency'));
+              // Opaque image: cut the background with the host-side model
+              // instead of rejecting the upload.
               resetSpriteUploadInput();
+              setCharacterSpriteError(characterSpriteMessage('removingBg'), true);
+              requestBackgroundRemoval(dataUri, function(processedUri) {
+                if (!spriteUploadIsStillActive()) return;
+                if (!processedUri) {
+                  setCharacterSpriteError(characterSpriteMessage('removeBgFailed'));
+                  return;
+                }
+                clearCharacterSpriteError();
+                addSpriteWithUri(processedUri);
+              });
               return;
             }
-            var sprite = {
-              id: uid('sprite'),
-              name: uniqueSpriteName(uploadCharacter, spriteNameInput && spriteNameInput.value || spriteFile.name || 'Sprite'),
-              uri: dataUri,
-              createdAt: Date.now()
-            };
-            uploadCharacter.sprites = (uploadCharacter.sprites || []).concat([sprite]);
-            uploadCharacter.defaultSpriteId = uploadCharacter.defaultSpriteId || sprite.id;
-            uploadCharacter.authoring = Object.assign({}, uploadCharacter.authoring || {}, {
-              currentSpriteId: sprite.id
-            });
-            var paragraph = activeCharacterToken && activeCharacterToken.closest('p');
-            if (paragraph) paragraph.dataset.spriteId = sprite.id;
             resetSpriteUploadInput();
-            renderCharacterPopover(activeCharacterToken);
-            saveNow();
+            addSpriteWithUri(dataUri);
           };
           img.onerror = function() {
             if (spriteUploadIsStillActive()) setCharacterSpriteError(characterSpriteMessage('verify'));
@@ -4496,6 +4543,13 @@ const EMBEDDED_SCRIPT_BODY = `
             }));
             saveNow();
           }
+        }
+      }
+      if (message.type === 'backgroundRemoved' && message.requestId) {
+        var removalCallback = pendingBackgroundRemovals[message.requestId];
+        if (removalCallback) {
+          delete pendingBackgroundRemovals[message.requestId];
+          removalCallback(typeof message.dataUri === 'string' && message.dataUri ? message.dataUri : null);
         }
       }
     });

@@ -6,14 +6,17 @@ import { migrateSceneRecordMap } from '@/lib/audio-block-migration';
 import {
   buildCanonicalSceneRecordsFromLegacyScenes,
 } from '@/lib/scene-operations';
-import { StoryDomain } from '@/lib/story-domain';
+import { StoryDomain, normalizeStoryMetadata } from '@/lib/story-domain';
 
 export interface BundledStorySyncPayload {
   metadata: StoryMetadata;
   sceneRecords: Record<string, SceneRecord>;
 }
 
-export function upsertBundledStory(metadata: StoryMetadata, sceneRecords: Record<string, SceneRecord>, characterLibrary?: CanonicalStory['characterLibrary']): void {
+export function upsertBundledStory(rawMetadata: StoryMetadata, sceneRecords: Record<string, SceneRecord>, characterLibrary?: CanonicalStory['characterLibrary']): void {
+  // Single store-write funnel for bundled + player-mode stories, so a broken
+  // theme from either seeding path is sanitized before it reaches the store.
+  const metadata = normalizeStoryMetadata(rawMetadata);
   useAppStore.setState((state) => ({
     storiesMetadata: state.storiesMetadata.some((item) => item.id === metadata.id)
       ? state.storiesMetadata.map((item) => item.id === metadata.id ? metadata : item)

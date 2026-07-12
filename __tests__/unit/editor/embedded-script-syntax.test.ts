@@ -47,6 +47,14 @@ function createSpriteUploadHarness(alphaValues: number[]) {
   const originalFileReader = window.FileReader;
   const originalImage = window.Image;
   const originalGetContext = window.HTMLCanvasElement.prototype.getContext;
+  const originalBridge = (window as unknown as { ReactNativeWebView?: { postMessage: (message: string) => void } }).ReactNativeWebView;
+
+  const messages: { type: string; requestId?: string; dataUri?: string }[] = [];
+  (window as unknown as { ReactNativeWebView?: { postMessage: (message: string) => void } }).ReactNativeWebView = {
+    postMessage(message: string) {
+      messages.push(JSON.parse(message));
+    },
+  };
 
   class MockFileReader {
     result = '';
@@ -106,9 +114,17 @@ function createSpriteUploadHarness(alphaValues: number[]) {
 
   return {
     api,
+    messages,
+    /** Deliver a host reply to the embedded editor's message listener. */
+    postHostMessage(data: Record<string, unknown>) {
+      window.dispatchEvent(new MessageEvent('message', {
+        data: { source: 'vn-plate-host', editorId: 'editor_sprite_upload', ...data },
+      }));
+    },
     cleanup() {
       (window as unknown as { FileReader: typeof FileReader }).FileReader = originalFileReader;
       (window as unknown as { Image: typeof Image }).Image = originalImage;
+      (window as unknown as { ReactNativeWebView?: { postMessage: (message: string) => void } }).ReactNativeWebView = originalBridge;
       Object.defineProperty(window.HTMLCanvasElement.prototype, 'getContext', {
         configurable: true,
         value: originalGetContext,
@@ -342,7 +358,7 @@ describe('createEmbeddedScript', () => {
     });
 
     expect(html).toContain('class="asset-error" role="alert"');
-    expect(html).toContain('accept="image/png,image/webp"');
+    expect(html).toContain('accept="image/png,image/webp,image/jpeg"');
     expect(html).toContain('function isAllowedCharacterSpriteFile');
     expect(html).toContain('function isFullyOpaqueImage');
     expect(html).toContain('getImageData');
@@ -351,7 +367,7 @@ describe('createEmbeddedScript', () => {
     expect(html).toContain("spriteUploadInput.value = ''");
   });
 
-  it('rejects a fully opaque character sprite upload before mutating the character library', () => {
+  it('routes a fully opaque character sprite upload through host background removal', () => {
     const harness = createSpriteUploadHarness([255, 255]);
     try {
       const input = openCharacterPopover(harness.api);
@@ -360,11 +376,48 @@ describe('createEmbeddedScript', () => {
 
       input.dispatchEvent(new Event('change', { bubbles: true }));
 
+      // The opaque image is not rejected: a removal request goes to the host
+      // and a progress status is shown while nothing is added yet.
+      const request = harness.messages.find((message) => message.type === 'removeBackground');
+      const status = document.querySelector('.asset-error') as HTMLElement;
+      expect(request?.dataUri).toBe('data:image/png;base64,AAA=');
+      expect(request?.requestId).toBeTruthy();
+      expect(status.style.display).toBe('block');
+      expect(status.classList.contains('is-info')).toBe(true);
+      expect(status.textContent).toContain('Removing background');
+      expect((harness.api.getCharacters() as { sprites: unknown[] }[])[0].sprites).toHaveLength(0);
+
+      harness.postHostMessage({
+        type: 'backgroundRemoved',
+        requestId: request!.requestId,
+        dataUri: 'data:image/png;base64,BBB=',
+      });
+
+      const characters = harness.api.getCharacters() as { sprites: { uri: string }[] }[];
+      expect(characters[0].sprites).toHaveLength(1);
+      expect(characters[0].sprites[0].uri).toBe('data:image/png;base64,BBB=');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('shows an error and adds nothing when host background removal fails', () => {
+    const harness = createSpriteUploadHarness([255, 255]);
+    try {
+      const input = openCharacterPopover(harness.api);
+      const file = new File(['opaque'], 'opaque.jpg', { type: 'image/jpeg' });
+      Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+
+      const request = harness.messages.find((message) => message.type === 'removeBackground');
+      harness.postHostMessage({ type: 'backgroundRemoved', requestId: request!.requestId, dataUri: null });
+
       const error = document.querySelector('.asset-error') as HTMLElement;
-      const characters = harness.api.getCharacters() as { sprites: unknown[] }[];
       expect(error.style.display).toBe('block');
-      expect(error.textContent).toContain('transparent background');
-      expect(characters[0].sprites).toHaveLength(0);
+      expect(error.classList.contains('is-info')).toBe(false);
+      expect(error.textContent).toContain('background removal failed');
+      expect((harness.api.getCharacters() as { sprites: unknown[] }[])[0].sprites).toHaveLength(0);
     } finally {
       harness.cleanup();
     }

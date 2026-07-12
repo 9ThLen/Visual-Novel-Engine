@@ -6,6 +6,7 @@ import { StoryReaderResponsive } from '@/components/story-reader-responsive';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { ReaderMenu } from '@/components/ReaderMenu';
 import { useColors } from '@/hooks/use-colors';
+import { useReaderColors } from '@/hooks/use-reader-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import type { PlaybackState, RuntimeVariables, SceneState } from '@/lib/engine/runtime-types';
 import { enhancedAudioManager as audioManager } from '@/lib/audio-manager-enhanced';
@@ -65,6 +66,7 @@ export default function ReaderScreen() {
   const router = useRouter();
   const colors = useColors();
   const { storyId, resumeExisting } = useReaderRouteParams();
+  const readerColors = useReaderColors(storyId ?? undefined);
   const settings = useAppStore((s) => normalizeUserSettings(s.settings));
   const hydrateReaderSceneWindow = useAppStore((s) => s.hydrateReaderSceneWindow);
   const [showMenu, setShowMenu] = useState(false);
@@ -454,17 +456,17 @@ export default function ReaderScreen() {
         >
           <View
             style={{
-              backgroundColor: colors.dialogueBg,
+              backgroundColor: readerColors.dialogueBg,
               borderRadius: 16, padding: 20, marginHorizontal: 32, maxWidth: 400,
-              borderWidth: 1, borderColor: colors.border,
+              borderWidth: 1, borderColor: readerColors.dialogueBorder,
             }}
           >
             {objDialogue.speaker && (
-              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700', marginBottom: 6 }}>
+              <Text style={{ color: readerColors.nameText, fontSize: 12, fontWeight: '700', marginBottom: 6 }}>
                 {objDialogue.speaker}
               </Text>
             )}
-            <Text style={{ color: colors.foreground, fontSize: 16, lineHeight: 24 }}>
+            <Text style={{ color: readerColors.dialogueText, fontSize: 16, lineHeight: 24 }}>
               {objDialogue.text}
             </Text>
           </View>

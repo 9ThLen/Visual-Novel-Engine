@@ -25,6 +25,8 @@ import type {
   VariableBlockData,
 } from '@/lib/engine/types';
 import type { LibraryAsset } from '@/lib/media-library-service';
+import type { StoryMetadata } from '@/lib/story-domain';
+import type { StoryReaderTheme } from '@/lib/story-theme';
 
 export type StoryDoctorSeverity = 'error' | 'warning';
 
@@ -52,9 +54,88 @@ export interface StoryDoctorInput {
   mediaAssets?: LibraryAsset[];
   audioAssets?: AudioLibraryItem[];
   characters?: Character[];
+  metadata?: StoryMetadata;
 }
 
 const BUILTIN_VARIABLE_PREFIX = '_';
+const MIN_TEXT_CONTRAST = 4.5;
+
+type Rgb = readonly [number, number, number];
+
+function parseThemeColor(color: string): { rgb: Rgb; alpha: number } {
+  return {
+    rgb: [1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16) / 255) as unknown as Rgb,
+    alpha: color.length === 9 ? Number.parseInt(color.slice(7, 9), 16) / 255 : 1,
+  };
+}
+
+function relativeLuminance(rgb: Rgb): number {
+  const [red, green, blue] = rgb.map((channel) => (
+    channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  ));
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrastRatio(first: Rgb, second: Rgb): number {
+  const [lighter, darker] = [relativeLuminance(first), relativeLuminance(second)].sort((a, b) => b - a);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function composite(rgb: Rgb, alpha: number, backdrop: Rgb): Rgb {
+  return rgb.map((channel, index) => channel * alpha + backdrop[index] * (1 - alpha)) as unknown as Rgb;
+}
+
+function addThemeContrastFindings(metadata: StoryMetadata | undefined, findings: StoryDoctorFinding[]): void {
+  const theme = metadata?.theme;
+  if (!theme) return;
+
+  const pairs: Array<{
+    text: keyof StoryReaderTheme;
+    background: keyof StoryReaderTheme;
+    code: string;
+    label: string;
+  }> = [
+    { text: 'dialogueText', background: 'dialogueBg', code: 'theme.dialogueContrast', label: 'dialogue' },
+    { text: 'nameText', background: 'nameBg', code: 'theme.nameContrast', label: 'name' },
+    { text: 'choiceText', background: 'choiceBg', code: 'theme.choiceContrast', label: 'choice' },
+  ];
+
+  for (const pair of pairs) {
+    const textColor = theme[pair.text];
+    const backgroundColor = theme[pair.background];
+    if (!textColor || !backgroundColor) continue;
+
+    const text = parseThemeColor(textColor);
+    const background = parseThemeColor(backgroundColor);
+    if (background.alpha < 1) {
+      const ratios = ([[0, 0, 0], [1, 1, 1]] as const).map((backdrop) => {
+        const effectiveBackground = composite(background.rgb, background.alpha, backdrop as Rgb);
+        const effectiveText = composite(text.rgb, text.alpha, effectiveBackground);
+        return contrastRatio(effectiveText, effectiveBackground);
+      });
+      const worstRatio = Math.min(...ratios);
+      if (worstRatio < MIN_TEXT_CONTRAST) {
+        findings.push({
+          severity: 'warning',
+          code: pair.code,
+          messageKey: 'storyDoctor.issue.themeContrastBackgroundDependent',
+          messageParams: { pair: pair.label, ratio: worstRatio.toFixed(1) },
+        });
+      }
+    } else {
+      const effectiveText = composite(text.rgb, text.alpha, background.rgb);
+      const ratio = contrastRatio(effectiveText, background.rgb);
+      if (ratio < MIN_TEXT_CONTRAST) {
+        findings.push({
+          severity: 'warning',
+          code: pair.code,
+          messageKey: 'storyDoctor.issue.themeContrast',
+          messageParams: { pair: pair.label, ratio: ratio.toFixed(1) },
+        });
+      }
+    }
+  }
+}
 
 function isEnabled(step: TimelineStep): boolean {
   return step.enabled !== false;
@@ -451,6 +532,7 @@ export function runStoryDoctor(input: StoryDoctorInput): StoryDoctorReport {
   addMissingAssetFindings(input, findings);
   addVariableFindings(scenes, findings);
   addDeadEndFindings(scenes, findings);
+  addThemeContrastFindings(input.metadata, findings);
 
   return {
     findings,

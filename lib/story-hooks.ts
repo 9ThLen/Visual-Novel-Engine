@@ -20,6 +20,8 @@ import {
   type TimelineStep,
 } from '@/lib/engine/types';
 import type { CanonicalStory, StoryMetadata } from '@/lib/story-domain';
+import { normalizeStoryMetadata } from '@/lib/story-domain';
+import type { StoryReaderTheme } from '@/lib/story-theme';
 import type { AppState } from '@/stores/use-app-store';
 import { useAppStore } from '@/stores/use-app-store';
 import { normalizeEditorTimeline } from '@/lib/editor-scene-draft';
@@ -360,7 +362,7 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
           ? raw.characters as Character[]
           : []
     );
-    const metadata: StoryMetadata = {
+    const metadata: StoryMetadata = normalizeStoryMetadata({
       id: storyId,
       title: typeof raw.title === 'string' ? raw.title : 'Imported Story',
       description: typeof raw.description === 'string' ? raw.description : '',
@@ -372,7 +374,8 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
       tags: sanitizeStoryTags(raw.tags),
       sceneCount: Object.keys(importedScenes).length,
       characterAuthoringSchemaVersion: CHARACTER_AUTHORING_SCHEMA_VERSION,
-    };
+      theme: raw.theme as StoryReaderTheme | undefined,
+    });
 
     useAppStore.setState((state) => ({
       storiesMetadata: [...state.storiesMetadata, metadata],
@@ -401,7 +404,7 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
     story.scenes || {},
     story.startSceneId,
   ));
-  const metadata: StoryMetadata = {
+  const metadata: StoryMetadata = normalizeStoryMetadata({
     id: story.id,
     title: story.title,
     description: story.description ?? '',
@@ -413,7 +416,8 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
     tags: sanitizeStoryTags(raw.tags),
     sceneCount: Object.keys(importedScenes).length,
     characterAuthoringSchemaVersion: CHARACTER_AUTHORING_SCHEMA_VERSION,
-  };
+    theme: (raw.theme ?? (story as { theme?: unknown }).theme) as StoryReaderTheme | undefined,
+  });
   const importedCharacterLibrary = migrateCharacterLibrary(
     Array.isArray((story as unknown as { characters?: unknown }).characters)
       ? (story as unknown as { characters: Character[] }).characters

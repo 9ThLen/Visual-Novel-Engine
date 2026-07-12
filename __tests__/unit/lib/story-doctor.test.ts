@@ -1,5 +1,7 @@
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import { runStoryDoctor } from '@/lib/story-doctor';
+import type { StoryMetadata } from '@/lib/story-domain';
+import type { StoryReaderTheme } from '@/lib/story-theme';
 
 function makeStep(overrides: Partial<TimelineStep> & { id: string; blockType: TimelineStep['blockType'] }): TimelineStep {
   const defaults: Record<TimelineStep['blockType'], TimelineStep['data']> = {
@@ -66,6 +68,18 @@ function makeScene(overrides: Partial<SceneRecord> & { id: string }): SceneRecor
     createdAt: 0,
     updatedAt: 0,
     ...overrides,
+  };
+}
+
+function makeMetadata(theme?: StoryReaderTheme): StoryMetadata {
+  return {
+    id: 'story-1',
+    title: 'Story',
+    startSceneId: 'start',
+    createdAt: 0,
+    updatedAt: 0,
+    sceneCount: 1,
+    ...(theme === undefined ? {} : { theme }),
   };
 }
 
@@ -388,6 +402,62 @@ describe('runStoryDoctor', () => {
     expect(report.summary).toEqual({
       errors: report.findings.filter((finding) => finding.severity === 'error').length,
       warnings: report.findings.filter((finding) => finding.severity === 'warning').length,
+    });
+  });
+
+  describe('theme contrast', () => {
+    const scenes = [makeScene({ id: 'start', isStart: true })];
+    const themeFindings = (theme?: StoryReaderTheme) => runStoryDoctor({
+      scenes,
+      metadata: makeMetadata(theme),
+    }).findings.filter((finding) => finding.code.startsWith('theme.'));
+
+    it('accepts black text on white and warns for low-contrast gray', () => {
+      expect(themeFindings({ dialogueText: '#000000', dialogueBg: '#ffffff' })).toEqual([]);
+      expect(themeFindings({ dialogueText: '#777777', dialogueBg: '#999999' })).toEqual([
+        expect.objectContaining({ code: 'theme.dialogueContrast', severity: 'warning' }),
+      ]);
+    });
+
+    it('uses WCAG relative luminance at the 4.5 boundary', () => {
+      expect(themeFindings({ dialogueText: '#ffffff', dialogueBg: '#767676' })).toEqual([]);
+      expect(themeFindings({ dialogueText: '#ffffff', dialogueBg: '#777777' })).toEqual([
+        expect.objectContaining({ code: 'theme.dialogueContrast' }),
+      ]);
+    });
+
+    it('checks translucent backgrounds against black and white scene backdrops', () => {
+      expect(themeFindings({ dialogueText: '#333333', dialogueBg: '#ffffff80' })).toEqual([
+        expect.objectContaining({
+          code: 'theme.dialogueContrast',
+          messageKey: 'storyDoctor.issue.themeContrastBackgroundDependent',
+          messageParams: expect.objectContaining({ ratio: expect.stringMatching(/^\d+\.\d$/) }),
+        }),
+      ]);
+    });
+
+    it('composites translucent text onto the background before measuring contrast', () => {
+      // Opaque white on black is 21:1, but at 25% alpha the effective text is
+      // dark gray (#404040) and drops below the 4.5 threshold.
+      expect(themeFindings({ dialogueText: '#ffffff40', dialogueBg: '#000000' })).toEqual([
+        expect.objectContaining({ code: 'theme.dialogueContrast', severity: 'warning' }),
+      ]);
+      // At 50% alpha the effective text (#808080) clears the threshold again.
+      expect(themeFindings({ dialogueText: '#ffffff80', dialogueBg: '#000000' })).toEqual([]);
+    });
+
+    it('skips absent, empty, and incomplete theme pairs', () => {
+      expect(runStoryDoctor({ scenes }).findings.filter((finding) => finding.code.startsWith('theme.'))).toEqual([]);
+      expect(themeFindings({})).toEqual([]);
+      expect(themeFindings({ dialogueText: '#777777' })).toEqual([]);
+    });
+
+    it('emits one finding for each failing pair', () => {
+      expect(themeFindings({
+        dialogueText: '#777777', dialogueBg: '#999999',
+        nameText: '#777777', nameBg: '#999999',
+        choiceText: '#777777', choiceBg: '#999999',
+      })).toHaveLength(3);
     });
   });
 });

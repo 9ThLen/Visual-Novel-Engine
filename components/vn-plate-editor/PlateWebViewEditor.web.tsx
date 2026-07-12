@@ -3,6 +3,7 @@ import { View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useI18n } from '@/hooks/use-i18n';
 import { resolveAssetUri, resolvePlayableAssetUri } from '@/lib/asset-resolver';
+import { isBackgroundRemovalSupported, removeImageBackground } from '@/lib/remove-background';
 import { getEmbeddedCommands } from '@/lib/vn-plate-editor/embedded-commands';
 import { createVNPlateEditorHtml } from '@/lib/vn-plate-editor/embedded-html';
 import { getSharedEditorAssets } from '@/lib/vn-plate-editor/shared-assets';
@@ -377,6 +378,29 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
             asset,
           }, '*');
         });
+        return;
+      }
+      if (message.type === 'removeBackground') {
+        const requestId = message.requestId;
+        const reply = (dataUri: string | null) => {
+          iframeRef.current?.contentWindow?.postMessage({
+            source: 'vn-plate-host',
+            editorId,
+            type: 'backgroundRemoved',
+            requestId,
+            dataUri,
+          }, '*');
+        };
+        if (!isBackgroundRemovalSupported()) {
+          reply(null);
+          return;
+        }
+        void removeImageBackground(message.dataUri)
+          .then(reply)
+          .catch((error) => {
+            console.error('[remove-background]', error);
+            reply(null);
+          });
         return;
       }
       if (message.type === 'uploadAudioAsset') {

@@ -9,6 +9,7 @@ import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { SaveSlot, StoryMetadata } from '@/lib/story-domain';
+import { normalizeStoryMetadata } from '@/lib/story-domain';
 import type { Language } from '@/lib/translations';
 import type { UserSettings } from '@/lib/user-settings';
 import {
@@ -162,7 +163,9 @@ export function migratePersistedAppState(
     needsStoryImageMigration,
   );
   if (Array.isArray(migrated.storiesMetadata)) {
-    migrated.storiesMetadata = withCharacterSchemaVersion(migrated.storiesMetadata);
+    migrated.storiesMetadata = withCharacterSchemaVersion(migrated.storiesMetadata).map(
+      normalizeStoryMetadata,
+    );
   }
   if ('playbackState' in migrated) {
     migrated.playbackState = normalizePlaybackState(migrated.playbackState);
@@ -211,7 +214,7 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
       Array.isArray(persisted.storiesMetadata)
         ? persisted.storiesMetadata
         : currentState.storiesMetadata,
-    ),
+    ).map(normalizeStoryMetadata),
     playbackState:
       'playbackState' in persisted
         ? normalizePlaybackState(persisted.playbackState)

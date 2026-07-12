@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import type { useColors } from '@/hooks/use-colors';
@@ -8,8 +8,7 @@ import type { ReaderChoice } from '@/lib/reader-runtime';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 import type { ReaderFontScale, ReaderLineHeightScale } from '@/lib/user-settings';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
-import { RichText } from '@/components/RichText';
-import { ReaderChoices } from '@/components/reader/ReaderChoices';
+import { ReaderDialoguePanel } from '@/components/reader/ReaderDialoguePanel';
 import { EffectsLayerStack, effectsForCharacter, effectsForTarget } from '@/components/reader/EffectsLayerStack';
 import { useShakeOffset } from '@/components/reader/useShakeOffset';
 import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
@@ -18,7 +17,6 @@ import type { ActiveEffect, CameraRuntimeState } from '@/lib/engine/runtime-type
 import type { InteractiveObject } from '@/lib/interactive-types';
 import { richTextAlignment } from '@/lib/rich-text';
 
-const DIALOGUE_MARGIN_BOTTOM = 28;
 const DIALOGUE_LINE_HEIGHT_MULTIPLIER = 1.65;
 const DEFAULT_READER_LINE_HEIGHT_SCALE = 1.2;
 const TAPPABLE_AREA_STYLE = { flex: 1 };
@@ -244,10 +242,10 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
     lineHeight: scaledDialogueFontSize
       * DIALOGUE_LINE_HEIGHT_MULTIPLIER
       * (readerLineHeightScale / DEFAULT_READER_LINE_HEIGHT_SCALE),
-    color: colors.foreground,
+    color: colors.dialogueText,
     fontWeight: '400' as const,
     textAlign: richTextAlignment(displayedText),
-  }), [colors.foreground, displayedText, readerLineHeightScale, scaledDialogueFontSize]);
+  }), [colors.dialogueText, displayedText, readerLineHeightScale, scaledDialogueFontSize]);
 
   const cursorStyle = useMemo(
     () => [CURSOR_STYLE, { color: colors.primary }],
@@ -319,62 +317,24 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
           getPointerEventsStyle('box-none'),
         ]}
       >
-        <View
-          className="mx-3 mb-7 rounded-2xl border overflow-hidden"
-          style={{
-            backgroundColor: colors.dialogueBg,
-            borderColor: colors.border,
-            marginBottom: DIALOGUE_MARGIN_BOTTOM,
-          }}
-        >
-          {speaker ? (
-            <View
-              className="self-start px-3.5 py-1 rounded-br-lg rounded-tl-xl"
-              style={{ backgroundColor: colors.nameBg ?? colors.primary }}
-            >
-              <Text className="text-xs font-bold tracking-wider" style={speakerTextStyle}>
-                {speaker}
-              </Text>
-            </View>
-          ) : null}
-
-          <Pressable className="p-4 min-h-[80]" onPress={onTap} accessible={false}>
-            <Text testID="reader-dialogue-text" style={dialogueTextStyle}>
-              <RichText text={displayedText} visibleCount={visibleCount} />
-              {isTyping && <Text style={cursorStyle}>|</Text>}
-            </Text>
-          </Pressable>
-
-          {!isTyping && (
-            <ReaderChoices
-              choices={choices}
-              colors={colors}
-              fontSize={scaledDialogueFontSize}
-              getAccessibilityLabel={getChoiceAccessibilityLabel}
-              onSelectChoice={onSelectChoice}
-            />
-          )}
-
-          <View className="flex-row items-center justify-between px-4 pb-3 pt-1">
-            {false && pagesLength > 1 ? (
-              <View className="flex-row gap-1">
-                {Array.from({ length: pagesLength }).map((_, i) => (
-                  <View
-                    key={`dot-${i}`}
-                    className={i === pageIndex ? 'rounded-full w-4 h-1.5' : 'rounded-full w-1.5 h-1.5'}
-                    style={{
-                      backgroundColor: i === pageIndex ? colors.primary : colors.border,
-                    }}
-                  />
-                ))}
-              </View>
-            ) : (
-              <View />
-            )}
-
-            {readerControls}
-          </View>
-        </View>
+        <ReaderDialoguePanel
+          colors={colors}
+          speaker={speaker}
+          speakerTextStyle={speakerTextStyle}
+          displayedText={displayedText}
+          visibleCount={visibleCount}
+          isTyping={isTyping}
+          dialogueTextStyle={dialogueTextStyle}
+          cursorStyle={cursorStyle}
+          choices={choices}
+          choicesFontSize={scaledDialogueFontSize}
+          getChoiceAccessibilityLabel={getChoiceAccessibilityLabel}
+          onSelectChoice={onSelectChoice}
+          onTap={onTap}
+          pagesLength={pagesLength}
+          pageIndex={pageIndex}
+          readerControls={readerControls}
+        />
       </Animated.View>
     </>
   );
