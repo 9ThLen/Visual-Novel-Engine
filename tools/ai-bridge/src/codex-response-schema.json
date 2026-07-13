@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "action": { "type": "string", "enum": ["reply", "tool"] },
+    "text": { "type": ["string", "null"] },
+    "toolName": { "type": ["string", "null"], "enum": ["get_story_overview", "list_scenes", "get_scene", "propose_scene_patch", null] },
+    "input": { "type": ["object", "null"], "additionalProperties": true }
+  },
+  "required": ["action", "text", "toolName", "input"]
+}

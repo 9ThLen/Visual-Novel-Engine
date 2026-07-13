@@ -34,7 +34,6 @@ import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
 import { DialogueHistory } from './dialogue-history';
 import { ReaderControls } from './reader/ReaderControls';
 import { ReaderDisplay } from './reader/ReaderDisplay';
-import { useTypewriter } from '@/hooks/useTypewriter';
 import { useReaderAutoAdvance } from '@/hooks/useReaderAutoAdvance';
 import { useI18n } from '@/hooks/use-i18n';
 import {
@@ -48,7 +47,6 @@ import { useDialogueHistory } from '@/hooks/useDialogueHistory';
 import { enhancedAudioManager } from '@/lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '@/lib/asset-resolver';
 import { useAppStore } from '@/stores/use-app-store';
-import { richTextLength, stripRichText } from '@/lib/rich-text';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -114,6 +112,7 @@ export function StoryReaderResponsive({
     autoPlay = false,
     readerFontScale = 1.0,
     readerLineHeightScale = 1.2,
+    parallaxEnabled = true,
   } = settings;
 
   // ── Executor ──────────────────────────────────────────────────────────
@@ -149,8 +148,9 @@ export function StoryReaderResponsive({
   const [temporaryDialogue, setTemporaryDialogue] = useState<{ text: string; speaker?: string } | null>(null);
 
   // ── Typewriter ─────────────────────────────────────────────────────────
-  const { displayedText, isTyping, startTypewriter, completeTypewriter } =
-    useTypewriter(textSpeed);
+  const [isTyping, setIsTyping] = useState(false);
+  const completeTypewriterRef = useRef<() => void>(() => {});
+  const completeTypewriter = useCallback(() => completeTypewriterRef.current(), []);
 
   // ── Auto-advance ───────────────────────────────────────────────────────
   const {
@@ -258,10 +258,6 @@ export function StoryReaderResponsive({
   // Feed the typewriter the STRIPPED body so it counts and reveals visible
   // characters only — markup chars are never timed or flashed. The rich body
   // (with markup) is rendered separately, sliced by the visible-char count.
-  useEffect(() => {
-    const { body } = extractSpeaker(pages[pageIndex] ?? '');
-    startTypewriter(stripRichText(body));
-  }, [pageIndex, pages, startTypewriter]);
 
   // ── Animated styles ────────────────────────────────────────────────────
   const bgAnimatedStyle = useAnimatedStyle(() => ({
@@ -289,9 +285,6 @@ export function StoryReaderResponsive({
   // length (`displayedText.length`, counted on stripped text) is the visible
   // count. Interactive dialogue bypasses the typewriter, so it shows in full.
   const displayText = temporaryDialogue?.text ?? richBody;
-  const visibleCount = temporaryDialogue
-    ? richTextLength(temporaryDialogue.text)
-    : displayedText.length;
   const handleDisplayTap = useCallback(() => {
     if (temporaryDialogue) {
       setTemporaryDialogue(null);
@@ -380,7 +373,10 @@ export function StoryReaderResponsive({
         readerFontScale={readerFontScale}
         readerLineHeightScale={readerLineHeightScale}
         displayedText={displayText}
-        visibleCount={visibleCount}
+        typewriterEnabled={!temporaryDialogue}
+        textSpeed={textSpeed}
+        onTypewriterStateChange={setIsTyping}
+        registerCompleteTypewriter={(complete) => { completeTypewriterRef.current = complete; }}
         fallbackColor={colors.background}
         getChoiceAccessibilityLabel={(text) => t('reader.choiceLabel', { text })}
         continueAccessibilityLabel={t('reader.continueReading')}
@@ -402,6 +398,7 @@ export function StoryReaderResponsive({
         dimNonSpeakerCharacters={executor.sceneState.dimNonSpeakerCharacters}
         activeEffects={executor.sceneState.activeEffects}
         cameraState={executor.sceneState.cameraState}
+        parallaxEnabled={parallaxEnabled}
         interactiveObjects={executor.sceneState.interactiveObjects}
         onInteractiveDialogue={(text, actionSpeaker) => setTemporaryDialogue({ text, speaker: actionSpeaker })}
         onInteractiveSceneTransition={(targetSceneId) => onTransition?.(targetSceneId)}

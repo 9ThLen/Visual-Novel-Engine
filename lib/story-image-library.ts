@@ -1,6 +1,5 @@
-import type { SceneRecord } from '@/lib/engine/types';
+import type { BackgroundBlockData, SceneRecord } from '@/lib/engine/types';
 import type { LibraryAsset } from '@/lib/media-library-service';
-import type { BackgroundBlockData } from '@/lib/engine/types';
 
 export type StoryImageAssetIds = Record<string, string[]>;
 
@@ -33,6 +32,27 @@ export function getStoryImageAssets(
   return uniqueAssetIds(imageAssetIdsByStory[storyId])
     .map((assetId) => assetById.get(assetId))
     .filter((asset): asset is LibraryAsset => Boolean(asset));
+}
+
+export function getStoryGalleryImageAssets(
+  storyId: string,
+  imageAssetIdsByStory: StoryImageAssetIds,
+  mediaLibrary: LibraryAsset[],
+  scenes: SceneRecord[],
+): LibraryAsset[] {
+  const imageByReference = new Map<string, LibraryAsset>();
+  mediaLibrary.filter((asset) => asset.type === 'image').forEach((asset) => {
+    imageByReference.set(asset.id, asset);
+    imageByReference.set(asset.uri, asset);
+  });
+  const referenced = scenes.flatMap((scene) => scene.timeline ?? [])
+    .filter((step) => step.blockType === 'background')
+    .map((step) => imageByReference.get((step.data as BackgroundBlockData).assetId ?? ''))
+    .filter((asset): asset is LibraryAsset => Boolean(asset));
+  return Array.from(new Map([
+    ...getStoryImageAssets(storyId, imageAssetIdsByStory, mediaLibrary),
+    ...referenced,
+  ].map((asset) => [asset.id, asset])).values());
 }
 
 export function addImageAssetToStory(

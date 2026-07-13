@@ -6,6 +6,9 @@ import type {
   SceneRecord,
   SoundBlockData,
 } from '@/lib/engine/types';
+import type { AudioLibraryItem } from '@/lib/audio-types';
+import type { Character } from '@/lib/character-types';
+import type { LibraryAsset } from '@/lib/media-library-service';
 
 export type AssetUsageKind = 'background' | 'sprite' | 'music' | 'sound' | 'object';
 
@@ -38,6 +41,28 @@ export interface AssetUsageReport {
 
 export function toSpriteUsageAssetId(characterId: string, spriteId: string): string {
   return `${characterId}:${spriteId}`;
+}
+
+export function buildAvailableAssets(
+  imageAssets: LibraryAsset[],
+  audioLibrary: AudioLibraryItem[],
+  characters: Character[],
+): AvailableAsset[] {
+  return [
+    ...imageAssets.map((asset) => ({ id: asset.id, kind: 'background' as const, name: asset.name, aliases: [asset.uri] })),
+    ...audioLibrary.map((asset) => ({
+      id: asset.id,
+      kind: asset.type === 'music' ? 'music' as const : 'sound' as const,
+      name: asset.name,
+      aliases: [asset.uri],
+    })),
+    ...characters.flatMap((character) => character.sprites.map((sprite) => ({
+      id: toSpriteUsageAssetId(character.id, sprite.id),
+      kind: 'sprite' as const,
+      name: `${character.name} / ${sprite.name}`,
+      aliases: [sprite.id, sprite.uri],
+    }))),
+  ];
 }
 
 function cleanId(value: string | null | undefined): string | null {

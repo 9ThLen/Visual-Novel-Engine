@@ -85,6 +85,7 @@ function makeState(): AppStorePersistenceState {
       readerFontScale: 1,
       readerLineHeightScale: 1.2,
       autoPlay: false,
+      parallaxEnabled: true,
     },
     saveSlots: [],
     audioLibraries: {},

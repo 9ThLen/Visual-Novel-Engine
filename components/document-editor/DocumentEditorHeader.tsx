@@ -19,6 +19,7 @@ interface DocumentEditorHeaderProps {
   sceneCount: number;
   onBack: () => void;
   onPreview: () => void;
+  onGallery: () => void;
   onSave: () => void;
   onSaveAndPlay: () => void;
   canUndo: boolean;
@@ -41,6 +42,7 @@ export function DocumentEditorHeader({
   sceneCount,
   onBack,
   onPreview,
+  onGallery,
   onSave,
   onSaveAndPlay,
   canUndo,
@@ -152,7 +154,7 @@ export function DocumentEditorHeader({
         borderColor: colors.border,
         backgroundColor: colors.background,
         flexBasis: isPhone ? '100%' : undefined,
-        ...(isPhone ? ({ order: 2 } as any) : {}),
+        ...(isPhone ? { order: 2 as const } : {}),
         position: 'relative',
       }}>
         {([
@@ -234,6 +236,7 @@ export function DocumentEditorHeader({
 
       {isPhone ? (
         <>
+          <Pressable onPress={onGallery} accessibilityRole="button" accessibilityLabel={t('storyHome.gallery.title')} style={{ alignItems: 'center', justifyContent: 'center', minWidth: 52 }}><IconSymbol name="gallery" size={28} color={colors.foreground} /></Pressable>
           <Pressable
             onPress={onPreview}
             accessibilityRole="button"
@@ -263,6 +266,7 @@ export function DocumentEditorHeader({
         </>
       ) : (
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 }}>
+          <Button variant="secondary" size="sm" onPress={onGallery}>{t('storyHome.gallery.title')}</Button>
           <Pressable
             onPress={onToggleFocusMode}
             accessibilityRole="button"

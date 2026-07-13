@@ -13,6 +13,8 @@ export interface UserSettings {
   readerFontScale: ReaderFontScale;
   readerLineHeightScale: ReaderLineHeightScale;
   autoPlay: boolean;
+  /** Subtle background parallax in the reader (pointer-driven on web, ambient drift on native). */
+  parallaxEnabled: boolean;
 }
 
 export const defaultUserSettings: UserSettings = {
@@ -24,6 +26,7 @@ export const defaultUserSettings: UserSettings = {
   readerFontScale: 1.0,
   readerLineHeightScale: 1.2,
   autoPlay: false,
+  parallaxEnabled: true,
 };
 
 function clampUnitValue(value: unknown, fallback: number): number {
@@ -68,5 +71,9 @@ export function normalizeUserSettings(
     ),
     autoPlay:
       typeof settings?.autoPlay === 'boolean' ? settings.autoPlay : defaultUserSettings.autoPlay,
+    parallaxEnabled:
+      typeof settings?.parallaxEnabled === 'boolean'
+        ? settings.parallaxEnabled
+        : defaultUserSettings.parallaxEnabled,
   };
 }

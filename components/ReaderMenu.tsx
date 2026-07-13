@@ -1,6 +1,9 @@
-import React from 'react';
-import { View, Text, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import React, { useMemo } from 'react';
+import { Text, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
+import { PARALLAX_LAYERS, useParallaxLayer } from '@/components/reader/useParallaxLayer';
+import { normalizeUserSettings } from '@/lib/user-settings';
 import { useColors } from '@/hooks/use-colors';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { buttonFeedback } from '@/lib/ui-feedback';
@@ -36,6 +39,12 @@ export function ReaderMenu({ visible, onClose, onPlaybackReplaced }: ReaderMenuP
   const saveGame = useAppStore((state) => state.saveGame);
   const loadGame = useAppStore((state) => state.loadGame);
   const hydrateSceneRecordsForStory = useAppStore((state) => state.hydrateSceneRecordsForStory);
+  const rawSettings = useAppStore((state) => state.settings);
+  const parallaxEnabled = useMemo(
+    () => normalizeUserSettings(rawSettings).parallaxEnabled,
+    [rawSettings],
+  );
+  const parallaxStyle = useParallaxLayer(parallaxEnabled && visible, PARALLAX_LAYERS.menu);
 
   const activeStoryId = playbackState?.storyId ?? currentStoryId;
   const quickSlotId = activeStoryId ? getQuickSaveSlotId(activeStoryId) : null;
@@ -115,21 +124,25 @@ export function ReaderMenu({ visible, onClose, onPlaybackReplaced }: ReaderMenuP
         style={[styles.overlay, { backgroundColor: colors.backdrop }]}
         onPress={onClose}
       />
-      <View
-        style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: [{ translateX: -(Math.min(320, screenWidth - 32) / 2) }, { translateY: -200 }],
-          zIndex: 100,
-          borderRadius: 16,
-          padding: 16,
-          borderWidth: 1,
-          width: menuWidth,
-          elevation: 8,
-          backgroundColor: colors.dialogueBg,
-          borderColor: colors.border,
-        }}
+      <Animated.View
+        style={[
+          {
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            marginLeft: -(Math.min(320, screenWidth - 32) / 2),
+            marginTop: -200,
+            zIndex: 100,
+            borderRadius: 16,
+            padding: 16,
+            borderWidth: 1,
+            width: menuWidth,
+            elevation: 8,
+            backgroundColor: colors.dialogueBg,
+            borderColor: colors.border,
+          },
+          parallaxStyle,
+        ]}
       >
         {menuItems.map((item) => (
           <Pressable
@@ -156,7 +169,7 @@ export function ReaderMenu({ visible, onClose, onPlaybackReplaced }: ReaderMenuP
             </Text>
           </Pressable>
         ))}
-      </View>
+      </Animated.View>
     </>
   );
 }

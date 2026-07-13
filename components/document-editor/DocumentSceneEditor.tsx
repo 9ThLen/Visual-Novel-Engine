@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DocumentBranchBreadcrumb } from '@/components/document-editor/DocumentBranchBreadcrumb';
 import { DocumentEditorHeader } from '@/components/document-editor/DocumentEditorHeader';
-import { DocumentInspectorPanel } from '@/components/document-editor/DocumentInspectorPanel';
+import { DocumentRightRail } from '@/components/document-editor/DocumentRightRail';
 import { DocumentSceneFrame } from '@/components/document-editor/DocumentSceneFrame';
 import { DocumentSceneSidebar } from '@/components/document-editor/DocumentSceneSidebar';
 import type {
@@ -81,6 +81,7 @@ interface DocumentSceneEditorProps {
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onBack?: () => void;
   onPreview?: (sceneId: string) => void;
+  onGallery?: () => void;
   onSaveAndPlay?: (sceneId: string) => void;
 }
 
@@ -140,6 +141,7 @@ export function DocumentSceneEditor({
   onUploadAudioAsset,
   onBack,
   onPreview,
+  onGallery,
   onSaveAndPlay,
 }: DocumentSceneEditorProps) {
   const router = useRouter();
@@ -672,6 +674,7 @@ export function DocumentSceneEditor({
         sceneCount={sceneCount}
         onBack={handleBack}
         onPreview={handlePreview}
+        onGallery={onGallery ?? (() => router.push({ pathname: '/story-gallery', params: { storyId } }))}
         onSave={handleSave}
         onSaveAndPlay={handleSaveAndPlay}
         canUndo={activeHistoryState.canUndo}
@@ -776,7 +779,12 @@ export function DocumentSceneEditor({
         </View>
 
         {!isPhone && !focusMode ? (
-          <DocumentInspectorPanel colorScheme={documentColorScheme} scene={activeDocument ?? null} />
+          <DocumentRightRail
+            colorScheme={documentColorScheme}
+            scene={activeDocument ?? null}
+            storyId={storyId}
+            activeSceneId={activeSceneId}
+          />
         ) : null}
       </View>
     </KeyboardAvoidingView>

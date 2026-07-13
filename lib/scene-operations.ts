@@ -1,5 +1,5 @@
 import { normalizeEditorTimeline } from '@/lib/editor-scene-draft';
-import type { SceneConnection, SceneRecord, TimelineStep } from '@/lib/engine/types';
+import type { ChoiceBlockData, SceneConnection, SceneRecord, TimelineStep } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
 import type { SplashScreenConfig } from '@/lib/splash-types';
 import type { InteractiveObject } from '@/lib/interactive-types';
@@ -474,6 +474,17 @@ export function applyCanonicalSceneDelete(
       {
         ...record,
         connections: (record.connections || []).filter((connection) => connection.targetSceneId !== sceneId),
+        timeline: record.timeline.map((step) => step.blockType === 'choice'
+          ? {
+              ...step,
+              data: {
+                ...(step.data as ChoiceBlockData),
+                options: (step.data as ChoiceBlockData).options.map((option) =>
+                  option.targetSceneId === sceneId ? { ...option, targetSceneId: null } : option
+                ),
+              },
+            }
+          : step),
       },
     ])
   );

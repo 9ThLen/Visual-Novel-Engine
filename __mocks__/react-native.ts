@@ -62,6 +62,19 @@ export const StyleSheet = {
 export const View = createElement('div');
 export const Text = createElement('span');
 export const Pressable = createElement('button');
+export const TextInput = React.forwardRef((props: any, ref: any) => {
+  const { onChangeText, value, editable, onSubmitEditing, placeholderTextColor, style, testID, ...rest } = props;
+  return React.createElement('input', {
+    ...rest,
+    ref,
+    value,
+    disabled: editable === false || undefined,
+    style: flattenStyle(style),
+    ...(testID ? { 'data-testid': testID } : {}),
+    onChange: (e: any) => onChangeText?.(e.target.value),
+    onKeyDown: (e: any) => { if (e.key === 'Enter') onSubmitEditing?.(); },
+  });
+});
 export const Image = createElement('img');
 export const ScrollView = createElement('div');
 export const FlatList = createElement('div');

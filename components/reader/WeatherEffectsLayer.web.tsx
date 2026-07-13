@@ -1,8 +1,15 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import type { ActiveEffect } from '@/lib/engine/runtime-types';
-import { ReactSnowfallEffect } from '@/components/reader/weather-renderers/ReactSnowfallEffect';
-import { ReactWeatherFogEffect } from '@/components/reader/weather-renderers/ReactWeatherFogEffect';
-import { ReactWeatherRainEffect } from '@/components/reader/weather-renderers/ReactWeatherRainEffect';
+
+const ReactSnowfallEffect = lazy(() =>
+  import('@/components/reader/weather-renderers/ReactSnowfallEffect').then((module) => ({ default: module.ReactSnowfallEffect })),
+);
+const ReactWeatherFogEffect = lazy(() =>
+  import('@/components/reader/weather-renderers/ReactWeatherFogEffect').then((module) => ({ default: module.ReactWeatherFogEffect })),
+);
+const ReactWeatherRainEffect = lazy(() =>
+  import('@/components/reader/weather-renderers/ReactWeatherRainEffect').then((module) => ({ default: module.ReactWeatherRainEffect })),
+);
 
 interface WeatherEffectsLayerProps {
   effects: ActiveEffect[];
@@ -39,9 +46,11 @@ export function WeatherEffectsLayer({ effects, target = 'screen' }: WeatherEffec
         zIndex: 30,
       }}
     >
-      {fog ? <ReactWeatherFogEffect effect={fog} /> : null}
-      {rain ? <ReactWeatherRainEffect effect={rain} /> : null}
-      {snow ? <ReactSnowfallEffect effect={snow} /> : null}
+      <Suspense fallback={null}>
+        {fog ? <ReactWeatherFogEffect effect={fog} /> : null}
+        {rain ? <ReactWeatherRainEffect effect={rain} /> : null}
+        {snow ? <ReactSnowfallEffect effect={snow} /> : null}
+      </Suspense>
     </div>
   );
 }

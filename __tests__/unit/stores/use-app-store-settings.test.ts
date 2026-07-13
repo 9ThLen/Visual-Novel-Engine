@@ -11,6 +11,7 @@ describe('normalizeUserSettings', () => {
       readerFontScale: 1,
       readerLineHeightScale: 1.2,
       autoPlay: false,
+      parallaxEnabled: true,
     });
   });
 
@@ -35,6 +36,7 @@ describe('normalizeUserSettings', () => {
       readerFontScale: 1,
       readerLineHeightScale: 1.2,
       autoPlay: false,
+      parallaxEnabled: true,
     });
   });
 });

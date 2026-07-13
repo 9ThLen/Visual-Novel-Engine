@@ -43,6 +43,7 @@ interface PlateSceneEditorProps {
   onCreateNextScene?: (sourceSceneId: string, sceneRecords: SceneRecord[], characters: Character[]) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string) => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
+  onGallery?: () => void;
 }
 
 export function PlateSceneEditor({
@@ -68,6 +69,7 @@ export function PlateSceneEditor({
   onCreateNextScene,
   onUploadBackgroundAsset,
   onUploadAudioAsset,
+  onGallery,
 }: PlateSceneEditorProps) {
   const router = useRouter();
   const initialDocuments = useMemo(
@@ -133,6 +135,7 @@ export function PlateSceneEditor({
       onBack={() => router.back()}
       onPreview={(sceneId) => router.push({ pathname: '/preview', params: { storyId, sceneId } })}
       onSaveAndPlay={(sceneId) => router.push({ pathname: '/preview', params: { storyId, sceneId } })}
+      onGallery={onGallery}
     />
   );
 }

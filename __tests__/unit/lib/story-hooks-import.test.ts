@@ -8,7 +8,43 @@ describe('importStory', () => {
       storiesMetadata: [],
       sceneRecordsByStory: {},
       characterLibraries: {},
+      audioLibraries: {},
     });
+  });
+
+  it('preserves the audio library through export and import', async () => {
+    useAppStore.setState({
+      storiesMetadata: [{
+        id: 'story-audio', title: 'Audio Story', startSceneId: 'scene-1',
+        createdAt: 1, updatedAt: 1, sceneCount: 1,
+      }],
+      sceneRecordsByStory: {
+        'story-audio': {
+          'scene-1': {
+            id: 'scene-1', storyId: 'story-audio', name: 'Scene 1', description: '', tags: [],
+            timeline: [], flowX: 0, flowY: 0, connections: [], isStart: true,
+            sceneState: {
+              backgroundAssetId: null, backgroundTransition: 'fade', characters: [], activeEffects: [],
+              musicTrackId: null, musicPlaying: false, musicVolume: 1, variables: {}, dialogueHistory: [],
+              currentChoices: null, isTransitioning: false, transitionTarget: null,
+            },
+            createdAt: 1, updatedAt: 1,
+          },
+        },
+      },
+      audioLibraries: {
+        'story-audio': [{
+          id: 'audio-1', name: 'Rain', uri: 'file://rain.mp3', type: 'ambient', createdAt: 1,
+        }],
+      },
+    });
+
+    const imported = await importStory(await exportStory('story-audio', useAppStore.getState()));
+
+    expect(imported.audioLibrary).toEqual([
+      { id: 'audio-1', name: 'Rain', uri: 'file://rain.mp3', type: 'ambient', createdAt: 1 },
+    ]);
+    expect(useAppStore.getState().audioLibraries[imported.id]).toEqual(imported.audioLibrary);
   });
 
   it('returns a canonical story for canonical JSON', async () => {

@@ -7,6 +7,7 @@
     "dev": "node node_modules/expo/bin/cli start",
     "dev:web": "node node_modules/expo/bin/cli start --web --port 8081",
     "dev:tunnel": "node node_modules/expo/bin/cli start --tunnel",
+    "ai-bridge": "tsx tools/ai-bridge/src/main.ts",
     "check": "tsc --noEmit",
     "check:editor-boundaries": "bash tools/check-editor-boundaries.sh",
     "check:reader-audio-boundaries": "node tools/check-reader-audio-boundaries.mjs",
@@ -20,6 +21,7 @@
     "export:story": "node scripts/export-story-web.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.207",
     "@expo/vector-icons": "^15.0.3",
     "@imgly/background-removal": "^1.7.0",
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -69,6 +71,7 @@
     "react-snowfall": "^2.4.0",
     "tailwind-merge": "^2.6.0",
     "three": "0.177.0",
+    "ws": "^8.21.0",
     "zod": "^4.2.1",
     "zustand": "^4.5.5"
   },
@@ -80,6 +83,7 @@
     "@types/react": "~19.1.17",
     "@types/react-native": "^0.73.0",
     "@types/three": "^0.185.0",
+    "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^2.1.9",
     "esbuild": "^0.21.5",
     "esbuild-wasm": "^0.25.12",

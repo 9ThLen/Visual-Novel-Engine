@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
@@ -67,7 +67,8 @@ export default function ReaderScreen() {
   const colors = useColors();
   const { storyId, resumeExisting } = useReaderRouteParams();
   const readerColors = useReaderColors(storyId ?? undefined);
-  const settings = useAppStore((s) => normalizeUserSettings(s.settings));
+  const rawSettings = useAppStore((s) => s.settings);
+  const settings = useMemo(() => normalizeUserSettings(rawSettings), [rawSettings]);
   const hydrateReaderSceneWindow = useAppStore((s) => s.hydrateReaderSceneWindow);
   const [showMenu, setShowMenu] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);

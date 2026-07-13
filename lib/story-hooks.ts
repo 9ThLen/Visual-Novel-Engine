@@ -30,6 +30,7 @@ import {
   migrateCharacterLibrary,
 } from '@/lib/character-migration';
 import type { Character } from '@/lib/character-types';
+import type { AudioLibraryItem } from '@/lib/audio-types';
 import { shouldLogDevDiagnostics } from '@/lib/dev-logging';
 
 // ── Story import / export — thin wrappers with validation ──
@@ -39,7 +40,8 @@ const MAX_JSON_SIZE = 10 * 1024 * 1024;
 function buildCanonicalStory(
   metadata: StoryMetadata,
   scenes: Record<string, SceneRecord>,
-  characterLibrary: Character[] = []
+  characterLibrary: Character[] = [],
+  audioLibrary: AudioLibraryItem[] = [],
 ): CanonicalStory {
   return {
     ...metadata,
@@ -48,6 +50,7 @@ function buildCanonicalStory(
     sceneCount: Object.keys(scenes).length,
     scenes,
     characterLibrary: migrateCharacterLibrary(characterLibrary),
+    audioLibrary,
   };
 }
 
@@ -298,7 +301,12 @@ export async function exportStory(storyId: string, state: AppState): Promise<str
   const metadata = state.storiesMetadata.find((s) => s.id === storyId);
   if (!metadata) throw new Error('Story not found');
   const scenes = state.sceneRecordsByStory[storyId] || {};
-  const story = buildCanonicalStory(metadata, scenes, state.characterLibraries[storyId] || []);
+  const story = buildCanonicalStory(
+    metadata,
+    scenes,
+    state.characterLibraries[storyId] || [],
+    state.audioLibraries[storyId] || [],
+  );
   return JSON.stringify(story, null, 2);
 }
 
@@ -362,6 +370,9 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
           ? raw.characters as Character[]
           : []
     );
+    const importedAudioLibrary = Array.isArray(raw.audioLibrary)
+      ? raw.audioLibrary as AudioLibraryItem[]
+      : [];
     const metadata: StoryMetadata = normalizeStoryMetadata({
       id: storyId,
       title: typeof raw.title === 'string' ? raw.title : 'Imported Story',
@@ -389,9 +400,13 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
             [storyId]: importedCharacterLibrary,
           }
         : state.characterLibraries,
+      audioLibraries: {
+        ...state.audioLibraries,
+        [storyId]: importedAudioLibrary,
+      },
     }));
 
-    return buildCanonicalStory(metadata, importedScenes, importedCharacterLibrary);
+    return buildCanonicalStory(metadata, importedScenes, importedCharacterLibrary, importedAudioLibrary);
   }
 
   const story = StoryValidator.validateStory(raw);

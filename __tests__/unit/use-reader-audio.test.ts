@@ -33,6 +33,7 @@ const defaultSettings: UserSettings = {
   readerFontScale: 1,
   readerLineHeightScale: 1.2,
   autoPlay: false,
+  parallaxEnabled: true,
 };
 
 const createScene = (overrides = {}): StoryScene => ({

@@ -10,12 +10,14 @@ import type { ReaderFontScale, ReaderLineHeightScale } from '@/lib/user-settings
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { ReaderDialoguePanel } from '@/components/reader/ReaderDialoguePanel';
 import { EffectsLayerStack, effectsForCharacter, effectsForTarget } from '@/components/reader/EffectsLayerStack';
+import { PARALLAX_LAYERS, useParallaxLayer } from '@/components/reader/useParallaxLayer';
 import { useShakeOffset } from '@/components/reader/useShakeOffset';
 import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import type { ActiveEffect, CameraRuntimeState } from '@/lib/engine/runtime-types';
 import type { InteractiveObject } from '@/lib/interactive-types';
-import { richTextAlignment } from '@/lib/rich-text';
+import { richTextAlignment, richTextLength, stripRichText } from '@/lib/rich-text';
+import { useTypewriter } from '@/hooks/useTypewriter';
 
 const DIALOGUE_LINE_HEIGHT_MULTIPLIER = 1.65;
 const DEFAULT_READER_LINE_HEIGHT_SCALE = 1.2;
@@ -53,8 +55,10 @@ interface ReaderDisplayProps {
   readerFontScale?: ReaderFontScale;
   readerLineHeightScale?: ReaderLineHeightScale;
   displayedText: string;
-  /** Visible-character limit for the typewriter reveal; omit to show all text. */
-  visibleCount?: number;
+  typewriterEnabled?: boolean;
+  textSpeed?: number;
+  onTypewriterStateChange?: (isTyping: boolean) => void;
+  registerCompleteTypewriter?: (complete: () => void) => void;
   fallbackColor: string;
   getChoiceAccessibilityLabel: (text: string) => string;
   continueAccessibilityLabel: string;
@@ -76,41 +80,74 @@ interface ReaderDisplayProps {
   dimNonSpeakerCharacters?: boolean;
   activeEffects?: ActiveEffect[];
   cameraState?: CameraRuntimeState;
+  parallaxEnabled?: boolean;
   interactiveObjects?: InteractiveObject[];
   onInteractiveDialogue?: (text: string, speaker?: string) => void;
   onInteractiveSceneTransition?: (sceneId: string) => void;
   onInteractivePlayAudio?: (audioUri: string, volume?: number, loop?: boolean) => void;
 }
 
+type TypewriterDialoguePanelProps = React.ComponentProps<typeof ReaderDialoguePanel> & {
+  fullText: string;
+  textSpeed: number;
+  typewriterEnabled: boolean;
+  onTypewriterStateChange: (isTyping: boolean) => void;
+  registerCompleteTypewriter: (complete: () => void) => void;
+};
+
+function TypewriterDialoguePanel({ fullText, textSpeed, typewriterEnabled,
+  onTypewriterStateChange, registerCompleteTypewriter, ...panelProps }: TypewriterDialoguePanelProps) {
+  const { displayedText, isTyping, startTypewriter, completeTypewriter } = useTypewriter(textSpeed);
+
+  React.useEffect(() => {
+    if (typewriterEnabled) startTypewriter(stripRichText(fullText));
+  }, [fullText, startTypewriter, typewriterEnabled]);
+  React.useEffect(() => {
+    onTypewriterStateChange(typewriterEnabled && isTyping);
+  }, [isTyping, onTypewriterStateChange, typewriterEnabled]);
+  React.useEffect(() => {
+    registerCompleteTypewriter(completeTypewriter);
+  }, [completeTypewriter, registerCompleteTypewriter]);
+
+  return <ReaderDialoguePanel {...panelProps} displayedText={fullText}
+    visibleCount={typewriterEnabled ? displayedText.length : richTextLength(fullText)}
+    isTyping={typewriterEnabled ? isTyping : panelProps.isTyping} />;
+}
+
 function ReaderBackground({
   bgSource,
   animatedStyle,
   fallbackColor,
+  parallaxEnabled,
 }: {
   bgSource: ImageSource | null;
   animatedStyle: StyleProp<ViewStyle>;
   fallbackColor: string;
+  parallaxEnabled: boolean;
 }) {
   const fallbackStyle = useMemo(
     () => [StyleSheet.absoluteFillObject, { backgroundColor: fallbackColor }],
     [fallbackColor],
   );
+  const parallaxStyle = useParallaxLayer(parallaxEnabled, PARALLAX_LAYERS.background);
 
   return (
     <Animated.View style={[StyleSheet.absoluteFillObject, animatedStyle]}>
-      {bgSource ? (
-        <Image
-          source={bgSource}
-          style={StyleSheet.absoluteFillObject}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          onError={handleBackgroundError}
-          placeholder={BACKGROUND_PLACEHOLDER}
-          transition={300}
-        />
-      ) : (
-        <View style={fallbackStyle} />
-      )}
+      <Animated.View style={[StyleSheet.absoluteFillObject, parallaxStyle]}>
+        {bgSource ? (
+          <Image
+            source={bgSource}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            onError={handleBackgroundError}
+            placeholder={BACKGROUND_PLACEHOLDER}
+            transition={300}
+          />
+        ) : (
+          <View style={fallbackStyle} />
+        )}
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -125,6 +162,7 @@ function ReaderCharacters({
   dimNonSpeakerCharacters,
   activeEffects,
   colors,
+  parallaxEnabled,
 }: {
   animatedStyle: StyleProp<ViewStyle>;
   instances: React.ComponentProps<typeof CharacterDisplay>['instance'][];
@@ -135,7 +173,9 @@ function ReaderCharacters({
   dimNonSpeakerCharacters?: boolean;
   activeEffects: ActiveEffect[];
   colors: ReturnType<typeof useColors>;
+  parallaxEnabled: boolean;
 }) {
+  const parallaxStyle = useParallaxLayer(parallaxEnabled, PARALLAX_LAYERS.characters);
   const containerStyle = useMemo(
     () => [
       StyleSheet.absoluteFillObject,
@@ -149,6 +189,7 @@ function ReaderCharacters({
 
   return (
     <Animated.View style={containerStyle}>
+      <Animated.View style={[StyleSheet.absoluteFillObject, parallaxStyle]}>
       {instances.map((instance) => {
         const charSource = resolvedCharUris[instance.characterId];
         const uri = !charSource || typeof charSource === 'number'
@@ -173,6 +214,7 @@ function ReaderCharacters({
           />
         );
       })}
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -188,7 +230,10 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   readerFontScale = 1.0,
   readerLineHeightScale = DEFAULT_READER_LINE_HEIGHT_SCALE,
   displayedText,
-  visibleCount,
+  typewriterEnabled = false,
+  textSpeed = 0.5,
+  onTypewriterStateChange = () => {},
+  registerCompleteTypewriter = () => {},
   fallbackColor,
   getChoiceAccessibilityLabel,
   continueAccessibilityLabel,
@@ -210,6 +255,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   dimNonSpeakerCharacters,
   activeEffects = [],
   cameraState,
+  parallaxEnabled = false,
   interactiveObjects = [],
   onInteractiveDialogue,
   onInteractiveSceneTransition,
@@ -221,6 +267,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   const characterEffects = effectsForTarget(visibleEffects, 'character');
   const genericCharacterEffects = characterEffects.filter((effect) => !effect.characterId);
   const shakeOffset = useShakeOffset(screenEffects);
+  const hudParallaxStyle = useParallaxLayer(parallaxEnabled, PARALLAX_LAYERS.hud);
   const scaledDialogueFontSize = dialogueFontSize * readerFontScale;
 
   const cameraTransformStyle = useMemo(() => {
@@ -258,6 +305,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         bgSource={bgSource}
         animatedStyle={[backgroundAnimatedStyle, cameraTransformStyle]}
         fallbackColor={fallbackColor}
+        parallaxEnabled={parallaxEnabled}
       />
       {backgroundEffects.length > 0 ? (
         <EffectsLayerStack effects={backgroundEffects} colors={colors} target="background" />
@@ -273,6 +321,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         dimNonSpeakerCharacters={dimNonSpeakerCharacters}
         activeEffects={characterEffects}
         colors={colors}
+        parallaxEnabled={parallaxEnabled}
       />
       {genericCharacterEffects.length > 0 ? (
         <EffectsLayerStack effects={genericCharacterEffects} colors={colors} target="character" />
@@ -314,15 +363,20 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
             zIndex: 40,
           },
           dialogueAnimatedStyle,
+          hudParallaxStyle,
           getPointerEventsStyle('box-none'),
         ]}
       >
-        <ReaderDialoguePanel
+        <TypewriterDialoguePanel
           colors={colors}
           speaker={speaker}
           speakerTextStyle={speakerTextStyle}
+          fullText={displayedText}
+          textSpeed={textSpeed}
+          typewriterEnabled={typewriterEnabled}
+          onTypewriterStateChange={onTypewriterStateChange}
+          registerCompleteTypewriter={registerCompleteTypewriter}
           displayedText={displayedText}
-          visibleCount={visibleCount}
           isTyping={isTyping}
           dialogueTextStyle={dialogueTextStyle}
           cursorStyle={cursorStyle}

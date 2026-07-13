@@ -1,6 +1,7 @@
 import type { PlaybackState, RuntimeVariables } from './engine/runtime-types';
 import type { SceneRecord } from './engine/types';
 import type { Character } from './character-types';
+import type { AudioLibraryItem } from './audio-types';
 import { sanitizeStoryTheme, type StoryReaderTheme } from './story-theme';
 
 export interface StoryMetadata {
@@ -47,6 +48,7 @@ export interface CanonicalStory extends Omit<StoryMetadata, 'sceneCount'> {
   sceneCount?: number;
   scenes: Record<string, SceneRecord>;
   characterLibrary?: Character[];
+  audioLibrary?: AudioLibraryItem[];
   characterAuthoringSchemaVersion?: number;
 }
 

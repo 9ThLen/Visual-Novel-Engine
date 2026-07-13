@@ -300,6 +300,7 @@ export default function DocumentEditorRoute() {
       onCreateNextScene={handleCreateNextScene}
       onUploadBackgroundAsset={handleUploadBackgroundAsset}
       onUploadAudioAsset={handleUploadAudioAsset}
+      onGallery={() => router.push({ pathname: '/story-gallery', params: { storyId } })}
     />
   );
 }

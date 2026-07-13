@@ -5,18 +5,14 @@ import { useI18n } from '@/hooks/use-i18n';
 import { Fonts, withAlpha, type ThemeColorPalette } from '@/lib/_core/theme';
 import {
   buildAssetUsageReport,
+  buildAvailableAssets,
   collectAssetReferences,
-  toSpriteUsageAssetId,
   type AssetReference,
   type AssetUsageKind,
-  type AvailableAsset,
 } from '@/lib/asset-usage';
 import { buildPlaybackAudioLibraryItems } from '@/lib/audio-library';
-import type { AudioLibraryItem } from '@/lib/audio-types';
-import type { Character } from '@/lib/character-types';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import type { SceneRecord } from '@/lib/engine/types';
-import type { LibraryAsset } from '@/lib/media-library-service';
 import { getStoryImageAssets } from '@/lib/story-image-library';
 import { useAppStore } from '@/stores/use-app-store';
 
@@ -26,40 +22,6 @@ interface AssetUsageCardProps {
   scenes: SceneRecord[];
   onOpenScene: (sceneId: string) => void;
   style?: StyleProp<ViewStyle>;
-}
-
-function audioKind(type: AudioLibraryItem['type']): AssetUsageKind {
-  return type === 'music' ? 'music' : 'sound';
-}
-
-function buildAvailableAssets(
-  imageAssets: LibraryAsset[],
-  audioLibrary: AudioLibraryItem[],
-  characters: Character[],
-): AvailableAsset[] {
-  const backgroundAssets = imageAssets
-    .map((asset) => ({
-      id: asset.id,
-      kind: 'background' as const,
-      name: asset.name,
-      aliases: [asset.uri],
-    }));
-  const audioAssets = audioLibrary.map((asset) => ({
-    id: asset.id,
-    kind: audioKind(asset.type),
-    name: asset.name,
-    aliases: [asset.uri],
-  }));
-  const spriteAssets = characters.flatMap((character) =>
-    character.sprites.map((sprite) => ({
-      id: toSpriteUsageAssetId(character.id, sprite.id),
-      kind: 'sprite' as const,
-      name: `${character.name} / ${sprite.name}`,
-      aliases: [sprite.id, sprite.uri],
-    })),
-  );
-
-  return [...backgroundAssets, ...audioAssets, ...spriteAssets];
 }
 
 function SectionToggle({

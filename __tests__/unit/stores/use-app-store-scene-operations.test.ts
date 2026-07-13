@@ -6,6 +6,7 @@ import {
   syncCanonicalStartScene,
   upsertCanonicalSceneFromLegacyScene,
 } from '@/lib/scene-operations';
+import type { ChoiceBlockData } from '@/lib/engine/types';
 
 function makeSceneRecord(overrides = {}) {
   return {
@@ -63,6 +64,7 @@ function createBaseSnapshot() {
       readerFontScale: 1,
       readerLineHeightScale: 1.2,
       autoPlay: false,
+      parallaxEnabled: true,
     },
     saveSlots: [],
     audioLibraries: {},
@@ -148,6 +150,36 @@ describe('use-app-store scene operations', () => {
 
     expect(metadata?.startSceneId).toBe('scene-2');
     expect(records?.['scene-2']?.isStart).toBe(true);
+  });
+
+  it('clears choice targets that reference a deleted scene', () => {
+    const snapshot = {
+      ...baseSnapshot,
+      sceneRecordsByStory: {
+        'story-1': {
+          'scene-1': makeSceneRecord({
+            id: 'scene-1',
+            timeline: [{
+              id: 'choice-step', blockType: 'choice', enabled: true,
+              data: { options: [
+                { id: 'delete-target', text: 'Deleted', targetSceneId: 'scene-2' },
+                { id: 'keep-target', text: 'Keep', targetSceneId: 'scene-3' },
+              ] },
+            }],
+          }),
+          'scene-2': makeSceneRecord({ id: 'scene-2' }),
+          'scene-3': makeSceneRecord({ id: 'scene-3' }),
+        },
+      },
+    };
+
+    const updated = applyCanonicalSceneDelete(snapshot, 'story-1', 'scene-2');
+    const options = (updated.sceneRecordsByStory['story-1']?.['scene-1']?.timeline[0]?.data as ChoiceBlockData).options;
+
+    expect(options).toEqual([
+      { id: 'delete-target', text: 'Deleted', targetSceneId: null },
+      { id: 'keep-target', text: 'Keep', targetSceneId: 'scene-3' },
+    ]);
   });
 
   it('removes only the targeted connection when multiple links share the same target', () => {

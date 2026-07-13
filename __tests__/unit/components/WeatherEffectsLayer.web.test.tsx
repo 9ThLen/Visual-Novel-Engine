@@ -20,15 +20,15 @@ function snowEffect(overrides: Partial<ActiveEffect> = {}): ActiveEffect {
 }
 
 describe('WeatherEffectsLayer.web', () => {
-  it('renders snow through react-snowfall', () => {
+  it('renders snow through react-snowfall', async () => {
     render(<WeatherEffectsLayer effects={[snowEffect()]} target="screen" />);
 
     expect(screen.getByTestId('weather-effects-layer')).toBeTruthy();
-    expect(screen.getByTestId('react-snowfall-effect')).toBeTruthy();
-    expect(screen.getByTestId('SnowfallCanvas')).toBeTruthy();
+    expect(await screen.findByTestId('react-snowfall-effect')).toBeTruthy();
+    expect(await screen.findByTestId('SnowfallCanvas')).toBeTruthy();
   });
 
-  it('renders rain through the react-weather-effects adapter', () => {
+  it('renders rain through the react-weather-effects adapter', async () => {
     render(<WeatherEffectsLayer effects={[snowEffect({
       effectType: 'rain',
       snow: undefined,
@@ -36,11 +36,11 @@ describe('WeatherEffectsLayer.web', () => {
     })]} target="screen" />);
 
     expect(screen.getByTestId('weather-effects-layer')).toBeTruthy();
-    expect(screen.getByTestId('react-weather-rain-effect').getAttribute('data-rain-variant')).toBe('fallout');
-    expect(screen.getByTestId('react-weather-rain-lightning')).toBeTruthy();
+    expect((await screen.findByTestId('react-weather-rain-effect')).getAttribute('data-rain-variant')).toBe('fallout');
+    expect(await screen.findByTestId('react-weather-rain-lightning')).toBeTruthy();
   });
 
-  it('renders fog variants through the react-weather-effects adapter', () => {
+  it('renders fog variants through the react-weather-effects adapter', async () => {
     render(<WeatherEffectsLayer effects={[snowEffect({
       effectType: 'fog',
       snow: undefined,
@@ -48,6 +48,6 @@ describe('WeatherEffectsLayer.web', () => {
     })]} target="screen" />);
 
     expect(screen.getByTestId('weather-effects-layer')).toBeTruthy();
-    expect(screen.getByTestId('react-weather-fog-effect').getAttribute('data-fog-variant')).toBe('dense');
+    expect((await screen.findByTestId('react-weather-fog-effect')).getAttribute('data-fog-variant')).toBe('dense');
   });
 });

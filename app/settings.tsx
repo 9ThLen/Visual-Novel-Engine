@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -32,7 +32,8 @@ export default function SettingsScreen() {
     }, []),
   );
   const colors = useColors();
-  const settings = useAppStore((state) => normalizeUserSettings(state.settings));
+  const rawSettings = useAppStore((state) => state.settings);
+  const settings = useMemo(() => normalizeUserSettings(rawSettings), [rawSettings]);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const { t } = useI18n();
 
@@ -274,6 +275,14 @@ export default function SettingsScreen() {
             value={settings.autoPlay}
             onValueChange={(v) => updateSettings({ autoPlay: v })}
             description={t('settings.autoPlayDescription')}
+          />
+          <Divider />
+          <ToggleRow
+            label={t('settings.parallax')}
+            icon="image"
+            value={settings.parallaxEnabled}
+            onValueChange={(v) => updateSettings({ parallaxEnabled: v })}
+            description={t('settings.parallaxDescription')}
           />
         </Section>
 

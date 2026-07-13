@@ -3,6 +3,7 @@ import type { LibraryAsset } from '@/lib/media-library-service';
 import {
   addImageAssetToStory,
   getStoryImageAssets,
+  getStoryGalleryImageAssets,
   migrateStoryImageAssetIds,
   removeImageAssetFromStory,
 } from '@/lib/story-image-library';
@@ -38,6 +39,10 @@ function sceneWithBackground(assetId: string): SceneRecord {
 }
 
 describe('story-image-library', () => {
+  it('includes a referenced background without explicit membership', () => {
+    expect(getStoryGalleryImageAssets('story-a', {}, images, [sceneWithBackground('file:///b.png')])
+      .map((asset) => asset.id)).toEqual(['image-b']);
+  });
   it('shows only images explicitly attached to the active story', () => {
     const imageAssetIdsByStory = {
       'story-a': ['image-a', 'audio-a'],
