@@ -189,11 +189,15 @@ export default function DocumentEditorRoute() {
     sceneRecords.forEach((record) => saveSceneRecord(record));
   };
 
-  const handleUploadBackgroundAsset = async (name: string, dataUri: string): Promise<VNPlateBackgroundAsset | null> => {
+  const handleUploadBackgroundAsset = async (
+    name: string,
+    dataUri: string,
+    purpose: 'background' | 'sprite' = 'background',
+  ): Promise<VNPlateBackgroundAsset | null> => {
     if (!dataUri.startsWith('data:image/')) return null;
     const result = await addAssetToLibraryPure(dataUri, name || 'background.png', 'image', mediaLibrary);
     setMediaLibrary(result.assets);
-    addImageAssetToStory(storyId, result.asset.id);
+    if (purpose === 'background') addImageAssetToStory(storyId, result.asset.id);
     return {
       id: result.asset.id,
       name: result.asset.name,

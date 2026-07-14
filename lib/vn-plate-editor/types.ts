@@ -165,6 +165,14 @@ export type VNPlateEditorMessage =
   | {
       source: 'vn-plate-editor';
       editorId: string;
+      type: 'uploadCharacterSpriteAsset';
+      requestId: string;
+      name: string;
+      dataUri: string;
+    }
+  | {
+      source: 'vn-plate-editor';
+      editorId: string;
       type: 'removeBackground';
       requestId: string;
       dataUri: string;
@@ -236,6 +244,13 @@ export type VNPlateHostMessage =
       editorId: string;
       type: 'audioAssetUploaded';
       asset: VNPlateAudioAsset;
+    }
+  | {
+      source: 'vn-plate-host';
+      editorId: string;
+      type: 'characterSpriteAssetUploaded';
+      requestId: string;
+      asset: (VNPlateBackgroundAsset & { assetUri: string }) | null;
     }
   | {
       source: 'vn-plate-host';

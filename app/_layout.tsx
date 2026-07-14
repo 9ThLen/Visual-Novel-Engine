@@ -10,6 +10,7 @@ import { ReaderAudioRouteGuard } from "@/components/ReaderAudioRouteGuard";
 import { PlayerModeRouteGuard } from "@/components/PlayerModeRouteGuard";
 import { MigrationErrorBanner } from "@/components/MigrationErrorBanner";
 import { ToastViewport } from "@/components/ui";
+import { ensureStorageBootstrap } from "@/stores/storage-bootstrap";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 
@@ -24,6 +25,13 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 void import("react-native-reanimated").catch(() => {});
 
 export default function RootLayout() {
+  // Storage bootstrap must not depend on the entry route: a web refresh lands
+  // directly on /document-editor or /reader, which would otherwise skip the
+  // media migration and leave the lossy size caps active for that session.
+  useEffect(() => {
+    void ensureStorageBootstrap();
+  }, []);
+
   // Hide the native splash screen once JS has mounted.
   useEffect(() => {
     const hideSplash = async () => {

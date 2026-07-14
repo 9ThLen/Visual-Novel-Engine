@@ -4,7 +4,6 @@ import {
   Text,
   FlatList,
   Pressable,
-  Image,
   StyleSheet,
   useWindowDimensions,
   Platform,
@@ -12,6 +11,7 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
+import { ResolvedAssetImage } from '@/components/resolved-asset-image';
 import { useAppStore } from '@/stores/use-app-store';
 import { getLibraryAssets, addAssetToLibrary } from '@/stores/media-library-actions';
 import { StoryMetadata } from '@/lib/story-domain';
@@ -29,6 +29,8 @@ import { createBundledStorySyncPayload, upsertBundledStory } from '@/lib/bundled
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import type { Story } from '@/lib/scene-operations';
 import { migrateStoryImageAssetIds } from '@/lib/story-image-library';
+import { ensureStorageBootstrap } from '@/stores/storage-bootstrap';
+import { cleanupOrphanedWebMedia } from '@/lib/web-media-cleanup';
 
 import { buttonFeedback } from '@/lib/ui-feedback';
 
@@ -69,8 +71,8 @@ const StoryCard = memo(function StoryCard({ item, onPress }: StoryCardProps) {
     >
       <View style={styles.thumbnailFrame}>
         {item.thumbnailUri ? (
-          <Image
-            source={{ uri: item.thumbnailUri }}
+          <ResolvedAssetImage
+            uri={item.thumbnailUri}
             style={styles.thumbnail}
             resizeMode="cover"
           />
@@ -121,31 +123,16 @@ export default function HomeScreen() {
     }, []),
   );
   const storiesMetadata = useAppStore((state) => state.storiesMetadata);
-  const migrateLegacyKeys = useAppStore((state) => state.migrateFromLegacyKeys);
   const hydrateReaderSceneWindow = useAppStore((state) => state.hydrateReaderSceneWindow);
   const [isInitialized, setIsInitialized] = useState(false);
   const { t } = useI18n();
 
   const initializeApp = useCallback(async () => {
-    const waitForHydration = () => new Promise<void>((resolve) => {
-      if (useAppStore.persist.hasHydrated()) {
-        resolve();
-      } else {
-        const unsub = useAppStore.persist.onFinishHydration(() => {
-          unsub();
-          resolve();
-        });
-      }
-    });
-    await waitForHydration();
-
-    let initError: unknown = null;
-    try {
-      await migrateLegacyKeys();
-    } catch (error) {
-      initError = error;
-      ErrorHandler.handle('Failed to load stories from storage', error, ErrorCategory.STORAGE);
-    }
+    // Hydration, legacy-key migration and the web media migration run in the
+    // shared bootstrap (kicked off by the root layout) so that entering on any
+    // route gets them; awaiting it here just joins the same run.
+    const { error: bootstrapError } = await ensureStorageBootstrap();
+    let initError: unknown = bootstrapError;
 
     // Ensure demo stories exist regardless of storage errors
     try {
@@ -203,12 +190,23 @@ export default function HomeScreen() {
       }));
     }
 
+    if (Platform.OS === 'web') {
+      try {
+        const cleanup = await cleanupOrphanedWebMedia(useAppStore.getState());
+        if (__DEV__ && (cleanup.markedKeys.length > 0 || cleanup.deletedKeys.length > 0)) {
+          console.log('[Storage] orphan media cleanup:', cleanup);
+        }
+      } catch (error) {
+        ErrorHandler.handle('Failed to clean orphaned IndexedDB media', error, ErrorCategory.STORAGE);
+      }
+    }
+
     if (initError && __DEV__) {
       console.warn('[HomeScreen] initialization completed with errors:', initError);
     }
 
     setIsInitialized(true);
-  }, [migrateLegacyKeys, hydrateReaderSceneWindow]);
+  }, [hydrateReaderSceneWindow]);
 
   useEffect(() => {
     initializeApp();

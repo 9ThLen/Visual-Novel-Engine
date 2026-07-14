@@ -7,7 +7,7 @@ import {
 import type { Character } from '@/lib/character-types';
 import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { SceneRecord } from '@/lib/engine/types';
-import type { LibraryAsset } from '@/lib/media-library-service';
+import { canConvertDataUri, type AssetType, type LibraryAsset } from '@/lib/media-library-service';
 import type { SaveSlot, StoryMetadata } from '@/lib/story-domain';
 import { normalizeStoryMetadata } from '@/lib/story-domain';
 import type { Language } from '@/lib/translations';
@@ -37,6 +37,12 @@ export type AppStorePersistenceState = {
 
 export const MAX_DATA_URI_ASSET_BYTES = 256 * 1024;
 export const MAX_TOTAL_DATA_URI_BYTES = 1024 * 1024;
+let enforceWebMediaReferenceInvariant = false;
+
+/** Enable only after the one-time Blob migration has completed successfully. */
+export function setWebMediaReferenceInvariant(enabled: boolean): void {
+  enforceWebMediaReferenceInvariant = enabled;
+}
 
 function getBase64DataUriBytes(uri: string): number | null {
   const match = uri.match(/^data:image\/([^;,]+)(?:;[^,]*)?;base64,([\s\S]+)$/i);
@@ -63,7 +69,21 @@ export function getPersistableMediaLibrary(assets: unknown): LibraryAsset[] {
 
     if (typeof candidate.uri !== 'string') return;
 
-    if (candidate.uri.startsWith('data:')) {
+    const isInlineUri = candidate.uri.startsWith('data:');
+    // blob: URLs die with the document, so persisting one always yields a
+    // dangling reference on the next load.
+    const isEphemeralUri = candidate.uri.startsWith('blob:');
+
+    if (enforceWebMediaReferenceInvariant && (isInlineUri || isEphemeralUri)) {
+      if (__DEV__) {
+        console.warn('[Storage] Refusing to persist unstable media reference after Blob migration', {
+          assetId: candidate.id,
+        });
+      }
+      return;
+    }
+
+    if (isInlineUri) {
       const dataUriBytes = getBase64DataUriBytes(candidate.uri);
       if (dataUriBytes === null || dataUriBytes > MAX_DATA_URI_ASSET_BYTES) return;
       candidates.push({ asset: candidate as LibraryAsset, dataUriBytes, index });
@@ -92,6 +112,42 @@ export function getPersistableMediaLibrary(assets: unknown): LibraryAsset[] {
   return candidates
     .filter((candidate) => !removedIndexes.has(candidate.index))
     .map((candidate) => candidate.asset);
+}
+
+/**
+ * Read-side counterpart of getPersistableMediaLibrary.
+ *
+ * The size caps are a *write*-side quota guard — they exist to protect the
+ * localStorage fallback used when IndexedDB is unavailable. Applying them on
+ * hydrate would destroy the very oversized inline assets the Blob migration
+ * exists to rescue, before the migration ever sees them. So nothing is dropped
+ * here for being large; only references the migration could never convert are
+ * dropped, otherwise a single malformed data URI would make the migration throw
+ * on every start and pin the caps open forever.
+ */
+export function getHydratableMediaLibrary(assets: unknown): LibraryAsset[] {
+  if (!Array.isArray(assets)) return [];
+
+  const hydratable: LibraryAsset[] = [];
+
+  for (const asset of assets) {
+    if (!asset || typeof asset !== 'object') continue;
+    const candidate = asset as Partial<LibraryAsset>;
+
+    if (typeof candidate.uri !== 'string') continue;
+
+    // blob: URLs die with the document that created them.
+    if (candidate.uri.startsWith('blob:')) continue;
+
+    if (candidate.uri.startsWith('data:')) {
+      const type: AssetType = candidate.type === 'audio' ? 'audio' : 'image';
+      if (!canConvertDataUri(candidate.uri, type)) continue;
+    }
+
+    hydratable.push(candidate as LibraryAsset);
+  }
+
+  return hydratable;
 }
 
 export function buildPersistedAppState(state: AppStorePersistenceState): AppStorePersistenceState {
@@ -148,7 +204,7 @@ export function migratePersistedAppState(
   const needsStoryImageMigration = !('imageAssetIdsByStory' in migrated);
 
   if ('mediaLibrary' in migrated) {
-    migrated.mediaLibrary = getPersistableMediaLibrary(migrated.mediaLibrary);
+    migrated.mediaLibrary = getHydratableMediaLibrary(migrated.mediaLibrary);
   }
   if ('characterLibraries' in migrated) {
     migrated.characterLibraries = migrateCharacterLibraries(migrated.characterLibraries);
@@ -159,7 +215,7 @@ export function migratePersistedAppState(
   migrated.imageAssetIdsByStory = migrateStoryImageAssetIds(
     migrated.imageAssetIdsByStory,
     migrated.sceneRecordsByStory ?? {},
-    getPersistableMediaLibrary(migrated.mediaLibrary),
+    getHydratableMediaLibrary(migrated.mediaLibrary),
     needsStoryImageMigration,
   );
   if (Array.isArray(migrated.storiesMetadata)) {
@@ -188,7 +244,7 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
     ...persisted,
     mediaLibrary:
       'mediaLibrary' in persisted
-        ? getPersistableMediaLibrary(persisted.mediaLibrary)
+        ? getHydratableMediaLibrary(persisted.mediaLibrary)
         : currentState.mediaLibrary,
     imageAssetIdsByStory: migrateStoryImageAssetIds(
       'imageAssetIdsByStory' in persisted
@@ -198,7 +254,7 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
         ? migrateSceneRecordsByStory(persisted.sceneRecordsByStory)
         : currentState.sceneRecordsByStory,
       'mediaLibrary' in persisted
-        ? getPersistableMediaLibrary(persisted.mediaLibrary)
+        ? getHydratableMediaLibrary(persisted.mediaLibrary)
         : currentState.mediaLibrary,
       false,
     ),

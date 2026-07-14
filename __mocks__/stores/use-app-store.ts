@@ -12,6 +12,7 @@ const mockFn = () => {
 const storeVal: any = {
   storiesMetadata: [],
   sceneRecordsByStory: {},
+  sceneRecordHydration: {},
   currentStoryId: null,
   playbackState: null,
   saveSlots: [],
@@ -19,12 +20,18 @@ const storeVal: any = {
   isLoaded: true,
   mediaLibrary: [],
   audioLibraries: {},
+  characterLibraries: {},
+  imageAssetIdsByStory: {},
   language: 'en',
   syncAutoSave: mockFn(),
   setLanguage: mockFn(),
   setMediaLibrary: mockFn(),
   setAudioLibrary: mockFn(),
+  migrateFromLegacyKeys: mockFn(),
+  createStorySnapshot: mockFn().mockResolvedValue(undefined),
 };
+
+export const persistAppStoreStateNow: any = mockFn().mockResolvedValue(undefined);
 
 export const useAppStore: any = (selector?: (state: any) => any) =>
   selector ? selector(storeVal) : storeVal;
@@ -32,11 +39,19 @@ export const useAppStore: any = (selector?: (state: any) => any) =>
 useAppStore.getState = () => storeVal;
 useAppStore.setState = (v: any) => Object.assign(storeVal, typeof v === 'function' ? v(storeVal) : v);
 useAppStore.subscribe = () => () => {};
-useAppStore.persist = { onFinishHydration: () => {}, clearStorage: () => {} };
+useAppStore.persist = {
+  hasHydrated: () => true,
+  onFinishHydration: (_listener?: () => void) => () => {},
+  clearStorage: () => {},
+};
 
 export const resetAppStoreState = () => {
   storeVal.storiesMetadata = [];
   storeVal.sceneRecordsByStory = {};
+  storeVal.sceneRecordHydration = {};
+  storeVal.imageAssetIdsByStory = {};
+  storeVal.createStorySnapshot = mockFn().mockResolvedValue(undefined);
+  persistAppStoreStateNow.mockResolvedValue(undefined);
   storeVal.currentStoryId = null;
   storeVal.playbackState = null;
   storeVal.saveSlots = [];
@@ -44,11 +59,13 @@ export const resetAppStoreState = () => {
   storeVal.isLoaded = true;
   storeVal.mediaLibrary = [];
   storeVal.audioLibraries = {};
+  storeVal.characterLibraries = {};
   storeVal.language = 'en';
   storeVal.syncAutoSave = mockFn();
   storeVal.setLanguage = mockFn();
   storeVal.setMediaLibrary = mockFn();
   storeVal.setAudioLibrary = mockFn();
+  storeVal.migrateFromLegacyKeys = mockFn();
 };
 
 export const selectStoryMetadata = (storyId: string) => (state: any) =>

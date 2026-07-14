@@ -1,15 +1,26 @@
 import { exportStory, importStory } from '@/lib/story-hooks';
 import { CHARACTER_AUTHORING_SCHEMA_VERSION } from '@/lib/character-migration';
 import { useAppStore } from '@/stores/use-app-store';
+import { setMediaBlobStorageAdapterForTests } from '@/lib/idb-storage';
+
+const hasMediaBlob = vi.fn();
+const putMediaBlob = vi.fn();
 
 describe('importStory', () => {
   beforeEach(() => {
+    hasMediaBlob.mockResolvedValue(false);
+    putMediaBlob.mockResolvedValue(undefined);
+    setMediaBlobStorageAdapterForTests({ has: hasMediaBlob, put: putMediaBlob });
     useAppStore.setState({
       storiesMetadata: [],
       sceneRecordsByStory: {},
       characterLibraries: {},
       audioLibraries: {},
     });
+  });
+
+  afterAll(() => {
+    setMediaBlobStorageAdapterForTests(null);
   });
 
   it('preserves the audio library through export and import', async () => {
@@ -120,6 +131,30 @@ describe('importStory', () => {
     expect(library[0].sprites[0].name).toBe('Main');
     expect(library[0].authoring?.currentSpriteId).toBe('sprite_1');
     expect(imported.characterAuthoringSchemaVersion).toBe(CHARACTER_AUTHORING_SCHEMA_VERSION);
+  });
+
+  it('converts imported inline character sprites to IDB references on web', async () => {
+    const imported = await importStory(JSON.stringify({
+      title: 'Inline Media Import',
+      startSceneId: 'scene-1',
+      characterLibrary: [{
+        id: 'char-1',
+        name: 'Alice',
+        sprites: [{
+          id: 'sprite-1',
+          name: 'Default',
+          uri: 'data:image/png;base64,QUJD',
+          createdAt: 1,
+        }],
+        createdAt: 1,
+      }],
+      scenes: { 'scene-1': { id: 'scene-1', timeline: [] } },
+    }));
+
+    expect(imported.characterLibrary?.[0].sprites[0].uri).toMatch(/^idb:\/\/media\//);
+    expect(useAppStore.getState().characterLibraries[imported.id][0].sprites[0].uri)
+      .toMatch(/^idb:\/\/media\//);
+    expect(putMediaBlob).toHaveBeenCalledOnce();
   });
 
   it('returns a canonical story for legacy JSON', async () => {

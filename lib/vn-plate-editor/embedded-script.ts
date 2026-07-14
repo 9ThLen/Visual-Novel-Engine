@@ -336,8 +336,13 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function alignmentForNode(node) {
-      var value = String(node && node.style && node.style.textAlign || '').toLowerCase();
-      return value === 'center' || value === 'right' ? value : 'left';
+      if (!node) return 'left';
+      var inlineValue = node.style && node.style.textAlign;
+      var attributeValue = node.getAttribute && node.getAttribute('align');
+      var computedValue = window.getComputedStyle ? window.getComputedStyle(node).textAlign : '';
+      var value = String(inlineValue || attributeValue || computedValue || '').toLowerCase();
+      if (value.indexOf('center') >= 0) return 'center';
+      return value.indexOf('right') >= 0 ? 'right' : 'left';
     }
 
     function withAlignmentMarker(text, alignment) {
@@ -1523,6 +1528,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     var pendingBackgroundRemovals = {};
+    var pendingCharacterSpriteUploads = {};
 
     /**
      * Ask the host to cut the background out of an image (ISNet runs on the
@@ -1543,6 +1549,26 @@ const EMBEDDED_SCRIPT_BODY = `
         callback(resultUri);
       };
       post({ type: 'removeBackground', requestId: requestId, dataUri: dataUri });
+    }
+
+    function requestCharacterSpriteUpload(name, dataUri, callback) {
+      var requestId = uid('sprite-upload');
+      var timer = window.setTimeout(function() {
+        if (pendingCharacterSpriteUploads[requestId]) {
+          delete pendingCharacterSpriteUploads[requestId];
+          callback(null);
+        }
+      }, 30000);
+      pendingCharacterSpriteUploads[requestId] = function(asset) {
+        window.clearTimeout(timer);
+        callback(asset);
+      };
+      post({
+        type: 'uploadCharacterSpriteAsset',
+        requestId: requestId,
+        name: name,
+        dataUri: dataUri
+      });
     }
 
     function isFullyOpaqueImage(img) {
@@ -4298,11 +4324,13 @@ const EMBEDDED_SCRIPT_BODY = `
               resetSpriteUploadInput();
               return;
             }
-            function addSpriteWithUri(spriteUri) {
+            var spriteName = uniqueSpriteName(uploadCharacter, spriteNameInput && spriteNameInput.value || spriteFile.name || 'Sprite');
+            function addSpriteWithUri(spriteUri, assetUri) {
               var sprite = {
                 id: uid('sprite'),
-                name: uniqueSpriteName(uploadCharacter, spriteNameInput && spriteNameInput.value || spriteFile.name || 'Sprite'),
+                name: spriteName,
                 uri: spriteUri,
+                assetUri: assetUri,
                 createdAt: Date.now()
               };
               uploadCharacter.sprites = (uploadCharacter.sprites || []).concat([sprite]);
@@ -4315,6 +4343,18 @@ const EMBEDDED_SCRIPT_BODY = `
               renderCharacterPopover(activeCharacterToken);
               saveNow();
             }
+            function persistAndAddSprite(sourceUri) {
+              setCharacterSpriteError(payload.language === 'uk' ? 'Зберігаю спрайт…' : 'Saving sprite…', true);
+              requestCharacterSpriteUpload(spriteName, sourceUri, function(asset) {
+                if (!spriteUploadIsStillActive()) return;
+                if (!asset || !asset.uri || !asset.assetUri) {
+                  setCharacterSpriteError(characterSpriteMessage('verify'));
+                  return;
+                }
+                clearCharacterSpriteError();
+                addSpriteWithUri(asset.uri, asset.assetUri);
+              });
+            }
             if (fullyOpaque) {
               // Opaque image: cut the background with the host-side model
               // instead of rejecting the upload.
@@ -4326,13 +4366,12 @@ const EMBEDDED_SCRIPT_BODY = `
                   setCharacterSpriteError(characterSpriteMessage('removeBgFailed'));
                   return;
                 }
-                clearCharacterSpriteError();
-                addSpriteWithUri(processedUri);
+                persistAndAddSprite(processedUri);
               });
               return;
             }
             resetSpriteUploadInput();
-            addSpriteWithUri(dataUri);
+            persistAndAddSprite(dataUri);
           };
           img.onerror = function() {
             if (spriteUploadIsStillActive()) setCharacterSpriteError(characterSpriteMessage('verify'));
@@ -4550,6 +4589,13 @@ const EMBEDDED_SCRIPT_BODY = `
         if (removalCallback) {
           delete pendingBackgroundRemovals[message.requestId];
           removalCallback(typeof message.dataUri === 'string' && message.dataUri ? message.dataUri : null);
+        }
+      }
+      if (message.type === 'characterSpriteAssetUploaded' && message.requestId) {
+        var spriteUploadCallback = pendingCharacterSpriteUploads[message.requestId];
+        if (spriteUploadCallback) {
+          delete pendingCharacterSpriteUploads[message.requestId];
+          spriteUploadCallback(message.asset || null);
         }
       }
     });

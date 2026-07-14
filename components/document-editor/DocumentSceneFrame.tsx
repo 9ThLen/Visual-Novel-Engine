@@ -39,7 +39,7 @@ interface DocumentSceneFrameProps {
   cachedHeight?: number;
   onChange: (scene: DocumentScene, characters: Character[]) => void;
   onCreateNextScene: (scene: DocumentScene, characters: Character[]) => void;
-  onUploadBackgroundAsset?: (name: string, dataUri: string) => Promise<VNPlateBackgroundAsset | null>;
+  onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   registerEditorRef: (handle: PlateWebViewEditorHandle | null) => void;
   onHistoryStateChange: (canUndo: boolean, canRedo: boolean) => void;

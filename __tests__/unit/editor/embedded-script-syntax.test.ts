@@ -49,7 +49,7 @@ function createSpriteUploadHarness(alphaValues: number[]) {
   const originalGetContext = window.HTMLCanvasElement.prototype.getContext;
   const originalBridge = (window as unknown as { ReactNativeWebView?: { postMessage: (message: string) => void } }).ReactNativeWebView;
 
-  const messages: { type: string; requestId?: string; dataUri?: string }[] = [];
+  const messages: { type: string; requestId?: string; dataUri?: string; name?: string }[] = [];
   (window as unknown as { ReactNativeWebView?: { postMessage: (message: string) => void } }).ReactNativeWebView = {
     postMessage(message: string) {
       messages.push(JSON.parse(message));
@@ -361,6 +361,8 @@ describe('createEmbeddedScript', () => {
     expect(html).toContain('accept="image/png,image/webp,image/jpeg"');
     expect(html).toContain('function isAllowedCharacterSpriteFile');
     expect(html).toContain('function isFullyOpaqueImage');
+    expect(html).toContain('function requestCharacterSpriteUpload');
+    expect(html).toContain("type: 'uploadCharacterSpriteAsset'");
     expect(html).toContain('getImageData');
     expect(html).toContain('reader.onerror');
     expect(html).toContain('img.onerror');
@@ -393,9 +395,20 @@ describe('createEmbeddedScript', () => {
         dataUri: 'data:image/png;base64,BBB=',
       });
 
-      const characters = harness.api.getCharacters() as { sprites: { uri: string }[] }[];
+      const upload = harness.messages.find((message) => message.type === 'uploadCharacterSpriteAsset');
+      expect(upload?.dataUri).toBe('data:image/png;base64,BBB=');
+      harness.postHostMessage({
+        type: 'characterSpriteAssetUploaded',
+        requestId: upload!.requestId,
+        asset: { id: 'asset_1', name: 'opaque.png', uri: 'blob:resolved', assetUri: 'idb://media/asset_1' },
+      });
+
+      const characters = harness.api.getCharacters() as { sprites: { uri: string; assetUri?: string }[] }[];
       expect(characters[0].sprites).toHaveLength(1);
-      expect(characters[0].sprites[0].uri).toBe('data:image/png;base64,BBB=');
+      expect(characters[0].sprites[0]).toMatchObject({
+        uri: 'blob:resolved',
+        assetUri: 'idb://media/asset_1',
+      });
     } finally {
       harness.cleanup();
     }
@@ -432,9 +445,21 @@ describe('createEmbeddedScript', () => {
 
       input.dispatchEvent(new Event('change', { bubbles: true }));
 
-      const characters = harness.api.getCharacters() as { sprites: { uri: string }[] }[];
+      const upload = harness.messages.find((message) => message.type === 'uploadCharacterSpriteAsset');
+      expect(upload?.dataUri).toBe('data:image/png;base64,AAA=');
+      expect((harness.api.getCharacters() as { sprites: unknown[] }[])[0].sprites).toHaveLength(0);
+      harness.postHostMessage({
+        type: 'characterSpriteAssetUploaded',
+        requestId: upload!.requestId,
+        asset: { id: 'asset_1', name: 'transparent.png', uri: 'blob:resolved', assetUri: 'idb://media/asset_1' },
+      });
+
+      const characters = harness.api.getCharacters() as { sprites: { uri: string; assetUri?: string }[] }[];
       expect(characters[0].sprites).toHaveLength(1);
-      expect(characters[0].sprites[0].uri).toBe('data:image/png;base64,AAA=');
+      expect(characters[0].sprites[0]).toMatchObject({
+        uri: 'blob:resolved',
+        assetUri: 'idb://media/asset_1',
+      });
     } finally {
       harness.cleanup();
     }

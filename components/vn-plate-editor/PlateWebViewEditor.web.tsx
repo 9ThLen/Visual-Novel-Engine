@@ -28,6 +28,32 @@ export function getMinFrameHeight(isPhone: boolean): number {
   return isPhone ? MIN_PHONE_FRAME_HEIGHT : MIN_FRAME_HEIGHT;
 }
 
+function restorePersistentCharacterUris(characters: Character[]): Character[] {
+  return characters.map((character) => ({
+    ...character,
+    sprites: character.sprites.map((sprite) => {
+      if (!sprite.assetUri) return sprite;
+      const { assetUri, ...persistentSprite } = sprite;
+      return { ...persistentSprite, uri: assetUri };
+    }),
+  }));
+}
+
+async function resolveCharactersForEditor(characters: Character[]): Promise<Character[]> {
+  return Promise.all(characters.map(async (character) => ({
+    ...character,
+    sprites: await Promise.all(character.sprites.map(async (sprite) => {
+      const persistentUri = sprite.assetUri ?? sprite.uri;
+      const resolved = await resolveAssetUri(persistentUri);
+      return {
+        ...sprite,
+        assetUri: persistentUri,
+        uri: typeof resolved === 'string' ? resolved : sprite.uri,
+      };
+    })),
+  })));
+}
+
 export interface PlateWebViewEditorSnapshot {
   scene: DocumentScene;
   characters: Character[];
@@ -58,7 +84,7 @@ interface PlateWebViewEditorProps {
   style?: StyleProp<ViewStyle>;
   onChange: (scene: DocumentScene, characters: Character[]) => void;
   onCreateNextScene?: (scene: DocumentScene, characters: Character[]) => void;
-  onUploadBackgroundAsset?: (name: string, dataUri: string) => Promise<VNPlateBackgroundAsset | null>;
+  onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onOverlayActiveChange?: (active: boolean) => void;
   onHistoryStateChange?: (canUndo: boolean, canRedo: boolean) => void;
@@ -276,12 +302,14 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   }, [postCommands]);
 
   const postCharacters = useCallback(() => {
-    iframeRef.current?.contentWindow?.postMessage({
-      source: 'vn-plate-host',
-      editorId,
-      type: 'charactersUpdated',
-      characters,
-    }, '*');
+    void resolveCharactersForEditor(characters).then((resolvedCharacters) => {
+      iframeRef.current?.contentWindow?.postMessage({
+        source: 'vn-plate-host',
+        editorId,
+        type: 'charactersUpdated',
+        characters: resolvedCharacters,
+      }, '*');
+    });
   }, [characters, editorId]);
 
   useEffect(() => {
@@ -369,13 +397,45 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         return;
       }
       if (message.type === 'uploadBackgroundAsset') {
-        void onUploadBackgroundAsset?.(message.name, message.dataUri).then((asset) => {
+        const upload = onUploadBackgroundAsset?.(message.name, message.dataUri, 'background');
+        if (!upload) return;
+        void upload.then(async (asset) => {
           if (!asset) return;
+          const resolved = await resolveAssetUri(asset.uri);
           iframeRef.current?.contentWindow?.postMessage({
             source: 'vn-plate-host',
             editorId,
             type: 'backgroundAssetUploaded',
-            asset,
+            asset: {
+              ...asset,
+              uri: typeof resolved === 'string' ? resolved : asset.uri,
+            },
+          }, '*');
+        });
+        return;
+      }
+      if (message.type === 'uploadCharacterSpriteAsset') {
+        const upload = onUploadBackgroundAsset?.(message.name, message.dataUri, 'sprite');
+        if (!upload) {
+          iframeRef.current?.contentWindow?.postMessage({
+            source: 'vn-plate-host',
+            editorId,
+            type: 'characterSpriteAssetUploaded',
+            requestId: message.requestId,
+            asset: null,
+          }, '*');
+          return;
+        }
+        void upload.then(async (asset) => {
+          const resolved = asset ? await resolveAssetUri(asset.uri) : null;
+          iframeRef.current?.contentWindow?.postMessage({
+            source: 'vn-plate-host',
+            editorId,
+            type: 'characterSpriteAssetUploaded',
+            requestId: message.requestId,
+            asset: asset && typeof resolved === 'string'
+              ? { ...asset, assetUri: asset.uri, uri: resolved }
+              : null,
           }, '*');
         });
         return;
@@ -423,7 +483,10 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         const incomingCharacters = Array.isArray(message.characters)
           ? message.characters
           : charactersRef.current;
-        const normalized = normalizePlateDocumentScene(message.scene, incomingCharacters);
+        const normalized = normalizePlateDocumentScene(
+          message.scene,
+          restorePersistentCharacterUris(incomingCharacters),
+        );
         latestSnapshotRef.current = normalized;
         sceneRef.current = normalized.scene;
         charactersRef.current = normalized.characters;
@@ -440,7 +503,10 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       const incomingCharacters = 'characters' in message && Array.isArray(message.characters)
         ? message.characters
         : charactersRef.current;
-      const normalized = normalizePlateDocumentScene(message.scene, incomingCharacters);
+      const normalized = normalizePlateDocumentScene(
+        message.scene,
+        restorePersistentCharacterUris(incomingCharacters),
+      );
       if (message.type === 'createNextScene') {
         latestSnapshotRef.current = normalized;
         sceneRef.current = normalized.scene;

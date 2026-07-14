@@ -9,6 +9,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { spacing, typeScale } from '@/lib/design-tokens';
 import { pickImageFromDevice } from '@/lib/pick-image';
+import { resolveAssetUri } from '@/lib/asset-resolver';
 import { isBackgroundRemovalSupported, removeImageBackground } from '@/lib/remove-background';
 import { getStoryGalleryImageAssets } from '@/lib/story-image-library';
 import { buildStoryGallery } from '@/lib/story-gallery';
@@ -42,7 +43,7 @@ export default function StoryGalleryRoute() {
   const handleCutout = useCallback(async (asset: { id: string; name: string; uri: string }) => {
     if (!storyId || removingBackgroundId) return;
     setRemovingBackgroundId(asset.id);
-    try { const uri = await removeImageBackground(asset.uri); const name = asset.name.replace(/\.(png|jpe?g|webp)$/i, ''); const created = await addAssetToLibrary(uri, `${name} (cutout).png`, 'image'); addImage(storyId, created.id); showToast(t('storyHome.backgroundRemoved'), 'success'); }
+    try { const resolved = await resolveAssetUri(asset.uri); if (typeof resolved !== 'string') throw new Error('Image unavailable'); const uri = await removeImageBackground(resolved); const name = asset.name.replace(/\.(png|jpe?g|webp)$/i, ''); const created = await addAssetToLibrary(uri, `${name} (cutout).png`, 'image'); addImage(storyId, created.id); showToast(t('storyHome.backgroundRemoved'), 'success'); }
     catch { showToast(t('storyHome.backgroundRemoveFailed'), 'error'); }
     finally { setRemovingBackgroundId(null); }
   }, [addImage, removingBackgroundId, storyId, t]);

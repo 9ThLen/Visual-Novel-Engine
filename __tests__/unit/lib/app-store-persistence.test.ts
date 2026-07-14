@@ -1,15 +1,17 @@
 import {
   buildPersistedAppState,
+  getHydratableMediaLibrary,
   getPersistableMediaLibrary,
   mergePersistedAppState,
   migratePersistedAppState,
   APP_STORE_PERSIST_VERSION,
   MAX_DATA_URI_ASSET_BYTES,
   MAX_TOTAL_DATA_URI_BYTES,
+  setWebMediaReferenceInvariant,
   type AppStorePersistenceState,
 } from '@/lib/app-store-persistence';
 import type { SceneRecord } from '@/lib/engine/types';
-import { resolveLibraryAssetUri } from '@/lib/media-library-service';
+import { resolveLibraryAssetUri, type LibraryAsset } from '@/lib/media-library-service';
 
 function makeDataImageUri(decodedBytes: number): string {
   const base64Length = Math.ceil((decodedBytes * 4) / 3);
@@ -112,6 +114,14 @@ function makeState(): AppStorePersistenceState {
 }
 
 describe('app store persistence helpers', () => {
+  beforeEach(() => {
+    setWebMediaReferenceInvariant(false);
+  });
+
+  afterAll(() => {
+    setWebMediaReferenceInvariant(false);
+  });
+
   it('persists file media assets and small inline image data uris', () => {
     expect(getPersistableMediaLibrary(makeState().mediaLibrary).map((asset) => asset.id)).toEqual([
       'image-file',
@@ -200,6 +210,100 @@ describe('app store persistence helpers', () => {
 
     expect(MAX_TOTAL_DATA_URI_BYTES).toBe(1024 * 1024);
     expect(persisted).toEqual(['image-230', 'image-220', 'image-210', 'image-200']);
+  });
+
+  it('enforces stable media references only after the Blob migration gate opens', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    setWebMediaReferenceInvariant(true);
+
+    const persisted = getPersistableMediaLibrary(makeState().mediaLibrary);
+
+    expect(persisted.map((asset) => asset.id)).toEqual(['image-file']);
+    expect(warn).toHaveBeenCalledWith(
+      '[Storage] Refusing to persist unstable media reference after Blob migration',
+      { assetId: 'image-data' },
+    );
+    warn.mockRestore();
+  });
+
+  it('refuses ephemeral blob: references once the gate is open, but keeps them before it', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const assets: LibraryAsset[] = [
+      {
+        id: 'image-blob',
+        type: 'image',
+        uri: 'blob:https://example.test/9f0c-ephemeral',
+        name: 'Ephemeral',
+        addedAt: 1,
+      },
+      {
+        id: 'image-idb',
+        type: 'image',
+        uri: 'idb://media/abc123',
+        name: 'Stable',
+        addedAt: 2,
+      },
+    ];
+
+    // Before the gate the legacy behaviour is preserved verbatim (rollback guard).
+    expect(getPersistableMediaLibrary(assets).map((asset) => asset.id))
+      .toEqual(['image-blob', 'image-idb']);
+
+    setWebMediaReferenceInvariant(true);
+
+    expect(getPersistableMediaLibrary(assets).map((asset) => asset.id)).toEqual(['image-idb']);
+    expect(warn).toHaveBeenCalledWith(
+      '[Storage] Refusing to persist unstable media reference after Blob migration',
+      { assetId: 'image-blob' },
+    );
+    warn.mockRestore();
+  });
+
+  it('hydrates oversized inline media that the write-side cap would drop', () => {
+    // The exact asset the Blob migration exists to rescue: too big for the
+    // write-side quota guard, but perfectly convertible to a Blob.
+    const oversized: LibraryAsset = {
+      id: 'image-oversized',
+      type: 'image',
+      uri: makeDataImageUri(MAX_DATA_URI_ASSET_BYTES + 1),
+      name: 'Oversized',
+      addedAt: 1,
+    };
+
+    // Write side still refuses it (localStorage fallback must not blow up)...
+    expect(getPersistableMediaLibrary([oversized])).toEqual([]);
+
+    // ...but hydration keeps it, so the migration can convert it.
+    expect(getHydratableMediaLibrary([oversized])).toEqual([oversized]);
+  });
+
+  it('drops only references the migration could never convert', () => {
+    const ephemeral: LibraryAsset = {
+      id: 'image-blob',
+      type: 'image',
+      uri: 'blob:https://example.test/dead-on-reload',
+      name: 'Ephemeral',
+      addedAt: 1,
+    };
+    const unconvertible: LibraryAsset = {
+      id: 'image-svg',
+      type: 'image',
+      uri: 'data:image/svg+xml;base64,PHN2Zy8+',
+      name: 'Unconvertible',
+      addedAt: 2,
+    };
+    const stable: LibraryAsset = {
+      id: 'image-idb',
+      type: 'image',
+      uri: 'idb://media/abc123',
+      name: 'Stable',
+      addedAt: 3,
+    };
+
+    // Keeping either of the first two would make the migration throw on every
+    // start and pin the caps open forever.
+    expect(getHydratableMediaLibrary([ephemeral, unconvertible, stable]))
+      .toEqual([stable]);
   });
 
   it('returns current state when persisted payload is empty or invalid', () => {

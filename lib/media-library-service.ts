@@ -8,6 +8,12 @@
  */
 
 import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
+import {
+  createMediaBlobUri,
+  hasMediaBlob,
+  putMediaBlob,
+} from './idb-storage';
 import { generateAssetId } from './id-utils';
 
 export type AssetType = 'image' | 'audio';
@@ -74,6 +80,63 @@ function parseBase64DataUri(uri: string, type: AssetType): ParsedDataUri | null 
   };
 }
 
+function dataUriToBlob(parsed: ParsedDataUri): Blob {
+  const binary = atob(parsed.base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: parsed.mimeType });
+}
+
+function validateMediaBlob(blob: Blob, type: AssetType): void {
+  const mimeType = blob.type.toLowerCase();
+  const valid = type === 'image'
+    ? mimeType.startsWith('image/') && mimeType !== 'image/svg+xml'
+    : mimeType.startsWith('audio/');
+  if (!valid || blob.size <= 0) throw new Error(`Invalid ${type} upload`);
+}
+
+async function persistWebMediaBlob(
+  uri: string,
+  type: AssetType,
+  parsedDataUri: ParsedDataUri | null,
+  fallbackStorageKey: string,
+): Promise<{ blob: Blob; storageKey: string }> {
+  if (uri.startsWith('data:')) {
+    if (!parsedDataUri) throw new Error(`Invalid ${type} data URI`);
+    const blob = dataUriToBlob(parsedDataUri);
+    validateMediaBlob(blob, type);
+    return { blob, storageKey: parsedDataUri.contentHash };
+  }
+
+  const response = await fetch(uri);
+  if (!response.ok) throw new Error(`Could not read ${type} Blob`);
+  const blob = await response.blob();
+  validateMediaBlob(blob, type);
+  return { blob, storageKey: fallbackStorageKey };
+}
+
+/** Whether the Blob migration is able to convert this inline data URI at all. */
+export function canConvertDataUri(uri: string, type: AssetType): boolean {
+  return parseBase64DataUri(uri, type) !== null;
+}
+
+/** Persist a legacy web data URI without changing the owning asset's identity. */
+export async function persistWebDataUri(
+  uri: string,
+  type: AssetType,
+): Promise<string> {
+  const parsed = parseBase64DataUri(uri, type);
+  if (!parsed) throw new Error(`Invalid ${type} data URI`);
+  const blob = dataUriToBlob(parsed);
+  validateMediaBlob(blob, type);
+  if (!await hasMediaBlob(parsed.contentHash)) {
+    await putMediaBlob(parsed.contentHash, blob);
+  }
+  return createMediaBlobUri(parsed.contentHash);
+}
+
 /**
  * Get library asset by ID (pure function)
  */
@@ -94,7 +157,7 @@ export function resolveLibraryAssetUri(
   if (!assetRef) {
     return null;
   }
-  const isUriLike = /^(file|content|blob|data|https?):/i.test(assetRef) || assetRef.startsWith('/') || assetRef.startsWith('assets/');
+  const isUriLike = /^(file|content|blob|data|idb|https?):/i.test(assetRef) || assetRef.startsWith('/') || assetRef.startsWith('assets/');
   if (isUriLike) {
     return assetRef;
   }
@@ -142,6 +205,45 @@ export async function addAssetToLibraryPure(
   }
 
   const parsedDataUri = uri.startsWith('data:') ? parseBase64DataUri(uri, type) : null;
+  if (Platform.OS === 'web' && (uri.startsWith('data:') || uri.startsWith('blob:'))) {
+    const generatedAssetId = generateAssetId();
+    if (parsedDataUri) {
+      const targetUri = await persistWebDataUri(uri, type);
+      const existingByTargetUri = assets.find((asset) => asset.uri === targetUri);
+      if (existingByTargetUri) return { asset: existingByTargetUri, assets };
+      const asset: LibraryAsset = {
+        id: generatedAssetId,
+        type,
+        uri: targetUri,
+        name: name || filename,
+        addedAt: Date.now(),
+      };
+      return { asset, assets: [...assets, asset] };
+    }
+
+    const persisted = await persistWebMediaBlob(uri, type, parsedDataUri, generatedAssetId);
+    const targetUri = createMediaBlobUri(persisted.storageKey);
+    const existingByTargetUri = assets.find((asset) => asset.uri === targetUri);
+    if (existingByTargetUri) {
+      if (!await hasMediaBlob(persisted.storageKey)) {
+        await putMediaBlob(persisted.storageKey, persisted.blob);
+      }
+      return { asset: existingByTargetUri, assets };
+    }
+
+    if (!await hasMediaBlob(persisted.storageKey)) {
+      await putMediaBlob(persisted.storageKey, persisted.blob);
+    }
+    const asset: LibraryAsset = {
+      id: generatedAssetId,
+      type,
+      uri: targetUri,
+      name: name || filename,
+      addedAt: Date.now(),
+    };
+    return { asset, assets: [...assets, asset] };
+  }
+
   if (parsedDataUri) {
     if (!FileSystem.documentDirectory) {
       const asset: LibraryAsset = {

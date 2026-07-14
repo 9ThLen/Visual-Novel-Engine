@@ -28,7 +28,7 @@ export function isSafeUri(uri: string): boolean {
   // file:// is allowed ONLY on native platforms (Expo FileSystem compatibility).
   // Web blocks file:// via the Platform.OS !== 'web' gate to prevent XSS / SSRF
   // via local file URIs in the web bundle.
-  const allowedPrefixes = ['http://', 'https://', '/', './', 'asset://', 'assets/', 'blob:'];
+  const allowedPrefixes = ['http://', 'https://', '/', './', 'asset://', 'assets/', 'blob:', 'idb://media/'];
   if (Platform.OS !== 'web') {
     allowedPrefixes.push('file://');
   }

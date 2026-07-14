@@ -32,10 +32,25 @@ import {
 import type { Character } from '@/lib/character-types';
 import type { AudioLibraryItem } from '@/lib/audio-types';
 import { shouldLogDevDiagnostics } from '@/lib/dev-logging';
+import { Platform } from 'react-native';
+import { migrateWebMediaReferences } from '@/lib/web-media-migration';
 
 // ── Story import / export — thin wrappers with validation ──
 
 const MAX_JSON_SIZE = 10 * 1024 * 1024;
+
+async function migrateImportedCharactersForWeb(
+  storyId: string,
+  characters: Character[],
+): Promise<Character[]> {
+  if (Platform.OS !== 'web' || !characters.some((character) =>
+    character.sprites.some((sprite) => sprite.uri.startsWith('data:'))
+  )) {
+    return characters;
+  }
+  const migrated = await migrateWebMediaReferences([], { [storyId]: characters });
+  return migrated.characterLibraries[storyId];
+}
 
 function buildCanonicalStory(
   metadata: StoryMetadata,
@@ -363,13 +378,13 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
     const timestamp = Date.now();
     const storyId = generateId('story');
     const importedScenes = normalizeImportedSceneRecords(storyId, validatedRawScenes);
-    const importedCharacterLibrary = migrateCharacterLibrary(
+    const importedCharacterLibrary = await migrateImportedCharactersForWeb(storyId, migrateCharacterLibrary(
       Array.isArray(raw.characterLibrary)
         ? raw.characterLibrary as Character[]
         : Array.isArray(raw.characters)
           ? raw.characters as Character[]
           : []
-    );
+    ));
     const importedAudioLibrary = Array.isArray(raw.audioLibrary)
       ? raw.audioLibrary as AudioLibraryItem[]
       : [];
@@ -433,11 +448,11 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
     characterAuthoringSchemaVersion: CHARACTER_AUTHORING_SCHEMA_VERSION,
     theme: (raw.theme ?? (story as { theme?: unknown }).theme) as StoryReaderTheme | undefined,
   });
-  const importedCharacterLibrary = migrateCharacterLibrary(
+  const importedCharacterLibrary = await migrateImportedCharactersForWeb(story.id, migrateCharacterLibrary(
     Array.isArray((story as unknown as { characters?: unknown }).characters)
       ? (story as unknown as { characters: Character[] }).characters
       : []
-  );
+  ));
 
   useAppStore.setState((state) => ({
     storiesMetadata: [...state.storiesMetadata, metadata],

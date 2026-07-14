@@ -7,6 +7,11 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
 import { Platform } from 'react-native';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
+import {
+  getMediaBlob,
+  getMediaBlobStorageKey,
+  IDB_MEDIA_URI_PREFIX,
+} from '@/lib/idb-storage';
 import { getBrowserSafeAudioUri } from './audio-web-source';
 import { resolveLibraryAssetUri } from '@/stores/media-library-actions';
 import { isSafeUri } from './story-validator';
@@ -18,6 +23,7 @@ type TimedCacheEntry<T> = {
 
 const uriCache = new Map<string, TimedCacheEntry<string | number | null>>();
 const playableUriCache = new Map<string, TimedCacheEntry<string | null>>();
+const mediaObjectUrlCache = new Map<string, string>();
 const MODULE_CACHE_MAX_SIZE = 50;
 
 function evictOldest(cache: Map<unknown, unknown>, maxSize: number): void {
@@ -79,6 +85,38 @@ function isSafeDataUri(uri: string): boolean {
   const lowerUri = uri.toLowerCase();
   if (lowerUri.startsWith('data:image/svg+xml')) return false;
   return SAFE_DATA_URI_PREFIXES.some((prefix) => lowerUri.startsWith(prefix));
+}
+
+async function resolveIndexedDbMediaUri(uri: string): Promise<string | null> {
+  const storageKey = getMediaBlobStorageKey(uri);
+  if (!storageKey) {
+    ErrorHandler.handle('Blocked invalid IndexedDB media URI', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri });
+    return null;
+  }
+
+  const cached = mediaObjectUrlCache.get(storageKey);
+  if (cached) return cached;
+
+  try {
+    const blob = await getMediaBlob(storageKey);
+    if (!blob) {
+      ErrorHandler.handle('IndexedDB media Blob not found', null, ErrorCategory.MEDIA, ErrorSeverity.LOW, { uri });
+      return null;
+    }
+    const objectUrl = URL.createObjectURL(blob);
+    if (mediaObjectUrlCache.size >= URI_CACHE_MAX_SIZE) {
+      const oldestStorageKey = mediaObjectUrlCache.keys().next().value;
+      if (oldestStorageKey !== undefined) {
+        URL.revokeObjectURL(mediaObjectUrlCache.get(oldestStorageKey)!);
+        mediaObjectUrlCache.delete(oldestStorageKey);
+      }
+    }
+    mediaObjectUrlCache.set(storageKey, objectUrl);
+    return objectUrl;
+  } catch (error) {
+    ErrorHandler.handle('Could not read IndexedDB media Blob', error, ErrorCategory.MEDIA, ErrorSeverity.LOW, { uri });
+    return null;
+  }
 }
 
 // Bundled assets mapping - maps asset IDs to actual asset locations
@@ -182,6 +220,10 @@ async function resolveUri(uri: string): Promise<string | number | null> {
         return null;
       }
       return uri;
+    }
+
+    if (uri.startsWith(IDB_MEDIA_URI_PREFIX)) {
+      return resolveIndexedDbMediaUri(uri);
     }
 
     const libraryUri = resolveLibraryAssetUri(uri);
@@ -316,6 +358,10 @@ async function moduleIdToUri(moduleId: number): Promise<string | null> {
 }
 
 export function clearUriCache(): void {
+  if (typeof URL.revokeObjectURL === 'function') {
+    mediaObjectUrlCache.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
+  }
+  mediaObjectUrlCache.clear();
   uriCache.clear();
   playableUriCache.clear();
   moduleUriCache.clear();

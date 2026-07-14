@@ -1,4 +1,12 @@
-import { StoryValidator } from '@/lib/story-validator';
+import { isSafeUri, StoryValidator } from '@/lib/story-validator';
+
+describe('safe URI validation', () => {
+  it('allows only scoped IndexedDB media references', () => {
+    expect(isSafeUri('idb://media/asset-key')).toBe(true);
+    expect(isSafeUri('idb://other/asset-key')).toBe(false);
+    expect(isSafeUri('idb://media/../secret')).toBe(false);
+  });
+});
 
 describe('StoryValidator', () => {
   it('preserves safe character presentation fields', () => {

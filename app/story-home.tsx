@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Asset } from 'expo-asset';
 import {
-  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -13,6 +12,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
+import { ResolvedAssetImage } from '@/components/resolved-asset-image';
 import { AssetUsageCard } from '@/components/story-home/AssetUsageCard';
 import { ChoiceStatisticsCard } from '@/components/story-home/ChoiceStatisticsCard';
 import { StoryHealthCard } from '@/components/story-home/StoryHealthCard';
@@ -714,7 +714,7 @@ export default function StoryHomeScreen() {
                 style={[styles.coverFrame, shadowCover]}
               >
                 {story.thumbnailUri ? (
-                  <Image source={{ uri: story.thumbnailUri }} style={styles.cover} resizeMode="cover" />
+                  <ResolvedAssetImage uri={story.thumbnailUri} style={styles.cover} resizeMode="cover" />
                 ) : (
                   <View style={[styles.coverPlaceholder, { backgroundColor: withAlpha(colors.primary, 0.12) }]}>
                     <Text style={[styles.coverInitial, { color: colors.primary }]}>{coverInitial}</Text>

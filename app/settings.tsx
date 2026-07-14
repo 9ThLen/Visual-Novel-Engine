@@ -286,6 +286,20 @@ export default function SettingsScreen() {
           />
         </Section>
 
+        {/* Cloud */}
+        <Section title={t('settings.cloudSection')}>
+          <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 20, marginBottom: 12 }}>
+            {t('settings.cloudBackupDescription')}
+          </Text>
+          <Button
+            variant="outline"
+            onPress={() => router.push('/cloud-backup')}
+            accessibilityLabel={t('cloudBackup.title')}
+          >
+            {t('cloudBackup.title')}
+          </Button>
+        </Section>
+
         {/* About */}
         <Section title={t('settings.aboutSection')}>
           <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 20 }}>

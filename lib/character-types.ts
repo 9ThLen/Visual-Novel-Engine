@@ -9,6 +9,8 @@ export interface CharacterSprite {
   id: string;
   name: string; // e.g., "Happy", "Sad", "Angry", "Casual Outfit"
   uri: string;
+  /** Runtime editor preview may carry a blob: URI while this keeps the persistent URI. */
+  assetUri?: string;
   tags?: string[]; // e.g., ["emotion", "happy"], ["outfit", "casual"]
   createdAt: number;
   // Optional instance properties for compatibility

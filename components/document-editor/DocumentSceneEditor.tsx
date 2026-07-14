@@ -77,7 +77,7 @@ interface DocumentSceneEditorProps {
   protectedCharacterIds?: string[];
   onSave: (documentScenes: DocumentScene[], characters: Character[]) => void;
   onCreateNextScene: (sourceSceneId: string, documentScenes: DocumentScene[], characters: Character[]) => void;
-  onUploadBackgroundAsset?: (name: string, dataUri: string) => Promise<VNPlateBackgroundAsset | null>;
+  onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onBack?: () => void;
   onPreview?: (sceneId: string) => void;
