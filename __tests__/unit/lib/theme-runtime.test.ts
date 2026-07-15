@@ -22,6 +22,23 @@ const GUARANTEED_SOURCE_TOKENS = [
   'shadow-color',
 ] as const;
 
+function relativeLuminance(hex: string): number {
+  const channels = hex.match(/[a-f\d]{2}/gi);
+  if (!channels || channels.length !== 3) throw new Error(`Expected six-digit hex color, received ${hex}`);
+  const [red, green, blue] = channels.map((channel) => {
+    const value = Number.parseInt(channel, 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
+    / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+}
+
 describe('runtime theme colors', () => {
   it('loads theme tokens from a runtime-safe source', () => {
     expect(themeTokens.primary.dark).toEqual(expect.any(String));
@@ -58,5 +75,19 @@ describe('runtime theme colors', () => {
     expect(source).toContain("'text-inverse': base['foreground-on-primary']");
     expect(source).toContain("surfaceElevated: base['surface-1']");
     expect(source).toContain('backdrop: base.backdrop');
+  });
+
+  it.each(['light', 'dark'] as const)('keeps functional text above the internal contrast target in %s mode', (scheme) => {
+    const surface = themeTokens.surface[scheme];
+    for (const token of ['foreground', 'foreground-secondary', 'foreground-tertiary', 'primary', 'secondary', 'ai-accent', 'lego-audio'] as const) {
+      expect(contrastRatio(themeTokens[token][scheme], surface), `${scheme}:${token} on surface`).toBeGreaterThanOrEqual(5);
+    }
+  });
+
+  it.each(['light', 'dark'] as const)('keeps filled primary actions above the internal contrast target in %s mode', (scheme) => {
+    expect(
+      contrastRatio(themeTokens['foreground-on-primary'][scheme], themeTokens.primary[scheme]),
+      `${scheme}:foreground-on-primary on primary`,
+    ).toBeGreaterThanOrEqual(5);
   });
 });

@@ -113,6 +113,7 @@ interface ActionButtonProps {
   label: string;
   iconName?: IconSymbolName;
   tone?: ActionTone;
+  accent?: 'primary' | 'secondary';
   size?: 'base' | 'sm';
   onPress: () => void;
   disabled?: boolean;
@@ -125,6 +126,7 @@ function ActionButton({
   label,
   iconName,
   tone = 'solid',
+  accent = 'primary',
   size = 'base',
   onPress,
   disabled,
@@ -133,8 +135,9 @@ function ActionButton({
 }: ActionButtonProps) {
   const solid = tone === 'solid';
   const outline = tone === 'outline';
-  const bg = solid ? colors.primary : outline ? 'transparent' : withAlpha(colors.primary, 0.1);
-  const fg = solid ? colors['text-inverse'] : colors.primary;
+  const accentColor = colors[accent];
+  const bg = solid ? accentColor : outline ? 'transparent' : withAlpha(accentColor, 0.1);
+  const fg = solid ? colors['text-inverse'] : accentColor;
   const iconSize = size === 'sm' ? 16 : 18;
   return (
     <Pressable
@@ -148,7 +151,7 @@ function ActionButton({
         {
           backgroundColor: bg,
           borderWidth: outline ? 1.5 : 0,
-          borderColor: outline ? colors.primary : 'transparent',
+          borderColor: outline ? accentColor : 'transparent',
           opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
         },
         style,
@@ -645,7 +648,7 @@ export default function StoryHomeScreen() {
     </View>
   ) : null;
 
-  const imageLibraryCard = <View style={[styles.card, cardBase, shadowCard]}><SectionHeader colors={colors} iconName="gallery" title={t('storyHome.gallery.title')} /><Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.gallery.openHint')}</Text><ActionButton colors={colors} label={t('storyHome.gallery.open')} iconName="gallery" onPress={() => router.push({ pathname: '/story-gallery', params: { storyId: story.id } })} /></View>;
+  const imageLibraryCard = <View style={[styles.card, cardBase, shadowCard]}><SectionHeader colors={colors} iconName="gallery" title={t('storyHome.gallery.title')} /><Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.gallery.openHint')}</Text><ActionButton colors={colors} label={t('storyHome.gallery.open')} iconName="gallery" accent="secondary" onPress={() => router.push({ pathname: '/story-gallery', params: { storyId: story.id } })} /></View>;
 
   const backupCard = (
     <View style={[styles.card, cardBase, shadowCard]}>
@@ -704,7 +707,7 @@ export default function StoryHomeScreen() {
 
         {/* Hero: cover + identity + primary journeys */}
         <View style={[styles.hero, cardBase, shadowCard]}>
-          <View style={[styles.heroAccent, { backgroundColor: colors.primary }]} />
+          <View style={[styles.heroAccent, { backgroundColor: colors.secondary }]} />
           <View style={[styles.heroInner, heroWide ? styles.heroRow : styles.heroColumn]}>
             <View>
               <Pressable
@@ -772,6 +775,7 @@ export default function StoryHomeScreen() {
                   label={t('storyHome.playNovel')}
                   iconName="play"
                   tone="solid"
+                  accent="secondary"
                   onPress={handlePlay}
                 />
                 <ActionButton

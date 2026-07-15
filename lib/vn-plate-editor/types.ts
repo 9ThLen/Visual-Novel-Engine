@@ -23,6 +23,23 @@ export interface VNPlateSceneRef {
   name: string;
 }
 
+export interface VNPlateTheme {
+  background: string;
+  surface: string;
+  surfaceMuted: string;
+  foreground: string;
+  foregroundSecondary: string;
+  border: string;
+  borderSubtle: string;
+  borderStrong: string;
+  primary: string;
+  primarySoft: string;
+  secondary: string;
+  secondarySoft: string;
+  audio: string;
+  audioSoft: string;
+}
+
 /** One option of a choice block, as seen by the branch switcher in the webview. */
 export interface VNPlateBranchOption {
   optionId: string;
@@ -56,6 +73,7 @@ export interface VNPlateEditorPayload {
   backgroundAssets?: VNPlateBackgroundAsset[];
   audioAssets?: VNPlateAudioAsset[];
   scenes?: VNPlateSceneRef[];
+  theme?: VNPlateTheme;
 }
 
 export type VNPlateFormatCommand =

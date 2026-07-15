@@ -1,6 +1,7 @@
 import { embeddedCommands, getEmbeddedCommands } from '@/lib/vn-plate-editor/embedded-commands';
 import { createVNPlateEditorHtml } from '@/lib/vn-plate-editor/embedded-html';
 import { createEmbeddedScript } from '@/lib/vn-plate-editor/embedded-script';
+import { createEmbeddedStyles } from '@/lib/vn-plate-editor/embedded-styles';
 
 interface EmbeddedHarnessApi {
   insertCommand: (id: string) => void;
@@ -344,6 +345,62 @@ describe('createEmbeddedScript', () => {
     }, embeddedCommands);
 
     expect(() => new Function(script)).not.toThrow();
+  });
+
+  it('injects semantic plate colors without replacing character colors', () => {
+    const html = createVNPlateEditorHtml({
+      editorId: 'editor_theme_contract',
+      scene: {
+        sceneId: 'scene_1',
+        sceneName: 'Scene 1',
+        blocks: [{
+          id: 'dialogue_1',
+          kind: 'dialogue',
+          speakerName: 'Ada',
+          characterId: 'character_1',
+          spriteId: null,
+          tokenColor: '#C026D3',
+          text: 'Hello',
+        }],
+      },
+      characters: [],
+      isPhone: false,
+      backgroundAssets: [],
+      audioAssets: [],
+      scenes: [],
+      theme: {
+        background: '#F7F2EA',
+        surface: '#FEFAF6',
+        surfaceMuted: '#F1EEE6',
+        foreground: '#3A281F',
+        foregroundSecondary: '#655D56',
+        border: '#A59B90',
+        borderSubtle: '#E5DDD3',
+        borderStrong: '#8D8277',
+        primary: '#67683F',
+        primarySoft: 'rgba(103, 104, 63, 0.12)',
+        secondary: '#985A3E',
+        secondarySoft: 'rgba(152, 90, 62, 0.12)',
+        audio: '#806027',
+        audioSoft: 'rgba(128, 96, 39, 0.12)',
+      },
+    });
+
+    expect(html).toContain('--plate-primary: #67683F');
+    expect(html).toContain('--plate-secondary: #985A3E');
+    expect(html).toContain('--plate-audio: #806027');
+    expect(html).toContain('--speaker-color:#C026D3');
+  });
+
+  it('styles popover menus with semantic palette tokens', () => {
+    const styles = createEmbeddedStyles();
+
+    expect(styles).toContain('background: var(--plate-surface, #FEFAF6)');
+    expect(styles).toContain('background: var(--plate-secondary, #985A3E)');
+    expect(styles).toContain('border-color: var(--plate-primary, #67683F)');
+    expect(styles).not.toContain('background: #ef4444');
+    expect(styles).not.toContain('border-color: #60a5fa');
+    expect(styles).not.toContain('border-color: #7c3aed');
   });
 
   it('generates character sprite upload guards for transparent PNG and WebP files', () => {

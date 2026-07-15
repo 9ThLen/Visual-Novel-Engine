@@ -5,8 +5,14 @@ import { AiChatPanel } from '@/components/ai-chat/AiChatPanel';
 import { useAiChatStore } from '@/stores/ai-chat-store';
 import { describeAiScenePatch } from '@/lib/ai/scene-patch';
 import { computeSceneRevision } from '@/lib/ai/scene-revision';
+import {
+  computeAppearanceRevision,
+  describeAiAppearancePatch,
+  type AiReaderAppearancePatch,
+} from '@/lib/ai/appearance-patch';
 import type { AiScenePatch } from '@/lib/ai/scene-patch-types';
 import type { SceneRecord } from '@/lib/engine/types';
+import type { StoryMetadata } from '@/lib/story-domain';
 import { useAppStore } from '@/stores/use-app-store';
 
 function scene(): SceneRecord {
@@ -51,7 +57,26 @@ function buildPatch(record: SceneRecord): AiScenePatch {
 }
 
 function resetChatStore() {
-  useAiChatStore.setState({ messages: [], status: 'idle', pendingPatch: null, lastAppliedSnapshot: null });
+  useAiChatStore.setState({
+    messages: [],
+    status: 'idle',
+    pendingPatch: null,
+    pendingAppearance: null,
+    lastAppliedChange: null,
+  });
+}
+
+function storyMetadata(theme?: StoryMetadata['theme']): StoryMetadata {
+  return { id: 'story-1', title: 'Story', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 1, theme };
+}
+
+function buildAppearancePatch(metadata: StoryMetadata): AiReaderAppearancePatch {
+  return {
+    storyId: metadata.id,
+    expectedRevision: computeAppearanceRevision(metadata),
+    theme: { dialogueBg: '#000000' },
+    explanation: 'Darken the dialogue box',
+  };
 }
 
 describe('AiChatPanel', () => {
@@ -82,7 +107,11 @@ describe('AiChatPanel', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Undo AI changes' })).toBeTruthy());
 
     expect(useAiChatStore.getState().pendingPatch).toBeNull();
-    expect(useAiChatStore.getState().lastAppliedSnapshot).toEqual({ storyId: record.storyId, snapshotId: 'snap-1' });
+    expect(useAiChatStore.getState().lastAppliedChange).toEqual({
+      kind: 'scene',
+      storyId: record.storyId,
+      snapshotId: 'snap-1',
+    });
   });
 
   it('shows a clear error and no rollback control when the revision has gone stale', async () => {
@@ -108,6 +137,66 @@ describe('AiChatPanel', () => {
     expect(screen.queryByRole('button', { name: 'Undo AI changes' })).toBeNull();
     expect(useAiChatStore.getState().pendingPatch).toBeNull();
     expect(saveSceneRecord).not.toHaveBeenCalled();
+  });
+
+  it('applies a pending appearance patch through the theme adapter', async () => {
+    const record = scene();
+    const metadata = storyMetadata({ dialogueBg: '#ffffff' });
+    const patch = buildAppearancePatch(metadata);
+    const description = describeAiAppearancePatch(metadata, patch);
+    const updateStoryMetadata = vi.fn();
+    useAppStore.setState({
+      storiesMetadata: [metadata],
+      sceneRecordsByStory: { [record.storyId]: { [record.id]: record } },
+      characterLibraries: {},
+      imageAssetIdsByStory: {},
+      mediaLibrary: [],
+      createStorySnapshot: vi.fn(),
+      updateStoryMetadata,
+    });
+    useAiChatStore.setState({ pendingAppearance: { patch, description } });
+
+    render(<AiChatPanel storyId={metadata.id} activeSceneId={record.id} />);
+    expect(screen.getByText('Reader appearance')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() =>
+      expect(updateStoryMetadata).toHaveBeenCalledWith('story-1', { theme: { dialogueBg: '#000000' } }),
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo AI changes' })).toBeTruthy());
+
+    expect(useAiChatStore.getState().pendingAppearance).toBeNull();
+    expect(useAiChatStore.getState().lastAppliedChange).toEqual({
+      kind: 'appearance',
+      storyId: 'story-1',
+      previousTheme: { dialogueBg: '#ffffff' },
+    });
+  });
+
+  it('undoing an applied theme writes the previous colors back', async () => {
+    const record = scene();
+    const metadata = storyMetadata({ dialogueBg: '#ffffff' });
+    const updateStoryMetadata = vi.fn();
+    useAppStore.setState({
+      storiesMetadata: [metadata],
+      sceneRecordsByStory: { [record.storyId]: { [record.id]: record } },
+      characterLibraries: {},
+      imageAssetIdsByStory: {},
+      mediaLibrary: [],
+      updateStoryMetadata,
+    });
+    useAiChatStore.setState({
+      lastAppliedChange: { kind: 'appearance', storyId: 'story-1', previousTheme: { dialogueBg: '#ffffff' } },
+    });
+
+    render(<AiChatPanel storyId={metadata.id} activeSceneId={record.id} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo AI changes' }));
+
+    await waitFor(() =>
+      expect(updateStoryMetadata).toHaveBeenCalledWith('story-1', { theme: { dialogueBg: '#ffffff' } }),
+    );
+    await waitFor(() => expect(useAiChatStore.getState().lastAppliedChange).toBeNull());
   });
 
   it('rejecting clears the pending patch without touching the store', () => {

@@ -188,7 +188,7 @@ export function DocumentEditorHeader({
                 borderRadius: 6,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: active ? colors['surface-2'] : 'transparent',
+                backgroundColor: active ? withAlpha(colors.primary, 0.18) : 'transparent',
                 opacity: formatState.canFormat ? 1 : 0.35,
               }}
             >
@@ -196,10 +196,10 @@ export function DocumentEditorHeader({
                 <IconSymbol
                   name={command === 'alignLeft' ? 'format.align.left' : command === 'alignCenter' ? 'format.align.center' : command === 'alignRight' ? 'format.align.right' : 'format.clear'}
                   size={19}
-                  color={colors.foreground}
+                  color={active ? colors['primary-active'] : colors.foreground}
                 />
               ) : <Text style={{
-                color: colors.foreground,
+                color: active ? colors['primary-active'] : colors.foreground,
                 fontSize: 16,
                 fontWeight: command === 'bold' ? '800' : '600',
                 fontStyle: command === 'italic' ? 'italic' : 'normal',
@@ -269,7 +269,16 @@ export function DocumentEditorHeader({
         </>
       ) : (
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 }}>
-          <Button variant="secondary" size="sm" onPress={onGallery}>{t('storyHome.gallery.title')}</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            colorScheme={colorScheme}
+            style={{ borderWidth: 1, borderColor: colors.secondary }}
+            textStyle={{ color: colors.secondary }}
+            onPress={onGallery}
+          >
+            {t('storyHome.gallery.title')}
+          </Button>
           <Pressable
             onPress={onToggleFocusMode}
             accessibilityRole="button"
@@ -290,10 +299,16 @@ export function DocumentEditorHeader({
               {focusMode ? t('editor.exitFocus') : t('editor.focusMode')}
             </Text>
           </Pressable>
-          <Button variant="secondary" size="sm" onPress={onPreview}>
+          <Button
+            variant="primary"
+            size="sm"
+            colorScheme={colorScheme}
+            style={{ backgroundColor: colors.secondary }}
+            onPress={onPreview}
+          >
             {t('editor.preview')}
           </Button>
-          <Button variant="primary" size="sm" onPress={onSave} loading={isSaving}>{t('common.save')}</Button>
+          <Button variant="primary" size="sm" colorScheme={colorScheme} onPress={onSave} loading={isSaving}>{t('common.save')}</Button>
         </View>
       )}
     </View>

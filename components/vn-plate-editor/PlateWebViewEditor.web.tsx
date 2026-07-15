@@ -2,6 +2,8 @@ import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useI18n } from '@/hooks/use-i18n';
+import { useColors } from '@/hooks/use-colors';
+import { withAlpha } from '@/lib/_core/theme';
 import { resolveAssetUri, resolvePlayableAssetUri } from '@/lib/asset-resolver';
 import { isBackgroundRemovalSupported, removeImageBackground } from '@/lib/remove-background';
 import { getEmbeddedCommands } from '@/lib/vn-plate-editor/embedded-commands';
@@ -118,6 +120,9 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   onStartBranchOption,
 }: PlateWebViewEditorProps, ref) {
   const { language } = useI18n();
+  // The document canvas is a paper surface and intentionally stays light,
+  // independently of the surrounding application theme.
+  const colors = useColors('light');
   const minimumFrameHeight = isPhone ? MIN_PHONE_FRAME_HEIGHT : MIN_FRAME_HEIGHT;
   const initialFrameHeight = initialHeight && initialHeight > minimumFrameHeight ? initialHeight : minimumFrameHeight;
   const [frameHeight, setFrameHeight] = useState(initialFrameHeight);
@@ -145,13 +150,38 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       const currentScene = sceneRef.current ?? scene;
       const currentCharacters = charactersRef.current ?? characters;
       return createVNPlateEditorHtml(
-        { editorId, scene: currentScene, characters: currentCharacters, backgroundAssets, audioAssets, scenes, isPhone, language },
+        {
+          editorId,
+          scene: currentScene,
+          characters: currentCharacters,
+          backgroundAssets,
+          audioAssets,
+          scenes,
+          isPhone,
+          language,
+          theme: {
+            background: colors.background,
+            surface: colors.surface,
+            surfaceMuted: colors['surface-2'],
+            foreground: colors.foreground,
+            foregroundSecondary: colors['foreground-secondary'],
+            border: colors.border,
+            borderSubtle: colors['border-subtle'],
+            borderStrong: colors['border-strong'],
+            primary: colors.primary,
+            primarySoft: colors.selected,
+            secondary: colors.secondary,
+            secondarySoft: withAlpha(colors.secondary, 0.12),
+            audio: colors['lego-audio'],
+            audioSoft: colors.hover,
+          },
+        },
         shared ?? undefined,
       );
     },
     // Keep iframe srcDoc stable while live scene/character changes flow through postMessage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editorId, isPhone, forceInlineHtml],
+    [editorId, isPhone, forceInlineHtml, colors],
   );
 
   useEffect(() => {

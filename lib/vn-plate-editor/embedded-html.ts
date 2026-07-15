@@ -25,6 +25,25 @@ export function createVNPlateEditorHtml(payload: VNPlateEditorPayload, shared?: 
     ? `<script src="${shared.scriptUrl}"></script>
   <script>window.__VN_PLATE_BOOT(${jsonForScript(payload)}, ${jsonForScript(commands)});</script>`
     : `<script>${createEmbeddedScript(payload, commands)}</script>`;
+  const theme = payload.theme;
+  const themeStyles = theme
+    ? `<style>:root {
+      --plate-background: ${escapeHtml(theme.background)};
+      --plate-surface: ${escapeHtml(theme.surface)};
+      --plate-surface-muted: ${escapeHtml(theme.surfaceMuted)};
+      --plate-foreground: ${escapeHtml(theme.foreground)};
+      --plate-foreground-secondary: ${escapeHtml(theme.foregroundSecondary)};
+      --plate-border: ${escapeHtml(theme.border)};
+      --plate-border-subtle: ${escapeHtml(theme.borderSubtle)};
+      --plate-border-strong: ${escapeHtml(theme.borderStrong)};
+      --plate-primary: ${escapeHtml(theme.primary)};
+      --plate-primary-soft: ${escapeHtml(theme.primarySoft)};
+      --plate-secondary: ${escapeHtml(theme.secondary)};
+      --plate-secondary-soft: ${escapeHtml(theme.secondarySoft)};
+      --plate-audio: ${escapeHtml(theme.audio)};
+      --plate-audio-soft: ${escapeHtml(theme.audioSoft)};
+    }</style>`
+    : '';
 
   return `<!doctype html>
 <html>
@@ -32,6 +51,7 @@ export function createVNPlateEditorHtml(payload: VNPlateEditorPayload, shared?: 
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   ${styles}
+  ${themeStyles}
 </head>
 <body>
   <div class="shell">

@@ -154,6 +154,7 @@ export function DocumentSceneEditor({
   const [documentScenes, setDocumentScenes] = useState(initialDocuments);
   const [localCharacters, setLocalCharacters] = useState(characters);
   const [activeSceneId, setActiveSceneId] = useState(sceneRecord.id);
+  const [focusedEditorSceneId, setFocusedEditorSceneId] = useState<string | null>(null);
   const [dirtySceneIds, setDirtySceneIds] = useState<Set<string>>(() => new Set());
   const [isSaving, setIsSaving] = useState(false);
   // Distraction-free writing: hides the sidebar, breadcrumb, inspector, and
@@ -178,6 +179,7 @@ export function DocumentSceneEditor({
   const mountedSceneIdsRef = useRef(mountedSceneIds);
   const documentScenesRef = useRef(documentScenes);
   const activeSceneIdRef = useRef(activeSceneId);
+  const focusedEditorSceneIdRef = useRef<string | null>(null);
   const localCharactersRef = useRef(localCharacters);
   const scrollYRef = useRef(0);
   const viewportHeightRef = useRef(0);
@@ -243,6 +245,8 @@ export function DocumentSceneEditor({
     draftRegistryRef.current.clear();
     sceneLayoutRef.current.clear();
     editorRefsRef.current.clear();
+    focusedEditorSceneIdRef.current = null;
+    setFocusedEditorSceneId(null);
     setMeasureVersion((version) => version + 1);
     setMountedSceneIds(seedMountedSceneIds(initialDocuments.map((ds) => ds.sceneId), nextActiveSceneId));
     pendingScrollSceneIdRef.current = nextActiveSceneId;
@@ -333,6 +337,10 @@ export function DocumentSceneEditor({
       // back into range and remounted while we were flushing, leave it alone.
       if (editorRefsRef.current.get(sceneId) === handle) {
         editorRefsRef.current.delete(sceneId);
+        if (focusedEditorSceneIdRef.current === sceneId) {
+          focusedEditorSceneIdRef.current = null;
+          setFocusedEditorSceneId(null);
+        }
         setMountedSceneIds((current) => {
           if (!current.has(sceneId)) return current;
           const next = new Set(current);
@@ -554,11 +562,13 @@ export function DocumentSceneEditor({
   const getOnFrameLayout = useSceneCallback(handleFrameLayoutImpl);
 
   const handleUndo = useCallback(() => {
-    editorRefsRef.current.get(activeSceneIdRef.current)?.undo();
+    const sceneId = focusedEditorSceneIdRef.current ?? activeSceneIdRef.current;
+    editorRefsRef.current.get(sceneId)?.undo();
   }, []);
 
   const handleRedo = useCallback(() => {
-    editorRefsRef.current.get(activeSceneIdRef.current)?.redo();
+    const sceneId = focusedEditorSceneIdRef.current ?? activeSceneIdRef.current;
+    editorRefsRef.current.get(sceneId)?.redo();
   }, []);
 
   useEditorShortcuts({ onUndo: handleUndo, onRedo: handleRedo });
@@ -574,9 +584,17 @@ export function DocumentSceneEditor({
   const activeHistoryState = historyStateByScene[activeSceneId] ?? { canUndo: false, canRedo: false };
   const handleFormatStateImpl = useCallback((sceneId: string, state: VNPlateFormatState) => {
     setFormatStateByScene((current) => ({ ...current, [sceneId]: state }));
+    // Keep the selection target separate from the scroll-derived active scene.
+    // Updating activeSceneId here causes the whole document chrome to rerender
+    // while the browser is selecting text, which can make the ScrollView jump.
+    if (state.canFormat && focusedEditorSceneIdRef.current !== sceneId) {
+      focusedEditorSceneIdRef.current = sceneId;
+      setFocusedEditorSceneId(sceneId);
+    }
   }, []);
   const getOnFormatStateChange = useSceneCallback(handleFormatStateImpl);
-  const activeFormatState = formatStateByScene[activeSceneId] ?? {
+  const formatSceneId = focusedEditorSceneId ?? activeSceneId;
+  const activeFormatState = formatStateByScene[formatSceneId] ?? {
     bold: false,
     italic: false,
     underline: false,
@@ -586,7 +604,8 @@ export function DocumentSceneEditor({
     canFormat: false,
   };
   const handleFormatText = useCallback((command: VNPlateFormatCommand, value?: string) => {
-    editorRefsRef.current.get(activeSceneIdRef.current)?.formatText(command, value);
+    const sceneId = focusedEditorSceneIdRef.current ?? activeSceneIdRef.current;
+    editorRefsRef.current.get(sceneId)?.formatText(command, value);
   }, []);
 
   const handleBack = useCallback(async () => {

@@ -30,12 +30,12 @@
      (Chromium <111, Firefox <113, Safari <15.4)
      Overridden below by OKLCH values for wider gamut.
      ════════════════════════════════════════════════════ */
-  --color-bg: #16132B;
-  --color-surface: #1F1B33;
-  --color-foreground: #EBE6F2;
-  --color-muted: #7E7A99;
-  --color-primary: #7C5BF5;
-  --color-border: #2A2545;
+  --color-bg: #171512;
+  --color-surface: #211E1A;
+  --color-foreground: #F3ECE4;
+  --color-muted: #A99D92;
+  --color-primary: #B0B08A;
+  --color-border: #665C52;
 
   /* ── Purple (Brand Primary) ── */
   --p-50:  oklch(97% 0.02 280);
@@ -96,33 +96,38 @@
 :root {
   /* ── Core Surface (60-30-10 distribution) ── */
   /* 60% — Dominant background */
-  --color-bg:           oklch(16% 0.02 280);   /* Deep indigo-black */
-  --color-bg-elevated:  oklch(13% 0.02 280);   /* Scrim behind modals */
+  --color-bg:           #171512;
+  --color-bg-elevated:  #1C1916;
 
   /* 30% — Secondary surfaces */
-  --color-surface:      oklch(19% 0.02 280);   /* Cards, panels */
-  --color-surface-1:    oklch(21% 0.02 280);   /* Elevated cards */
-  --color-surface-2:    oklch(23% 0.02 280);   /* Dropdowns */
-  --color-surface-3:    oklch(25% 0.02 280);   /* Tooltips, popovers */
+  --color-surface:      #211E1A;
+  --color-surface-1:    #2F2A24;
+  --color-surface-2:    #373129;
+  --color-surface-3:    #40382F;
 
   /* 10% — Accent (interactive, CTAs) */
-  --color-primary:      var(--p-500);
-  --color-primary-hover: var(--p-400);
-  --color-primary-active: var(--p-600);
+  --color-primary:      #B0B08A;
+  --color-primary-hover: #BFC09A;
+  --color-primary-active: #9D9E77;
+  --color-secondary:    #D28D6B;
+  --color-secondary-hover: #E09C78;
+  --color-secondary-active: #BE795B;
+  --color-ai-accent:    #91A5AC;
+  --color-ai-surface:   #28363A;
 
   /* ── Foreground (Text) ── */
-  --color-fg:           oklch(92% 0.01 280);   /* Primary text */
-  --color-fg-secondary: oklch(68% 0.02 280);   /* Secondary text */
-  --color-fg-tertiary:  oklch(52% 0.02 280);   /* Placeholder, hints */
-  --color-fg-disabled:  oklch(40% 0.02 280);   /* Disabled text */
-  --color-fg-inverse:   oklch(16% 0.02 280);   /* Text on light bg */
-  --color-fg-on-primary: oklch(98% 0 0);       /* Text on primary bg */
+  --color-fg:           #F3ECE4;
+  --color-fg-secondary: #C9BEB3;
+  --color-fg-tertiary:  #A99D92;
+  --color-fg-disabled:  #786F67;
+  --color-fg-inverse:   #211E1A;
+  --color-fg-on-primary: #2B2A1F;
 
   /* ── Borders ── */
-  --color-border:       oklch(28% 0.02 280);   /* Default borders */
-  --color-border-subtle: oklch(24% 0.02 280);  /* Subtle dividers */
-  --color-border-strong: oklch(35% 0.02 280);  /* Emphasized borders */
-  --color-border-focus:  var(--p-400);          /* Focus rings */
+  --color-border:       #665C52;
+  --color-border-subtle: #4A433B;
+  --color-border-strong: #817467;
+  --color-border-focus:  #B0B08A;
 
   /* ═══════════════════════════════════════════════════════════════
      BACKWARD COMPATIBILITY ALIASES
@@ -158,10 +163,10 @@
   --color-info-fg:      var(--sp-blue-400);
 
   /* ── Interactive States ── */
-  --color-hover:   rgba(124, 91, 245, 0.10);
-  --color-pressed: rgba(124, 91, 245, 0.18);
-  --color-focus:   rgba(124, 91, 245, 0.28);
-  --color-selected: rgba(124, 91, 245, 0.15);
+  --color-hover:   rgba(176, 176, 138, 0.12);
+  --color-pressed: rgba(176, 176, 138, 0.20);
+  --color-focus:   rgba(176, 176, 138, 0.32);
+  --color-selected: rgba(176, 176, 138, 0.16);
 
   /* ── Overlays ── */
   --color-overlay:      rgba(0, 0, 0, 0.75);
@@ -172,7 +177,7 @@
   --color-lego-dialogue:   oklch(62% 0.18 280);
   --color-lego-character:  oklch(72% 0.13 80);
   --color-lego-background: oklch(65% 0.12 155);
-  --color-lego-audio:      oklch(62% 0.15 25);
+  --color-lego-audio:      #D6B56E;
   --color-lego-fx:         oklch(78% 0.12 95);
   --color-lego-choice:     oklch(65% 0.14 250);
   --color-lego-condition:  oklch(68% 0.12 50);
@@ -189,11 +194,11 @@
   --color-choice-hover:   rgba(124, 58, 237, 0.18);
 
   /* ── Editor ── */
-  --color-editor-canvas:  oklch(10% 0.02 280);
-  --color-editor-grid:    oklch(22% 0.02 280);
-  --color-editor-toolbar: oklch(21% 0.02 280);
-  --color-editor-panel:   oklch(19% 0.02 280);
-  --color-editor-ruler:   oklch(26% 0.02 280);
+  --color-editor-canvas:  #171512;
+  --color-editor-grid:    #40382F;
+  --color-editor-toolbar: #29251F;
+  --color-editor-panel:   #211E1A;
+  --color-editor-ruler:   #4A433B;
 
   /* ── Spacing Scale (8px base) ── */
   --space-3xs: 2px;
@@ -238,8 +243,8 @@
     0 16px 32px oklch(0% 0 0 / 0.35),
     0 8px 16px oklch(0% 0 0 / 0.25);
   --shadow-glow:
-    0 0 16px oklch(58% 0.23 280 / 0.25),
-    0 0 8px oklch(58% 0.23 280 / 0.15);
+    0 0 16px rgba(176, 176, 138, 0.25),
+    0 0 8px rgba(176, 176, 138, 0.15);
   --shadow-focus:
     0 0 0 2px var(--color-bg),
     0 0 0 4px oklch(65% 0.20 280);
@@ -260,27 +265,36 @@
 
 [data-theme="light"] {
   /* ── Core Surface ── */
-  --color-bg:           oklch(96% 0.01 80);    /* Warm parchment */
-  --color-bg-elevated:  oklch(94% 0.01 80);
+  --color-bg:           #F7F2EA;
+  --color-bg-elevated:  #F1EEE6;
 
-  --color-surface:      oklch(98% 0.005 80);  /* Cards */
-  --color-surface-1:    oklch(99% 0.003 80);
-  --color-surface-2:    oklch(100% 0 0);
-  --color-surface-3:    oklch(100% 0 0);
+  --color-surface:      #FEFAF6;
+  --color-surface-1:    #FEFAF6;
+  --color-surface-2:    #F1EEE6;
+  --color-surface-3:    #E9E7DA;
+
+  --color-primary:      #67683F;
+  --color-primary-hover: #5B5C36;
+  --color-primary-active: #4F502F;
+  --color-secondary:    #985A3E;
+  --color-secondary-hover: #884D34;
+  --color-secondary-active: #783F2B;
+  --color-ai-accent:    #596B72;
+  --color-ai-surface:   #E1E7E8;
 
   /* ── Foreground ── */
-  --color-fg:           oklch(22% 0.02 80);   /* Warm near-black */
-  --color-fg-secondary: oklch(42% 0.02 80);
-  --color-fg-tertiary:  oklch(58% 0.02 80);
-  --color-fg-disabled:  oklch(72% 0.01 80);
-  --color-fg-inverse:   oklch(96% 0.01 80);
-  --color-fg-on-primary: oklch(98% 0 0);
+  --color-fg:           #3A281F;
+  --color-fg-secondary: #655D56;
+  --color-fg-tertiary:  #736B64;
+  --color-fg-disabled:  #9A9189;
+  --color-fg-inverse:   #F7F2EA;
+  --color-fg-on-primary: #FFFFFF;
 
   /* ── Borders ── */
-  --color-border:       oklch(88% 0.01 80);
-  --color-border-subtle: oklch(92% 0.01 80);
-  --color-border-strong: oklch(80% 0.02 80);
-  --color-border-focus:  oklch(58% 0.23 280);
+  --color-border:       #A59B90;
+  --color-border-subtle: #E5DDD3;
+  --color-border-strong: #8D8277;
+  --color-border-focus:  #67683F;
 
   /* ── Semantic Status ── */
   --color-success:      oklch(55% 0.16 155);
@@ -300,10 +314,10 @@
   --color-info-fg:      oklch(42% 0.15 250);
 
   /* ── Interactive States ── */
-  --color-hover:   rgba(124, 91, 245, 0.06);
-  --color-pressed: rgba(124, 91, 245, 0.12);
-  --color-focus:   rgba(124, 91, 245, 0.20);
-  --color-selected: rgba(124, 91, 245, 0.10);
+  --color-hover:   rgba(103, 104, 63, 0.08);
+  --color-pressed: rgba(103, 104, 63, 0.16);
+  --color-focus:   rgba(103, 104, 63, 0.28);
+  --color-selected: rgba(103, 104, 63, 0.12);
 
   /* ── Overlays ── */
   --color-overlay:  rgba(0, 0, 0, 0.50);
@@ -314,7 +328,7 @@
   --color-lego-dialogue:   oklch(50% 0.20 280);
   --color-lego-character:  oklch(60% 0.14 80);
   --color-lego-background: oklch(50% 0.14 155);
-  --color-lego-audio:      oklch(52% 0.16 25);
+  --color-lego-audio:      #806027;
   --color-lego-fx:         oklch(65% 0.14 95);
   --color-lego-choice:     oklch(52% 0.16 250);
   --color-lego-condition:  oklch(58% 0.14 50);
@@ -331,11 +345,11 @@
   --color-choice-hover:   rgba(124, 58, 237, 0.12);
 
   /* ── Editor ── */
-  --color-editor-canvas:  oklch(94% 0.01 80);
-  --color-editor-grid:    oklch(88% 0.01 80);
-  --color-editor-toolbar: oklch(98% 0.005 80);
-  --color-editor-panel:   oklch(99% 0.003 80);
-  --color-editor-ruler:   oklch(90% 0.01 80);
+  --color-editor-canvas:  #F1EEE6;
+  --color-editor-grid:    #D8D0C5;
+  --color-editor-toolbar: #FEFAF6;
+  --color-editor-panel:   #FEFAF6;
+  --color-editor-ruler:   #DDD5CA;
 
   /* ── Shadows (lighter for light mode) ── */
   --shadow-xs:
@@ -353,11 +367,11 @@
     0 16px 32px oklch(0% 0 0 / 0.15),
     0 8px 16px oklch(0% 0 0 / 0.10);
   --shadow-glow:
-    0 0 16px oklch(58% 0.23 280 / 0.15),
-    0 0 8px oklch(58% 0.23 280 / 0.08);
+    0 0 16px rgba(103, 104, 63, 0.15),
+    0 0 8px rgba(103, 104, 63, 0.08);
   --shadow-focus:
     0 0 0 2px var(--color-bg),
-    0 0 0 4px oklch(58% 0.23 280);
+    0 0 0 4px #67683F;
 }
 
 /* ═══════════════════════════════════════════════════════════════

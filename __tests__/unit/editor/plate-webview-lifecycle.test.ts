@@ -9,9 +9,10 @@ describe('PlateWebViewEditor lifecycle contract', () => {
     );
 
     expect(source).toContain('const html = useMemo');
-    // srcDoc rebuilds only on identity/layout inputs plus the shared-script
+    expect(source).toContain("useColors('light')");
+    // srcDoc rebuilds only on identity/layout/theme inputs plus the shared-script
     // fallback flag — never on live scene/character snapshots.
-    expect(source).toContain('[editorId, isPhone, forceInlineHtml]');
+    expect(source).toContain('[editorId, isPhone, forceInlineHtml, colors]');
     expect(source).toContain('useImperativeHandle');
     expect(source).toContain("type: 'flush'");
     expect(source).toContain('visibleFrameHeight');
@@ -74,5 +75,32 @@ describe('document formatting bridge', () => {
     expect(embedded).toContain("message.type === 'formatText'");
     expect(embedded).toContain("command === 'color' ? 'foreColor'");
     expect(embedded).toContain("type: 'formatState'");
+  });
+
+  it('gives active formatting controls a distinct primary-tinted state', () => {
+    const header = fs.readFileSync(
+      path.join(process.cwd(), 'components/document-editor/DocumentEditorHeader.tsx'),
+      'utf8',
+    );
+
+    expect(header).toContain("backgroundColor: active ? withAlpha(colors.primary, 0.18) : 'transparent'");
+    expect(header).toContain("color={active ? colors['primary-active'] : colors.foreground}");
+    expect(header).toContain("color: active ? colors['primary-active'] : colors.foreground");
+  });
+
+  it('uses the light editor scheme and semantic accents for header actions', () => {
+    const header = fs.readFileSync(
+      path.join(process.cwd(), 'components/document-editor/DocumentEditorHeader.tsx'),
+      'utf8',
+    );
+    const button = fs.readFileSync(
+      path.join(process.cwd(), 'components/ui/Button.tsx'),
+      'utf8',
+    );
+
+    expect(button).toContain('const colors = useColors(colorScheme)');
+    expect(header).toContain('style={{ borderWidth: 1, borderColor: colors.secondary }}');
+    expect(header).toContain('style={{ backgroundColor: colors.secondary }}');
+    expect(header).toContain('colorScheme={colorScheme}');
   });
 });

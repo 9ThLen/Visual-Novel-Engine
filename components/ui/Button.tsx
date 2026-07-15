@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { buttonFeedback } from '@/lib/ui-feedback';
+import type { ColorScheme } from '@/constants/theme';
 import {
   getButtonOverlayPointerEventsStyle,
   shouldUseNativeDriver,
@@ -39,6 +40,7 @@ interface ButtonProps {
   textStyle?: TextStyle;
   accessibilityLabel?: string;
   accessibilityRole?: 'button' | 'link' | 'none';
+  colorScheme?: ColorScheme;
 }
 
 export function Button({
@@ -56,8 +58,9 @@ export function Button({
   textStyle,
   accessibilityLabel,
   accessibilityRole = 'button',
+  colorScheme,
 }: ButtonProps) {
-  const colors = useColors();
+  const colors = useColors(colorScheme);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const useNativeDriver = shouldUseNativeDriver(Platform.OS);

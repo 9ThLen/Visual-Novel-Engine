@@ -5,7 +5,16 @@ import type { AgentEvent, AgentProvider, ToolInvoker } from './provider';
 
 const systemPrompt = readFileSync(fileURLToPath(new URL('./system-prompt.md', import.meta.url)), 'utf8');
 const schemaPath = fileURLToPath(new URL('./codex-response-schema.json', import.meta.url));
-const toolNames = new Set(['get_story_overview', 'list_scenes', 'get_scene', 'propose_scene_patch']);
+const toolNames = new Set([
+  'get_story_overview',
+  'list_scenes',
+  'get_scene',
+  'list_story_images',
+  'get_image_details',
+  'find_asset_usage',
+  'propose_scene_patch',
+  'propose_appearance_patch',
+]);
 
 type CodexReply = {
   action: 'reply' | 'tool';
@@ -27,7 +36,7 @@ export class CodexCliProvider implements AgentProvider {
   async *send(text: string): AsyncIterable<AgentEvent> {
     let prompt = this.threadId
       ? text
-      : `${systemPrompt}\n\nYou are connected through Codex CLI. Do not use shell, filesystem, or network tools. Return either a final reply or exactly one of the four app tool calls using the required response schema.\n\nUser: ${text}`;
+      : `${systemPrompt}\n\nYou are connected through Codex CLI. Do not use shell, filesystem, or network tools. Return either a final reply or exactly one of the app tool calls listed above, using the required response schema.\n\nUser: ${text}`;
 
     for (;;) {
       const reply = await this.run(prompt);

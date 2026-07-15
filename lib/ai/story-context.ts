@@ -1,12 +1,16 @@
 import type { TimelineStep } from '@/lib/engine/types';
+import type { StoryReaderTheme } from '@/lib/story-theme';
 import type { AppState } from '@/stores/app-store-types';
 import { useAppStore } from '@/stores/use-app-store';
+import { computeAppearanceRevision } from './appearance-patch';
 import { computeSceneRevision } from './scene-revision';
 
 export interface StorySummary { id: string; title: string; sceneCount: number; characterNames: string[]; variableNames: string[]; tags: string[] }
 export interface SceneSummary { id: string; name: string; description: string; blockCount: number; connections: Array<{ outputPort: string; targetSceneId: string }>; isStart: boolean }
 export interface AiSceneView extends SceneSummary { revision: string; timeline: TimelineStep[] }
-export interface AiStoryContext { story: StorySummary; activeScene: AiSceneView | null; nearbyScenes: SceneSummary[] }
+/** Current reader theme plus its own revision, so an appearance patch can be guarded independently of scene edits. */
+export interface AiAppearanceView { theme: StoryReaderTheme; revision: string }
+export interface AiStoryContext { story: StorySummary; activeScene: AiSceneView | null; nearbyScenes: SceneSummary[]; appearance: AiAppearanceView }
 
 export type AiStoryContextSnapshot = Pick<AppState, 'storiesMetadata' | 'sceneRecordsByStory' | 'characterLibraries'>;
 
@@ -44,6 +48,7 @@ export function buildAiStoryContextFromSnapshot(
     },
     activeScene: active ? { ...summarizeScene(active), revision: computeSceneRevision(active), timeline: active.timeline } : null,
     nearbyScenes: scenes.filter((scene) => nearbyIds.has(scene.id)).map(summarizeScene),
+    appearance: { theme: metadata.theme ?? {}, revision: computeAppearanceRevision(metadata) },
   };
 }
 

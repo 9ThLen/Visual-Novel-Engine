@@ -1,83 +1,83 @@
 {
   "primary": {
-    "light": "oklch(58% 0.23 280)",
-    "dark": "oklch(65% 0.20 280)"
+    "light": "#67683F",
+    "dark": "#B0B08A"
   },
   "primary-hover": {
-    "light": "oklch(65% 0.20 280)",
-    "dark": "oklch(72% 0.18 280)"
+    "light": "#5B5C36",
+    "dark": "#BFC09A"
   },
   "primary-active": {
-    "light": "oklch(50% 0.25 280)",
-    "dark": "oklch(58% 0.23 280)"
+    "light": "#4F502F",
+    "dark": "#9D9E77"
   },
   "background": {
-    "light": "oklch(96% 0.01 80)",
-    "dark": "oklch(12% 0.03 250)"
+    "light": "#F7F2EA",
+    "dark": "#171512"
   },
   "surface": {
-    "light": "oklch(98% 0.005 80)",
-    "dark": "oklch(28% 0.06 250)"
+    "light": "#FEFAF6",
+    "dark": "#211E1A"
   },
   "surface-elevated": {
-    "light": "oklch(99% 0.003 80)",
-    "dark": "oklch(32% 0.06 250)"
+    "light": "#FEFAF6",
+    "dark": "#29251F"
   },
   "surface-1": {
-    "light": "oklch(100% 0 0)",
-    "dark": "oklch(34% 0.06 250)"
+    "light": "#FEFAF6",
+    "dark": "#2F2A24"
   },
   "surface-2": {
-    "light": "oklch(100% 0 0)",
-    "dark": "oklch(36% 0.06 250)"
+    "light": "#F1EEE6",
+    "dark": "#373129"
   },
   "surface-3": {
-    "light": "oklch(100% 0 0)",
-    "dark": "oklch(38% 0.06 250)"
+    "light": "#E9E7DA",
+    "dark": "#40382F"
   },
   "foreground": {
-    "light": "oklch(22% 0.02 80)",
-    "dark": "oklch(92% 0.01 280)"
+    "light": "#3A281F",
+    "dark": "#F3ECE4"
   },
   "foreground-secondary": {
-    "light": "oklch(42% 0.02 80)",
-    "dark": "oklch(68% 0.02 280)"
+    "light": "#655D56",
+    "dark": "#C9BEB3"
   },
   "foreground-tertiary": {
-    "light": "oklch(58% 0.02 80)",
-    "dark": "oklch(52% 0.02 280)"
+    "light": "#736B64",
+    "dark": "#A99D92"
   },
   "foreground-disabled": {
-    "light": "oklch(72% 0.01 80)",
-    "dark": "oklch(40% 0.02 280)"
+    "light": "#9A9189",
+    "dark": "#786F67"
   },
   "foreground-inverse": {
-    "light": "oklch(96% 0.01 80)",
-    "dark": "oklch(16% 0.02 280)"
+    "light": "#F7F2EA",
+    "dark": "#211E1A"
   },
   "foreground-on-primary": {
-    "light": "oklch(98% 0 0)",
-    "dark": "oklch(98% 0 0)"
+    "light": "#FFFFFF",
+    "dark": "#2B2A1F"
   },
   "muted": {
-    "light": "oklch(58% 0.02 80)",
-    "dark": "oklch(52% 0.02 280)"
+    "light": "#736B64",
+    "dark": "#A99D92"
   },
   "border": {
-    "light": "oklch(88% 0.01 80)",
-    "dark": "oklch(35% 0.06 250)"
+    "light": "#A59B90",
+    "dark": "#665C52"
   },
   "border-subtle": {
-    "light": "oklch(92% 0.01 80)",
-    "dark": "oklch(30% 0.05 250)"
+    "light": "#E5DDD3",
+    "dark": "#4A433B"
   },
   "border-strong": {
-    "light": "oklch(80% 0.02 80)",
-    "dark": "oklch(42% 0.06 250)"
+    "light": "#8D8277",
+    "dark": "#817467"
   },
   "border-light": {
-    "light": "oklch(92% 0.01 80)",
-    "dark": "oklch(35% 0.06 250)"
+    "light": "#E5DDD3",
+    "dark": "#665C52"
   },
   "success": {
     "light": "oklch(55% 0.16 155)",
@@ -128,8 +128,8 @@
     "dark": "oklch(65% 0.12 155)"
   },
   "lego-audio": {
-    "light": "oklch(52% 0.16 25)",
-    "dark": "oklch(62% 0.15 25)"
+    "light": "#806027",
+    "dark": "#D6B56E"
   },
   "lego-fx": {
     "light": "oklch(65% 0.14 95)",
@@ -156,20 +156,20 @@
     "dark": "oklch(60% 0.16 310)"
   },
   "hover": {
-    "light": "rgba(124, 91, 245, 0.06)",
-    "dark": "rgba(124, 91, 245, 0.10)"
+    "light": "rgba(103, 104, 63, 0.08)",
+    "dark": "rgba(176, 176, 138, 0.12)"
   },
   "pressed": {
-    "light": "rgba(124, 91, 245, 0.12)",
-    "dark": "rgba(124, 91, 245, 0.18)"
+    "light": "rgba(103, 104, 63, 0.16)",
+    "dark": "rgba(176, 176, 138, 0.20)"
   },
   "focus": {
-    "light": "rgba(124, 91, 245, 0.20)",
-    "dark": "rgba(124, 91, 245, 0.28)"
+    "light": "rgba(103, 104, 63, 0.28)",
+    "dark": "rgba(176, 176, 138, 0.32)"
   },
   "selected": {
-    "light": "rgba(124, 91, 245, 0.10)",
-    "dark": "rgba(124, 91, 245, 0.15)"
+    "light": "rgba(103, 104, 63, 0.12)",
+    "dark": "rgba(176, 176, 138, 0.16)"
   },
   "overlay": {
     "light": "rgba(0, 0, 0, 0.50)",
@@ -208,24 +208,24 @@
     "dark": "rgba(124, 58, 237, 0.18)"
   },
   "editor-canvas": {
-    "light": "oklch(94% 0.01 80)",
-    "dark": "oklch(10% 0.02 280)"
+    "light": "#F1EEE6",
+    "dark": "#171512"
   },
   "editor-grid": {
-    "light": "oklch(88% 0.01 80)",
-    "dark": "oklch(22% 0.02 280)"
+    "light": "#D8D0C5",
+    "dark": "#40382F"
   },
   "editor-toolbar": {
-    "light": "oklch(98% 0.005 80)",
-    "dark": "oklch(21% 0.02 280)"
+    "light": "#FEFAF6",
+    "dark": "#29251F"
   },
   "editor-panel": {
-    "light": "oklch(99% 0.003 80)",
-    "dark": "oklch(19% 0.02 280)"
+    "light": "#FEFAF6",
+    "dark": "#211E1A"
   },
   "editor-ruler": {
-    "light": "oklch(90% 0.01 80)",
-    "dark": "oklch(26% 0.02 280)"
+    "light": "#DDD5CA",
+    "dark": "#4A433B"
   },
   "shadow-xs": {
     "light": "0 1px 2px oklch(0% 0 0 / 0.06)",
@@ -248,19 +248,35 @@
     "dark": "0 16px 32px oklch(0% 0 0 / 0.35), 0 8px 16px oklch(0% 0 0 / 0.25)"
   },
   "shadow-glow": {
-    "light": "0 0 16px oklch(58% 0.23 280 / 0.15), 0 0 8px oklch(58% 0.23 280 / 0.08)",
-    "dark": "0 0 16px oklch(58% 0.23 280 / 0.25), 0 0 8px oklch(58% 0.23 280 / 0.15)"
+    "light": "0 0 16px rgba(103, 104, 63, 0.15), 0 0 8px rgba(103, 104, 63, 0.08)",
+    "dark": "0 0 16px rgba(176, 176, 138, 0.25), 0 0 8px rgba(176, 176, 138, 0.15)"
   },
   "shadow-color": {
     "light": "oklch(0% 0 0)",
     "dark": "oklch(0% 0 0)"
   },
   "surface-container": {
-    "light": "oklch(97% 0.005 80)",
-    "dark": "oklch(17% 0.04 250)"
+    "light": "#F1EEE6",
+    "dark": "#1C1916"
   },
   "secondary": {
-    "light": "oklch(60% 0.14 200)",
-    "dark": "oklch(72% 0.13 200)"
+    "light": "#985A3E",
+    "dark": "#D28D6B"
+  },
+  "secondary-hover": {
+    "light": "#884D34",
+    "dark": "#E09C78"
+  },
+  "secondary-active": {
+    "light": "#783F2B",
+    "dark": "#BE795B"
+  },
+  "ai-accent": {
+    "light": "#596B72",
+    "dark": "#91A5AC"
+  },
+  "ai-surface": {
+    "light": "#E1E7E8",
+    "dark": "#28363A"
   }
 }

@@ -1,7 +1,7 @@
 export function createEmbeddedStyles(): string {
   return `
     * { box-sizing: border-box; }
-    html, body { margin: 0; min-height: 0; height: auto; overflow: visible; background: transparent; color: #111827; }
+    html, body { margin: 0; min-height: 0; height: auto; overflow: visible; background: transparent; color: var(--plate-foreground, #3A281F); }
     body {
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       overflow: visible;
@@ -20,15 +20,15 @@ export function createEmbeddedStyles(): string {
       overflow: visible;
       margin: 0 auto;
       padding: 44px 54px 72px;
-      background: #fffefa;
-      border: 1px solid #ddd8cf;
-      border-radius: 8px;
+      background: var(--plate-surface, #FEFAF6);
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 18px;
       box-shadow: 0 18px 48px var(--page-branch-shadow, rgba(31, 41, 55, 0.16)), 0 2px 8px rgba(31, 41, 55, 0.08);
       transition: box-shadow 0.35s ease;
     }
     .eyebrow {
       margin: 0 0 8px;
-      color: #6b7280;
+      color: var(--plate-foreground-secondary, #655D56);
       font-size: 12px;
       font-weight: 700;
       letter-spacing: 0;
@@ -39,10 +39,10 @@ export function createEmbeddedStyles(): string {
       margin: 0 0 22px;
       padding: 0 0 16px;
       border: 0;
-      border-bottom: 1px solid #ddd8cf;
+      border-bottom: 1px solid var(--plate-border-subtle, #E5DDD3);
       outline: none;
       background: transparent;
-      color: #111827;
+      color: var(--plate-foreground, #3A281F);
       font-size: 34px;
       line-height: 1.16;
       font-weight: 800;
@@ -85,10 +85,10 @@ export function createEmbeddedStyles(): string {
       gap: 6px;
       margin: 0 4px;
       padding: 2px 9px;
-      border: 1px solid #c4b5fd;
-      border-radius: 7px;
-      background: #f5f3ff;
-      color: #6d28d9;
+      border: 1px solid var(--plate-border, #A59B90);
+      border-radius: 10px;
+      background: var(--plate-surface-muted, #F1EEE6);
+      color: var(--plate-foreground, #3A281F);
       font-family: Inter, ui-sans-serif, system-ui, sans-serif;
       font-size: 14px;
       font-weight: 750;
@@ -99,20 +99,20 @@ export function createEmbeddedStyles(): string {
       white-space: nowrap;
     }
     .audio-chip {
-      border-color: #99f6e4;
-      background: #ecfeff;
-      color: #0f766e;
+      border-color: var(--plate-audio, #806027);
+      background: color-mix(in srgb, var(--plate-audio, #806027) 12%, var(--plate-surface, #FEFAF6));
+      color: var(--plate-audio, #806027);
     }
     .audio-chip--sound {
-      border-color: #fecaca;
-      background: #fff7ed;
-      color: #b91c1c;
+      border-color: var(--plate-audio, #806027);
+      background: color-mix(in srgb, var(--plate-audio, #806027) 18%, var(--plate-surface, #FEFAF6));
+      color: var(--plate-audio, #806027);
     }
     .effect-chip:focus,
     .effect-chip.is-selected,
     .audio-chip:focus,
     .audio-chip.is-selected {
-      outline: 2px solid rgba(124, 58, 237, 0.24);
+      outline: 2px solid var(--plate-primary, #67683F);
       outline-offset: 2px;
     }
     .effect-chip.is-dragging,
@@ -124,7 +124,7 @@ export function createEmbeddedStyles(): string {
     .effect-chip-menu,
     .audio-chip-icon,
     .audio-chip-menu {
-      color: #7c3aed;
+      color: var(--plate-primary, #67683F);
       font-weight: 850;
     }
     .audio-chip-icon,
@@ -133,24 +133,24 @@ export function createEmbeddedStyles(): string {
     }
     .effect-chip-details,
     .audio-chip-details {
-      color: #8b7bd8;
+      color: var(--plate-foreground-secondary, #655D56);
       font-size: 12px;
       font-weight: 600;
     }
     .audio-chip-details {
-      color: #64748b;
+      color: var(--plate-foreground-secondary, #655D56);
     }
     .character-popover {
       position: absolute;
       z-index: 32;
       width: min(360px, calc(100vw - 32px));
       padding: 14px;
-      border: 1px solid #ddd8cf;
-      border-radius: 8px;
-      background: #ffffff;
+      border: 1px solid var(--plate-border, #A59B90);
+      border-radius: 14px;
+      background: var(--plate-surface, #FEFAF6);
       box-shadow: 0 16px 34px rgba(17, 24, 39, 0.16), 0 2px 8px rgba(17, 24, 39, 0.08);
       font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-      color: #111827;
+      color: var(--plate-foreground, #3A281F);
     }
     .character-popover .sprite-list {
       display: grid;
@@ -165,9 +165,9 @@ export function createEmbeddedStyles(): string {
       gap: 8px;
       align-items: center;
       padding: 7px 8px;
-      border: 1px solid #e2e8f0;
-      border-radius: 7px;
-      background: #f8fafc;
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 10px;
+      background: var(--plate-surface-muted, #F1EEE6);
       font-size: 13px;
     }
     .void-block {
@@ -178,9 +178,9 @@ export function createEmbeddedStyles(): string {
       min-height: 58px;
       margin: 12px 0 18px;
       padding: 12px 14px;
-      border: 1px solid #d7d0c5;
-      border-radius: 7px;
-      background: #fffdf8;
+      border: 1px solid var(--plate-border, #A59B90);
+      border-radius: 14px;
+      background: var(--plate-surface-muted, #F1EEE6);
       font-family: Inter, ui-sans-serif, system-ui, sans-serif;
       cursor: default;
       user-select: none;
@@ -189,15 +189,15 @@ export function createEmbeddedStyles(): string {
     .background-block.is-editing,
     .transition-block.is-editing,
     .choice-block.is-editing {
-      border-color: #60a5fa;
-      box-shadow: 0 0 0 1px #60a5fa;
+      border-color: var(--plate-primary, #67683F);
+      box-shadow: 0 0 0 1px var(--plate-primary, #67683F);
     }
     .void-title {
-      color: #111827;
+      color: var(--plate-foreground, #3A281F);
       font-weight: 800;
     }
     .void-summary {
-      color: #6b7280;
+      color: var(--plate-foreground-secondary, #655D56);
       font-size: 13px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -206,7 +206,7 @@ export function createEmbeddedStyles(): string {
     .background-block {
       min-height: 68px;
       padding: 12px 16px;
-      background: #fffefa;
+      background: transparent;
     }
     .stop-effect-block {
       display: inline-flex;
@@ -246,8 +246,8 @@ export function createEmbeddedStyles(): string {
       min-height: 40px;
       margin: 8px 0 12px;
       padding: 8px 12px;
-      background: #fbfaff;
-      border-left: 3px solid #6366f1;
+      background: transparent;
+      border-left: 3px solid var(--plate-border-strong, #8D8277);
     }
     .transition-block .background-command-line {
       gap: 12px;
@@ -280,9 +280,9 @@ export function createEmbeddedStyles(): string {
       min-height: 0;
       margin: 10px 0 14px;
       padding: 12px 14px;
-      background: #ffffff;
-      border: 1px solid #e5e0d5;
-      border-radius: 7px;
+      background: var(--plate-surface, #FEFAF6);
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 14px;
     }
     .choice-block .void-title {
       font-size: 13px;
@@ -526,37 +526,37 @@ export function createEmbeddedStyles(): string {
     .popover-button {
       height: 38px;
       padding: 0 16px;
-      border: 1px solid #d7d0c5;
-      border-radius: 7px;
-      background: #fffefa;
-      color: #111827;
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 10px;
+      background: var(--plate-surface, #FEFAF6);
+      color: var(--plate-foreground, #3A281F);
       font: 700 14px/1 Inter, ui-sans-serif, system-ui, sans-serif;
       cursor: pointer;
     }
     .block-button:hover,
     .popover-button:hover {
-      background: #f8fafc;
-      border-color: #cbd5e1;
+      background: var(--plate-surface-muted, #F1EEE6);
+      border-color: var(--plate-border, #A59B90);
     }
     .popover-button.primary {
-      border-color: #ef4444;
-      background: #ef4444;
+      border-color: var(--plate-secondary, #985A3E);
+      background: var(--plate-secondary, #985A3E);
       color: #ffffff;
     }
     .popover-button.primary:hover {
-      background: #dc2626;
+      background: color-mix(in srgb, var(--plate-secondary, #985A3E) 88%, black);
     }
     .background-popover {
       position: absolute;
       z-index: 30;
       width: min(420px, calc(100vw - 32px));
       padding: 16px;
-      border: 1px solid #ddd8cf;
-      border-radius: 10px;
-      background: #ffffff;
-      box-shadow: 0 16px 34px rgba(17, 24, 39, 0.16), 0 2px 8px rgba(17, 24, 39, 0.08);
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 14px;
+      background: var(--plate-surface, #FEFAF6);
+      box-shadow: 0 16px 34px rgba(58, 40, 31, 0.14), 0 2px 8px rgba(58, 40, 31, 0.08);
       font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-      color: #111827;
+      color: var(--plate-foreground, #3A281F);
     }
     .background-popover::before {
       content: "";
@@ -565,9 +565,9 @@ export function createEmbeddedStyles(): string {
       right: 36px;
       width: 14px;
       height: 14px;
-      border-left: 1px solid #ddd8cf;
-      border-top: 1px solid #ddd8cf;
-      background: #ffffff;
+      border-left: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-top: 1px solid var(--plate-border-subtle, #E5DDD3);
+      background: var(--plate-surface, #FEFAF6);
       transform: rotate(45deg);
     }
     .transition-popover::before,
@@ -582,12 +582,12 @@ export function createEmbeddedStyles(): string {
       max-height: min(720px, calc(100vh - 32px));
       overflow: auto;
       padding: 16px;
-      border: 1px solid #ddd8cf;
-      border-radius: 10px;
-      background: #ffffff;
-      box-shadow: 0 16px 34px rgba(17, 24, 39, 0.16), 0 2px 8px rgba(17, 24, 39, 0.08);
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 14px;
+      background: var(--plate-surface, #FEFAF6);
+      box-shadow: 0 16px 34px rgba(58, 40, 31, 0.14), 0 2px 8px rgba(58, 40, 31, 0.08);
       font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-      color: #111827;
+      color: var(--plate-foreground, #3A281F);
     }
     .effect-popover::before,
     .audio-popover::before {
@@ -597,9 +597,9 @@ export function createEmbeddedStyles(): string {
       top: 32px;
       width: 14px;
       height: 14px;
-      border-left: 1px solid #ddd8cf;
-      border-bottom: 1px solid #ddd8cf;
-      background: #ffffff;
+      border-left: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-bottom: 1px solid var(--plate-border-subtle, #E5DDD3);
+      background: var(--plate-surface, #FEFAF6);
       transform: rotate(45deg);
     }
     .audio-kind-grid {
@@ -623,22 +623,22 @@ export function createEmbeddedStyles(): string {
       align-items: center;
       gap: 3px;
       padding: 8px 4px;
-      border: 1px solid #e2ddd4;
-      border-radius: 8px;
-      background: #faf9f7;
-      color: #4b5563;
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 10px;
+      background: var(--plate-surface-muted, #F1EEE6);
+      color: var(--plate-foreground-secondary, #655D56);
       font: 650 12px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
       cursor: pointer;
     }
     .effect-type-chip:hover {
-      border-color: #c4b5fd;
-      background: #f5f3ff;
+      border-color: var(--plate-primary, #67683F);
+      background: var(--plate-primary-soft, rgba(103, 104, 63, 0.12));
     }
     .effect-type-chip.is-active {
-      border-color: #7c3aed;
-      background: #f5f3ff;
-      color: #6d28d9;
-      box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.16);
+      border-color: var(--plate-primary, #67683F);
+      background: var(--plate-primary-soft, rgba(103, 104, 63, 0.12));
+      color: var(--plate-primary, #67683F);
+      box-shadow: 0 0 0 2px var(--plate-primary-soft, rgba(103, 104, 63, 0.12));
     }
     .effect-type-chip-icon {
       font-size: 17px;
@@ -651,12 +651,12 @@ export function createEmbeddedStyles(): string {
     }
     .effect-range-row input[type="range"] {
       flex: 1;
-      accent-color: #7c3aed;
+      accent-color: var(--plate-primary, #67683F);
     }
     .effect-range-value {
       min-width: 34px;
       text-align: right;
-      color: #6d28d9;
+      color: var(--plate-primary, #67683F);
       font-size: 13px;
       font-weight: 750;
       font-variant-numeric: tabular-nums;
@@ -675,7 +675,7 @@ export function createEmbeddedStyles(): string {
     }
     .effect-advanced[open] summary {
       margin-bottom: 10px;
-      color: #6d28d9;
+      color: var(--plate-primary, #67683F);
     }
     .effect-options {
       margin: 14px 0;
@@ -684,7 +684,7 @@ export function createEmbeddedStyles(): string {
     }
     .effect-section-title {
       margin: 0 0 10px;
-      color: #6d28d9;
+      color: var(--plate-primary, #67683F);
       font-size: 13px;
       font-weight: 800;
     }
@@ -712,16 +712,16 @@ export function createEmbeddedStyles(): string {
       width: 100%;
       height: 42px;
       padding: 0 12px;
-      border: 1px solid #d6dee8;
-      border-radius: 7px;
-      background: #ffffff;
-      color: #111827;
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 10px;
+      background: var(--plate-surface, #FEFAF6);
+      color: var(--plate-foreground, #3A281F);
       font: 500 14px/1 Inter, ui-sans-serif, system-ui, sans-serif;
       outline: none;
     }
     .popover-control:focus {
-      border-color: #60a5fa;
-      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.24);
+      border-color: var(--plate-primary, #67683F);
+      box-shadow: 0 0 0 3px var(--plate-primary-soft, rgba(103, 104, 63, 0.12));
     }
     textarea.popover-control {
       height: auto;
@@ -743,8 +743,8 @@ export function createEmbeddedStyles(): string {
     .background-preview.placeholder {
       display: grid;
       place-items: center;
-      background: #f8fafc;
-      color: #64748b;
+      background: var(--plate-surface-muted, #F1EEE6);
+      color: var(--plate-foreground-secondary, #655D56);
       font-size: 13px;
       font-weight: 650;
     }
@@ -762,9 +762,9 @@ export function createEmbeddedStyles(): string {
     .asset-picker {
       margin: 0 0 12px;
       padding: 10px;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      background: #f8fafc;
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 10px;
+      background: var(--plate-surface-muted, #F1EEE6);
     }
     .asset-picker.is-uploading::after {
       display: block;
@@ -793,17 +793,17 @@ export function createEmbeddedStyles(): string {
       gap: 8px;
       min-width: 0;
       padding: 6px;
-      border: 1px solid #dbe3ec;
-      border-radius: 7px;
-      background: #ffffff;
-      color: #111827;
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 10px;
+      background: var(--plate-surface, #FEFAF6);
+      color: var(--plate-foreground, #3A281F);
       text-align: left;
       cursor: pointer;
     }
     .asset-choice:hover,
     .asset-choice.active {
-      border-color: #60a5fa;
-      box-shadow: 0 0 0 1px #60a5fa;
+      border-color: var(--plate-primary, #67683F);
+      box-shadow: 0 0 0 2px var(--plate-primary-soft, rgba(103, 104, 63, 0.12));
     }
     .asset-thumb {
       width: 46px;
@@ -832,9 +832,9 @@ export function createEmbeddedStyles(): string {
       align-items: center;
       margin: 12px 0 8px;
       padding: 10px;
-      border: 1px solid #d7d0c5;
-      border-radius: 7px;
-      background: #f8fafc;
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 10px;
+      background: var(--plate-surface-muted, #F1EEE6);
     }
     .audio-preview.placeholder {
       opacity: 0.72;
@@ -844,7 +844,7 @@ export function createEmbeddedStyles(): string {
     }
     .audio-preview-name {
       overflow: hidden;
-      color: #111827;
+      color: var(--plate-foreground, #3A281F);
       font-size: 13px;
       font-weight: 750;
       text-overflow: ellipsis;
@@ -853,7 +853,7 @@ export function createEmbeddedStyles(): string {
     .audio-progress {
       width: 100%;
       height: 8px;
-      accent-color: #0f766e;
+      accent-color: var(--plate-audio, #806027);
     }
     .asset-name {
       overflow: hidden;
@@ -865,7 +865,7 @@ export function createEmbeddedStyles(): string {
     .asset-empty {
       grid-column: 1 / -1;
       padding: 10px;
-      color: #64748b;
+      color: var(--plate-foreground-secondary, #655D56);
       font-size: 13px;
       text-align: center;
     }
@@ -894,7 +894,7 @@ export function createEmbeddedStyles(): string {
     }
     .popover-help {
       margin: 12px 0 16px;
-      color: #64748b;
+      color: var(--plate-foreground-secondary, #655D56);
       font-size: 13px;
       line-height: 1.45;
     }
@@ -910,10 +910,10 @@ export function createEmbeddedStyles(): string {
       max-height: 296px;
       overflow: auto;
       padding: 6px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      background: #ffffff;
-      box-shadow: 0 18px 44px rgba(17, 24, 39, 0.18), 0 2px 8px rgba(17, 24, 39, 0.1);
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 14px;
+      background: var(--plate-surface, #FEFAF6);
+      box-shadow: 0 18px 44px rgba(58, 40, 31, 0.16), 0 2px 8px rgba(58, 40, 31, 0.08);
     }
     .slash-item {
       display: grid;
@@ -923,13 +923,16 @@ export function createEmbeddedStyles(): string {
       width: 100%;
       padding: 9px 10px;
       border: 0;
-      border-radius: 6px;
+      border-radius: 10px;
       background: transparent;
-      color: #111827;
+      color: var(--plate-foreground, #3A281F);
       text-align: left;
       cursor: pointer;
     }
-    .slash-item.active, .slash-item:hover { background: #eff6ff; }
+    .slash-item.active, .slash-item:hover {
+      background: var(--plate-primary-soft, rgba(103, 104, 63, 0.12));
+      color: var(--plate-primary, #67683F);
+    }
     .slash-icon {
       display: grid;
       place-items: center;

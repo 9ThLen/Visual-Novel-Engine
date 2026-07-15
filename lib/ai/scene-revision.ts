@@ -7,9 +7,13 @@ export function stableStringify(value: unknown): string {
   return `{${Object.keys(object).sort().map(key => `${JSON.stringify(key)}:${stableStringify(object[key])}`).join(',')}}`;
 }
 
-export function computeSceneRevision(scene: SceneRecord): string {
-  const content = { name: scene.name, description: scene.description, tags: scene.tags, timeline: scene.timeline, connections: scene.connections, isStart: scene.isStart, sceneState: scene.sceneState };
+/** FNV-1a over a key-order-independent serialization. Shared by every AI revision hash. */
+export function hashStable(value: unknown): string {
   let hash = 0x811c9dc5;
-  for (const char of stableStringify(content)) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193); }
+  for (const char of stableStringify(value)) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193); }
   return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+export function computeSceneRevision(scene: SceneRecord): string {
+  return hashStable({ name: scene.name, description: scene.description, tags: scene.tags, timeline: scene.timeline, connections: scene.connections, isStart: scene.isStart, sceneState: scene.sceneState });
 }

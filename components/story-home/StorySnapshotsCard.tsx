@@ -155,7 +155,7 @@ export const StorySnapshotsCard = React.memo(function StorySnapshotsCard({
           accessibilityLabel={t('storySnapshots.create')}
           style={({ pressed }) => [
             styles.createButton,
-            { backgroundColor: colors.primary, opacity: busy ? 0.5 : pressed ? 0.8 : 1 },
+            { backgroundColor: colors.secondary, opacity: busy ? 0.5 : pressed ? 0.8 : 1 },
           ]}
         >
           <IconSymbol name="add" size={14} color={colors['text-inverse']} />
