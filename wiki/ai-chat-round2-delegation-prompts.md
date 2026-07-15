@@ -60,7 +60,9 @@ model+bridge (`generate_image`, `edit_image`), **internal**+app
 (`authorize_capability`, `get_image_binary` — the model must NEVER see these,
 especially `get_image_binary`). Derive from the registry: (a) Claude MCP
 tools, (b) Codex allowlist + prompt tool docs, (c) the Codex response JSON
-schema `toolName` enum — the JSON file stays CHECKED-IN; the parity test
+schema `toolName` enum — the names enum is the ONLY registry-coupled part of
+that file (`input` is `additionalProperties: true`; no per-tool argument
+schemas exist or are needed); the JSON file stays CHECKED-IN; the parity test
 COMPARES it against the registry and fails on drift (tests must never write
 production files as a side effect; regenerate manually or via a small
 prebuild script when the test fails), (d) app executor's handled-tool list. **Parity test:** Claude tools =
@@ -90,7 +92,9 @@ means there is no live client left to protect (takeover of an ACTIVE socket
 stays refused); (c) `BridgeClient.close()` sends `session_end` first;
 (d) the client persists its `sessionId` in `sessionStorage` (web) so a
 same-tab reload presents `resumeSessionId` and prefers RESUME over
-replacement. Tests: immediate reload after hard socket drop → accepted (no
+replacement — guard the access (`typeof sessionStorage !== 'undefined'`):
+`lib/bridge-client.ts` may be bundled on native even though the AI chat is
+web-only. Tests: immediate reload after hard socket drop → accepted (no
 lockout window); reload-with-persisted-id resumes the same session; fast
 resume still works; active-socket takeover still refused.
 
@@ -102,8 +106,9 @@ PNG in base64 is 1.4–2 MB. In `lib/bridge-protocol.ts` add
 `maxPayload` rises to 8 MB (transport ceiling), but the per-message check
 re-imposes 1 MB on every envelope EXCEPT server type `image_result` and
 `tool_result` whose payload has `binaryTool: true`. Mirror the check in
-`lib/bridge-client.ts`. Add `image_result` to `ServerMessageType` AND
-`image_result_ack` to `ClientMessageType` now (payloads documented as types;
+`lib/bridge-client.ts`. Add `image_result` to `ServerMessageType`,
+`image_result_ack` to `ClientMessageType`, AND an optional
+`binaryTool?: boolean` on the `tool_result` payload type now (payloads documented as types;
 emission/ack behavior comes in packages I/J). Tests: oversized
 normal message closes; 5 MB `image_result` passes; 9 MB anything closes;
 1.5 MB non-image message closes despite the 8 MB transport ceiling.
@@ -209,9 +214,11 @@ Plus: `aiChangeSetSchema` (zod), `validateAiChangeSet`, `applyAiChangeSet`,
    (`next-scene.ts:34`) requires a source scene — resolve `afterRef` to it
    for flow coordinates and defaults; ordered insertion mirrors
    `insertSceneAfter` (`next-scene.ts:5`). The input context therefore
-   includes `sceneOrder: string[]` (plus `assetIds`/`variableNames` so the
-   existing referential validation from `scene-patch.ts` keeps working for
-   new timelines), and the apply result includes `nextSceneOrder: string[]`.
+   includes `sceneOrder: string[]` plus the referential-validation fields —
+   extend the EXISTING `PatchProjectContext` (`scene-patch.ts:5`:
+   `{ sceneIds, characterIds, variableNames, assetIds }`) rather than
+   inventing a parallel context type — and the apply result includes
+   `nextSceneOrder: string[]`.
    Multiple scenes anchored to the same `afterRef` get deterministic,
    NON-OVERLAPPING flow coordinates (stagger `flowY` per sibling) and insert
    in item order.
@@ -374,9 +381,14 @@ journal — G must be merged before you start (do not stub it).
    1 modified, 3 links") + Apply / Reject; applied state shows the LIFO
    journal rollback affordance (top entry only).
 2. **`propose_changeset` registry entry** in `lib/ai/bridge-tools.ts`:
-   `{ name:'propose_changeset', schema: aiChangeSetSchema, exposure:'model',
-   site:'app', timeoutMs: 600_000 }` — the registry propagates it to Claude,
-   Codex allowlist, and the JSON schema; parity test stays green.
+   `{ name:'propose_changeset', inputSchema: aiChangeSetSchema,
+   exposure:'model', site:'app', timeoutMs: 600_000 }` (the field is
+   `inputSchema` — E1's shape; there is no `schema` field). The registry
+   propagates it to Claude and the Codex allowlist automatically; the Codex
+   JSON schema is CHECKED-IN, so you also add `"propose_changeset"` to its
+   `toolName` enum by hand — that enum is the only per-tool part (`input` is
+   `additionalProperties: true`, no argument schemas needed). Parity test
+   stays green.
 3. `AiChatPanel.tsx` executor: handle `propose_changeset` (validate via F,
    set `pendingChangeSet`, resolve the tool with the described summary or a
    structured error — mirror the `propose_scene_patch` decision flow);
@@ -411,8 +423,16 @@ One fact enlarges it: **the client currently reports `connected` on
 still shows "connected" until the server errors.
 
 **Deliverables.**
-1. Store: `aiBridgeSettings { url; token }` in the settings slice
-   (persisted). Panel resolves store → env fallback. The client is created in
+1. Store: `aiBridgeSettings { url; token }` — **there is NO "settings
+   slice"**; do NOT put this inside `UserSettings`: `normalizeUserSettings`
+   (`lib/user-settings.ts:48`) REBUILDS the object from known fields, so an
+   unknown field silently vanishes on the next `updateSettings`, and the
+   token is a local secret that doesn't belong in reader preferences. Add it
+   as its OWN top-level persisted field: state + default, an action (put it
+   in `stores/app-store-slices/preferences-slice.ts` alongside
+   `updateSettings`), and include the field in `buildPersistedAppState` +
+   the merge path (`lib/app-store-persistence.ts:153` — follow how
+   `settings`/`language` travel). Panel resolves store → env fallback. The client is created in
    a `useEffect` whose deps do NOT currently include url/token — add them so
    a settings change tears down (`close()` → `session_end`, from E3) and
    rebuilds the client live. No page reload.
@@ -443,7 +463,8 @@ ConnectionCard 4 states; chip states incl. provider; pairing formatter.
 
 **Read before:** `lib/bridge-client.ts` (esp. `openSocket`/`handleMessage`),
 `AiChatPanel.tsx:55-140`, `tools/ai-bridge/src/main.ts`, `server.ts`,
-settings slice.
+`stores/app-store-slices/preferences-slice.ts`,
+`lib/app-store-persistence.ts`.
 
 ---
 
@@ -459,17 +480,22 @@ terminology.
 
 **N2 — Persistent per-story transcript (UI-only).**
 `stores/ai-chat-store.ts` messages are in-memory. Persist as
-`messagesByStory: Record<storyId, Message[]>` via the app's kv persistence
-pattern (likely a separate `persist` wrapper, key `vne-ai-chat`). Caps: FIFO
+`messagesByStory: Record<storyId, Message[]>` — mirror
+`stores/theme-store.ts` exactly: zustand `persist(..., { name:
+'vne-ai-chat', storage: createJSONStorage(createPersistentStorage) })` with
+`createPersistentStorage` from `lib/persistent-storage.ts` (do NOT touch the
+main app-store persist). Caps: FIFO
 200 messages per story AND a per-story byte cap (~512 KB serialized — prune
 oldest until under). Pendings are NOT persisted (live revisions — drop on
 reload). Never persist image base64 (cards persist assetId or a discarded
 marker). "Clear chat" in the panel menu. **Honesty:** the Claude provider
 runs a fresh `query()` per turn — the model does NOT remember earlier turns;
 show a subtle note on restored transcripts ("The assistant doesn't remember
-previous conversations"). Tests: reload round-trip; story A↔B switch keeps
+previous conversations"). Transcripts of DELETED stories must not accumulate
+forever — prune lazily (on load, drop entries whose storyId no longer exists
+in the app store). Tests: reload round-trip; story A↔B switch keeps
 transcripts isolated; message cap; byte cap; pendings dropped; no base64
-persisted.
+persisted; deleted-story transcript pruned.
 
 **N3 — Markdown rendering (write your own small renderer).**
 Assistant messages render bold/italic/inline-code/code fences/lists/links.
@@ -507,7 +533,14 @@ type AiPermissionLevel = 'confirm' | 'auto' | 'blocked';
   document both in the module header. `image_generate` also gates
   `remove_background` (package J): no API spend, but a heavy model-triggered
   operation belongs under the same switch.
-- Persisted in the settings slice (global, not per-story).
+- Persisted globally (not per-story). **There is NO "settings slice"** — the
+  home is `UserSettings` in `lib/user-settings.ts` via `updateSettings`
+  (`stores/app-store-slices/preferences-slice.ts`), and the trap is that
+  `normalizeUserSettings` REBUILDS from known fields: you MUST extend the
+  interface, `defaultUserSettings`, AND the normalizer (sanitize each level
+  to the enum, clamp `changeset`), or the field silently vanishes on the
+  next settings write. Persistence then comes free via
+  `buildPersistedAppState` (`lib/app-store-persistence.ts:160`).
 - Enforcement in the `AiChatPanel` executor: `blocked` → structured
   `PERMISSION_DENIED` (code from `lib/bridge-protocol.ts`), nothing changes;
   `auto` (scene_edit/appearance only) → apply immediately, still push an
@@ -533,7 +566,8 @@ accepts / declines); parity test still green (internal tool absent from model
 surfaces).
 
 **Read before:** `AiChatPanel.tsx` executor + decision refs,
-`stores/ai-chat-store.ts`, settings slice, `lib/bridge-protocol.ts`,
+`stores/ai-chat-store.ts`, `lib/user-settings.ts`,
+`stores/app-store-slices/preferences-slice.ts`, `lib/bridge-protocol.ts`,
 `lib/ai/bridge-tools.ts`.
 
 ---

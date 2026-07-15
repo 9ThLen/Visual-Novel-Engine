@@ -87,6 +87,19 @@ Story model & store:
   `insertSceneAfter(sceneIds, sourceId, nextId)` (`next-scene.ts:5,34`) —
   scene creation without an anchor and without a `sceneOrder` update is not
   expressible in the canonical flow.
+- There is NO "settings slice". Persisted user settings = `UserSettings`
+  (`lib/user-settings.ts`) via `updateSettings`
+  (`stores/app-store-slices/preferences-slice.ts`), persisted through
+  `buildPersistedAppState` (`lib/app-store-persistence.ts:160`). Trap:
+  `normalizeUserSettings` REBUILDS the object from known fields — an unknown
+  field silently vanishes on the next write; every new field must be added
+  to the interface, defaults, AND the normalizer.
+- Standalone persisted stores follow `stores/theme-store.ts`: zustand
+  `persist` + `createJSONStorage(createPersistentStorage)` from
+  `lib/persistent-storage.ts` — the N2 transcript store mirrors this.
+- `codex-response-schema.json` couples to tools ONLY via the `toolName` enum
+  (`input` is `additionalProperties: true`) — parity is a names check; no
+  per-tool argument schemas exist or are needed.
 
 ## Architecture decisions
 
@@ -151,8 +164,10 @@ exist. All revisions are validated up front, before item 1 applies. The
 temp scenes — temp refs have no revision by definition).
 
 **D4. Pairing token moves to runtime settings.** `aiBridgeSettings { url,
-token }` persisted; store → env fallback; changing values rebuilds the client
-(effect deps). "Connected" is shown only after `session_started` (socket-open
+token }` persisted as its OWN top-level app-store field (NOT inside
+`UserSettings` — the normalizer would drop it, and a token is a local secret,
+not a reader preference); store → env fallback; changing values rebuilds the
+client (effect deps). "Connected" is shown only after `session_started` (socket-open
 is not authenticated); `UNAUTHORIZED` halts the reconnect loop until the
 token changes or manual retry. Depends on D8 lifecycle fix.
 
@@ -160,7 +175,8 @@ token changes or manual retry. Depends on D8 lifecycle fix.
 `scene_edit | appearance | changeset | image_generate`, levels
 `confirm | auto | blocked` (`changeset` never `auto`; `read` tools always
 allowed, outside the table; no `image_import` capability — import is
-user-button-only). Before any PAID bridge-side call the bridge invokes
+user-button-only). Levels live in `UserSettings` (global) — which means
+extending `normalizeUserSettings` too, or they vanish on the next write. Before any PAID bridge-side call the bridge invokes
 app-side `authorize_capability { capability, estimate }`; its registry entry
 carries `timeoutMs: 600_000` — the default tool timeout is 30 s, far too
 short for a human decision. `remove_background` is also gated by the
