@@ -1,7 +1,9 @@
-# AI Chat Round 2 — Delegation Prompts (packages E–N), v4.2
+# AI Chat Round 2 — Delegation Prompts (packages E–N), v4.3
 
-Revised 2026-07-15 (v4.2) after a fourth review round (v4.1 was a
-self-review pass). Each prompt is
+Revised 2026-07-15 (v4.3) after a fifth review round — error-code contract
+pinned to the closed `BridgeErrorCode` union (domain codes travel in
+`details.reason`), G2 atomicity claim scoped to in-memory only (v4.2 was the
+fourth round; v4.1 a self-review pass). Each prompt is
 self-contained: paste it into the target model with the files it lists.
 Rules for EVERY package:
 
@@ -101,7 +103,11 @@ though the AI chat is web-only; a failed read just means no resume), and
 scope the key to the bridge URL (e.g. `vne-bridge-session:<url>`) so
 switching bridges never resumes a foreign session. Tests: immediate reload after hard socket drop → accepted (no
 lockout window); reload-with-persisted-id resumes the same session; fast
-resume still works; active-socket takeover still refused.
+resume still works; active-socket takeover still refused;
+**`sessionStorage.getItem`/`setItem` throwing → client still connects
+normally, just without resume (no unhandled exception)**; **bridge URL
+changed → the session persisted under the OLD URL's key is NOT presented
+as `resumeSessionId`**.
 
 **E4 — Two-tier payload policy.** `MAX_MESSAGE_BYTES = 1_000_000`; a 1024px
 PNG in base64 is 1.4–2 MB. In `lib/bridge-protocol.ts` add
@@ -256,6 +262,17 @@ Plus: `aiChangeSetSchema` (zod), `validateAiChangeSet`, `applyAiChangeSet`,
    `connectionsToSet` lists EVERY changed connection, new and existing scenes
    alike.
 8. Limits: non-empty, ≤20 items, unique tempIds; stable error codes.
+   **Error-code contract:** `ITEM_ORDER`, `MISSING_REVISION`, `ID_COLLISION`
+   are DOMAIN codes of this lib's result type (`{ ok:false, code, message }`)
+   — they are NOT part of the wire protocol. `BridgeErrorCode`
+   (`lib/bridge-protocol.ts:21`) is a CLOSED union
+   (`VALIDATION_FAILED | STALE_REVISION | PERMISSION_DENIED | …`) and
+   `bridge-client.ts:11-13` types tool-result errors as exactly that union —
+   do NOT add members to it. Package H maps domain→wire when resolving the
+   tool: `STALE_REVISION` passes through; everything else becomes
+   `VALIDATION_FAILED` with the domain code in `details.reason`. Your job
+   here is only to keep the domain codes stable and exported (a
+   `const`-object or union type) so H can map them exhaustively.
 9. **`describeAiChangeSet`:** per-scene sections (created — name, step count,
    first-dialogue teaser — vs modified, reusing `ScenePatchDescription`
    kinds), characters section, choice/connection changes ("Scene A → Scene B
@@ -292,10 +309,16 @@ single undo slot with a safe journal.
   REPLACES the story's scene map (created scenes vanish on restore — do NOT
   add deleteScene calls) but writes back only `sceneCount`/`updatedAt`;
   captured `{title, startSceneId, sceneOrder, tags}` are dropped.
-- `MAX_SNAPSHOTS_PER_STORY = 10` and **automatic snapshots evict first**
-  (`lib/story-snapshots.ts:19,29`). `restoreStorySnapshot` creates its
-  "Before restore" snapshot BEFORE reading the target — with a full index it
-  can evict the very snapshot being restored.
+- `MAX_SNAPSHOTS_PER_STORY = 10` and **automatic snapshots evict first —
+  but only as a preference**: `selectEvictionVictim`
+  (`lib/story-snapshots.ts:187-191`) picks the oldest automatic snapshot,
+  and when NONE is automatic it falls back to the oldest snapshot of ANY
+  kind. So `automatic: true` on AI snapshots protects manual ones only
+  while at least one automatic victim exists; 10 manual snapshots + one new
+  AI snapshot still silently evicts the oldest MANUAL one.
+  `restoreStorySnapshot` creates its "Before restore" snapshot BEFORE
+  reading the target — with a full index it can evict the very snapshot
+  being restored.
 - `saveSceneRecord` runs `syncCanonicalStartScene` (`scene-slice.ts:152`);
   your atomic commit must preserve that behavior (a created scene with
   `isStart: true` must move `startSceneId`).
@@ -321,10 +344,22 @@ single undo slot with a safe journal.
    slice: ONE Zustand `set` writes all scene records, story metadata
    (`sceneCount`, `updatedAt`, AND `sceneOrder` from the result's
    `nextSceneOrder`), and the character library together — no
-   `saveSceneRecord` loop + separate `setCharacterLibrary` (a crash between
-   writes must be impossible). Factor the internals `saveSceneRecord` uses
-   (read `scene-slice.ts`) rather than forking persistence logic, and make
-   sure `syncCanonicalStartScene` still runs for created scenes with
+   `saveSceneRecord` loop + separate `setCharacterLibrary`. **Precise claim:
+   this is atomic IN MEMORY (one Zustand transition — no observer or
+   subscriber ever sees a half-applied changeset).** It is NOT crash-durable
+   on disk: persistence runs asynchronously AFTER the `set` and performs
+   multiple storage writes (`lib/app-store-storage.ts:93` `setItem` →
+   canonical scene payloads → indexes → app-state;
+   `lib/scene-record-storage.ts:317` deliberately orders payloads before the
+   global index so a crash leaves unreachable payloads, never a dangling
+   index — read that comment and do not break the ordering). Do not promise
+   crash-between-writes impossibility anywhere (docs, comments, tests); true
+   crash-atomicity would need a storage transaction or generation pointer
+   and is OUT OF SCOPE. Do add a persistence test: commit → let persist run →
+   reload from storage → scenes, `sceneOrder`, `sceneCount`, and character
+   library are mutually consistent. Factor the internals `saveSceneRecord`
+   uses (read `scene-slice.ts`) rather than forking persistence logic, and
+   make sure `syncCanonicalStartScene` still runs for created scenes with
    `isStart`.
 3. **G3 — adapter** `lib/ai/change-set-adapter.ts`:
    `applyAiChangeSetToStore(changeSet)`: re-validate against LIVE store state
@@ -370,6 +405,12 @@ dimension separately (mutate a scene / rename the story / reorder scenes /
 change the theme after apply → rollback demands confirmation); journal cap
 eviction; evicted snapshot drops its entry; commit applies `nextSceneOrder`;
 the changeset pre-snapshot is created with `automatic === true`;
+**eviction-fallback behavior pinned: with 10 MANUAL snapshots at the cap,
+creating the AI pre-snapshot evicts the oldest MANUAL one
+(`selectEvictionVictim` fallback, `story-snapshots.ts:190`) — assert this
+explicitly so the limitation is documented by a test, and surface it in the
+apply-confirm UI copy ("oldest snapshot will be replaced") rather than
+changing the eviction policy (out of scope)**;
 G1 cases above.
 
 **Read before writing:** `lib/ai/appearance-patch-adapter.ts`,
@@ -408,6 +449,13 @@ journal — G must be merged before you start (do not stub it).
    set `pendingChangeSet`, resolve the tool with the described summary or a
    structured error — mirror the `propose_scene_patch` decision flow);
    Apply/Reject via G's adapter; rollback via the journal.
+   **Error mapping is on you:** the wire `errorCode` MUST be a member of the
+   closed `BridgeErrorCode` union (`lib/bridge-protocol.ts:21`;
+   `bridge-client.ts:11-13` types it as exactly that) — F's domain codes
+   (`ITEM_ORDER`, `MISSING_REVISION`, `ID_COLLISION`, …) do not fit. Map
+   exhaustively: F's `STALE_REVISION` → wire `STALE_REVISION`; every other
+   F code → wire `VALIDATION_FAILED` with the domain code preserved as
+   `details.reason` (plus scene id / item index where F provides them).
 4. `tools/ai-bridge/src/system-prompt.md` Changesets section: when to use a
    changeset vs a single scene patch; tempId convention; item order
    (characters → create → patch → connect); `expectedSceneRevisions` must
@@ -418,7 +466,10 @@ journal — G must be merged before you start (do not stub it).
 **Tests.** Card renders created+modified+choice sections from a fixture;
 Apply/Reject fire; executor round-trip (tool call → pending → apply → journal
 entry, adapter mocked); invalid changeset resolves with the structured error
-code; EN↔UK key parity; registry parity test green.
+code; **error-mapping E2E: F returns `ITEM_ORDER` → resolved tool result has
+`errorCode:'VALIDATION_FAILED'` (a valid `BridgeErrorCode`) and
+`details.reason:'ITEM_ORDER'`; F returns `STALE_REVISION` → passes through
+unchanged**; EN↔UK key parity; registry parity test green.
 
 **Read before writing:** `PatchPreviewCard.tsx`, `AppearancePreviewCard.tsx`,
 `AiChatPanel.tsx`, `stores/ai-chat-store.ts`, `lib/ai/bridge-tools.ts`,
@@ -503,9 +554,13 @@ with `locale:'uk'` → provider factory receives it.
 `stores/ai-chat-store.ts` messages are in-memory. Persist as
 `messagesByStory: Record<storyId, Message[]>` — mirror
 `stores/theme-store.ts` exactly: zustand `persist(..., { name:
-'vne-ai-chat', storage: createJSONStorage(createPersistentStorage) })` with
+'vne-ai-chat', storage: createJSONStorage(createPersistentStorage),
+partialize: ({ messagesByStory }) => ({ messagesByStory }) })` with
 `createPersistentStorage` from `lib/persistent-storage.ts` (do NOT touch the
-main app-store persist). Caps: FIFO
+main app-store persist). The `partialize` is mandatory — without it zustand
+persists the WHOLE store state: connection `status`, pending
+changes/changesets, and the undo journal would all be serialized and
+resurrected on reload. Caps: FIFO
 200 messages per story AND a per-story byte cap (~512 KB serialized — prune
 oldest until under). Pendings are NOT persisted (live revisions — drop on
 reload). Never persist image base64 (cards persist assetId or a discarded
@@ -518,8 +573,13 @@ but ONLY after the app store has actually hydrated: at startup
 `storiesMetadata` is `[]` and fills asynchronously, so pruning "on load"
 would delete EVERYTHING. Gate the prune on hydration completion (the app
 store sets `isLoaded: true` after `migrateFromLegacyKeys`; subscribe to
-that, or use `useAppStore.persist.onFinishHydration` + the migration), and
-also prune the entry inside the `deleteStory` flow. Tests: reload
+that, or use `useAppStore.persist.onFinishHydration` + the migration).
+Deletions during a session are handled by the SAME mechanism: the AI store
+subscribes to the app store's hydrated `storiesMetadata` and prunes
+whenever a known storyId disappears — do NOT import `ai-chat-store` into
+`story-slice`/`deleteStory` (that creates the import cycle
+`use-app-store → story-slice → ai-chat-store → use-app-store`; the
+subscription lives entirely on the AI-store side). Tests: reload
 round-trip; story A↔B switch keeps transcripts isolated; message cap; byte
 cap; pendings dropped; no base64 persisted; deleted-story transcript
 pruned; **delayed-hydration test: prune fires only after `isLoaded`, and an
@@ -724,8 +784,15 @@ BRIDGE-side tools via the OpenAI Images API. Keys live ONLY in the bridge
    - Cost depends on quality/size/inputs → compute `estimatedCostUsd` as a
      RANGE (or with explicit quality pinned); never present a fake exact
      number.
-   - Missing `OPENAI_API_KEY` → structured `IMAGE_PROVIDER_NOT_CONFIGURED` +
-     one-line fix hint; never crash or block startup.
+   - Missing `OPENAI_API_KEY` → structured configuration error + one-line
+     fix hint; never crash or block startup. **Wire shape:** `errorCode`
+     MUST be a member of the closed `BridgeErrorCode` union
+     (`lib/bridge-protocol.ts:21` — do NOT add members; `bridge-client.ts:11-13`
+     types it as exactly that union). Use `PROVIDER_UNAVAILABLE` with
+     `details.reason: 'IMAGE_PROVIDER_NOT_CONFIGURED'` and the fix hint in
+     `details.hint`/`message`. Test E2E: no key → tool result carries
+     `errorCode:'PROVIDER_UNAVAILABLE'` + that `details.reason`, and the
+     model receives a readable message.
    - **Preflight before spend:** call app-side `authorize_capability
      { capability:'image_generate', estimate:{ costUsdRange, model, size,
      quality } }` (registry-driven via `requiresCapability`). Denied →

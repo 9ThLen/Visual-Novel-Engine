@@ -1,8 +1,8 @@
-# AI Chat — Round 2 Plan (v4.2)
+# AI Chat — Round 2 Plan (v4.3)
 
-Status: revised 2026-07-15 (v4.2) after a fourth external review round
-(v4.1 was a self-review pass); every accepted claim was re-verified against
-the code. Round 1 (phases 0–3 + image
+Status: revised 2026-07-15 (v4.3) after a fifth external review round
+(v4.2 = fourth round, v4.1 = self-review); every accepted claim was
+re-verified against the code. Round 1 (phases 0–3 + image
 read tools + reader theme patch + Claude/Codex bridge providers) is shipped
 and verified live in the browser.
 
@@ -30,6 +30,23 @@ chat itself (and the Blob-URL image transport) is **web-only**.
 Transport & bridge:
 - Protocol lives in **`lib/bridge-protocol.ts`** (shared). No
   `tools/ai-bridge/src/protocol.ts` exists.
+- **`BridgeErrorCode` is a CLOSED 7-member union** (`bridge-protocol.ts:21`)
+  and `bridge-client.ts:11-13` types tool-result errors as exactly that
+  union. New DOMAIN codes (F's `ITEM_ORDER`/`MISSING_REVISION`/
+  `ID_COLLISION`, I's image-config error) must NOT be added to it — the
+  wire code stays `VALIDATION_FAILED`/`STALE_REVISION`/
+  `PROVIDER_UNAVAILABLE` and the domain code travels as `details.reason`
+  (mapping pinned in packages F/H/I).
+- **App-store persistence is asynchronous and multi-write** after any
+  Zustand `set`: `app-store-storage.ts:93` `setItem` fans out to canonical
+  scene payloads → indexes → app-state (`scene-record-storage.ts:317`
+  intentionally commits payloads before the global index). One `set` is
+  atomic IN MEMORY only — never crash-durable on disk (G2 wording fixed
+  in v4.3).
+- **Snapshot eviction prefers automatic victims but falls back to the
+  oldest of ANY kind** (`selectEvictionVictim`, `story-snapshots.ts:187-191`)
+  — with 10 manual snapshots, a new AI pre-snapshot evicts a manual one;
+  behavior documented + pinned by test in G, not changed.
 - `MAX_MESSAGE_BYTES = 1_000_000`; server hard-closes above it. Base64 adds
   ~33%, so an 8 MB envelope carries at most ~5.5–6 MB decoded.
 - Codex drift is a LIVE bug: `codex-response-schema.json` whitelists 4 of the
