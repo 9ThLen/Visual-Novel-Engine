@@ -1,7 +1,8 @@
-# AI Chat — Round 2 Plan (v4)
+# AI Chat — Round 2 Plan (v4.2)
 
-Status: revised 2026-07-15 (v4) after a third external review round; every
-accepted claim was re-verified against the code. Round 1 (phases 0–3 + image
+Status: revised 2026-07-15 (v4.2) after a fourth external review round
+(v4.1 was a self-review pass); every accepted claim was re-verified against
+the code. Round 1 (phases 0–3 + image
 read tools + reader theme patch + Claude/Codex bridge providers) is shipped
 and verified live in the browser.
 
@@ -100,6 +101,20 @@ Story model & store:
 - `codex-response-schema.json` couples to tools ONLY via the `toolName` enum
   (`input` is `additionalProperties: true`) — parity is a names check; no
   per-tool argument schemas exist or are needed.
+- `migrateFromLegacyKeys` (`stores/use-app-store.ts:189`) runs after
+  hydration and lets a surviving LEGACY settings record override hydrated
+  `settings` wholesale — any new `UserSettings` field must be preserved in
+  that merge or it resets on every launch. Related: at startup
+  `storiesMetadata` is `[]` until async hydration + migration set
+  `isLoaded: true` — anything that prunes by story existence must wait for
+  that.
+- `createStorySnapshot(storyId, name, automatic?)` DEFAULTS `automatic` to
+  `false`; the scene-patch adapter passes `true`
+  (`scene-patch-adapter.ts:31`) — AI snapshots must too, or they crowd out
+  manual snapshots at eviction.
+- `AgentProviderFactory = (tools: ToolInvoker) => AgentProvider`
+  (`tools/ai-bridge/src/provider.ts:15`) — session context (locale) has no
+  path to providers today; N1 extends the factory signature.
 
 ## Architecture decisions
 
@@ -181,7 +196,8 @@ app-side `authorize_capability { capability, estimate }`; its registry entry
 carries `timeoutMs: 600_000` — the default tool timeout is 30 s, far too
 short for a human decision. `remove_background` is also gated by the
 `image_generate` capability (no API spend, but a heavy model-triggered
-operation). Structured errors (code+message+details) survive to the model
+operation) with the full three-level contract — its registry entry needs
+`timeoutMs: 600_000` too, since `confirm` awaits a human. Structured errors (code+message+details) survive to the model
 (D8).
 
 **D6. Reader layout = ONE preset enum.** `layoutPreset: 'classic' | 'compact'
@@ -220,7 +236,9 @@ prefers resume over replacement. Active-socket takeover stays refused.
 surface them to the model. (c) Two-tier limits: server `maxPayload` = 
 `MAX_IMAGE_MESSAGE_BYTES = 8_000_000`, but a per-message helper
 `maxBytesForEnvelope(type, payload)` re-imposes 1 MB on everything except
-`image_result` and `tool_result` marked `binaryTool: true`. **Decoded image
+`image_result` and `tool_result` marked `binaryTool: true` — and
+server-side the flag is only a hint: the oversized `tool_result` must match
+a PENDING invocation whose registry entry has `binaryResult: true`. **Decoded image
 cap ≈ 5.5 MB** (8 MB envelope minus base64 overhead) in BOTH directions:
 oversized OpenAI responses are re-requested at lower quality or rejected
 with a structured error; oversized local assets are downscaled app-side

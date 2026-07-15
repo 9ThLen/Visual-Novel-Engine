@@ -1,6 +1,7 @@
-# AI Chat Round 2 — Delegation Prompts (packages E–N), v4
+# AI Chat Round 2 — Delegation Prompts (packages E–N), v4.2
 
-Revised 2026-07-15 (v4) after a third review round. Each prompt is
+Revised 2026-07-15 (v4.2) after a fourth review round (v4.1 was a
+self-review pass). Each prompt is
 self-contained: paste it into the target model with the files it lists.
 Rules for EVERY package:
 
@@ -43,6 +44,8 @@ export interface BridgeToolDef {
   site: 'app' | 'bridge';          // where it executes
   requiresCapability?: string;     // consumed by preflight (packages L/I)
   timeoutMs?: number;              // propose_* use 600_000 today
+  binaryResult?: boolean;          // result may exceed the 1 MB tier (E4);
+                                   // round 2: only get_image_binary (pkg J)
 }
 export const BRIDGE_TOOLS: BridgeToolDef[] = [ /* the existing 8, all
   exposure:'model', site:'app' */ ];
@@ -92,9 +95,11 @@ means there is no live client left to protect (takeover of an ACTIVE socket
 stays refused); (c) `BridgeClient.close()` sends `session_end` first;
 (d) the client persists its `sessionId` in `sessionStorage` (web) so a
 same-tab reload presents `resumeSessionId` and prefers RESUME over
-replacement — guard the access (`typeof sessionStorage !== 'undefined'`):
-`lib/bridge-client.ts` may be bundled on native even though the AI chat is
-web-only. Tests: immediate reload after hard socket drop → accepted (no
+replacement — wrap every access in `try/catch` (`sessionStorage` throws in
+some privacy modes, and `lib/bridge-client.ts` may be bundled on native even
+though the AI chat is web-only; a failed read just means no resume), and
+scope the key to the bridge URL (e.g. `vne-bridge-session:<url>`) so
+switching bridges never resumes a foreign session. Tests: immediate reload after hard socket drop → accepted (no
 lockout window); reload-with-persisted-id resumes the same session; fast
 resume still works; active-socket takeover still refused.
 
@@ -105,8 +110,13 @@ PNG in base64 is 1.4–2 MB. In `lib/bridge-protocol.ts` add
 `maxBytesForEnvelope(type, payload)`. Two tiers, explicitly: the ws server's
 `maxPayload` rises to 8 MB (transport ceiling), but the per-message check
 re-imposes 1 MB on every envelope EXCEPT server type `image_result` and
-`tool_result` whose payload has `binaryTool: true`. Mirror the check in
-`lib/bridge-client.ts`. Add `image_result` to `ServerMessageType`,
+`tool_result` whose payload has `binaryTool: true`. The client flag is a
+transport HINT only — server-side, the authoritative check is the pending
+invocation: a big `tool_result` is accepted only when the requestId matches
+a pending tool call whose registry entry has `binaryResult: true` (never
+trust the browser's flag alone; test: oversized `tool_result` with
+`binaryTool: true` but a non-binary pending tool → closed). Mirror the
+size check in `lib/bridge-client.ts`. Add `image_result` to `ServerMessageType`,
 `image_result_ack` to `ClientMessageType`, AND an optional
 `binaryTool?: boolean` on the `tool_result` payload type now (payloads documented as types;
 emission/ack behavior comes in packages I/J). Tests: oversized
@@ -320,7 +330,11 @@ single undo slot with a safe journal.
    `applyAiChangeSetToStore(changeSet)`: re-validate against LIVE store state
    FIRST — on failure return `{ ok:false, code, message }` with zero side
    effects and NO snapshot (an empty pre-snapshot for a failed apply is
-   pollution); then `createStorySnapshot('AI: changeset <time>')`; capture
+   pollution); then `createStorySnapshot(storyId, 'AI: changeset <time>',
+   true)` — the third argument (`automatic`) DEFAULTS TO FALSE and the
+   existing scene adapter passes `true` (`scene-patch-adapter.ts:31`); an
+   unmarked AI snapshot would crowd out the user's manual snapshots at the
+   cap-10 eviction (automatic evict first); capture
    `previousCharacterLibrary` iff characters change; `commitAiChangeSet`;
    return `{ ok:true, undo, description }`. `rollbackAiChangeSet(undo)`:
    `restoreStorySnapshot` (now metadata-correct) →
@@ -355,6 +369,7 @@ back under a newer entry is rejected); manual-edit guard fires for EACH
 dimension separately (mutate a scene / rename the story / reorder scenes /
 change the theme after apply → rollback demands confirmation); journal cap
 eviction; evicted snapshot drops its entry; commit applies `nextSceneOrder`;
+the changeset pre-snapshot is created with `automatic === true`;
 G1 cases above.
 
 **Read before writing:** `lib/ai/appearance-patch-adapter.ts`,
@@ -475,8 +490,14 @@ Three independent tasks; do all three.
 **N1 — Reply in the user's language.**
 `tools/ai-bridge/src/system-prompt.md`: Language section — "Always reply in
 the language of the user's LAST message; user messages decide, not the UI."
-Pass the app locale (from `lib/translations.ts`) in session-start context for
-terminology.
+Also pass the app locale for terminology — and this needs real plumbing,
+not hand-waving: add an optional `context: { locale?: string }` to the
+`session_start` payload (additive, `lib/bridge-protocol.ts`; the client
+sends the app language), and extend `AgentProviderFactory`
+(`tools/ai-bridge/src/provider.ts:15` — today it takes ONLY a
+`ToolInvoker`) to `(tools, session?: { locale?: string })`; both providers
+append a one-line locale hint to their system prompt. Test: session_start
+with `locale:'uk'` → provider factory receives it.
 
 **N2 — Persistent per-story transcript (UI-only).**
 `stores/ai-chat-store.ts` messages are in-memory. Persist as
@@ -492,10 +513,17 @@ marker). "Clear chat" in the panel menu. **Honesty:** the Claude provider
 runs a fresh `query()` per turn — the model does NOT remember earlier turns;
 show a subtle note on restored transcripts ("The assistant doesn't remember
 previous conversations"). Transcripts of DELETED stories must not accumulate
-forever — prune lazily (on load, drop entries whose storyId no longer exists
-in the app store). Tests: reload round-trip; story A↔B switch keeps
-transcripts isolated; message cap; byte cap; pendings dropped; no base64
-persisted; deleted-story transcript pruned.
+forever — prune entries whose storyId no longer exists in the app store,
+but ONLY after the app store has actually hydrated: at startup
+`storiesMetadata` is `[]` and fills asynchronously, so pruning "on load"
+would delete EVERYTHING. Gate the prune on hydration completion (the app
+store sets `isLoaded: true` after `migrateFromLegacyKeys`; subscribe to
+that, or use `useAppStore.persist.onFinishHydration` + the migration), and
+also prune the entry inside the `deleteStory` flow. Tests: reload
+round-trip; story A↔B switch keeps transcripts isolated; message cap; byte
+cap; pendings dropped; no base64 persisted; deleted-story transcript
+pruned; **delayed-hydration test: prune fires only after `isLoaded`, and an
+empty pre-hydration store does NOT wipe transcripts**.
 
 **N3 — Markdown rendering (write your own small renderer).**
 Assistant messages render bold/italic/inline-code/code fences/lists/links.
@@ -539,8 +567,16 @@ type AiPermissionLevel = 'confirm' | 'auto' | 'blocked';
   `normalizeUserSettings` REBUILDS from known fields: you MUST extend the
   interface, `defaultUserSettings`, AND the normalizer (sanitize each level
   to the enum, clamp `changeset`), or the field silently vanishes on the
-  next settings write. Persistence then comes free via
-  `buildPersistedAppState` (`lib/app-store-persistence.ts:160`).
+  next settings write. Persistence then comes via
+  `buildPersistedAppState` (`lib/app-store-persistence.ts:160`) — but NOT
+  for free: `migrateFromLegacyKeys` (`stores/use-app-store.ts:189`) runs
+  after hydration and sets `settings: normalizeUserSettings(settings ??
+  current.settings)` — a surviving LEGACY settings record (which predates
+  `aiPermissions`) would wipe hydrated levels back to defaults on every
+  launch. Preserve them in that merge (when the legacy record lacks
+  `aiPermissions`, keep `current.settings.aiPermissions`). Test: hydrated
+  `blocked` + legacy settings record present → after migration still
+  `blocked`.
 - Enforcement in the `AiChatPanel` executor: `blocked` → structured
   `PERMISSION_DENIED` (code from `lib/bridge-protocol.ts`), nothing changes;
   `auto` (scene_edit/appearance only) → apply immediately, still push an
@@ -606,14 +642,24 @@ applies that pure helper to state.
    `exposure:'internal'` for the first, `exposure:'model'` for
    remove_background):
    - `get_image_binary { assetId }` → `{ mimeType, base64 }` in a
-     `tool_result` flagged `binaryTool: true`; enforce
+     `tool_result` flagged `binaryTool: true` (its registry entry sets
+     `binaryResult: true` — the server accepts the oversized result only
+     against that entry, see E4); enforce
      `MAX_DECODED_IMAGE_BYTES` (5.5 MB, from E4) — LARGER assets are
      downscaled client-side (canvas) to fit, or rejected with a structured
      error naming the limit; only assets of the ACTIVE story.
    - `remove_background { assetId }` → gated by the `image_generate`
-     capability (consult package L's `resolveCapability` first — heavy
-     model-triggered operation, same switch as generation even without API
-     spend); then resolve the asset URI from the store, run existing
+     capability with the FULL three-level contract (consult package L's
+     `resolveCapability` first — heavy model-triggered operation, same
+     switch as generation even without API spend): `blocked` → structured
+     `ok:false` + `PERMISSION_DENIED` (the `{allowed:false}` shape belongs
+     ONLY to `authorize_capability`'s bridge preflight — never mix the two);
+     `confirm` → reuse L's inline confirm-chip decision flow and do NOT
+     start ISNet until the user accepts (decline → the same structured
+     denial); `auto` → proceed. Its registry entry therefore carries
+     `timeoutMs: 600_000` — without it the default 30 s bridge timeout
+     kills the tool while the user is still deciding. Then resolve the
+     asset URI from the store, run existing
      `removeImageBackground` (`lib/remove-background.web.ts`, URI-based,
      runtime CDN import — reuse its loader), result data-URI → the same
      `ImageResultCard` flow with purpose `'background-removed'`; import only
@@ -624,8 +670,10 @@ applies that pure helper to state.
 the store action (assert store state changed — this is the regression the
 pure-function trap causes); discard leaves libraries untouched + revokes URL;
 `get_image_binary` rejects foreign-story assets; oversized asset downscaled
-or structured error; `remove_background` chain (ISNet mocked) incl. blocked
-capability → PERMISSION_DENIED without running ISNet; redelivered
+or structured error; `remove_background` chain (ISNet mocked) at ALL three levels — blocked →
+PERMISSION_DENIED without running ISNet; confirm-accept runs ISNet only
+AFTER the decision; confirm-decline → structured denial, ISNet never called;
+auto proceeds; redelivered
 `image_result` with the same requestId renders one card and re-sends the
 ack; no base64 in persisted chat state.
 
