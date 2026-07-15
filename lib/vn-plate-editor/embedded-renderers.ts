@@ -14,6 +14,7 @@ function richTextToHtml(text: string): string {
     if (span.italic) value = `<em>${value}</em>`;
     if (span.underline) value = `<u>${value}</u>`;
     if (span.strikethrough) value = `<s>${value}</s>`;
+    if (span.fontSize) value = `<span style="font-size:${span.fontSize}px">${value}</span>`;
     if (span.color) value = `<span style="color:${escapeHtml(span.color)}">${value}</span>`;
     return value;
   }).join('');
@@ -340,14 +341,19 @@ function interactiveObjectBlockToHtml(block: Extract<DocumentBlock, { kind: 'tec
   const data = block.step.data as InteractiveObjectBlockData;
   const position = data.position || { x: 50, y: 50, width: 10, height: 10 };
   const actionCount = Array.isArray(data.actions) ? data.actions.length : 0;
-  const flags = [data.oneTimeOnly ? 'once' : '', data.pulseAnimation ? 'pulse' : ''].filter(Boolean).join(' · ');
+  const flags = [data.oneTimeOnly ? 'одноразовий' : '', data.pulseAnimation ? 'пульсація' : ''].filter(Boolean).join(' · ');
+  const actionLabel = actionCount === 1 ? '1 дія' : `${actionCount} дій`;
+  const warning = actionCount === 0 ? '<span class="interactive-object-warning">Немає дій</span>' : '';
   return [
-    `<div class="void-block interactive-object-block" contenteditable="false" tabindex="0" role="button" aria-label="Edit interactive object ${escapeHtml(data.name || 'New Object')}" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="interactive_object" data-object="${escapeHtml(JSON.stringify(data))}">`,
+    `<div class="void-block interactive-object-block${actionCount === 0 ? ' has-warning' : ''}" contenteditable="false" tabindex="0" role="button" aria-label="Редагувати інтерактивний об’єкт ${escapeHtml(data.name || 'Новий об’єкт')}" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="interactive_object" data-object="${escapeHtml(JSON.stringify(data))}">`,
     '<span class="interactive-object-icon" aria-hidden="true">◎</span>',
     '<span class="interactive-object-copy">',
-    `<span class="interactive-object-name">${escapeHtml(data.name || 'New Object')}</span>`,
-    `<span class="interactive-object-meta">${escapeHtml(`${position.x}%, ${position.y}% · ${position.width}×${position.height}% · ${actionCount} actions${flags ? ` · ${flags}` : ''}`)}</span>`,
+    '<span class="interactive-object-kicker">Інтерактивний об’єкт</span>',
+    `<span class="interactive-object-name">${escapeHtml(data.name || 'Новий об’єкт')}</span>`,
+    `<span class="interactive-object-meta">${escapeHtml(`${position.x}%, ${position.y}% · ${position.width}×${position.height}% · ${actionLabel}${flags ? ` · ${flags}` : ''}`)}</span>`,
     '</span>',
+    warning,
+    '<button type="button" class="block-button" data-action="edit-interactive-object">Редагувати</button>',
     '</div>',
   ].join('');
 }

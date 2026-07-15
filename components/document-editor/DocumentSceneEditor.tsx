@@ -25,11 +25,13 @@ import { DocumentEditorHeader } from '@/components/document-editor/DocumentEdito
 import { DocumentRightRail } from '@/components/document-editor/DocumentRightRail';
 import { DocumentSceneFrame } from '@/components/document-editor/DocumentSceneFrame';
 import { DocumentSceneSidebar } from '@/components/document-editor/DocumentSceneSidebar';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type {
   PlateWebViewEditorHandle,
   PlateWebViewEditorSnapshot,
 } from '@/components/vn-plate-editor/PlateWebViewEditor';
 import { useColors } from '@/hooks/use-colors';
+import { useI18n } from '@/hooks/use-i18n';
 import { useEditorShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { crumbsForSceneIndex, type BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
@@ -42,6 +44,7 @@ import {
 } from '@/lib/document-editor/scene-mount-range';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatCommand, VNPlateFormatState } from '@/lib/vn-plate-editor/types';
 import type { Character } from '@/lib/character-types';
+import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { DocumentScene } from '@/lib/document-editor/types';
 import type { SceneRecord } from '@/lib/engine/types';
 
@@ -59,6 +62,8 @@ interface DocumentSceneEditorProps {
   onStartBranchOption?: (choiceStepId: string, optionId: string) => void;
   /** incomingCount per scene id, drives the merge-point banners. */
   incomingCountBySceneId?: Record<string, number>;
+  /** Source scenes and trigger texts per scene id, shown in merge-point tooltips. */
+  incomingPathsBySceneId?: Record<string, IncomingScenePath[]>;
   /** Branch accent color per scene id on the active path (branch tinting). */
   branchColorBySceneId?: Record<string, string>;
   /** Choice crumbs for the whole active path; sliced here by the scrolled-to scene. */
@@ -77,6 +82,8 @@ interface DocumentSceneEditorProps {
   protectedCharacterIds?: string[];
   onSave: (documentScenes: DocumentScene[], characters: Character[]) => void;
   onCreateNextScene: (sourceSceneId: string, documentScenes: DocumentScene[], characters: Character[]) => void;
+  onDuplicateScene?: (sceneId: string) => void;
+  onDeleteScene?: (sceneId: string) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onBack?: () => void;
@@ -124,6 +131,7 @@ export function DocumentSceneEditor({
   onSelectChoiceOption,
   onStartBranchOption,
   incomingCountBySceneId,
+  incomingPathsBySceneId,
   branchColorBySceneId,
   branchBreadcrumbTrail,
   viewMode,
@@ -137,6 +145,8 @@ export function DocumentSceneEditor({
   audioAssets,
   onSave,
   onCreateNextScene,
+  onDuplicateScene,
+  onDeleteScene,
   onUploadBackgroundAsset,
   onUploadAudioAsset,
   onBack,
@@ -147,6 +157,7 @@ export function DocumentSceneEditor({
   const router = useRouter();
   const documentColorScheme = 'light';
   const colors = useColors(documentColorScheme);
+  const { t } = useI18n();
   const layout = useResponsiveLayout();
   const insets = useSafeAreaInsets();
   const isPhone = layout.deviceType === 'phone';
@@ -157,6 +168,7 @@ export function DocumentSceneEditor({
   const [focusedEditorSceneId, setFocusedEditorSceneId] = useState<string | null>(null);
   const [dirtySceneIds, setDirtySceneIds] = useState<Set<string>>(() => new Set());
   const [isSaving, setIsSaving] = useState(false);
+  const [pendingDeleteSceneId, setPendingDeleteSceneId] = useState<string | null>(null);
   // Distraction-free writing: hides the sidebar, breadcrumb, inspector, and
   // the header's undo/redo + formatting tools, leaving only the document.
   const [focusMode, setFocusMode] = useState(false);
@@ -462,6 +474,29 @@ export function DocumentSceneEditor({
     void startBranchOptionImplRef.current(choiceStepId, optionId);
   }, []);
 
+  const handleAddScene = useCallback(async () => {
+    await handleSave();
+    onCreateNextScene(activeSceneIdRef.current, [], localCharactersRef.current);
+  }, [handleSave, onCreateNextScene]);
+
+  const handleDuplicateScene = useCallback(async (sourceSceneId: string) => {
+    if (!onDuplicateScene) return;
+    await handleSave();
+    onDuplicateScene(sourceSceneId);
+  }, [handleSave, onDuplicateScene]);
+
+  const handleRequestDeleteScene = useCallback((sceneId: string) => {
+    setPendingDeleteSceneId(sceneId);
+  }, []);
+
+  const handleConfirmDeleteScene = useCallback(async () => {
+    const sceneId = pendingDeleteSceneId;
+    if (!sceneId || !onDeleteScene) return;
+    setPendingDeleteSceneId(null);
+    await handleSave();
+    onDeleteScene(sceneId);
+  }, [handleSave, onDeleteScene, pendingDeleteSceneId]);
+
   const handleSetViewMode = useCallback(async (mode: 'path' | 'all') => {
     if (!onSetViewMode || mode === viewMode) return;
     // Same flush-then-mutate contract as branch switching: the mode change
@@ -558,6 +593,12 @@ export function DocumentSceneEditor({
 
   const getOnChange = useSceneCallback(handlePlateChangeImpl);
   const getOnCreateNextScene = useSceneCallback(handleCreateNextSceneImpl);
+  const getOnDuplicateScene = useSceneCallback((_sceneId: string) => {
+    void handleDuplicateScene(_sceneId);
+  });
+  const getOnRequestDeleteScene = useSceneCallback((_sceneId: string) => {
+    handleRequestDeleteScene(_sceneId);
+  });
   const getRegisterEditorRef = useSceneCallback(registerEditorRefImpl);
   const getOnFrameLayout = useSceneCallback(handleFrameLayoutImpl);
 
@@ -600,6 +641,7 @@ export function DocumentSceneEditor({
     underline: false,
     strikethrough: false,
     alignment: 'left',
+    fontSize: 17,
     color: null,
     canFormat: false,
   };
@@ -678,11 +720,12 @@ export function DocumentSceneEditor({
   }, [scheduleMountRecompute]);
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
-      keyboardVerticalOffset={0}
-    >
+    <>
+      <KeyboardAvoidingView
+        style={{ flex: 1, backgroundColor: colors.background }}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        keyboardVerticalOffset={0}
+      >
       <DocumentEditorHeader
         activeTitle={activeDocument?.sceneName || sceneRecord.name}
         colorScheme={documentColorScheme}
@@ -716,6 +759,7 @@ export function DocumentSceneEditor({
             offPathScenes={offPathScenes}
             branchColorBySceneId={branchColorBySceneId}
             onScenePress={handleScenePress}
+            onAddScene={handleAddScene}
             onOffPathScenePress={handleOffPathScenePress}
           />
         ) : null}
@@ -778,12 +822,15 @@ export function DocumentSceneEditor({
               onSelectChoiceOption={stableSelectChoiceOption}
               onStartBranchOption={stableStartBranchOption}
               incomingCount={incomingCountBySceneId?.[documentScene.sceneId]}
+              incomingPaths={incomingPathsBySceneId?.[documentScene.sceneId]}
               branchColor={branchColorBySceneId?.[documentScene.sceneId]}
               isPhone={isPhone}
               isMounted={mountedSceneIds.has(documentScene.sceneId)}
               cachedHeight={sceneLayoutRef.current.get(documentScene.sceneId)?.height ?? persistedHeights[documentScene.sceneId]}
               onChange={getOnChange(documentScene.sceneId)}
               onCreateNextScene={getOnCreateNextScene(documentScene.sceneId)}
+              onDuplicateScene={getOnDuplicateScene(documentScene.sceneId)}
+              onRequestDeleteScene={getOnRequestDeleteScene(documentScene.sceneId)}
               onUploadBackgroundAsset={onUploadBackgroundAsset}
               onUploadAudioAsset={onUploadAudioAsset}
               registerEditorRef={getRegisterEditorRef(documentScene.sceneId)}
@@ -806,6 +853,16 @@ export function DocumentSceneEditor({
           />
         ) : null}
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+      <ConfirmDialog
+        visible={pendingDeleteSceneId !== null}
+        title={t('editor.confirmDeleteSceneTitle')}
+        message={t('editor.confirmDeleteSceneMessage')}
+        confirmLabel={t('common.delete')}
+        onConfirm={() => { void handleConfirmDeleteScene(); }}
+        onCancel={() => setPendingDeleteSceneId(null)}
+        destructive
+      />
+    </>
   );
 }

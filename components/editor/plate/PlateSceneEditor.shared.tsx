@@ -7,6 +7,7 @@ import {
 import { buildDocumentsResetKey } from '@/lib/document-editor/document-reset-key';
 import { resolveNextSceneIdForSave } from '@/lib/document-editor/document-scene';
 import type { BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
+import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { Character } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo } from '@/lib/vn-plate-editor/types';
@@ -26,6 +27,8 @@ interface PlateSceneEditorProps {
   onStartBranchOption?: (choiceStepId: string, optionId: string) => void;
   /** incomingCount per scene id, drives the merge-point banners. */
   incomingCountBySceneId?: Record<string, number>;
+  /** Source scenes and trigger texts per scene id, shown in merge-point tooltips. */
+  incomingPathsBySceneId?: Record<string, IncomingScenePath[]>;
   /** Branch accent color per scene id on the active path (branch tinting). */
   branchColorBySceneId?: Record<string, string>;
   /** Choice crumbs for the whole active path, for the breadcrumb bar. */
@@ -41,6 +44,8 @@ interface PlateSceneEditorProps {
   protectedCharacterIds?: string[];
   onSave: (sceneRecords: SceneRecord[], characters: Character[]) => void;
   onCreateNextScene?: (sourceSceneId: string, sceneRecords: SceneRecord[], characters: Character[]) => void;
+  onDuplicateScene?: (sceneId: string) => void;
+  onDeleteScene?: (sceneId: string) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onGallery?: () => void;
@@ -55,6 +60,7 @@ export function PlateSceneEditor({
   onSelectChoiceOption,
   onStartBranchOption,
   incomingCountBySceneId,
+  incomingPathsBySceneId,
   branchColorBySceneId,
   branchBreadcrumbTrail,
   viewMode,
@@ -67,6 +73,8 @@ export function PlateSceneEditor({
   protectedCharacterIds,
   onSave,
   onCreateNextScene,
+  onDuplicateScene,
+  onDeleteScene,
   onUploadBackgroundAsset,
   onUploadAudioAsset,
   onGallery,
@@ -116,6 +124,7 @@ export function PlateSceneEditor({
       onSelectChoiceOption={onSelectChoiceOption}
       onStartBranchOption={onStartBranchOption}
       incomingCountBySceneId={incomingCountBySceneId}
+      incomingPathsBySceneId={incomingPathsBySceneId}
       branchColorBySceneId={branchColorBySceneId}
       branchBreadcrumbTrail={branchBreadcrumbTrail}
       viewMode={viewMode}
@@ -130,6 +139,8 @@ export function PlateSceneEditor({
       protectedCharacterIds={protectedCharacterIds}
       onSave={saveDocuments}
       onCreateNextScene={createNextScene}
+      onDuplicateScene={onDuplicateScene}
+      onDeleteScene={onDeleteScene}
       onUploadBackgroundAsset={onUploadBackgroundAsset}
       onUploadAudioAsset={onUploadAudioAsset}
       onBack={() => router.back()}

@@ -88,6 +88,22 @@ describe('document formatting bridge', () => {
     expect(header).toContain("color: active ? colors['primary-active'] : colors.foreground");
   });
 
+  it('supports bounded font-size controls through the formatting bridge', () => {
+    const header = fs.readFileSync(
+      path.join(process.cwd(), 'components/document-editor/DocumentEditorHeader.tsx'),
+      'utf8',
+    );
+    const embedded = fs.readFileSync(
+      path.join(process.cwd(), 'lib/vn-plate-editor/embedded-script.ts'),
+      'utf8',
+    );
+
+    expect(header).toContain("['fontSizeDecrease', 'A−'");
+    expect(header).toContain("['fontSizeIncrease', 'A+'");
+    expect(embedded).toContain('var sizes = [12, 14, 17, 20, 24, 28, 32]');
+    expect(embedded).toContain("value = '[size=' + fontSize + ']' + value + '[/size]'");
+  });
+
   it('uses the light editor scheme and semantic accents for header actions', () => {
     const header = fs.readFileSync(
       path.join(process.cwd(), 'components/document-editor/DocumentEditorHeader.tsx'),

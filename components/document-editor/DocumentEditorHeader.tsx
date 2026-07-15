@@ -57,8 +57,11 @@ export function DocumentEditorHeader({
   const colors = useColors(colorScheme);
   const { t } = useI18n();
   const [showColors, setShowColors] = useState(false);
+  const [showFontSizes, setShowFontSizes] = useState(false);
   const textColors = ['#111827', '#dc2626', '#d97706', '#2563eb', '#7c3aed', '#059669'];
+  const fontSizes = [12, 14, 17, 20, 24, 28, 32];
   const toolSize = isPhone ? 34 : 36;
+  const keepEditorSelection = (event: { preventDefault: () => void }) => event.preventDefault();
   // Header groups: back+title (flex) · center tools · actions (flex) — centered toolbar.
 
   return (
@@ -177,6 +180,7 @@ export function DocumentEditorHeader({
           return (
             <Pressable
               key={command}
+              onPressIn={keepEditorSelection}
               onPress={() => onFormatText(command)}
               disabled={!formatState.canFormat}
               accessibilityRole="button"
@@ -189,6 +193,8 @@ export function DocumentEditorHeader({
                 alignItems: 'center',
                 justifyContent: 'center',
                 backgroundColor: active ? withAlpha(colors.primary, 0.18) : 'transparent',
+                borderWidth: active ? 1 : 0,
+                borderColor: active ? colors.primary : 'transparent',
                 opacity: formatState.canFormat ? 1 : 0.35,
               }}
             >
@@ -210,8 +216,77 @@ export function DocumentEditorHeader({
             </Pressable>
           );
         })}
+        {([
+          ['fontSizeDecrease', 'A−', t('editor.format.fontSizeDecrease')],
+          ['fontSizeIncrease', 'A+', t('editor.format.fontSizeIncrease')],
+        ] as const).map(([command, label, accessibilityLabel]) => (
+          <Pressable
+            key={command}
+            onPressIn={keepEditorSelection}
+            onPress={() => onFormatText(command)}
+            disabled={!formatState.canFormat || (command === 'fontSizeDecrease' ? formatState.fontSize <= 12 : formatState.fontSize >= 32)}
+            accessibilityRole="button"
+            accessibilityLabel={accessibilityLabel}
+            accessibilityHint={t('editor.format.fontSizeCurrent', { size: formatState.fontSize })}
+            style={{
+              width: toolSize,
+              height: toolSize,
+              borderRadius: 6,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: formatState.canFormat && (command === 'fontSizeDecrease' ? formatState.fontSize > 12 : formatState.fontSize < 32) ? 1 : 0.35,
+            }}
+          >
+            <Text style={{ color: colors.foreground, fontSize: command === 'fontSizeDecrease' ? 13 : 17, fontWeight: '700' }}>
+              {label}
+            </Text>
+          </Pressable>
+        ))}
         <Pressable
-          onPress={() => setShowColors((current) => !current)}
+          onPressIn={keepEditorSelection}
+          onPress={() => { setShowFontSizes((current) => !current); setShowColors(false); }}
+          disabled={!formatState.canFormat}
+          accessibilityRole="button"
+          accessibilityLabel={t('editor.format.fontSizeCurrent', { size: formatState.fontSize })}
+          accessibilityState={{ disabled: !formatState.canFormat, expanded: showFontSizes }}
+          style={{
+            minWidth: toolSize + 8,
+            height: toolSize,
+            paddingHorizontal: 6,
+            borderRadius: 6,
+            borderWidth: 1,
+            borderColor: showFontSizes ? colors.primary : colors.border,
+            backgroundColor: showFontSizes ? withAlpha(colors.primary, 0.18) : 'transparent',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: formatState.canFormat ? 1 : 0.35,
+          }}
+        >
+          <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '800' }}>{formatState.fontSize}</Text>
+        </Pressable>
+        {showFontSizes && formatState.canFormat ? (
+          <View style={{ position: 'absolute', top: toolSize + 10, right: 0, zIndex: 21, flexDirection: 'row', gap: 4, padding: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors['surface-1'] }}>
+            {fontSizes.map((size) => {
+              const selected = formatState.fontSize === size;
+              return (
+                <Pressable
+                  key={size}
+                  onPressIn={keepEditorSelection}
+                  onPress={() => { onFormatText('fontSize', String(size)); setShowFontSizes(false); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('editor.format.fontSizeCurrent', { size })}
+                  accessibilityState={{ selected }}
+                  style={{ width: 34, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center', borderWidth: selected ? 1 : 0, borderColor: selected ? colors.primary : 'transparent', backgroundColor: selected ? withAlpha(colors.primary, 0.18) : 'transparent' }}
+                >
+                  <Text style={{ color: selected ? colors['primary-active'] : colors.foreground, fontSize: 13, fontWeight: selected ? '800' : '600' }}>{size}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+        <Pressable
+          onPressIn={keepEditorSelection}
+          onPress={() => { setShowColors((current) => !current); setShowFontSizes(false); }}
           disabled={!formatState.canFormat}
           accessibilityRole="button"
           accessibilityLabel={t('editor.format.color')}
@@ -225,6 +300,7 @@ export function DocumentEditorHeader({
             {textColors.map((color) => (
               <Pressable
                 key={color}
+                onPressIn={keepEditorSelection}
                 onPress={() => { onFormatText('color', color); setShowColors(false); }}
                 accessibilityRole="button"
                 accessibilityLabel={t('editor.format.colorValue', { color })}

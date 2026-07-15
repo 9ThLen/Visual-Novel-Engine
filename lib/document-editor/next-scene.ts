@@ -50,3 +50,20 @@ export function createNextSceneRecordAfter(source: SceneRecord, scenes: SceneRec
     updatedAt: now,
   };
 }
+
+export function duplicateSceneRecord(source: SceneRecord, duplicateName: string): SceneRecord {
+  const now = Date.now();
+  return {
+    ...source,
+    id: generateId('scene'),
+    name: duplicateName,
+    timeline: JSON.parse(JSON.stringify(source.timeline)),
+    sceneState: JSON.parse(JSON.stringify(source.sceneState)),
+    connections: JSON.parse(JSON.stringify(source.connections || [])),
+    isStart: false,
+    flowX: source.flowX + 36,
+    flowY: source.flowY + 36,
+    createdAt: now,
+    updatedAt: now,
+  };
+}

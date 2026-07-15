@@ -89,6 +89,7 @@ interface PlateWebViewEditorProps {
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onOverlayActiveChange?: (active: boolean) => void;
+  onInteraction?: () => void;
   onHistoryStateChange?: (canUndo: boolean, canRedo: boolean) => void;
   onFormatStateChange?: (state: VNPlateFormatState) => void;
   /** The author asked to switch the rendered branch of a choice block. */
@@ -114,6 +115,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   onUploadBackgroundAsset,
   onUploadAudioAsset,
   onOverlayActiveChange,
+  onInteraction,
   onHistoryStateChange,
   onFormatStateChange,
   onSelectChoiceOption,
@@ -224,10 +226,12 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
 
     void Promise.all(
       backgroundAssets.map(async (asset) => {
-        const resolved = await resolveAssetUri(asset.uri);
+        const persistentUri = asset.assetUri ?? asset.uri;
+        const resolved = await resolveAssetUri(persistentUri);
         return {
           ...asset,
-          uri: typeof resolved === 'string' ? resolved : asset.uri,
+          assetUri: persistentUri,
+          uri: typeof resolved === 'string' ? resolved : persistentUri,
         };
       }),
     ).then((assets) => {
@@ -438,6 +442,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
             type: 'backgroundAssetUploaded',
             asset: {
               ...asset,
+              assetUri: asset.uri,
               uri: typeof resolved === 'string' ? resolved : asset.uri,
             },
           }, '*');
@@ -560,6 +565,13 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     postCommands();
     postScenes();
   }, [postAudioAssets, postBackgroundAssets, postCommands, postScenes]);
+  const handleIframeLoad = useCallback(() => {
+    postAssets();
+    const editorDocument = iframeRef.current?.contentDocument;
+    if (editorDocument && onInteraction) {
+      editorDocument.addEventListener('pointerdown', onInteraction);
+    }
+  }, [onInteraction, postAssets]);
   const hasOverlay = visibleFrameHeight > frameHeight + 1;
 
   useEffect(() => {
@@ -579,7 +591,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         key={editorId}
         title="VN Plate editor"
         srcDoc={html}
-        onLoad={postAssets}
+        onLoad={handleIframeLoad}
         style={{
           position: 'absolute',
           top: 0,

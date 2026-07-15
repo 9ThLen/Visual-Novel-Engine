@@ -15,7 +15,7 @@ import type { ActivePathResult } from '@/lib/document-editor/story-path';
  */
 export const BRANCH_COLOR_PALETTE = [
   '#d97706', // amber
-  '#2563eb', // blue
+  '#67683F', // sage
   '#7c3aed', // violet
   '#0d9488', // teal
   '#db2777', // pink

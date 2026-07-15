@@ -19,6 +19,7 @@ interface DocumentSceneSidebarProps {
   /** Branch accent color per scene id; renders a small dot next to the scene name. */
   branchColorBySceneId?: Record<string, string>;
   onScenePress: (sceneId: string) => void;
+  onAddScene: () => void;
   /** Off-path scenes are not in the rendered document, so pressing them navigates instead of scrolling. */
   onOffPathScenePress?: (sceneId: string) => void;
 }
@@ -31,6 +32,7 @@ export function DocumentSceneSidebar({
   offPathScenes,
   branchColorBySceneId,
   onScenePress,
+  onAddScene,
   onOffPathScenePress,
 }: DocumentSceneSidebarProps) {
   const colors = useColors(colorScheme);
@@ -45,7 +47,14 @@ export function DocumentSceneSidebar({
     <View style={{ width: 286, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors['surface-1'], padding: 14 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '800' }}>{t('editor.scenes')}</Text>
-        <Text style={{ color: colors.muted, fontSize: 18, fontWeight: '600' }}>+</Text>
+        <Pressable
+          accessibilityLabel={t('editor.addScene')}
+          hitSlop={8}
+          onPress={onAddScene}
+          style={{ paddingHorizontal: 6, paddingVertical: 2 }}
+        >
+          <Text style={{ color: colors.primary, fontSize: 20, fontWeight: '600' }}>+</Text>
+        </Pressable>
       </View>
       <ScrollView style={{ marginTop: 12 }}>
         {scenes.map((scene) => (

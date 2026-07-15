@@ -37,9 +37,17 @@ export interface BranchInfo {
   warning?: 'danglingTarget';
 }
 
+export interface IncomingScenePath {
+  sceneId: string;
+  /** Choice texts that can lead from the source scene to this scene. Empty for a direct next connection. */
+  triggerTexts: string[];
+}
+
 export interface ScenePathMetadata {
   /** Number of distinct scenes that can reach this one following reader semantics (whole graph, not just active path). */
   incomingCount: number;
+  /** Distinct source scenes and the choice texts that can lead to this one. */
+  incomingPaths: IncomingScenePath[];
   isMergePoint: boolean;
   /**
    * The explicit choice edge this scene was reached through on the active
@@ -87,25 +95,37 @@ function findNextConnectionTarget(scene: SceneRecord): string | undefined {
  * count, or every scene downstream of a linear `next` chain would look like a
  * merge point and branch tinting would never appear.
  */
-function computeIncomingCounts(scenes: SceneRecord[]): Map<string, number> {
-  const counts = new Map<string, number>();
+function computeIncomingPaths(scenes: SceneRecord[]): Map<string, IncomingScenePath[]> {
+  const incoming = new Map<string, Map<string, Set<string>>>();
   for (const scene of scenes) {
     const nextTarget = findNextConnectionTarget(scene);
     const choiceStep = findChoiceStep(scene);
-    const targets = new Set<string>();
     if (choiceStep) {
       for (const option of (choiceStep.data as ChoiceBlockData).options) {
         const target = option.targetSceneId ?? nextTarget;
-        if (target) targets.add(target);
+        if (target) {
+          const sourcePaths = incoming.get(target) ?? new Map<string, Set<string>>();
+          const triggerTexts = sourcePaths.get(scene.id) ?? new Set<string>();
+          triggerTexts.add(option.text);
+          sourcePaths.set(scene.id, triggerTexts);
+          incoming.set(target, sourcePaths);
+        }
       }
     } else if (nextTarget) {
-      targets.add(nextTarget);
-    }
-    for (const targetId of targets) {
-      counts.set(targetId, (counts.get(targetId) ?? 0) + 1);
+      const sourcePaths = incoming.get(nextTarget) ?? new Map<string, Set<string>>();
+      if (!sourcePaths.has(scene.id)) sourcePaths.set(scene.id, new Set<string>());
+      incoming.set(nextTarget, sourcePaths);
     }
   }
-  return counts;
+  return new Map(
+    Array.from(incoming.entries(), ([targetId, sourcePaths]) => [
+      targetId,
+      Array.from(sourcePaths.entries(), ([sceneId, triggerTexts]) => ({
+        sceneId,
+        triggerTexts: Array.from(triggerTexts),
+      })),
+    ]),
+  );
 }
 
 /**
@@ -127,7 +147,7 @@ export function expandActivePath(
   selections: ChoiceSelectionMap = {},
 ): ActivePathResult {
   const byId = new Map(scenes.map((scene) => [scene.id, scene]));
-  const incomingCounts = computeIncomingCounts(scenes);
+  const incomingPathsBySceneId = computeIncomingPaths(scenes);
 
   const activeScenes: SceneRecord[] = [];
   const metadataBySceneId: Record<string, ScenePathMetadata> = {};
@@ -141,12 +161,14 @@ export function expandActivePath(
     visited.add(current.id);
     activeScenes.push(current);
 
-    const incomingCount = incomingCounts.get(current.id) ?? 0;
+    const incomingPaths = incomingPathsBySceneId.get(current.id) ?? [];
+    const incomingCount = incomingPaths.length;
     const isMergePoint = incomingCount > 1;
     if (isMergePoint) viaChoiceTrail = [];
     const viaChoice = viaChoiceTrail[viaChoiceTrail.length - 1];
     metadataBySceneId[current.id] = {
       incomingCount,
+      incomingPaths,
       isMergePoint,
       ...(viaChoice ? { viaChoice, viaChoiceTrail } : {}),
     };

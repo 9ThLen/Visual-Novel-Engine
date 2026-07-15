@@ -6,6 +6,10 @@ export function createEmbeddedStyles(): string {
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       overflow: visible;
     }
+    ::selection {
+      background: color-mix(in srgb, var(--plate-primary, #67683F) 38%, var(--plate-surface, #FEFAF6));
+      color: var(--plate-foreground, #3A281F);
+    }
     .shell {
       width: 100%;
       height: auto;
@@ -224,24 +228,71 @@ export function createEmbeddedStyles(): string {
     .stop-effect-block .void-title,
     .stop-effect-block .background-asset { font-size: 13px; }
     .interactive-object-block {
-      display: inline-flex;
-      width: auto;
-      max-width: min(100%, 520px);
-      min-height: 0;
-      margin: 5px 2px 9px;
-      padding: 5px 6px 5px 8px;
-      gap: 8px;
-      border-color: #bae6fd;
-      border-radius: 8px;
-      background: #f0f9ff;
+      display: flex;
+      width: 100%;
+      min-height: 60px;
+      margin: 10px 0 14px;
+      padding: 10px 12px;
+      gap: 12px;
+      border-color: var(--plate-border-subtle, #E5DDD3);
+      border-radius: 14px;
+      background: var(--plate-surface, #FEFAF6);
       cursor: pointer;
-      vertical-align: middle;
+      align-items: center;
     }
-    .interactive-object-block:hover { background: #e0f2fe; }
-    .interactive-object-icon { color: #0284c7; font-size: 16px; line-height: 1; }
-    .interactive-object-copy { display: flex; min-width: 0; align-items: baseline; gap: 7px; }
-    .interactive-object-name { color: #0f172a; font-size: 13px; font-weight: 700; white-space: nowrap; }
-    .interactive-object-meta { color: #475569; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .interactive-object-block:hover { background: var(--plate-surface-muted, #F6F0E9); }
+    .interactive-object-block.has-warning { border-color: #D8B56A; }
+    .interactive-object-icon { color: var(--plate-primary, #67683F); font-size: 22px; line-height: 1; }
+    .interactive-object-copy { display: grid; min-width: 0; flex: 1; gap: 2px; }
+    .interactive-object-kicker { color: var(--plate-foreground-secondary, #74665C); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .interactive-object-name { color: var(--plate-foreground, #3A281F); font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .interactive-object-meta { color: var(--plate-foreground-secondary, #74665C); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .interactive-object-warning { padding: 3px 7px; color: #7C4A03; background: #FEF3C7; border-radius: 999px; font-size: 11px; white-space: nowrap; }
+    .interactive-object-backdrop { position: fixed; z-index: 119; inset: 0; background: rgba(58, 40, 31, .34); backdrop-filter: blur(1px); }
+    .interactive-object-popover {
+      position: fixed;
+      z-index: 120;
+      top: max(16px, 5vh);
+      left: 50%;
+      width: min(540px, calc(100vw - 24px));
+      max-height: 90vh;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      color: var(--plate-foreground, #3A281F);
+      background: var(--plate-surface, #FEFAF6);
+      border: 1px solid var(--plate-border, #D5CBC1);
+      border-radius: 16px;
+      box-shadow: 0 18px 50px rgba(58, 40, 31, .22);
+    }
+    .interactive-popover-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 16px 18px 12px; border-bottom: 1px solid var(--plate-border-subtle, #E5DDD3); }
+    .interactive-popover-header strong { font-size: 16px; }
+    .interactive-popover-header p { margin: 3px 0 0; color: var(--plate-foreground-secondary, #74665C); font-size: 12px; }
+    .interactive-popover-body { display: grid; gap: 12px; padding: 16px 18px; overflow-y: auto; }
+    .interactive-stage { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background-color: var(--plate-surface-muted, #F6F0E9); background-image: linear-gradient(145deg, var(--plate-surface-muted, #F6F0E9), var(--plate-border-subtle, #E5DDD3)); background-position: center; background-size: cover; border: 1px solid var(--plate-border, #D5CBC1); border-radius: 10px; }
+    .interactive-stage-hotspot { position: absolute; min-width: 1%; min-height: 1%; touch-action: none; background: color-mix(in srgb, var(--plate-primary, #67683F) 24%, transparent); border: 2px solid var(--plate-primary, #67683F); border-radius: 6px; cursor: move; }
+    .interactive-stage-hotspot:focus-visible { outline: 3px solid color-mix(in srgb, var(--plate-primary, #67683F) 45%, transparent); outline-offset: 2px; }
+    .interactive-stage-hotspot.is-manipulating { cursor: grabbing; }
+    .interactive-resize-handle { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; background: var(--plate-primary, #67683F); border: 2px solid var(--plate-surface, #FEFAF6); border-radius: 50%; cursor: nwse-resize; }
+    .interactive-geometry { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .interactive-presets, .interactive-toggles, .interactive-actions-heading, .interactive-action-header { display: flex; align-items: center; gap: 8px; }
+    .interactive-toggles { justify-content: space-between; padding: 10px 12px; background: var(--plate-surface-muted, #F6F0E9); border-radius: 10px; }
+    .toggle-row { display: flex; align-items: center; gap: 7px; color: var(--plate-foreground-secondary, #74665C); font-size: 12px; }
+    .interactive-actions-heading, .interactive-action-header { justify-content: space-between; }
+    .interactive-actions-list { display: grid; gap: 10px; }
+    .interactive-action-card { display: grid; gap: 9px; padding: 12px; border: 1px solid var(--plate-border-subtle, #E5DDD3); border-radius: 12px; }
+    .interactive-empty-actions { margin: 0; padding: 14px; color: var(--plate-foreground-secondary, #74665C); background: var(--plate-surface-muted, #F6F0E9); border-radius: 10px; font-size: 12px; text-align: center; }
+    .interactive-object-error { min-height: 16px; margin: 0; color: #B42318; font-size: 12px; }
+    .interactive-popover-footer { display: grid; grid-template-columns: auto 1fr auto auto; padding: 12px 18px; border-top: 1px solid var(--plate-border-subtle, #E5DDD3); }
+    .icon-button { min-width: 28px; min-height: 28px; color: inherit; background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
+    .icon-button:hover { background: var(--plate-surface-muted, #F6F0E9); }
+    .danger { color: #B42318; }
+    @media (max-width: 560px) {
+      .interactive-geometry { grid-template-columns: repeat(2, 1fr); }
+      .interactive-toggles { align-items: flex-start; flex-direction: column; }
+      .interactive-popover-footer { grid-template-columns: 1fr 1fr; }
+      .interactive-popover-footer > span { display: none; }
+    }
     .transition-block {
       min-height: 40px;
       margin: 8px 0 12px;
@@ -337,9 +388,12 @@ export function createEmbeddedStyles(): string {
       transform: translateY(-1px);
     }
     .choice-option-card.is-active {
-      background: #eff6ff;
-      border-color: var(--branch-color, #60a5fa);
-      box-shadow: 0 0 0 1px var(--branch-color, #60a5fa);
+      background: var(--plate-primary-soft, rgba(103, 104, 63, 0.12));
+      border-color: var(--branch-color, var(--plate-primary, #67683F));
+      box-shadow: 0 0 0 1px var(--branch-color, var(--plate-primary, #67683F));
+    }
+    .choice-option-card.is-active .choice-option-card-text {
+      color: var(--plate-foreground, #3A281F);
     }
     .choice-option-card.is-broken {
       border-color: #fca5a5;
@@ -707,6 +761,24 @@ export function createEmbeddedStyles(): string {
       margin: 0 0 6px;
       font-size: 13px;
       font-weight: 750;
+    }
+    .background-asset-field {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+    }
+    .background-asset-field .popover-label {
+      flex: 0 0 auto;
+      margin: 0;
+    }
+    .background-asset-value {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--plate-foreground, #3A281F);
+      font: 500 14px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .popover-control {
       width: 100%;

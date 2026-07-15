@@ -7,6 +7,7 @@ export interface VNPlateBackgroundAsset {
   id: string;
   name: string;
   uri: string;
+  assetUri?: string;
 }
 
 export interface VNPlateAudioAsset {
@@ -84,6 +85,9 @@ export type VNPlateFormatCommand =
   | 'alignLeft'
   | 'alignCenter'
   | 'alignRight'
+  | 'fontSize'
+  | 'fontSizeDecrease'
+  | 'fontSizeIncrease'
   | 'color'
   | 'clear';
 
@@ -93,6 +97,7 @@ export interface VNPlateFormatState {
   underline: boolean;
   strikethrough: boolean;
   alignment: 'left' | 'center' | 'right';
+  fontSize: number;
   color: string | null;
   canFormat: boolean;
 }

@@ -11,6 +11,7 @@ interface EmbeddedHarnessApi {
   undoHistory: () => void;
   redoHistory: () => void;
   saveNow: () => void;
+  openBackgroundPopover: (block: HTMLElement, anchor?: HTMLElement) => void;
 }
 
 function evalEmbeddedScriptForHarness(
@@ -27,7 +28,8 @@ function evalEmbeddedScriptForHarness(
         getCharacters: function() { return characters; },
         undoHistory: undoHistory,
         redoHistory: redoHistory,
-        saveNow: saveNow
+        saveNow: saveNow,
+        openBackgroundPopover: openBackgroundPopover
       };
     })();
   `);
@@ -291,6 +293,60 @@ function openCharacterPopover(api: EmbeddedHarnessApi) {
 // parses its contents. Compiling it with the Function constructor (without
 // executing) catches syntax errors introduced by edits to the template.
 describe('createEmbeddedScript', () => {
+  it('creates, edits, validates, and serializes an interactive object without browser prompts', () => {
+    const harness = createVoidBlockHarness();
+    const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+    placeCaretInNewParagraph();
+
+    api.insertCommand('interactive_object');
+
+    const block = document.querySelector('.interactive-object-block') as HTMLElement;
+    const popover = document.querySelector('.interactive-object-popover') as HTMLElement;
+    expect(block).not.toBeNull();
+    expect(block.textContent).toContain('Немає дій');
+    expect(popover).not.toBeNull();
+
+    (popover.querySelector('[data-object-action="add"]') as HTMLButtonElement).click();
+    (popover.querySelector('#ioName') as HTMLInputElement).value = 'Двері';
+    (popover.querySelector('[data-action-field="text"]') as HTMLTextAreaElement).value = 'Зачинено.';
+    const hotspot = popover.querySelector('.interactive-stage-hotspot') as HTMLElement;
+    hotspot.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    expect((popover.querySelector('[data-position="x"]') as HTMLInputElement).value).toBe('45');
+    (popover.querySelector('[data-position="x"]') as HTMLInputElement).value = '95';
+    (popover.querySelector('[data-object-action="save"]') as HTMLButtonElement).click();
+    expect(document.querySelector('.interactive-object-popover')).not.toBeNull();
+    expect(popover.querySelector('.interactive-object-error')?.textContent).toContain('межах сцени');
+    (popover.querySelector('[data-position="x"]') as HTMLInputElement).value = '44';
+    (popover.querySelector('[data-object-action="save"]') as HTMLButtonElement).click();
+
+    expect(document.querySelector('.interactive-object-popover')).toBeNull();
+    expect(block.textContent).toContain('Двері');
+    expect(block.textContent).toContain('1 дія');
+    const lastSave = saveMessages(harness.messages).at(-1);
+    const saved = lastSave?.scene.blocks.find((item) => item.id === block.dataset.id) as unknown as {
+      blockType: string;
+      step: { blockType: string; data: { name: string; actions: { type: string; text: string }[] } };
+    };
+    expect(saved.blockType).toBe('interactive_object');
+    expect(saved.step.blockType).toBe('interactive_object');
+    expect(saved.step.data).toMatchObject({ name: 'Двері', actions: [{ type: 'dialogue', text: 'Зачинено.' }] });
+    harness.cleanup();
+  });
+
+  it('removes a newly inserted interactive object when its editor is cancelled', () => {
+    const harness = createVoidBlockHarness();
+    const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+    placeCaretInNewParagraph();
+
+    api.insertCommand('interactive_object');
+    expect(document.querySelector('.interactive-object-block')).not.toBeNull();
+    (document.querySelector('[data-object-action="cancel"]') as HTMLButtonElement).click();
+
+    expect(document.querySelector('.interactive-object-block')).toBeNull();
+    expect(document.querySelector('.interactive-object-popover')).toBeNull();
+    harness.cleanup();
+  });
+
   it('undoes one text group at a time and keeps structural block changes atomic', () => {
     const harness = createVoidBlockHarness();
     const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
@@ -401,6 +457,14 @@ describe('createEmbeddedScript', () => {
     expect(styles).not.toContain('background: #ef4444');
     expect(styles).not.toContain('border-color: #60a5fa');
     expect(styles).not.toContain('border-color: #7c3aed');
+  });
+
+  it('uses the sage palette for editor text selection', () => {
+    const styles = createEmbeddedStyles();
+
+    expect(styles).toContain('::selection');
+    expect(styles).toContain('var(--plate-primary, #67683F) 38%');
+    expect(styles).toContain('color: var(--plate-foreground, #3A281F)');
   });
 
   it('generates character sprite upload guards for transparent PNG and WebP files', () => {
@@ -551,6 +615,12 @@ describe('createEmbeddedScript', () => {
     expect(script).toContain('"description":"Змінити фонове зображення"');
     expect(script).toContain("message.type === 'commandsUpdated'");
     expect(script).not.toContain('"title":"Background"');
+    expect(script).toContain("applyInteractiveObjectData(block, defaultInteractiveObjectData())");
+    expect(script).toContain('openInteractiveObjectPopover(block)');
+    expect(script).toContain("if (commandId === 'interactive_object')");
+    expect(script).toContain('Інтерактивний об’єкт');
+    expect(script).toContain('Немає дій');
+    expect(script).not.toContain("window.prompt('Object name'");
 
     const html = createVNPlateEditorHtml({
       editorId: 'editor_test',
@@ -711,5 +781,43 @@ describe('createEmbeddedScript', () => {
     } finally {
       harness.cleanup();
     }
+  });
+
+  it('matches a persisted background URI to its resolved preview without exposing an editable asset field', () => {
+    document.body.innerHTML = `
+      <main class="paper">
+        <input id="title" value="Scene 1" />
+        <div id="editor" contenteditable="true"></div>
+      </main>
+      <div id="slashMenu" class="slash-menu hidden"></div>
+    `;
+    const api = evalEmbeddedScriptForHarness({
+      editorId: 'background_preview_test',
+      scene: { sceneId: 'scene_1', sceneName: 'Scene 1', blocks: [] },
+      characters: [],
+      isPhone: false,
+      backgroundAssets: [{
+        id: 'asset_1',
+        name: 'Ancient Library.png',
+        uri: 'blob:resolved-background',
+        assetUri: 'assets/background/bg-ancient-library.png',
+      }],
+      audioAssets: [],
+      scenes: [],
+    }, embeddedCommands);
+    const block = appendVoidBlock(document.getElementById('editor')!, 'background_1', 'background', 'background-block');
+    block.dataset.assetId = 'assets/background/bg-ancient-library.png';
+    block.dataset.transition = 'fade';
+    block.dataset.durationMs = '500';
+
+    api.openBackgroundPopover(block, block);
+
+    expect(document.querySelector<HTMLInputElement>('#bgAssetInput')).toBeNull();
+    expect(document.querySelector('#bgAssetValue')?.textContent).toBe('Ancient Library');
+    expect(document.querySelector<HTMLElement>('.background-preview')?.style.backgroundImage)
+      .toContain('blob:resolved-background');
+
+    delete (window as unknown as { __embeddedHarnessApi?: EmbeddedHarnessApi }).__embeddedHarnessApi;
+    document.body.innerHTML = '';
   });
 });

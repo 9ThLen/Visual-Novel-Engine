@@ -1,6 +1,7 @@
 import {
   connectSourceToNext,
   createNextSceneRecordAfter,
+  duplicateSceneRecord,
   insertSceneAfter,
 } from '@/lib/document-editor/next-scene';
 import type { SceneRecord } from '@/lib/engine/types';
@@ -68,5 +69,20 @@ describe('next scene helpers', () => {
     expect(created.flowX).toBe(370);
     expect(created.flowY).toBe(20);
     expect(created.isStart).toBe(false);
+  });
+
+  it('duplicates scene content without preserving start status or object references', () => {
+    const source = scene('source', {
+      isStart: true,
+      connections: [{ targetSceneId: 'target', outputPort: 'next', label: 'Next' }],
+    });
+    const duplicate = duplicateSceneRecord(source, 'source (copy)');
+
+    expect(duplicate.id).toMatch(/^scene_/);
+    expect(duplicate.name).toBe('source (copy)');
+    expect(duplicate.isStart).toBe(false);
+    expect(duplicate.connections).toEqual(source.connections);
+    expect(duplicate.connections).not.toBe(source.connections);
+    expect(duplicate.sceneState).not.toBe(source.sceneState);
   });
 });

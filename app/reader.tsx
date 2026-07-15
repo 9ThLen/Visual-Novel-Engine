@@ -249,11 +249,7 @@ export default function ReaderScreen() {
       variables: normalizeRuntimeVariables(latestVariablesRef.current),
     });
     void stopReaderPlayback(audioManager);
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/tabs');
-    }
+    router.replace('/tabs');
   }, [playbackState, router, updatePlaybackState]);
 
   const navigateToScene = useCallback(async (

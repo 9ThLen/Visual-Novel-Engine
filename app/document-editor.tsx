@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -9,16 +9,18 @@ import { ScreenContainer } from '@/components/screen-container';
 import { startBranchScene } from '@/lib/document-editor/branch-actions';
 import { buildBranchBreadcrumbTrail } from '@/lib/document-editor/branch-breadcrumb';
 import { computeBranchColorBySceneId } from '@/lib/document-editor/branch-colors';
-import { expandActivePath } from '@/lib/document-editor/story-path';
+import { expandActivePath, type IncomingScenePath } from '@/lib/document-editor/story-path';
 import {
   connectSourceToNext,
   createNextSceneRecordAfter,
+  duplicateSceneRecord,
   insertSceneAfter,
 } from '@/lib/document-editor/next-scene';
 import { useI18n } from '@/hooks/use-i18n';
 import { getPlaybackAudioLibraryPure } from '@/lib/audio-library';
 import { addAssetToLibraryPure } from '@/lib/media-library-service';
-import { getStoryImageAssets } from '@/lib/story-image-library';
+import { getStoryGalleryImageAssets } from '@/lib/story-image-library';
+import { showToast } from '@/lib/toast-store';
 import {
   selectCanonicalSceneRecord,
   selectSceneRecordsForStory,
@@ -66,6 +68,7 @@ export default function DocumentEditorRoute() {
   const setMediaLibrary = useAppStore((state) => state.setMediaLibrary);
   const addImageAssetToStory = useAppStore((state) => state.addImageAssetToStory);
   const reorderScenes = useAppStore((state) => state.reorderScenes);
+  const deleteScene = useAppStore((state) => state.deleteScene);
   const updateStoryMetadata = useAppStore((state) => state.updateStoryMetadata);
   const branchSelections = useBranchSelections(useMemo(() => selectBranchSelections(storyId), [storyId]));
   const selectChoiceOption = useBranchSelections((state) => state.selectChoiceOption);
@@ -94,16 +97,23 @@ export default function DocumentEditorRoute() {
     }
     return counts;
   }, [activePath.metadataBySceneId]);
+  const incomingPathsBySceneId = useMemo(() => {
+    const paths: Record<string, IncomingScenePath[]> = {};
+    for (const [id, metadata] of Object.entries(activePath.metadataBySceneId)) {
+      paths[id] = metadata.incomingPaths;
+    }
+    return paths;
+  }, [activePath.metadataBySceneId]);
   const branchColorBySceneId = useMemo(() => computeBranchColorBySceneId(activePath), [activePath]);
   const branchBreadcrumbTrail = useMemo(() => buildBranchBreadcrumbTrail(activePath), [activePath]);
   const backgroundAssets = useMemo<VNPlateBackgroundAsset[]>(
-    () => getStoryImageAssets(storyId ?? '', imageAssetIdsByStory, mediaLibrary)
+    () => getStoryGalleryImageAssets(storyId ?? '', imageAssetIdsByStory, mediaLibrary, scenes)
       .map((asset) => ({
         id: asset.id,
         name: asset.name,
         uri: asset.uri,
       })),
-    [imageAssetIdsByStory, mediaLibrary, storyId],
+    [imageAssetIdsByStory, mediaLibrary, scenes, storyId],
   );
   const audioAssets = useMemo<VNPlateAudioAsset[]>(
     () => storyId
@@ -162,6 +172,45 @@ export default function DocumentEditorRoute() {
       cancelled = true;
     };
   }, [hydrateSceneRecordsForStory, isLoaded, storyId]);
+
+  const handleDuplicateScene = useCallback((sourceSceneId: string) => {
+    const allScenes = selectSceneRecordsForStory(storyId)(useAppStore.getState());
+    const sourceScene = allScenes.find((scene) => scene.id === sourceSceneId);
+    if (!sourceScene) return;
+
+    const duplicate = duplicateSceneRecord(
+      sourceScene,
+      t('editor.sceneManager.copyName', { name: sourceScene.name }),
+    );
+    saveSceneRecord(duplicate);
+    reorderScenes(storyId, insertSceneAfter(
+      allScenes.map((scene) => scene.id),
+      sourceSceneId,
+      duplicate.id,
+    ));
+    updateStoryMetadata(storyId, { sceneCount: allScenes.length + 1 });
+    router.push({ pathname: '/document-editor', params: { storyId, sceneId: duplicate.id } });
+  }, [reorderScenes, router, saveSceneRecord, storyId, t, updateStoryMetadata]);
+
+  const handleDeleteScene = useCallback((deletedSceneId: string) => {
+    const allScenes = selectSceneRecordsForStory(storyId)(useAppStore.getState());
+    if (allScenes.length <= 1) {
+      showToast(t('editor.cannotDeleteLastScene'), 'error');
+      return;
+    }
+
+    const deletedIndex = allScenes.findIndex((scene) => scene.id === deletedSceneId);
+    if (deletedIndex < 0) return;
+    const fallbackScene = allScenes[deletedIndex + 1] ?? allScenes[deletedIndex - 1];
+
+    deleteScene(storyId, deletedSceneId);
+    reorderScenes(storyId, allScenes.filter((scene) => scene.id !== deletedSceneId).map((scene) => scene.id));
+    updateStoryMetadata(storyId, { sceneCount: allScenes.length - 1 });
+
+    if (deletedSceneId === sceneId && fallbackScene) {
+      router.replace({ pathname: '/document-editor', params: { storyId, sceneId: fallbackScene.id } });
+    }
+  }, [deleteScene, reorderScenes, router, sceneId, storyId, t, updateStoryMetadata]);
 
   if (!isLoaded || !sceneRecordsHydrated) {
     return (
@@ -290,6 +339,7 @@ export default function DocumentEditorRoute() {
       onSelectChoiceOption={handleSelectChoiceOption}
       onStartBranchOption={handleStartBranchOption}
       incomingCountBySceneId={incomingCountBySceneId}
+      incomingPathsBySceneId={incomingPathsBySceneId}
       branchColorBySceneId={viewMode === 'all' ? undefined : branchColorBySceneId}
       branchBreadcrumbTrail={viewMode === 'all' ? undefined : branchBreadcrumbTrail}
       viewMode={viewMode}
@@ -302,6 +352,8 @@ export default function DocumentEditorRoute() {
       protectedCharacterIds={protectedCharacterIds}
       onSave={handleSave}
       onCreateNextScene={handleCreateNextScene}
+      onDuplicateScene={handleDuplicateScene}
+      onDeleteScene={handleDeleteScene}
       onUploadBackgroundAsset={handleUploadBackgroundAsset}
       onUploadAudioAsset={handleUploadAudioAsset}
       onGallery={() => router.push({ pathname: '/story-gallery', params: { storyId } })}

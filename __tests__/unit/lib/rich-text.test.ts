@@ -59,6 +59,17 @@ describe('parseRichText', () => {
     ]);
   });
 
+  it('parses a bounded font size and preserves nested formatting', () => {
+    expect(parseRichText('[size=20]large **bold**[/size]')).toEqual([
+      { text: 'large ', fontSize: 20 },
+      { text: 'bold', fontSize: 20, bold: true },
+    ]);
+  });
+
+  it('drops an out-of-range font size while preserving its text', () => {
+    expect(parseRichText('[size=80]text[/size]')).toEqual([{ text: 'text' }]);
+  });
+
   it('parses bold with nested italic', () => {
     expect(parseRichText('**bold *italic* bold**')).toEqual([
       { text: 'bold ', bold: true },

@@ -26,6 +26,7 @@ export interface RichTextSpan {
   italic?: boolean;
   underline?: boolean;
   strikethrough?: boolean;
+  fontSize?: number;
   color?: string;
 }
 
@@ -34,12 +35,15 @@ interface ActiveStyle {
   italic?: boolean;
   underline?: boolean;
   strikethrough?: boolean;
+  fontSize?: number;
   color?: string;
 }
 
 const BOLD_MARK = '**';
 const COLOR_OPEN = '[color=';
 const COLOR_CLOSE = '[/color]';
+const SIZE_OPEN = '[size=';
+const SIZE_CLOSE = '[/size]';
 const ALIGNMENT_PREFIX = /^\[align=(left|center|right)\]/;
 
 export type RichTextAlignment = 'left' | 'center' | 'right';
@@ -86,6 +90,7 @@ function pushSpan(out: RichTextSpan[], text: string, style: ActiveStyle): void {
   if (style.italic) span.italic = true;
   if (style.underline) span.underline = true;
   if (style.strikethrough) span.strikethrough = true;
+  if (style.fontSize) span.fontSize = style.fontSize;
   if (style.color) span.color = style.color;
   out.push(span);
 }
@@ -170,6 +175,25 @@ function parseInto(input: string, style: ActiveStyle, out: RichTextSpan[]): void
         }
       }
       // Malformed / unclosed — treat the '[' as literal text.
+      buffer += input[i];
+      i += 1;
+      continue;
+    }
+
+    // Font size: [size=20]...[/size]
+    if (input.startsWith(SIZE_OPEN, i)) {
+      const tagEnd = input.indexOf(']', i + SIZE_OPEN.length);
+      if (tagEnd !== -1) {
+        const closeIdx = input.indexOf(SIZE_CLOSE, tagEnd + 1);
+        if (closeIdx !== -1) {
+          const size = Number(input.slice(i + SIZE_OPEN.length, tagEnd));
+          const inner = input.slice(tagEnd + 1, closeIdx);
+          flush();
+          parseInto(inner, size >= 12 && size <= 32 ? { ...style, fontSize: size } : { ...style }, out);
+          i = closeIdx + SIZE_CLOSE.length;
+          continue;
+        }
+      }
       buffer += input[i];
       i += 1;
       continue;

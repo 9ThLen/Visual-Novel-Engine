@@ -255,9 +255,38 @@ describe('expandActivePath', () => {
 
     expect(result.activeScenes.map((s) => s.id)).toEqual(['a', 'left', 'merge', 'after']);
     expect(result.metadataBySceneId.merge.incomingCount).toBe(2);
+    expect(result.metadataBySceneId.left.incomingPaths).toEqual([
+      { sceneId: 'a', triggerTexts: ['Left'] },
+    ]);
+    expect(result.metadataBySceneId.merge.incomingPaths).toEqual([
+      { sceneId: 'left', triggerTexts: [] },
+      { sceneId: 'right', triggerTexts: [] },
+    ]);
     expect(result.metadataBySceneId.merge.isMergePoint).toBe(true);
     expect(result.metadataBySceneId.merge.viaChoice).toBeUndefined();
     expect(result.metadataBySceneId.after.viaChoice).toBeUndefined();
+  });
+
+  it('keeps every choice text when several options from one scene reach the same target', () => {
+    const scenes = [
+      scene('start', {
+        isStart: true,
+        timeline: [
+          choiceStep('choice_1', [
+            { id: 'opt_a', text: 'Take the key', targetSceneId: 'merge' },
+            { id: 'opt_b', text: 'Leave the key', targetSceneId: 'merge' },
+          ]),
+        ],
+      }),
+      scene('merge'),
+    ];
+
+    const result = expandActivePath(scenes);
+
+    expect(result.metadataBySceneId.merge.incomingCount).toBe(1);
+    expect(result.metadataBySceneId.merge.incomingPaths).toEqual([
+      { sceneId: 'start', triggerTexts: ['Take the key', 'Leave the key'] },
+    ]);
   });
 
   it('produces a different active path tail when the selection changes', () => {

@@ -22,6 +22,7 @@ function spanStyle(span: RichTextSpan): TextStyle {
     fontWeight: span.bold ? '700' : undefined,
     fontStyle: span.italic ? 'italic' : undefined,
     color: span.color,
+    fontSize: span.fontSize,
     textDecorationLine: decorations ? decorations as TextStyle['textDecorationLine'] : undefined,
   };
 }

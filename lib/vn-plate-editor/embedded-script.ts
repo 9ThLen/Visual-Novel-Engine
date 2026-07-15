@@ -41,9 +41,12 @@ const EMBEDDED_SCRIPT_BODY = `
     var activeStopEffectBlock = null;
     var stopEffectPopover = null;
     var stopEffectDraft = null;
+    var activeInteractiveObjectBlock = null;
+    var interactiveObjectPopover = null;
+    var interactiveObjectDraft = null;
     var branchInfo = [];
     // Must stay in sync with BRANCH_COLOR_PALETTE in lib/document-editor/branch-colors.ts
-    var branchPalette = ['#d97706', '#2563eb', '#7c3aed', '#0d9488', '#db2777', '#65a30d'];
+    var branchPalette = ['#d97706', '#67683F', '#7c3aed', '#0d9488', '#db2777', '#65a30d'];
     // Mirrors branchShadowColor in lib/document-editor/branch-colors.ts — keep in sync
     function branchShadow(hexColor, alpha) {
       var r = parseInt(hexColor.slice(1, 3), 16);
@@ -152,6 +155,7 @@ const EMBEDDED_SCRIPT_BODY = `
       closeLabelPopover();
       closeGotoPopover();
       closeStopEffectPopover();
+      closeInteractiveObjectPopover();
       closeCharacterPopover();
       closeEffectPopover();
       closeAudioPopover();
@@ -332,6 +336,8 @@ const EMBEDDED_SCRIPT_BODY = `
       if (tag === 's' || tag === 'strike' || String(style.textDecoration || style.textDecorationLine || '').indexOf('line-through') >= 0) value = '[s]' + value + '[/s]';
       var color = normalizedCssColor(style.color);
       if (color) value = '[color=' + color + ']' + value + '[/color]';
+      var fontSize = parseInt(style.fontSize || (tag === 'font' ? window.getComputedStyle(node).fontSize : ''), 10);
+      if (fontSize >= 12 && fontSize <= 32) value = '[size=' + fontSize + ']' + value + '[/size]';
       return value;
     }
 
@@ -392,6 +398,7 @@ const EMBEDDED_SCRIPT_BODY = `
         ? (selection.anchorNode.nodeType === Node.ELEMENT_NODE ? selection.anchorNode : selection.anchorNode.parentElement)
         : null;
       var block = anchor && anchor.closest ? anchor.closest('p[data-kind]') : null;
+      var computedFontSize = anchor && window.getComputedStyle ? parseInt(window.getComputedStyle(anchor).fontSize, 10) : 17;
       post({
         type: 'formatState',
         state: {
@@ -401,13 +408,39 @@ const EMBEDDED_SCRIPT_BODY = `
           underline: canFormat && document.queryCommandState('underline'),
           strikethrough: canFormat && document.queryCommandState('strikeThrough'),
           alignment: alignmentForNode(block),
+          fontSize: computedFontSize >= 12 && computedFontSize <= 32 ? computedFontSize : 17,
           color: canFormat ? normalizedCssColor(document.queryCommandValue('foreColor')) : null
         }
       });
     }
 
     function applyFormatCommand(command, value) {
-      if ((!selectionIsInEditor() && !restoreFormatSelection()) || typeof document.execCommand !== 'function') return;
+      restoreFormatSelection();
+      if (!selectionIsInEditor() || typeof document.execCommand !== 'function') return;
+      if (command === 'fontSize' || command === 'fontSizeDecrease' || command === 'fontSizeIncrease') {
+        var selection = window.getSelection();
+        var anchor = selection && selection.anchorNode
+          ? (selection.anchorNode.nodeType === Node.ELEMENT_NODE ? selection.anchorNode : selection.anchorNode.parentElement)
+          : null;
+        var currentSize = anchor && window.getComputedStyle ? parseInt(window.getComputedStyle(anchor).fontSize, 10) : 17;
+        var sizes = [12, 14, 17, 20, 24, 28, 32];
+        var requestedSize = Number(value);
+        var nextSize = command === 'fontSize'
+          ? (sizes.indexOf(requestedSize) >= 0 ? requestedSize : currentSize)
+          : command === 'fontSizeIncrease'
+            ? (sizes.find(function(size) { return size > currentSize; }) || 32)
+            : (sizes.slice().reverse().find(function(size) { return size < currentSize; }) || 12);
+        document.execCommand('fontSize', false, '7');
+        Array.prototype.slice.call(editor.querySelectorAll('font[size="7"]')).forEach(function(font) {
+          font.removeAttribute('size');
+          font.style.fontSize = nextSize + 'px';
+        });
+        rememberFormatSelection();
+        recordHistoryChange('structural', '', '');
+        saveSnapshotNow();
+        postFormatState();
+        return;
+      }
       var nativeCommand = command === 'strikethrough' ? 'strikeThrough'
         : command === 'alignLeft' ? 'justifyLeft'
         : command === 'alignCenter' ? 'justifyCenter'
@@ -1663,7 +1696,6 @@ const EMBEDDED_SCRIPT_BODY = `
         paragraph.dataset.spriteId = character.authoring.currentSpriteId || '';
       }
       configureSpeakerToken(activeCharacterToken, character, paragraph && paragraph.dataset.id);
-      saveNow();
     }
 
     function assetLabel(asset) {
@@ -1674,7 +1706,7 @@ const EMBEDDED_SCRIPT_BODY = `
       var normalized = normalizeAssetName(value);
       if (!normalized) return null;
       return backgroundAssets.find(function(asset) {
-        return asset.id === normalized || asset.uri === normalized || asset.name === normalized || assetLabel(asset) === normalized;
+        return asset.id === normalized || asset.uri === normalized || asset.assetUri === normalized || asset.name === normalized || assetLabel(asset) === normalized;
       }) || null;
     }
 
@@ -1791,8 +1823,7 @@ const EMBEDDED_SCRIPT_BODY = `
       var popover = document.createElement('div');
       popover.className = 'background-popover';
       popover.innerHTML =
-        '<label class="popover-label" for="bgAssetInput">Назва фону</label>' +
-        '<input id="bgAssetInput" class="popover-control" value="" />' +
+        '<div class="background-asset-field"><span class="popover-label">Назва фону</span><span id="bgAssetValue" class="background-asset-value"></span></div>' +
         '<div class="background-preview"></div>' +
         '<div class="preview-actions"><button type="button" class="popover-button" data-action="choose-background">Обрати</button></div>' +
         '<div class="asset-picker hidden"></div>' +
@@ -1817,11 +1848,11 @@ const EMBEDDED_SCRIPT_BODY = `
 
       document.body.appendChild(popover);
       backgroundPopover = popover;
-      popover.querySelector('#bgAssetInput').value = backgroundDraft.assetId || '';
+      popover.querySelector('#bgAssetValue').textContent = backgroundDraft.assetId || '';
       var selectedAsset = findBackgroundAsset(backgroundDraft.assetId);
       if (selectedAsset) {
         popover.dataset.selectedAssetId = selectedAsset.id;
-        popover.querySelector('#bgAssetInput').value = assetLabel(selectedAsset) || selectedAsset.name || selectedAsset.id;
+        popover.querySelector('#bgAssetValue').textContent = assetLabel(selectedAsset) || selectedAsset.name || selectedAsset.id;
       }
       popover.querySelector('#bgDelay').value = formatSeconds(backgroundDraft.delay || 0);
       popover.querySelector('#bgDuration').value = formatSeconds((backgroundDraft.duration || 0) / 1000);
@@ -1850,8 +1881,8 @@ const EMBEDDED_SCRIPT_BODY = `
 
     function setSelectedBackgroundAsset(asset) {
       if (!backgroundPopover || !asset) return;
-      var input = backgroundPopover.querySelector('#bgAssetInput');
-      if (input) input.value = assetLabel(asset) || asset.name || asset.id;
+      var value = backgroundPopover.querySelector('#bgAssetValue');
+      if (value) value.textContent = assetLabel(asset) || asset.name || asset.id;
       backgroundPopover.dataset.selectedAssetId = asset.id;
       updatePreview(backgroundPopover, asset.id);
       renderAssetPicker(backgroundPopover);
@@ -1897,12 +1928,11 @@ const EMBEDDED_SCRIPT_BODY = `
 
     function collectBackgroundForm() {
       if (!backgroundPopover) return backgroundDraft || {};
-      var asset = backgroundPopover.querySelector('#bgAssetInput');
       var transition = backgroundPopover.querySelector('#bgTransition');
       var delay = backgroundPopover.querySelector('#bgDelay');
       var duration = backgroundPopover.querySelector('#bgDuration');
       return {
-        assetId: normalizeAssetName(backgroundPopover.dataset.selectedAssetId) || normalizeAssetName(asset && asset.value) || null,
+        assetId: normalizeAssetName(backgroundPopover.dataset.selectedAssetId) || normalizeAssetName(backgroundDraft && backgroundDraft.assetId) || null,
         transition: selectedValue(transition, 'fade'),
         delay: parseSecondsInput(delay && delay.value, backgroundDraft ? backgroundDraft.delay : 0),
         duration: Math.round(parseSecondsInput(duration && duration.value, backgroundDraft ? backgroundDraft.duration / 1000 : 0.5) * 1000)
@@ -2498,6 +2528,250 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     // ── Choice block ────────────────────────────────────────────────────
+    function defaultInteractiveObjectData() {
+      return { objectId: uid('obj'), name: 'Новий об’єкт', assetId: null, position: { x: 44, y: 44, width: 12, height: 12 }, actions: [], oneTimeOnly: false, pulseAnimation: true };
+    }
+
+    function interactiveObjectDataFromNode(node) {
+      var parsed = jsonFromDataset(node && node.dataset ? node.dataset.object : '') || {};
+      var position = parsed.position || {};
+      return Object.assign(defaultInteractiveObjectData(), parsed, {
+        position: {
+          x: Number.isFinite(Number(position.x)) ? Number(position.x) : 44,
+          y: Number.isFinite(Number(position.y)) ? Number(position.y) : 44,
+          width: Number.isFinite(Number(position.width)) ? Number(position.width) : 12,
+          height: Number.isFinite(Number(position.height)) ? Number(position.height) : 12
+        },
+        actions: Array.isArray(parsed.actions) ? parsed.actions.map(function(action) { return Object.assign({}, action); }) : []
+      });
+    }
+
+    function interactiveObjectMeta(data) {
+      var p = data.position;
+      var count = data.actions.length;
+      return p.x + '%, ' + p.y + '% · ' + p.width + '×' + p.height + '% · ' + count + (count === 1 ? ' дія' : ' дій')
+        + (data.oneTimeOnly ? ' · одноразовий' : '') + (data.pulseAnimation ? ' · пульсація' : '');
+    }
+
+    function renderInteractiveObjectBlockContent(node) {
+      var data = interactiveObjectDataFromNode(node);
+      node.classList.toggle('has-warning', data.actions.length === 0);
+      node.setAttribute('aria-label', 'Редагувати інтерактивний об’єкт ' + data.name);
+      node.innerHTML = '<span class="interactive-object-icon" aria-hidden="true">◎</span>' +
+        '<span class="interactive-object-copy"><span class="interactive-object-kicker">Інтерактивний об’єкт</span><span class="interactive-object-name"></span><span class="interactive-object-meta"></span></span>' +
+        (data.actions.length ? '' : '<span class="interactive-object-warning">Немає дій</span>') +
+        '<button type="button" class="block-button" data-action="edit-interactive-object">Редагувати</button>';
+      node.querySelector('.interactive-object-name').textContent = data.name || 'Новий об’єкт';
+      node.querySelector('.interactive-object-meta').textContent = interactiveObjectMeta(data);
+    }
+
+    function applyInteractiveObjectData(node, data) {
+      node.dataset.object = JSON.stringify(data);
+      renderInteractiveObjectBlockContent(node);
+    }
+
+    function closeInteractiveObjectPopover() {
+      if (interactiveObjectPopover) interactiveObjectPopover.remove();
+      var backdrop = document.querySelector('.interactive-object-backdrop');
+      if (backdrop) backdrop.remove();
+      interactiveObjectPopover = null;
+      interactiveObjectDraft = null;
+      if (activeInteractiveObjectBlock) activeInteractiveObjectBlock.classList.remove('is-editing', 'is-selected');
+      activeInteractiveObjectBlock = null;
+      scheduleResize();
+    }
+
+    function interactiveActionLabel(type) {
+      return type === 'dialogue' ? 'Репліка' : type === 'scene_transition' ? 'Перехід до сцени' : type === 'play_audio' ? 'Відтворити аудіо' : type === 'show_image' ? 'Показати зображення' : 'Викликати подію';
+    }
+
+    function interactiveActionFields(action) {
+      if (action.type === 'dialogue') return '<label class="popover-label">Текст<textarea class="popover-control" data-action-field="text">' + escapeHtml(action.text || '') + '</textarea></label><label class="popover-label">Мовець<input class="popover-control" data-action-field="speaker" value="' + escapeHtml(action.speaker || '') + '"></label>';
+      if (action.type === 'scene_transition') return '<label class="popover-label">Сцена<select class="popover-control" data-action-field="targetSceneId"><option value="">Оберіть сцену</option>' + storyScenes.map(function(scene) { return option(scene.id, scene.name || scene.id, action.targetSceneId || ''); }).join('') + '</select></label><label class="popover-label">Перехід<select class="popover-control" data-action-field="transition">' + option('fade', 'Згасання', action.transition || 'fade') + option('slide', 'Зсув', action.transition || 'fade') + option('instant', 'Миттєво', action.transition || 'fade') + '</select></label>';
+      if (action.type === 'play_audio') return '<label class="popover-label">Аудіо<select class="popover-control" data-action-field="audioUri"><option value="">Оберіть аудіо</option>' + audioAssets.map(function(asset) { return option(asset.uri, asset.name, action.audioUri || ''); }).join('') + '</select></label><div class="popover-grid"><label class="popover-label">Гучність<input type="number" min="0" max="1" step="0.1" class="popover-control" data-action-field="volume" value="' + (action.volume == null ? 0.8 : action.volume) + '"></label><label class="toggle-row"><input type="checkbox" data-action-field="loop"' + (action.loop ? ' checked' : '') + '> Зациклити</label></div>';
+      if (action.type === 'show_image') return '<label class="popover-label">Зображення<select class="popover-control" data-action-field="imageUri"><option value="">Оберіть зображення</option>' + backgroundAssets.map(function(asset) { return option(asset.uri, asset.name, action.imageUri || ''); }).join('') + '</select></label><label class="popover-label">Тривалість, мс<input type="number" min="0" step="100" class="popover-control" data-action-field="duration" value="' + (action.duration == null ? 1000 : action.duration) + '"></label>';
+      return '<label class="popover-label">ID події<input class="popover-control" data-action-field="eventId" value="' + escapeHtml(action.eventId || '') + '"></label><label class="popover-label">Дані (JSON)<textarea class="popover-control" data-action-field="data">' + escapeHtml(action.data ? JSON.stringify(action.data) : '') + '</textarea></label>';
+    }
+
+    function renderInteractiveActions() {
+      if (!interactiveObjectPopover) return;
+      interactiveObjectPopover.querySelector('.interactive-actions-list').innerHTML = interactiveObjectDraft.actions.map(function(action, index) {
+        var types = ['dialogue', 'scene_transition', 'play_audio', 'show_image', 'trigger_event'].map(function(type) { return option(type, interactiveActionLabel(type), action.type); }).join('');
+        return '<section class="interactive-action-card" data-action-index="' + index + '"><div class="interactive-action-header"><strong>Дія ' + (index + 1) + '</strong><div><button type="button" class="icon-button" data-object-action="up">↑</button><button type="button" class="icon-button" data-object-action="down">↓</button><button type="button" class="icon-button danger" data-object-action="remove">×</button></div></div><select class="popover-control" data-action-type>' + types + '</select>' + interactiveActionFields(action) + '</section>';
+      }).join('') || '<p class="interactive-empty-actions">Об’єкт ще нічого не робить. Додайте першу дію.</p>';
+    }
+
+    function syncInteractiveDraftFromDom() {
+      if (!interactiveObjectPopover) return;
+      interactiveObjectDraft.name = interactiveObjectPopover.querySelector('#ioName').value.trim();
+      interactiveObjectDraft.assetId = selectedValue(interactiveObjectPopover.querySelector('#ioAsset'), '') || null;
+      ['x', 'y', 'width', 'height'].forEach(function(field) { interactiveObjectDraft.position[field] = Number(interactiveObjectPopover.querySelector('[data-position="' + field + '"]').value); });
+      interactiveObjectDraft.oneTimeOnly = interactiveObjectPopover.querySelector('#ioOnce').checked;
+      interactiveObjectDraft.pulseAnimation = interactiveObjectPopover.querySelector('#ioPulse').checked;
+      interactiveObjectDraft.actions = Array.prototype.slice.call(interactiveObjectPopover.querySelectorAll('.interactive-action-card')).map(function(card) {
+        var result = { type: selectedValue(card.querySelector('[data-action-type]'), 'dialogue') };
+        Array.prototype.slice.call(card.querySelectorAll('[data-action-field]')).forEach(function(input) {
+          var field = input.dataset.actionField;
+          var value = input.type === 'checkbox' ? input.checked : input.value;
+          if (field === 'volume' || field === 'duration') value = Number(value);
+          if (field === 'data') { try { value = value.trim() ? JSON.parse(value) : undefined; } catch (e) { result.__invalidData = true; value = undefined; } }
+          if (value !== '' && value !== undefined) result[field] = value;
+        });
+        return result;
+      });
+    }
+
+    function validateInteractiveObject(data) {
+      if (!data.name) return 'Вкажіть назву об’єкта.';
+      var p = data.position;
+      if ([p.x, p.y, p.width, p.height].some(function(value) { return !Number.isFinite(value); })) return 'Позиція та розмір мають бути числами.';
+      if (p.width < 1 || p.height < 1 || p.x < 0 || p.y < 0 || p.x + p.width > 100 || p.y + p.height > 100) return 'Область має повністю бути в межах сцени.';
+      for (var i = 0; i < data.actions.length; i += 1) {
+        var a = data.actions[i];
+        if (a.__invalidData) return 'Дія ' + (i + 1) + ': дані події мають бути коректним JSON.';
+        if ((a.type === 'dialogue' && !a.text) || (a.type === 'scene_transition' && !a.targetSceneId) || (a.type === 'play_audio' && !a.audioUri) || (a.type === 'show_image' && !a.imageUri) || (a.type === 'trigger_event' && !a.eventId)) return 'Заповніть обов’язкове поле в дії ' + (i + 1) + '.';
+      }
+      return '';
+    }
+
+    function updateInteractiveStage() {
+      if (!interactiveObjectPopover) return;
+      var stage = interactiveObjectPopover.querySelector('.interactive-stage');
+      var hotspot = interactiveObjectPopover.querySelector('.interactive-stage-hotspot');
+      ['x', 'y', 'width', 'height'].forEach(function(field) {
+        var value = Math.max(0, Math.min(100, Number(interactiveObjectPopover.querySelector('[data-position="' + field + '"]').value) || 0));
+        hotspot.style[field === 'x' ? 'left' : field === 'y' ? 'top' : field] = value + '%';
+      });
+      var assetId = selectedValue(interactiveObjectPopover.querySelector('#ioAsset'), '');
+      var asset = backgroundAssets.find(function(item) { return item.id === assetId; });
+      stage.style.backgroundImage = asset && asset.uri ? 'url("' + String(asset.uri).replace(/"/g, '%22') + '")' : '';
+      stage.classList.toggle('has-image', Boolean(asset && asset.uri));
+    }
+
+    function setInteractivePositionInputs(values) {
+      if (!interactiveObjectPopover) return;
+      Object.keys(values).forEach(function(field) {
+        interactiveObjectPopover.querySelector('[data-position="' + field + '"]').value = String(Math.round(values[field] * 10) / 10);
+      });
+      updateInteractiveStage();
+    }
+
+    function startInteractiveStageGesture(event) {
+      if (!interactiveObjectPopover || event.button !== 0) return;
+      var hotspot = event.target && event.target.closest ? event.target.closest('.interactive-stage-hotspot') : null;
+      if (!hotspot) return;
+      event.preventDefault();
+      var stage = interactiveObjectPopover.querySelector('.interactive-stage');
+      var rect = stage.getBoundingClientRect();
+      var resizing = Boolean(event.target.closest('.interactive-resize-handle'));
+      var start = {};
+      ['x', 'y', 'width', 'height'].forEach(function(field) { start[field] = Number(interactiveObjectPopover.querySelector('[data-position="' + field + '"]').value); });
+      function move(moveEvent) {
+        var dx = rect.width ? (moveEvent.clientX - event.clientX) / rect.width * 100 : 0;
+        var dy = rect.height ? (moveEvent.clientY - event.clientY) / rect.height * 100 : 0;
+        if (resizing) setInteractivePositionInputs({ width: Math.max(1, Math.min(100 - start.x, start.width + dx)), height: Math.max(1, Math.min(100 - start.y, start.height + dy)) });
+        else setInteractivePositionInputs({ x: Math.max(0, Math.min(100 - start.width, start.x + dx)), y: Math.max(0, Math.min(100 - start.height, start.y + dy)) });
+      }
+      function end() { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', end); hotspot.classList.remove('is-manipulating'); }
+      hotspot.classList.add('is-manipulating');
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', end, { once: true });
+    }
+
+    function handleInteractiveStageKey(event) {
+      if (!interactiveObjectPopover || ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].indexOf(event.key) === -1) return;
+      event.preventDefault();
+      var values = {};
+      ['x', 'y', 'width', 'height'].forEach(function(field) { values[field] = Number(interactiveObjectPopover.querySelector('[data-position="' + field + '"]').value); });
+      var amount = event.altKey ? 0.5 : 1;
+      if (event.shiftKey) {
+        if (event.key === 'ArrowLeft') values.width = Math.max(1, values.width - amount);
+        if (event.key === 'ArrowRight') values.width = Math.min(100 - values.x, values.width + amount);
+        if (event.key === 'ArrowUp') values.height = Math.max(1, values.height - amount);
+        if (event.key === 'ArrowDown') values.height = Math.min(100 - values.y, values.height + amount);
+      } else {
+        if (event.key === 'ArrowLeft') values.x = Math.max(0, values.x - amount);
+        if (event.key === 'ArrowRight') values.x = Math.min(100 - values.width, values.x + amount);
+        if (event.key === 'ArrowUp') values.y = Math.max(0, values.y - amount);
+        if (event.key === 'ArrowDown') values.y = Math.min(100 - values.height, values.y + amount);
+      }
+      setInteractivePositionInputs(values);
+    }
+
+    function openInteractiveObjectPopover(block) {
+      if (!block) return;
+      closeInteractiveObjectPopover();
+      closeSlashMenu(); closeBackgroundPopover(); closeTransitionPopover(); closeChoicePopover(); closeLabelPopover(); closeGotoPopover(); closeStopEffectPopover(); closeCharacterPopover(); closeEffectPopover(); closeAudioPopover();
+      activeInteractiveObjectBlock = block;
+      interactiveObjectDraft = interactiveObjectDataFromNode(block);
+      block.classList.add('is-editing', 'is-selected');
+      var assets = '<option value="">Без зображення</option>' + backgroundAssets.map(function(asset) { return option(asset.id, asset.name, interactiveObjectDraft.assetId || ''); }).join('');
+      var popover = document.createElement('div');
+      var backdrop = document.createElement('div');
+      backdrop.className = 'interactive-object-backdrop';
+      popover.className = 'interactive-object-popover';
+      popover.innerHTML = '<div class="interactive-popover-header"><div><strong>Інтерактивний об’єкт</strong><p>Клікабельна область поверх сцени</p></div><button type="button" class="icon-button" data-object-action="cancel">×</button></div><div class="interactive-popover-body">' +
+        '<label class="popover-label">Назва<input id="ioName" class="popover-control" value="' + escapeHtml(interactiveObjectDraft.name) + '"></label><label class="popover-label">Зображення<select id="ioAsset" class="popover-control">' + assets + '</select></label>' +
+        '<div class="interactive-stage" aria-label="Попередній перегляд області"><div class="interactive-stage-hotspot" tabindex="0" role="application" aria-label="Область об’єкта. Стрілки переміщують, Shift і стрілки змінюють розмір"><span class="interactive-resize-handle" aria-hidden="true"></span></div></div><div class="interactive-geometry">' + ['x', 'y', 'width', 'height'].map(function(field) { var label = field === 'width' ? 'Ширина' : field === 'height' ? 'Висота' : field.toUpperCase(); return '<label class="popover-label">' + label + ', %<input type="number" min="0" max="100" class="popover-control" data-position="' + field + '" value="' + interactiveObjectDraft.position[field] + '"></label>'; }).join('') + '</div>' +
+        '<div class="interactive-presets"><button type="button" class="popover-button" data-object-action="center">По центру</button><button type="button" class="popover-button" data-object-action="full">На всю сцену</button><button type="button" class="popover-button" data-object-action="clear-asset">Прибрати зображення</button></div>' +
+        '<div class="interactive-toggles"><label class="toggle-row"><input id="ioOnce" type="checkbox"' + (interactiveObjectDraft.oneTimeOnly ? ' checked' : '') + '> Спрацьовує один раз</label><label class="toggle-row"><input id="ioPulse" type="checkbox"' + (interactiveObjectDraft.pulseAnimation ? ' checked' : '') + '> Пульсація</label></div>' +
+        '<div class="interactive-actions-heading"><strong>Дії</strong><button type="button" class="popover-button" data-object-action="add">+ Додати дію</button></div><div class="interactive-actions-list"></div><p class="interactive-object-error" role="alert"></p></div>' +
+        '<div class="popover-footer interactive-popover-footer"><button type="button" class="popover-button danger" data-object-action="delete">Видалити блок</button><span></span><button type="button" class="popover-button" data-object-action="cancel">Скасувати</button><button type="button" class="popover-button primary" data-object-action="save">Зберегти</button></div>';
+      document.body.appendChild(backdrop);
+      document.body.appendChild(popover);
+      interactiveObjectPopover = popover;
+      renderInteractiveActions(); updateInteractiveStage();
+      popover.querySelector('#ioName').focus();
+      popover.addEventListener('input', updateInteractiveStage);
+      popover.querySelector('.interactive-stage').addEventListener('pointerdown', startInteractiveStageGesture);
+      popover.querySelector('.interactive-stage-hotspot').addEventListener('keydown', handleInteractiveStageKey);
+      popover.addEventListener('change', function(event) {
+        if (!event.target || !event.target.hasAttribute('data-action-type')) return;
+        syncInteractiveDraftFromDom();
+        var index = Number(event.target.closest('.interactive-action-card').dataset.actionIndex);
+        var type = event.target.value;
+        interactiveObjectDraft.actions[index] = type === 'dialogue' ? { type: type, text: '' } : type === 'scene_transition' ? { type: type, targetSceneId: '', transition: 'fade' } : type === 'play_audio' ? { type: type, audioUri: '', volume: 0.8, loop: false } : type === 'show_image' ? { type: type, imageUri: '', duration: 1000 } : { type: type, eventId: '' };
+        renderInteractiveActions();
+      });
+      popover.addEventListener('click', handleInteractiveObjectAction);
+      backdrop.addEventListener('click', function() {
+        if (activeInteractiveObjectBlock && activeInteractiveObjectBlock.dataset.interactiveNew === 'true') activeInteractiveObjectBlock.remove();
+        closeInteractiveObjectPopover();
+      });
+      scheduleResize();
+    }
+
+    function handleInteractiveObjectAction(event) {
+      var button = event.target && event.target.closest ? event.target.closest('[data-object-action]') : null;
+      if (!button || !interactiveObjectPopover) return;
+      event.preventDefault();
+      var action = button.dataset.objectAction;
+      if (action === 'cancel') {
+        if (activeInteractiveObjectBlock && activeInteractiveObjectBlock.dataset.interactiveNew === 'true') activeInteractiveObjectBlock.remove();
+        closeInteractiveObjectPopover(); return;
+      }
+      if (action === 'delete') { var next = activeInteractiveObjectBlock.nextElementSibling; activeInteractiveObjectBlock.remove(); closeInteractiveObjectPopover(); if (next && isEditableLineElement(next)) moveCaretToEnd(next); saveNow(); return; }
+      if (action === 'clear-asset') { interactiveObjectPopover.querySelector('#ioAsset').value = ''; updateInteractiveStage(); return; }
+      if (action === 'center' || action === 'full') {
+        var values = action === 'full' ? { x: 0, y: 0, width: 100, height: 100 } : { x: 44, y: 44, width: 12, height: 12 };
+        Object.keys(values).forEach(function(field) { interactiveObjectPopover.querySelector('[data-position="' + field + '"]').value = values[field]; }); updateInteractiveStage(); return;
+      }
+      if (action === 'add') { syncInteractiveDraftFromDom(); interactiveObjectDraft.actions.push({ type: 'dialogue', text: '' }); renderInteractiveActions(); return; }
+      var card = button.closest('.interactive-action-card');
+      if (card && (action === 'remove' || action === 'up' || action === 'down')) {
+        syncInteractiveDraftFromDom(); var index = Number(card.dataset.actionIndex);
+        if (action === 'remove') interactiveObjectDraft.actions.splice(index, 1);
+        else { var target = action === 'up' ? index - 1 : index + 1; if (target >= 0 && target < interactiveObjectDraft.actions.length) { var moved = interactiveObjectDraft.actions.splice(index, 1)[0]; interactiveObjectDraft.actions.splice(target, 0, moved); } }
+        renderInteractiveActions(); return;
+      }
+      if (action === 'save') {
+        syncInteractiveDraftFromDom(); var error = validateInteractiveObject(interactiveObjectDraft); interactiveObjectPopover.querySelector('.interactive-object-error').textContent = error;
+        if (error) return;
+        delete activeInteractiveObjectBlock.dataset.interactiveNew;
+        applyInteractiveObjectData(activeInteractiveObjectBlock, interactiveObjectDraft); closeInteractiveObjectPopover(); saveNow();
+      }
+    }
+
     function choiceDataFromNode(node) {
       var parsed = null;
       try { parsed = node.dataset.choice ? JSON.parse(node.dataset.choice) : null; } catch (e) { parsed = null; }
@@ -2893,17 +3167,22 @@ const EMBEDDED_SCRIPT_BODY = `
             step: stopEffectStep
           };
         }
-        if (commandId === 'interactive_object' && originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step) {
-          var interactiveData = jsonFromDataset(node.dataset.object) || originalTechnical.step.data || {};
+        if (commandId === 'interactive_object') {
+          var interactiveId = node.dataset.id || uid('doc_block');
+          var interactiveData = interactiveObjectDataFromNode(node);
+          var originalInteractiveStep = originalTechnical && originalTechnical.kind === 'technical' ? originalTechnical.step : null;
+          var interactiveStep = originalInteractiveStep
+            ? Object.assign({}, originalInteractiveStep, { blockType: 'interactive_object', data: interactiveData })
+            : { id: interactiveId, blockType: 'interactive_object', data: interactiveData, collapsed: false, enabled: true };
           return {
-            id: id,
+            id: interactiveId,
             kind: 'technical',
-            sourceStepId: originalTechnical.sourceStepId || id,
+            sourceStepId: (originalTechnical && originalTechnical.sourceStepId) || interactiveId,
             blockType: 'interactive_object',
             commandId: 'interactive_object',
-            label: interactiveData.name || "Об'єкт",
-            summary: '',
-            step: Object.assign({}, originalTechnical.step, { blockType: 'interactive_object', data: interactiveData })
+            label: interactiveData.name || 'Новий об’єкт',
+            summary: interactiveObjectMeta(interactiveData),
+            step: interactiveStep
           };
         }
         if (originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step) {
@@ -3652,6 +3931,7 @@ const EMBEDDED_SCRIPT_BODY = `
         : commandId === 'label' ? 'void-block label-block'
         : commandId === 'goto' ? 'void-block goto-block'
         : commandId === 'stopEffect' ? 'void-block stop-effect-block'
+        : commandId === 'interactive_object' ? 'void-block interactive-object-block'
         : 'void-block';
       block.contentEditable = 'false';
       block.dataset.kind = 'technical';
@@ -3679,6 +3959,9 @@ const EMBEDDED_SCRIPT_BODY = `
         applyGotoData(block, { targetLabel: '', condition: null, elseTargetLabel: null });
       } else if (commandId === 'stopEffect') {
         applyStopEffectData(block, { effectType: 'all', target: 'all' });
+      } else if (commandId === 'interactive_object') {
+        applyInteractiveObjectData(block, defaultInteractiveObjectData());
+        block.dataset.interactiveNew = 'true';
       } else {
         block.innerHTML = '<div class="void-title">/' + commandId + '</div><div class="void-summary">New block</div>';
       }
@@ -3691,7 +3974,8 @@ const EMBEDDED_SCRIPT_BODY = `
       closeSlashMenu();
       moveCaretToEnd(next);
       scheduleResize();
-      saveNow();
+      if (commandId !== 'interactive_object') saveNow();
+      if (commandId === 'interactive_object') openInteractiveObjectPopover(block);
     }
 
     editor.addEventListener('mousedown', function(event) {
@@ -3819,27 +4103,7 @@ const EMBEDDED_SCRIPT_BODY = `
       }
       if (action === 'edit-interactive-object') {
         event.preventDefault();
-        var objectData = jsonFromDataset(block.dataset.object) || {};
-        var name = window.prompt('Object name', objectData.name || 'New Object');
-        if (name === null) return;
-        var position = objectData.position || { x: 50, y: 50, width: 10, height: 10 };
-        var geometry = window.prompt('Position and size: x, y, width, height (%)', [position.x, position.y, position.width, position.height].join(', '));
-        if (geometry === null) return;
-        var values = geometry.split(',').map(function(value) { return Number(value.trim()); });
-        if (values.length !== 4 || values.some(function(value) { return !Number.isFinite(value); })) {
-          window.alert('Enter four numbers separated by commas.');
-          return;
-        }
-        objectData.name = name.trim() || 'New Object';
-        objectData.position = { x: values[0], y: values[1], width: Math.max(1, values[2]), height: Math.max(1, values[3]) };
-        objectData.oneTimeOnly = window.confirm('Should this object work only once?');
-        objectData.pulseAnimation = window.confirm('Show the pulse animation?');
-        block.dataset.object = JSON.stringify(objectData);
-        var nameNode = block.querySelector('.interactive-object-name');
-        var metaNode = block.querySelector('.interactive-object-meta');
-        if (nameNode) nameNode.textContent = objectData.name;
-        if (metaNode) metaNode.textContent = objectData.position.x + '%, ' + objectData.position.y + '% · ' + objectData.position.width + '×' + objectData.position.height + '% · ' + (objectData.actions || []).length + ' actions' + (objectData.oneTimeOnly ? ' · once' : '') + (objectData.pulseAnimation ? ' · pulse' : '');
-        saveNow();
+        openInteractiveObjectPopover(block);
       }
     });
 
@@ -3861,9 +4125,6 @@ const EMBEDDED_SCRIPT_BODY = `
         return;
       }
       if (!backgroundPopover || !backgroundPopover.contains(event.target)) return;
-      var asset = backgroundPopover.querySelector('#bgAssetInput');
-      if (event.target === asset) delete backgroundPopover.dataset.selectedAssetId;
-      updatePreview(backgroundPopover, asset && asset.value);
     });
 
     document.addEventListener('click', function(event) {
@@ -3891,14 +4152,14 @@ const EMBEDDED_SCRIPT_BODY = `
               snow: {},
               fog: {}
             });
-            saveNow();
             closeEffectPopover();
+            saveNow();
             return;
           }
           if (effectAction === 'save-effect' && activeEffectChip) {
             applyEffectData(activeEffectChip, collectEffectForm());
-            saveNow();
             closeEffectPopover();
+            saveNow();
             return;
           }
           return;
@@ -3976,14 +4237,14 @@ const EMBEDDED_SCRIPT_BODY = `
           }
           if (audioAction === 'reset-audio' && activeAudioChip) {
             applyAudioData(activeAudioChip, defaultAudioData(audioPopover.dataset.kind === 'sound' ? 'sound' : 'music'));
-            saveNow();
             closeAudioPopover();
+            saveNow();
             return;
           }
           if (audioAction === 'save-audio' && activeAudioChip) {
             applyAudioData(activeAudioChip, collectAudioForm());
-            saveNow();
             closeAudioPopover();
+            saveNow();
             return;
           }
           return;
@@ -4004,6 +4265,7 @@ const EMBEDDED_SCRIPT_BODY = `
           if (characterAction === 'save-character') {
             collectCharacterPopover();
             closeCharacterPopover();
+            saveNow();
             return;
           }
           if (characterAction === 'upload-character-sprite') {
@@ -4042,14 +4304,14 @@ const EMBEDDED_SCRIPT_BODY = `
           }
           if (transitionAction === 'reset-transition' && activeTransitionBlock && transitionDraft) {
             applyTransitionData(activeTransitionBlock, transitionDraft);
-            saveNow();
             closeTransitionPopover();
+            saveNow();
             return;
           }
           if (transitionAction === 'save-transition' && activeTransitionBlock) {
             applyTransitionData(activeTransitionBlock, collectTransitionForm());
-            saveNow();
             closeTransitionPopover();
+            saveNow();
             return;
           }
           return;
@@ -4066,14 +4328,14 @@ const EMBEDDED_SCRIPT_BODY = `
           var labelAction = labelActionButton.dataset.action;
           if (labelAction === 'reset-label' && activeLabelBlock && labelDraft) {
             applyLabelData(activeLabelBlock, labelDraft);
-            saveNow();
             closeLabelPopover();
+            saveNow();
             return;
           }
           if (labelAction === 'save-label' && activeLabelBlock) {
             applyLabelData(activeLabelBlock, collectLabelForm());
-            saveNow();
             closeLabelPopover();
+            saveNow();
             return;
           }
           return;
@@ -4090,14 +4352,14 @@ const EMBEDDED_SCRIPT_BODY = `
           var gotoAction = gotoActionButton.dataset.action;
           if (gotoAction === 'reset-goto' && activeGotoBlock && gotoDraft) {
             applyGotoData(activeGotoBlock, gotoDraft);
-            saveNow();
             closeGotoPopover();
+            saveNow();
             return;
           }
           if (gotoAction === 'save-goto' && activeGotoBlock) {
             applyGotoData(activeGotoBlock, collectGotoForm());
-            saveNow();
             closeGotoPopover();
+            saveNow();
             return;
           }
           return;
@@ -4114,14 +4376,14 @@ const EMBEDDED_SCRIPT_BODY = `
           var stopEffectAction = stopEffectActionButton.dataset.action;
           if (stopEffectAction === 'reset-stop-effect' && activeStopEffectBlock && stopEffectDraft) {
             applyStopEffectData(activeStopEffectBlock, stopEffectDraft);
-            saveNow();
             closeStopEffectPopover();
+            saveNow();
             return;
           }
           if (stopEffectAction === 'save-stop-effect' && activeStopEffectBlock) {
             applyStopEffectData(activeStopEffectBlock, collectStopEffectForm());
-            saveNow();
             closeStopEffectPopover();
+            saveNow();
             return;
           }
           return;
@@ -4174,8 +4436,8 @@ const EMBEDDED_SCRIPT_BODY = `
           if (choiceAction === 'save-choice' && activeChoiceBlock) {
             syncChoiceDraftFromDom();
             applyChoiceData(activeChoiceBlock, choiceDraft);
-            saveNow();
             closeChoicePopover();
+            saveNow();
             return;
           }
           return;
@@ -4220,14 +4482,14 @@ const EMBEDDED_SCRIPT_BODY = `
         }
         if (action === 'reset-background' && activeBackgroundBlock && backgroundDraft) {
           applyBackgroundData(activeBackgroundBlock, backgroundDraft);
-          saveNow();
           closeBackgroundPopover();
+          saveNow();
           return;
         }
         if (action === 'save-background' && activeBackgroundBlock) {
           applyBackgroundData(activeBackgroundBlock, collectBackgroundForm());
-          saveNow();
           closeBackgroundPopover();
+          saveNow();
         }
         return;
       }
@@ -4456,6 +4718,11 @@ const EMBEDDED_SCRIPT_BODY = `
         event.preventDefault();
         closeStopEffectPopover();
       }
+      if (event.key === 'Escape' && interactiveObjectPopover) {
+        event.preventDefault();
+        if (activeInteractiveObjectBlock && activeInteractiveObjectBlock.dataset.interactiveNew === 'true') activeInteractiveObjectBlock.remove();
+        closeInteractiveObjectPopover();
+      }
       if (event.key === 'Escape' && characterPopover) {
         event.preventDefault();
         closeCharacterPopover();
@@ -4511,8 +4778,13 @@ const EMBEDDED_SCRIPT_BODY = `
         renderAllBackgroundBlocks();
         if (backgroundPopover) {
           renderAssetPicker(backgroundPopover);
-          var input = backgroundPopover.querySelector('#bgAssetInput');
-          var currentAssetId = backgroundPopover.dataset.selectedAssetId || normalizeAssetName(input && input.value) || normalizeAssetName(backgroundDraft && backgroundDraft.assetId);
+          var currentAssetId = backgroundPopover.dataset.selectedAssetId || normalizeAssetName(backgroundDraft && backgroundDraft.assetId);
+          var selectedAsset = findBackgroundAsset(currentAssetId);
+          if (selectedAsset) {
+            backgroundPopover.dataset.selectedAssetId = selectedAsset.id;
+            var value = backgroundPopover.querySelector('#bgAssetValue');
+            if (value) value.textContent = assetLabel(selectedAsset) || selectedAsset.name || selectedAsset.id;
+          }
           updatePreview(backgroundPopover, currentAssetId);
         }
       }

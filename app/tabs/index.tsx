@@ -13,7 +13,7 @@ import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
 import { ResolvedAssetImage } from '@/components/resolved-asset-image';
 import { useAppStore } from '@/stores/use-app-store';
-import { getLibraryAssets, addAssetToLibrary } from '@/stores/media-library-actions';
+import { addAssetToLibrary } from '@/stores/media-library-actions';
 import { StoryMetadata } from '@/lib/story-domain';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
@@ -161,17 +161,22 @@ export default function HomeScreen() {
       ErrorHandler.handle('Failed to add demo stories', error, ErrorCategory.STORAGE);
     }
 
-    // Seed media library if empty
+    // Ensure every bundled demo asset exists. This is intentionally idempotent:
+    // existing user uploads and previously seeded assets are preserved.
     try {
-      const libraryAssets = await getLibraryAssets();
-      if (libraryAssets.length === 0) {
-        await Promise.all([
-          addAssetToLibrary('assets/background/bg-ancient-library.png', 'Ancient Library', 'image'),
-          addAssetToLibrary('assets/background/bg-museum-entrance.png', 'Museum Entrance', 'image'),
-          addAssetToLibrary('assets/sounds-sample/music-magical.mp3', 'Magical Music', 'audio'),
-          addAssetToLibrary('assets/sounds-sample/music-mysterious-adventure.mp3', 'Mysterious Adventure', 'audio'),
-          addAssetToLibrary('assets/sounds-sample/sfx-door-open.mp3', 'Door Open SFX', 'audio'),
-        ]);
+      const bundledAssets = [
+        ['assets/background/bg-ancient-library.png', 'Ancient Library', 'image'],
+        ['assets/background/bg-grand-hall.png', 'Grand Hall', 'image'],
+        ['assets/background/bg-hall-mirrors.png', 'Hall of Mirrors', 'image'],
+        ['assets/background/bg-museum-entrance.png', 'Museum Entrance', 'image'],
+        ['assets/background/bg-treasure-chamber.png', 'Treasure Chamber', 'image'],
+        ['assets/background/bg-upper-library.png', 'Upper Library', 'image'],
+        ['assets/sounds-sample/music-magical.mp3', 'Magical Music', 'audio'],
+        ['assets/sounds-sample/music-mysterious-adventure.mp3', 'Mysterious Adventure', 'audio'],
+        ['assets/sounds-sample/sfx-door-open.mp3', 'Door Open SFX', 'audio'],
+      ] as const;
+      for (const [uri, name, type] of bundledAssets) {
+        await addAssetToLibrary(uri, name, type);
       }
     } catch (error) {
       initError = initError ?? error;
@@ -180,15 +185,13 @@ export default function HomeScreen() {
 
     // Seeded and legacy images become visible only in stories that already
     // reference them as backgrounds; unrelated media remains hidden.
-    if (Object.keys(useAppStore.getState().imageAssetIdsByStory).length === 0) {
-      useAppStore.setState((state) => ({
-        imageAssetIdsByStory: migrateStoryImageAssetIds(
-          state.imageAssetIdsByStory,
-          state.sceneRecordsByStory,
-          state.mediaLibrary,
-        ),
-      }));
-    }
+    useAppStore.setState((state) => ({
+      imageAssetIdsByStory: migrateStoryImageAssetIds(
+        state.imageAssetIdsByStory,
+        state.sceneRecordsByStory,
+        state.mediaLibrary,
+      ),
+    }));
 
     if (Platform.OS === 'web') {
       try {
