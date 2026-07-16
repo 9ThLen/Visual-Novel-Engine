@@ -19,6 +19,12 @@ export type BridgeConnectionReason =
 export type ToolResult =
   | { ok: true; result: unknown; binaryTool?: boolean }
   | { ok: false; errorCode: BridgeErrorCode; errorMessage: string; details?: unknown; binaryTool?: boolean };
+export type BridgeDeliveryResult =
+  | { ok: true }
+  | { ok: false; reason: 'NOT_AUTHENTICATED' };
+export type BridgeConversationResetResult =
+  | { ok: true }
+  | { ok: false; reason: 'NOT_AUTHENTICATED' | 'RESET_FAILED' };
 
 export interface BridgeClientOptions {
   url: string;
@@ -30,20 +36,18 @@ export interface BridgeClientOptions {
   logger?: (message: string, error?: unknown) => void;
 }
 
-type QueuedUserMessage = { text: string; context?: unknown };
-
 export class BridgeClient {
   private socket: WebSocket | null = null;
   private sessionId = '';
   private intentionallyClosed = false;
   private reconnectBlocked = false;
+  private authenticated = false;
   private socketFailed = false;
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly queue: QueuedUserMessage[] = [];
-
+  private pendingReset: ((result: BridgeConversationResetResult) => void) | null = null;
   constructor(private readonly options: BridgeClientOptions) {}
 
   static clearPersistedSession(url: string): void {
@@ -62,19 +66,25 @@ export class BridgeClient {
     this.openSocket(this.reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
   }
 
-  sendUserMessage(text: string, context?: unknown): void {
-    if (this.isOpen()) {
-      this.send('user_message', context === undefined ? { text } : { text, context });
-      return;
-    }
-    if (!this.intentionallyClosed) {
-      if (this.queue.length >= 20) this.queue.shift();
-      this.queue.push(context === undefined ? { text } : { text, context });
-    }
+  sendUserMessage(text: string, context?: unknown): BridgeDeliveryResult {
+    if (!this.authenticated || !this.isOpen()) return { ok: false, reason: 'NOT_AUTHENTICATED' };
+    this.send('user_message', context === undefined ? { text } : { text, context });
+    return { ok: true };
   }
 
-  interrupt(): void {
-    if (this.isOpen()) this.send('interrupt', {});
+  interrupt(): BridgeDeliveryResult {
+    if (!this.authenticated || !this.isOpen()) return { ok: false, reason: 'NOT_AUTHENTICATED' };
+    this.send('interrupt', {});
+    return { ok: true };
+  }
+
+  resetConversation(): Promise<BridgeConversationResetResult> {
+    if (!this.authenticated || !this.isOpen()) {
+      return Promise.resolve({ ok: false, reason: 'NOT_AUTHENTICATED' });
+    }
+    if (this.pendingReset) return Promise.resolve({ ok: false, reason: 'RESET_FAILED' });
+    this.send('conversation_reset', {});
+    return new Promise((resolve) => { this.pendingReset = resolve; });
   }
 
   acknowledgeImageResult(requestId: string): void {
@@ -90,9 +100,10 @@ export class BridgeClient {
     this.socket = null;
     if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
     this.sessionId = '';
+    this.authenticated = false;
     this.reconnectAttempt = 0;
     this.socketFailed = false;
-    this.queue.length = 0;
+    this.resolvePendingReset({ ok: false, reason: 'RESET_FAILED' });
     BridgeClient.clearPersistedSession(this.options.url);
     this.options.onConnectionChange('closed');
   }
@@ -101,6 +112,7 @@ export class BridgeClient {
     this.clearHeartbeatTimers();
     this.options.onConnectionChange(state);
     const socket = new WebSocket(this.options.url);
+    this.authenticated = false;
     this.socketFailed = false;
     this.socket = socket;
     socket.onopen = () => {
@@ -120,6 +132,7 @@ export class BridgeClient {
     };
     socket.onclose = () => {
       if (this.socket === socket) this.socket = null;
+      this.authenticated = false;
       this.clearHeartbeatTimers();
       if (!this.intentionallyClosed && !this.reconnectBlocked) this.scheduleReconnect(!this.socketFailed);
     };
@@ -140,11 +153,14 @@ export class BridgeClient {
     if (parsed.type === 'session_started' && this.isRecord(parsed.payload)
       && typeof parsed.payload.sessionId === 'string') {
       this.sessionId = parsed.payload.sessionId;
+      this.authenticated = true;
       this.persistSessionId(this.sessionId);
       this.reconnectAttempt = 0;
       this.options.onConnectionChange('connected');
       this.startHeartbeat();
-      this.flushQueue();
+    }
+    if (parsed.type === 'conversation_reset_ack') {
+      this.resolvePendingReset({ ok: true });
     }
     if (parsed.type === 'error' && this.isRecord(parsed.payload)) {
       if (parsed.payload.code === 'UNAUTHORIZED') {
@@ -160,6 +176,10 @@ export class BridgeClient {
       if (parsed.payload.code === 'PROTOCOL_ERROR') {
         this.blockReconnect('error', 'PROTOCOL_VERSION_MISMATCH');
         return;
+      }
+      if (this.isRecord(parsed.payload.details)
+        && parsed.payload.details.reason === 'CONVERSATION_RESET_FAILED') {
+        this.resolvePendingReset({ ok: false, reason: 'RESET_FAILED' });
       }
     }
     this.options.onEvent(parsed);
@@ -219,13 +239,6 @@ export class BridgeClient {
     }, delay);
   }
 
-  private flushQueue(): void {
-    while (this.queue.length > 0 && this.isOpen()) {
-      const message = this.queue.shift();
-      if (message) this.send('user_message', message);
-    }
-  }
-
   private send(type: Parameters<typeof makeEnvelope>[0], payload: unknown): void {
     if (!this.isOpen()) return;
     const raw = JSON.stringify(makeEnvelope(type, payload, this.sessionId));
@@ -258,6 +271,8 @@ export class BridgeClient {
     this.reconnectBlocked = true;
     this.clearAllTimers();
     this.sessionId = '';
+    this.authenticated = false;
+    this.resolvePendingReset({ ok: false, reason: 'RESET_FAILED' });
     this.reconnectAttempt = 0;
     BridgeClient.clearPersistedSession(this.options.url);
     this.options.onConnectionChange(state, reason);
@@ -268,6 +283,12 @@ export class BridgeClient {
 
   private isOpen(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
+  }
+
+  private resolvePendingReset(result: BridgeConversationResetResult): void {
+    const resolve = this.pendingReset;
+    this.pendingReset = null;
+    resolve?.(result);
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

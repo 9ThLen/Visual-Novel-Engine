@@ -39,7 +39,10 @@ describe('AI proposal permission enforcement', () => {
   beforeEach(() => {
     SocketMock.instances = [];
     vi.stubGlobal('WebSocket', SocketMock);
-    useAiChatStore.setState({ messages: [], status: 'idle', pendingPatch: null, pendingAppearance: null, pendingChangeSet: null, pendingCapability: null, appliedChanges: [], lastAppliedChange: null });
+    useAiChatStore.setState({
+      messages: [], status: 'idle', pendingInteraction: null,
+      appliedChangesByStory: {}, appliedChanges: [], lastAppliedChange: null,
+    });
   });
   afterEach(() => vi.unstubAllGlobals());
 
@@ -72,7 +75,7 @@ describe('AI proposal permission enforcement', () => {
     socket.receive(makeEnvelope('tool_call', { toolCallId: 'auto', toolName: 'propose_scene_patch', input: { patch: proposal() } }));
     await waitFor(() => expect(saveSceneRecord).toHaveBeenCalledWith(expect.objectContaining({ name: 'After' })));
     expect(useAiChatStore.getState().appliedChanges.at(-1)).toMatchObject({ kind: 'scene', snapshotId: 'snap-auto' });
-    expect(useAiChatStore.getState().pendingPatch).toBeNull();
+    expect(useAiChatStore.getState().pendingInteraction).toBeNull();
     view.unmount();
   });
 });

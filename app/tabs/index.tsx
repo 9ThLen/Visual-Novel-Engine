@@ -1,486 +1,431 @@
-import React, { useEffect, useState, useCallback, useMemo, memo } from 'react';
+/**
+ * app/tabs/index.tsx — the showcase.
+ *
+ * This is where a reader lands, not where an author works: it opens on a living
+ * scene from an actual story, offers a hook rather than a description, and keeps
+ * the authoring world behind one Studio button. The banner replays an image,
+ * parallax and weather — never the reader itself, so the screen opens instantly.
+ */
+
+import React, { useCallback, useMemo } from 'react';
 import {
-  View,
-  Text,
   FlatList,
-  Pressable,
-  StyleSheet,
-  useWindowDimensions,
   Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { stopReaderPlayback } from '@/hooks/useReaderAudio';
+
+import { LiveSceneBackdrop } from '@/components/showcase/LiveSceneBackdrop';
+import { POSTER_WIDTH, StoryPoster } from '@/components/showcase/StoryPoster';
 import { ScreenContainer } from '@/components/screen-container';
-import { ResolvedAssetImage } from '@/components/resolved-asset-image';
-import { useAppStore } from '@/stores/use-app-store';
-import { addAssetToLibrary } from '@/stores/media-library-actions';
-import { StoryMetadata } from '@/lib/story-domain';
-import { useColors } from '@/hooks/use-colors';
+import { useLibraryBootstrap } from '@/hooks/useLibraryBootstrap';
+import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { useI18n } from '@/hooks/use-i18n';
-import { withAlpha } from '@/lib/_core/theme';
-import { Button } from '@/components/ui';
-import { radius, spacing, typeScale } from '@/lib/design-tokens';
-import demoStory from '@/assets/demo-story.json';
-import demoStoryAdvanced from '@/assets/demo-story-advanced.json';
-import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
-import { StoryValidator } from '@/lib/story-validator';
-import { shouldUpsertBundledStory } from '@/lib/bundled-story-sync';
-import { createBundledStorySyncPayload, upsertBundledStory } from '@/lib/bundled-story-upsert';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
-import type { Story } from '@/lib/scene-operations';
-import { migrateStoryImageAssetIds } from '@/lib/story-image-library';
-import { ensureStorageBootstrap } from '@/stores/storage-bootstrap';
-import { cleanupOrphanedWebMedia } from '@/lib/web-media-cleanup';
-
+import { buildShowcaseStories, posterAssetFor } from '@/lib/showcase/showcase-adapter';
+import { SHOWCASE_COLORS } from '@/lib/showcase/showcase-colors';
+import { buildShelves, type ShowcaseStory } from '@/lib/showcase/story-showcase';
 import { buttonFeedback } from '@/lib/ui-feedback';
+import { useAppStore } from '@/stores/use-app-store';
 
-interface StoryCardProps {
-  item: StoryMetadata;
-  onPress: (story: StoryMetadata) => void;
-}
-
-function syncBundledStory(story: Story): void {
-  const { metadata, sceneRecords } = createBundledStorySyncPayload(story);
-
-  upsertBundledStory(metadata, sceneRecords);
-}
-
-const StoryCard = memo(function StoryCard({ item, onPress }: StoryCardProps) {
-  const { t } = useI18n();
-  const colors = useColors();
-  const accent = withAlpha(colors.primary, 0.14);
-  const elevatedSurface = colors['surface-1'] ?? colors.surface;
-
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.storyCard,
-        {
-          backgroundColor: elevatedSurface,
-          borderColor: colors.border,
-          opacity: pressed ? 0.86 : 1,
-          transform: [{ scale: pressed ? 0.99 : 1 }],
-        },
-      ]}
-      onPress={() => {
-        buttonFeedback();
-        onPress(item);
-      }}
-      accessibilityLabel={`Play story: ${item.title}`}
-      accessibilityRole="button"
-    >
-      <View style={styles.thumbnailFrame}>
-        {item.thumbnailUri ? (
-          <ResolvedAssetImage
-            uri={item.thumbnailUri}
-            style={styles.thumbnail}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={[styles.thumbnailPlaceholder, { backgroundColor: accent }]}>
-            <Text style={[styles.thumbnailIcon, { color: colors.primary }]}>VN</Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.storyCardBody}>
-        <View style={styles.storyCardTitleRow}>
-          <Text style={[styles.storyTitle, { color: colors.foreground }]} numberOfLines={1}>
-            {item.title}
-          </Text>
-          <View style={[styles.sceneBadge, { backgroundColor: accent }]}>
-            <Text style={[styles.sceneBadgeText, { color: colors.primary }]}>
-              {item.sceneCount ?? 0}
-            </Text>
-          </View>
-        </View>
-        {item.description ? (
-          <Text style={[styles.storyDescription, { color: colors.muted }]} numberOfLines={2}>
-            {item.description}
-          </Text>
-        ) : (
-          <Text style={[styles.storyDescription, { color: colors.muted }]} numberOfLines={2}>
-            {t('home.readyToRead')}
-          </Text>
-        )}
-        <View style={styles.storyMetaRow}>
-          <Text style={[styles.storyMeta, { color: colors.muted }]} numberOfLines={1}>
-            {item.author ? `${t('home.by')} ${item.author}` : t('home.interactiveStory')}
-          </Text>
-          <Text style={[styles.storyMetaCta, { color: colors.primary }]}>{t('home.play')}</Text>
-        </View>
-      </View>
-    </Pressable>
-  );
-});
+const WEB_BANNER_MAX_HEIGHT = 480;
+const BANNER_SCREEN_RATIO = 0.55;
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const { t } = useI18n();
+  const { height, width } = useWindowDimensions();
+  const { isInitialized } = useLibraryBootstrap();
+
   useFocusEffect(
     useCallback(() => {
       void stopReaderPlayback();
     }, []),
   );
+
   const storiesMetadata = useAppStore((state) => state.storiesMetadata);
-  const hydrateReaderSceneWindow = useAppStore((state) => state.hydrateReaderSceneWindow);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const { t } = useI18n();
+  const sceneRecordsByStory = useAppStore((state) => state.sceneRecordsByStory);
+  const saveSlots = useAppStore((state) => state.saveSlots);
+  const endingsReachedByStory = useAppStore((state) => state.endingsReachedByStory);
 
-  const initializeApp = useCallback(async () => {
-    // Hydration, legacy-key migration and the web media migration run in the
-    // shared bootstrap (kicked off by the root layout) so that entering on any
-    // route gets them; awaiting it here just joins the same run.
-    const { error: bootstrapError } = await ensureStorageBootstrap();
-    let initError: unknown = bootstrapError;
-
-    // Ensure demo stories exist regardless of storage errors
-    try {
-      const demo1 = StoryValidator.validateStory(demoStory);
-      const demo2 = StoryValidator.validateStory(demoStoryAdvanced);
-
-      await hydrateReaderSceneWindow(demo1.id, demo1.startSceneId, 0);
-      const state = useAppStore.getState();
-      if (shouldUpsertBundledStory(state, demo1)) {
-        if (__DEV__) {
-          console.log('[HomeScreen] syncing bundled story', { storyId: demo1.id });
-        }
-        syncBundledStory(demo1);
-      }
-
-      await hydrateReaderSceneWindow(demo2.id, demo2.startSceneId, 0);
-      const updatedState = useAppStore.getState();
-      if (shouldUpsertBundledStory(updatedState, demo2)) {
-        if (__DEV__) {
-          console.log('[HomeScreen] syncing bundled story', { storyId: demo2.id });
-        }
-        syncBundledStory(demo2);
-      }
-    } catch (error) {
-      initError = initError ?? error;
-      ErrorHandler.handle('Failed to add demo stories', error, ErrorCategory.STORAGE);
-    }
-
-    // Ensure every bundled demo asset exists. This is intentionally idempotent:
-    // existing user uploads and previously seeded assets are preserved.
-    try {
-      const bundledAssets = [
-        ['assets/background/bg-ancient-library.png', 'Ancient Library', 'image'],
-        ['assets/background/bg-grand-hall.png', 'Grand Hall', 'image'],
-        ['assets/background/bg-hall-mirrors.png', 'Hall of Mirrors', 'image'],
-        ['assets/background/bg-museum-entrance.png', 'Museum Entrance', 'image'],
-        ['assets/background/bg-treasure-chamber.png', 'Treasure Chamber', 'image'],
-        ['assets/background/bg-upper-library.png', 'Upper Library', 'image'],
-        ['assets/sounds-sample/music-magical.mp3', 'Magical Music', 'audio'],
-        ['assets/sounds-sample/music-mysterious-adventure.mp3', 'Mysterious Adventure', 'audio'],
-        ['assets/sounds-sample/sfx-door-open.mp3', 'Door Open SFX', 'audio'],
-      ] as const;
-      for (const [uri, name, type] of bundledAssets) {
-        await addAssetToLibrary(uri, name, type);
-      }
-    } catch (error) {
-      initError = initError ?? error;
-      ErrorHandler.handle('Failed to seed media library', error, ErrorCategory.STORAGE);
-    }
-
-    // Seeded and legacy images become visible only in stories that already
-    // reference them as backgrounds; unrelated media remains hidden.
-    useAppStore.setState((state) => ({
-      imageAssetIdsByStory: migrateStoryImageAssetIds(
-        state.imageAssetIdsByStory,
-        state.sceneRecordsByStory,
-        state.mediaLibrary,
-      ),
-    }));
-
-    if (Platform.OS === 'web') {
-      try {
-        const cleanup = await cleanupOrphanedWebMedia(useAppStore.getState());
-        if (__DEV__ && (cleanup.markedKeys.length > 0 || cleanup.deletedKeys.length > 0)) {
-          console.log('[Storage] orphan media cleanup:', cleanup);
-        }
-      } catch (error) {
-        ErrorHandler.handle('Failed to clean orphaned IndexedDB media', error, ErrorCategory.STORAGE);
-      }
-    }
-
-    if (initError && __DEV__) {
-      console.warn('[HomeScreen] initialization completed with errors:', initError);
-    }
-
-    setIsInitialized(true);
-  }, [hydrateReaderSceneWindow]);
-
-  useEffect(() => {
-    initializeApp();
-  }, [initializeApp]);
-
-  const handlePlayStory = useCallback((story: StoryMetadata) => {
-    if (__DEV__) console.log('[DIAG] handlePlayStory called with storyId:', story.id);
-    navigateWithViewTransition(() => {
-      router.push({
-        pathname: '/reader',
-        params: { storyId: story.id, resume: '0' },
-      });
+  const shelves = useMemo(() => {
+    const stories = buildShowcaseStories({
+      storiesMetadata,
+      sceneRecordsByStory,
+      saveSlots,
+      endingsReachedByStory,
     });
-  }, [router]);
+    return buildShelves(stories, Date.now());
+  }, [storiesMetadata, sceneRecordsByStory, saveSlots, endingsReachedByStory]);
 
-  const renderStoryCard = useCallback(
-    ({ item }: { item: StoryMetadata }) => <StoryCard item={item} onPress={handlePlayStory} />,
-    [handlePlayStory]
-  );
-
-  const handleOpenEditor = useCallback(() => {
-    if (__DEV__) console.log('[DIAG] handleOpenEditor called');
+  const openStudio = useCallback(() => {
+    buttonFeedback();
     navigateWithViewTransition(() => router.push('/editor'), 'surface-shift');
   }, [router]);
 
-  const handleOpenSettings = useCallback(() => {
-    if (__DEV__) console.log('[DIAG] handleOpenSettings called');
+  const openSettings = useCallback(() => {
+    buttonFeedback();
     navigateWithViewTransition(() => router.push('/settings'), 'surface-shift');
   }, [router]);
 
-  const colors = useColors();
-  const storyColumns = useMemo(() => {
-    if (Platform.OS !== 'web') return 1;
-    if (width >= 1180) return 3;
-    if (width >= 760) return 2;
-    return 1;
-  }, [width]);
-  const contentWidthStyle = useMemo(
-    () => (Platform.OS === 'web' ? { width: '100%' as const, maxWidth: 1180, alignSelf: 'center' as const } : null),
-    [],
+  const openStoryPage = useCallback(
+    (storyId: string) => {
+      navigateWithViewTransition(() => router.push({ pathname: '/story-page', params: { storyId } }));
+    },
+    [router],
   );
+
+  const readStory = useCallback(
+    (story: ShowcaseStory) => {
+      buttonFeedback();
+      navigateWithViewTransition(() => {
+        router.push({
+          pathname: '/reader',
+          params: { storyId: story.id, resume: story.hasStarted ? '1' : '0' },
+        });
+      });
+    },
+    [router],
+  );
+
+  const captionFor = useCallback(
+    (story: ShowcaseStory) =>
+      story.isFinished
+        ? t('showcase.endingsProgress', { total: story.endingsTotal, seen: story.endingsSeen })
+        : t('showcase.minutes', { count: story.readMinutes }),
+    [t],
+  );
+
+  const bannerHeight = useMemo(() => {
+    const raw = Math.round(height * BANNER_SCREEN_RATIO);
+    return Platform.OS === 'web' ? Math.min(raw, WEB_BANNER_MAX_HEIGHT) : raw;
+  }, [height]);
 
   if (!isInitialized) {
     return (
-      <ScreenContainer className="items-center justify-center p-6">
-        <View style={[styles.loadingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.loadingTitle, { color: colors.foreground }]}>{t('common.loading')}</Text>
-          <Text style={[styles.loadingText, { color: colors.muted }]}>
-            {t('home.preparingLibrary')}
-          </Text>
-        </View>
+      <ScreenContainer className="items-center justify-center p-6" style={styles.screen}>
+        <Text style={styles.loadingText}>{t('home.preparingLibrary')}</Text>
       </ScreenContainer>
     );
   }
 
+  const hero = shelves.hero;
+
   return (
-    <ScreenContainer className="px-4 py-5" edges={["top", "left", "right", "bottom"]}>
-      <View style={contentWidthStyle}>
-        <View style={[styles.hero, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.heroCopy}>
-            <Text style={[styles.eyebrow, { color: colors.primary }]}>{t('home.productName')}</Text>
-            <Text style={[styles.heroTitle, { color: colors.foreground }]}>{t('home.stories')}</Text>
-            <Text style={[styles.heroSubtitle, { color: colors.muted }]}>
-              {t('home.heroSubtitle')}
-            </Text>
+    <ScreenContainer style={styles.screen} edges={['top', 'left', 'right', 'bottom']}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        <View style={styles.header}>
+          <Text style={styles.wordmark}>{t('home.productName')}</Text>
+          <View style={styles.headerActions}>
+            <Pressable onPress={openStudio} accessibilityRole="button" style={styles.headerButton}>
+              <Text style={styles.headerButtonText}>{t('showcase.studio')}</Text>
+            </Pressable>
+            <Pressable
+              onPress={openSettings}
+              accessibilityRole="button"
+              accessibilityLabel={t('settings.title')}
+              style={styles.headerButton}
+            >
+              <Text style={styles.headerButtonText}>{t('settings.title')}</Text>
+            </Pressable>
           </View>
+        </View>
 
-          <View style={styles.heroActions}>
-            <Button variant="primary" size="base" onPress={handleOpenEditor} accessibilityLabel={t('home.edit')}>
-              {t('home.edit')}
-            </Button>
-            <Button variant="secondary" size="base" onPress={handleOpenSettings} accessibilityLabel={t('settings.open')}>
-              {t('settings.title')}
-            </Button>
-          </View>
-
-          <View style={styles.statsRow}>
-            <View style={[styles.statCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Text style={[styles.statValue, { color: colors.foreground }]}>{storiesMetadata.length}</Text>
-              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('home.stories')}</Text>
+        {hero ? (
+          <LiveSceneBackdrop
+            backgroundAsset={posterAssetFor(hero)}
+            effect={hero.bannerEffect}
+            fallbackSeed={hero.id}
+            fallbackLabel={hero.title}
+            height={bannerHeight}
+          >
+            <View style={styles.heroChips}>
+              {hero.tags.slice(0, 2).map((tag) => (
+                <Text key={tag} style={styles.chip}>
+                  {tag}
+                </Text>
+              ))}
+              <Text style={styles.chip}>{t('showcase.minutes', { count: hero.readMinutes })}</Text>
+              {hero.hasStarted ? (
+                <Text style={styles.chip}>
+                  {t('showcase.endingsProgress', { total: hero.endingsTotal, seen: hero.endingsSeen })}
+                </Text>
+              ) : null}
             </View>
-          </View>
-        </View>
 
-      {storiesMetadata.length === 0 ? (
-        <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.emptyIcon, { color: colors.primary }]}>{t('common.new')}</Text>
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t('home.noStories')}</Text>
-          <Text style={[styles.emptyText, { color: colors.muted }]}>
-            {t('home.emptyHint')}
-          </Text>
-          <Button variant="primary" size="base" onPress={handleOpenEditor} accessibilityLabel={t('home.createStory')}>
-            {t('home.createStory')}
-          </Button>
-        </View>
-      ) : (
-        <FlatList<StoryMetadata>
-          key={`stories-${storyColumns}`}
-          data={storiesMetadata}
-          renderItem={renderStoryCard}
-          keyExtractor={(item) => item.id}
-          numColumns={storyColumns}
-          columnWrapperStyle={storyColumns > 1 ? styles.storyGridRow : undefined}
-          scrollEnabled={true}
-          contentContainerStyle={styles.storyList}
-          showsVerticalScrollIndicator={false}
+            <Text style={styles.heroTitle} numberOfLines={2}>
+              {hero.title}
+            </Text>
+            {hero.teaser ? (
+              <Text style={styles.heroTeaser} numberOfLines={3}>
+                «{hero.teaser}»
+              </Text>
+            ) : null}
+
+            <View style={styles.heroActions}>
+              <Pressable
+                onPress={() => readStory(hero)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.primaryButton, { opacity: pressed ? 0.85 : 1 }]}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {hero.hasStarted ? t('showcase.continue') : t('showcase.read')}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => openStoryPage(hero.id)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.secondaryButton, { opacity: pressed ? 0.85 : 1 }]}
+              >
+                <Text style={styles.secondaryButtonText}>{t('showcase.details')}</Text>
+              </Pressable>
+            </View>
+          </LiveSceneBackdrop>
+        ) : (
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>{t('showcase.emptyTitle')}</Text>
+            <Text style={styles.emptyHint}>{t('showcase.emptyHint')}</Text>
+            <Pressable onPress={openStudio} accessibilityRole="button" style={styles.primaryButton}>
+              <Text style={styles.primaryButtonText}>{t('showcase.studio')}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        <Shelf
+          title={t('showcase.shelf.continueReading')}
+          stories={shelves.continueReading}
+          captionFor={captionFor}
+          onPress={openStoryPage}
+          width={width}
         />
-      )}
-      </View>
+        <Shelf
+          title={t('showcase.shelf.unexplored')}
+          stories={shelves.unexplored}
+          captionFor={captionFor}
+          onPress={openStoryPage}
+          width={width}
+        />
+        <Shelf
+          title={t('showcase.shelf.quickReads')}
+          stories={shelves.quickReads}
+          captionFor={captionFor}
+          onPress={openStoryPage}
+          width={width}
+        />
+        <Shelf
+          title={t('showcase.shelf.fresh')}
+          stories={shelves.fresh}
+          captionFor={captionFor}
+          onPress={openStoryPage}
+          width={width}
+        />
+        <Shelf
+          title={t('showcase.shelf.all')}
+          stories={shelves.all}
+          captionFor={captionFor}
+          onPress={openStoryPage}
+          width={width}
+        />
+      </ScrollView>
     </ScreenContainer>
   );
 }
 
+interface ShelfProps {
+  title: string;
+  stories: ShowcaseStory[];
+  captionFor: (story: ShowcaseStory) => string;
+  onPress: (storyId: string) => void;
+  width: number;
+}
+
+const Shelf = React.memo(function Shelf({
+  title,
+  stories,
+  captionFor,
+  onPress,
+  width,
+}: ShelfProps) {
+  const renderItem = useCallback(
+    ({ item }: { item: ShowcaseStory }) => (
+      <StoryPoster
+        story={item}
+        posterAsset={posterAssetFor(item)}
+        caption={captionFor(item)}
+        onPress={onPress}
+      />
+    ),
+    [captionFor, onPress],
+  );
+
+  if (stories.length === 0) return null;
+
+  // One poster can't fill a row, so a short shelf lays out inline instead of
+  // pretending to be a scrollable rail.
+  const scrollable = stories.length * (POSTER_WIDTH + 12) > width - 32;
+
+  return (
+    <View style={styles.shelf}>
+      <Text style={styles.shelfTitle}>{title}</Text>
+      {scrollable ? (
+        <FlatList<ShowcaseStory>
+          data={stories}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.shelfRow}
+        />
+      ) : (
+        <View style={styles.shelfRow}>
+          {stories.map((story) => (
+            <StoryPoster
+              key={story.id}
+              story={story}
+              posterAsset={posterAssetFor(story)}
+              caption={captionFor(story)}
+              onPress={onPress}
+            />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+});
+
 const styles = StyleSheet.create({
-  loadingCard: {
-    width: '100%',
-    maxWidth: 360,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: spacing.xl,
-    alignItems: 'center',
-    gap: spacing.sm,
+  screen: {
+    backgroundColor: SHOWCASE_COLORS.bg,
   },
-  loadingTitle: {
-    ...typeScale.sectionTitle,
+  scroll: {
+    paddingBottom: 40,
   },
   loadingText: {
-    ...typeScale.label,
-    textAlign: 'center',
+    color: SHOWCASE_COLORS.muted,
+    fontSize: 15,
   },
-  hero: {
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: spacing.xl,
-    marginBottom: spacing.lg,
-    gap: spacing.lg,
-  },
-  heroCopy: {
-    gap: spacing.sm,
-  },
-  eyebrow: {
-    ...typeScale.caption,
-    fontWeight: '800',
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-  },
-  heroTitle: {
-    ...typeScale.pageTitle,
-  },
-  heroSubtitle: {
-    maxWidth: 560,
-    ...typeScale.body,
-  },
-  heroActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  statCard: {
-    minWidth: 104,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  statValue: {
-    ...typeScale.sectionTitle,
-    fontWeight: '800',
-  },
-  statLabel: {
-    ...typeScale.caption,
-    marginTop: 2,
-  },
-  storyList: {
-    paddingBottom: spacing.xl,
-    gap: spacing.md,
-  },
-  storyGridRow: {
-    gap: spacing.md,
-  },
-  storyCard: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    gap: spacing.md,
-  },
-  thumbnailFrame: {
-    overflow: 'hidden',
-    borderRadius: radius.lg,
-  },
-  thumbnail: {
-    width: '100%',
-    height: 148,
-    borderRadius: radius.lg,
-  },
-  thumbnailPlaceholder: {
-    height: 148,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.lg,
-  },
-  thumbnailIcon: {
-    fontSize: 36,
-  },
-  storyCardBody: {
-    gap: spacing.sm,
-  },
-  storyCardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  storyTitle: {
-    flex: 1,
-    ...typeScale.body,
-    fontWeight: '800',
-  },
-  sceneBadge: {
-    minWidth: 34,
-    height: 28,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  sceneBadgeText: {
-    ...typeScale.caption,
-    fontWeight: '800',
-  },
-  storyDescription: {
-    minHeight: 42,
-    ...typeScale.label,
-  },
-  storyMetaRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.md,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
   },
-  storyMeta: {
-    flex: 1,
-    ...typeScale.caption,
+  wordmark: {
+    color: SHOWCASE_COLORS.text,
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.6,
   },
-  storyMetaCta: {
-    ...typeScale.caption,
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: SHOWCASE_COLORS.border,
+  },
+  headerButtonText: {
+    color: SHOWCASE_COLORS.secondary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  heroChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  chip: {
+    color: SHOWCASE_COLORS.secondary,
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: `${SHOWCASE_COLORS.text}1a`,
+    overflow: 'hidden',
+  },
+  heroTitle: {
+    color: SHOWCASE_COLORS.text,
+    fontSize: 34,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  heroTeaser: {
+    color: SHOWCASE_COLORS.secondary,
+    fontSize: 15,
+    fontStyle: 'italic',
+    marginTop: 8,
+    maxWidth: 560,
+  },
+  heroActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  primaryButton: {
+    paddingHorizontal: 22,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: SHOWCASE_COLORS.text,
+  },
+  primaryButtonText: {
+    color: SHOWCASE_COLORS.bg,
+    fontSize: 14,
     fontWeight: '800',
   },
-  emptyState: {
+  secondaryButton: {
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 10,
     borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: spacing.xl,
-    alignItems: 'center',
-    gap: spacing.md,
+    borderColor: `${SHOWCASE_COLORS.text}59`,
   },
-  emptyIcon: {
-    ...typeScale.sectionTitle,
+  secondaryButtonText: {
+    color: SHOWCASE_COLORS.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  shelf: {
+    marginTop: 26,
+    gap: 12,
+  },
+  shelfTitle: {
+    color: SHOWCASE_COLORS.text,
+    fontSize: 17,
+    fontWeight: '800',
+    paddingHorizontal: 20,
+  },
+  shelfRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 20,
+  },
+  empty: {
+    margin: 20,
+    padding: 28,
+    borderRadius: 16,
+    backgroundColor: SHOWCASE_COLORS.card,
+    alignItems: 'center',
+    gap: 12,
   },
   emptyTitle: {
-    ...typeScale.sectionTitle,
+    color: SHOWCASE_COLORS.text,
+    fontSize: 20,
     fontWeight: '800',
-    textAlign: 'center',
   },
-  emptyText: {
-    maxWidth: 360,
-    ...typeScale.label,
+  emptyHint: {
+    color: SHOWCASE_COLORS.muted,
+    fontSize: 14,
     textAlign: 'center',
   },
 });

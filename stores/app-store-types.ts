@@ -26,6 +26,8 @@ export interface AppState {
   language: Language;
   mediaLibrary: LibraryAsset[];
   imageAssetIdsByStory: StoryImageAssetIds;
+  /** storyId → ids of terminal scenes the reader has reached. */
+  endingsReachedByStory: Record<string, string[]>;
   isLoaded: boolean;
   migrationError: string | null;
 }
@@ -50,6 +52,7 @@ export interface AppActions {
   setCharacterLibrary: (storyId: string, characters: Character[]) => void;
   setAudioLibrary: (storyId: string, items: AudioLibraryItem[]) => void;
   setMediaLibrary: (assets: LibraryAsset[]) => void;
+  recordEndingReached: (storyId: string, sceneId: string) => void;
   addImageAssetToStory: (storyId: string, assetId: string) => void;
   removeImageAssetFromStory: (storyId: string, assetId: string) => void;
 

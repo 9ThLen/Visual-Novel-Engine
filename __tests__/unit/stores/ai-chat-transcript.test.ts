@@ -3,7 +3,14 @@ import { useAppStore } from '@/stores/use-app-store';
 
 describe('AI chat transcripts', () => {
   beforeEach(() => {
-    useAiChatStore.setState({ messages: [], messagesByStory: {}, activeStoryId: null, restoredStoryIds: {} });
+    useAiChatStore.setState({
+      messages: [],
+      messagesByStory: {},
+      activeStoryId: null,
+      restoredStoryIds: {},
+      pendingInteraction: null,
+      status: 'idle',
+    });
     useAppStore.setState({ isLoaded: false, storiesMetadata: [] });
   });
 
@@ -57,28 +64,46 @@ describe('AI chat transcripts', () => {
     expect(useAiChatStore.getState().messagesByStory).toEqual({ live: [] });
   });
 
-  it('partializes transcripts only', () => {
+  it('partializes transcripts and the bounded undo journal only', () => {
     const options = useAiChatStore.persist.getOptions();
     const persisted = options.partialize?.(useAiChatStore.getState()) as Record<string, unknown>;
-    expect(Object.keys(persisted)).toEqual(['messagesByStory']);
-    expect(persisted).not.toHaveProperty('pendingPatch');
+    expect(Object.keys(persisted)).toEqual(['messagesByStory', 'appliedChangesByStory']);
+    expect(persisted).not.toHaveProperty('pendingInteraction');
     expect(persisted).not.toHaveProperty('appliedChanges');
   });
 
   it('round-trips transcripts while dropping live pending state', async () => {
     useAppStore.setState({ isLoaded: true, storiesMetadata: [{ id: 'live' } as never] });
     const storage = useAiChatStore.persist.getOptions().storage;
-    useAiChatStore.setState({ messagesByStory: {}, pendingPatch: null });
+    useAiChatStore.setState({ messagesByStory: {}, pendingInteraction: null });
     await storage?.setItem('vne-ai-chat', {
       state: { messagesByStory: { live: [{ id: 'm1', role: 'user', text: 'hello', createdAt: 1 }] } },
       version: 0,
     });
     await useAiChatStore.persist.rehydrate();
     expect(useAiChatStore.getState().messagesByStory.live[0].text).toBe('hello');
-    expect(useAiChatStore.getState().pendingPatch).toBeNull();
+    expect(useAiChatStore.getState().pendingInteraction).toBeNull();
     const durable = await storage?.getItem('vne-ai-chat');
-    expect(durable?.state).not.toHaveProperty('pendingPatch');
+    expect(durable?.state).not.toHaveProperty('pendingInteraction');
     await useAiChatStore.persist.clearStorage();
+  });
+
+  it('keeps a pending interaction scoped to its story and cancels it once', () => {
+    const chat = useAiChatStore.getState();
+    chat.setActiveStory('a');
+    chat.setPendingInteraction({
+      kind: 'capability',
+      storyId: 'a',
+      value: { capability: 'image_generate' },
+    });
+    expect(useAiChatStore.getState().status).toBe('awaiting_confirmation');
+
+    chat.setActiveStory('b');
+    expect(useAiChatStore.getState().status).toBe('idle');
+    expect(chat.cancelPendingInteraction('b')).toBeNull();
+    expect(chat.cancelPendingInteraction('a')).toMatchObject({ kind: 'capability', storyId: 'a' });
+    expect(chat.cancelPendingInteraction('a')).toBeNull();
+    expect(useAiChatStore.getState().pendingInteraction).toBeNull();
   });
 
   it('removes legacy connection errors when transcripts are hydrated', async () => {

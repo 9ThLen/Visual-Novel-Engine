@@ -114,6 +114,7 @@ function makeState(): AppStorePersistenceState {
       },
     ],
     imageAssetIdsByStory: {},
+    endingsReachedByStory: { 'story-1': ['scene-1'] },
   };
 }
 

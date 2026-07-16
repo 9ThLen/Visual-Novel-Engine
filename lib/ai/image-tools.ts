@@ -3,6 +3,7 @@ import { resolveAssetUri } from '@/lib/asset-resolver';
 import { getStoryImageAssets } from '@/lib/story-image-library';
 import { useAppStore } from '@/stores/use-app-store';
 import type { AiPermissionLevel } from './permissions';
+import type { PendingAiImage } from './pending-image-storage';
 
 export interface AiImageResult {
   requestId: string;
@@ -15,6 +16,22 @@ export interface AiImageResult {
   height?: number;
   estimatedCostUsd?: unknown;
   assetId?: string;
+}
+
+export function toPendingAiImage(result: AiImageResult, storyId: string, createdAt = Date.now()): PendingAiImage {
+  return {
+    requestId: result.requestId, storyId, purpose: result.purpose, prompt: result.prompt,
+    mimeType: result.mimeType, blob: result.blob, width: result.width, height: result.height,
+    estimatedCostUsd: result.estimatedCostUsd, createdAt,
+  };
+}
+
+export function fromPendingAiImage(image: PendingAiImage): AiImageResult {
+  return {
+    requestId: image.requestId, purpose: image.purpose, prompt: image.prompt,
+    mimeType: image.mimeType, blob: image.blob, blobUrl: URL.createObjectURL(image.blob),
+    width: image.width, height: image.height, estimatedCostUsd: image.estimatedCostUsd,
+  };
 }
 
 export function decodeImageResult(payload: unknown): AiImageResult | null {
@@ -119,7 +136,7 @@ export async function executeRemoveBackground(
   permission: AiPermissionLevel,
   waitForConfirmation: () => Promise<boolean>,
   removeBackground: (uri: string) => Promise<string>,
-  onResult: (result: AiImageResult) => void,
+  onResult: (result: AiImageResult) => void | Promise<void>,
 ) {
   const state = useAppStore.getState();
   const asset = getStoryImageAssets(storyId, state.imageAssetIdsByStory, state.mediaLibrary)
@@ -143,7 +160,7 @@ export async function executeRemoveBackground(
     const dataUri = await removeBackground(uri);
     const result = dataUriToImageResult(dataUri, crypto.randomUUID(), asset.name);
     if (!result) throw new Error('Background removal returned an invalid image');
-    onResult(result);
+    await onResult(result);
     return { ok: true as const, result: { accepted: true, requestId: result.requestId } };
   } catch (error: unknown) {
     return { ok: false as const, errorCode: 'VALIDATION_FAILED' as const, errorMessage: error instanceof Error ? error.message : 'Background removal failed' };

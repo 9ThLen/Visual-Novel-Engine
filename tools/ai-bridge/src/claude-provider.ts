@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
 import { MODEL_BRIDGE_TOOLS } from '../../../lib/ai/bridge-tools';
+import { ClaudeConversation } from './claude-conversation';
 import { buildSessionSystemPrompt, modelToolErrorValue, type AgentEvent, type AgentProvider, type AgentSessionContext, type ToolInvoker } from './provider';
 
 const prompt = readFileSync(fileURLToPath(new URL('./system-prompt.md', import.meta.url)), 'utf8');
@@ -9,9 +10,11 @@ const content = (value: unknown) => ({ content: [{ type: 'text' as const, text: 
 
 export class ClaudeAgentProvider implements AgentProvider {
   private controller: AbortController | null = null;
+  private readonly conversation = new ClaudeConversation();
   constructor(private readonly bridge: ToolInvoker, private readonly session?: AgentSessionContext) {}
   get systemPrompt(): string { return buildSessionSystemPrompt(prompt, this.session); }
   abort(): void { this.controller?.abort(); }
+  resetConversation(): void { this.conversation.reset(); }
 
   async *send(text: string): AsyncIterable<AgentEvent> {
     this.controller = new AbortController();
@@ -23,12 +26,13 @@ export class ClaudeAgentProvider implements AgentProvider {
     };
     const mcp = createSdkMcpServer({ name: 'visual-novel', version: '1.0.0', tools: MODEL_BRIDGE_TOOLS.map(def =>
       tool(def.name, def.description, def.inputSchema.shape, input => invoke(def.name, input, def.timeoutMs))) });
-    const stream = query({ prompt: text, options: {
+    const stream = query({ prompt: text, options: this.conversation.withResume({
       abortController: this.controller, systemPrompt: this.systemPrompt, includePartialMessages: true,
       tools: [], mcpServers: { visualNovel: mcp }, allowedTools: MODEL_BRIDGE_TOOLS.map(def => `mcp__visualNovel__${def.name}`),
       settingSources: [], strictMcpConfig: true,
-    } });
+    }) });
     for await (const message of stream) {
+      this.conversation.observe(message);
       if (message.type === 'stream_event' && message.event.type === 'content_block_delta' && message.event.delta.type === 'text_delta') yield { type: 'text', text: message.event.delta.text };
       if (message.type === 'result') yield { type: 'done', stopReason: message.subtype === 'success' ? (message.stop_reason ?? 'end_turn') : 'error' };
     }

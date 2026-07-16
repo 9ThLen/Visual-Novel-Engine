@@ -58,7 +58,7 @@ function mimeType(format: OutputFormat): string { return format === 'jpeg' ? 'im
 
 function configurationError(): BridgeToolError {
   return new BridgeToolError('PROVIDER_UNAVAILABLE', 'Image generation is not configured. Set OPENAI_API_KEY in the bridge .env.', {
-    reason: 'IMAGE_PROVIDER_NOT_CONFIGURED', hint: 'Set OPENAI_API_KEY in .env and restart pnpm ai-bridge.',
+    reason: 'IMAGE_PROVIDER_NOT_CONFIGURED', hint: 'Set OPENAI_API_KEY in .env and restart the AI bridge.',
   });
 }
 
@@ -116,7 +116,16 @@ export function createImageToolHandlers(rawOptions: ImageToolOptions = {}): Reco
     const estimatedCostUsd = estimate(input, edit);
     const capability = getBridgeTool(toolName)?.requiresCapability;
     if (!capability) throw new BridgeToolError('PROVIDER_UNAVAILABLE', `${toolName} has no capability policy`);
-    await context.callApp('authorize_capability', { capability, estimate: { costUsdRange: estimatedCostUsd, model: options.model, size: input.size, quality: input.quality } }, 600_000);
+    await context.callApp('authorize_capability', {
+      capability,
+      estimate: {
+        provider: 'OpenAI',
+        costUsdRange: estimatedCostUsd,
+        model: options.model,
+        size: input.size,
+        quality: input.quality,
+      },
+    }, 600_000);
     let source: { mimeType: string; base64: string } | undefined;
     if (edit) {
       const result = await context.callApp('get_image_binary', { assetId: input.assetId });

@@ -9,6 +9,14 @@ export const AI_PERMISSION_LEVELS = ['confirm', 'auto', 'blocked'] as const;
 export type AiPermissionLevel = typeof AI_PERMISSION_LEVELS[number];
 export type AiPermissions = Record<AiCapability, AiPermissionLevel>;
 
+export interface AiCapabilityEstimate {
+  provider?: string;
+  model?: string;
+  size?: string;
+  quality?: string;
+  costUsdRange?: { min?: number; max?: number } | null;
+}
+
 export const defaultAiPermissions: AiPermissions = {
   scene_edit: 'confirm',
   appearance: 'confirm',
@@ -26,12 +34,14 @@ export function normalizeAiPermissions(value: unknown): AiPermissions {
     scene_edit: normalizeAiPermissionLevel(input.scene_edit),
     appearance: normalizeAiPermissionLevel(input.appearance),
     changeset: 'confirm',
-    image_generate: normalizeAiPermissionLevel(input.image_generate),
+    image_generate: normalizeAiPermissionLevel(input.image_generate) === 'auto'
+      ? 'confirm'
+      : normalizeAiPermissionLevel(input.image_generate),
   };
 }
 
 export function resolveCapability(capability: AiCapability, permissions: AiPermissions): AiPermissionLevel {
-  return capability === 'changeset' && permissions[capability] === 'auto'
+  return (capability === 'changeset' || capability === 'image_generate') && permissions[capability] === 'auto'
     ? 'confirm'
     : permissions[capability];
 }
@@ -41,5 +51,10 @@ export function setCapabilityLevel(
   capability: AiCapability,
   level: AiPermissionLevel,
 ): AiPermissions {
-  return { ...permissions, [capability]: capability === 'changeset' && level === 'auto' ? 'confirm' : level };
+  return {
+    ...permissions,
+    [capability]: (capability === 'changeset' || capability === 'image_generate') && level === 'auto'
+      ? 'confirm'
+      : level,
+  };
 }

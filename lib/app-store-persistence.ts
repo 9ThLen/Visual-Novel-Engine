@@ -35,6 +35,7 @@ export type AppStorePersistenceState = {
   language: Language;
   mediaLibrary: LibraryAsset[];
   imageAssetIdsByStory: StoryImageAssetIds;
+  endingsReachedByStory: Record<string, string[]>;
 };
 
 export const MAX_DATA_URI_ASSET_BYTES = 256 * 1024;
@@ -167,6 +168,9 @@ export function buildPersistedAppState(state: AppStorePersistenceState): AppStor
     language: state.language,
     mediaLibrary: getPersistableMediaLibrary(state.mediaLibrary),
     imageAssetIdsByStory: state.imageAssetIdsByStory,
+    // Which endings a reader has reached is progress, not cache: losing it would
+    // silently re-ask for a review and reset their collection.
+    endingsReachedByStory: state.endingsReachedByStory,
   };
 }
 

@@ -1,4 +1,4 @@
-export const BRIDGE_PROTOCOL_VERSION = 1 as const;
+export const BRIDGE_PROTOCOL_VERSION = 2 as const;
 
 export const MAX_MESSAGE_BYTES = 1_000_000;
 export const MAX_IMAGE_MESSAGE_BYTES = 8_000_000;
@@ -9,6 +9,7 @@ export type ClientMessageType =
   | 'session_end'
   | 'user_message'
   | 'interrupt'
+  | 'conversation_reset'
   | 'tool_result'
   | 'ping'
   | 'image_result_ack';
@@ -17,6 +18,7 @@ export type ServerMessageType =
   | 'session_started'
   | 'assistant_delta'
   | 'assistant_done'
+  | 'conversation_reset_ack'
   | 'tool_call'
   | 'status'
   | 'error'
@@ -51,10 +53,10 @@ export interface BridgeEnvelope<T = unknown> {
 }
 
 const CLIENT_MESSAGE_TYPES: readonly ClientMessageType[] = [
-  'session_start', 'session_end', 'user_message', 'interrupt', 'tool_result', 'ping', 'image_result_ack',
+  'session_start', 'session_end', 'user_message', 'interrupt', 'conversation_reset', 'tool_result', 'ping', 'image_result_ack',
 ];
 const SERVER_MESSAGE_TYPES: readonly ServerMessageType[] = [
-  'session_started', 'assistant_delta', 'assistant_done', 'tool_call', 'status', 'error', 'pong', 'image_result',
+  'session_started', 'assistant_delta', 'assistant_done', 'conversation_reset_ack', 'tool_call', 'status', 'error', 'pong', 'image_result',
 ];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

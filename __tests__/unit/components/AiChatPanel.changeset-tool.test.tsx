@@ -23,7 +23,10 @@ describe('AiChatPanel changeset tool', () => {
       storiesMetadata: [{ id: 'story-1', title: 'Story', startSceneId: 'scene-1', sceneOrder: ['scene-1'], createdAt: 1, updatedAt: 1, sceneCount: 1 }],
       sceneRecordsByStory: { 'story-1': { 'scene-1': record } }, characterLibraries: {}, imageAssetIdsByStory: {}, mediaLibrary: [],
     });
-    useAiChatStore.setState({ messages: [], status: 'idle', pendingPatch: null, pendingAppearance: null, pendingChangeSet: null, appliedChanges: [], lastAppliedChange: null });
+    useAiChatStore.setState({
+      messages: [], status: 'idle', pendingInteraction: null,
+      appliedChangesByStory: {}, appliedChanges: [], lastAppliedChange: null,
+    });
   });
 
   it('round-trips a proposal through pending, apply, and the journal', async () => {
@@ -36,9 +39,14 @@ describe('AiChatPanel changeset tool', () => {
       storyId: 'story-1', expectedSceneRevisions: {}, explanation: 'Add a branch',
       items: [{ kind: 'create_scene', tempId: 'new:branch', afterRef: 'scene-1', name: 'Branch', timeline: [] }],
     };
-    const resultPromise = executeProposeChangeSet('story-1', proposal, useAiChatStore.getState().setPendingChangeSet, async () => ({ accepted: true }));
+    const resultPromise = executeProposeChangeSet('story-1', proposal, (value) =>
+      useAiChatStore.getState().setPendingInteraction({ kind: 'changeset', storyId: 'story-1', value }),
+    async () => ({ accepted: true }));
 
-    expect(useAiChatStore.getState().pendingChangeSet?.changeSet).toEqual(proposal);
+    expect(useAiChatStore.getState().pendingInteraction).toMatchObject({
+      kind: 'changeset',
+      value: { changeSet: proposal },
+    });
     render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" />);
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
@@ -54,7 +62,9 @@ describe('AiChatPanel changeset tool', () => {
         { kind: 'create_scene', tempId: 'new:branch', afterRef: 'scene-1', name: 'Branch', timeline: [] },
         { kind: 'create_character', character: { tempId: 'newchar:hero', name: 'Hero' } },
       ],
-    }, useAiChatStore.getState().setPendingChangeSet, async () => ({ accepted: true }));
+    }, (value) => useAiChatStore.getState().setPendingInteraction({
+      kind: 'changeset', storyId: 'story-1', value,
+    }), async () => ({ accepted: true }));
     expect(result).toMatchObject({ ok: false, errorCode: 'VALIDATION_FAILED', details: { reason: 'ITEM_ORDER' } });
   });
 
@@ -63,7 +73,9 @@ describe('AiChatPanel changeset tool', () => {
     const result = await executeProposeChangeSet('story-1', {
       storyId: 'story-1', expectedSceneRevisions: { 'scene-1': `${computeSceneRevision(record)}-stale` }, explanation: 'Rename',
       items: [{ kind: 'patch_scene', sceneRef: 'scene-1', operations: [{ op: 'update_scene_metadata', updates: { name: 'New' } }] }],
-    }, useAiChatStore.getState().setPendingChangeSet, async () => ({ accepted: true }));
+    }, (value) => useAiChatStore.getState().setPendingInteraction({
+      kind: 'changeset', storyId: 'story-1', value,
+    }), async () => ({ accepted: true }));
     expect(result).toMatchObject({ ok: false, errorCode: 'STALE_REVISION' });
     expect(result).not.toHaveProperty('details.reason');
   });

@@ -283,22 +283,49 @@ describe('BridgeClient', () => {
     expect(storage.removeItem).toHaveBeenCalledWith('vne-bridge-session:ws://localhost:8787');
   });
 
-  it('buffers user messages while reconnecting and flushes them after opening', () => {
+  it('rejects user messages until the session is authenticated', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    expect(client.sendUserMessage('too-early')).toEqual({ ok: false, reason: 'NOT_AUTHENTICATED' });
+    socket.open();
+    expect(client.sendUserMessage('still-too-early')).toEqual({ ok: false, reason: 'NOT_AUTHENTICATED' });
+    expect(socket.sent).toHaveLength(1);
+
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'claude' }, 'session-1'));
+    expect(client.sendUserMessage('delivered', { scene: 2 })).toEqual({ ok: true });
+    expect(frame(socket, 1)).toMatchObject({
+      type: 'user_message',
+      payload: { text: 'delivered', context: { scene: 2 } },
+    });
+    client.close();
+  });
+
+  it('never delivers a stale turn after invalid-token reconnect', () => {
     const client = new BridgeClient(options);
     client.connect();
     const first = MockWebSocket.instances[0];
     first.open();
-    first.close();
-    client.sendUserMessage('queued', { scene: 2 });
+    expect(client.sendUserMessage('stale')).toEqual({ ok: false, reason: 'NOT_AUTHENTICATED' });
+    first.receive(makeEnvelope('error', { code: 'UNAUTHORIZED', message: 'Invalid bridge token' }));
 
-    vi.advanceTimersByTime(500);
+    client.connect();
     const second = MockWebSocket.instances[1];
     second.open();
-    second.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: true, provider: 'claude' }, 'session-1'));
-    expect(frame(second, 1)).toMatchObject({
-      type: 'user_message',
-      payload: { text: 'queued', context: { scene: 2 } },
-    });
+    second.receive(makeEnvelope('session_started', { sessionId: 'session-2', resumed: false, provider: 'claude' }, 'session-2'));
+    expect(second.sent).toHaveLength(1);
+    client.close();
+  });
+
+  it('emits one interrupt only after authentication', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    expect(client.interrupt()).toEqual({ ok: false, reason: 'NOT_AUTHENTICATED' });
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'claude' }, 'session-1'));
+    expect(client.interrupt()).toEqual({ ok: true });
+    expect(frame(socket, 1)).toMatchObject({ type: 'interrupt', payload: {} });
     client.close();
   });
 

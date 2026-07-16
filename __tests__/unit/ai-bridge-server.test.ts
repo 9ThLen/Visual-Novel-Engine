@@ -9,9 +9,11 @@ import { z } from 'zod';
 
 class FakeProvider implements AgentProvider {
   aborted = false;
+  resets = 0;
   constructor(readonly tools: ToolInvoker, private readonly behavior: (self: FakeProvider, text: string) => AsyncIterable<AgentEvent>) {}
   send(text: string) { return this.behavior(this, text); }
   abort() { this.aborted = true; }
+  resetConversation() { this.resets += 1; }
 }
 
 const servers: AiBridgeServer[] = [];
@@ -103,6 +105,51 @@ describe('AI bridge protocol server', () => {
     const socket = connect(context.port); const started = await handshake(socket); send(socket, 'user_message', { text: 'go' }, String(payload(started).sessionId));
     await next(socket); send(socket, 'interrupt', {}, String(payload(started).sessionId));
     expect(await next(socket)).toMatchObject({ type: 'assistant_done', payload: { stopReason: 'interrupted' } }); expect(context.provider.aborted).toBe(true);
+  });
+
+  it('resets provider memory and acknowledges the reset request', async () => {
+    const context = await setup(async function* () {});
+    const socket = connect(context.port);
+    const started = await handshake(socket);
+    send(socket, 'conversation_reset', {}, String(payload(started).sessionId));
+    const ack = await next(socket);
+    expect(ack).toMatchObject({
+      type: 'conversation_reset_ack',
+      payload: { requestId: expect.any(String) },
+    });
+    expect(context.provider.resets).toBe(1);
+  });
+
+  it('interrupts an active turn before resetting and acknowledging', async () => {
+    const context = await setup(async function* (self) {
+      while (!self.aborted) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+        yield { type: 'text', text: 'x' };
+      }
+    });
+    const socket = connect(context.port);
+    const started = await handshake(socket);
+    const sessionId = String(payload(started).sessionId);
+    send(socket, 'user_message', { text: 'go' }, sessionId);
+    await next(socket);
+    const resetMessages = new Promise<BridgeEnvelope[]>(resolve => {
+      const messages: BridgeEnvelope[] = [];
+      const onMessage = (data: WebSocket.RawData) => {
+        messages.push(JSON.parse(data.toString()) as BridgeEnvelope);
+        if (messages.length === 2) {
+          socket.off('message', onMessage);
+          resolve(messages);
+        }
+      };
+      socket.on('message', onMessage);
+    });
+    send(socket, 'conversation_reset', {}, sessionId);
+    expect(await resetMessages).toEqual([
+      expect.objectContaining({ type: 'assistant_done', payload: { stopReason: 'interrupted' } }),
+      expect.objectContaining({ type: 'conversation_reset_ack' }),
+    ]);
+    expect(context.provider.aborted).toBe(true);
+    expect(context.provider.resets).toBe(1);
   });
 
   it('reports a concurrent turn with a structured reason', async () => {

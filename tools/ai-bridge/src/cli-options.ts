@@ -7,6 +7,7 @@ export interface BridgeCliArgs {
   origins?: string[];
   port?: string;
   help: boolean;
+  version?: boolean;
 }
 
 export interface BridgeCliConfig {
@@ -25,6 +26,7 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
       origin: { type: 'string', multiple: true },
       port: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
+      version: { type: 'boolean', short: 'v' },
     },
   });
 
@@ -33,6 +35,7 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
     origins: parsed.values.origin,
     port: parsed.values.port,
     help: parsed.values.help ?? false,
+    ...(parsed.values.version ? { version: true } : {}),
   };
 }
 
@@ -67,13 +70,14 @@ export function resolveBridgeCliConfig(
 
 export function bridgeCliHelp(): string {
   return [
-    'Usage: pnpm ai-bridge [options]',
+    'Usage: vne-ai-bridge [options]',
     '',
     'Options:',
     '  --provider <claude|codex>  AI CLI provider (default: claude)',
     '  --origin <origin>          Allowed loopback browser origin; repeatable',
     '  --port <port>              Bridge WebSocket port (default: 8787)',
     '  -h, --help                 Show this help',
+    '  -v, --version              Show the bridge version',
     '',
     'CLI options override AI_BRIDGE_PROVIDER, AI_BRIDGE_ALLOWED_ORIGINS, and AI_BRIDGE_PORT.',
   ].join('\n');

@@ -15,6 +15,7 @@ export const initialAppState: AppState = {
   language: 'en',
   mediaLibrary: [],
   imageAssetIdsByStory: {},
+  endingsReachedByStory: {},
   isLoaded: false,
   migrationError: null,
 };

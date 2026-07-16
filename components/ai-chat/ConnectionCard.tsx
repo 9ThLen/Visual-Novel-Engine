@@ -30,7 +30,7 @@ const PROVIDERS: Record<ProviderChoice, { label: string; install: string; login:
   codex: {
     label: 'Codex',
     install: 'npm install -g @openai/codex',
-    login: 'codex --login',
+    login: 'codex login',
   },
 };
 
@@ -49,7 +49,7 @@ function bridgeCommand(choice: ProviderChoice, url: string): string {
   const originFlag = origin.startsWith('http://') || origin.startsWith('https://')
     ? ` --origin ${origin}`
     : '';
-  return `pnpm ai-bridge --provider ${choice}${originFlag}${portFlag}`;
+  return `npx @visual-novel-engine/ai-bridge --provider ${choice}${originFlag}${portFlag}`;
 }
 
 function CommandRow({
@@ -188,16 +188,20 @@ export function ConnectionCard({
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {(Object.keys(PROVIDERS) as ProviderChoice[]).map(choice => {
             const active = providerChoice === choice;
+            const unavailable = choice === 'codex';
             return (
               <Pressable
                 key={choice}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
+                disabled={unavailable}
                 onPress={() => setProviderChoice(choice)}
-                style={{ flex: 1, borderWidth: 1, borderColor: active ? colors.primary : colors.border, borderRadius: 8, padding: 10 }}
+                style={{ flex: 1, borderWidth: 1, borderColor: active ? colors.primary : colors.border, borderRadius: 8, padding: 10, opacity: unavailable ? 0.55 : 1 }}
               >
                 <Text style={{ color: active ? colors.primary : colors.foreground, textAlign: 'center', fontWeight: '700' }}>{PROVIDERS[choice].label}</Text>
-                {active ? <Text style={{ color: colors.muted, textAlign: 'center', fontSize: 10 }}>{t('aiChat.connection.selected')}</Text> : null}
+                <Text style={{ color: colors.muted, textAlign: 'center', fontSize: 10 }}>
+                  {unavailable ? t('aiChat.connection.providerUnavailable') : active ? t('aiChat.connection.selected') : ''}
+                </Text>
               </Pressable>
             );
           })}
@@ -210,6 +214,8 @@ export function ConnectionCard({
             <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.connection.installHint')}</Text>
             <CommandRow command={selected.install} copied={copiedCommand === selected.install} onCopy={() => void copy(selected.install)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
             <CommandRow command={selected.login} copied={copiedCommand === selected.login} onCopy={() => void copy(selected.login)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
+            <Text style={{ color: colors.muted, fontSize: 11 }}>Developing from the source repository:</Text>
+            <CommandRow command={`pnpm ai-bridge --provider ${providerChoice}`} copied={copiedCommand === `pnpm ai-bridge --provider ${providerChoice}`} onCopy={() => void copy(`pnpm ai-bridge --provider ${providerChoice}`)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
           </View>
         ) : null}
       </View>

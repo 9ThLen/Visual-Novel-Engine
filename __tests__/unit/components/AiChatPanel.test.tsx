@@ -61,9 +61,8 @@ function resetChatStore() {
   useAiChatStore.setState({
     messages: [],
     status: 'idle',
-    pendingPatch: null,
-    pendingAppearance: null,
-    pendingChangeSet: null,
+    pendingInteraction: null,
+    appliedChangesByStory: {},
     appliedChanges: [],
     lastAppliedChange: null,
   });
@@ -192,7 +191,9 @@ describe('AiChatPanel', () => {
       createStorySnapshot,
       saveSceneRecord,
     });
-    useAiChatStore.setState({ pendingPatch: { patch, description } });
+    useAiChatStore.setState({
+      pendingInteraction: { kind: 'scene_patch', storyId: record.storyId, value: { patch, description } },
+    });
 
     render(<AiChatPanel storyId={record.storyId} activeSceneId={record.id} />);
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -200,7 +201,7 @@ describe('AiChatPanel', () => {
     await waitFor(() => expect(saveSceneRecord).toHaveBeenCalledWith(expect.objectContaining({ name: 'After' })));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Undo AI changes' })).toBeTruthy());
 
-    expect(useAiChatStore.getState().pendingPatch).toBeNull();
+    expect(useAiChatStore.getState().pendingInteraction).toBeNull();
     expect(useAiChatStore.getState().lastAppliedChange).toEqual({
       kind: 'scene',
       storyId: record.storyId,
@@ -222,14 +223,16 @@ describe('AiChatPanel', () => {
       createStorySnapshot: vi.fn(),
       saveSceneRecord,
     });
-    useAiChatStore.setState({ pendingPatch: { patch, description } });
+    useAiChatStore.setState({
+      pendingInteraction: { kind: 'scene_patch', storyId: record.storyId, value: { patch, description } },
+    });
 
     render(<AiChatPanel storyId={record.storyId} activeSceneId={record.id} />);
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() => expect(screen.getByText(/Ask the assistant again/)).toBeTruthy());
     expect(screen.queryByRole('button', { name: 'Undo AI changes' })).toBeNull();
-    expect(useAiChatStore.getState().pendingPatch).toBeNull();
+    expect(useAiChatStore.getState().pendingInteraction).toBeNull();
     expect(saveSceneRecord).not.toHaveBeenCalled();
   });
 
@@ -248,7 +251,9 @@ describe('AiChatPanel', () => {
       createStorySnapshot: vi.fn(),
       updateStoryMetadata,
     });
-    useAiChatStore.setState({ pendingAppearance: { patch, description } });
+    useAiChatStore.setState({
+      pendingInteraction: { kind: 'appearance', storyId: metadata.id, value: { patch, description } },
+    });
 
     render(<AiChatPanel storyId={metadata.id} activeSceneId={record.id} />);
     expect(screen.getByText('Reader appearance')).toBeTruthy();
@@ -260,7 +265,7 @@ describe('AiChatPanel', () => {
     );
     await waitFor(() => expect(screen.getByRole('button', { name: 'Undo AI changes' })).toBeTruthy());
 
-    expect(useAiChatStore.getState().pendingAppearance).toBeNull();
+    expect(useAiChatStore.getState().pendingInteraction).toBeNull();
     expect(useAiChatStore.getState().lastAppliedChange).toEqual({
       kind: 'appearance',
       storyId: 'story-1',
@@ -307,12 +312,14 @@ describe('AiChatPanel', () => {
       createStorySnapshot,
       saveSceneRecord,
     });
-    useAiChatStore.setState({ pendingPatch: { patch, description } });
+    useAiChatStore.setState({
+      pendingInteraction: { kind: 'scene_patch', storyId: record.storyId, value: { patch, description } },
+    });
 
     render(<AiChatPanel storyId={record.storyId} activeSceneId={record.id} />);
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
 
-    expect(useAiChatStore.getState().pendingPatch).toBeNull();
+    expect(useAiChatStore.getState().pendingInteraction).toBeNull();
     expect(saveSceneRecord).not.toHaveBeenCalled();
     expect(createStorySnapshot).not.toHaveBeenCalled();
   });

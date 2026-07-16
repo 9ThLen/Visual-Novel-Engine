@@ -5,9 +5,10 @@ type StorageLike = {
 };
 
 const DATABASE_NAME = 'vne-storage';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const KV_STORE_NAME = 'kv';
 const MEDIA_STORE_NAME = 'media';
+const PENDING_IMAGES_STORE_NAME = 'pending-images';
 const APP_STORAGE_PREFIX = 'vne_';
 const LOCAL_STORAGE_MIGRATION_KEY = '__vne_local_storage_migration__';
 const LOCAL_STORAGE_MIGRATION_VERSION = 1;
@@ -23,11 +24,24 @@ type MediaBlobStorageTestAdapter = Partial<{
   delete: (storageKey: string) => Promise<void>;
 }>;
 
+type PendingImageStorageTestAdapter = Partial<{
+  get: (requestId: string) => Promise<unknown | null>;
+  put: (requestId: string, value: unknown) => Promise<void>;
+  delete: (requestId: string) => Promise<void>;
+  list: () => Promise<unknown[]>;
+}>;
+
 let mediaBlobStorageTestAdapter: MediaBlobStorageTestAdapter | null = null;
+let pendingImageStorageTestAdapter: PendingImageStorageTestAdapter | null = null;
 
 /** Test seam for jsdom, which does not provide IndexedDB. */
 export function setMediaBlobStorageAdapterForTests(adapter: MediaBlobStorageTestAdapter | null): void {
   mediaBlobStorageTestAdapter = adapter;
+}
+
+/** Test seam for the AI pending-image repository in jsdom. */
+export function setPendingImageStorageAdapterForTests(adapter: PendingImageStorageTestAdapter | null): void {
+  pendingImageStorageTestAdapter = adapter;
 }
 
 export function collectLocalStorageMigrationEntries(storage: Storage | null): [string, string][] {
@@ -96,6 +110,7 @@ function openDatabase(factory: IDBFactory, sourceStorage: Storage | null): Promi
       const db = request.result;
       if (!db.objectStoreNames.contains(KV_STORE_NAME)) db.createObjectStore(KV_STORE_NAME);
       if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) db.createObjectStore(MEDIA_STORE_NAME);
+      if (!db.objectStoreNames.contains(PENDING_IMAGES_STORE_NAME)) db.createObjectStore(PENDING_IMAGES_STORE_NAME);
     };
     request.onerror = () => rejectOnce(request.error);
     request.onblocked = () => rejectOnce(new Error('IndexedDB open was blocked'));
@@ -105,7 +120,10 @@ function openDatabase(factory: IDBFactory, sourceStorage: Storage | null): Promi
         db.close();
         return;
       }
-      db.onversionchange = () => db.close();
+      db.onversionchange = () => {
+        db.close();
+        databasePromises.delete(factory);
+      };
       try {
         await migrateLocalStorage(db, migrationEntries);
         settled = true;
@@ -286,6 +304,66 @@ export async function listMediaBlobKeys(): Promise<string[]> {
     transaction.oncomplete = () => resolve(keys);
     transaction.onerror = () => reject(transaction.error ?? request.error);
     transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB media listing aborted'));
+  });
+}
+
+export async function getPendingImageRecord<T>(requestId: string): Promise<T | null> {
+  if (pendingImageStorageTestAdapter?.get) {
+    return await pendingImageStorageTestAdapter.get(requestId) as T | null;
+  }
+  const db = await getBrowserDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(PENDING_IMAGES_STORE_NAME, 'readonly');
+    const request = transaction.objectStore(PENDING_IMAGES_STORE_NAME).get(requestId);
+    let value: T | null = null;
+    request.onsuccess = () => {
+      value = request.result == null ? null : request.result as T;
+    };
+    transaction.oncomplete = () => resolve(value);
+    transaction.onerror = () => reject(transaction.error ?? request.error);
+    transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB pending-image read aborted'));
+  });
+}
+
+export async function putPendingImageRecord(requestId: string, value: unknown): Promise<void> {
+  if (pendingImageStorageTestAdapter?.put) return pendingImageStorageTestAdapter.put(requestId, value);
+  const db = await getBrowserDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(PENDING_IMAGES_STORE_NAME, 'readwrite');
+    transaction.objectStore(PENDING_IMAGES_STORE_NAME).put(value, requestId);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB pending-image write failed'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB pending-image write aborted'));
+  });
+}
+
+export async function deletePendingImageRecord(requestId: string): Promise<void> {
+  if (pendingImageStorageTestAdapter?.delete) return pendingImageStorageTestAdapter.delete(requestId);
+  const db = await getBrowserDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(PENDING_IMAGES_STORE_NAME, 'readwrite');
+    transaction.objectStore(PENDING_IMAGES_STORE_NAME).delete(requestId);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB pending-image delete failed'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB pending-image delete aborted'));
+  });
+}
+
+export async function listPendingImageRecords<T>(): Promise<T[]> {
+  if (pendingImageStorageTestAdapter?.list) {
+    return await pendingImageStorageTestAdapter.list() as T[];
+  }
+  const db = await getBrowserDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(PENDING_IMAGES_STORE_NAME, 'readonly');
+    const request = transaction.objectStore(PENDING_IMAGES_STORE_NAME).getAll();
+    let values: T[] = [];
+    request.onsuccess = () => {
+      values = request.result as T[];
+    };
+    transaction.oncomplete = () => resolve(values);
+    transaction.onerror = () => reject(transaction.error ?? request.error);
+    transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB pending-image listing aborted'));
   });
 }
 

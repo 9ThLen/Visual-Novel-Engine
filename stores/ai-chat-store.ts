@@ -1,6 +1,7 @@
 /**
  * AI chat state — deliberately separate from useAppStore. Transcripts persist
- * under their own key; pendings and the undo journal stay in memory.
+ * under their own key. Pending interactions stay in memory; the bounded undo
+ * journal is durable so an automatic snapshot remains useful after reload.
  *
  * This store may depend on useAppStore, but never the reverse: the app store
  * reaches the journal through `@/stores/snapshot-eviction-registry` so the two
@@ -14,9 +15,9 @@ import type { AiReaderAppearancePatch, AppearancePatchDescription } from '@/lib/
 import type { ScenePatchDescription } from '@/lib/ai/scene-patch';
 import type { AiScenePatch } from '@/lib/ai/scene-patch-types';
 import type { StoryReaderLayoutPreset, StoryReaderTheme } from '@/lib/story-theme';
-import type { Character } from '@/lib/character-types';
 import type { AiChangeSet, AiChangeSetDescription } from '@/lib/ai/change-set';
 import { createPersistentStorage } from '@/lib/persistent-storage';
+import { listSnapshots } from '@/lib/story-snapshots';
 import { useAppStore } from '@/stores/use-app-store';
 import { onSnapshotEvicted } from '@/stores/snapshot-eviction-registry';
 import type { AiCapability } from '@/lib/ai/permissions';
@@ -30,7 +31,7 @@ export interface AiChatMessage {
   createdAt: number;
 }
 
-export type AiChatStatus = 'idle' | 'thinking' | 'awaiting_confirmation';
+export type AiChatStatus = 'idle' | 'thinking' | 'interrupting' | 'awaiting_confirmation';
 
 export interface AiChatPendingPatch {
   patch: AiScenePatch;
@@ -49,22 +50,39 @@ export interface AiChatPendingChangeSet {
 
 export interface AiChatPendingCapability {
   capability: AiCapability;
-  estimate?: string;
+  estimate?: string | {
+    provider?: string;
+    model?: string;
+    size?: string;
+    quality?: string;
+    costUsdRange?: { min?: number; max?: number } | null;
+  };
 }
+
+export type AiPendingInteraction =
+  | { kind: 'scene_patch'; storyId: string; value: AiChatPendingPatch }
+  | { kind: 'appearance'; storyId: string; value: AiChatPendingAppearance }
+  | { kind: 'changeset'; storyId: string; value: AiChatPendingChangeSet }
+  | { kind: 'capability'; storyId: string; value: AiChatPendingCapability };
 
 /**
  * The two change kinds roll back differently: scenes restore a story snapshot,
  * while a theme is reverted by writing the previous colors back (snapshots do
  * not carry a theme — see appearance-patch-adapter).
  */
+export interface CharacterUndoDelta {
+  createdCharacterIds: string[];
+  previousValues: Array<{ id: string; name: string; color?: string }>;
+}
+
 interface AppliedChangeBase {
   storyId: string;
   appliedAt: number;
   label: string;
   postRevisions: {
-    scenes: Record<string, string>;
+    scenes?: Record<string, string>;
     characters?: string;
-    storyMetadata: string;
+    storyMetadata?: string;
     appearance?: string;
   };
 }
@@ -72,7 +90,7 @@ interface AppliedChangeBase {
 export type AiChatAppliedChange =
   | (AppliedChangeBase & { kind: 'scene'; snapshotId: string })
   | (AppliedChangeBase & { kind: 'appearance'; previousTheme: StoryReaderTheme | undefined; previousLayoutPreset?: StoryReaderLayoutPreset })
-  | (AppliedChangeBase & { kind: 'changeset'; snapshotId: string; previousCharacterLibrary?: Character[] });
+  | (AppliedChangeBase & { kind: 'changeset'; snapshotId: string; characterUndo?: CharacterUndoDelta });
 
 type LegacyAppliedChange =
   | { kind: 'scene'; storyId: string; snapshotId: string }
@@ -95,10 +113,9 @@ interface AiChatStoreState {
   restoredStoryIds: Record<string, true>;
   messages: AiChatMessage[];
   status: AiChatStatus;
-  pendingPatch: AiChatPendingPatch | null;
-  pendingAppearance: AiChatPendingAppearance | null;
-  pendingChangeSet: AiChatPendingChangeSet | null;
-  pendingCapability: AiChatPendingCapability | null;
+  pendingInteraction: AiPendingInteraction | null;
+  appliedChangesByStory: Record<string, AiChatAppliedChange[]>;
+  /** @deprecated Compatibility view of the active story journal. */
   appliedChanges: AiChatAppliedChange[];
   /** @deprecated Compatibility view; new code uses the LIFO appliedChanges journal. */
   lastAppliedChange: LegacyAppliedChange | null;
@@ -106,12 +123,11 @@ interface AiChatStoreState {
   addMessage: (role: AiChatRole, text: string, storyId?: string) => AiChatMessage;
   clearMessages: (storyId?: string) => void;
   setStatus: (status: AiChatStatus) => void;
-  setPendingPatch: (pendingPatch: AiChatPendingPatch | null) => void;
-  setPendingAppearance: (pendingAppearance: AiChatPendingAppearance | null) => void;
-  setPendingChangeSet: (pendingChangeSet: AiChatPendingChangeSet | null) => void;
-  setPendingCapability: (pendingCapability: AiChatPendingCapability | null) => void;
+  setPendingInteraction: (pendingInteraction: AiPendingInteraction | null) => void;
+  cancelPendingInteraction: (storyId?: string) => AiPendingInteraction | null;
   pushAppliedChange: (change: AiChatAppliedChange) => void;
-  popAppliedChange: () => AiChatAppliedChange | undefined;
+  getTopAppliedChange: (storyId?: string) => AiChatAppliedChange | undefined;
+  popAppliedChange: (storyId?: string, expected?: AiChatAppliedChange) => AiChatAppliedChange | undefined;
   dropAppliedChangesForSnapshot: (storyId: string, snapshotId: string) => void;
   /** @deprecated Compatibility action for older callers. */
   setLastAppliedChange: (change: LegacyAppliedChange | null) => void;
@@ -119,6 +135,8 @@ interface AiChatStoreState {
 
 const MAX_MESSAGES_PER_STORY = 200;
 const MAX_TRANSCRIPT_BYTES = 512 * 1024;
+const MAX_APPLIED_CHANGES_PER_STORY = 10;
+const MAX_JOURNAL_STORIES = 50;
 const LEGACY_TRANSIENT_SYSTEM_MESSAGES = new Set([
   'Another session is already active',
 ]);
@@ -140,20 +158,51 @@ function removeLegacyTransientMessages(messagesByStory: Record<string, AiChatMes
   ]));
 }
 
+function capAppliedChangesByStory(
+  journals: Record<string, AiChatAppliedChange[]>,
+): Record<string, AiChatAppliedChange[]> {
+  return Object.fromEntries(
+    Object.entries(journals)
+      .map(([storyId, changes]) => [storyId, changes.slice(-MAX_APPLIED_CHANGES_PER_STORY)] as const)
+      .filter(([, changes]) => changes.length > 0)
+      .sort(([, left], [, right]) =>
+        (right.at(-1)?.appliedAt ?? 0) - (left.at(-1)?.appliedAt ?? 0))
+      .slice(0, MAX_JOURNAL_STORIES),
+  );
+}
+
+function activeJournal(
+  journals: Record<string, AiChatAppliedChange[]>,
+  storyId: string | null,
+): AiChatAppliedChange[] {
+  return storyId ? journals[storyId] ?? [] : [];
+}
+
 export const useAiChatStore = create<AiChatStoreState>()(persist((set, get) => ({
   messagesByStory: {},
   activeStoryId: null,
   restoredStoryIds: {},
   messages: [],
   status: 'idle',
-  pendingPatch: null,
-  pendingAppearance: null,
-  pendingChangeSet: null,
-  pendingCapability: null,
+  pendingInteraction: null,
+  appliedChangesByStory: {},
   appliedChanges: [],
   lastAppliedChange: null,
 
-  setActiveStory: (storyId) => set((state) => ({ activeStoryId: storyId, messages: state.messagesByStory[storyId] ?? [] })),
+  setActiveStory: (storyId) => set((state) => {
+    const appliedChanges = state.appliedChangesByStory[storyId] ?? [];
+    const journalTop = toLegacyAppliedChange(appliedChanges.at(-1));
+    const compatibleLegacy = state.lastAppliedChange?.storyId === storyId
+      ? state.lastAppliedChange
+      : null;
+    return {
+      activeStoryId: storyId,
+      messages: state.messagesByStory[storyId] ?? [],
+      status: state.pendingInteraction?.storyId === storyId ? 'awaiting_confirmation' : 'idle',
+      appliedChanges,
+      lastAppliedChange: journalTop ?? compatibleLegacy,
+    };
+  }),
 
   addMessage: (role, text, requestedStoryId) => {
     const message: AiChatMessage = { id: generateId('ai-msg'), role, text: safeText(text), createdAt: Date.now() };
@@ -178,53 +227,109 @@ export const useAiChatStore = create<AiChatStoreState>()(persist((set, get) => (
 
   // Only one proposal can await confirmation at a time: a second one would give
   // the user two Apply buttons whose revisions were computed against different states.
-  setPendingPatch: (pendingPatch) =>
-    set({ pendingPatch, pendingAppearance: null, pendingChangeSet: null, pendingCapability: null, status: pendingPatch ? 'awaiting_confirmation' : 'idle' }),
+  setPendingInteraction: (pendingInteraction) =>
+    set({ pendingInteraction, status: pendingInteraction ? 'awaiting_confirmation' : 'idle' }),
 
-  setPendingAppearance: (pendingAppearance) =>
-    set({ pendingAppearance, pendingPatch: null, pendingChangeSet: null, pendingCapability: null, status: pendingAppearance ? 'awaiting_confirmation' : 'idle' }),
-
-  setPendingChangeSet: (pendingChangeSet) =>
-    set({ pendingChangeSet, pendingPatch: null, pendingAppearance: null, pendingCapability: null, status: pendingChangeSet ? 'awaiting_confirmation' : 'idle' }),
-
-  setPendingCapability: (pendingCapability) =>
-    set({ pendingCapability, pendingPatch: null, pendingAppearance: null, pendingChangeSet: null, status: pendingCapability ? 'awaiting_confirmation' : 'idle' }),
+  cancelPendingInteraction: (storyId) => {
+    const pendingInteraction = get().pendingInteraction;
+    if (!pendingInteraction || (storyId && pendingInteraction.storyId !== storyId)) return null;
+    set({ pendingInteraction: null, status: 'idle' });
+    return pendingInteraction;
+  },
 
   pushAppliedChange: (change) =>
     set((state) => {
-      const appliedChanges = [...state.appliedChanges, change].slice(-10);
-      return { appliedChanges, lastAppliedChange: toLegacyAppliedChange(appliedChanges.at(-1)) };
+      const appliedChangesByStory = capAppliedChangesByStory({
+        ...state.appliedChangesByStory,
+        [change.storyId]: [...(state.appliedChangesByStory[change.storyId] ?? []), change],
+      });
+      const appliedChanges = activeJournal(appliedChangesByStory, state.activeStoryId);
+      return {
+        appliedChangesByStory,
+        appliedChanges,
+        lastAppliedChange: toLegacyAppliedChange(appliedChanges.at(-1)),
+      };
     }),
 
-  popAppliedChange: () => {
-    const change = get().appliedChanges.at(-1);
+  getTopAppliedChange: (requestedStoryId) => {
+    const state = get();
+    const storyId = requestedStoryId ?? state.activeStoryId;
+    return storyId ? state.appliedChangesByStory[storyId]?.at(-1) : undefined;
+  },
+
+  popAppliedChange: (requestedStoryId, expected) => {
+    const state = get();
+    const storyId = requestedStoryId ?? state.activeStoryId;
+    const change = storyId ? state.appliedChangesByStory[storyId]?.at(-1) : undefined;
+    if (change && expected && change !== expected
+      && (change.kind !== expected.kind || change.appliedAt !== expected.appliedAt)) return undefined;
     if (change) set((state) => {
-      const appliedChanges = state.appliedChanges.slice(0, -1);
-      return { appliedChanges, lastAppliedChange: toLegacyAppliedChange(appliedChanges.at(-1)) };
+      const appliedChangesByStory = { ...state.appliedChangesByStory };
+      const remaining = (appliedChangesByStory[change.storyId] ?? []).slice(0, -1);
+      if (remaining.length) appliedChangesByStory[change.storyId] = remaining;
+      else delete appliedChangesByStory[change.storyId];
+      const appliedChanges = activeJournal(appliedChangesByStory, state.activeStoryId);
+      return {
+        appliedChangesByStory,
+        appliedChanges,
+        lastAppliedChange: toLegacyAppliedChange(appliedChanges.at(-1)),
+      };
     });
     return change;
   },
 
   dropAppliedChangesForSnapshot: (storyId, snapshotId) =>
     set((state) => {
-      const appliedChanges = state.appliedChanges.filter((change) =>
-        !('snapshotId' in change && change.storyId === storyId && change.snapshotId === snapshotId));
-      return { appliedChanges, lastAppliedChange: toLegacyAppliedChange(appliedChanges.at(-1)) };
+      const appliedChangesByStory = { ...state.appliedChangesByStory };
+      const remaining = (appliedChangesByStory[storyId] ?? []).filter((change) =>
+        !('snapshotId' in change && change.snapshotId === snapshotId));
+      if (remaining.length) appliedChangesByStory[storyId] = remaining;
+      else delete appliedChangesByStory[storyId];
+      const appliedChanges = activeJournal(appliedChangesByStory, state.activeStoryId);
+      return {
+        appliedChangesByStory,
+        appliedChanges,
+        lastAppliedChange: toLegacyAppliedChange(appliedChanges.at(-1)),
+      };
     }),
 
   setLastAppliedChange: (lastAppliedChange) => set(lastAppliedChange
     ? { lastAppliedChange }
-    : { lastAppliedChange: null, appliedChanges: [] }),
+    : { lastAppliedChange: null, appliedChanges: [], appliedChangesByStory: {} }),
 }), {
   name: 'vne-ai-chat',
   storage: createJSONStorage(createPersistentStorage),
-  partialize: ({ messagesByStory }) => ({ messagesByStory }) as AiChatStoreState,
+  version: 1,
+  migrate: (persisted, version) => {
+    const state = (persisted ?? {}) as Partial<AiChatStoreState>;
+    if (version >= 1) return state as AiChatStoreState;
+    const legacyChanges = Array.isArray(state.appliedChanges) ? state.appliedChanges : [];
+    const appliedChangesByStory = legacyChanges.reduce<Record<string, AiChatAppliedChange[]>>(
+      (journals, change) => ({
+        ...journals,
+        [change.storyId]: [...(journals[change.storyId] ?? []), change],
+      }),
+      {},
+    );
+    return { ...state, appliedChangesByStory } as AiChatStoreState;
+  },
+  partialize: ({ messagesByStory, appliedChangesByStory }) =>
+    ({ messagesByStory, appliedChangesByStory }) as AiChatStoreState,
   onRehydrateStorage: () => (state) => {
     if (!state) return;
     const messagesByStory = removeLegacyTransientMessages(state.messagesByStory);
     const restoredStoryIds = Object.fromEntries(Object.keys(messagesByStory).map((id) => [id, true])) as Record<string, true>;
-    useAiChatStore.setState({ messagesByStory, restoredStoryIds });
+    const appliedChangesByStory = capAppliedChangesByStory(state.appliedChangesByStory ?? {});
+    const appliedChanges = activeJournal(appliedChangesByStory, state.activeStoryId);
+    useAiChatStore.setState({
+      messagesByStory,
+      restoredStoryIds,
+      appliedChangesByStory,
+      appliedChanges,
+      lastAppliedChange: toLegacyAppliedChange(appliedChanges.at(-1)),
+    });
     reconcileTranscripts();
+    void reconcileAppliedChanges();
   },
 }));
 
@@ -239,9 +344,46 @@ export function reconcileTranscripts(): void {
   });
 }
 
+export async function reconcileAppliedChanges(): Promise<void> {
+  if (!useAiChatStore.persist.hasHydrated()) return;
+  const app = useAppStore.getState();
+  if (!app.isLoaded) return;
+  const liveIds = new Set(app.storiesMetadata.map((story) => story.id));
+  const storyIds = Object.keys(useAiChatStore.getState().appliedChangesByStory)
+    .filter((storyId) => liveIds.has(storyId));
+  const snapshotsByStory = new Map(await Promise.all(storyIds.map(async (storyId) => {
+      const snapshots = await listSnapshots(createPersistentStorage(), storyId).catch(() => []);
+      return [storyId, new Set(snapshots.map((item) => item.id))] as const;
+    })));
+  useAiChatStore.setState((state) => {
+    const appliedChangesByStory = capAppliedChangesByStory(Object.fromEntries(
+      Object.entries(state.appliedChangesByStory)
+        .filter(([storyId]) => liveIds.has(storyId))
+        .map(([storyId, changes]) => {
+          const snapshotIds = snapshotsByStory.get(storyId);
+          if (!snapshotIds) return [storyId, changes];
+          return [storyId, changes.filter((change) =>
+            change.kind === 'appearance' || snapshotIds.has(change.snapshotId))];
+        }),
+    ));
+    const appliedChanges = activeJournal(appliedChangesByStory, state.activeStoryId);
+    return {
+      appliedChangesByStory,
+      appliedChanges,
+      lastAppliedChange: toLegacyAppliedChange(appliedChanges.at(-1)),
+    };
+  });
+}
+
 useAppStore.subscribe((state, previous) => {
-  if (state.isLoaded !== previous.isLoaded || state.storiesMetadata !== previous.storiesMetadata) reconcileTranscripts();
+  if (state.isLoaded !== previous.isLoaded || state.storiesMetadata !== previous.storiesMetadata) {
+    reconcileTranscripts();
+    void reconcileAppliedChanges();
+  }
 });
-useAiChatStore.persist.onFinishHydration(reconcileTranscripts);
+useAiChatStore.persist.onFinishHydration(() => {
+  reconcileTranscripts();
+  void reconcileAppliedChanges();
+});
 onSnapshotEvicted((storyId, snapshotId) =>
   useAiChatStore.getState().dropAppliedChangesForSnapshot(storyId, snapshotId));

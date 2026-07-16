@@ -45,7 +45,12 @@ describe('AI change-set store adapter', () => {
         });
       }),
     });
-    useAiChatStore.setState({ appliedChanges: [], lastAppliedChange: null });
+    useAiChatStore.setState({
+      activeStoryId: 'story-1',
+      appliedChangesByStory: {},
+      appliedChanges: [],
+      lastAppliedChange: null,
+    });
   });
 
   it('rejects a stale live revision without a snapshot or side effect', async () => {
@@ -97,5 +102,34 @@ describe('AI change-set store adapter', () => {
     expect(rolledBack.storiesMetadata[0].sceneOrder).toEqual(['scene-1']);
     expect(rolledBack.storiesMetadata[0].startSceneId).toBe('scene-1');
     expect(rolledBack.characterLibraries['story-1']).toEqual([]);
+  });
+
+  it('restores only changed character fields and preserves later sprite edits', async () => {
+    const original = {
+      id: 'char-1',
+      name: 'Before',
+      color: '#111111',
+      sprites: [{ id: 'sprite-1', name: 'Base', uri: '/base.png', createdAt: 1 }],
+      createdAt: 1,
+    };
+    useAppStore.setState({ characterLibraries: { 'story-1': [original] } });
+    const result = await applyAiChangeSetToStore({
+      storyId: 'story-1',
+      expectedSceneRevisions: {},
+      expectedCharacterRevision: computeCharacterLibraryRevision([original]),
+      explanation: 'rename character',
+      items: [{ kind: 'update_character', update: { characterId: 'char-1', updates: { name: 'After', color: '#222222' } } }],
+    });
+    expect(result.ok).toBe(true);
+    const current = useAppStore.getState().characterLibraries['story-1'][0];
+    useAppStore.setState({
+      characterLibraries: {
+        'story-1': [{ ...current, sprites: [...current.sprites, { id: 'sprite-2', name: 'New', uri: '/new.png', createdAt: 2 }] }],
+      },
+    });
+    await expect(rollbackTopAppliedChange('story-1', true)).resolves.toEqual({ ok: true });
+    const restored = useAppStore.getState().characterLibraries['story-1'][0];
+    expect(restored).toMatchObject({ name: 'Before', color: '#111111' });
+    expect(restored.sprites.map((sprite) => sprite.id)).toEqual(['sprite-1', 'sprite-2']);
   });
 });

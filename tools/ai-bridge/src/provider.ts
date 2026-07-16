@@ -22,6 +22,7 @@ export function modelToolErrorValue(error: unknown): { errorCode: string; errorM
 export interface AgentProvider {
   send(text: string): AsyncIterable<AgentEvent>;
   abort(): void;
+  resetConversation(): void | Promise<void>;
   close?(): void | Promise<void>;
 }
 

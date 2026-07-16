@@ -6,6 +6,7 @@ import { DocumentInspectorPanel } from '@/components/document-editor/DocumentIns
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { withAlpha } from '@/lib/_core/theme';
+import { getAiPlatformSupport } from '@/lib/ai/platform-support';
 import type { ColorScheme } from '@/constants/theme';
 import type { DocumentScene } from '@/lib/document-editor/types';
 
@@ -22,6 +23,8 @@ export function DocumentRightRail({ colorScheme, scene, storyId, activeSceneId }
   const colors = useColors(colorScheme);
   const { t } = useI18n();
   const [tab, setTab] = useState<RightRailTab>('inspector');
+  const aiSupport = getAiPlatformSupport();
+  const tabs: RightRailTab[] = aiSupport.supported ? ['inspector', 'ai'] : ['inspector'];
 
   return (
     <View
@@ -41,7 +44,7 @@ export function DocumentRightRail({ colorScheme, scene, storyId, activeSceneId }
           borderBottomColor: colors.border,
         }}
       >
-        {(['inspector', 'ai'] as const).map((item) => (
+        {tabs.map((item) => (
           <Pressable
             key={item}
             onPress={() => setTab(item)}
@@ -68,6 +71,16 @@ export function DocumentRightRail({ colorScheme, scene, storyId, activeSceneId }
           </Pressable>
         ))}
       </View>
+
+      {!aiSupport.supported ? (
+        <View style={{ paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ color: colors.muted, fontSize: 11 }}>
+            {aiSupport.reason === 'unsupported-native'
+              ? 'The local AI assistant is available in the desktop web editor.'
+              : 'The local AI assistant is available only when the editor is opened from localhost.'}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={{ flex: 1 }}>
         {tab === 'inspector' ? (

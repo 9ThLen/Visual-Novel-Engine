@@ -24,7 +24,15 @@ import {
   type AiReaderAppearancePatch,
 } from '@/lib/ai/appearance-patch';
 import { findAssetUsage, getImageDetails, listStoryImages } from '@/lib/ai/asset-tools';
-import { decodeImageResult, executeRemoveBackground, getStoryImageBinary, type AiImageResult } from '@/lib/ai/image-tools';
+import {
+  decodeImageResult,
+  executeRemoveBackground,
+  fromPendingAiImage,
+  getStoryImageBinary,
+  toPendingAiImage,
+  type AiImageResult,
+} from '@/lib/ai/image-tools';
+import { pendingImageRepository } from '@/lib/ai/pending-image-storage.web';
 import { APP_BRIDGE_TOOL_NAMES } from '@/lib/ai/bridge-tools';
 import { AI_CAPABILITIES, resolveCapability, type AiCapability, type AiPermissions } from '@/lib/ai/permissions';
 import { resolveAiBridgeConfig } from '@/lib/ai/bridge-config';
@@ -34,7 +42,12 @@ import { BridgeClient, type BridgeConnectionState, type BridgeProvider } from '@
 import { removeImageBackground } from '@/lib/remove-background.web';
 import type { AiScenePatch } from '@/lib/ai/scene-patch-types';
 import { useAppStore } from '@/stores/use-app-store';
-import { useAiChatStore, type AiChatRole } from '@/stores/ai-chat-store';
+import {
+  useAiChatStore,
+  type AiChatPendingCapability,
+  type AiChatPendingChangeSet,
+  type AiChatRole,
+} from '@/stores/ai-chat-store';
 import { AppearancePreviewCard } from './AppearancePreviewCard';
 import { PatchPreviewCard } from './PatchPreviewCard';
 import { ChangeSetPreviewCard } from './ChangeSetPreviewCard';
@@ -106,7 +119,7 @@ function mapChangeSetError(code: AiChangeSetErrorCode, message: string) {
 export function executeProposeChangeSet(
   storyId: string,
   input: unknown,
-  setPending: ReturnType<typeof useAiChatStore.getState>['setPendingChangeSet'],
+  setPending: (pending: AiChatPendingChangeSet) => void,
   waitForDecision: () => Promise<unknown>,
 ) {
   const parsed = aiChangeSetSchema.safeParse(input);
@@ -127,7 +140,7 @@ export function executeProposeChangeSet(
 export function executeAuthorizeCapability(
   input: unknown,
   permissions: AiPermissions,
-  setPending: ReturnType<typeof useAiChatStore.getState>['setPendingCapability'],
+  setPending: (pending: AiChatPendingCapability) => void,
   waitForDecision: () => Promise<{ allowed: boolean }>,
 ) {
   const value = typeof input === 'object' && input ? input as Record<string, unknown> : {};
@@ -140,9 +153,12 @@ export function executeAuthorizeCapability(
     return Promise.resolve({ ok: false as const, errorCode: 'PERMISSION_DENIED' as const, errorMessage: 'Capability is blocked', details: { reason: 'USER_BLOCKED' } });
   }
   if (level === 'auto') return Promise.resolve({ ok: true as const, result: { allowed: true } });
-  setPending({ capability: capability as AiCapability, estimate: typeof value.estimate === 'string'
+  const estimate = typeof value.estimate === 'string'
     ? value.estimate
-    : value.estimate && typeof value.estimate === 'object' ? JSON.stringify(value.estimate) : undefined });
+    : value.estimate && typeof value.estimate === 'object'
+      ? value.estimate as NonNullable<AiChatPendingCapability['estimate']>
+      : undefined;
+  setPending({ capability: capability as AiCapability, estimate });
   return waitForDecision().then(result => ({ ok: true as const, result }));
 }
 
@@ -152,10 +168,19 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
 
   const messages = useAiChatStore((s) => s.messages);
   const status = useAiChatStore((s) => s.status);
-  const pendingPatch = useAiChatStore((s) => s.pendingPatch);
-  const pendingAppearance = useAiChatStore((s) => s.pendingAppearance);
-  const pendingChangeSet = useAiChatStore((s) => s.pendingChangeSet);
-  const pendingCapability = useAiChatStore((s) => s.pendingCapability);
+  const pendingInteraction = useAiChatStore((s) => s.pendingInteraction);
+  const pendingPatch = pendingInteraction?.storyId === storyId && pendingInteraction.kind === 'scene_patch'
+    ? pendingInteraction.value
+    : null;
+  const pendingAppearance = pendingInteraction?.storyId === storyId && pendingInteraction.kind === 'appearance'
+    ? pendingInteraction.value
+    : null;
+  const pendingChangeSet = pendingInteraction?.storyId === storyId && pendingInteraction.kind === 'changeset'
+    ? pendingInteraction.value
+    : null;
+  const pendingCapability = pendingInteraction?.storyId === storyId && pendingInteraction.kind === 'capability'
+    ? pendingInteraction.value
+    : null;
   const lastAppliedChange = useAiChatStore((s) => s.lastAppliedChange);
   const addMessageToStore = useAiChatStore((s) => s.addMessage);
   const setActiveStory = useAiChatStore((s) => s.setActiveStory);
@@ -163,15 +188,26 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   const restored = useAiChatStore((s) => s.restoredStoryIds[storyId] === true);
   const addMessage = useCallback((role: AiChatRole, text: string) => addMessageToStore(role, text, storyId), [addMessageToStore, storyId]);
   const setStatus = useAiChatStore((s) => s.setStatus);
-  const setPendingPatch = useAiChatStore((s) => s.setPendingPatch);
-  const setPendingAppearance = useAiChatStore((s) => s.setPendingAppearance);
-  const setPendingChangeSet = useAiChatStore((s) => s.setPendingChangeSet);
-  const setPendingCapability = useAiChatStore((s) => s.setPendingCapability);
+  const setPendingInteraction = useAiChatStore((s) => s.setPendingInteraction);
+  const cancelPendingInteraction = useAiChatStore((s) => s.cancelPendingInteraction);
+  const setPendingPatch = useCallback((value: NonNullable<typeof pendingPatch> | null) => {
+    setPendingInteraction(value ? { kind: 'scene_patch', storyId, value } : null);
+  }, [setPendingInteraction, storyId]);
+  const setPendingAppearance = useCallback((value: NonNullable<typeof pendingAppearance> | null) => {
+    setPendingInteraction(value ? { kind: 'appearance', storyId, value } : null);
+  }, [setPendingInteraction, storyId]);
+  const setPendingChangeSet = useCallback((value: AiChatPendingChangeSet | null) => {
+    setPendingInteraction(value ? { kind: 'changeset', storyId, value } : null);
+  }, [setPendingInteraction, storyId]);
+  const setPendingCapability = useCallback((value: AiChatPendingCapability | null) => {
+    setPendingInteraction(value ? { kind: 'capability', storyId, value } : null);
+  }, [setPendingInteraction, storyId]);
   const setLastAppliedChange = useAiChatStore((s) => s.setLastAppliedChange);
   const aiBridgeSettings = useAppStore((s) => s.aiBridgeSettings)
     ?? { url: '', token: '', disabled: false };
   const updateAiBridgeSettings = useAppStore((s) => s.updateAiBridgeSettings);
   const settings = useAppStore((s) => s.settings);
+  const storiesMetadata = useAppStore((s) => s.storiesMetadata);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const bridgeConfig = resolveAiBridgeConfig(aiBridgeSettings);
 
@@ -185,6 +221,9 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   const [showConnectionMenu, setShowConnectionMenu] = useState(false);
   const [imageResults, setImageResults] = useState<AiImageResult[]>([]);
   const [runtimeErrorReason, setRuntimeErrorReason] = useState<BridgeRuntimeErrorReason>();
+  const [clearingChat, setClearingChat] = useState(false);
+  const [confirmUndo, setConfirmUndo] = useState(false);
+  const [imagePersistenceFailed, setImagePersistenceFailed] = useState(false);
   const bridgeRef = useRef<BridgeClient | null>(null);
   const activeSceneIdRef = useRef(activeSceneId);
   const imageResultIdsRef = useRef(new Set<string>());
@@ -193,6 +232,25 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
 
   useEffect(() => setActiveStory(storyId), [setActiveStory, storyId]);
   useEffect(() => { activeSceneIdRef.current = activeSceneId; }, [activeSceneId]);
+  useEffect(() => {
+    let active = true;
+    void pendingImageRepository.listForStory(storyId).then((images) => {
+      if (!active) return;
+      imageResultIdsRef.current = new Set(images.map((image) => image.requestId));
+      setImageResults(images.map(fromPendingAiImage));
+    }).catch(() => {
+      if (active) setRuntimeErrorReason('PROVIDER_ERROR');
+    });
+    return () => { active = false; };
+  }, [storyId]);
+  useEffect(() => {
+    if (!storiesMetadata.length) return;
+    void pendingImageRepository.cleanup({
+      existingStoryIds: new Set(storiesMetadata.map((story) => story.id)),
+    }).catch(() => {
+      // Cleanup is best-effort; delivery persistence reports its own failures.
+    });
+  }, [storiesMetadata]);
 
   useEffect(() => {
     const { token, url, enabled } = bridgeConfig;
@@ -207,28 +265,46 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
       url,
       token,
       locale: language,
-      onConnectionChange: (next, reason) => { setConnectionState(next); setConnectionReason(reason); },
+      onConnectionChange: (next, reason) => {
+        setConnectionState(next);
+        setConnectionReason(reason);
+        if (next === 'unauthorized' || next === 'closed') {
+          assistantTextRef.current = '';
+          patchDecisionRef.current?.({ accepted: false, allowed: false, reason: reason ?? next });
+          patchDecisionRef.current = null;
+          cancelPendingInteraction(storyId);
+          setStatus('idle');
+        }
+      },
       onEvent: (message) => {
         const payload = typeof message.payload === 'object' && message.payload ? message.payload as Record<string, unknown> : {};
         if (message.type === 'session_started' && (payload.provider === 'claude' || payload.provider === 'codex')) setProvider(payload.provider);
         if (message.type === 'image_result' && typeof payload.requestId === 'string') {
-          if (!imageResultIdsRef.current.has(payload.requestId)) {
-            const result = decodeImageResult(payload);
-            if (result) {
-              imageResultIdsRef.current.add(result.requestId);
-              setImageResults((current) => [...current, result]);
-              client.acknowledgeImageResult(result.requestId);
+          const result = decodeImageResult(payload);
+          if (!result) return;
+          const isNew = !imageResultIdsRef.current.has(result.requestId);
+          imageResultIdsRef.current.add(result.requestId);
+          void pendingImageRepository.put(toPendingAiImage(result, storyId)).then((persisted) => {
+            URL.revokeObjectURL(result.blobUrl);
+            setImagePersistenceFailed(false);
+            if (isNew) {
+              setImageResults((current) => current.some((item) => item.requestId === persisted.requestId)
+                ? current
+                : [...current, fromPendingAiImage(persisted)]);
             }
-          } else {
-            client.acknowledgeImageResult(payload.requestId);
-          }
+            client.acknowledgeImageResult(result.requestId);
+          }).catch(() => {
+            URL.revokeObjectURL(result.blobUrl);
+            imageResultIdsRef.current.delete(result.requestId);
+            setImagePersistenceFailed(true);
+          });
         }
         if (message.type === 'assistant_delta' && typeof payload.text === 'string') assistantTextRef.current += payload.text;
         if (message.type === 'assistant_done') {
           if (assistantTextRef.current) addMessage('assistant', assistantTextRef.current);
           assistantTextRef.current = '';
           const chat = useAiChatStore.getState();
-          setStatus(chat.pendingPatch || chat.pendingAppearance || chat.pendingChangeSet || chat.pendingCapability ? 'awaiting_confirmation' : 'idle');
+          setStatus(chat.pendingInteraction?.storyId === storyId ? 'awaiting_confirmation' : 'idle');
         }
         if (message.type === 'error') {
           setRuntimeErrorReason(resolveBridgeRuntimeError(payload));
@@ -282,7 +358,14 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
               return new Promise<boolean>((resolve) => { patchDecisionRef.current = value => resolve(Boolean((value as { allowed?: boolean })?.allowed)); });
             },
             removeImageBackground,
-            result => setImageResults(current => [...current, result]),
+            async result => {
+              const persisted = await pendingImageRepository.put(toPendingAiImage(result, storyId));
+              URL.revokeObjectURL(result.blobUrl);
+              imageResultIdsRef.current.add(persisted.requestId);
+              setImageResults(current => current.some(item => item.requestId === persisted.requestId)
+                ? current
+                : [...current, fromPendingAiImage(persisted)]);
+            },
           );
         }
         if (name === 'propose_scene_patch') {
@@ -333,28 +416,44 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     });
     bridgeRef.current = client;
     client.connect();
-    return () => { patchDecisionRef.current?.({ accepted: false, allowed: false, reason: 'panel_closed' }); client.close(); bridgeRef.current = null; };
+    return () => {
+      patchDecisionRef.current?.({ accepted: false, allowed: false, reason: 'panel_closed' });
+      patchDecisionRef.current = null;
+      cancelPendingInteraction(storyId);
+      client.close();
+      bridgeRef.current = null;
+    };
   }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, addMessage, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, t]);
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text || status !== 'idle') return;
-    setRuntimeErrorReason(undefined);
-    setInputText('');
-    addMessage('user', text);
-
     const ctx = activeSceneId ? buildAiStoryContext(storyId, activeSceneId) : null;
     if (!ctx) {
       addMessage('assistant', t('aiChat.noActiveScene'));
       return;
     }
 
-    setStatus('thinking');
     if (bridgeRef.current) {
+      if (connectionState !== 'connected') return;
       assistantTextRef.current = '';
-      bridgeRef.current.sendUserMessage(text);
+      const delivered = bridgeRef.current.sendUserMessage(text);
+      if (!delivered.ok) {
+        setInputText(text);
+        setStatus('idle');
+        setRuntimeErrorReason('PROVIDER_ERROR');
+        return;
+      }
+      setRuntimeErrorReason(undefined);
+      setInputText('');
+      addMessage('user', text);
+      setStatus('thinking');
       return;
     }
+    setRuntimeErrorReason(undefined);
+    setInputText('');
+    addMessage('user', text);
+    setStatus('thinking');
     const response = await respond(text, ctx);
 
     if (response.kind === 'text') {
@@ -400,7 +499,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     const description = describeAiScenePatch(scene, response.patch);
     addMessage('assistant', response.patch.explanation);
     setPendingPatch({ patch: response.patch, description });
-  }, [inputText, status, activeSceneId, storyId, addMessage, setStatus, setPendingPatch, setPendingAppearance, t]);
+  }, [inputText, status, activeSceneId, storyId, addMessage, setStatus, setPendingPatch, setPendingAppearance, t, connectionState]);
 
   const handleApply = useCallback(async () => {
     if (!pendingPatch) return;
@@ -494,12 +593,12 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
 
   const handleRollback = useCallback(async () => {
     if (!lastAppliedChange) return;
-    const journalTop = useAiChatStore.getState().appliedChanges.at(-1);
+    const journalTop = useAiChatStore.getState().getTopAppliedChange(storyId);
     const hasJournalEntry = !!journalTop
       && journalTop.kind === lastAppliedChange.kind
       && journalTop.storyId === lastAppliedChange.storyId;
     const result = hasJournalEntry
-      ? await rollbackTopAppliedChange()
+      ? await rollbackTopAppliedChange(storyId)
       : { ok: lastAppliedChange.kind === 'scene' || lastAppliedChange.kind === 'changeset'
           ? await rollbackAiPatch(lastAppliedChange.storyId, lastAppliedChange.snapshotId)
           : rollbackAiAppearancePatch(
@@ -507,11 +606,29 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
               lastAppliedChange.previousTheme,
               lastAppliedChange.previousLayoutPreset,
             ) };
+    if (result.requiresConfirmation) {
+      setConfirmUndo(true);
+      return;
+    }
     addMessage('system', result.ok ? t('aiChat.rollbackSuccess') : t('aiChat.rollbackFailed'));
     if (result.ok && !hasJournalEntry) setLastAppliedChange(null);
-  }, [lastAppliedChange, addMessage, setLastAppliedChange, t]);
+  }, [lastAppliedChange, addMessage, setLastAppliedChange, storyId, t]);
 
-  const canSend = status === 'idle' && inputText.trim().length > 0;
+  const handleForceRollback = useCallback(async () => {
+    const result = await rollbackTopAppliedChange(storyId, true);
+    setConfirmUndo(false);
+    addMessage('system', result.ok ? t('aiChat.rollbackSuccess') : t('aiChat.rollbackFailed'));
+  }, [addMessage, storyId, t]);
+
+  const canSend = status === 'idle'
+    && inputText.trim().length > 0
+    && (connectionState === 'demo' || connectionState === 'connected');
+
+  const handleStop = useCallback(() => {
+    if (status !== 'thinking') return;
+    const result = bridgeRef.current?.interrupt();
+    if (result?.ok) setStatus('interrupting');
+  }, [setStatus, status]);
 
   const resolveCapabilityDecision = useCallback((allowed: boolean) => {
     patchDecisionRef.current?.({ allowed });
@@ -554,6 +671,27 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     setShowConnectionMenu(false);
   }, [bridgeConfig.url, updateAiBridgeSettings]);
 
+  const handleClearChat = useCallback(async () => {
+    if (clearingChat) return;
+    if (connectionState === 'demo') {
+      clearMessages(storyId);
+      return;
+    }
+    const client = bridgeRef.current;
+    if (!client || connectionState !== 'connected') return;
+    setClearingChat(true);
+    try {
+      const result = await client.resetConversation();
+      if (result.ok) {
+        clearMessages(storyId);
+      } else {
+        addMessage('system', t('aiChat.clearFailed'));
+      }
+    } finally {
+      setClearingChat(false);
+    }
+  }, [addMessage, clearMessages, clearingChat, connectionState, storyId, t]);
+
   return (
     <View style={{ flex: 1 }}>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -567,7 +705,9 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
             </Pressable>
           ) : null}
           <Pressable accessibilityRole="button" accessibilityLabel={t('aiChat.permissions.open')} onPress={() => setShowPermissions(value => !value)}><Text style={{ color: colors.muted, fontSize: 15 }}>⚙</Text></Pressable>
-          <Pressable accessibilityRole="button" onPress={() => clearMessages(storyId)}><Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.clear')}</Text></Pressable>
+          <Pressable accessibilityRole="button" disabled={clearingChat} onPress={handleClearChat}>
+            <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.clear')}</Text>
+          </Pressable>
         </View>
       </View>
       {showConnectionMenu ? (
@@ -604,6 +744,11 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
             </Text>
           </View>
         ) : null}
+        {imagePersistenceFailed ? (
+          <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 12 }}>
+            {t('aiChat.images.persistenceFailed')}
+          </Text>
+        ) : null}
         {messages.length === 0 ? (
           <Text style={{ color: colors.muted, fontSize: 12 }}>{t('aiChat.emptyState')}</Text>
         ) : null}
@@ -619,8 +764,16 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
             result={result}
             storyId={storyId}
             colorScheme={colorScheme}
-            onImported={(assetId) => setImageResults((current) => current.map((item) => item.requestId === result.requestId ? { ...item, assetId } : item))}
-            onDiscard={() => setImageResults((current) => current.filter((item) => item.requestId !== result.requestId))}
+            onImported={async (assetId) => {
+              await pendingImageRepository.delete(result.requestId);
+              setImageResults((current) => current.map((item) =>
+                item.requestId === result.requestId ? { ...item, assetId } : item));
+            }}
+            onDiscard={async () => {
+              await pendingImageRepository.delete(result.requestId);
+              imageResultIdsRef.current.delete(result.requestId);
+              setImageResults((current) => current.filter((item) => item.requestId !== result.requestId));
+            }}
           />
         ))}
 
@@ -680,6 +833,19 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
             <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>{t('aiChat.rollback')}</Text>
           </Pressable>
         ) : null}
+        {confirmUndo ? (
+          <View accessibilityRole="alert" style={{ borderWidth: 1, borderColor: colors.danger, borderRadius: 8, padding: 10, gap: 8 }}>
+            <Text style={{ color: colors.foreground, fontSize: 12 }}>{t('aiChat.rollbackConfirm')}</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable accessibilityRole="button" onPress={() => setConfirmUndo(false)}>
+                <Text style={{ color: colors.muted, fontWeight: '700' }}>{t('common.cancel')}</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={handleForceRollback}>
+                <Text style={{ color: colors.danger, fontWeight: '700' }}>{t('aiChat.rollbackForce')}</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
 
       <View style={{ flexDirection: 'row', gap: 8, padding: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
@@ -700,7 +866,27 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
             color: colors.foreground,
           }}
         />
-        <Pressable
+        {status === 'thinking' || status === 'interrupting' ? (
+          <Pressable
+            accessibilityRole="button"
+            disabled={status === 'interrupting'}
+            onPress={handleStop}
+            style={{
+              minWidth: 76,
+              minHeight: 38,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.danger,
+              opacity: status === 'interrupting' ? 0.5 : 1,
+            }}
+          >
+            <Text style={{ color: colors.danger, fontSize: 13, fontWeight: '700' }}>
+              {t('aiChat.stop')}
+            </Text>
+          </Pressable>
+        ) : <Pressable
           accessibilityRole="button"
           disabled={!canSend}
           onPress={handleSend}
@@ -715,7 +901,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
           }}
         >
           <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '700' }}>{t('aiChat.send')}</Text>
-        </Pressable>
+        </Pressable>}
       </View>
     </View>
   );

@@ -15,6 +15,20 @@ export type ApplyAiChangeSetToStoreResult =
   | { ok: true; snapshotId: string; description: AiChangeSetDescription }
   | { ok: false; code: AiChangeSetErrorCode; message: string };
 
+function buildCharacterUndo(before: Character[], after: Character[]) {
+  const beforeById = new Map(before.map((character) => [character.id, character]));
+  const afterById = new Map(after.map((character) => [character.id, character]));
+  return {
+    createdCharacterIds: after.filter((character) => !beforeById.has(character.id)).map((character) => character.id),
+    previousValues: before
+      .filter((character) => {
+        const next = afterById.get(character.id);
+        return next && (next.name !== character.name || next.color !== character.color);
+      })
+      .map(({ id, name, color }) => ({ id, name, color })),
+  };
+}
+
 function buildLiveState(changeSet: AiChangeSet) {
   const state = useAppStore.getState();
   const scenes = new Map(Object.entries(state.sceneRecordsByStory[changeSet.storyId] ?? {}));
@@ -39,9 +53,7 @@ export async function applyAiChangeSetToStore(changeSet: AiChangeSet): Promise<A
 
   const state = useAppStore.getState();
   const description = describeAiChangeSet(changeSet, live);
-  const previousCharacterLibrary = result.charactersToSave
-    ? structuredClone(state.characterLibraries[changeSet.storyId] ?? [])
-    : undefined;
+  const previousCharacters = state.characterLibraries[changeSet.storyId] ?? [];
   const snapshot = await state.createStorySnapshot(
     changeSet.storyId,
     `AI: changeset ${new Date().toISOString()}`,
@@ -52,25 +64,41 @@ export async function applyAiChangeSetToStore(changeSet: AiChangeSet): Promise<A
   // Re-read because snapshot creation is async; reject if live revisions changed.
   const revalidated = applyAiChangeSet(changeSet, buildLiveState(changeSet));
   if (!revalidated.ok) return revalidated;
+  const characterUndo = revalidated.charactersToSave
+    ? buildCharacterUndo(previousCharacters, revalidated.charactersToSave)
+    : undefined;
   useAppStore.getState().commitAiChangeSet(changeSet.storyId, revalidated);
   useAiChatStore.getState().pushAppliedChange({
     kind: 'changeset',
     storyId: changeSet.storyId,
     snapshotId: snapshot.id,
-    ...(previousCharacterLibrary === undefined ? {} : { previousCharacterLibrary }),
+    ...(characterUndo === undefined ? {} : { characterUndo }),
     appliedAt: Date.now(),
     label: changeSet.explanation,
-    postRevisions: capturePostRevisions(changeSet.storyId, { characters: !!revalidated.charactersToSave }),
+    postRevisions: capturePostRevisions(changeSet.storyId, {
+      scope: 'changeset',
+      characterIds: characterUndo
+        ? [...characterUndo.createdCharacterIds, ...characterUndo.previousValues.map(({ id }) => id)]
+        : [],
+    }),
   });
   return { ok: true, snapshotId: snapshot.id, description };
 }
 
 export async function rollbackAiChangeSet(
-  undo: { storyId: string; snapshotId: string; previousCharacterLibrary?: Character[] },
+  undo: { storyId: string; snapshotId: string; characterUndo?: import('@/stores/ai-chat-store').CharacterUndoDelta },
 ): Promise<boolean> {
   const restored = await useAppStore.getState().restoreStorySnapshot(undo.storyId, undo.snapshotId);
-  if (restored && Array.isArray(undo.previousCharacterLibrary)) {
-    useAppStore.getState().setCharacterLibrary(undo.storyId, undo.previousCharacterLibrary);
+  if (restored && undo.characterUndo) {
+    const created = new Set(undo.characterUndo.createdCharacterIds);
+    const previous = new Map(undo.characterUndo.previousValues.map((value) => [value.id, value]));
+    useAppStore.getState().setCharacterLibrary(undo.storyId,
+      (useAppStore.getState().characterLibraries[undo.storyId] ?? [])
+        .filter((character) => !created.has(character.id))
+        .map((character) => {
+          const value = previous.get(character.id);
+          return value ? { ...character, name: value.name, color: value.color } : character;
+        }));
   }
   return restored;
 }

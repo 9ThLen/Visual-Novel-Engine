@@ -13,7 +13,16 @@ const TOOL_TIMEOUT_MS = 30_000;
 const PATCH_TIMEOUT_MS = 600_000;
 const MAX_TOOL_CALLS = 15;
 type PendingTool = { toolName: string; resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
-type LiveSession = { id: string; provider: AgentProvider; socket: WebSocket | null; generating: boolean; interrupted: boolean; toolCalls: number };
+type LiveSession = {
+  id: string;
+  provider: AgentProvider;
+  socket: WebSocket | null;
+  generating: boolean;
+  interrupted: boolean;
+  resetting: boolean;
+  toolCalls: number;
+  turn: Promise<void> | null;
+};
 
 export interface BridgeServerOptions { port?: number; token?: string; allowedOrigins?: string[]; provider?: BridgeProvider; providerFactory: AgentProviderFactory; logger?: (line: string) => void; toolTimeoutMs?: number }
 
@@ -104,7 +113,16 @@ export class AiBridgeServer {
       && typeof (payload.context as Record<string, unknown>).locale === 'string'
       ? (payload.context as Record<string, unknown>).locale as string
       : undefined;
-    this.session = { id, provider: this.options.providerFactory(tools, { locale }), socket, generating: false, interrupted: false, toolCalls: 0 };
+    this.session = {
+      id,
+      provider: this.options.providerFactory(tools, { locale }),
+      socket,
+      generating: false,
+      interrupted: false,
+      resetting: false,
+      toolCalls: 0,
+      turn: null,
+    };
     this.send(socket, 'session_started', { sessionId: id, resumed: false, provider: this.options.provider ?? 'claude' }, id);
     return true;
   }
@@ -114,6 +132,13 @@ export class AiBridgeServer {
     if (message.type === 'ping') return this.send(socket, 'pong', {}, this.session.id);
     if (message.type === 'session_end') { this.disposeSession(); return; }
     if (message.type === 'interrupt') { this.session.interrupted = true; this.session.provider.abort(); return; }
+    if (message.type === 'conversation_reset') {
+      if (this.session.resetting) {
+        return this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'Conversation reset is already running', { reason: 'RESET_ALREADY_RUNNING' });
+      }
+      void this.resetConversation(this.session, message.requestId);
+      return;
+    }
     if (message.type === 'tool_result') return this.resolveTool(message.payload);
     if (message.type === 'image_result_ack') {
       const requestId = this.record(message.payload)?.requestId;
@@ -126,7 +151,30 @@ export class AiBridgeServer {
     if (this.session.generating) {
       return this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'A turn is already running', { reason: 'TURN_ALREADY_RUNNING' });
     }
-    void this.runTurn(text);
+    this.session.turn = this.runTurn(text);
+  }
+
+  private async resetConversation(session: LiveSession, requestId: string): Promise<void> {
+    session.resetting = true;
+    try {
+      if (session.generating) {
+        session.interrupted = true;
+        session.provider.abort();
+        await session.turn;
+      }
+      await session.provider.resetConversation();
+      if (this.session === session) this.sendCurrent('conversation_reset_ack', { requestId });
+    } catch (error) {
+      if (this.session === session) {
+        this.sendCurrent('error', {
+          code: 'PROVIDER_UNAVAILABLE',
+          message: this.safeError(error),
+          details: { reason: 'CONVERSATION_RESET_FAILED', requestId },
+        });
+      }
+    } finally {
+      session.resetting = false;
+    }
   }
 
   private async runTurn(text: string): Promise<void> {
@@ -148,7 +196,11 @@ export class AiBridgeServer {
         message: this.safeError(error),
         details: { reason: 'PROVIDER_ERROR' },
       });
-    } finally { clearTimeout(timer); session.generating = false; }
+    } finally {
+      clearTimeout(timer);
+      session.generating = false;
+      session.turn = null;
+    }
   }
 
   private callClientTool(toolName: string, input: unknown, timeoutMs?: number): Promise<unknown> {

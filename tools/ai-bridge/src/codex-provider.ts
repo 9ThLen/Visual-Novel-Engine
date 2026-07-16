@@ -2,8 +2,16 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import type { AgentEvent, AgentProvider, AgentSessionContext, ToolInvoker } from './provider';
-import { buildSessionSystemPrompt, modelToolErrorValue } from './provider';
+import { BridgeToolError, buildSessionSystemPrompt, modelToolErrorValue } from './provider';
 import { MODEL_BRIDGE_TOOLS } from '../../../lib/ai/bridge-tools';
+import {
+  buildCodexExecArgs,
+  buildSafeCodexEnvironment,
+  CODEX_HARDENING_REASON,
+  createCodexWorkspace,
+  getCodexHardeningCapability,
+  removeCodexTemporaryDirectory,
+} from './codex-launch-policy';
 
 const systemPrompt = readFileSync(fileURLToPath(new URL('./system-prompt.md', import.meta.url)), 'utf8');
 const schemaPath = fileURLToPath(new URL('./codex-response-schema.json', import.meta.url));
@@ -19,6 +27,7 @@ type CodexReply = {
 export class CodexCliProvider implements AgentProvider {
   private child: ChildProcessWithoutNullStreams | null = null;
   private threadId: string | null = null;
+  private workspace: string | null = null;
 
   constructor(private readonly bridge: ToolInvoker, private readonly session?: AgentSessionContext) {}
   get systemPrompt(): string { return buildSessionSystemPrompt(systemPrompt, this.session); }
@@ -27,7 +36,23 @@ export class CodexCliProvider implements AgentProvider {
     this.child?.kill();
   }
 
+  resetConversation(): void {
+    this.threadId = null;
+  }
+
+  close(): void {
+    this.abort();
+    removeCodexTemporaryDirectory(this.workspace);
+    this.workspace = null;
+  }
+
   async *send(text: string): AsyncIterable<AgentEvent> {
+    const capability = getCodexHardeningCapability();
+    if (!capability.supported) {
+      throw new BridgeToolError('PROVIDER_UNAVAILABLE', capability.message, {
+        reason: CODEX_HARDENING_REASON,
+      });
+    }
     let prompt = this.threadId
       ? text
       : `${this.systemPrompt}\n\nYou are connected through Codex CLI. Do not use shell, filesystem, or network tools. Return either a final reply or exactly one of the app tool calls listed above, using the required response schema.\n\nUser: ${text}`;
@@ -49,12 +74,20 @@ export class CodexCliProvider implements AgentProvider {
 
   private run(prompt: string): Promise<CodexReply> {
     const executable = process.platform === 'win32' ? 'codex.exe' : 'codex';
-    const args = this.threadId
-      ? ['exec', 'resume', this.threadId, '--json', '--sandbox', 'read-only', '--output-schema', schemaPath, '-']
-      : ['exec', '--json', '--sandbox', 'read-only', '--skip-git-repo-check', '--output-schema', schemaPath, '-'];
+    this.workspace ??= createCodexWorkspace();
+    const args = buildCodexExecArgs({
+      workspace: this.workspace,
+      schemaPath,
+      threadId: this.threadId,
+    });
 
     return new Promise((resolve, reject) => {
-      const child = spawn(executable, args, { cwd: fileURLToPath(new URL('..', import.meta.url)), stdio: 'pipe', windowsHide: true });
+      const child = spawn(executable, args, {
+        cwd: this.workspace!,
+        env: buildSafeCodexEnvironment(),
+        stdio: 'pipe',
+        windowsHide: true,
+      });
       this.child = child;
       let stdout = '';
       let stderr = '';
@@ -62,10 +95,15 @@ export class CodexCliProvider implements AgentProvider {
       child.stderr.setEncoding('utf8');
       child.stdout.on('data', chunk => { stdout += chunk; });
       child.stderr.on('data', chunk => { stderr += chunk; });
-      child.once('error', reject);
+      const rejectAndCleanup = (error: Error) => {
+        removeCodexTemporaryDirectory(this.workspace);
+        this.workspace = null;
+        reject(error);
+      };
+      child.once('error', rejectAndCleanup);
       child.once('close', code => {
         this.child = null;
-        if (code !== 0) return reject(new Error(stderr.trim() || `Codex CLI exited with code ${code}`));
+        if (code !== 0) return rejectAndCleanup(new Error(stderr.trim() || `Codex CLI exited with code ${code}`));
         try {
           let answer = '';
           for (const line of stdout.split(/\r?\n/)) {
@@ -79,7 +117,7 @@ export class CodexCliProvider implements AgentProvider {
           if ((reply.action !== 'reply' && reply.action !== 'tool') || (reply.input !== null && typeof reply.input !== 'object')) throw new Error('invalid response');
           resolve(reply);
         } catch {
-          reject(new Error('Codex CLI returned an invalid structured response'));
+          rejectAndCleanup(new Error('Codex CLI returned an invalid structured response'));
         }
       });
       child.stdin.end(prompt);

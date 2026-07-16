@@ -51,7 +51,7 @@ export async function applyAiAppearancePatchToStore(
     previousLayoutPreset,
     appliedAt: Date.now(),
     label: patch.explanation,
-    postRevisions: capturePostRevisions(patch.storyId, { appearance: true }),
+    postRevisions: capturePostRevisions(patch.storyId, { scope: 'appearance' }),
   });
 
   return { ok: true, previousTheme, previousLayoutPreset, description };

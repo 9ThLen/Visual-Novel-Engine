@@ -28,8 +28,8 @@ describe('AI bridge connection UI', () => {
     const view = render(<ConnectionCard state="demo" {...common} />);
     expect(screen.getByText('Connect the AI assistant')).toBeTruthy();
     fireEvent.click(screen.getByText('Connect real AI'));
-    fireEvent.click(screen.getByText('Codex'));
-    expect(screen.getByText(/pnpm ai-bridge --provider codex/)).toBeTruthy();
+    expect(screen.getByText('Unavailable in this release')).toBeTruthy();
+    expect(screen.getByText(/npx @visual-novel-engine\/ai-bridge --provider claude/)).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText('Pairing token'), { target: { value: 'new-token' } });
     fireEvent.click(screen.getByText('Connect'));
     expect(onConnect).toHaveBeenCalledWith('new-token', 'ws://127.0.0.1:8787');

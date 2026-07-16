@@ -5,6 +5,10 @@ import { ScreenContainer } from '@/components/screen-container';
 import { StoryReaderResponsive } from '@/components/story-reader-responsive';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { ReaderMenu } from '@/components/ReaderMenu';
+import { PostFinaleRating } from '@/components/reader/PostFinaleRating';
+import { shouldPromptForReview } from '@/lib/reviews/review-prompt';
+import { getReviewsStore } from '@/lib/reviews/reviews-storage';
+import type { ReviewRating } from '@/lib/reviews/reviews-domain';
 import { useColors } from '@/hooks/use-colors';
 import { useReaderColors } from '@/hooks/use-reader-colors';
 import { useI18n } from '@/hooks/use-i18n';
@@ -75,6 +79,10 @@ export default function ReaderScreen() {
   const [readerSceneState, setReaderSceneState] = useState<SceneState | null>(null);
   const [entryTransition, setEntryTransition] = useState<ReaderTransitionEvent | null>(null);
   const [objDialogue, setObjDialogue] = useState<{ text: string; speaker?: string } | null>(null);
+  // Set when the story ends and the reader is worth asking for a rating; holding
+  // it here is what keeps the finale on screen instead of exiting instantly.
+  const [finaleEnding, setFinaleEnding] = useState<{ sceneId: string; endingsSeen: number } | null>(null);
+  const recordEndingReached = useAppStore((s) => s.recordEndingReached);
   const pendingChoiceRef = useRef<{ sceneId: string; choiceId: string; stepId: string | null; targetSceneId: string | null } | null>(null);
   const latestVariablesRef = useRef<RuntimeVariables>({});
   // Scene-entry snapshots for cross-scene rollback. Each entry is the
@@ -249,8 +257,47 @@ export default function ReaderScreen() {
       variables: normalizeRuntimeVariables(latestVariablesRef.current),
     });
     void stopReaderPlayback(audioManager);
+
+    // Only a scene with nowhere left to go is an ending — the same rule the
+    // showcase counts by. finishStory also runs when navigation fails on a
+    // broken link, and that must not be recorded as an ending the reader saw.
+    const endingSceneId = playbackState.currentSceneId;
+    const isTerminalScene = !sceneRecord?.connections?.length;
+    if (story?.id && endingSceneId && isTerminalScene) {
+      const before = useAppStore.getState().endingsReachedByStory[story.id]?.length ?? 0;
+      recordEndingReached(story.id, endingSceneId);
+      const after = useAppStore.getState().endingsReachedByStory[story.id]?.length ?? 0;
+
+      // Ask at the peak, or not at all — leaving is the default.
+      void (async () => {
+        const hasMyReview = !!(await getReviewsStore().getMyReview(story.id));
+        if (shouldPromptForReview(before, after, hasMyReview)) {
+          setFinaleEnding({ sceneId: endingSceneId, endingsSeen: after });
+        } else {
+          router.replace('/tabs');
+        }
+      })();
+      return;
+    }
+
     router.replace('/tabs');
-  }, [playbackState, router, updatePlaybackState]);
+  }, [playbackState, router, updatePlaybackState, story?.id, sceneRecord, recordEndingReached]);
+
+  const leaveFinale = useCallback(() => {
+    setFinaleEnding(null);
+    router.replace('/tabs');
+  }, [router]);
+
+  const handleFinaleRating = useCallback((rating: ReviewRating, text: string | undefined) => {
+    if (!story?.id || !finaleEnding) return;
+    void getReviewsStore().upsertMyReview(story.id, {
+      rating,
+      text,
+      endingsSeen: finaleEnding.endingsSeen,
+      finished: true,
+    });
+    leaveFinale();
+  }, [story?.id, finaleEnding, leaveFinale]);
 
   const navigateToScene = useCallback(async (
     sceneId: string,
@@ -468,6 +515,14 @@ export default function ReaderScreen() {
             </Text>
           </View>
         </Pressable>
+      )}
+
+      {finaleEnding && story && (
+        <PostFinaleRating
+          sceneName={sceneRecord?.name ?? null}
+          onSubmit={handleFinaleRating}
+          onDismiss={leaveFinale}
+        />
       )}
     </View>
   );

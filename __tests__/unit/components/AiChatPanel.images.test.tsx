@@ -5,6 +5,7 @@ import { AiChatPanel } from '@/components/ai-chat/AiChatPanel';
 import { defaultAiPermissions } from '@/lib/ai/permissions';
 import { defaultUserSettings } from '@/lib/user-settings';
 import { makeEnvelope } from '@/lib/bridge-protocol';
+import { setPendingImageStorageAdapterForTests } from '@/lib/idb-storage';
 import { useAiChatStore } from '@/stores/ai-chat-store';
 import { useAppStore } from '@/stores/use-app-store';
 
@@ -27,6 +28,13 @@ class SocketMock {
 
 describe('AiChatPanel image delivery', () => {
   beforeEach(() => {
+    const pendingImages = new Map<string, unknown>();
+    setPendingImageStorageAdapterForTests({
+      get: async (requestId) => pendingImages.get(requestId) ?? null,
+      put: async (requestId, value) => { pendingImages.set(requestId, value); },
+      delete: async (requestId) => { pendingImages.delete(requestId); },
+      list: async () => [...pendingImages.values()],
+    });
     SocketMock.instances = [];
     vi.stubGlobal('WebSocket', SocketMock);
     Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:ai-result') });
@@ -39,7 +47,10 @@ describe('AiChatPanel image delivery', () => {
     });
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    setPendingImageStorageAdapterForTests(null);
+    vi.unstubAllGlobals();
+  });
 
   it('dedupes redelivery, acknowledges every delivery, and persists no base64', async () => {
     const view = render(<AiChatPanel storyId="story-1" activeSceneId={null} />);

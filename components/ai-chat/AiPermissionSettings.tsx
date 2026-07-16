@@ -20,7 +20,9 @@ export function AiPermissionSettings({ permissions, onChange, colorScheme }: {
         <View key={capability} style={{ gap: 5 }}>
           <Text style={{ color: colors.foreground, fontSize: 12 }}>{t(`aiChat.permissions.capability.${capability}`)}</Text>
           <View style={{ flexDirection: 'row', gap: 5 }}>
-            {AI_PERMISSION_LEVELS.filter(level => !(capability === 'changeset' && level === 'auto')).map((level) => (
+            {AI_PERMISSION_LEVELS.filter(level =>
+              !((capability === 'changeset' || capability === 'image_generate') && level === 'auto'),
+            ).map((level) => (
               <Pressable
                 key={level}
                 accessibilityRole="button"

@@ -47,4 +47,16 @@ describe('ImageResultCard', () => {
     rendered.unmount();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
   });
+
+  it('keeps the durable card retryable when import fails', async () => {
+    importAsset.mockRejectedValueOnce(new Error('storage full'));
+    const onImported = vi.fn();
+    render(<ImageResultCard result={result} storyId="story-1" onImported={onImported} onDiscard={vi.fn()} importAsset={importAsset} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to story images' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('storage full');
+    expect(onImported).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Add to story images' }).getAttribute('disabled')).toBeNull();
+  });
 });
