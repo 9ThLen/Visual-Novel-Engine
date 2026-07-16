@@ -145,7 +145,7 @@ export async function respond(userText: string, ctx: AiStoryContext): Promise<Fa
 
   if (THEME_PATTERN.test(userText)) {
     const patch = buildDarkerThemePatch(ctx.story.id, ctx.appearance.theme, ctx.appearance.revision);
-    if (Object.keys(patch.theme).length > 0) return { kind: 'appearance', patch };
+    if (Object.keys(patch.theme ?? {}).length > 0) return { kind: 'appearance', patch };
   }
 
   if (ctx.activeScene && BACKGROUND_PATTERN.test(userText)) {

@@ -9,6 +9,17 @@ export interface StoryReaderTheme {
   choiceText?: string;
 }
 
+export const STORY_READER_LAYOUT_PRESETS = ['classic', 'compact', 'top'] as const;
+export type StoryReaderLayoutPreset = (typeof STORY_READER_LAYOUT_PRESETS)[number];
+export const DEFAULT_READER_LAYOUT_PRESET: StoryReaderLayoutPreset = 'classic';
+
+export function sanitizeReaderLayoutPreset(input: unknown): StoryReaderLayoutPreset {
+  return typeof input === 'string'
+    && (STORY_READER_LAYOUT_PRESETS as readonly string[]).includes(input)
+    ? input as StoryReaderLayoutPreset
+    : DEFAULT_READER_LAYOUT_PRESET;
+}
+
 const THEME_KEYS = [
   'dialogueBg',
   'dialogueText',

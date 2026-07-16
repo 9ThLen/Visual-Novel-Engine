@@ -125,4 +125,16 @@ describe('ReaderDisplay', () => {
 
     expect(screen.getByTestId('weather-effects-layer')).toBeTruthy();
   });
+
+  it.each(['classic', 'compact', 'top'] as const)('renders the %s layout preset', (layoutPreset) => {
+    render(<ReaderDisplay {...baseProps} layoutPreset={layoutPreset} />);
+    expect(screen.getByTestId(`reader-layout-${layoutPreset}`)).toBeTruthy();
+    expect(screen.getByTestId(`reader-dialogue-panel-${layoutPreset}`)).toBeTruthy();
+  });
+
+  it('uses classic rendering when the preset is absent', () => {
+    render(<ReaderDisplay {...baseProps} />);
+    expect(screen.getByTestId('reader-layout-classic')).toBeTruthy();
+    expect(screen.getByTestId('reader-dialogue-panel-classic').style.marginBottom).toBe('28px');
+  });
 });

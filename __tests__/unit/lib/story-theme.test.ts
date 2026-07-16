@@ -1,8 +1,23 @@
 import {
+  DEFAULT_READER_LAYOUT_PRESET,
   mergeReaderColors,
+  sanitizeReaderLayoutPreset,
   sanitizeStoryTheme,
   STORY_THEME_PRESETS,
 } from '@/lib/story-theme';
+
+describe('sanitizeReaderLayoutPreset', () => {
+  it.each(['classic', 'compact', 'top'] as const)('accepts %s', (preset) => {
+    expect(sanitizeReaderLayoutPreset(preset)).toBe(preset);
+  });
+
+  it('falls back to classic for arbitrary input without throwing', () => {
+    const values: unknown[] = [undefined, null, '', 'bottom', 'TOP', 1, false, {}, [], Symbol('preset')];
+    for (const value of values) {
+      expect(sanitizeReaderLayoutPreset(value)).toBe(DEFAULT_READER_LAYOUT_PRESET);
+    }
+  });
+});
 
 describe('sanitizeStoryTheme', () => {
   it('normalizes short, long, alpha hex colors, and casing', () => {

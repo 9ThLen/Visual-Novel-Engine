@@ -4,20 +4,29 @@ import {
   type BridgeErrorCode,
   isServerMessage,
   makeEnvelope,
+  maxBytesForEnvelope,
   parseEnvelope,
 } from './bridge-protocol';
 
-type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'closed';
-type ToolResult =
-  | { ok: true; result: unknown }
-  | { ok: false; errorCode: BridgeErrorCode; errorMessage: string };
+export type { BridgeProvider } from './bridge-protocol';
+
+export type BridgeConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'unauthorized' | 'error' | 'closed';
+export type BridgeConnectionReason =
+  | 'CONNECTION_FAILED_OR_ORIGIN'
+  | 'INVALID_TOKEN'
+  | 'SESSION_ALREADY_ACTIVE'
+  | 'PROTOCOL_VERSION_MISMATCH';
+export type ToolResult =
+  | { ok: true; result: unknown; binaryTool?: boolean }
+  | { ok: false; errorCode: BridgeErrorCode; errorMessage: string; details?: unknown; binaryTool?: boolean };
 
 export interface BridgeClientOptions {
   url: string;
   token: string;
+  locale?: string;
   onEvent: (msg: BridgeEnvelope) => void;
   onToolCall: (toolCallId: string, toolName: string, input: unknown) => Promise<ToolResult>;
-  onConnectionChange: (state: ConnectionState) => void;
+  onConnectionChange: (state: BridgeConnectionState, reason?: BridgeConnectionReason) => void;
   logger?: (message: string, error?: unknown) => void;
 }
 
@@ -27,6 +36,8 @@ export class BridgeClient {
   private socket: WebSocket | null = null;
   private sessionId = '';
   private intentionallyClosed = false;
+  private reconnectBlocked = false;
+  private socketFailed = false;
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -35,9 +46,18 @@ export class BridgeClient {
 
   constructor(private readonly options: BridgeClientOptions) {}
 
+  static clearPersistedSession(url: string): void {
+    try {
+      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(BridgeClient.sessionStorageKey(url));
+    } catch {
+      // Persistence is an optional resume optimization.
+    }
+  }
+
   connect(): void {
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) return;
     this.intentionallyClosed = false;
+    this.reconnectBlocked = false;
     this.clearReconnectTimer();
     this.openSocket(this.reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
   }
@@ -57,12 +77,23 @@ export class BridgeClient {
     if (this.isOpen()) this.send('interrupt', {});
   }
 
+  acknowledgeImageResult(requestId: string): void {
+    if (requestId && this.isOpen()) this.send('image_result_ack', { requestId });
+  }
+
   close(): void {
     this.intentionallyClosed = true;
+    this.reconnectBlocked = true;
     this.clearAllTimers();
     const socket = this.socket;
+    if (socket?.readyState === WebSocket.OPEN) this.send('session_end', {});
     this.socket = null;
     if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
+    this.sessionId = '';
+    this.reconnectAttempt = 0;
+    this.socketFailed = false;
+    this.queue.length = 0;
+    BridgeClient.clearPersistedSession(this.options.url);
     this.options.onConnectionChange('closed');
   }
 
@@ -70,24 +101,27 @@ export class BridgeClient {
     this.clearHeartbeatTimers();
     this.options.onConnectionChange(state);
     const socket = new WebSocket(this.options.url);
+    this.socketFailed = false;
     this.socket = socket;
     socket.onopen = () => {
       if (this.socket !== socket || this.intentionallyClosed) return;
-      this.options.onConnectionChange('connected');
-      const payload = this.sessionId
-        ? { token: this.options.token, resumeSessionId: this.sessionId }
-        : { token: this.options.token };
+      const persistedSessionId = this.readPersistedSessionId();
+      const resumeSessionId = this.sessionId || persistedSessionId;
+      const payload = resumeSessionId
+        ? { token: this.options.token, resumeSessionId, context: { locale: this.options.locale } }
+        : { token: this.options.token, context: { locale: this.options.locale } };
       this.send('session_start', payload);
-      this.reconnectAttempt = 0;
-      this.startHeartbeat();
-      this.flushQueue();
     };
     socket.onmessage = (event: MessageEvent<unknown>) => this.handleMessage(event.data);
-    socket.onerror = (event: Event) => this.options.logger?.('WebSocket error', event);
+    socket.onerror = (event: Event) => {
+      this.socketFailed = true;
+      this.options.logger?.('WebSocket error', event);
+      this.options.onConnectionChange('error', 'CONNECTION_FAILED_OR_ORIGIN');
+    };
     socket.onclose = () => {
       if (this.socket === socket) this.socket = null;
       this.clearHeartbeatTimers();
-      if (!this.intentionallyClosed) this.scheduleReconnect();
+      if (!this.intentionallyClosed && !this.reconnectBlocked) this.scheduleReconnect(!this.socketFailed);
     };
   }
 
@@ -106,6 +140,27 @@ export class BridgeClient {
     if (parsed.type === 'session_started' && this.isRecord(parsed.payload)
       && typeof parsed.payload.sessionId === 'string') {
       this.sessionId = parsed.payload.sessionId;
+      this.persistSessionId(this.sessionId);
+      this.reconnectAttempt = 0;
+      this.options.onConnectionChange('connected');
+      this.startHeartbeat();
+      this.flushQueue();
+    }
+    if (parsed.type === 'error' && this.isRecord(parsed.payload)) {
+      if (parsed.payload.code === 'UNAUTHORIZED') {
+        this.blockReconnect('unauthorized', 'INVALID_TOKEN');
+        return;
+      }
+      if (parsed.payload.code === 'PROVIDER_UNAVAILABLE'
+        && this.isRecord(parsed.payload.details)
+        && parsed.payload.details.reason === 'SESSION_ALREADY_ACTIVE') {
+        this.blockReconnect('error', 'SESSION_ALREADY_ACTIVE');
+        return;
+      }
+      if (parsed.payload.code === 'PROTOCOL_ERROR') {
+        this.blockReconnect('error', 'PROTOCOL_VERSION_MISMATCH');
+        return;
+      }
     }
     this.options.onEvent(parsed);
     if (parsed.type === 'tool_call') void this.handleToolCall(parsed.payload);
@@ -115,10 +170,7 @@ export class BridgeClient {
     try {
       const value: unknown = JSON.parse(raw);
       if (this.isRecord(value) && value.protocolVersion !== BRIDGE_PROTOCOL_VERSION) {
-        this.options.onEvent(makeEnvelope('error', {
-          code: 'PROTOCOL_ERROR',
-          message: `Unsupported protocol version: ${String(value.protocolVersion)}`,
-        }, this.sessionId));
+        this.blockReconnect('error', 'PROTOCOL_VERSION_MISMATCH');
       }
     } catch (error: unknown) {
       this.options.logger?.('Invalid bridge message', error);
@@ -155,15 +207,15 @@ export class BridgeClient {
     }, 15_000);
   }
 
-  private scheduleReconnect(): void {
-    if (this.intentionallyClosed || this.reconnectTimer) return;
-    this.options.onConnectionChange('reconnecting');
+  private scheduleReconnect(reportState = true): void {
+    if (this.intentionallyClosed || this.reconnectBlocked || this.reconnectTimer) return;
+    if (reportState) this.options.onConnectionChange('reconnecting');
     const baseDelay = Math.min(500 * 2 ** this.reconnectAttempt, 15_000);
     this.reconnectAttempt += 1;
     const delay = Math.round(baseDelay * (0.8 + Math.random() * 0.4));
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      if (!this.intentionallyClosed) this.openSocket('reconnecting');
+      if (!this.intentionallyClosed && !this.reconnectBlocked) this.openSocket('reconnecting');
     }, delay);
   }
 
@@ -175,7 +227,43 @@ export class BridgeClient {
   }
 
   private send(type: Parameters<typeof makeEnvelope>[0], payload: unknown): void {
-    if (this.isOpen()) this.socket?.send(JSON.stringify(makeEnvelope(type, payload, this.sessionId)));
+    if (!this.isOpen()) return;
+    const raw = JSON.stringify(makeEnvelope(type, payload, this.sessionId));
+    if (new TextEncoder().encode(raw).byteLength <= maxBytesForEnvelope(type, payload)) this.socket?.send(raw);
+  }
+
+  private readPersistedSessionId(): string {
+    try {
+      return typeof sessionStorage === 'undefined'
+        ? ''
+        : (sessionStorage.getItem(BridgeClient.sessionStorageKey(this.options.url)) ?? '');
+    }
+    catch { return ''; }
+  }
+
+  private persistSessionId(sessionId: string): void {
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(BridgeClient.sessionStorageKey(this.options.url), sessionId);
+      }
+    }
+    catch { /* Persistence is an optional resume optimization. */ }
+  }
+
+  private static sessionStorageKey(url: string): string {
+    return `vne-bridge-session:${url}`;
+  }
+
+  private blockReconnect(state: 'unauthorized' | 'error', reason: BridgeConnectionReason): void {
+    this.reconnectBlocked = true;
+    this.clearAllTimers();
+    this.sessionId = '';
+    this.reconnectAttempt = 0;
+    BridgeClient.clearPersistedSession(this.options.url);
+    this.options.onConnectionChange(state, reason);
+    const socket = this.socket;
+    this.socket = null;
+    if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
   }
 
   private isOpen(): boolean {

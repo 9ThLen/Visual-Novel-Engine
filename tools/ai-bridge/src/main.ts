@@ -1,9 +1,11 @@
-import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import { ClaudeAgentProvider } from './claude-provider';
 import { CodexCliProvider } from './codex-provider';
 import { AiBridgeServer } from './server';
+import { bridgeCliHelp, parseBridgeCliArgs, resolveBridgeCliConfig } from './cli-options';
+import { checkProviderAuthentication } from './cli-launcher';
+import { formatBridgeStartupBlock } from './startup-summary';
 
 /**
  * Minimal `.env` loader (tsx does not read `.env` on its own, and we don't want
@@ -26,21 +28,19 @@ function loadDotEnv(): void {
 }
 
 async function main(): Promise<void> {
+  const cli = parseBridgeCliArgs(process.argv.slice(2));
+  if (cli.help) {
+    console.log(bridgeCliHelp());
+    return;
+  }
+
   loadDotEnv();
-  const port = Number.parseInt(process.env.AI_BRIDGE_PORT ?? '8787', 10);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('AI_BRIDGE_PORT must be a valid TCP port');
-  const origins = (process.env.AI_BRIDGE_ALLOWED_ORIGINS ?? '').split(',').map(value => value.trim()).filter(Boolean);
-  const provider = (process.env.AI_BRIDGE_PROVIDER ?? 'claude').toLowerCase();
-  if (provider !== 'claude' && provider !== 'codex') throw new Error('AI_BRIDGE_PROVIDER must be "claude" or "codex"');
-  const command = provider === 'codex' ? (process.platform === 'win32' ? 'codex.exe' : 'codex') : (process.platform === 'win32' ? 'claude.cmd' : 'claude');
-  const checkArgs = provider === 'codex' ? ['login', 'status'] : ['auth', 'status'];
-  // Windows needs shell:true to launch a .cmd shim (Node blocks .cmd/.bat under
-  // shell:false with EINVAL). Args are fixed constants, so there is nothing to escape.
-  const check = spawnSync(command, checkArgs, { encoding: 'utf8', shell: process.platform === 'win32' });
-  if (check.error?.message.includes('ENOENT') || check.status !== 0) {
+  const { origins, port, provider } = resolveBridgeCliConfig(cli, process.env);
+  const check = checkProviderAuthentication(provider);
+  if (check.error || check.status !== 0) {
     console.error(provider === 'codex'
-      ? 'Codex CLI is missing or unavailable. Install it, then run: codex login'
-      : 'Claude Code CLI is missing or not authenticated. Install it, then run: claude auth login');
+      ? 'Codex CLI is missing or unavailable. Install it, then run: codex --login'
+      : 'Claude Code CLI is missing or not authenticated. Install it, then run: claude');
     process.exitCode = 1;
     return;
   }
@@ -50,10 +50,17 @@ async function main(): Promise<void> {
   const server = new AiBridgeServer({
     port,
     token,
+    provider,
     allowedOrigins: origins,
-    providerFactory: tools => provider === 'codex' ? new CodexCliProvider(tools) : new ClaudeAgentProvider(tools),
+    providerFactory: (tools, session) => provider === 'codex' ? new CodexCliProvider(tools, session) : new ClaudeAgentProvider(tools, session),
   });
-  await server.start();
+  const listeningPort = await server.start();
+  console.log(formatBridgeStartupBlock({
+    token: server.token,
+    port: listeningPort,
+    provider,
+    origins,
+  }));
   let stopping = false;
   process.on('SIGINT', () => { if (stopping) return; stopping = true; void server.close().finally(() => process.exit(0)); });
 }

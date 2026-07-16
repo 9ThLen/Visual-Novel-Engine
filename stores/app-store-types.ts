@@ -9,6 +9,8 @@ import type { Character } from '@/lib/character-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { AudioLibraryItem } from '@/lib/audio-types';
 import type { StoryImageAssetIds } from '@/lib/story-image-library';
+import type { AiChangeSetApplyResult } from '@/lib/ai/change-set';
+import type { AiBridgeSettings } from '@/lib/ai/bridge-config';
 
 export interface AppState {
   storiesMetadata: StoryMetadata[];
@@ -17,6 +19,7 @@ export interface AppState {
   currentStoryId: string | null;
   playbackState: PlaybackState | null;
   settings: UserSettings;
+  aiBridgeSettings: AiBridgeSettings;
   saveSlots: SaveSlot[];
   audioLibraries: Record<string, AudioLibraryItem[]>;
   characterLibraries: Record<string, Character[]>;
@@ -37,6 +40,7 @@ export interface AppActions {
   deleteSaveSlot: (slotId: string) => void;
   syncAutoSave: (newSlot: SaveSlot) => void;
   updateSettings: (partial: Partial<UserSettings>) => void;
+  updateAiBridgeSettings: (partial: Partial<AppState['aiBridgeSettings']>) => void;
   hydrateSceneRecordsForStory: (storyId: string) => Promise<void>;
   createStory: (title: string) => { storyId: string; sceneId: string };
   deleteStory: (storyId: string) => void;
@@ -55,6 +59,7 @@ export interface AppActions {
     maxPrefetchScenes?: number
   ) => Promise<boolean>;
   saveSceneRecord: (record: SceneRecord) => void;
+  commitAiChangeSet: (storyId: string, result: Extract<AiChangeSetApplyResult, { ok: true }>) => void;
   updateSceneRecordPreservingMeta: (
     storyId: string,
     sceneId: string,

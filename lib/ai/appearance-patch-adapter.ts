@@ -6,20 +6,23 @@
  * tags} and restore only writes scenes back, so it can neither store nor revert
  * a theme. Taking one here would leave the user a snapshot that silently fails
  * to undo the color change. A theme is small and exactly reversible, so we keep
- * the previous theme and write it back verbatim on rollback.
+ * the previous theme and layout preset and write both back verbatim on rollback.
  */
-import type { StoryReaderTheme } from '@/lib/story-theme';
+import type { StoryReaderLayoutPreset, StoryReaderTheme } from '@/lib/story-theme';
 import { useAppStore } from '@/stores/use-app-store';
 import {
   applyAiAppearancePatch,
+  applyAiReaderLayoutPreset,
   describeAiAppearancePatch,
   validateAiAppearancePatch,
   type AiReaderAppearancePatch,
   type AppearancePatchDescription,
 } from './appearance-patch';
+import { capturePostRevisions } from './applied-change-journal';
+import { useAiChatStore } from '@/stores/ai-chat-store';
 
 export type ApplyAiAppearancePatchToStoreResult =
-  | { ok: true; previousTheme: StoryReaderTheme | undefined; description: AppearancePatchDescription }
+  | { ok: true; previousTheme: StoryReaderTheme | undefined; previousLayoutPreset: StoryReaderLayoutPreset | undefined; description: AppearancePatchDescription }
   | { ok: false; code: 'STALE_REVISION' | 'VALIDATION_FAILED' | 'STORY_NOT_FOUND'; errors: string[] };
 
 export async function applyAiAppearancePatchToStore(
@@ -34,16 +37,35 @@ export async function applyAiAppearancePatchToStore(
 
   const description = describeAiAppearancePatch(metadata, patch);
   const previousTheme = metadata.theme;
-  state.updateStoryMetadata(patch.storyId, { theme: applyAiAppearancePatch(metadata, patch) });
+  const previousLayoutPreset = metadata.readerLayoutPreset;
+  state.updateStoryMetadata(patch.storyId, {
+    theme: applyAiAppearancePatch(metadata, patch),
+    ...(patch.layoutPreset !== undefined
+      ? { readerLayoutPreset: applyAiReaderLayoutPreset(metadata, patch) }
+      : {}),
+  });
+  useAiChatStore.getState().pushAppliedChange({
+    kind: 'appearance',
+    storyId: patch.storyId,
+    previousTheme,
+    previousLayoutPreset,
+    appliedAt: Date.now(),
+    label: patch.explanation,
+    postRevisions: capturePostRevisions(patch.storyId, { appearance: true }),
+  });
 
-  return { ok: true, previousTheme, description };
+  return { ok: true, previousTheme, previousLayoutPreset, description };
 }
 
-/** Restores the exact theme the story had before the patch (undefined = no theme set). */
-export function rollbackAiAppearancePatch(storyId: string, previousTheme: StoryReaderTheme | undefined): boolean {
+/** Restores the exact appearance the story had before the patch. */
+export function rollbackAiAppearancePatch(
+  storyId: string,
+  previousTheme: StoryReaderTheme | undefined,
+  previousLayoutPreset?: StoryReaderLayoutPreset,
+): boolean {
   const state = useAppStore.getState();
   if (!state.storiesMetadata.some((story) => story.id === storyId)) return false;
 
-  state.updateStoryMetadata(storyId, { theme: previousTheme });
+  state.updateStoryMetadata(storyId, { theme: previousTheme, readerLayoutPreset: previousLayoutPreset });
   return true;
 }

@@ -44,12 +44,24 @@ describe('computeAppearanceRevision', () => {
     const renamed: StoryMetadata = { ...base, title: 'Renamed', updatedAt: 999 };
     expect(computeAppearanceRevision(renamed)).toBe(computeAppearanceRevision(base));
   });
+
+  it('changes when only the reader layout preset changes', () => {
+    const base = story();
+    expect(computeAppearanceRevision({ ...base, readerLayoutPreset: 'compact' }))
+      .not.toBe(computeAppearanceRevision(base));
+  });
 });
 
 describe('validateAiAppearancePatch', () => {
   it('accepts a well-formed patch', () => {
     const metadata = story();
     expect(validateAiAppearancePatch(metadata, patch(metadata))).toMatchObject({ ok: true });
+  });
+
+  it('accepts a preset-only patch', () => {
+    const metadata = story();
+    expect(validateAiAppearancePatch(metadata, patch(metadata, { theme: undefined, layoutPreset: 'top' })))
+      .toMatchObject({ ok: true });
   });
 
   it('rejects a stale revision', () => {
@@ -119,5 +131,12 @@ describe('describeAiAppearancePatch', () => {
     const metadata = story();
     const description = describeAiAppearancePatch(metadata, patch(metadata));
     expect(description.colors).toContainEqual({ key: 'dialogueBg', before: null, after: '#000000' });
+  });
+
+  it('describes a preset-only before and after row', () => {
+    const metadata = story();
+    const description = describeAiAppearancePatch(metadata, patch(metadata, { theme: undefined, layoutPreset: 'top' }));
+    expect(description.colors).toEqual([]);
+    expect(description.layoutPreset).toEqual({ before: 'classic', after: 'top' });
   });
 });

@@ -4,7 +4,7 @@ import type { AppStoreSet } from '@/stores/app-store-slices/types';
 
 export type PreferencesSliceActions = Pick<
   AppActions,
-  'clearMigrationError' | 'setLanguage' | 'updateSettings'
+  'clearMigrationError' | 'setLanguage' | 'updateSettings' | 'updateAiBridgeSettings'
 >;
 
 export function createPreferencesSlice(set: AppStoreSet): PreferencesSliceActions {
@@ -15,5 +15,8 @@ export function createPreferencesSlice(set: AppStoreSet): PreferencesSliceAction
 
     updateSettings: (partial) =>
       set((state) => ({ settings: normalizeUserSettings({ ...state.settings, ...partial }) })),
+
+    updateAiBridgeSettings: (partial) =>
+      set((state) => ({ aiBridgeSettings: { ...state.aiBridgeSettings, ...partial } })),
   };
 }

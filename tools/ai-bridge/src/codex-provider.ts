@@ -1,20 +1,13 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
-import type { AgentEvent, AgentProvider, ToolInvoker } from './provider';
+import type { AgentEvent, AgentProvider, AgentSessionContext, ToolInvoker } from './provider';
+import { buildSessionSystemPrompt, modelToolErrorValue } from './provider';
+import { MODEL_BRIDGE_TOOLS } from '../../../lib/ai/bridge-tools';
 
 const systemPrompt = readFileSync(fileURLToPath(new URL('./system-prompt.md', import.meta.url)), 'utf8');
 const schemaPath = fileURLToPath(new URL('./codex-response-schema.json', import.meta.url));
-const toolNames = new Set([
-  'get_story_overview',
-  'list_scenes',
-  'get_scene',
-  'list_story_images',
-  'get_image_details',
-  'find_asset_usage',
-  'propose_scene_patch',
-  'propose_appearance_patch',
-]);
+export const CODEX_TOOL_NAMES = new Set(MODEL_BRIDGE_TOOLS.map(tool => tool.name));
 
 type CodexReply = {
   action: 'reply' | 'tool';
@@ -27,7 +20,8 @@ export class CodexCliProvider implements AgentProvider {
   private child: ChildProcessWithoutNullStreams | null = null;
   private threadId: string | null = null;
 
-  constructor(private readonly bridge: ToolInvoker) {}
+  constructor(private readonly bridge: ToolInvoker, private readonly session?: AgentSessionContext) {}
+  get systemPrompt(): string { return buildSessionSystemPrompt(systemPrompt, this.session); }
 
   abort(): void {
     this.child?.kill();
@@ -36,7 +30,7 @@ export class CodexCliProvider implements AgentProvider {
   async *send(text: string): AsyncIterable<AgentEvent> {
     let prompt = this.threadId
       ? text
-      : `${systemPrompt}\n\nYou are connected through Codex CLI. Do not use shell, filesystem, or network tools. Return either a final reply or exactly one of the app tool calls listed above, using the required response schema.\n\nUser: ${text}`;
+      : `${this.systemPrompt}\n\nYou are connected through Codex CLI. Do not use shell, filesystem, or network tools. Return either a final reply or exactly one of the app tool calls listed above, using the required response schema.\n\nUser: ${text}`;
 
     for (;;) {
       const reply = await this.run(prompt);
@@ -45,8 +39,10 @@ export class CodexCliProvider implements AgentProvider {
         yield { type: 'done', stopReason: 'end_turn' };
         return;
       }
-      if (!reply.toolName || !toolNames.has(reply.toolName)) throw new Error('Codex returned an unsupported tool call');
-      const result = await this.bridge.call(reply.toolName, reply.input ?? {});
+      if (!reply.toolName || !CODEX_TOOL_NAMES.has(reply.toolName)) throw new Error('Codex returned an unsupported tool call');
+      let result: unknown;
+      try { result = await this.bridge.call(reply.toolName, reply.input ?? {}); }
+      catch (error) { result = modelToolErrorValue(error); }
       prompt = `App tool ${reply.toolName} returned:\n${JSON.stringify(result)}\nContinue the original request. Return another app tool call or the final reply.`;
     }
   }

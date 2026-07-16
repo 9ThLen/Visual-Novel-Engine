@@ -47,6 +47,7 @@ import { useDialogueHistory } from '@/hooks/useDialogueHistory';
 import { enhancedAudioManager } from '@/lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '@/lib/asset-resolver';
 import { useAppStore } from '@/stores/use-app-store';
+import { sanitizeReaderLayoutPreset } from '@/lib/story-theme';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,11 @@ export function StoryReaderResponsive({
   const firstTimelineStepId = timeline?.[0]?.id;
   const currentStoryId = useAppStore((state) => state.currentStoryId);
   const colors = useReaderColors(currentStoryId ?? undefined);
+  const readerLayoutPreset = useAppStore((state) => sanitizeReaderLayoutPreset(
+    state.storiesMetadata.find((story) => story.id === currentStoryId)?.readerLayoutPreset,
+  ));
+  const readerLayoutContainerWidth = Math.min(dims.width, 760);
+  const readerLayoutLeft = Math.max(0, (dims.width - readerLayoutContainerWidth) / 2);
   const storyIdForCharacters = currentStoryId ?? 'current';
   const characterLibrary = useAppStore((state) =>
     currentStoryId ? state.characterLibraries[currentStoryId] || [] : []
@@ -408,6 +414,9 @@ export function StoryReaderResponsive({
             void enhancedAudioManager.play(`interactive:${audioUri}:${Date.now()}`, uri, { volume, loop });
           });
         }}
+        layoutPreset={readerLayoutPreset}
+        layoutContainerWidth={readerLayoutContainerWidth}
+        layoutContainerLeft={readerLayoutLeft}
       />
 
       <DialogueHistory

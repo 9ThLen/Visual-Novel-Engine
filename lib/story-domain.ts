@@ -2,7 +2,13 @@ import type { PlaybackState, RuntimeVariables } from './engine/runtime-types';
 import type { SceneRecord } from './engine/types';
 import type { Character } from './character-types';
 import type { AudioLibraryItem } from './audio-types';
-import { sanitizeStoryTheme, type StoryReaderTheme } from './story-theme';
+import {
+  DEFAULT_READER_LAYOUT_PRESET,
+  sanitizeReaderLayoutPreset,
+  sanitizeStoryTheme,
+  type StoryReaderLayoutPreset,
+  type StoryReaderTheme,
+} from './story-theme';
 
 export interface StoryMetadata {
   id: string;
@@ -18,6 +24,7 @@ export interface StoryMetadata {
   sceneOrder?: string[];
   characterAuthoringSchemaVersion?: number;
   theme?: StoryReaderTheme;
+  readerLayoutPreset?: StoryReaderLayoutPreset;
 }
 
 /**
@@ -34,6 +41,12 @@ export function normalizeStoryMetadata(metadata: StoryMetadata): StoryMetadata {
     normalized.theme = theme;
   } else {
     delete normalized.theme;
+  }
+  const readerLayoutPreset = sanitizeReaderLayoutPreset(metadata.readerLayoutPreset);
+  if (readerLayoutPreset !== DEFAULT_READER_LAYOUT_PRESET) {
+    normalized.readerLayoutPreset = readerLayoutPreset;
+  } else {
+    delete normalized.readerLayoutPreset;
   }
   return normalized;
 }

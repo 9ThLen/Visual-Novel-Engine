@@ -8,6 +8,7 @@ export const initialAppState: AppState = {
   currentStoryId: null,
   playbackState: null,
   settings: defaultUserSettings,
+  aiBridgeSettings: { url: '', token: '', disabled: false },
   saveSlots: [],
   audioLibraries: {},
   characterLibraries: {},

@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { AiChatPanel } from '@/components/ai-chat/AiChatPanel';
 import { useAiChatStore } from '@/stores/ai-chat-store';
@@ -14,6 +14,7 @@ import type { AiScenePatch } from '@/lib/ai/scene-patch-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
 import { useAppStore } from '@/stores/use-app-store';
+import { makeEnvelope } from '@/lib/bridge-protocol';
 
 function scene(): SceneRecord {
   return {
@@ -62,6 +63,8 @@ function resetChatStore() {
     status: 'idle',
     pendingPatch: null,
     pendingAppearance: null,
+    pendingChangeSet: null,
+    appliedChanges: [],
     lastAppliedChange: null,
   });
 }
@@ -82,6 +85,97 @@ function buildAppearancePatch(metadata: StoryMetadata): AiReaderAppearancePatch 
 describe('AiChatPanel', () => {
   beforeEach(() => {
     resetChatStore();
+    useAppStore.setState({
+      updateAiBridgeSettings: partial => useAppStore.setState(state => ({
+        aiBridgeSettings: { ...state.aiBridgeSettings, ...partial },
+      })),
+    });
+  });
+
+  it('rebuilds the bridge client when runtime connection settings change', async () => {
+    class SocketMock {
+      static instances: SocketMock[] = [];
+      static readonly CONNECTING = 0; static readonly OPEN = 1; static readonly CLOSED = 3;
+      readonly CONNECTING = 0; readonly OPEN = 1; readonly CLOSED = 3;
+      readyState = 0; onopen = null; onmessage = null; onerror = null; onclose = null;
+      close = vi.fn(() => { this.readyState = 3; }); send = vi.fn();
+      constructor(readonly url: string) { SocketMock.instances.push(this); }
+    }
+    vi.stubGlobal('WebSocket', SocketMock);
+    useAppStore.setState({ aiBridgeSettings: { url: 'ws://localhost:8787', token: 'first', disabled: false } });
+    const view = render(<AiChatPanel storyId="story-1" activeSceneId={null} />);
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
+    expect(SocketMock.instances[0].url).toBe('ws://localhost:8787');
+    view.rerender(<AiChatPanel storyId="story-1" activeSceneId="scene-1" />);
+    await act(async () => {});
+    expect(SocketMock.instances).toHaveLength(1);
+    act(() => useAppStore.setState({ aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'second', disabled: false } }));
+    view.rerender(<AiChatPanel storyId="story-1" activeSceneId={null} />);
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(2));
+    expect(SocketMock.instances[0].close).toHaveBeenCalled();
+    expect(SocketMock.instances[1].url).toBe('ws://127.0.0.1:8787');
+    view.unmount();
+    useAppStore.setState({ aiBridgeSettings: { url: '', token: '', disabled: false } });
+    vi.unstubAllGlobals();
+  });
+
+  it('disconnects, reconnects, and fully resets a connected bridge', async () => {
+    class SocketMock {
+      static instances: SocketMock[] = [];
+      static readonly CONNECTING = 0; static readonly OPEN = 1; static readonly CLOSED = 3;
+      readonly CONNECTING = 0; readonly OPEN = 1; readonly CLOSED = 3;
+      readyState = 0;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent<string>) => void) | null = null;
+      onerror = null;
+      onclose: (() => void) | null = null;
+      close = vi.fn(() => { this.readyState = 3; this.onclose?.(); });
+      send = vi.fn();
+      constructor(readonly url: string) { SocketMock.instances.push(this); }
+      start(sessionId: string) {
+        this.readyState = 1;
+        this.onopen?.(new Event('open'));
+        this.onmessage?.({ data: JSON.stringify(makeEnvelope('session_started', { sessionId, provider: 'codex' }, sessionId)) } as MessageEvent<string>);
+      }
+      emitError(sessionId: string, reason: string, message: string) {
+        this.onmessage?.({
+          data: JSON.stringify(makeEnvelope('error', {
+            code: 'PROVIDER_UNAVAILABLE',
+            message,
+            details: { reason },
+          }, sessionId)),
+        } as MessageEvent<string>);
+      }
+    }
+    vi.stubGlobal('WebSocket', SocketMock);
+    useAppStore.setState({ aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'runtime-token', disabled: false } });
+    const view = render(<AiChatPanel storyId="story-1" activeSceneId={null} />);
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
+    act(() => SocketMock.instances[0].start('session-1'));
+    await waitFor(() => expect(screen.getByText(/Connected.*Codex/)).toBeTruthy());
+
+    act(() => SocketMock.instances[0].emitError('session-1', 'TURN_ALREADY_RUNNING', 'A turn is already running'));
+    expect(screen.getByText(/still working on the previous request/)).toBeTruthy();
+    expect(JSON.stringify(useAiChatStore.getState().messagesByStory)).not.toContain('A turn is already running');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connection actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    expect(useAppStore.getState().aiBridgeSettings).toEqual({
+      url: 'ws://127.0.0.1:8787',
+      token: 'runtime-token',
+      disabled: true,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(2));
+    act(() => SocketMock.instances[1].start('session-2'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connection actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset connection' }));
+    expect(useAppStore.getState().aiBridgeSettings).toEqual({ url: '', token: '', disabled: true });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Connect real AI' })).toBeTruthy());
+
+    view.unmount();
+    vi.unstubAllGlobals();
   });
 
   it('applies the pending patch, saves the record, and shows a rollback control', async () => {

@@ -33,7 +33,7 @@ import {
 import { migrateStoryImageAssetIds } from '@/lib/story-image-library';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
-import { normalizeUserSettings, type UserSettings } from '@/lib/user-settings';
+import { mergeLegacyUserSettings, normalizeUserSettings, type UserSettings } from '@/lib/user-settings';
 import {
   APP_STORE_PERSIST_VERSION,
   buildPersistedAppState,
@@ -186,7 +186,7 @@ export const useAppStore = create<AppStore>()(
             storiesMetadata: stories.length > 0 && current.storiesMetadata.length === 0 ? stories : current.storiesMetadata,
             sceneRecordsByStory: mergedSceneRecordsByStory,
             saveSlots: saveSlots.length > 0 && current.saveSlots.length === 0 ? saveSlots : current.saveSlots,
-            settings: normalizeUserSettings(settings ?? current.settings),
+            settings: settings ? mergeLegacyUserSettings(settings, current.settings) : normalizeUserSettings(current.settings),
             characterLibraries: Object.keys(characterLibraries).length > 0
               ? migrateCharacterLibraries({
                   ...current.characterLibraries,

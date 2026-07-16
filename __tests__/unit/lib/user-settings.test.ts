@@ -1,4 +1,4 @@
-import { defaultUserSettings, normalizeUserSettings } from '@/lib/user-settings';
+import { defaultUserSettings, mergeLegacyUserSettings, normalizeUserSettings } from '@/lib/user-settings';
 import { pointerToParallaxOffset } from '@/components/reader/useParallaxLayer';
 
 describe('normalizeUserSettings', () => {
@@ -17,6 +17,13 @@ describe('normalizeUserSettings', () => {
     expect(
       normalizeUserSettings({ parallaxEnabled: 'yes' as unknown as boolean }).parallaxEnabled,
     ).toBe(true);
+  });
+});
+
+describe('mergeLegacyUserSettings', () => {
+  it('preserves hydrated permissions when a legacy record has none', () => {
+    const current = normalizeUserSettings({ aiPermissions: { ...defaultUserSettings.aiPermissions, scene_edit: 'blocked' } });
+    expect(mergeLegacyUserSettings({ bgmVolume: 0.25 }, current).aiPermissions.scene_edit).toBe('blocked');
   });
 });
 

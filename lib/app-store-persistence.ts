@@ -17,6 +17,7 @@ import {
   normalizeStoryImageAssetIds,
   type StoryImageAssetIds,
 } from '@/lib/story-image-library';
+import type { AiBridgeSettings } from '@/lib/ai/bridge-config';
 
 export const APP_STORE_PERSIST_VERSION = 4;
 
@@ -27,6 +28,7 @@ export type AppStorePersistenceState = {
   currentStoryId: string | null;
   playbackState: PlaybackState | null;
   settings: UserSettings;
+  aiBridgeSettings: AiBridgeSettings;
   saveSlots: SaveSlot[];
   audioLibraries: Record<string, AudioLibraryItem[]>;
   characterLibraries: Record<string, Character[]>;
@@ -158,6 +160,7 @@ export function buildPersistedAppState(state: AppStorePersistenceState): AppStor
     currentStoryId: state.currentStoryId,
     playbackState: state.playbackState,
     settings: state.settings,
+    aiBridgeSettings: state.aiBridgeSettings,
     saveSlots: state.saveSlots,
     audioLibraries: state.audioLibraries,
     characterLibraries: state.characterLibraries,
@@ -242,6 +245,16 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
   return {
     ...currentState,
     ...persisted,
+    aiBridgeSettings: isRecord(persisted.aiBridgeSettings)
+      ? {
+          url: typeof persisted.aiBridgeSettings.url === 'string' ? persisted.aiBridgeSettings.url : currentState.aiBridgeSettings.url,
+          token: typeof persisted.aiBridgeSettings.token === 'string' ? persisted.aiBridgeSettings.token : currentState.aiBridgeSettings.token,
+          disabled:
+            typeof persisted.aiBridgeSettings.disabled === 'boolean'
+              ? persisted.aiBridgeSettings.disabled
+              : currentState.aiBridgeSettings.disabled,
+        }
+      : currentState.aiBridgeSettings,
     mediaLibrary:
       'mediaLibrary' in persisted
         ? getHydratableMediaLibrary(persisted.mediaLibrary)

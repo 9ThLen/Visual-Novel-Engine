@@ -21,7 +21,7 @@ import {
 } from '@/lib/engine/types';
 import type { CanonicalStory, StoryMetadata } from '@/lib/story-domain';
 import { normalizeStoryMetadata } from '@/lib/story-domain';
-import type { StoryReaderTheme } from '@/lib/story-theme';
+import type { StoryReaderLayoutPreset, StoryReaderTheme } from '@/lib/story-theme';
 import type { AppState } from '@/stores/use-app-store';
 import { useAppStore } from '@/stores/use-app-store';
 import { normalizeEditorTimeline } from '@/lib/editor-scene-draft';
@@ -401,6 +401,7 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
       sceneCount: Object.keys(importedScenes).length,
       characterAuthoringSchemaVersion: CHARACTER_AUTHORING_SCHEMA_VERSION,
       theme: raw.theme as StoryReaderTheme | undefined,
+      readerLayoutPreset: raw.readerLayoutPreset as StoryReaderLayoutPreset | undefined,
     });
 
     useAppStore.setState((state) => ({
@@ -447,6 +448,10 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
     sceneCount: Object.keys(importedScenes).length,
     characterAuthoringSchemaVersion: CHARACTER_AUTHORING_SCHEMA_VERSION,
     theme: (raw.theme ?? (story as { theme?: unknown }).theme) as StoryReaderTheme | undefined,
+    readerLayoutPreset: (
+      raw.readerLayoutPreset
+      ?? (story as unknown as { readerLayoutPreset?: unknown }).readerLayoutPreset
+    ) as StoryReaderLayoutPreset | undefined,
   });
   const importedCharacterLibrary = await migrateImportedCharactersForWeb(story.id, migrateCharacterLibrary(
     Array.isArray((story as unknown as { characters?: unknown }).characters)

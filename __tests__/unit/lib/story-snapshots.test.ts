@@ -6,6 +6,7 @@ import {
   deleteSnapshot,
   listSnapshots,
   restoreSnapshot,
+  readSnapshot,
   MAX_SNAPSHOTS_PER_STORY,
 } from '@/lib/story-snapshots';
 
@@ -90,6 +91,17 @@ describe('story snapshots', () => {
 
     const restored = await restoreSnapshot(storage, STORY_ID, 'snap-a');
     expect(restored).toEqual(scenes);
+  });
+
+  it('roundtrips story metadata through the snapshot manifest', async () => {
+    const { storage } = createMemoryStorage();
+    const story = { title: 'Draft', startSceneId: 'scene-1', sceneOrder: ['scene-1'], tags: ['mystery'] };
+    await createSnapshot(storage, STORY_ID, 'metadata', [scene('scene-1')], {
+      now: 1000, id: 'snap-meta', story,
+    });
+    await expect(readSnapshot(storage, STORY_ID, 'snap-meta')).resolves.toEqual({
+      scenes: [scene('scene-1')], story,
+    });
   });
 
   it('lists snapshots newest-first without reading any body keys', async () => {

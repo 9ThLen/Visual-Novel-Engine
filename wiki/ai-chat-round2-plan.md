@@ -1,7 +1,7 @@
-# AI Chat — Round 2 Plan (v4.3)
+# AI Chat — Round 2 Plan (v4.4)
 
-Status: revised 2026-07-15 (v4.3) after a fifth external review round
-(v4.2 = fourth round, v4.1 = self-review); every accepted claim was
+Status: revised 2026-07-15 (v4.4) after a sixth external review round
+(v4.3 = fifth round, v4.1 = self-review); every accepted claim was
 re-verified against the code. Round 1 (phases 0–3 + image
 read tools + reader theme patch + Claude/Codex bridge providers) is shipped
 and verified live in the browser.
@@ -37,6 +37,16 @@ Transport & bridge:
   wire code stays `VALIDATION_FAILED`/`STALE_REVISION`/
   `PROVIDER_UNAVAILABLE` and the domain code travels as `details.reason`
   (mapping pinned in packages F/H/I).
+- Client `ToolResult` currently types a failure as only `{ errorCode,
+  errorMessage }` (`bridge-client.ts:11-13`), even though H/I need
+  `details.reason`; E2 explicitly adds `details?: unknown` to the client and
+  payload types and verifies app → provider round-trip.
+- Every bridge envelope gets a fresh unrelated `requestId`
+  (`makeEnvelope`, `bridge-protocol.ts:70-77`), while client-tool calls are
+  correlated through `payload.toolCallId` and `pendingTools` is keyed by that
+  id (`server.ts:125-140`). Binary-result authorization must therefore use
+  `payload.toolCallId` plus the pending entry's stored `toolName`, never the
+  envelope `requestId`.
 - **App-store persistence is asynchronous and multi-write** after any
   Zustand `set`: `app-store-storage.ts:93` `setItem` fans out to canonical
   scene payloads → indexes → app-state (`scene-record-storage.ts:317`
@@ -115,6 +125,10 @@ Story model & store:
 - Standalone persisted stores follow `stores/theme-store.ts`: zustand
   `persist` + `createJSONStorage(createPersistentStorage)` from
   `lib/persistent-storage.ts` — the N2 transcript store mirrors this.
+- `createPersistentStorage` makes hydration asynchronous; the app store and
+  standalone AI transcript store may finish in either order. Deleted-story
+  cleanup must wait for BOTH app `isLoaded` and AI-store `hasHydrated`, then
+  reconcile from either completion path (N2).
 - `codex-response-schema.json` couples to tools ONLY via the `toolName` enum
   (`input` is `additionalProperties: true`) — parity is a names check; no
   per-tool argument schemas exist or are needed.
@@ -131,7 +145,9 @@ Story model & store:
   manual snapshots at eviction.
 - `AgentProviderFactory = (tools: ToolInvoker) => AgentProvider`
   (`tools/ai-bridge/src/provider.ts:15`) — session context (locale) has no
-  path to providers today; N1 extends the factory signature.
+  path to providers today; N1 extends the factory signature and tests the
+  final system prompt of BOTH Claude and Codex providers, not only the
+  factory argument.
 
 ## Architecture decisions
 
@@ -249,13 +265,17 @@ means no live client to protect — a TTL-only rule would lock users out for
 guaranteed and `sessionId` lives only in client memory). Additionally the
 client persists its `sessionId` in `sessionStorage` so a same-tab reload
 prefers resume over replacement. Active-socket takeover stays refused.
-(b) `resolveTool` preserves `{errorCode, errorMessage, details}`; providers
-surface them to the model. (c) Two-tier limits: server `maxPayload` = 
+(b) `ToolResult` and `resolveTool` preserve `{errorCode, errorMessage,
+details}`; both providers surface them to the model. (c) Two-tier limits:
+server `maxPayload` =
 `MAX_IMAGE_MESSAGE_BYTES = 8_000_000`, but a per-message helper
 `maxBytesForEnvelope(type, payload)` re-imposes 1 MB on everything except
 `image_result` and `tool_result` marked `binaryTool: true` — and
 server-side the flag is only a hint: the oversized `tool_result` must match
-a PENDING invocation whose registry entry has `binaryResult: true`. **Decoded image
+a PENDING invocation by `payload.toolCallId`; that pending entry stores the
+`toolName`, whose registry definition must have `binaryResult:true`.
+Envelope `requestId` is unrelated and MUST NOT be used for this check.
+**Decoded image
 cap ≈ 5.5 MB** (8 MB envelope minus base64 overhead) in BOTH directions:
 oversized OpenAI responses are re-requested at lower quality or rejected
 with a structured error; oversized local assets are downscaled app-side
@@ -278,7 +298,10 @@ libraries whole).
 **D10. Chat history is UI transcript only.** Per-story `messagesByStory`,
 FIFO cap 200 messages AND a per-story byte cap (safety net); pendings and
 base64 never persisted; visible "assistant doesn't remember previous
-conversations" note. Feeding transcript back into the prompt = round 3.
+conversations" note. Cleanup of deleted-story transcripts runs only after
+BOTH the app store and AI transcript store have hydrated, and is triggered
+from either completion path so hydration order cannot resurrect stale data.
+Feeding transcript back into the prompt = round 3.
 
 ## Work packages & dependency graph
 
@@ -334,6 +357,7 @@ message → reply), first live Codex run.
 5. `blocked` image capability ⇒ zero OpenAI spend + structured
    `PERMISSION_DENIED` reaches the model; `auto` appearance ⇒ applies without
    a card, with a journal entry.
-6. Chat replies in the user's language; transcript survives reload and story
-   switching (per-story isolation), with caps; markdown renders with
-   http/https/mailto-only links.
+6. Chat replies in the user's language (provider-level prompt tests for both
+   Claude and Codex); transcript survives reload and story switching
+   (per-story isolation) in either store-hydration order, with caps; markdown
+   renders with http/https/mailto-only links.

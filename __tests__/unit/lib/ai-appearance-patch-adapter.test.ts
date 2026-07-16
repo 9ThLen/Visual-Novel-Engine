@@ -33,6 +33,24 @@ describe('appearance patch store adapter', () => {
     });
   });
 
+  it('applies and rolls back a preset-only patch', async () => {
+    const metadata = { ...story({ dialogueBg: '#ffffff' }), readerLayoutPreset: 'compact' as const };
+    const updateStoryMetadata = vi.fn();
+    useAppStore.setState({ storiesMetadata: [metadata], updateStoryMetadata });
+
+    const result = await applyAiAppearancePatchToStore(patch(metadata, { theme: undefined, layoutPreset: 'top' }));
+    expect(result).toMatchObject({ ok: true, previousLayoutPreset: 'compact' });
+    expect(updateStoryMetadata).toHaveBeenCalledWith('story-1', {
+      theme: { dialogueBg: '#ffffff' }, readerLayoutPreset: 'top',
+    });
+
+    updateStoryMetadata.mockClear();
+    expect(rollbackAiAppearancePatch('story-1', result.ok ? result.previousTheme : undefined, 'compact')).toBe(true);
+    expect(updateStoryMetadata).toHaveBeenCalledWith('story-1', {
+      theme: { dialogueBg: '#ffffff' }, readerLayoutPreset: 'compact',
+    });
+  });
+
   // A story snapshot stores scenes plus {title, startSceneId, sceneOrder, tags} and
   // restore only writes scenes back — it can never revert a theme. Taking one here
   // would hand the user a snapshot that silently fails to undo the color change.
@@ -52,7 +70,7 @@ describe('appearance patch store adapter', () => {
     useAppStore.setState({ storiesMetadata: [metadata], updateStoryMetadata });
 
     expect(rollbackAiAppearancePatch('story-1', { dialogueBg: '#ffffff' })).toBe(true);
-    expect(updateStoryMetadata).toHaveBeenCalledWith('story-1', { theme: { dialogueBg: '#ffffff' } });
+    expect(updateStoryMetadata).toHaveBeenCalledWith('story-1', { theme: { dialogueBg: '#ffffff' }, readerLayoutPreset: undefined });
   });
 
   it('rolls back to no theme at all when the story had none', () => {
@@ -61,7 +79,7 @@ describe('appearance patch store adapter', () => {
     useAppStore.setState({ storiesMetadata: [metadata], updateStoryMetadata });
 
     expect(rollbackAiAppearancePatch('story-1', undefined)).toBe(true);
-    expect(updateStoryMetadata).toHaveBeenCalledWith('story-1', { theme: undefined });
+    expect(updateStoryMetadata).toHaveBeenCalledWith('story-1', { theme: undefined, readerLayoutPreset: undefined });
   });
 
   it('leaves the store untouched when the revision is stale', async () => {

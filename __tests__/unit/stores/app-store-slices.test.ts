@@ -104,10 +104,16 @@ describe('app store slices', () => {
 
     slice.updateSettings({ bgmVolume: 2, textSpeed: -1 });
     slice.setLanguage('uk');
+    slice.updateAiBridgeSettings({ token: 'pairing-secret' });
 
     expect(harness.state.settings.bgmVolume).toBe(1);
     expect(harness.state.settings.textSpeed).toBe(0);
     expect(harness.state.language).toBe('uk');
+    expect(harness.state.aiBridgeSettings).toEqual({
+      url: '',
+      token: 'pairing-secret',
+      disabled: false,
+    });
   });
 
   it('stores media and audio libraries', () => {

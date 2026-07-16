@@ -1,19 +1,21 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { MAX_MESSAGE_BYTES, makeEnvelope, parseEnvelope, type BridgeEnvelope, type BridgeErrorCode } from '../../../lib/bridge-protocol';
-import type { AgentProvider, AgentProviderFactory, ToolInvoker } from './provider';
+import { MAX_IMAGE_MESSAGE_BYTES, MAX_MESSAGE_BYTES, makeEnvelope, parseEnvelope, type BridgeEnvelope, type BridgeErrorCode, type BridgeProvider } from '../../../lib/bridge-protocol';
+import { getBridgeTool } from '../../../lib/ai/bridge-tools';
+import { BridgeToolError, type AgentProvider, type AgentProviderFactory } from './provider';
+import { BridgeToolRuntime } from './tool-runtime';
+import { createImageToolHandlers } from './image-tools';
+import { normalizeAllowedOrigins } from './origin-policy';
 
 const TURN_TIMEOUT_MS = 120_000;
 const TOOL_TIMEOUT_MS = 30_000;
 const PATCH_TIMEOUT_MS = 600_000;
 const MAX_TOOL_CALLS = 15;
-const DEFAULT_ORIGINS = ['http://localhost:8081', 'http://127.0.0.1:8081'];
-
-type PendingTool = { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
+type PendingTool = { toolName: string; resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
 type LiveSession = { id: string; provider: AgentProvider; socket: WebSocket | null; generating: boolean; interrupted: boolean; toolCalls: number };
 
-export interface BridgeServerOptions { port?: number; token?: string; allowedOrigins?: string[]; providerFactory: AgentProviderFactory; logger?: (line: string) => void; toolTimeoutMs?: number }
+export interface BridgeServerOptions { port?: number; token?: string; allowedOrigins?: string[]; provider?: BridgeProvider; providerFactory: AgentProviderFactory; logger?: (line: string) => void; toolTimeoutMs?: number }
 
 export class AiBridgeServer {
   readonly token: string;
@@ -22,16 +24,23 @@ export class AiBridgeServer {
   private readonly pendingTools = new Map<string, PendingTool>();
   private readonly allowedOrigins: Set<string>;
   private readonly log: (line: string) => void;
+  private readonly toolRuntime: BridgeToolRuntime;
 
   constructor(private readonly options: BridgeServerOptions) {
     this.token = options.token ?? randomBytes(24).toString('hex');
-    this.allowedOrigins = new Set([...DEFAULT_ORIGINS, ...(options.allowedOrigins ?? [])]);
+    this.allowedOrigins = new Set(normalizeAllowedOrigins(options.allowedOrigins));
     this.log = options.logger ?? console.log;
+    this.toolRuntime = new BridgeToolRuntime({
+      callApp: (name, input, timeout) => this.callClientTool(name, input, timeout),
+      emit: (type, payload) => this.sendCurrent(type, payload),
+      logger: this.log,
+    });
+    this.toolRuntime.setHandlers(createImageToolHandlers({ logger: this.log, debug: process.env.AI_BRIDGE_DEBUG === 'true' }));
   }
 
   async start(): Promise<number> {
     this.server = new WebSocketServer({
-      host: '127.0.0.1', port: this.options.port ?? 8787, maxPayload: MAX_MESSAGE_BYTES,
+      host: '127.0.0.1', port: this.options.port ?? 8787, maxPayload: MAX_IMAGE_MESSAGE_BYTES,
       verifyClient: ({ origin }: { origin: string; req: IncomingMessage }) => this.allowedOrigins.has(origin),
     });
     this.server.on('connection', socket => this.handleConnection(socket));
@@ -39,8 +48,6 @@ export class AiBridgeServer {
     await new Promise<void>((resolve, reject) => { this.server?.once('listening', resolve); this.server?.once('error', reject); });
     const address = this.server.address();
     const port = typeof address === 'object' && address ? address.port : (this.options.port ?? 8787);
-    this.log(`AI Bridge: EXPO_PUBLIC_AI_BRIDGE_TOKEN=${this.token}`);
-    this.log(`AI Bridge listening on ws://127.0.0.1:${port}`);
     return port;
   }
 
@@ -58,9 +65,11 @@ export class AiBridgeServer {
     let authenticated = false;
     socket.on('message', (data, isBinary) => {
       const raw = data.toString();
-      if (isBinary || new TextEncoder().encode(raw).byteLength > MAX_MESSAGE_BYTES) return this.protocolClose(socket, 'Message exceeds 1MB');
+      const byteLength = new TextEncoder().encode(raw).byteLength;
+      if (isBinary || byteLength > MAX_IMAGE_MESSAGE_BYTES) return this.protocolClose(socket, `Message exceeds ${MAX_IMAGE_MESSAGE_BYTES} bytes`);
       const parsed = parseEnvelope(raw);
       if ('parseError' in parsed) return this.protocolClose(socket, parsed.parseError);
+      if (byteLength > MAX_MESSAGE_BYTES && !this.isAuthorizedLargeToolResult(parsed)) return this.protocolClose(socket, 'Oversized tool result is not authorized');
       if (!authenticated) {
         if (parsed.type !== 'session_start' || !this.validToken(parsed.payload)) return this.errorAndClose(socket, 'UNAUTHORIZED', 'Invalid bridge token');
         authenticated = this.startSession(socket, parsed);
@@ -75,34 +84,55 @@ export class AiBridgeServer {
     const payload = this.record(message.payload);
     const resumeId = typeof payload?.resumeSessionId === 'string' ? payload.resumeSessionId : undefined;
     if (this.session) {
-      if (resumeId !== this.session.id) { this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'Another session is already active'); socket.close(); return false; }
-      this.session.socket?.close(1000, 'Session resumed elsewhere');
-      this.session.socket = socket;
-      this.send(socket, 'session_started', { sessionId: this.session.id, resumed: true }, this.session.id);
-      return true;
+      if (this.session.socket?.readyState === WebSocket.OPEN && resumeId !== this.session.id) {
+        this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'Another session is already active', { reason: 'SESSION_ALREADY_ACTIVE' });
+        socket.close();
+        return false;
+      }
+      if (resumeId !== this.session.id) this.disposeSession();
+      else {
+        this.session.socket?.close(1000, 'Session resumed elsewhere');
+        this.session.socket = socket;
+        this.send(socket, 'session_started', { sessionId: this.session.id, resumed: true, provider: this.options.provider ?? 'claude' }, this.session.id);
+        this.toolRuntime.reemitBufferedImages();
+        return true;
+      }
     }
     const id = randomUUID();
-    const tools: ToolInvoker = { call: (name, input, timeout) => this.callClientTool(name, input, timeout) };
-    this.session = { id, provider: this.options.providerFactory(tools), socket, generating: false, interrupted: false, toolCalls: 0 };
-    this.send(socket, 'session_started', { sessionId: id, resumed: false }, id);
+    const tools = this.toolRuntime;
+    const locale = typeof payload?.context === 'object' && payload.context !== null
+      && typeof (payload.context as Record<string, unknown>).locale === 'string'
+      ? (payload.context as Record<string, unknown>).locale as string
+      : undefined;
+    this.session = { id, provider: this.options.providerFactory(tools, { locale }), socket, generating: false, interrupted: false, toolCalls: 0 };
+    this.send(socket, 'session_started', { sessionId: id, resumed: false, provider: this.options.provider ?? 'claude' }, id);
     return true;
   }
 
   private handleMessage(socket: WebSocket, message: BridgeEnvelope): void {
     if (!this.session || socket !== this.session.socket || (message.sessionId && message.sessionId !== this.session.id)) return this.protocolClose(socket, 'Invalid session');
     if (message.type === 'ping') return this.send(socket, 'pong', {}, this.session.id);
+    if (message.type === 'session_end') { this.disposeSession(); return; }
     if (message.type === 'interrupt') { this.session.interrupted = true; this.session.provider.abort(); return; }
     if (message.type === 'tool_result') return this.resolveTool(message.payload);
+    if (message.type === 'image_result_ack') {
+      const requestId = this.record(message.payload)?.requestId;
+      if (typeof requestId === 'string') this.toolRuntime.acknowledgeImage(requestId);
+      return;
+    }
     if (message.type !== 'user_message') return this.protocolClose(socket, 'Unexpected client message');
     const text = this.record(message.payload)?.text;
     if (typeof text !== 'string' || !text.trim()) return this.protocolClose(socket, 'user_message.text must be a non-empty string');
-    if (this.session.generating) return this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'A turn is already running');
+    if (this.session.generating) {
+      return this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'A turn is already running', { reason: 'TURN_ALREADY_RUNNING' });
+    }
     void this.runTurn(text);
   }
 
   private async runTurn(text: string): Promise<void> {
     const session = this.session!;
     session.generating = true; session.interrupted = false; session.toolCalls = 0;
+    this.toolRuntime.beginTurn();
     const timer = setTimeout(() => { session.interrupted = true; session.provider.abort(); }, TURN_TIMEOUT_MS);
     try {
       for await (const event of session.provider.send(text)) {
@@ -113,7 +143,11 @@ export class AiBridgeServer {
       if (session.interrupted) this.sendCurrent('assistant_done', { stopReason: 'interrupted' });
     } catch (error) {
       if (session.interrupted) this.sendCurrent('assistant_done', { stopReason: 'interrupted' });
-      else this.sendCurrent('error', { code: 'PROVIDER_UNAVAILABLE', message: this.safeError(error) });
+      else this.sendCurrent('error', {
+        code: 'PROVIDER_UNAVAILABLE',
+        message: this.safeError(error),
+        details: { reason: 'PROVIDER_ERROR' },
+      });
     } finally { clearTimeout(timer); session.generating = false; }
   }
 
@@ -121,13 +155,22 @@ export class AiBridgeServer {
     const session = this.session;
     if (!session?.socket) return Promise.reject(new Error('App disconnected'));
     session.toolCalls += 1;
-    if (session.toolCalls > MAX_TOOL_CALLS) { session.provider.abort(); this.sendCurrent('assistant_done', { stopReason: 'tool_limit' }); this.sendCurrent('error', { code: 'PROVIDER_UNAVAILABLE', message: `Tool call limit (${MAX_TOOL_CALLS}) exceeded` }); return Promise.reject(new Error('Tool call limit exceeded')); }
+    if (session.toolCalls > MAX_TOOL_CALLS) {
+      session.provider.abort();
+      this.sendCurrent('assistant_done', { stopReason: 'tool_limit' });
+      this.sendCurrent('error', {
+        code: 'PROVIDER_UNAVAILABLE',
+        message: `Tool call limit (${MAX_TOOL_CALLS}) exceeded`,
+        details: { reason: 'TOOL_LIMIT_EXCEEDED' },
+      });
+      return Promise.reject(new Error('Tool call limit exceeded'));
+    }
     const toolCallId = randomUUID();
     this.sendCurrent('tool_call', { toolCallId, toolName, input });
     const timeout = timeoutMs ?? (toolName === 'propose_scene_patch' ? PATCH_TIMEOUT_MS : (this.options.toolTimeoutMs ?? TOOL_TIMEOUT_MS));
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pendingTools.delete(toolCallId); reject(new Error(`Tool ${toolName} timed out`)); }, timeout);
-      this.pendingTools.set(toolCallId, { resolve, reject, timer });
+      this.pendingTools.set(toolCallId, { toolName, resolve, reject, timer });
     });
   }
 
@@ -137,7 +180,28 @@ export class AiBridgeServer {
     const pending = this.pendingTools.get(id); if (!pending) return;
     clearTimeout(pending.timer); this.pendingTools.delete(id);
     if (value?.ok === true) pending.resolve(value.result);
-    else pending.reject(new Error(typeof value?.errorMessage === 'string' ? value.errorMessage : 'Tool failed'));
+    else pending.reject(new BridgeToolError(
+      typeof value?.errorCode === 'string' ? value.errorCode : 'VALIDATION_FAILED',
+      typeof value?.errorMessage === 'string' ? value.errorMessage : 'Tool failed',
+      value?.details,
+    ));
+  }
+
+  private isAuthorizedLargeToolResult(message: BridgeEnvelope): boolean {
+    if (message.type !== 'tool_result') return false;
+    const value = this.record(message.payload);
+    const pending = typeof value?.toolCallId === 'string' ? this.pendingTools.get(value.toolCallId) : undefined;
+    return value?.binaryTool === true && !!pending && getBridgeTool(pending.toolName)?.binaryResult === true;
+  }
+
+  private disposeSession(): void {
+    const session = this.session;
+    if (!session) return;
+    session.provider.abort();
+    void session.provider.close?.();
+    for (const pending of this.pendingTools.values()) { clearTimeout(pending.timer); pending.reject(new Error('Session ended')); }
+    this.pendingTools.clear();
+    this.session = null;
   }
 
   private validToken(payload: unknown): boolean {
@@ -147,10 +211,19 @@ export class AiBridgeServer {
     return a.length === b.length && timingSafeEqual(a, b);
   }
   private record(value: unknown): Record<string, unknown> | null { return typeof value === 'object' && value !== null ? value as Record<string, unknown> : null; }
-  private safeError(error: unknown): string { return (error instanceof Error ? error.message : 'Provider failed').replaceAll(this.token, '[REDACTED]').replace(/(?:sk-ant-|ANTHROPIC_API_KEY\s*[=:]\s*)\S+/gi, '[REDACTED]'); }
+  private safeError(error: unknown): string {
+    let message = (error instanceof Error ? error.message : 'Provider failed').replaceAll(this.token, '[REDACTED]');
+    if (process.env.OPENAI_API_KEY) message = message.replaceAll(process.env.OPENAI_API_KEY, '[REDACTED]');
+    return message.replace(/(?:sk-(?:ant-)?|(?:ANTHROPIC|OPENAI)_API_KEY\s*[=:]\s*)\S+/gi, '[REDACTED]');
+  }
   private sendCurrent(type: Parameters<typeof makeEnvelope>[0], payload: unknown): void { if (this.session?.socket) this.send(this.session.socket, type, payload, this.session.id); }
   private send(socket: WebSocket, type: Parameters<typeof makeEnvelope>[0], payload: unknown, id = ''): void { if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(makeEnvelope(type, payload, id))); }
-  private sendError(socket: WebSocket, code: BridgeErrorCode, message: string): void { this.send(socket, 'error', { code, message }, this.session?.id ?? ''); }
-  private errorAndClose(socket: WebSocket, code: BridgeErrorCode, message: string): void { this.sendError(socket, code, message); socket.close(1008, message); }
+  private sendError(socket: WebSocket, code: BridgeErrorCode, message: string, details?: unknown): void {
+    this.send(socket, 'error', details === undefined ? { code, message } : { code, message, details }, this.session?.id ?? '');
+  }
+  private errorAndClose(socket: WebSocket, code: BridgeErrorCode, message: string, details?: unknown): void {
+    this.sendError(socket, code, message, details);
+    socket.close(1008, message);
+  }
   private protocolClose(socket: WebSocket, message: string): void { this.errorAndClose(socket, 'PROTOCOL_ERROR', message); }
 }

@@ -18,6 +18,7 @@ import type { ActiveEffect, CameraRuntimeState } from '@/lib/engine/runtime-type
 import type { InteractiveObject } from '@/lib/interactive-types';
 import { richTextAlignment, richTextLength, stripRichText } from '@/lib/rich-text';
 import { useTypewriter } from '@/hooks/useTypewriter';
+import type { StoryReaderLayoutPreset } from '@/lib/story-theme';
 
 const DIALOGUE_LINE_HEIGHT_MULTIPLIER = 1.65;
 const DEFAULT_READER_LINE_HEIGHT_SCALE = 1.2;
@@ -85,6 +86,9 @@ interface ReaderDisplayProps {
   onInteractiveDialogue?: (text: string, speaker?: string) => void;
   onInteractiveSceneTransition?: (sceneId: string) => void;
   onInteractivePlayAudio?: (audioUri: string, volume?: number, loop?: boolean) => void;
+  layoutPreset?: StoryReaderLayoutPreset;
+  layoutContainerWidth?: number;
+  layoutContainerLeft?: number;
 }
 
 type TypewriterDialoguePanelProps = React.ComponentProps<typeof ReaderDialoguePanel> & {
@@ -260,6 +264,9 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   onInteractiveDialogue,
   onInteractiveSceneTransition,
   onInteractivePlayAudio,
+  layoutPreset = 'classic',
+  layoutContainerWidth = 760,
+  layoutContainerLeft = 0,
 }: ReaderDisplayProps) {
   const visibleEffects = useVisibleEffects(activeEffects);
   const screenEffects = effectsForTarget(visibleEffects, 'screen');
@@ -354,14 +361,13 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
       ) : null}
 
       <Animated.View
+        testID={`reader-layout-${layoutPreset}`}
         style={[
-          {
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            zIndex: 40,
-          },
+          layoutPreset === 'classic'
+            ? { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 40 }
+            : layoutPreset === 'top'
+              ? { position: 'absolute', top: 72, left: layoutContainerLeft, zIndex: 40, width: layoutContainerWidth }
+              : { position: 'absolute', bottom: 0, left: layoutContainerLeft, zIndex: 40, width: layoutContainerWidth },
           dialogueAnimatedStyle,
           hudParallaxStyle,
           getPointerEventsStyle('box-none'),
@@ -388,6 +394,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
           pagesLength={pagesLength}
           pageIndex={pageIndex}
           readerControls={readerControls}
+          layoutPreset={layoutPreset}
         />
       </Animated.View>
     </>

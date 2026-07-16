@@ -8,6 +8,8 @@ import {
   type ScenePatchDescription,
 } from './scene-patch';
 import type { AiScenePatch } from './scene-patch-types';
+import { capturePostRevisions } from './applied-change-journal';
+import { useAiChatStore } from '@/stores/ai-chat-store';
 
 export type ApplyAiScenePatchToStoreResult =
   | { ok: true; snapshotId: string; description: ScenePatchDescription }
@@ -32,6 +34,14 @@ export async function applyAiScenePatchToStore(patch: AiScenePatch): Promise<App
   if (!snapshot) return { ok: false, code: 'VALIDATION_FAILED', errors: ['Could not create rollback snapshot'] };
   const description = describeAiScenePatch(scene, patch);
   state.saveSceneRecord(applyAiScenePatch(scene, patch));
+  useAiChatStore.getState().pushAppliedChange({
+    kind: 'scene',
+    storyId: patch.storyId,
+    snapshotId: snapshot.id,
+    appliedAt: Date.now(),
+    label: patch.explanation,
+    postRevisions: capturePostRevisions(patch.storyId),
+  });
   return { ok: true, snapshotId: snapshot.id, description };
 }
 

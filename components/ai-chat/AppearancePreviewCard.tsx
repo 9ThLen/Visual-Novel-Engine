@@ -62,6 +62,17 @@ export function AppearancePreviewCard({
         ))}
       </View>
 
+      {description.layoutPreset ? (
+        <View style={{ borderLeftWidth: 3, borderLeftColor: colors.primary, paddingLeft: 8, gap: 4 }}>
+          <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }}>
+            {t('aiChat.appearance.layout')}
+          </Text>
+          <Text style={{ color: colors.foreground, fontSize: 12 }}>
+            {description.layoutPreset.before} → {description.layoutPreset.after}
+          </Text>
+        </View>
+      ) : null}
+
       {description.warnings.length > 0 ? (
         <View style={{ borderLeftWidth: 3, borderLeftColor: ACCENT_WARNING, paddingLeft: 8, gap: 3 }}>
           {description.warnings.map((warning, index) => (

@@ -99,6 +99,21 @@ describe('normalizeStoryMetadata', () => {
     });
     expect(normalizeStoryMetadata(once)).toEqual(once);
   });
+
+  it('keeps a valid layout preset and drops classic/invalid values to the implicit default', () => {
+    expect(normalizeStoryMetadata({
+      id: 's', title: 'T', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 1,
+      readerLayoutPreset: 'compact',
+    }).readerLayoutPreset).toBe('compact');
+    for (const readerLayoutPreset of ['classic', 'invalid'] as const) {
+      const normalized = normalizeStoryMetadata({
+        id: 's', title: 'T', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 1,
+        readerLayoutPreset: readerLayoutPreset as never,
+      });
+      expect(normalized.readerLayoutPreset).toBeUndefined();
+      expect('readerLayoutPreset' in normalized).toBe(false);
+    }
+  });
 });
 
 describe('StoryDomain.extractMetadata', () => {
@@ -148,6 +163,22 @@ describe('importStory theme handling', () => {
     const reimported = await importStory(exportedJson);
     const meta = useAppStore.getState().storiesMetadata.find((s) => s.id === reimported.id);
     expect(meta?.theme).toEqual(VALID_THEME);
+  });
+
+  it('round-trips the reader layout preset through export then import', async () => {
+    useAppStore.setState({
+      storiesMetadata: [{
+        id: 'seed-story', title: 'Compact Story', startSceneId: 'scene-1', createdAt: 1,
+        updatedAt: 1, sceneCount: 1, readerLayoutPreset: 'compact',
+      }],
+      sceneRecordsByStory: { 'seed-story': canonicalSceneMap() as never },
+      characterLibraries: {},
+    });
+
+    const exportedJson = await exportStory('seed-story', useAppStore.getState());
+    expect(JSON.parse(exportedJson).readerLayoutPreset).toBe('compact');
+    const reimported = await importStory(exportedJson);
+    expect(useAppStore.getState().storiesMetadata.find((s) => s.id === reimported.id)?.readerLayoutPreset).toBe('compact');
   });
 
   it('sanitizes a broken imported theme without throwing', async () => {

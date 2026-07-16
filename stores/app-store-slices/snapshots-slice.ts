@@ -3,12 +3,13 @@ import { createPersistentStorage } from '@/lib/persistent-storage';
 import type { SceneRecordStorageLike } from '@/lib/scene-record-storage';
 import {
   createSnapshot,
-  restoreSnapshot,
+  readSnapshot,
   type SnapshotMeta,
   type SnapshotStoryMetadata,
 } from '@/lib/story-snapshots';
 import { allTranslations } from '@/lib/translations';
 import type { AppStoreGet, AppStoreSet } from '@/stores/app-store-slices/types';
+import { notifySnapshotEvicted } from '@/stores/snapshot-eviction-registry';
 
 /** i18n key for the automatic snapshot taken right before a restore. */
 const BEFORE_RESTORE_KEY = 'storySnapshots.beforeRestore';
@@ -55,30 +56,55 @@ export function createSnapshotsSlice(
       return createSnapshot(storage, storyId, name, scenes, {
         automatic,
         story: toStoryMetadataSubset(get, storyId),
+        onEvict: (snapshotId) => notifySnapshotEvicted(storyId, snapshotId),
       });
     },
 
     restoreStorySnapshot: async (storyId, snapshotId) => {
-      // Make the restore itself undoable before we touch anything.
-      await get().createStorySnapshot(storyId, resolveBeforeRestoreName(get), true);
-
       // Build the full scene set up front; a failed read throws here and leaves
-      // the live story untouched.
-      const scenes = await restoreSnapshot(storage, storyId, snapshotId);
+      // the live story untouched. This must happen before the automatic snapshot:
+      // at the cap that snapshot may evict the target being restored.
+      const restored = await readSnapshot(storage, storyId, snapshotId);
+      const { scenes } = restored;
       const records: Record<string, SceneRecord> = Object.fromEntries(
         scenes.map((record) => [record.id, record]),
       );
+      const restoredOrder = [
+        ...(restored.story?.sceneOrder ?? []).filter((id) => records[id]),
+        ...Object.keys(records).filter((id) => !(restored.story?.sceneOrder ?? []).includes(id)),
+      ];
+      const restoredStart = restored.story?.startSceneId && records[restored.story.startSceneId]
+        ? restored.story.startSceneId
+        : restoredOrder[0] ?? Object.keys(records)[0] ?? '';
+      const restoredRecords = restored.story
+        ? Object.fromEntries(Object.entries(records).map(([id, record]) => [
+            id,
+            { ...record, isStart: id === restoredStart },
+          ]))
+        : records;
+
+      // Make the restore itself undoable only after the target is safely in memory.
+      await get().createStorySnapshot(storyId, resolveBeforeRestoreName(get), true);
 
       // Replace in memory; the persist middleware writes these through the
       // existing canonical scene-save path (no second write path).
       set((state) => ({
-        sceneRecordsByStory: { ...state.sceneRecordsByStory, [storyId]: records },
+        sceneRecordsByStory: { ...state.sceneRecordsByStory, [storyId]: restoredRecords },
         sceneRecordHydration: { ...state.sceneRecordHydration, [storyId]: 'full' },
-        storiesMetadata: state.storiesMetadata.map((metadata) =>
-          metadata.id === storyId
-            ? { ...metadata, sceneCount: scenes.length, updatedAt: Date.now() }
-            : metadata,
-        ),
+        storiesMetadata: state.storiesMetadata.map((metadata) => {
+          if (metadata.id !== storyId) return metadata;
+          const story = restored.story;
+          if (!story) return { ...metadata, sceneCount: scenes.length, updatedAt: Date.now() };
+          return {
+            ...metadata,
+            ...(story.title === undefined ? {} : { title: story.title }),
+            ...(story.tags === undefined ? {} : { tags: story.tags }),
+            sceneOrder: restoredOrder,
+            startSceneId: restoredStart,
+            sceneCount: scenes.length,
+            updatedAt: Date.now(),
+          };
+        }),
       }));
 
       return true;

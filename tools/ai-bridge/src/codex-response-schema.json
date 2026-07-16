@@ -5,7 +5,7 @@
   "properties": {
     "action": { "type": "string", "enum": ["reply", "tool"] },
     "text": { "type": ["string", "null"] },
-    "toolName": { "type": ["string", "null"], "enum": ["get_story_overview", "list_scenes", "get_scene", "propose_scene_patch", null] },
+    "toolName": { "type": ["string", "null"], "enum": ["get_story_overview", "list_scenes", "get_scene", "list_story_images", "get_image_details", "find_asset_usage", "propose_scene_patch", "propose_appearance_patch", "propose_changeset", "remove_background", "generate_image", "edit_image", null] },
     "input": { "type": ["object", "null"], "additionalProperties": true }
   },
   "required": ["action", "text", "toolName", "input"]

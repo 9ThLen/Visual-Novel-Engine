@@ -38,6 +38,10 @@ class MockWebSocket {
     this.onopen?.(new Event('open'));
   }
 
+  fail(): void {
+    this.onerror?.(new Event('error'));
+  }
+
   receive(message: unknown): void {
     this.onmessage?.(new MessageEvent('message', { data: JSON.stringify(message) }));
   }
@@ -54,6 +58,11 @@ describe('BridgeClient', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     MockWebSocket.instances = [];
     vi.stubGlobal('WebSocket', MockWebSocket);
+    vi.stubGlobal('sessionStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    });
     options = {
       url: 'ws://127.0.0.1:7777',
       token: 'secret',
@@ -70,6 +79,7 @@ describe('BridgeClient', () => {
   });
 
   it('sends session_start with the token as its first frame', () => {
+    options.locale = 'uk';
     const client = new BridgeClient(options);
     client.connect();
     const socket = MockWebSocket.instances[0];
@@ -78,8 +88,111 @@ describe('BridgeClient', () => {
     expect(frame(socket)).toMatchObject({
       type: 'session_start',
       sessionId: '',
-      payload: { token: 'secret' },
+      payload: { token: 'secret', context: { locale: 'uk' } },
     });
+    client.close();
+  });
+
+  it('reports connected only after the authenticated session starts', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    expect(options.onConnectionChange).not.toHaveBeenCalledWith('connected');
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'codex' }, 'session-1'));
+    expect(options.onConnectionChange).toHaveBeenLastCalledWith('connected');
+    client.close();
+  });
+
+  it('acknowledges a processed image result with its delivery id', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'codex' }, 'session-1'));
+    client.acknowledgeImageResult('image-request-1');
+    expect(frame(socket, 1)).toMatchObject({ type: 'image_result_ack', payload: { requestId: 'image-request-1' }, sessionId: 'session-1' });
+    client.close();
+  });
+
+  it('halts reconnects after an unauthorized response', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('error', { code: 'UNAUTHORIZED', message: 'Invalid bridge token' }));
+    expect(options.onConnectionChange).toHaveBeenCalledWith('unauthorized', 'INVALID_TOKEN');
+    expect(options.onEvent).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(60_000);
+    expect(MockWebSocket.instances).toHaveLength(1);
+    client.close();
+  });
+
+  it('halts reconnects and consumes another-active-session errors', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('error', {
+      code: 'PROVIDER_UNAVAILABLE',
+      message: 'Another session is already active',
+      details: { reason: 'SESSION_ALREADY_ACTIVE' },
+    }));
+
+    expect(options.onConnectionChange).toHaveBeenLastCalledWith('error', 'SESSION_ALREADY_ACTIVE');
+    expect(options.onEvent).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(60_000);
+    expect(MockWebSocket.instances).toHaveLength(1);
+    client.close();
+  });
+
+  it('halts reconnects and consumes protocol-version mismatches', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('error', {
+      code: 'PROTOCOL_ERROR',
+      message: 'Unsupported protocol version',
+    }));
+
+    expect(options.onConnectionChange).toHaveBeenLastCalledWith('error', 'PROTOCOL_VERSION_MISMATCH');
+    expect(options.onEvent).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(60_000);
+    expect(MockWebSocket.instances).toHaveLength(1);
+    client.close();
+  });
+
+  it('halts reconnects when a server frame uses another protocol version', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive({
+      protocolVersion: 999,
+      requestId: 'request-1',
+      sessionId: '',
+      type: 'status',
+      payload: {},
+    });
+
+    expect(options.onConnectionChange).toHaveBeenLastCalledWith('error', 'PROTOCOL_VERSION_MISMATCH');
+    expect(options.onEvent).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(60_000);
+    expect(MockWebSocket.instances).toHaveLength(1);
+    client.close();
+  });
+
+  it('reports socket failures with a structured reason and still reconnects', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.fail();
+    socket.close();
+
+    expect(options.onConnectionChange).toHaveBeenCalledWith('error', 'CONNECTION_FAILED_OR_ORIGIN');
+    vi.advanceTimersByTime(500);
+    expect(MockWebSocket.instances).toHaveLength(2);
     client.close();
   });
 
@@ -87,6 +200,7 @@ describe('BridgeClient', () => {
     const client = new BridgeClient(options);
     client.connect();
     MockWebSocket.instances[0].open();
+    MockWebSocket.instances[0].receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'claude' }, 'session-1'));
 
     vi.advanceTimersByTime(15_000);
     expect(frame(MockWebSocket.instances[0], 1)).toMatchObject({ type: 'ping' });
@@ -123,6 +237,52 @@ describe('BridgeClient', () => {
     client.close();
   });
 
+  it('resumes a persisted same-url session and ignores another URL', () => {
+    const storage = sessionStorage as unknown as { getItem: ReturnType<typeof vi.fn> };
+    storage.getItem.mockImplementation((key: string) => key === 'vne-bridge-session:ws://127.0.0.1:7777' ? 'persisted-1' : 'foreign');
+    const client = new BridgeClient(options); client.connect(); MockWebSocket.instances[0].open();
+    expect(frame(MockWebSocket.instances[0])).toMatchObject({ payload: { resumeSessionId: 'persisted-1' } });
+    client.close();
+  });
+
+  it('connects when sessionStorage throws', () => {
+    vi.stubGlobal('sessionStorage', {
+      getItem: vi.fn(() => { throw new Error('denied'); }),
+      setItem: vi.fn(() => { throw new Error('denied'); }),
+      removeItem: vi.fn(() => { throw new Error('denied'); }),
+    });
+    const client = new BridgeClient(options); client.connect(); MockWebSocket.instances[0].open();
+    expect(frame(MockWebSocket.instances[0])).toMatchObject({ type: 'session_start', payload: { token: 'secret' } });
+    expect(() => client.close()).not.toThrow();
+  });
+
+  it('sends session_end and clears the resumable session before closing', () => {
+    const storage = sessionStorage as unknown as {
+      setItem: ReturnType<typeof vi.fn>;
+      removeItem: ReturnType<typeof vi.fn>;
+    };
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false }, 'session-1'));
+    client.close();
+
+    expect(frame(socket, 1)).toMatchObject({ type: 'session_end' });
+    expect(storage.setItem).toHaveBeenCalledWith('vne-bridge-session:ws://127.0.0.1:7777', 'session-1');
+    expect(storage.removeItem).toHaveBeenCalledWith('vne-bridge-session:ws://127.0.0.1:7777');
+
+    client.connect();
+    MockWebSocket.instances[1].open();
+    expect(frame(MockWebSocket.instances[1])).toMatchObject({ payload: { token: 'secret' } });
+  });
+
+  it('can clear a persisted session for one URL', () => {
+    const storage = sessionStorage as unknown as { removeItem: ReturnType<typeof vi.fn> };
+    BridgeClient.clearPersistedSession('ws://localhost:8787');
+    expect(storage.removeItem).toHaveBeenCalledWith('vne-bridge-session:ws://localhost:8787');
+  });
+
   it('buffers user messages while reconnecting and flushes them after opening', () => {
     const client = new BridgeClient(options);
     client.connect();
@@ -134,6 +294,7 @@ describe('BridgeClient', () => {
     vi.advanceTimersByTime(500);
     const second = MockWebSocket.instances[1];
     second.open();
+    second.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: true, provider: 'claude' }, 'session-1'));
     expect(frame(second, 1)).toMatchObject({
       type: 'user_message',
       payload: { text: 'queued', context: { scene: 2 } },

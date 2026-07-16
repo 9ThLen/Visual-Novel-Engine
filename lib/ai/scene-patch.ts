@@ -2,7 +2,14 @@ import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import { computeSceneRevision } from './scene-revision';
 import type { AiScenePatch, ScenePatchOperation } from './scene-patch-types';
 
-export type PatchProjectContext = { sceneIds: string[]; characterIds: string[]; variableNames: string[]; assetIds: string[] };
+export type PatchProjectContext = {
+  sceneIds: string[];
+  characterIds: string[];
+  variableNames: string[];
+  assetIds: string[];
+  /** Canonical ordering used by multi-scene changes. Optional for legacy single-scene patches. */
+  sceneOrder?: string[];
+};
 export interface ScenePatchDescription { sceneId: string; sceneName: string; changes: Array<{ kind: 'step_added'; step: TimelineStep; index: number } | { kind: 'step_removed'; step: TimelineStep } | { kind: 'step_changed'; before: TimelineStep; after: TimelineStep } | { kind: 'metadata_changed'; field: 'name' | 'description' | 'tags'; before: unknown; after: unknown } | { kind: 'connection_changed'; outputPort: string; before: string | null; after: string | null }>; warnings: string[] }
 export class InvalidPatchError extends Error { constructor(message: string) { super(message); this.name = 'InvalidPatchError'; } }
 

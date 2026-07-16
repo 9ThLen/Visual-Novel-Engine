@@ -43,6 +43,7 @@ export interface CreateSnapshotOptions {
   /** Injectable for deterministic tests. */
   now?: number;
   id?: string;
+  onEvict?: (snapshotId: string) => void;
 }
 
 interface StorySnapshotIndex {
@@ -58,6 +59,11 @@ interface StorySnapshotManifest {
   meta: SnapshotMeta;
   story: SnapshotStoryMetadata | null;
   sceneIds: string[];
+}
+
+export interface RestoredStorySnapshot {
+  scenes: SceneRecord[];
+  story: SnapshotStoryMetadata | null;
 }
 
 interface StorySnapshotScenePayload {
@@ -273,6 +279,7 @@ export async function createSnapshot(
     if (!victim) break;
     snapshots = snapshots.filter((s) => s.id !== victim.id);
     await deleteSnapshotBodies(storage, storyId, victim.id);
+    options.onEvict?.(victim.id);
   }
   await writeIndex(storage, storyId, snapshots);
 
@@ -315,11 +322,11 @@ export async function listSnapshots(
  * scene body up front; if any scene is missing or unreadable it throws before
  * returning, so a caller never receives a half-restored story.
  */
-export async function restoreSnapshot(
+export async function readSnapshot(
   storage: SceneRecordStorageLike,
   storyId: string,
   snapshotId: string,
-): Promise<SceneRecord[]> {
+): Promise<RestoredStorySnapshot> {
   const manifest = parseStorySnapshotManifest(
     await storage.getItem(STORAGE_KEYS.STORY_SNAPSHOT_MANIFEST(storyId, snapshotId)),
     storyId,
@@ -338,7 +345,15 @@ export async function restoreSnapshot(
   if (scenes.some((scene) => scene === null)) {
     throw new Error(`Snapshot is incomplete: ${storyId}/${snapshotId}`);
   }
-  return scenes as SceneRecord[];
+  return { scenes: scenes as SceneRecord[], story: manifest.story };
+}
+
+export async function restoreSnapshot(
+  storage: SceneRecordStorageLike,
+  storyId: string,
+  snapshotId: string,
+): Promise<SceneRecord[]> {
+  return (await readSnapshot(storage, storyId, snapshotId)).scenes;
 }
 
 /** Delete a snapshot's bodies and remove it from the story's index. */

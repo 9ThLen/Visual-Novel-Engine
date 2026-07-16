@@ -1,3 +1,5 @@
+import { defaultAiPermissions, normalizeAiPermissions, type AiPermissions } from './ai/permissions';
+
 export const readerFontScaleOptions = [0.85, 1.0, 1.15, 1.3] as const;
 export const readerLineHeightScaleOptions = [1.0, 1.2, 1.4] as const;
 
@@ -15,6 +17,7 @@ export interface UserSettings {
   autoPlay: boolean;
   /** Subtle background parallax in the reader (pointer-driven on web, ambient drift on native). */
   parallaxEnabled: boolean;
+  aiPermissions: AiPermissions;
 }
 
 export const defaultUserSettings: UserSettings = {
@@ -27,6 +30,7 @@ export const defaultUserSettings: UserSettings = {
   readerLineHeightScale: 1.2,
   autoPlay: false,
   parallaxEnabled: true,
+  aiPermissions: defaultAiPermissions,
 };
 
 function clampUnitValue(value: unknown, fallback: number): number {
@@ -75,5 +79,16 @@ export function normalizeUserSettings(
       typeof settings?.parallaxEnabled === 'boolean'
         ? settings.parallaxEnabled
         : defaultUserSettings.parallaxEnabled,
+    aiPermissions: normalizeAiPermissions(settings?.aiPermissions),
   };
+}
+
+/** Legacy records predate AI permissions; never let them erase hydrated values. */
+export function mergeLegacyUserSettings(legacy: unknown, current: UserSettings): UserSettings {
+  if (!legacy || typeof legacy !== 'object') return normalizeUserSettings(current);
+  const value = legacy as Partial<UserSettings>;
+  return normalizeUserSettings({
+    ...value,
+    aiPermissions: value.aiPermissions ?? current.aiPermissions,
+  });
 }

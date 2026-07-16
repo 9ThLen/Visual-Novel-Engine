@@ -1,9 +1,9 @@
-# AI Chat Round 2 — Delegation Prompts (packages E–N), v4.3
+# AI Chat Round 2 — Delegation Prompts (packages E–N), v4.4
 
-Revised 2026-07-15 (v4.3) after a fifth review round — error-code contract
-pinned to the closed `BridgeErrorCode` union (domain codes travel in
-`details.reason`), G2 atomicity claim scoped to in-memory only (v4.2 was the
-fourth round; v4.1 a self-review pass). Each prompt is
+Revised 2026-07-15 (v4.4) after a sixth review round — binary tool results
+are correlated by `payload.toolCallId` (not envelope `requestId`), structured
+error `details` are typed end-to-end, and transcript cleanup waits for BOTH
+stores to hydrate (v4.3 was the fifth round; v4.1 a self-review pass). Each prompt is
 self-contained: paste it into the target model with the files it lists.
 Rules for EVERY package:
 
@@ -80,9 +80,14 @@ description.
 collapses failures into `new Error(errorMessage)` — the app's `errorCode`
 (`PERMISSION_DENIED`, `STALE_REVISION`) never reaches the model. Fix with a
 typed `BridgeToolError { errorCode, errorMessage, details }` carried through
-the rejection; both providers format it into the model-visible tool result
-(code first). Test: app returns `ok:false, errorCode:'PERMISSION_DENIED'` →
-provider-visible result contains the code verbatim.
+the rejection. **The current client-side `ToolResult` failure member
+(`lib/bridge-client.ts:11-13`) has only `errorCode` + `errorMessage`: extend it
+and the documented `tool_result` payload type with `details?: unknown`, and
+forward that field unchanged app → client envelope → server rejection.** Both
+providers format it into the model-visible tool result (code first). Test the
+full round-trip: app returns `ok:false, errorCode:'PERMISSION_DENIED',
+details:{ reason:'USER_BLOCKED' }` → both provider-visible results contain the
+code and `details.reason` verbatim.
 
 **E3 — Session lifecycle.** The server keeps a zombie session after socket
 close (`server.ts:74-83` — only `session.socket = null`), so a fresh client
@@ -118,10 +123,15 @@ PNG in base64 is 1.4–2 MB. In `lib/bridge-protocol.ts` add
 re-imposes 1 MB on every envelope EXCEPT server type `image_result` and
 `tool_result` whose payload has `binaryTool: true`. The client flag is a
 transport HINT only — server-side, the authoritative check is the pending
-invocation: a big `tool_result` is accepted only when the requestId matches
-a pending tool call whose registry entry has `binaryResult: true` (never
-trust the browser's flag alone; test: oversized `tool_result` with
-`binaryTool: true` but a non-binary pending tool → closed). Mirror the
+invocation. **Correlation is by `payload.toolCallId`, NOT envelope
+`requestId`: `makeEnvelope` generates a fresh unrelated `requestId`, while
+`server.ts` keys `pendingTools` by `toolCallId`. Store `toolName` on each
+`PendingTool`; accept a big `tool_result` only when its `payload.toolCallId`
+matches that pending entry AND the registry definition for the stored
+`toolName` has `binaryResult:true`.** Never trust the browser's flag alone.
+Tests: an oversized result with an unrelated envelope `requestId` but the
+correct binary pending `payload.toolCallId` passes; unknown `toolCallId` or
+`binaryTool:true` against a non-binary pending tool closes. Mirror the
 size check in `lib/bridge-client.ts`. Add `image_result` to `ServerMessageType`,
 `image_result_ack` to `ClientMessageType`, AND an optional
 `binaryTool?: boolean` on the `tool_result` payload type now (payloads documented as types;
@@ -547,8 +557,11 @@ not hand-waving: add an optional `context: { locale?: string }` to the
 sends the app language), and extend `AgentProviderFactory`
 (`tools/ai-bridge/src/provider.ts:15` — today it takes ONLY a
 `ToolInvoker`) to `(tools, session?: { locale?: string })`; both providers
-append a one-line locale hint to their system prompt. Test: session_start
-with `locale:'uk'` → provider factory receives it.
+append a one-line locale hint to their system prompt. Tests: `session_start`
+with `locale:'uk'` → provider factory receives it; construct the Claude and
+Codex providers separately and assert EACH final system prompt contains the
+locale hint while retaining the rule that the user's last-message language
+wins.
 
 **N2 — Persistent per-story transcript (UI-only).**
 `stores/ai-chat-store.ts` messages are in-memory. Persist as
@@ -571,9 +584,15 @@ previous conversations"). Transcripts of DELETED stories must not accumulate
 forever — prune entries whose storyId no longer exists in the app store,
 but ONLY after the app store has actually hydrated: at startup
 `storiesMetadata` is `[]` and fills asynchronously, so pruning "on load"
-would delete EVERYTHING. Gate the prune on hydration completion (the app
-store sets `isLoaded: true` after `migrateFromLegacyKeys`; subscribe to
-that, or use `useAppStore.persist.onFinishHydration` + the migration).
+would delete EVERYTHING. **Both stores hydrate asynchronously and in either
+order** (`createPersistentStorage` wraps `getItem` asynchronously): gate
+cleanup on TWO latches — app store `isLoaded === true` after
+`migrateFromLegacyKeys` AND `useAiChatStore.persist.hasHydrated() === true`.
+Run the same idempotent reconciliation from both completion paths (the app
+store subscription and the AI store's `onRehydrateStorage`/
+`onFinishHydration`) so app-first cannot prune defaults before a late AI
+rehydration restores stale entries, and AI-first still waits for real story
+metadata.
 Deletions during a session are handled by the SAME mechanism: the AI store
 subscribes to the app store's hydrated `storiesMetadata` and prunes
 whenever a known storyId disappears — do NOT import `ai-chat-store` into
@@ -583,7 +602,10 @@ subscription lives entirely on the AI-store side). Tests: reload
 round-trip; story A↔B switch keeps transcripts isolated; message cap; byte
 cap; pendings dropped; no base64 persisted; deleted-story transcript
 pruned; **delayed-hydration test: prune fires only after `isLoaded`, and an
-empty pre-hydration store does NOT wipe transcripts**.
+empty pre-hydration store does NOT wipe transcripts**; ordering regressions:
+app hydrates first + AI hydrates late, and AI hydrates first + app hydrates
+late — deleted-story transcripts are removed in both orders while live-story
+transcripts survive.
 
 **N3 — Markdown rendering (write your own small renderer).**
 Assistant messages render bold/italic/inline-code/code fences/lists/links.

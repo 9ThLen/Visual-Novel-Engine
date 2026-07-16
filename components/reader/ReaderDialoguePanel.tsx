@@ -4,6 +4,7 @@ import type { useColors } from '@/hooks/use-colors';
 import type { ReaderChoice } from '@/lib/reader-runtime';
 import { RichText } from '@/components/RichText';
 import { ReaderChoices } from '@/components/reader/ReaderChoices';
+import type { StoryReaderLayoutPreset } from '@/lib/story-theme';
 
 const DIALOGUE_MARGIN_BOTTOM = 28;
 
@@ -25,6 +26,7 @@ interface ReaderDialoguePanelProps {
   pagesLength: number;
   pageIndex: number;
   readerControls: React.ReactNode;
+  layoutPreset?: StoryReaderLayoutPreset;
 }
 
 export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel({
@@ -44,14 +46,18 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel({
   pagesLength,
   pageIndex,
   readerControls,
+  layoutPreset = 'classic',
 }: ReaderDialoguePanelProps) {
+  const dense = layoutPreset !== 'classic';
   return (
     <View
-      className="mx-3 mb-7 rounded-2xl border overflow-hidden"
+      className="rounded-2xl border overflow-hidden"
+      testID={`reader-dialogue-panel-${layoutPreset}`}
       style={{
         backgroundColor: colors.dialogueBg,
         borderColor: colors.dialogueBorder,
-        marginBottom: DIALOGUE_MARGIN_BOTTOM,
+        marginHorizontal: dense ? 8 : 12,
+        marginBottom: dense ? 12 : DIALOGUE_MARGIN_BOTTOM,
       }}
     >
       {speaker ? (
@@ -65,7 +71,12 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel({
         </View>
       ) : null}
 
-      <Pressable className="p-4 min-h-[80]" onPress={onTap} accessible={false}>
+      <Pressable
+        className={dense ? undefined : 'p-4 min-h-[80]'}
+        style={dense ? { padding: 12, minHeight: 60 } : undefined}
+        onPress={onTap}
+        accessible={false}
+      >
         <Text testID="reader-dialogue-text" style={dialogueTextStyle}>
           <RichText text={displayedText} visibleCount={visibleCount} />
           {isTyping && <Text style={cursorStyle}>|</Text>}
@@ -79,10 +90,14 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel({
           fontSize={choicesFontSize}
           getAccessibilityLabel={getChoiceAccessibilityLabel}
           onSelectChoice={onSelectChoice}
+          layoutPreset={layoutPreset}
         />
       )}
 
-      <View className="flex-row items-center justify-between px-4 pb-3 pt-1">
+      <View
+        className={dense ? 'flex-row items-center justify-between' : 'flex-row items-center justify-between px-4 pb-3 pt-1'}
+        style={dense ? { paddingHorizontal: 12, paddingBottom: 8, paddingTop: 2 } : undefined}
+      >
         {false && pagesLength > 1 ? (
           <View className="flex-row gap-1">
             {Array.from({ length: pagesLength }).map((_, i) => (

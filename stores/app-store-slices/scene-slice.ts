@@ -18,6 +18,7 @@ import {
   type SceneRecordContentUpdates,
 } from '@/lib/scene-operations';
 import type { AppStoreGet, AppStoreSet } from '@/stores/app-store-slices/types';
+import type { AiChangeSetApplyResult } from '@/lib/ai/change-set';
 
 export interface SceneSlice {
   hydrateSceneRecordsForStory: (storyId: string) => Promise<void>;
@@ -28,6 +29,7 @@ export interface SceneSlice {
   ) => Promise<boolean>;
   deleteScene: (storyId: string, sceneId: string) => void;
   saveSceneRecord: (record: SceneRecord) => void;
+  commitAiChangeSet: (storyId: string, result: Extract<AiChangeSetApplyResult, { ok: true }>) => void;
   updateSceneRecordPreservingMeta: (
     storyId: string,
     sceneId: string,
@@ -152,6 +154,30 @@ export function createSceneSlice(
         return syncCanonicalStartScene(s, record.storyId, {
           sceneRecords: storyRecords,
           preferredStartSceneId: record.isStart ? record.id : undefined,
+        });
+      }),
+
+    commitAiChangeSet: (storyId, result) =>
+      set((s) => {
+        const storyRecords = { ...(s.sceneRecordsByStory[storyId] || {}) };
+        for (const record of result.scenesToSave) {
+          storyRecords[record.id] = { ...record, updatedAt: Date.now() };
+        }
+        const withOrder = {
+          ...s,
+          characterLibraries: result.charactersToSave
+            ? { ...s.characterLibraries, [storyId]: result.charactersToSave }
+            : s.characterLibraries,
+          storiesMetadata: s.storiesMetadata.map((metadata) =>
+            metadata.id === storyId
+              ? { ...metadata, sceneOrder: result.nextSceneOrder, updatedAt: Date.now() }
+              : metadata,
+          ),
+        };
+        const preferredStartSceneId = result.scenesToSave.find((record) => record.isStart)?.id;
+        return syncCanonicalStartScene(withOrder, storyId, {
+          sceneRecords: storyRecords,
+          preferredStartSceneId,
         });
       }),
 

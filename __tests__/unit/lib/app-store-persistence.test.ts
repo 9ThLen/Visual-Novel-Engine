@@ -88,7 +88,11 @@ function makeState(): AppStorePersistenceState {
       readerLineHeightScale: 1.2,
       autoPlay: false,
       parallaxEnabled: true,
+      aiPermissions: {
+        scene_edit: 'confirm', appearance: 'confirm', changeset: 'confirm', image_generate: 'confirm',
+      },
     },
+    aiBridgeSettings: { url: '', token: '', disabled: false },
     saveSlots: [],
     audioLibraries: {},
     characterLibraries: {},
@@ -114,6 +118,36 @@ function makeState(): AppStorePersistenceState {
 }
 
 describe('app store persistence helpers', () => {
+  it('persists and hydrates bridge settings outside reader preferences', () => {
+    const state = makeState();
+    state.aiBridgeSettings = {
+      url: 'ws://localhost:9999',
+      token: 'local-secret',
+      disabled: true,
+    };
+    const persisted = buildPersistedAppState(state);
+    expect(persisted.aiBridgeSettings).toEqual(state.aiBridgeSettings);
+    expect(mergePersistedAppState(persisted, makeState()).aiBridgeSettings).toEqual(state.aiBridgeSettings);
+  });
+
+  it('hydrates legacy bridge settings without the disabled flag using the current safe default', () => {
+    const current = makeState();
+    current.aiBridgeSettings.disabled = false;
+    const persisted = buildPersistedAppState(makeState()) as unknown as {
+      aiBridgeSettings: { url: string; token: string };
+    };
+    persisted.aiBridgeSettings = {
+      url: 'ws://localhost:9999',
+      token: 'legacy-secret',
+    };
+
+    expect(mergePersistedAppState(persisted, current).aiBridgeSettings).toEqual({
+      url: 'ws://localhost:9999',
+      token: 'legacy-secret',
+      disabled: false,
+    });
+  });
+
   beforeEach(() => {
     setWebMediaReferenceInvariant(false);
   });

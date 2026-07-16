@@ -1,15 +1,20 @@
 /**
- * Reader appearance (theme colors) patch pipeline.
+ * Reader appearance (theme colors and closed layout preset) patch pipeline.
  *
  * Mirrors the ScenePatch contract: pure validate/apply/describe functions with
  * no store access, guarded by an expectedRevision so a concurrent edit in Theme
- * Studio cannot be silently overwritten. Only the eight StoryReaderTheme colors
- * are patchable — the model never emits CSS, JSX, or layout.
+ * Studio cannot be silently overwritten. The model can patch the eight
+ * StoryReaderTheme colors and one closed layout enum, never arbitrary CSS/JSX.
  */
 import { z } from 'zod';
 
 import type { StoryMetadata } from '@/lib/story-domain';
-import { sanitizeStoryTheme, type StoryReaderTheme } from '@/lib/story-theme';
+import {
+  sanitizeReaderLayoutPreset,
+  sanitizeStoryTheme,
+  type StoryReaderLayoutPreset,
+  type StoryReaderTheme,
+} from '@/lib/story-theme';
 import { evaluateThemeContrast, MIN_TEXT_CONTRAST } from '@/lib/theme-contrast';
 import { hashStable } from './scene-revision';
 
@@ -32,7 +37,8 @@ export interface AiReaderAppearancePatch {
   storyId: string;
   expectedRevision: string;
   /** Colors to set. Keys omitted are left untouched. */
-  theme: Partial<Record<ThemeColorKey, string>>;
+  theme?: Partial<Record<ThemeColorKey, string>>;
+  layoutPreset?: StoryReaderLayoutPreset;
   explanation: string;
 }
 
@@ -43,13 +49,19 @@ export const aiReaderAppearancePatchSchema: z.ZodType<AiReaderAppearancePatch> =
     Object.fromEntries(
       THEME_COLOR_KEYS.map((key) => [key, z.string().regex(HEX_COLOR, 'Expected #rgb, #rrggbb, or #rrggbbaa').optional()]),
     ) as Record<ThemeColorKey, z.ZodOptional<z.ZodString>>,
-  ),
+  ).optional(),
+  layoutPreset: z.enum(['classic', 'compact', 'top']).optional(),
   explanation: z.string(),
 });
 
 /** Revision of the story's appearance only — unaffected by scene or metadata edits. */
-export function computeAppearanceRevision(metadata: Pick<StoryMetadata, 'theme'> | undefined): string {
-  return hashStable(metadata?.theme ?? null);
+export function computeAppearanceRevision(
+  metadata: Pick<StoryMetadata, 'theme' | 'readerLayoutPreset'> | undefined,
+): string {
+  return hashStable({
+    theme: metadata?.theme ?? null,
+    layoutPreset: sanitizeReaderLayoutPreset(metadata?.readerLayoutPreset),
+  });
 }
 
 export interface AppearancePatchColorChange {
@@ -62,6 +74,7 @@ export interface AppearancePatchDescription {
   storyId: string;
   colors: AppearancePatchColorChange[];
   warnings: string[];
+  layoutPreset?: { before: StoryReaderLayoutPreset; after: StoryReaderLayoutPreset };
 }
 
 export type ValidateAppearancePatchResult =
@@ -85,7 +98,7 @@ function contrastWarnings(theme: StoryReaderTheme): string[] {
 }
 
 export function validateAiAppearancePatch(
-  metadata: Pick<StoryMetadata, 'id' | 'theme'>,
+  metadata: Pick<StoryMetadata, 'id' | 'theme' | 'readerLayoutPreset'>,
   patch: AiReaderAppearancePatch,
 ): ValidateAppearancePatchResult {
   const errors: string[] = [];
@@ -98,7 +111,9 @@ export function validateAiAppearancePatch(
   }
 
   const entries = Object.entries(patch.theme ?? {}).filter(([, value]) => value !== undefined);
-  if (entries.length === 0) errors.push('Patch changes no colors');
+  const layoutChanges = patch.layoutPreset !== undefined
+    && sanitizeReaderLayoutPreset(patch.layoutPreset) !== sanitizeReaderLayoutPreset(metadata.readerLayoutPreset);
+  if (entries.length === 0 && !layoutChanges) errors.push('Patch changes no appearance settings');
 
   if (errors.length > 0) return { ok: false, code: 'VALIDATION_FAILED', errors };
 
@@ -119,8 +134,15 @@ export function applyAiAppearancePatch(metadata: StoryMetadata, patch: AiReaderA
   return mergeAppearancePatch(metadata.theme, patch);
 }
 
+export function applyAiReaderLayoutPreset(
+  metadata: Pick<StoryMetadata, 'readerLayoutPreset'>,
+  patch: AiReaderAppearancePatch,
+): StoryReaderLayoutPreset {
+  return sanitizeReaderLayoutPreset(patch.layoutPreset ?? metadata.readerLayoutPreset);
+}
+
 export function describeAiAppearancePatch(
-  metadata: Pick<StoryMetadata, 'id' | 'theme'>,
+  metadata: Pick<StoryMetadata, 'id' | 'theme' | 'readerLayoutPreset'>,
   patch: AiReaderAppearancePatch,
 ): AppearancePatchDescription {
   const current = metadata.theme ?? {};
@@ -132,5 +154,12 @@ export function describeAiAppearancePatch(
     return [{ key, before: current[key] ?? null, after }];
   });
 
-  return { storyId: patch.storyId, colors, warnings: contrastWarnings(next) };
+  const beforeLayout = sanitizeReaderLayoutPreset(metadata.readerLayoutPreset);
+  const afterLayout = applyAiReaderLayoutPreset(metadata, patch);
+  return {
+    storyId: patch.storyId,
+    colors,
+    warnings: contrastWarnings(next),
+    ...(beforeLayout !== afterLayout ? { layoutPreset: { before: beforeLayout, after: afterLayout } } : {}),
+  };
 }
