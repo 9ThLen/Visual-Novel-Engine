@@ -61,7 +61,7 @@ export function decodeImageResult(payload: unknown): AiImageResult | null {
   }
 }
 
-function blobToBase64(blob: Blob): Promise<string> {
+export function blobToBase64(blob: Blob): Promise<string> {
   return blob.arrayBuffer().then((buffer) => {
     const bytes = new Uint8Array(buffer);
     let binary = '';
@@ -72,7 +72,7 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-async function downscaleImage(blob: Blob): Promise<Blob | null> {
+export async function downscaleImage(blob: Blob): Promise<Blob | null> {
   if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return null;
   const bitmap = await createImageBitmap(blob);
   try {

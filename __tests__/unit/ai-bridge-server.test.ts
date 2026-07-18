@@ -2,7 +2,7 @@
 import { once } from 'node:events';
 import WebSocket from 'ws';
 import { makeEnvelope, type BridgeEnvelope } from '../../lib/bridge-protocol';
-import { BridgeToolError, ProviderFailure, modelToolErrorValue, type AgentEvent, type AgentProvider, type ToolInvoker } from '../../tools/ai-bridge/src/provider';
+import { BridgeToolError, ProviderFailure, modelToolErrorValue, type AgentEvent, type AgentProvider, type AgentUserInput, type ToolInvoker } from '../../tools/ai-bridge/src/provider';
 import { AiBridgeServer } from '../../tools/ai-bridge/src/server';
 import { BRIDGE_TOOLS } from '../../lib/ai/bridge-tools';
 import { z } from 'zod';
@@ -10,18 +10,22 @@ import { z } from 'zod';
 class FakeProvider implements AgentProvider {
   aborted = false;
   resets = 0;
-  constructor(readonly tools: ToolInvoker, private readonly behavior: (self: FakeProvider, text: string) => AsyncIterable<AgentEvent>) {}
-  send(text: string) { return this.behavior(this, text); }
+  resetFailure?: Error;
+  constructor(readonly tools: ToolInvoker, private readonly behavior: (self: FakeProvider, input: AgentUserInput) => AsyncIterable<AgentEvent>) {}
+  send(input: AgentUserInput) { return this.behavior(this, input); }
   abort() { this.aborted = true; }
-  resetConversation() { this.resets += 1; }
+  resetConversation() {
+    this.resets += 1;
+    if (this.resetFailure) throw this.resetFailure;
+  }
 }
 
 const servers: AiBridgeServer[] = [];
 afterEach(async () => { await Promise.all(servers.splice(0).map(server => server.close())); });
 
-async function setup(behavior: (provider: FakeProvider, text: string) => AsyncIterable<AgentEvent>, toolTimeoutMs = 30, turnTimeoutMs?: number) {
+async function setup(behavior: (provider: FakeProvider, input: AgentUserInput) => AsyncIterable<AgentEvent>, toolTimeoutMs = 30, turnTimeoutMs?: number, providerName?: 'claude' | 'openai' | 'codex', enableClaudeAttachments?: boolean) {
   let provider!: FakeProvider;
-  const server = new AiBridgeServer({ port: 0, token: 'test-token', toolTimeoutMs, turnTimeoutMs, logger: vi.fn(), providerFactory: tools => provider = new FakeProvider(tools, behavior) });
+  const server = new AiBridgeServer({ port: 0, token: 'test-token', toolTimeoutMs, turnTimeoutMs, provider: providerName, enableClaudeAttachments, logger: vi.fn(), providerFactory: tools => provider = new FakeProvider(tools, behavior) });
   servers.push(server); const port = await server.start();
   return { server, port, get provider() { return provider; } };
 }
@@ -30,8 +34,74 @@ function send(socket: WebSocket, type: Parameters<typeof makeEnvelope>[0], paylo
 function next(socket: WebSocket): Promise<BridgeEnvelope> { return new Promise(resolve => socket.once('message', data => resolve(JSON.parse(data.toString())))); }
 async function handshake(socket: WebSocket, resumeSessionId?: string) { await once(socket, 'open'); send(socket, 'session_start', resumeSessionId ? { token: 'test-token', resumeSessionId } : { token: 'test-token' }); return next(socket); }
 const payload = (message: BridgeEnvelope) => message.payload as Record<string, unknown>;
+const textAttachment = (text = 'hello') => {
+  const bytes = Buffer.from(text);
+  return { id: 'a1', name: 'note.txt', kind: 'text', mimeType: 'text/plain', byteSize: bytes.length, base64: bytes.toString('base64') };
+};
 
 describe('AI bridge protocol server', () => {
+  it('decodes and validates attachment bytes before calling the provider', async () => {
+    let observed: AgentUserInput | undefined;
+    const { port } = await setup(async function* (_provider, input) { observed = input; yield { type: 'done' }; }, 30, undefined, 'claude', true);
+    const socket = connect(port);
+    const started = await handshake(socket);
+    const bytes = Buffer.from('hello');
+    send(socket, 'user_message', { text: '', attachments: [{ id: 'a1', name: 'note.txt', kind: 'text', mimeType: 'text/plain', byteSize: bytes.length, base64: bytes.toString('base64') }] }, String(payload(started).sessionId));
+    await next(socket);
+    expect(observed?.text).toBe('');
+    expect(new TextDecoder().decode(observed?.attachments[0].bytes)).toBe('hello');
+  });
+
+  it('keeps untrusted attachment mode when provider reset fails', async () => {
+    const context = await setup(async function* () { yield { type: 'done' }; }, 30, undefined, 'claude', true);
+    const socket = connect(context.port);
+    const started = await handshake(socket);
+    const sessionId = String(payload(started).sessionId);
+    send(socket, 'user_message', { text: '', attachments: [textAttachment()] }, sessionId);
+    await next(socket);
+    context.provider.resetFailure = new Error('reset failed');
+    send(socket, 'conversation_reset', {}, sessionId);
+    expect(await next(socket)).toMatchObject({ type: 'error' });
+    socket.terminate();
+    await once(socket, 'close');
+    const resumed = connect(context.port);
+    expect(await handshake(resumed, sessionId)).toMatchObject({
+      type: 'session_started',
+      payload: { resumed: true, untrustedAttachmentMode: true },
+    });
+  });
+
+  it('preserves untrusted attachment mode when resuming the same session', async () => {
+    const { port } = await setup(async function* () { yield { type: 'done' }; }, 30, undefined, 'claude', true);
+    const first = connect(port);
+    const started = await handshake(first);
+    const sessionId = String(payload(started).sessionId);
+    send(first, 'user_message', { text: '', attachments: [textAttachment()] }, sessionId);
+    await next(first);
+    first.terminate();
+    await once(first, 'close');
+    const resumed = connect(port);
+    expect(await handshake(resumed, sessionId)).toMatchObject({
+      type: 'session_started',
+      payload: { resumed: true, untrustedAttachmentMode: true },
+    });
+  });
+
+  it('does not carry untrusted attachment mode into a new session', async () => {
+    const { port } = await setup(async function* () { yield { type: 'done' }; }, 30, undefined, 'claude', true);
+    const first = connect(port);
+    const started = await handshake(first);
+    const sessionId = String(payload(started).sessionId);
+    send(first, 'user_message', { text: '', attachments: [textAttachment()] }, sessionId);
+    await next(first);
+    send(first, 'session_end', {}, sessionId);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    const replacement = connect(port);
+    expect(await handshake(replacement)).toMatchObject({
+      type: 'session_started',
+      payload: { resumed: false, untrustedAttachmentMode: false },
+    });
+  });
   it('passes the optional app locale to the provider factory', async () => {
     let locale: string | undefined;
     const server = new AiBridgeServer({ port: 0, token: 'test-token', logger: vi.fn(), providerFactory: (_tools, session) => {
@@ -246,7 +316,7 @@ describe('AI bridge protocol server', () => {
   });
 
   it('authorizes oversized binary results by pending toolCallId, not envelope requestId', async () => {
-    BRIDGE_TOOLS.push({ name: 'test_binary', description: 'Test binary result.', inputSchema: z.object({}), exposure: 'internal', site: 'app', binaryResult: true });
+    BRIDGE_TOOLS.push({ name: 'test_binary', description: 'Test binary result.', inputSchema: z.object({}), exposure: 'internal', site: 'app', effect: 'read', binaryResult: true });
     try {
       let observed = '';
       const { port } = await setup(async function* (provider) { observed = String(await provider.tools.call('test_binary', {})); yield { type: 'done' }; }, 1_000);

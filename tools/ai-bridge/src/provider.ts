@@ -44,13 +44,26 @@ export function modelToolErrorValue(error: unknown): { errorCode: string; errorM
 }
 
 export interface AgentProvider {
-  send(text: string): AsyncIterable<AgentEvent>;
+  send(input: AgentUserInput): AsyncIterable<AgentEvent>;
   abort(): void;
   resetConversation(): void | Promise<void>;
   close?(): void | Promise<void>;
 }
 
-export interface AgentSessionContext { locale?: string }
+export interface AgentAttachment {
+  id: string;
+  name: string;
+  kind: 'image' | 'pdf' | 'text';
+  mimeType: string;
+  bytes: Uint8Array;
+}
+
+export interface AgentUserInput {
+  text: string;
+  attachments: AgentAttachment[];
+}
+
+export interface AgentSessionContext { locale?: string; model?: string; sessionTokenBudget?: number }
 export type AgentProviderFactory = (tools: ToolInvoker, session?: AgentSessionContext) => AgentProvider;
 
 export function buildSessionSystemPrompt(base: string, session?: AgentSessionContext): string {

@@ -21,6 +21,8 @@ import { listSnapshots } from '@/lib/story-snapshots';
 import { useAppStore } from '@/stores/use-app-store';
 import { onSnapshotEvicted } from '@/stores/snapshot-eviction-registry';
 import type { AiCapability } from '@/lib/ai/permissions';
+import type { AttachmentRef } from '@/lib/ai/attachments';
+import { chatAttachmentRepository } from '@/lib/ai/attachment-storage.web';
 
 export type AiChatRole = 'user' | 'assistant' | 'system';
 
@@ -29,6 +31,7 @@ export interface AiChatMessage {
   role: AiChatRole;
   text: string;
   createdAt: number;
+  attachments?: AttachmentRef[];
 }
 
 export type AiChatStatus = 'idle' | 'thinking' | 'interrupting' | 'awaiting_confirmation';
@@ -120,8 +123,9 @@ interface AiChatStoreState {
   /** @deprecated Compatibility view; new code uses the LIFO appliedChanges journal. */
   lastAppliedChange: LegacyAppliedChange | null;
   setActiveStory: (storyId: string) => void;
-  addMessage: (role: AiChatRole, text: string, storyId?: string) => AiChatMessage;
+  addMessage: (role: AiChatRole, text: string, storyId?: string, attachments?: AttachmentRef[]) => AiChatMessage;
   clearMessages: (storyId?: string) => void;
+  markAttachmentImported: (storyId: string, attachmentId: string, assetId: string) => void;
   setStatus: (status: AiChatStatus) => void;
   setPendingInteraction: (pendingInteraction: AiPendingInteraction | null) => void;
   cancelPendingInteraction: (storyId?: string) => AiPendingInteraction | null;
@@ -204,14 +208,15 @@ export const useAiChatStore = create<AiChatStoreState>()(persist((set, get) => (
     };
   }),
 
-  addMessage: (role, text, requestedStoryId) => {
-    const message: AiChatMessage = { id: generateId('ai-msg'), role, text: safeText(text), createdAt: Date.now() };
+  addMessage: (role, text, requestedStoryId, attachments) => {
+    const message: AiChatMessage = { id: generateId('ai-msg'), role, text: safeText(text), createdAt: Date.now(), ...(attachments?.length ? { attachments } : {}) };
     const storyId = requestedStoryId ?? get().activeStoryId;
     if (!storyId) { set((state) => ({ messages: [...state.messages, message] })); return message; }
     set((state) => {
       const messages = capMessages([...(state.messagesByStory[storyId] ?? []), message]);
       return { messagesByStory: { ...state.messagesByStory, [storyId]: messages }, messages: state.activeStoryId === storyId ? messages : state.messages };
     });
+    void reconcileChatAttachments();
     return message;
   },
 
@@ -220,7 +225,19 @@ export const useAiChatStore = create<AiChatStoreState>()(persist((set, get) => (
     if (!storyId) return { messages: [] };
     const messagesByStory = { ...state.messagesByStory };
     delete messagesByStory[storyId];
+    queueMicrotask(() => { void reconcileChatAttachments(); });
     return { messagesByStory, messages: state.activeStoryId === storyId ? [] : state.messages };
+  }),
+
+  markAttachmentImported: (storyId, attachmentId, assetId) => set((state) => {
+    const messages = (state.messagesByStory[storyId] ?? []).map((message) => ({
+      ...message,
+      attachments: message.attachments?.map((attachment) => attachment.id === attachmentId ? { ...attachment, assetId } : attachment),
+    }));
+    return {
+      messagesByStory: { ...state.messagesByStory, [storyId]: messages },
+      messages: state.activeStoryId === storyId ? messages : state.messages,
+    };
   }),
 
   setStatus: (status) => set({ status }),
@@ -329,6 +346,7 @@ export const useAiChatStore = create<AiChatStoreState>()(persist((set, get) => (
       lastAppliedChange: toLegacyAppliedChange(appliedChanges.at(-1)),
     });
     reconcileTranscripts();
+    void reconcileChatAttachments();
     void reconcileAppliedChanges();
   },
 }));
@@ -342,6 +360,18 @@ export function reconcileTranscripts(): void {
     const messagesByStory = Object.fromEntries(Object.entries(state.messagesByStory).filter(([id]) => liveIds.has(id)));
     return { messagesByStory, messages: state.activeStoryId ? messagesByStory[state.activeStoryId] ?? [] : state.messages };
   });
+}
+
+export async function reconcileChatAttachments(): Promise<void> {
+  if (!useAiChatStore.persist.hasHydrated()) return;
+  const app = useAppStore.getState();
+  if (!app.isLoaded) return;
+  const messages = Object.values(useAiChatStore.getState().messagesByStory).flat();
+  const referencedAttachmentIds = new Set(messages.flatMap((message) => message.attachments?.map((item) => item.id) ?? []));
+  await chatAttachmentRepository.reconcile({
+    existingStoryIds: new Set(app.storiesMetadata.map((story) => story.id)),
+    referencedAttachmentIds,
+  }).catch(() => undefined);
 }
 
 export async function reconcileAppliedChanges(): Promise<void> {
@@ -378,11 +408,13 @@ export async function reconcileAppliedChanges(): Promise<void> {
 useAppStore.subscribe((state, previous) => {
   if (state.isLoaded !== previous.isLoaded || state.storiesMetadata !== previous.storiesMetadata) {
     reconcileTranscripts();
+    void reconcileChatAttachments();
     void reconcileAppliedChanges();
   }
 });
 useAiChatStore.persist.onFinishHydration(() => {
   reconcileTranscripts();
+  void reconcileChatAttachments();
   void reconcileAppliedChanges();
 });
 onSnapshotEvicted((storyId, snapshotId) =>

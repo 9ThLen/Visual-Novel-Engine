@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
-import type { AgentEvent, AgentProvider, AgentSessionContext, ToolInvoker } from './provider';
+import type { AgentEvent, AgentProvider, AgentSessionContext, AgentUserInput, ToolInvoker } from './provider';
 import { BridgeToolError, buildSessionSystemPrompt, modelToolErrorValue } from './provider';
 import { MODEL_BRIDGE_TOOLS } from '../../../lib/ai/bridge-tools';
 import {
@@ -46,7 +46,11 @@ export class CodexCliProvider implements AgentProvider {
     this.workspace = null;
   }
 
-  async *send(text: string): AsyncIterable<AgentEvent> {
+  async *send(input: AgentUserInput): AsyncIterable<AgentEvent> {
+    if (input.attachments.length) {
+      throw new BridgeToolError('PROVIDER_UNAVAILABLE', 'Codex CLI does not support attachments', { reason: 'ATTACHMENTS_UNSUPPORTED' });
+    }
+    const text = input.text;
     const capability = getCodexHardeningCapability();
     if (!capability.supported) {
       throw new BridgeToolError('PROVIDER_UNAVAILABLE', capability.message, {

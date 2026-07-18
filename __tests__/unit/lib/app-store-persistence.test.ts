@@ -411,7 +411,7 @@ describe('app store persistence helpers', () => {
       0,
     ) as Partial<AppStorePersistenceState>;
 
-    expect(APP_STORE_PERSIST_VERSION).toBe(5);
+    expect(APP_STORE_PERSIST_VERSION).toBe(6);
     expect(migrated.mediaLibrary?.map((asset) => asset.id)).toEqual(['image-file', 'image-data']);
     expect(migrated.imageAssetIdsByStory).toEqual({});
     expect(migrated.sceneRecordsByStory?.['story-1']?.['scene-1']).toBeTruthy();

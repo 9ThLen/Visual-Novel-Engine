@@ -1,4 +1,4 @@
-export const BRIDGE_PROTOCOL_VERSION = 3 as const;
+export const BRIDGE_PROTOCOL_VERSION = 4 as const;
 
 export const MAX_MESSAGE_BYTES = 1_000_000;
 export const MAX_IMAGE_MESSAGE_BYTES = 8_000_000;
@@ -66,6 +66,8 @@ export interface SessionStartPayload {
   preferredProvider?: BridgeProvider;
   codexBetaConsent?: CodexBetaConsent;
   context?: { locale?: string };
+  requestedModel?: string;
+  requestedTokenBudget?: number;
 }
 export interface SessionChallengePayload {
   provider: BridgeProvider;
@@ -76,7 +78,34 @@ export interface SessionChallengePayload {
   disclosureVersion?: number;
   isolationPolicyVersion?: number;
 }
-export interface SessionStartedPayload { sessionId: string; resumed: boolean; provider: BridgeProvider }
+export interface SessionStartedPayload { sessionId: string; resumed: boolean; provider: BridgeProvider; capabilities?: BridgeCapabilities; untrustedAttachmentMode?: boolean }
+export interface BridgeCapabilities {
+  attachments: {
+    supported: boolean;
+    kinds: Array<'image' | 'pdf' | 'text'>;
+    maxCount: number;
+    maxDecodedBytes: number;
+  };
+  modelPolicy?: {
+    effectiveModel?: string;
+    allowedModels?: string[];
+    modelLocked: boolean;
+    effectiveTokenBudget?: number;
+    maxTokenBudget?: number;
+    tokenBudgetLocked: boolean;
+  };
+}
+export interface WireAttachment {
+  id: string;
+  name: string;
+  kind: 'image' | 'pdf' | 'text';
+  mimeType: string;
+  byteSize: number;
+  base64: string;
+  width?: number;
+  height?: number;
+}
+export interface UserMessagePayload { text: string; attachments?: WireAttachment[] }
 
 export interface BridgeEnvelope<T = unknown> {
   protocolVersion: typeof BRIDGE_PROTOCOL_VERSION;
@@ -142,5 +171,6 @@ export function parseEnvelope(raw: string): BridgeEnvelope | { parseError: strin
 export function maxBytesForEnvelope(type: BridgeEnvelope['type'], payload: unknown): number {
   if (type === 'image_result') return MAX_IMAGE_MESSAGE_BYTES;
   if (type === 'tool_result' && isRecord(payload) && payload.binaryTool === true) return MAX_IMAGE_MESSAGE_BYTES;
+  if (type === 'user_message' && isRecord(payload) && Array.isArray(payload.attachments) && payload.attachments.length > 0) return MAX_IMAGE_MESSAGE_BYTES;
   return MAX_MESSAGE_BYTES;
 }

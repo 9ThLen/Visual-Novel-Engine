@@ -46,6 +46,16 @@ export function resolveCapability(capability: AiCapability, permissions: AiPermi
     : permissions[capability];
 }
 
+export function resolveEffectiveCapability(
+  capability: AiCapability,
+  permissions: AiPermissions,
+  untrustedAttachmentMode: boolean,
+): AiPermissionLevel {
+  const configured = resolveCapability(capability, permissions);
+  if (configured === 'blocked') return 'blocked';
+  return untrustedAttachmentMode ? 'confirm' : configured;
+}
+
 export function setCapabilityLevel(
   permissions: AiPermissions,
   capability: AiCapability,

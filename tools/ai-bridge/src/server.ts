@@ -3,7 +3,7 @@ import type { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { MAX_IMAGE_MESSAGE_BYTES, MAX_MESSAGE_BYTES, makeEnvelope, parseEnvelope, type BridgeEnvelope, type BridgeErrorCode, type BridgeProvider, type SessionChallengePayload } from '../../../lib/bridge-protocol';
 import { getBridgeTool } from '../../../lib/ai/bridge-tools';
-import { BridgeToolError, ProviderFailure, type AgentProvider, type AgentProviderFactory } from './provider';
+import { BridgeToolError, ProviderFailure, type AgentAttachment, type AgentProvider, type AgentProviderFactory, type AgentUserInput } from './provider';
 import { BridgeToolRuntime } from './tool-runtime';
 import { createImageToolHandlers } from './image-tools';
 import { normalizeAllowedOrigins } from './origin-policy';
@@ -24,9 +24,10 @@ type LiveSession = {
   resetting: boolean;
   toolCalls: number;
   turn: Promise<void> | null;
+  untrustedAttachmentMode: boolean;
 };
 
-export interface BridgeServerOptions { port?: number; token?: string; allowedOrigins?: string[]; provider?: BridgeProvider; enableCodexBeta?: boolean; providerFactory: AgentProviderFactory; logger?: (line: string) => void; toolTimeoutMs?: number; turnTimeoutMs?: number }
+export interface BridgeServerOptions { port?: number; token?: string; allowedOrigins?: string[]; provider?: BridgeProvider; enableCodexBeta?: boolean; enableClaudeAttachments?: boolean; providerFactory: AgentProviderFactory; logger?: (line: string) => void; toolTimeoutMs?: number; turnTimeoutMs?: number; modelPolicy?: { defaultModel?: string; allowedModels?: string[]; defaultTokenBudget?: number; maxTokenBudget?: number } }
 
 export class AiBridgeServer {
   readonly token: string;
@@ -80,7 +81,7 @@ export class AiBridgeServer {
       if (isBinary || byteLength > MAX_IMAGE_MESSAGE_BYTES) return this.protocolClose(socket, `Message exceeds ${MAX_IMAGE_MESSAGE_BYTES} bytes`);
       const parsed = parseEnvelope(raw);
       if ('parseError' in parsed) return this.protocolClose(socket, parsed.parseError);
-      if (byteLength > MAX_MESSAGE_BYTES && !this.isAuthorizedLargeToolResult(parsed)) return this.protocolClose(socket, 'Oversized tool result is not authorized');
+      if (byteLength > MAX_MESSAGE_BYTES && !this.isAuthorizedLargeMessage(parsed)) return this.protocolClose(socket, 'Oversized message is not authorized');
       if (!authenticated) {
         if (parsed.type !== 'session_start' || !this.validToken(parsed.payload)) return this.errorAndClose(socket, 'UNAUTHORIZED', 'Invalid bridge token');
         authenticated = this.startSession(socket, parsed);
@@ -109,7 +110,7 @@ export class AiBridgeServer {
       else {
         this.session.socket?.close(1000, 'Session resumed elsewhere');
         this.session.socket = socket;
-        this.send(socket, 'session_started', { sessionId: this.session.id, resumed: true, provider: this.options.provider ?? 'claude' }, this.session.id);
+        this.send(socket, 'session_started', { sessionId: this.session.id, resumed: true, provider: this.options.provider ?? 'claude', capabilities: this.capabilities(), untrustedAttachmentMode: this.session.untrustedAttachmentMode }, this.session.id);
         this.toolRuntime.reemitBufferedImages();
         return true;
       }
@@ -120,17 +121,24 @@ export class AiBridgeServer {
       && typeof (payload.context as Record<string, unknown>).locale === 'string'
       ? (payload.context as Record<string, unknown>).locale as string
       : undefined;
+    const policy = this.resolveModelPolicy(payload);
+    if (!policy.ok) {
+      this.sendError(socket, 'VALIDATION_FAILED', 'Requested model or token budget is not allowed', { reason: policy.reason });
+      socket.close();
+      return false;
+    }
     this.session = {
       id,
-      provider: this.options.providerFactory(tools, { locale }),
+      provider: this.options.providerFactory(tools, { locale, model: policy.model, sessionTokenBudget: policy.tokenBudget }),
       socket,
       generating: false,
       interruptReason: null,
       resetting: false,
       toolCalls: 0,
       turn: null,
+      untrustedAttachmentMode: false,
     };
-    this.send(socket, 'session_started', { sessionId: id, resumed: false, provider: this.options.provider ?? 'claude' }, id);
+    this.send(socket, 'session_started', { sessionId: id, resumed: false, provider: this.options.provider ?? 'claude', capabilities: this.capabilities(), untrustedAttachmentMode: false }, id);
     return true;
   }
 
@@ -170,12 +178,16 @@ export class AiBridgeServer {
       return;
     }
     if (message.type !== 'user_message') return this.protocolClose(socket, 'Unexpected client message');
-    const text = this.record(message.payload)?.text;
-    if (typeof text !== 'string' || !text.trim()) return this.protocolClose(socket, 'user_message.text must be a non-empty string');
+    const decoded = this.decodeUserInput(message.payload);
+    if (!decoded.ok) return this.sendError(socket, 'VALIDATION_FAILED', 'Invalid attachment payload', { reason: decoded.reason });
+    if (decoded.input.attachments.length && !this.capabilities().attachments.supported) {
+      return this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'Attachments are not supported by this provider', { reason: 'ATTACHMENTS_UNSUPPORTED' });
+    }
     if (this.session.generating) {
       return this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'A turn is already running', { reason: 'TURN_ALREADY_RUNNING' });
     }
-    this.session.turn = this.runTurn(text);
+    if (decoded.input.attachments.length) this.session.untrustedAttachmentMode = true;
+    this.session.turn = this.runTurn(decoded.input);
   }
 
   private async resetConversation(session: LiveSession, requestId: string): Promise<void> {
@@ -187,6 +199,7 @@ export class AiBridgeServer {
         await session.turn;
       }
       await session.provider.resetConversation();
+      session.untrustedAttachmentMode = false;
       if (this.session === session) this.sendCurrent('conversation_reset_ack', { requestId });
     } catch (error) {
       if (this.session === session) {
@@ -201,13 +214,13 @@ export class AiBridgeServer {
     }
   }
 
-  private async runTurn(text: string): Promise<void> {
+  private async runTurn(input: AgentUserInput): Promise<void> {
     const session = this.session!;
     session.generating = true; session.interruptReason = null; session.toolCalls = 0;
     this.toolRuntime.beginTurn();
     const timer = setTimeout(() => { session.interruptReason = 'timeout'; session.provider.abort(); }, this.options.turnTimeoutMs ?? TURN_TIMEOUT_MS);
     try {
-      for await (const event of session.provider.send(text)) {
+      for await (const event of session.provider.send(input)) {
         if (session.interruptReason) break;
         if (event.type === 'text') this.sendCurrent('assistant_delta', { text: event.text });
         if (event.type === 'done') this.sendCurrent('assistant_done', {
@@ -230,6 +243,35 @@ export class AiBridgeServer {
     }
   }
 
+  private decodeUserInput(payload: unknown): { ok: true; input: AgentUserInput } | { ok: false; reason: string } {
+    const value = this.record(payload);
+    const text = typeof value?.text === 'string' ? value.text : '';
+    const raw = value?.attachments;
+    if (raw !== undefined && !Array.isArray(raw)) return { ok: false, reason: 'ATTACHMENTS_INVALID' };
+    if (Array.isArray(raw) && raw.length > 4) return { ok: false, reason: 'ATTACHMENT_COUNT_EXCEEDED' };
+    const attachments: AgentAttachment[] = [];
+    let total = 0;
+    for (const candidate of raw ?? []) {
+      const item = this.record(candidate);
+      if (!item || typeof item.id !== 'string' || typeof item.name !== 'string' || typeof item.kind !== 'string'
+        || typeof item.mimeType !== 'string' || typeof item.byteSize !== 'number' || typeof item.base64 !== 'string') return { ok: false, reason: 'ATTACHMENTS_INVALID' };
+      let bytes: Uint8Array;
+      try {
+        const canonical = item.base64.replace(/\s/g, '');
+        const buffer = Buffer.from(canonical, 'base64');
+        if (buffer.toString('base64').replace(/=+$/, '') !== canonical.replace(/=+$/, '')) return { ok: false, reason: 'ATTACHMENT_BASE64_INVALID' };
+        bytes = new Uint8Array(buffer);
+      } catch { return { ok: false, reason: 'ATTACHMENT_BASE64_INVALID' }; }
+      total += bytes.byteLength;
+      if (bytes.byteLength !== item.byteSize || bytes.byteLength > 5_000_000 || total > 5_000_000) return { ok: false, reason: 'ATTACHMENT_SIZE_INVALID' };
+      const detected = detectAttachmentBytes(bytes);
+      if (!detected || detected.kind !== item.kind || detected.mimeType !== item.mimeType) return { ok: false, reason: 'ATTACHMENT_TYPE_INVALID' };
+      attachments.push({ id: item.id, name: item.name.slice(0, 120), kind: detected.kind, mimeType: detected.mimeType, bytes });
+    }
+    if (!text.trim() && attachments.length === 0) return { ok: false, reason: 'EMPTY_MESSAGE' };
+    return { ok: true, input: { text, attachments } };
+  }
+
   private callClientTool(toolName: string, input: unknown, timeoutMs?: number): Promise<unknown> {
     const session = this.session;
     if (!session?.socket) return Promise.reject(new Error('App disconnected'));
@@ -245,7 +287,7 @@ export class AiBridgeServer {
       return Promise.reject(new Error('Tool call limit exceeded'));
     }
     const toolCallId = randomUUID();
-    this.sendCurrent('tool_call', { toolCallId, toolName, input });
+    this.sendCurrent('tool_call', { toolCallId, toolName, input, untrustedAttachmentMode: session.untrustedAttachmentMode });
     const timeout = timeoutMs ?? (toolName === 'propose_scene_patch' ? PATCH_TIMEOUT_MS : (this.options.toolTimeoutMs ?? TOOL_TIMEOUT_MS));
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pendingTools.delete(toolCallId); reject(new Error(`Tool ${toolName} timed out`)); }, timeout);
@@ -266,11 +308,31 @@ export class AiBridgeServer {
     ));
   }
 
-  private isAuthorizedLargeToolResult(message: BridgeEnvelope): boolean {
+  private isAuthorizedLargeMessage(message: BridgeEnvelope): boolean {
+    if (message.type === 'user_message') {
+      const attachments = this.record(message.payload)?.attachments;
+      return Array.isArray(attachments) && attachments.length > 0;
+    }
     if (message.type !== 'tool_result') return false;
     const value = this.record(message.payload);
     const pending = typeof value?.toolCallId === 'string' ? this.pendingTools.get(value.toolCallId) : undefined;
     return value?.binaryTool === true && !!pending && getBridgeTool(pending.toolName)?.binaryResult === true;
+  }
+
+  private capabilities() {
+    const supported = this.options.provider === 'openai'
+      || (this.options.provider === 'claude' && this.options.enableClaudeAttachments === true);
+    const policy = this.options.modelPolicy;
+    return { attachments: { supported, kinds: supported ? ['image', 'pdf', 'text'] as Array<'image' | 'pdf' | 'text'> : [], maxCount: 4, maxDecodedBytes: 5 * 1024 * 1024 }, modelPolicy: { effectiveModel: policy?.defaultModel, allowedModels: policy?.allowedModels, modelLocked: !policy?.allowedModels?.length, effectiveTokenBudget: policy?.defaultTokenBudget, maxTokenBudget: policy?.maxTokenBudget, tokenBudgetLocked: !policy?.maxTokenBudget } };
+  }
+
+  private resolveModelPolicy(payload: Record<string, unknown> | null): { ok: true; model?: string; tokenBudget?: number } | { ok: false; reason: string } {
+    const policy = this.options.modelPolicy;
+    const requestedModel = typeof payload?.requestedModel === 'string' ? payload.requestedModel.trim() : '';
+    const requestedBudget = typeof payload?.requestedTokenBudget === 'number' ? Math.floor(payload.requestedTokenBudget) : undefined;
+    if (requestedModel && (!policy?.allowedModels?.length || !policy.allowedModels.includes(requestedModel))) return { ok: false, reason: 'MODEL_NOT_ALLOWED' };
+    if (requestedBudget !== undefined && (!Number.isFinite(requestedBudget) || requestedBudget <= 0 || !policy?.maxTokenBudget || requestedBudget > policy.maxTokenBudget)) return { ok: false, reason: 'TOKEN_BUDGET_NOT_ALLOWED' };
+    return { ok: true, model: requestedModel || policy?.defaultModel, tokenBudget: requestedBudget ?? policy?.defaultTokenBudget };
   }
 
   private disposeSession(): void {
@@ -305,4 +367,18 @@ export class AiBridgeServer {
     socket.close(1008, message);
   }
   private protocolClose(socket: WebSocket, message: string): void { this.errorAndClose(socket, 'PROTOCOL_ERROR', message); }
+}
+
+function detectAttachmentBytes(bytes: Uint8Array): { kind: 'image' | 'pdf' | 'text'; mimeType: string } | null {
+  const starts = (...values: number[]) => values.every((value, index) => bytes[index] === value);
+  if (starts(0xff, 0xd8, 0xff)) return { kind: 'image', mimeType: 'image/jpeg' };
+  if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return { kind: 'image', mimeType: 'image/png' };
+  if (bytes.length >= 12 && new TextDecoder('ascii').decode(bytes.slice(0, 4)) === 'RIFF'
+    && new TextDecoder('ascii').decode(bytes.slice(8, 12)) === 'WEBP') return { kind: 'image', mimeType: 'image/webp' };
+  if (new TextDecoder('ascii').decode(bytes.slice(0, 5)) === '%PDF-') return { kind: 'pdf', mimeType: 'application/pdf' };
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    if (!text.includes('\0') && !/[\u0001-\u0008\u000b\u000c\u000e-\u001f]/.test(text)) return { kind: 'text', mimeType: 'text/plain' };
+  } catch { /* not UTF-8 text */ }
+  return null;
 }

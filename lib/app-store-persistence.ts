@@ -20,7 +20,7 @@ import {
 import type { AiBridgeSettings } from '@/lib/ai/bridge-config';
 import type { BridgeProvider, CodexBetaConsent } from '@/lib/bridge-protocol';
 
-export const APP_STORE_PERSIST_VERSION = 5;
+export const APP_STORE_PERSIST_VERSION = 6;
 
 export type AppStorePersistenceState = {
   storiesMetadata: StoryMetadata[];
@@ -286,6 +286,12 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
           ),
           ...(normalizeCodexConsent(persisted.aiBridgeSettings.codexBetaConsent)
             ? { codexBetaConsent: normalizeCodexConsent(persisted.aiBridgeSettings.codexBetaConsent) }
+            : {}),
+          ...(typeof persisted.aiBridgeSettings.requestedModel === 'string' && persisted.aiBridgeSettings.requestedModel.trim()
+            ? { requestedModel: persisted.aiBridgeSettings.requestedModel.trim() }
+            : {}),
+          ...(typeof persisted.aiBridgeSettings.requestedTokenBudget === 'number' && Number.isFinite(persisted.aiBridgeSettings.requestedTokenBudget) && persisted.aiBridgeSettings.requestedTokenBudget > 0
+            ? { requestedTokenBudget: Math.floor(persisted.aiBridgeSettings.requestedTokenBudget) }
             : {}),
         }
       : currentState.aiBridgeSettings,

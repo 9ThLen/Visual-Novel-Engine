@@ -4,6 +4,7 @@ import {
   type BridgeErrorCode,
   type BridgeProvider,
   type CodexBetaConsent,
+  type WireAttachment,
   isServerMessage,
   makeEnvelope,
   maxBytesForEnvelope,
@@ -23,7 +24,7 @@ export type ToolResult =
   | { ok: false; errorCode: BridgeErrorCode; errorMessage: string; details?: unknown; binaryTool?: boolean };
 export type BridgeDeliveryResult =
   | { ok: true }
-  | { ok: false; reason: 'NOT_AUTHENTICATED' };
+  | { ok: false; reason: 'NOT_AUTHENTICATED' | 'MESSAGE_TOO_LARGE' | 'SERIALIZATION_FAILED' };
 export type BridgeConversationResetResult =
   | { ok: true }
   | { ok: false; reason: 'NOT_AUTHENTICATED' | 'RESET_FAILED' };
@@ -34,8 +35,10 @@ export interface BridgeClientOptions {
   locale?: string;
   preferredProvider?: BridgeProvider;
   codexBetaConsent?: CodexBetaConsent;
+  requestedModel?: string;
+  requestedTokenBudget?: number;
   onEvent: (msg: BridgeEnvelope) => void;
-  onToolCall: (toolCallId: string, toolName: string, input: unknown) => Promise<ToolResult>;
+  onToolCall: (toolCallId: string, toolName: string, input: unknown, context?: { untrustedAttachmentMode: boolean }) => Promise<ToolResult>;
   onConnectionChange: (state: BridgeConnectionState, reason?: BridgeConnectionReason) => void;
   logger?: (message: string, error?: unknown) => void;
 }
@@ -70,10 +73,9 @@ export class BridgeClient {
     this.openSocket(this.reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
   }
 
-  sendUserMessage(text: string, context?: unknown): BridgeDeliveryResult {
+  sendUserMessage(text: string, attachments?: WireAttachment[]): BridgeDeliveryResult {
     if (!this.authenticated || !this.isOpen()) return { ok: false, reason: 'NOT_AUTHENTICATED' };
-    this.send('user_message', context === undefined ? { text } : { text, context });
-    return { ok: true };
+    return this.send('user_message', { text, ...(attachments?.length ? { attachments } : {}) });
   }
 
   interrupt(): BridgeDeliveryResult {
@@ -128,6 +130,8 @@ export class BridgeClient {
         ...(resumeSessionId ? { resumeSessionId } : {}),
         ...(this.options.preferredProvider ? { preferredProvider: this.options.preferredProvider } : {}),
         ...(this.options.codexBetaConsent ? { codexBetaConsent: this.options.codexBetaConsent } : {}),
+        ...(this.options.requestedModel ? { requestedModel: this.options.requestedModel } : {}),
+        ...(this.options.requestedTokenBudget ? { requestedTokenBudget: this.options.requestedTokenBudget } : {}),
         context: { locale: this.options.locale },
       };
       this.send('session_start', payload);
@@ -215,7 +219,9 @@ export class BridgeClient {
       || typeof payload.toolName !== 'string') return;
     let result: ToolResult;
     try {
-      result = await this.options.onToolCall(payload.toolCallId, payload.toolName, payload.input);
+      result = await this.options.onToolCall(payload.toolCallId, payload.toolName, payload.input, {
+        untrustedAttachmentMode: payload.untrustedAttachmentMode === true,
+      });
     } catch (error: unknown) {
       result = {
         ok: false,
@@ -252,10 +258,14 @@ export class BridgeClient {
     }, delay);
   }
 
-  private send(type: Parameters<typeof makeEnvelope>[0], payload: unknown): void {
-    if (!this.isOpen()) return;
-    const raw = JSON.stringify(makeEnvelope(type, payload, this.sessionId));
-    if (new TextEncoder().encode(raw).byteLength <= maxBytesForEnvelope(type, payload)) this.socket?.send(raw);
+  private send(type: Parameters<typeof makeEnvelope>[0], payload: unknown): BridgeDeliveryResult {
+    if (!this.isOpen()) return { ok: false, reason: 'NOT_AUTHENTICATED' };
+    let raw: string;
+    try { raw = JSON.stringify(makeEnvelope(type, payload, this.sessionId)); }
+    catch { return { ok: false, reason: 'SERIALIZATION_FAILED' }; }
+    if (new TextEncoder().encode(raw).byteLength > maxBytesForEnvelope(type, payload)) return { ok: false, reason: 'MESSAGE_TOO_LARGE' };
+    this.socket?.send(raw);
+    return { ok: true };
   }
 
   private readPersistedSessionId(): string {

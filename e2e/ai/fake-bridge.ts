@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 
 import { AiBridgeServer } from '../../tools/ai-bridge/src/server';
-import type { AgentEvent, AgentProvider, ToolInvoker } from '../../tools/ai-bridge/src/provider';
+import type { AgentEvent, AgentProvider, AgentUserInput, ToolInvoker } from '../../tools/ai-bridge/src/provider';
 
 const TOKEN = 'ai-e2e-token';
 
@@ -11,7 +11,8 @@ class DeterministicProvider implements AgentProvider {
 
   constructor(private readonly tools: ToolInvoker) {}
 
-  async *send(text: string): AsyncIterable<AgentEvent> {
+  async *send(input: AgentUserInput): AsyncIterable<AgentEvent> {
+    const text = input.text;
     this.aborted = false;
     if (text.includes('[proposal]')) {
       const context = await this.tools.call('get_scene', { sceneId: 'scene_1' }) as {

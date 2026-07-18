@@ -5,10 +5,11 @@ type StorageLike = {
 };
 
 const DATABASE_NAME = 'vne-storage';
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 const KV_STORE_NAME = 'kv';
 const MEDIA_STORE_NAME = 'media';
 const PENDING_IMAGES_STORE_NAME = 'pending-images';
+const AI_ATTACHMENTS_STORE_NAME = 'ai-attachments';
 const APP_STORAGE_PREFIX = 'vne_';
 const LOCAL_STORAGE_MIGRATION_KEY = '__vne_local_storage_migration__';
 const LOCAL_STORAGE_MIGRATION_VERSION = 1;
@@ -31,8 +32,11 @@ type PendingImageStorageTestAdapter = Partial<{
   list: () => Promise<unknown[]>;
 }>;
 
+type ChatAttachmentStorageTestAdapter = PendingImageStorageTestAdapter;
+
 let mediaBlobStorageTestAdapter: MediaBlobStorageTestAdapter | null = null;
 let pendingImageStorageTestAdapter: PendingImageStorageTestAdapter | null = null;
+let chatAttachmentStorageTestAdapter: ChatAttachmentStorageTestAdapter | null = null;
 
 /** Test seam for jsdom, which does not provide IndexedDB. */
 export function setMediaBlobStorageAdapterForTests(adapter: MediaBlobStorageTestAdapter | null): void {
@@ -42,6 +46,10 @@ export function setMediaBlobStorageAdapterForTests(adapter: MediaBlobStorageTest
 /** Test seam for the AI pending-image repository in jsdom. */
 export function setPendingImageStorageAdapterForTests(adapter: PendingImageStorageTestAdapter | null): void {
   pendingImageStorageTestAdapter = adapter;
+}
+
+export function setChatAttachmentStorageAdapterForTests(adapter: ChatAttachmentStorageTestAdapter | null): void {
+  chatAttachmentStorageTestAdapter = adapter;
 }
 
 export function collectLocalStorageMigrationEntries(storage: Storage | null): [string, string][] {
@@ -111,6 +119,7 @@ function openDatabase(factory: IDBFactory, sourceStorage: Storage | null): Promi
       if (!db.objectStoreNames.contains(KV_STORE_NAME)) db.createObjectStore(KV_STORE_NAME);
       if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) db.createObjectStore(MEDIA_STORE_NAME);
       if (!db.objectStoreNames.contains(PENDING_IMAGES_STORE_NAME)) db.createObjectStore(PENDING_IMAGES_STORE_NAME);
+      if (!db.objectStoreNames.contains(AI_ATTACHMENTS_STORE_NAME)) db.createObjectStore(AI_ATTACHMENTS_STORE_NAME);
     };
     request.onerror = () => rejectOnce(request.error);
     request.onblocked = () => rejectOnce(new Error('IndexedDB open was blocked'));
@@ -364,6 +373,59 @@ export async function listPendingImageRecords<T>(): Promise<T[]> {
     transaction.oncomplete = () => resolve(values);
     transaction.onerror = () => reject(transaction.error ?? request.error);
     transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB pending-image listing aborted'));
+  });
+}
+
+export async function getChatAttachmentRecord<T>(id: string): Promise<T | null> {
+  if (chatAttachmentStorageTestAdapter?.get) return await chatAttachmentStorageTestAdapter.get(id) as T | null;
+  const db = await getBrowserDatabase();
+  return readObjectStoreValue<T>(db, AI_ATTACHMENTS_STORE_NAME, id);
+}
+
+export async function putChatAttachmentRecord(id: string, value: unknown): Promise<void> {
+  if (chatAttachmentStorageTestAdapter?.put) return chatAttachmentStorageTestAdapter.put(id, value);
+  const db = await getBrowserDatabase();
+  return writeObjectStoreValue(db, AI_ATTACHMENTS_STORE_NAME, id, value);
+}
+
+export async function deleteChatAttachmentRecord(id: string): Promise<void> {
+  if (chatAttachmentStorageTestAdapter?.delete) return chatAttachmentStorageTestAdapter.delete(id);
+  const db = await getBrowserDatabase();
+  return writeObjectStoreValue(db, AI_ATTACHMENTS_STORE_NAME, id);
+}
+
+export async function listChatAttachmentRecords<T>(): Promise<T[]> {
+  if (chatAttachmentStorageTestAdapter?.list) return await chatAttachmentStorageTestAdapter.list() as T[];
+  const db = await getBrowserDatabase();
+  return listObjectStoreValues<T>(db, AI_ATTACHMENTS_STORE_NAME);
+}
+
+function readObjectStoreValue<T>(db: IDBDatabase, storeName: string, key: string): Promise<T | null> {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(storeName, 'readonly');
+    const request = transaction.objectStore(storeName).get(key);
+    request.onsuccess = () => resolve(request.result == null ? null : request.result as T);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function writeObjectStoreValue(db: IDBDatabase, storeName: string, key: string, value?: unknown): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(storeName, 'readwrite');
+    const store = transaction.objectStore(storeName);
+    if (value === undefined) store.delete(key); else store.put(value, key);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB write failed'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB write aborted'));
+  });
+}
+
+function listObjectStoreValues<T>(db: IDBDatabase, storeName: string): Promise<T[]> {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(storeName, 'readonly');
+    const request = transaction.objectStore(storeName).getAll();
+    request.onsuccess = () => resolve(request.result as T[]);
+    request.onerror = () => reject(request.error);
   });
 }
 

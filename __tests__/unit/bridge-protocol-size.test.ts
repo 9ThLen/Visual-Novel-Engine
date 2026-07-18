@@ -10,6 +10,10 @@ describe('bridge payload size tiers', () => {
   it('allows image and hinted binary tool envelopes up to 8 MB', () => {
     expect(parseEnvelope(raw('image_result', { data: 'x'.repeat(5_000_000) }))).toMatchObject({ type: 'image_result' });
     expect(parseEnvelope(raw('tool_result', { binaryTool: true, data: 'x'.repeat(1_500_000) }))).toMatchObject({ type: 'tool_result' });
+    expect(parseEnvelope(raw('user_message', {
+      text: '',
+      attachments: [{ id: 'a', name: 'a.pdf', kind: 'pdf', mimeType: 'application/pdf', byteSize: 1, base64: 'x'.repeat(1_500_000) }],
+    }))).toMatchObject({ type: 'user_message' });
   });
 
   it('rejects every envelope beyond 8 MB', () => {

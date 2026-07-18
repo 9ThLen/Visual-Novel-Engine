@@ -26,6 +26,8 @@ import {
 import { findAssetUsage, getImageDetails, listStoryImages } from '@/lib/ai/asset-tools';
 import {
   decodeImageResult,
+  blobToBase64,
+  downscaleImage,
   executeRemoveBackground,
   fromPendingAiImage,
   getStoryImageBinary,
@@ -33,15 +35,19 @@ import {
   type AiImageResult,
 } from '@/lib/ai/image-tools';
 import { pendingImageRepository } from '@/lib/ai/pending-image-storage.web';
+import { chatAttachmentRepository } from '@/lib/ai/attachment-storage.web';
+import { detectAttachment, sanitizeAttachmentName, type AttachmentRef, type StoredChatAttachment } from '@/lib/ai/attachments';
 import { APP_BRIDGE_TOOL_NAMES } from '@/lib/ai/bridge-tools';
-import { AI_CAPABILITIES, resolveCapability, type AiCapability, type AiPermissions } from '@/lib/ai/permissions';
+import { AI_CAPABILITIES, normalizeAiPermissions, resolveCapability, resolveEffectiveCapability, type AiCapability, type AiPermissions } from '@/lib/ai/permissions';
 import { resolveAiBridgeConfig } from '@/lib/ai/bridge-config';
 import { buildAiStoryContext } from '@/lib/ai/story-context';
 import { getStoryImageAssets } from '@/lib/story-image-library';
 import { BridgeClient, type BridgeConnectionState, type BridgeProvider } from '@/lib/bridge-client';
+import type { BridgeCapabilities } from '@/lib/bridge-protocol';
 import { removeImageBackground } from '@/lib/remove-background.web';
 import type { AiScenePatch } from '@/lib/ai/scene-patch-types';
 import { useAppStore } from '@/stores/use-app-store';
+import { addAssetToLibrary } from '@/stores/media-library-actions';
 import {
   useAiChatStore,
   type AiChatPendingCapability,
@@ -53,7 +59,7 @@ import { PatchPreviewCard } from './PatchPreviewCard';
 import { ChangeSetPreviewCard } from './ChangeSetPreviewCard';
 import { ConnectionCard } from './ConnectionCard';
 import { MarkdownText } from './MarkdownText';
-import { AiPermissionSettings } from './AiPermissionSettings';
+import { AiSettingsPanel } from './AiSettingsPanel';
 import { CapabilityConfirmChip } from './CapabilityConfirmChip';
 import { ImageResultCard } from './ImageResultCard';
 
@@ -215,8 +221,9 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   const addMessageToStore = useAiChatStore((s) => s.addMessage);
   const setActiveStory = useAiChatStore((s) => s.setActiveStory);
   const clearMessages = useAiChatStore((s) => s.clearMessages);
+  const markAttachmentImported = useAiChatStore((s) => s.markAttachmentImported);
   const restored = useAiChatStore((s) => s.restoredStoryIds[storyId] === true);
-  const addMessage = useCallback((role: AiChatRole, text: string) => addMessageToStore(role, text, storyId), [addMessageToStore, storyId]);
+  const addMessage = useCallback((role: AiChatRole, text: string, attachments?: AttachmentRef[]) => addMessageToStore(role, text, storyId, attachments), [addMessageToStore, storyId]);
   const setStatus = useAiChatStore((s) => s.setStatus);
   const setPendingInteraction = useAiChatStore((s) => s.setPendingInteraction);
   const cancelPendingInteraction = useAiChatStore((s) => s.cancelPendingInteraction);
@@ -246,9 +253,11 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   const [connectionState, setConnectionState] = useState<'demo' | BridgeConnectionState>(bridgeConfig.enabled ? 'connecting' : 'demo');
   const [connectionReason, setConnectionReason] = useState<string>();
   const [provider, setProvider] = useState<BridgeProvider>();
+  const [capabilities, setCapabilities] = useState<BridgeCapabilities>();
+  const [draftAttachments, setDraftAttachments] = useState<StoredChatAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string>();
   const [retryKey, setRetryKey] = useState(0);
-  const [showPermissions, setShowPermissions] = useState(false);
-  const [showConnectionMenu, setShowConnectionMenu] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [imageResults, setImageResults] = useState<AiImageResult[]>([]);
   const [runtimeErrorReason, setRuntimeErrorReason] = useState<BridgeRuntimeErrorReason>();
   const [clearingChat, setClearingChat] = useState(false);
@@ -297,6 +306,8 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
       locale: language,
       preferredProvider: bridgeConfig.preferredProvider,
       codexBetaConsent: bridgeConfig.codexBetaConsent,
+      requestedModel: bridgeConfig.requestedModel,
+      requestedTokenBudget: bridgeConfig.requestedTokenBudget,
       onConnectionChange: (next, reason) => {
         setConnectionState(next);
         setConnectionReason(reason);
@@ -310,7 +321,10 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
       },
       onEvent: (message) => {
         const payload = typeof message.payload === 'object' && message.payload ? message.payload as Record<string, unknown> : {};
-        if (message.type === 'session_started' && (payload.provider === 'claude' || payload.provider === 'openai' || payload.provider === 'codex')) setProvider(payload.provider);
+        if (message.type === 'session_started' && (payload.provider === 'claude' || payload.provider === 'openai' || payload.provider === 'codex')) {
+          setProvider(payload.provider);
+          if (payload.capabilities && typeof payload.capabilities === 'object') setCapabilities(payload.capabilities as BridgeCapabilities);
+        }
         if (message.type === 'session_challenge' && typeof payload.reason === 'string') setConnectionReason(payload.reason);
         if (message.type === 'image_result' && typeof payload.requestId === 'string') {
           const result = decodeImageResult(payload);
@@ -347,7 +361,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
           setStatus('idle');
         }
       },
-      onToolCall: async (_id, name, input) => {
+      onToolCall: async (_id, name, input, toolContext) => {
         if (!APP_BRIDGE_TOOL_NAMES.includes(name)) return { ok: false, errorCode: 'PROTOCOL_ERROR', errorMessage: `Unsupported tool: ${name}` };
         const state = useAppStore.getState();
         const value = typeof input === 'object' && input ? input as Record<string, unknown> : {};
@@ -384,7 +398,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
         }
         if (name === 'remove_background') {
           if (typeof value.assetId !== 'string') return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'assetId is required' };
-          const permission = resolveCapability('image_generate', useAppStore.getState().settings.aiPermissions);
+          const permission = resolveEffectiveCapability('image_generate', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
           return executeRemoveBackground(
             storyId,
             value.assetId,
@@ -410,7 +424,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
           if (!scene) return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Scene not found' };
           const validation = validateAiScenePatch(scene, patch, buildPatchProjectContext(storyId));
           if (!validation.ok) return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: validation.errors.join('; ') };
-          const permission = resolveCapability('scene_edit', useAppStore.getState().settings.aiPermissions);
+          const permission = resolveEffectiveCapability('scene_edit', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
           if (permission === 'blocked') return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Scene editing is blocked', details: { reason: 'USER_BLOCKED' } };
           if (permission === 'auto') {
             const result = await applyAiScenePatchToStore(patch);
@@ -427,7 +441,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
           if (!metadata) return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Story not found' };
           const validation = validateAiAppearancePatch(metadata, patch);
           if (!validation.ok) return { ok: false, errorCode: validation.code, errorMessage: validation.errors.join('; ') };
-          const permission = resolveCapability('appearance', useAppStore.getState().settings.aiPermissions);
+          const permission = resolveEffectiveCapability('appearance', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
           if (permission === 'blocked') return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Appearance editing is blocked', details: { reason: 'USER_BLOCKED' } };
           if (permission === 'auto') {
             const result = await applyAiAppearancePatchToStore(patch);
@@ -439,13 +453,17 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
           return new Promise(resolve => { patchDecisionRef.current = result => resolve({ ok: true, result }); });
         }
         if (name === 'propose_changeset') {
-          if (resolveCapability('changeset', useAppStore.getState().settings.aiPermissions) === 'blocked') {
+          if (resolveEffectiveCapability('changeset', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true) === 'blocked') {
             return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Story changes are blocked', details: { reason: 'USER_BLOCKED' } };
           }
           return executeProposeChangeSet(storyId, input, setPendingChangeSet, () => new Promise(resolve => { patchDecisionRef.current = resolve; }));
         }
         if (name === 'authorize_capability') {
-          return executeAuthorizeCapability(input, useAppStore.getState().settings.aiPermissions, setPendingCapability, () => new Promise(resolve => { patchDecisionRef.current = resolve as (value: unknown) => void; }));
+          const permissions = normalizeAiPermissions(useAppStore.getState().settings.aiPermissions);
+          const effectivePermissions = toolContext?.untrustedAttachmentMode
+            ? Object.fromEntries(AI_CAPABILITIES.map(capability => [capability, resolveEffectiveCapability(capability, permissions, true)])) as AiPermissions
+            : permissions;
+          return executeAuthorizeCapability(input, effectivePermissions, setPendingCapability, () => new Promise(resolve => { patchDecisionRef.current = resolve as (value: unknown) => void; }));
         }
         return { ok: false, errorCode: 'PROTOCOL_ERROR', errorMessage: `Unsupported tool: ${name}` };
       },
@@ -459,11 +477,11 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
       client.close();
       bridgeRef.current = null;
     };
-  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, addMessage, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, t]);
+  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, addMessage, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, t]);
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
-    if (!text || status !== 'idle') return;
+    if ((!text && draftAttachments.length === 0) || status !== 'idle') return;
     const ctx = activeSceneId ? buildAiStoryContext(storyId, activeSceneId) : null;
     if (!ctx) {
       addMessage('assistant', t('aiChat.noActiveScene'));
@@ -473,7 +491,17 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     if (bridgeRef.current) {
       if (connectionState !== 'connected') return;
       assistantTextRef.current = '';
-      const delivered = bridgeRef.current.sendUserMessage(text);
+      let wireAttachments;
+      try {
+        wireAttachments = await Promise.all(draftAttachments.map(async (attachment) => ({
+          id: attachment.id, name: attachment.name, kind: attachment.kind, mimeType: attachment.mimeType,
+          byteSize: attachment.byteSize, base64: await blobToBase64(attachment.blob),
+        })));
+      } catch {
+        setAttachmentError(t('aiChat.attach.readFailed'));
+        return;
+      }
+      const delivered = bridgeRef.current.sendUserMessage(text, wireAttachments);
       if (!delivered.ok) {
         setInputText(text);
         setStatus('idle');
@@ -482,7 +510,10 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
       }
       setRuntimeErrorReason(undefined);
       setInputText('');
-      addMessage('user', text);
+      const refs = draftAttachments.map(({ blob: _blob, storyId: _storyId, createdAt: _createdAt, messageId: _messageId, ...ref }) => ref);
+      const message = addMessage('user', text, refs);
+      await Promise.all(draftAttachments.map((attachment) => chatAttachmentRepository.put({ ...attachment, messageId: message.id })));
+      setDraftAttachments([]);
       setStatus('thinking');
       return;
     }
@@ -535,7 +566,42 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     const description = describeAiScenePatch(scene, response.patch);
     addMessage('assistant', response.patch.explanation);
     setPendingPatch({ patch: response.patch, description });
-  }, [inputText, status, activeSceneId, storyId, addMessage, setStatus, setPendingPatch, setPendingAppearance, t, connectionState]);
+  }, [inputText, draftAttachments, status, activeSceneId, storyId, addMessage, setStatus, setPendingPatch, setPendingAppearance, t, connectionState]);
+
+  const handleAttach = useCallback(() => {
+    if (typeof document === 'undefined') return;
+    const picker = document.createElement('input');
+    picker.type = 'file';
+    picker.multiple = true;
+    picker.accept = 'image/jpeg,image/png,image/webp,application/pdf,text/plain,text/markdown,.md';
+    picker.onchange = () => {
+      void (async () => {
+        setAttachmentError(undefined);
+        try {
+          const selected = Array.from(picker.files ?? []).slice(0, 4 - draftAttachments.length);
+          const added: StoredChatAttachment[] = [];
+          for (const file of selected) {
+            let blob: Blob = file;
+            let detected = detectAttachment(new Uint8Array(await blob.arrayBuffer()));
+            if (detected.kind === 'image') {
+              const sanitized = await downscaleImage(blob);
+              if (!sanitized) throw new Error('image sanitation failed');
+              blob = sanitized;
+              detected = detectAttachment(new Uint8Array(await blob.arrayBuffer()));
+            }
+            const value: StoredChatAttachment = {
+              id: crypto.randomUUID(), storyId, name: sanitizeAttachmentName(file.name),
+              kind: detected.kind, mimeType: detected.mimeType, byteSize: blob.size, blob, createdAt: Date.now(),
+            };
+            await chatAttachmentRepository.put(value);
+            added.push(value);
+          }
+          setDraftAttachments(current => [...current, ...added]);
+        } catch { setAttachmentError(t('aiChat.attach.invalid')); }
+      })();
+    };
+    picker.click();
+  }, [draftAttachments.length, storyId, t]);
 
   const handleApply = useCallback(async () => {
     if (!pendingPatch) return;
@@ -657,7 +723,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   }, [addMessage, storyId, t]);
 
   const canSend = status === 'idle'
-    && inputText.trim().length > 0
+    && (inputText.trim().length > 0 || draftAttachments.length > 0)
     && (connectionState === 'demo' || connectionState === 'connected');
 
   const handleStop = useCallback(() => {
@@ -694,7 +760,6 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     });
     setConnectionState('closed');
     setConnectionReason(undefined);
-    setShowConnectionMenu(false);
   }, [aiBridgeSettings.token, aiBridgeSettings.url, bridgeConfig.token, bridgeConfig.url, updateAiBridgeSettings]);
 
   const handleResetConnection = useCallback(() => {
@@ -704,10 +769,9 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     setProvider(undefined);
     setConnectionReason(undefined);
     setConnectionState('demo');
-    setShowConnectionMenu(false);
   }, [bridgeConfig.url, updateAiBridgeSettings]);
 
-  const handleClearChat = useCallback(async () => {
+  const handleResetConversation = useCallback(async () => {
     if (clearingChat) return;
     if (connectionState === 'demo') {
       clearMessages(storyId);
@@ -728,6 +792,39 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     }
   }, [addMessage, clearMessages, clearingChat, connectionState, storyId, t]);
 
+  const handleClearLocalData = useCallback(() => {
+    clearMessages(storyId);
+  }, [clearMessages, storyId]);
+
+  if (showSettings) return <AiSettingsPanel
+    connectionState={connectionState}
+    provider={provider}
+    preferredProvider={aiBridgeSettings.preferredProvider}
+    reason={connectionReason}
+    token={aiBridgeSettings.token}
+    url={aiBridgeSettings.url || bridgeConfig.url}
+    permissions={normalizeAiPermissions(settings.aiPermissions)}
+    capabilities={capabilities}
+    requestedModel={aiBridgeSettings.requestedModel}
+    requestedTokenBudget={aiBridgeSettings.requestedTokenBudget}
+    colorScheme={colorScheme}
+    onPermissionsChange={(aiPermissions) => updateSettings({ aiPermissions })}
+    onConnect={handleConnect}
+    onRetry={handleRetryConnection}
+    onDisconnect={handleDisconnect}
+    onResetConnection={handleResetConnection}
+    onResetConversation={() => { void handleResetConversation(); }}
+    onClearLocalData={handleClearLocalData}
+    onClose={() => setShowSettings(false)}
+    onApplyProviderSettings={(requestedModel, requestedTokenBudget) => {
+      bridgeRef.current?.close();
+      BridgeClient.clearPersistedSession(bridgeConfig.url);
+      updateAiBridgeSettings({ requestedModel, requestedTokenBudget, disabled: false });
+      setShowSettings(false);
+      setRetryKey(value => value + 1);
+    }}
+  />;
+
   return (
     <View style={{ flex: 1 }}>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -735,31 +832,9 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
           {connectionState === 'demo' ? t('aiChat.connection.demo') : connectionState === 'connected' ? t('aiChat.connection.connected', { provider: provider === 'codex' ? 'Codex CLI · Beta' : provider === 'openai' ? 'OpenAI API' : 'Claude Code' }) : connectionState === 'connecting' || connectionState === 'reconnecting' ? t('aiChat.connection.connecting') : t('aiChat.connection.error')}
         </Text>
         <View style={{ flexDirection: 'row', gap: 12 }}>
-          {connectionState === 'connected' ? (
-            <Pressable accessibilityRole="button" accessibilityLabel={t('aiChat.connection.menu')} onPress={() => setShowConnectionMenu(value => !value)}>
-              <Text style={{ color: colors.muted, fontSize: 16 }}>⋯</Text>
-            </Pressable>
-          ) : null}
-          <Pressable accessibilityRole="button" accessibilityLabel={t('aiChat.permissions.open')} onPress={() => setShowPermissions(value => !value)}><Text style={{ color: colors.muted, fontSize: 15 }}>⚙</Text></Pressable>
-          <Pressable accessibilityRole="button" disabled={clearingChat} onPress={handleClearChat}>
-            <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.clear')}</Text>
-          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('aiChat.settings.open')} onPress={() => setShowSettings(true)}><Text style={{ color: colors.muted, fontSize: 15 }}>⚙</Text></Pressable>
         </View>
       </View>
-      {showConnectionMenu ? (
-        <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', gap: 14 }}>
-          <Pressable accessibilityRole="button" onPress={handleDisconnect}>
-            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>{t('aiChat.connection.disconnect')}</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={handleResetConnection}>
-            <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '700' }}>{t('aiChat.connection.reset')}</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => { setShowPermissions(true); setShowConnectionMenu(false); }}>
-            <Text style={{ color: colors.foreground, fontSize: 12 }}>{t('aiChat.permissions.title')}</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      {showPermissions ? <AiPermissionSettings permissions={settings.aiPermissions} onChange={(aiPermissions) => updateSettings({ aiPermissions })} colorScheme={colorScheme} /> : null}
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 10 }}>
         {connectionState !== 'connected' ? (
           <ConnectionCard
@@ -792,7 +867,18 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
         {restored && messages.length > 0 ? <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.restoredNote')}</Text> : null}
 
         {messages.map((message) => (
-          <MessageBubble key={message.id} role={message.role} text={message.text} colors={colors} />
+          <MessageBubble key={message.id} role={message.role} text={message.text} attachments={message.attachments} colors={colors} importLabel={t('aiChat.attach.import')} unavailableLabel={t('aiChat.attach.unavailable')} onImport={async (attachment) => {
+            if (attachment.assetId || attachment.kind !== 'image') return;
+            const stored = await chatAttachmentRepository.get(attachment.id);
+            if (!stored) return;
+            const url = URL.createObjectURL(stored.blob);
+            try {
+              const asset = await addAssetToLibrary(url, attachment.name, 'image');
+              useAppStore.getState().addImageAssetToStory(storyId, asset.id);
+              await chatAttachmentRepository.put({ ...stored, assetId: asset.id });
+              markAttachmentImported(storyId, attachment.id, asset.id);
+            } finally { URL.revokeObjectURL(url); }
+          }} />
         ))}
 
         {imageResults.map((result) => (
@@ -885,7 +971,10 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
         ) : null}
       </ScrollView>
 
+      {draftAttachments.length ? <View style={{ paddingHorizontal: 10, gap: 4 }}>{draftAttachments.map(item => <View key={item.id} style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: colors.foreground, fontSize: 11 }}>{item.name} · {Math.ceil(item.byteSize / 1024)} KB</Text><Pressable accessibilityRole="button" onPress={() => { void chatAttachmentRepository.delete(item.id); setDraftAttachments(current => current.filter(value => value.id !== item.id)); }}><Text style={{ color: colors.danger }}>×</Text></Pressable></View>)}</View> : null}
+      {attachmentError ? <Text accessibilityRole="alert" style={{ color: colors.danger, paddingHorizontal: 10, fontSize: 11 }}>{attachmentError}</Text> : null}
       <View style={{ flexDirection: 'row', gap: 8, padding: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('aiChat.attach.button')} disabled={connectionState !== 'connected' || !capabilities?.attachments.supported || status !== 'idle' || draftAttachments.length >= 4} onPress={handleAttach} style={{ minWidth: 38, alignItems: 'center', justifyContent: 'center', opacity: connectionState === 'connected' && capabilities?.attachments.supported ? 1 : 0.4 }}><Text style={{ color: colors.foreground, fontSize: 20 }}>＋</Text></Pressable>
         <TextInput
           value={inputText}
           onChangeText={setInputText}
@@ -947,10 +1036,18 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
 function MessageBubble({
   role,
   text,
+  attachments,
+  onImport,
+  importLabel,
+  unavailableLabel,
   colors,
 }: {
   role: AiChatRole;
   text: string;
+  attachments?: AttachmentRef[];
+  onImport?: (attachment: AttachmentRef) => void | Promise<void>;
+  importLabel: string;
+  unavailableLabel: string;
   colors: ReturnType<typeof useColors>;
 }) {
   const isUser = role === 'user';
@@ -969,9 +1066,16 @@ function MessageBubble({
         borderStyle: isSystem ? 'dashed' : 'solid',
       }}
     >
+      {attachments?.map(attachment => <AttachmentLine key={attachment.id} attachment={attachment} isUser={isUser} colors={colors} importLabel={importLabel} unavailableLabel={unavailableLabel} onImport={onImport} />)}
       {role === 'assistant'
         ? <MarkdownText text={text} color={colors.foreground} />
         : <Text style={{ color: isUser ? '#ffffff' : colors.foreground, fontSize: 13, lineHeight: 18 }}>{text}</Text>}
     </View>
   );
+}
+
+function AttachmentLine({ attachment, isUser, colors, importLabel, unavailableLabel, onImport }: { attachment: AttachmentRef; isUser: boolean; colors: ReturnType<typeof useColors>; importLabel: string; unavailableLabel: string; onImport?: (attachment: AttachmentRef) => void | Promise<void> }) {
+  const [available, setAvailable] = useState<boolean | null>(null);
+  useEffect(() => { let active = true; void chatAttachmentRepository.get(attachment.id).then(value => { if (active) setAvailable(!!value); }); return () => { active = false; }; }, [attachment.id]);
+  return <View><Text style={{ color: isUser ? '#ffffff' : colors.foreground, fontSize: 11, fontWeight: '700' }}>📎 {attachment.name} · {Math.ceil(attachment.byteSize / 1024)} KB</Text>{available === false ? <Text style={{ color: isUser ? '#ffffff' : colors.muted, fontSize: 10 }}>{unavailableLabel}</Text> : attachment.kind === 'image' && !attachment.assetId && onImport ? <Pressable accessibilityRole="button" onPress={() => { void onImport(attachment); }}><Text style={{ color: isUser ? '#ffffff' : colors.primary, fontSize: 11, textDecorationLine: 'underline' }}>{importLabel}</Text></Pressable> : null}</View>;
 }

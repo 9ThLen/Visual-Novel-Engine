@@ -74,7 +74,7 @@ function makeProvider(impl: typeof fetch, bridge = new FakeBridge()) {
 }
 async function run(provider: OpenAiProvider, text = 'hello'): Promise<AgentEvent[]> {
   const events: AgentEvent[] = [];
-  for await (const event of provider.send(text)) events.push(event);
+  for await (const event of provider.send({ text, attachments: [] })) events.push(event);
   return events;
 }
 const texts = (events: AgentEvent[]): string =>
@@ -85,6 +85,19 @@ const asRecords = (input: unknown): Array<Record<string, unknown>> =>
 // --- Request contract ----------------------------------------------------
 
 describe('OpenAiProvider request contract', () => {
+  it('maps image and PDF attachments to low-detail Responses inputs', async () => {
+    const { impl, bodies } = fakeFetch(() => sseResponse([delta('ok'), completed([message('ok')])]));
+    const provider = makeProvider(impl).provider;
+    for await (const _event of provider.send({ text: 'inspect', attachments: [
+      { id: 'image', name: 'image.png', kind: 'image', mimeType: 'image/png', bytes: new Uint8Array([0x89, 0x50]) },
+      { id: 'pdf', name: 'notes.pdf', kind: 'pdf', mimeType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-') },
+    ] })) { /* consume */ }
+    const user = asRecords(bodies[0].input).find(item => item.role === 'user');
+    const content = asRecords(user?.content);
+    expect(content.find(item => item.type === 'input_image')).toMatchObject({ detail: 'low' });
+    expect(content.find(item => item.type === 'input_file')).toMatchObject({ filename: 'notes.pdf', detail: 'low' });
+    expect(String(content.find(item => item.type === 'input_file')?.file_data)).toContain('data:application/pdf;base64,');
+  });
   it('sends a store:false streaming request exposing only model tools', async () => {
     const { impl, bodies } = fakeFetch(() => sseResponse([delta('hi'), completed([message('hi')])]));
     await run(makeProvider(impl).provider);
@@ -397,7 +410,7 @@ describe('OpenAiProvider failure handling', () => {
     const impl = (async () => new Response(stream, { status: 200 })) as unknown as typeof fetch;
     const provider = new OpenAiProvider(new FakeBridge(), undefined, { apiKey: 'k', fetch: impl });
 
-    for await (const event of provider.send('x')) {
+    for await (const event of provider.send({ text: 'x', attachments: [] })) {
       if (event.type === 'text') break;
     }
     expect(released).toBe(true);
@@ -407,7 +420,7 @@ describe('OpenAiProvider failure handling', () => {
     const { impl } = fakeFetch((_body, init) => abortableResponse(init.signal!, 'Hi'));
     const { provider } = makeProvider(impl);
     const events: AgentEvent[] = [];
-    const pending = (async () => { for await (const event of provider.send('x')) events.push(event); })();
+    const pending = (async () => { for await (const event of provider.send({ text: 'x', attachments: [] })) events.push(event); })();
     await new Promise(resolve => setTimeout(resolve, 20));
     provider.abort();
     await expect(pending).rejects.toThrow();

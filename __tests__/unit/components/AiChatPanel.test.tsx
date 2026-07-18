@@ -157,7 +157,10 @@ describe('AiChatPanel', () => {
     expect(screen.getByText(/still working on the previous request/)).toBeTruthy();
     expect(JSON.stringify(useAiChatStore.getState().messagesByStory)).not.toContain('A turn is already running');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Connection actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'AI settings' }));
+    expect(screen.getByText('Provider status')).toBeTruthy();
+    expect(screen.getByText('Attachments and privacy')).toBeTruthy();
+    expect(screen.getByText('Danger zone')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
     expect(useAppStore.getState().aiBridgeSettings).toEqual({
       url: 'ws://127.0.0.1:8787',
@@ -168,7 +171,6 @@ describe('AiChatPanel', () => {
     await waitFor(() => expect(SocketMock.instances).toHaveLength(2));
     act(() => SocketMock.instances[1].start('session-2'));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Connection actions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Reset connection' }));
     expect(useAppStore.getState().aiBridgeSettings).toEqual({ url: '', token: '', disabled: true, preferredProvider: 'openai', codexBetaConsent: undefined });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Connect real AI' })).toBeTruthy());

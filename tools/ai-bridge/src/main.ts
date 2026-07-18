@@ -70,15 +70,22 @@ async function main(): Promise<void> {
     provider,
     allowedOrigins: origins,
     enableCodexBeta,
+    enableClaudeAttachments: process.env.AI_BRIDGE_ENABLE_CLAUDE_ATTACHMENTS === 'true',
+    modelPolicy: provider === 'openai' ? {
+      defaultModel: process.env.OPENAI_CHAT_MODEL,
+      allowedModels: csv(process.env.OPENAI_ALLOWED_CHAT_MODELS),
+      defaultTokenBudget: positiveNumber(process.env.OPENAI_SESSION_TOKEN_BUDGET),
+      maxTokenBudget: positiveNumber(process.env.OPENAI_MAX_SESSION_TOKEN_BUDGET),
+    } : undefined,
     providerFactory: (tools, session) => {
       switch (provider) {
         case 'claude': return new ClaudeAgentProvider(tools, session);
         case 'codex': return new CodexCliProvider(tools, session);
         case 'openai': return new OpenAiProvider(tools, session, {
           apiKey: process.env.OPENAI_API_KEY ?? '',
-          model: process.env.OPENAI_CHAT_MODEL,
+          model: session?.model ?? process.env.OPENAI_CHAT_MODEL,
           systemPrompt: OPENAI_SYSTEM_PROMPT,
-          sessionTokenBudget: positiveNumber(process.env.OPENAI_SESSION_TOKEN_BUDGET),
+          sessionTokenBudget: session?.sessionTokenBudget ?? positiveNumber(process.env.OPENAI_SESSION_TOKEN_BUDGET),
         });
       }
     },
@@ -97,6 +104,10 @@ async function main(): Promise<void> {
 function positiveNumber(value: string | undefined): number | undefined {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
+}
+function csv(value: string | undefined): string[] | undefined {
+  const values = value?.split(',').map(item => item.trim()).filter(Boolean);
+  return values?.length ? [...new Set(values)] : undefined;
 }
 
 void main().catch(error => { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; });

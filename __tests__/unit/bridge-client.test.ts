@@ -293,10 +293,10 @@ describe('BridgeClient', () => {
     expect(socket.sent).toHaveLength(1);
 
     socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'claude' }, 'session-1'));
-    expect(client.sendUserMessage('delivered', { scene: 2 })).toEqual({ ok: true });
+    expect(client.sendUserMessage('delivered')).toEqual({ ok: true });
     expect(frame(socket, 1)).toMatchObject({
       type: 'user_message',
-      payload: { text: 'delivered', context: { scene: 2 } },
+      payload: { text: 'delivered' },
     });
     client.close();
   });
@@ -314,6 +314,19 @@ describe('BridgeClient', () => {
     second.open();
     second.receive(makeEnvelope('session_started', { sessionId: 'session-2', resumed: false, provider: 'claude' }, 'session-2'));
     expect(second.sent).toHaveLength(1);
+    client.close();
+  });
+
+  it('reports an oversized attachment frame instead of silently dropping it', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'claude' }, 'session-1'));
+    expect(client.sendUserMessage('', [{
+      id: 'a', name: 'a.pdf', kind: 'pdf', mimeType: 'application/pdf', byteSize: 7_000_000, base64: 'x'.repeat(8_000_000),
+    }])).toEqual({ ok: false, reason: 'MESSAGE_TOO_LARGE' });
+    expect(socket.sent).toHaveLength(1);
     client.close();
   });
 
@@ -339,7 +352,7 @@ describe('BridgeClient', () => {
     }, 'session-1'));
     await Promise.resolve();
 
-    expect(options.onToolCall).toHaveBeenCalledWith('tool-7', 'save', { value: 1 });
+    expect(options.onToolCall).toHaveBeenCalledWith('tool-7', 'save', { value: 1 }, { untrustedAttachmentMode: false });
     expect(frame(socket, 1)).toMatchObject({
       type: 'tool_result',
       payload: { toolCallId: 'tool-7', ok: true, result: 'done' },

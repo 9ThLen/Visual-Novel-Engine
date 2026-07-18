@@ -25,12 +25,12 @@ if (process.env.RUN_OPENAI_LIVE_SMOKE !== 'true') {
   });
 
   try {
-    const first = await consume(provider.send('Reply with exactly: OK'));
+    const first = await consume(provider.send({ text: 'Reply with exactly: OK', attachments: [] }));
     provider.resetConversation();
-    const second = await consume(provider.send('Call list_scenes once, then reply with exactly: TOOL OK'));
+    const second = await consume(provider.send({ text: 'Call list_scenes once, then reply with exactly: TOOL OK', attachments: [] }));
     if (!calls.includes('list_scenes')) throw new Error('MODEL_TOOL_NOT_CALLED');
 
-    const interrupted = consume(provider.send('Wait before answering.'));
+    const interrupted = consume(provider.send({ text: 'Wait before answering.', attachments: [] }));
     provider.abort();
     await interrupted.catch((error: unknown) => {
       if (!(error instanceof Error) || error.name !== 'AbortError') throw error;
