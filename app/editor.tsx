@@ -10,9 +10,11 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
+import { EditorStoryCard } from '@/components/editor/EditorStoryCard';
 import { Button, ConfirmDialog } from '@/components/ui';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
+import { withAlpha } from '@/lib/_core/theme';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import { StoryMetadata } from '@/lib/story-domain';
 import { pickStoryFile } from '@/lib/pick-story-file';
@@ -20,12 +22,6 @@ import { importStory } from '@/lib/story-hooks';
 import { showToast } from '@/lib/toast-store';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { useAppStore } from '@/stores/use-app-store';
-
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});
 
 export default function EditorScreen() {
   const router = useRouter();
@@ -118,7 +114,13 @@ export default function EditorScreen() {
         contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.hero, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.hero,
+            { backgroundColor: withAlpha(colors.primary, 0.06), borderColor: withAlpha(colors.primary, 0.22) },
+          ]}
+        >
+          <View style={[styles.heroAccent, { backgroundColor: colors.primary }]} />
           <View style={styles.heroCopy}>
             <Text style={[styles.eyebrow, { color: colors.primary }]}>{t('editor.creatorWorkspace')}</Text>
             <Text style={[styles.heroTitle, { color: colors.foreground }]}>{t('editor.title')}</Text>
@@ -126,6 +128,20 @@ export default function EditorScreen() {
               {t('editor.workspaceSubtitle')}
             </Text>
           </View>
+
+          <View style={styles.statsRow}>
+            <View style={[styles.statPill, { backgroundColor: withAlpha(colors.foreground, 0.05) }]}>
+              <View style={[styles.statDot, { backgroundColor: colors.primary }]} />
+              <Text style={[styles.statValue, { color: colors.foreground }]}>{storiesMetadata.length}</Text>
+              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('home.stories')}</Text>
+            </View>
+            <View style={[styles.statPill, { backgroundColor: withAlpha(colors.foreground, 0.05) }]}>
+              <View style={[styles.statDot, { backgroundColor: colors.secondary }]} />
+              <Text style={[styles.statValue, { color: colors.foreground }]}>{totalScenes}</Text>
+              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('editor.scenes')}</Text>
+            </View>
+          </View>
+
           <View style={styles.heroActions}>
             <Button
               variant="primary"
@@ -144,17 +160,6 @@ export default function EditorScreen() {
             >
               {t('editor.import')}
             </Button>
-          </View>
-
-          <View style={styles.statsRow}>
-            <View style={[styles.statCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Text style={[styles.statValue, { color: colors.foreground }]}>{storiesMetadata.length}</Text>
-              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('home.stories')}</Text>
-            </View>
-            <View style={[styles.statCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Text style={[styles.statValue, { color: colors.foreground }]}>{totalScenes}</Text>
-              <Text style={[styles.statLabel, { color: colors.muted }]}>{t('editor.scenes')}</Text>
-            </View>
           </View>
         </View>
 
@@ -188,33 +193,21 @@ export default function EditorScreen() {
             </Button>
           </View>
         ) : (
-          <View style={storyColumns > 1 ? styles.storyGrid : styles.storyStack}>
-            {storiesMetadata.map((story) => (
-              <View
-                key={story.id}
-                style={[
-                  styles.storyCard,
-                  storyColumns > 1 && styles.storyCardGrid,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                ]}
-              >
-                <Text style={[styles.storyTitle, { color: colors.foreground }]} numberOfLines={1}>
-                  {story.title}
-                </Text>
-                <Text style={[styles.storyMeta, { color: colors.muted }]}>
-                  {t('editor.sceneCount', { count: story.sceneCount })} · {t('common.updated')} {dateFormatter.format(new Date(story.updatedAt))}
-                </Text>
-
-                <View style={styles.actionRow}>
-                  <Button variant="primary" size="sm" onPress={() => handleEditStory(story)}>
-                    {t('common.edit')}
-                  </Button>
-                  <Button variant="ghost" size="sm" onPress={() => handleDeleteStory(story.id)}>
-                    {t('common.delete')}
-                  </Button>
+          <View style={styles.librarySection}>
+            <Text style={[styles.sectionHeading, { color: colors.foreground }]}>
+              {t('editor.yourStories')}
+            </Text>
+            <View style={storyColumns > 1 ? styles.storyGrid : styles.storyStack}>
+              {storiesMetadata.map((story) => (
+                <View key={story.id} style={storyColumns > 1 ? styles.storyCardGrid : undefined}>
+                  <EditorStoryCard
+                    story={story}
+                    onEdit={handleEditStory}
+                    onDelete={handleDeleteStory}
+                  />
                 </View>
-              </View>
-            ))}
+              ))}
+            </View>
           </View>
         )}
       </ScrollView>
@@ -248,7 +241,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radius.xl,
     padding: spacing.xl,
+    paddingLeft: spacing.xl + spacing.xs,
     gap: spacing.lg,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  heroAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
   },
   heroCopy: {
     gap: spacing.sm,
@@ -272,23 +275,29 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  statCard: {
-    minWidth: 104,
-    borderWidth: 1,
-    borderRadius: radius.md,
+  statPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
+    borderRadius: radius.full,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs + 2,
+  },
+  statDot: {
+    width: 7,
+    height: 7,
+    borderRadius: radius.full,
   },
   statValue: {
-    fontSize: typeScale.sectionTitle.fontSize,
-    lineHeight: typeScale.sectionTitle.lineHeight,
+    fontSize: typeScale.label.fontSize,
+    lineHeight: typeScale.label.lineHeight,
     fontWeight: '800',
   },
   statLabel: {
     ...typeScale.caption,
-    marginTop: 2,
   },
   formCard: {
     borderWidth: 1,
@@ -327,6 +336,14 @@ const styles = StyleSheet.create({
     fontSize: typeScale.label.fontSize,
     lineHeight: typeScale.label.lineHeight,
   },
+  librarySection: {
+    gap: spacing.md,
+  },
+  sectionHeading: {
+    fontSize: typeScale.sectionTitle.fontSize,
+    lineHeight: typeScale.sectionTitle.lineHeight,
+    fontWeight: '800',
+  },
   storyStack: {
     gap: spacing.md,
   },
@@ -335,27 +352,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  storyCard: {
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
   storyCardGrid: {
     flexBasis: '48%',
     flexGrow: 1,
-  },
-  storyTitle: {
-    fontSize: typeScale.sectionTitle.fontSize,
-    lineHeight: typeScale.sectionTitle.lineHeight,
-    fontWeight: '800',
-  },
-  storyMeta: {
-    ...typeScale.caption,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
+    minWidth: 280,
   },
 });

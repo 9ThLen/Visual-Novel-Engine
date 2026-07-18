@@ -345,13 +345,15 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   chip: {
-    color: SHOWCASE_COLORS.secondary,
+    // Terracotta, like the reference — the chips are the one place the warm
+    // accent shows through the banner's own colours.
+    color: SHOWCASE_COLORS.accent,
     fontSize: 12,
-    fontWeight: '600',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    fontWeight: '700',
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: `${SHOWCASE_COLORS.text}1a`,
+    backgroundColor: `${SHOWCASE_COLORS.accent}24`,
     overflow: 'hidden',
   },
   heroTitle: {
@@ -373,20 +375,20 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   primaryButton: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 24,
     paddingVertical: 11,
-    borderRadius: 10,
-    backgroundColor: SHOWCASE_COLORS.text,
+    borderRadius: 999,
+    backgroundColor: SHOWCASE_COLORS.primary,
   },
   primaryButtonText: {
-    color: SHOWCASE_COLORS.bg,
+    color: SHOWCASE_COLORS.onPrimary,
     fontSize: 14,
     fontWeight: '800',
   },
   secondaryButton: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingVertical: 11,
-    borderRadius: 10,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: `${SHOWCASE_COLORS.text}59`,
   },

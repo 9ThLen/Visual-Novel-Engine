@@ -1,4 +1,4 @@
-export const BRIDGE_PROTOCOL_VERSION = 2 as const;
+export const BRIDGE_PROTOCOL_VERSION = 3 as const;
 
 export const MAX_MESSAGE_BYTES = 1_000_000;
 export const MAX_IMAGE_MESSAGE_BYTES = 8_000_000;
@@ -15,6 +15,7 @@ export type ClientMessageType =
   | 'image_result_ack';
 
 export type ServerMessageType =
+  | 'session_challenge'
   | 'session_started'
   | 'assistant_delta'
   | 'assistant_done'
@@ -40,8 +41,41 @@ export interface BridgeError {
   details?: unknown;
 }
 
-export type BridgeProvider = 'claude' | 'codex';
-export interface SessionStartPayload { token?: string; resumeSessionId?: string; context?: { locale?: string } }
+export type BridgeProvider = 'claude' | 'openai' | 'codex';
+export interface CodexBetaConsent {
+  acceptedAt: string;
+  disclosureVersion: number;
+  isolationPolicyVersion: number;
+  codexCliVersion: string;
+}
+export type SessionChallengeReason =
+  | 'OPENAI_API_KEY_MISSING'
+  | 'OPENAI_API_AUTH_FAILED'
+  | 'OPENAI_MODEL_UNAVAILABLE'
+  | 'CODEX_BETA_CONSENT_REQUIRED'
+  | 'CODEX_BETA_CONSENT_STALE'
+  | 'CODEX_KEYRING_REQUIRED'
+  | 'CODEX_KEYRING_UNAVAILABLE'
+  | 'CODEX_KEYRING_NOT_AUTHENTICATED'
+  | 'CODEX_CLI_VERSION_UNSUPPORTED'
+  | 'CODEX_HARDENING_UNSUPPORTED'
+  | 'CODEX_HARDENING_CHECK_FAILED';
+export interface SessionStartPayload {
+  token?: string;
+  resumeSessionId?: string;
+  preferredProvider?: BridgeProvider;
+  codexBetaConsent?: CodexBetaConsent;
+  context?: { locale?: string };
+}
+export interface SessionChallengePayload {
+  provider: BridgeProvider;
+  reason: SessionChallengeReason;
+  retryable: boolean;
+  cliVersion?: string;
+  platformProfileId?: string;
+  disclosureVersion?: number;
+  isolationPolicyVersion?: number;
+}
 export interface SessionStartedPayload { sessionId: string; resumed: boolean; provider: BridgeProvider }
 
 export interface BridgeEnvelope<T = unknown> {
@@ -56,7 +90,7 @@ const CLIENT_MESSAGE_TYPES: readonly ClientMessageType[] = [
   'session_start', 'session_end', 'user_message', 'interrupt', 'conversation_reset', 'tool_result', 'ping', 'image_result_ack',
 ];
 const SERVER_MESSAGE_TYPES: readonly ServerMessageType[] = [
-  'session_started', 'assistant_delta', 'assistant_done', 'conversation_reset_ack', 'tool_call', 'status', 'error', 'pong', 'image_result',
+  'session_challenge', 'session_started', 'assistant_delta', 'assistant_done', 'conversation_reset_ack', 'tool_call', 'status', 'error', 'pong', 'image_result',
 ];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

@@ -4,12 +4,16 @@ export type AiBridgeSettings = {
   url: string;
   token: string;
   disabled: boolean;
+  preferredProvider?: BridgeProvider;
+  codexBetaConsent?: CodexBetaConsent;
 };
 
 export type ResolvedAiBridgeConfig = {
   url: string;
   token: string;
   enabled: boolean;
+  preferredProvider: BridgeProvider;
+  codexBetaConsent?: CodexBetaConsent;
 };
 
 export type NormalizeLocalBridgeUrlResult =
@@ -64,5 +68,8 @@ export function resolveAiBridgeConfig(
     url: normalizedUrl.ok ? normalizedUrl.url : urlCandidate,
     token,
     enabled: normalizedUrl.ok && settings?.disabled !== true && token.length > 0,
+    preferredProvider: settings?.preferredProvider ?? 'openai',
+    ...(settings?.codexBetaConsent ? { codexBetaConsent: settings.codexBetaConsent } : {}),
   };
 }
+import type { BridgeProvider, CodexBetaConsent } from '@/lib/bridge-protocol';

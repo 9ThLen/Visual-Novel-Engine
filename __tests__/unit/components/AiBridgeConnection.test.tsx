@@ -12,11 +12,13 @@ describe('AI bridge connection UI', () => {
       url: 'ws://localhost:9999',
       token: 'store-token',
       enabled: true,
+      preferredProvider: 'openai',
     });
     expect(resolveAiBridgeConfig({ url: '', token: '', disabled: false })).toEqual({
       url: 'ws://localhost:8788',
       token: 'env-token',
       enabled: true,
+      preferredProvider: 'openai',
     });
     vi.unstubAllEnvs();
   });
@@ -28,11 +30,12 @@ describe('AI bridge connection UI', () => {
     const view = render(<ConnectionCard state="demo" {...common} />);
     expect(screen.getByText('Connect the AI assistant')).toBeTruthy();
     fireEvent.click(screen.getByText('Connect real AI'));
-    expect(screen.getByText('Unavailable in this release')).toBeTruthy();
-    expect(screen.getByText(/npx @visual-novel-engine\/ai-bridge --provider claude/)).toBeTruthy();
+    expect(screen.getByText(/OpenAI API.*Recommended/)).toBeTruthy();
+    expect(screen.queryByText(/Codex.*Beta/)).toBeNull();
+    expect(screen.getByText(/npx @visual-novel-engine\/ai-bridge --provider openai/)).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText('Pairing token'), { target: { value: 'new-token' } });
     fireEvent.click(screen.getByText('Connect'));
-    expect(onConnect).toHaveBeenCalledWith('new-token', 'ws://127.0.0.1:8787');
+    expect(onConnect).toHaveBeenCalledWith('new-token', 'ws://127.0.0.1:8787', 'openai');
 
     view.rerender(<ConnectionCard state="connecting" {...common} />);
     expect(screen.getByText(/Waiting for the bridge/)).toBeTruthy();

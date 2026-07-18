@@ -355,11 +355,11 @@ const styles = StyleSheet.create({
   primaryButton: {
     paddingHorizontal: 24,
     paddingVertical: 11,
-    borderRadius: 10,
-    backgroundColor: SHOWCASE_COLORS.text,
+    borderRadius: 999,
+    backgroundColor: SHOWCASE_COLORS.primary,
   },
   primaryButtonText: {
-    color: SHOWCASE_COLORS.bg,
+    color: SHOWCASE_COLORS.onPrimary,
     fontSize: 14,
     fontWeight: '800',
   },

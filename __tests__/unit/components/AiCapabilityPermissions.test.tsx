@@ -19,8 +19,8 @@ describe('AI capability authorization', () => {
   it('allows automatic capabilities without showing confirmation', async () => {
     const setPending = vi.fn();
     await expect(executeAuthorizeCapability(
-      { capability: 'image_generate' },
-      { ...defaultAiPermissions, image_generate: 'auto' },
+      { capability: 'appearance' },
+      { ...defaultAiPermissions, appearance: 'auto' },
       setPending,
       vi.fn(),
     )).resolves.toEqual({ ok: true, result: { allowed: true } });

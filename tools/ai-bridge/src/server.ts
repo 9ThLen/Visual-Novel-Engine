@@ -1,12 +1,14 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { MAX_IMAGE_MESSAGE_BYTES, MAX_MESSAGE_BYTES, makeEnvelope, parseEnvelope, type BridgeEnvelope, type BridgeErrorCode, type BridgeProvider } from '../../../lib/bridge-protocol';
+import { MAX_IMAGE_MESSAGE_BYTES, MAX_MESSAGE_BYTES, makeEnvelope, parseEnvelope, type BridgeEnvelope, type BridgeErrorCode, type BridgeProvider, type SessionChallengePayload } from '../../../lib/bridge-protocol';
 import { getBridgeTool } from '../../../lib/ai/bridge-tools';
-import { BridgeToolError, type AgentProvider, type AgentProviderFactory } from './provider';
+import { BridgeToolError, ProviderFailure, type AgentProvider, type AgentProviderFactory } from './provider';
 import { BridgeToolRuntime } from './tool-runtime';
 import { createImageToolHandlers } from './image-tools';
 import { normalizeAllowedOrigins } from './origin-policy';
+import { getCodexHardeningCapability } from './codex-launch-policy';
+import { validateCodexBetaConsent } from '../../../lib/ai/codex-beta-consent';
 
 const TURN_TIMEOUT_MS = 120_000;
 const TOOL_TIMEOUT_MS = 30_000;
@@ -18,13 +20,13 @@ type LiveSession = {
   provider: AgentProvider;
   socket: WebSocket | null;
   generating: boolean;
-  interrupted: boolean;
+  interruptReason: 'user' | 'timeout' | null;
   resetting: boolean;
   toolCalls: number;
   turn: Promise<void> | null;
 };
 
-export interface BridgeServerOptions { port?: number; token?: string; allowedOrigins?: string[]; provider?: BridgeProvider; providerFactory: AgentProviderFactory; logger?: (line: string) => void; toolTimeoutMs?: number }
+export interface BridgeServerOptions { port?: number; token?: string; allowedOrigins?: string[]; provider?: BridgeProvider; enableCodexBeta?: boolean; providerFactory: AgentProviderFactory; logger?: (line: string) => void; toolTimeoutMs?: number; turnTimeoutMs?: number }
 
 export class AiBridgeServer {
   readonly token: string;
@@ -91,6 +93,11 @@ export class AiBridgeServer {
 
   private startSession(socket: WebSocket, message: BridgeEnvelope): boolean {
     const payload = this.record(message.payload);
+    const challenge = this.preflightChallenge(payload);
+    if (challenge) {
+      this.send(socket, 'session_challenge', challenge);
+      return false;
+    }
     const resumeId = typeof payload?.resumeSessionId === 'string' ? payload.resumeSessionId : undefined;
     if (this.session) {
       if (this.session.socket?.readyState === WebSocket.OPEN && resumeId !== this.session.id) {
@@ -118,7 +125,7 @@ export class AiBridgeServer {
       provider: this.options.providerFactory(tools, { locale }),
       socket,
       generating: false,
-      interrupted: false,
+      interruptReason: null,
       resetting: false,
       toolCalls: 0,
       turn: null,
@@ -127,11 +134,28 @@ export class AiBridgeServer {
     return true;
   }
 
+  private preflightChallenge(payload: Record<string, unknown> | null): SessionChallengePayload | null {
+    const provider = this.options.provider ?? 'claude';
+    if (provider === 'openai' && !process.env.OPENAI_API_KEY?.trim()) {
+      return { provider, reason: 'OPENAI_API_KEY_MISSING', retryable: true };
+    }
+    if (provider === 'codex') {
+      if (!this.options.enableCodexBeta) return { provider, reason: 'CODEX_HARDENING_UNSUPPORTED', retryable: false };
+      const capability = getCodexHardeningCapability();
+      if (!capability.supported) return { provider, reason: capability.reason, retryable: false };
+      const consent = this.record(payload?.codexBetaConsent) ?? undefined;
+      if (!validateCodexBetaConsent(consent, capability)) {
+        return { provider, reason: 'CODEX_BETA_CONSENT_REQUIRED', retryable: true };
+      }
+    }
+    return null;
+  }
+
   private handleMessage(socket: WebSocket, message: BridgeEnvelope): void {
     if (!this.session || socket !== this.session.socket || (message.sessionId && message.sessionId !== this.session.id)) return this.protocolClose(socket, 'Invalid session');
     if (message.type === 'ping') return this.send(socket, 'pong', {}, this.session.id);
     if (message.type === 'session_end') { this.disposeSession(); return; }
-    if (message.type === 'interrupt') { this.session.interrupted = true; this.session.provider.abort(); return; }
+    if (message.type === 'interrupt') { this.session.interruptReason = 'user'; this.session.provider.abort(); return; }
     if (message.type === 'conversation_reset') {
       if (this.session.resetting) {
         return this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'Conversation reset is already running', { reason: 'RESET_ALREADY_RUNNING' });
@@ -158,7 +182,7 @@ export class AiBridgeServer {
     session.resetting = true;
     try {
       if (session.generating) {
-        session.interrupted = true;
+        session.interruptReason = 'user';
         session.provider.abort();
         await session.turn;
       }
@@ -179,22 +203,25 @@ export class AiBridgeServer {
 
   private async runTurn(text: string): Promise<void> {
     const session = this.session!;
-    session.generating = true; session.interrupted = false; session.toolCalls = 0;
+    session.generating = true; session.interruptReason = null; session.toolCalls = 0;
     this.toolRuntime.beginTurn();
-    const timer = setTimeout(() => { session.interrupted = true; session.provider.abort(); }, TURN_TIMEOUT_MS);
+    const timer = setTimeout(() => { session.interruptReason = 'timeout'; session.provider.abort(); }, this.options.turnTimeoutMs ?? TURN_TIMEOUT_MS);
     try {
       for await (const event of session.provider.send(text)) {
-        if (session.interrupted) break;
+        if (session.interruptReason) break;
         if (event.type === 'text') this.sendCurrent('assistant_delta', { text: event.text });
-        if (event.type === 'done') this.sendCurrent('assistant_done', { stopReason: event.stopReason ?? 'end_turn' });
+        if (event.type === 'done') this.sendCurrent('assistant_done', {
+          stopReason: event.stopReason ?? 'end_turn',
+          ...(event.diagnostics ? { diagnostics: event.diagnostics } : {}),
+        });
       }
-      if (session.interrupted) this.sendCurrent('assistant_done', { stopReason: 'interrupted' });
+      if (session.interruptReason) this.sendCurrent('assistant_done', { stopReason: session.interruptReason === 'timeout' ? 'timeout' : 'interrupted' });
     } catch (error) {
-      if (session.interrupted) this.sendCurrent('assistant_done', { stopReason: 'interrupted' });
+      if (session.interruptReason) this.sendCurrent('assistant_done', { stopReason: session.interruptReason === 'timeout' ? 'timeout' : 'interrupted' });
       else this.sendCurrent('error', {
         code: 'PROVIDER_UNAVAILABLE',
-        message: this.safeError(error),
-        details: { reason: 'PROVIDER_ERROR' },
+        message: 'The AI provider could not complete the request',
+        details: { reason: error instanceof ProviderFailure ? error.reason : 'PROVIDER_ERROR' },
       });
     } finally {
       clearTimeout(timer);

@@ -49,14 +49,20 @@ export class BridgeToolRuntime implements ToolInvoker {
   async call(toolName: string, input: unknown, timeoutMs?: number): Promise<unknown> {
     const definition = getBridgeTool(toolName);
     if (!definition) throw new BridgeToolError('VALIDATION_FAILED', `Unknown tool: ${toolName}`);
-    if (definition.site === 'app') return this.options.callApp(toolName, input, timeoutMs ?? definition.timeoutMs);
+    const parsed = definition.inputSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BridgeToolError('VALIDATION_FAILED', `Invalid input for tool: ${toolName}`, {
+        issues: parsed.error.issues.map(issue => ({ path: issue.path, code: issue.code, message: issue.message })),
+      });
+    }
+    if (definition.site === 'app') return this.options.callApp(toolName, parsed.data, timeoutMs ?? definition.timeoutMs);
     const handler = this.handlers[toolName];
     if (!handler) throw new BridgeToolError('PROVIDER_UNAVAILABLE', `Bridge tool is unavailable: ${toolName}`);
     if (toolName === 'generate_image' || toolName === 'edit_image') {
       this.imageCallsThisTurn += 1;
       if (this.imageCallsThisTurn > 3) throw new BridgeToolError('VALIDATION_FAILED', 'Image tool limit (3 per turn) exceeded', { reason: 'IMAGE_TOOL_LIMIT' });
     }
-    return handler(input, { callApp: this.options.callApp, emitImage: payload => this.emitImage(payload) });
+    return handler(parsed.data, { callApp: this.options.callApp, emitImage: payload => this.emitImage(payload) });
   }
 
   acknowledgeImage(requestId: string): void { this.bufferedImages.delete(requestId); }

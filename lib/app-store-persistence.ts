@@ -18,8 +18,9 @@ import {
   type StoryImageAssetIds,
 } from '@/lib/story-image-library';
 import type { AiBridgeSettings } from '@/lib/ai/bridge-config';
+import type { BridgeProvider, CodexBetaConsent } from '@/lib/bridge-protocol';
 
-export const APP_STORE_PERSIST_VERSION = 4;
+export const APP_STORE_PERSIST_VERSION = 5;
 
 export type AppStorePersistenceState = {
   storiesMetadata: StoryMetadata[];
@@ -178,6 +179,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object';
 }
 
+function normalizeProvider(value: unknown, fallback: BridgeProvider): BridgeProvider {
+  return value === 'claude' || value === 'openai' || value === 'codex' ? value : fallback;
+}
+
+function normalizeCodexConsent(value: unknown): CodexBetaConsent | undefined {
+  if (!isRecord(value)
+    || typeof value.acceptedAt !== 'string'
+    || !Number.isFinite(Date.parse(value.acceptedAt))
+    || typeof value.disclosureVersion !== 'number'
+    || !Number.isInteger(value.disclosureVersion)
+    || typeof value.isolationPolicyVersion !== 'number'
+    || !Number.isInteger(value.isolationPolicyVersion)
+    || typeof value.codexCliVersion !== 'string'
+    || !value.codexCliVersion.trim()) return undefined;
+  return {
+    acceptedAt: value.acceptedAt,
+    disclosureVersion: value.disclosureVersion,
+    isolationPolicyVersion: value.isolationPolicyVersion,
+    codexCliVersion: value.codexCliVersion,
+  };
+}
+
 function normalizePlaybackState(playbackState: unknown): PlaybackState | null {
   if (!isRecord(playbackState)) {
     return null;
@@ -257,6 +280,13 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
             typeof persisted.aiBridgeSettings.disabled === 'boolean'
               ? persisted.aiBridgeSettings.disabled
               : currentState.aiBridgeSettings.disabled,
+          preferredProvider: normalizeProvider(
+            persisted.aiBridgeSettings.preferredProvider,
+            currentState.aiBridgeSettings.preferredProvider ?? 'openai',
+          ),
+          ...(normalizeCodexConsent(persisted.aiBridgeSettings.codexBetaConsent)
+            ? { codexBetaConsent: normalizeCodexConsent(persisted.aiBridgeSettings.codexBetaConsent) }
+            : {}),
         }
       : currentState.aiBridgeSettings,
     mediaLibrary:

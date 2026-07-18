@@ -8,16 +8,17 @@ import { normalizeLocalBridgeUrl } from '@/lib/ai/bridge-config';
 import type { BridgeConnectionState, BridgeProvider } from '@/lib/bridge-client';
 import { copyToClipboard, readFromClipboard } from '@/lib/web-utils';
 
-type ProviderChoice = Extract<BridgeProvider, 'claude' | 'codex'>;
+type ProviderChoice = BridgeProvider;
 
 export interface ConnectionCardProps {
   state: 'demo' | BridgeConnectionState;
   token: string;
   url: string;
   provider?: BridgeProvider;
+  preferredProvider?: BridgeProvider;
   reason?: string;
   colorScheme?: ColorScheme;
-  onConnect(token: string, url: string): void;
+  onConnect(token: string, url: string, provider: BridgeProvider): void;
   onRetry(): void;
 }
 
@@ -26,6 +27,11 @@ const PROVIDERS: Record<ProviderChoice, { label: string; install: string; login:
     label: 'Claude Code',
     install: 'npm install -g @anthropic-ai/claude-code',
     login: 'claude',
+  },
+  openai: {
+    label: 'OpenAI API',
+    install: 'Set OPENAI_API_KEY in the bridge .env file',
+    login: 'API billing is separate from a ChatGPT subscription',
   },
   codex: {
     label: 'Codex',
@@ -49,7 +55,7 @@ function bridgeCommand(choice: ProviderChoice, url: string): string {
   const originFlag = origin.startsWith('http://') || origin.startsWith('https://')
     ? ` --origin ${origin}`
     : '';
-  return `npx @visual-novel-engine/ai-bridge --provider ${choice}${originFlag}${portFlag}`;
+  return `npx @visual-novel-engine/ai-bridge --provider ${choice}${choice === 'codex' ? ' --enable-codex-beta' : ''}${originFlag}${portFlag}`;
 }
 
 function CommandRow({
@@ -80,6 +86,7 @@ export function ConnectionCard({
   token,
   url,
   provider,
+  preferredProvider,
   reason,
   colorScheme,
   onConnect,
@@ -89,7 +96,7 @@ export function ConnectionCard({
   const { t } = useI18n();
   const [value, setValue] = useState(token);
   const [urlValue, setUrlValue] = useState(url);
-  const [providerChoice, setProviderChoice] = useState<ProviderChoice>('claude');
+  const [providerChoice, setProviderChoice] = useState<ProviderChoice>(preferredProvider === 'codex' ? 'openai' : (preferredProvider ?? 'openai'));
   const [showInstall, setShowInstall] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showWizard, setShowWizard] = useState(state !== 'demo');
@@ -106,7 +113,7 @@ export function ConnectionCard({
   const command = bridgeCommand(providerChoice, normalizedUrl.ok ? normalizedUrl.url : urlValue);
   const selected = PROVIDERS[providerChoice];
   const connected = state === 'connected';
-  const hasError = state === 'unauthorized' || state === 'error';
+  const hasError = state === 'unauthorized' || state === 'error' || state === 'challenge';
   const localizedReason = reason
     ? t(`aiChat.connection.reason.${reason}`, undefined, t('aiChat.connection.reason.unknown'))
     : '';
@@ -130,14 +137,14 @@ export function ConnectionCard({
 
   const connect = () => {
     if (!normalizedUrl.ok || !value.trim()) return;
-    onConnect(value.trim(), normalizedUrl.url);
+    onConnect(value.trim(), normalizedUrl.url, providerChoice);
   };
 
   if (connected) {
     return (
       <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12 }}>
         <Text style={{ color: colors.foreground, fontWeight: '700' }}>
-          {t('aiChat.connection.connected', { provider: provider === 'codex' ? 'Codex' : 'Claude Code' })}
+          {t('aiChat.connection.connected', { provider: provider === 'codex' ? 'Codex CLI · Beta' : provider === 'openai' ? 'OpenAI API' : 'Claude Code' })}
         </Text>
       </View>
     );
@@ -186,9 +193,9 @@ export function ConnectionCard({
       <View style={{ gap: 8 }}>
         <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.connection.chooseProvider')}</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {(Object.keys(PROVIDERS) as ProviderChoice[]).map(choice => {
+          {(Object.keys(PROVIDERS) as ProviderChoice[]).filter(choice => choice !== 'codex').map(choice => {
             const active = providerChoice === choice;
-            const unavailable = choice === 'codex';
+            const unavailable = false;
             return (
               <Pressable
                 key={choice}
@@ -198,7 +205,7 @@ export function ConnectionCard({
                 onPress={() => setProviderChoice(choice)}
                 style={{ flex: 1, borderWidth: 1, borderColor: active ? colors.primary : colors.border, borderRadius: 8, padding: 10, opacity: unavailable ? 0.55 : 1 }}
               >
-                <Text style={{ color: active ? colors.primary : colors.foreground, textAlign: 'center', fontWeight: '700' }}>{PROVIDERS[choice].label}</Text>
+                <Text style={{ color: active ? colors.primary : colors.foreground, textAlign: 'center', fontWeight: '700' }}>{PROVIDERS[choice].label}{choice === 'openai' ? ' · Recommended' : ''}</Text>
                 <Text style={{ color: colors.muted, textAlign: 'center', fontSize: 10 }}>
                   {unavailable ? t('aiChat.connection.providerUnavailable') : active ? t('aiChat.connection.selected') : ''}
                 </Text>
@@ -215,7 +222,7 @@ export function ConnectionCard({
             <CommandRow command={selected.install} copied={copiedCommand === selected.install} onCopy={() => void copy(selected.install)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
             <CommandRow command={selected.login} copied={copiedCommand === selected.login} onCopy={() => void copy(selected.login)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
             <Text style={{ color: colors.muted, fontSize: 11 }}>Developing from the source repository:</Text>
-            <CommandRow command={`pnpm ai-bridge --provider ${providerChoice}`} copied={copiedCommand === `pnpm ai-bridge --provider ${providerChoice}`} onCopy={() => void copy(`pnpm ai-bridge --provider ${providerChoice}`)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
+            <CommandRow command={`pnpm ai-bridge --provider ${providerChoice}${providerChoice === 'codex' ? ' --enable-codex-beta' : ''}`} copied={false} onCopy={() => void copy(`pnpm ai-bridge --provider ${providerChoice}${providerChoice === 'codex' ? ' --enable-codex-beta' : ''}`)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
           </View>
         ) : null}
       </View>

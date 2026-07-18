@@ -125,6 +125,7 @@ describe('app store persistence helpers', () => {
       url: 'ws://localhost:9999',
       token: 'local-secret',
       disabled: true,
+      preferredProvider: 'openai',
     };
     const persisted = buildPersistedAppState(state);
     expect(persisted.aiBridgeSettings).toEqual(state.aiBridgeSettings);
@@ -146,6 +147,7 @@ describe('app store persistence helpers', () => {
       url: 'ws://localhost:9999',
       token: 'legacy-secret',
       disabled: false,
+      preferredProvider: 'openai',
     });
   });
 
@@ -409,7 +411,7 @@ describe('app store persistence helpers', () => {
       0,
     ) as Partial<AppStorePersistenceState>;
 
-    expect(APP_STORE_PERSIST_VERSION).toBe(4);
+    expect(APP_STORE_PERSIST_VERSION).toBe(5);
     expect(migrated.mediaLibrary?.map((asset) => asset.id)).toEqual(['image-file', 'image-data']);
     expect(migrated.imageAssetIdsByStory).toEqual({});
     expect(migrated.sceneRecordsByStory?.['story-1']?.['scene-1']).toBeTruthy();

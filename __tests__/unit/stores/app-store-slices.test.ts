@@ -113,6 +113,7 @@ describe('app store slices', () => {
       url: '',
       token: 'pairing-secret',
       disabled: false,
+      preferredProvider: 'openai',
     });
   });
 

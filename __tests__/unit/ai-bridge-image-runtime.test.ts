@@ -80,30 +80,31 @@ describe('BridgeToolRuntime', () => {
   it('dispatches by site and caps bridge image calls per turn', async () => {
     const callApp = vi.fn(async () => 'app');
     const runtime = new BridgeToolRuntime({ callApp, emit: vi.fn(), handlers: { generate_image: vi.fn(async () => 'bridge') } });
-    await expect(runtime.call('get_scene', {})).resolves.toBe('app');
-    await expect(runtime.call('generate_image', {})).resolves.toBe('bridge');
-    await runtime.call('generate_image', {}); await runtime.call('generate_image', {});
-    await expect(runtime.call('generate_image', {})).rejects.toMatchObject({ errorCode: 'VALIDATION_FAILED', details: { reason: 'IMAGE_TOOL_LIMIT' } });
+    const generation = { prompt: 'forest', purpose: 'background' };
+    await expect(runtime.call('get_scene', { sceneId: 'scene-1' })).resolves.toBe('app');
+    await expect(runtime.call('generate_image', generation)).resolves.toBe('bridge');
+    await runtime.call('generate_image', generation); await runtime.call('generate_image', generation);
+    await expect(runtime.call('generate_image', generation)).rejects.toMatchObject({ errorCode: 'VALIDATION_FAILED', details: { reason: 'IMAGE_TOOL_LIMIT' } });
     runtime.beginTurn();
-    await expect(runtime.call('generate_image', {})).resolves.toBe('bridge');
+    await expect(runtime.call('generate_image', generation)).resolves.toBe('bridge');
   });
 
   it('re-emits unacked results with the same id, clears on ack, and expires by TTL', async () => {
     let now = 1_000;
     const emit = vi.fn();
     const runtime = new BridgeToolRuntime({ callApp: vi.fn(), emit, now: () => now, handlers: { generate_image: async (_input, ctx) => ctx.emitImage({ requestId: 'same-id', base64: encoded(1) }) } });
-    await runtime.call('generate_image', {});
+    await runtime.call('generate_image', { prompt: 'forest', purpose: 'background' });
     emit.mockClear(); runtime.reemitBufferedImages();
     expect(emit).toHaveBeenCalledWith('image_result', expect.objectContaining({ requestId: 'same-id' }));
     runtime.acknowledgeImage('same-id'); expect(runtime.bufferedImageCount).toBe(0);
-    await runtime.call('generate_image', {}); now += 10 * 60_000 + 1;
+    await runtime.call('generate_image', { prompt: 'forest', purpose: 'background' }); now += 10 * 60_000 + 1;
     runtime.reemitBufferedImages(); expect(runtime.bufferedImageCount).toBe(0);
   });
 
   it('evicts the oldest image when the hard entry cap is exceeded', async () => {
     const emit = vi.fn(); let index = 0;
     const runtime = new BridgeToolRuntime({ callApp: vi.fn(), emit, handlers: { generate_image: async (_input, ctx) => ctx.emitImage({ requestId: `id-${index++}`, base64: encoded(1) }) } });
-    for (let turn = 0; turn < 6; turn += 1) { runtime.beginTurn(); await runtime.call('generate_image', {}); }
+    for (let turn = 0; turn < 6; turn += 1) { runtime.beginTurn(); await runtime.call('generate_image', { prompt: 'forest', purpose: 'background' }); }
     expect(runtime.bufferedImageCount).toBe(5);
     emit.mockClear(); runtime.reemitBufferedImages();
     expect(emit.mock.calls.map(call => (call[1] as { requestId: string }).requestId)).toEqual(['id-1', 'id-2', 'id-3', 'id-4', 'id-5']);

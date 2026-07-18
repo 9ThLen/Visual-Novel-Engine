@@ -1,14 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath, URL } from 'node:url';
 import { ClaudeAgentProvider } from './claude-provider';
 import { CodexCliProvider } from './codex-provider';
 import { AiBridgeServer } from './server';
 import { bridgeCliHelp, parseBridgeCliArgs, resolveBridgeCliConfig } from './cli-options';
 import { checkProviderAuthentication } from './cli-launcher';
 import { formatBridgeStartupBlock } from './startup-summary';
-import { CODEX_HARDENING_REASON, getCodexHardeningCapability } from './codex-launch-policy';
+import { OpenAiProvider } from './openai-provider';
 
 export const BRIDGE_CLI_VERSION = '0.1.0';
+
+// The OpenAI provider is intentionally import.meta-free so it stays loadable
+// under the CommonJS test transpiler; the entrypoint owns the prompt read.
+const OPENAI_SYSTEM_PROMPT = readFileSync(fileURLToPath(new URL('./system-prompt.md', import.meta.url)), 'utf8');
 
 /**
  * Minimal `.env` loader (tsx does not read `.env` on its own, and we don't want
@@ -42,17 +47,9 @@ async function main(): Promise<void> {
   }
 
   loadDotEnv();
-  const { origins, port, provider } = resolveBridgeCliConfig(cli, process.env);
-  if (provider === 'codex') {
-    const capability = getCodexHardeningCapability();
-    if (!capability.supported) {
-      console.error(`[${CODEX_HARDENING_REASON}] ${capability.message}`);
-      process.exitCode = 1;
-      return;
-    }
-  }
-  const check = checkProviderAuthentication(provider);
-  if (check.error || check.status !== 0) {
+  const { origins, port, provider, enableCodexBeta } = resolveBridgeCliConfig(cli, process.env);
+  const check = provider === 'claude' ? checkProviderAuthentication(provider) : null;
+  if (check && (check.error || check.status !== 0)) {
     const detail = check.error?.message || check.stderr?.trim() || check.stdout?.trim();
     console.error(provider === 'codex'
       ? 'Codex CLI is missing or unavailable. Install @openai/codex, then run: codex login'
@@ -61,7 +58,7 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  if (!process.env.OPENAI_API_KEY) {
+  if (provider !== 'openai' && !process.env.OPENAI_API_KEY) {
     console.warn('Image diagnostic: OPENAI_API_KEY is not set; image generation and editing will be unavailable.');
   }
   // A fixed token lets the browser and bridge share one value from .env. Falls
@@ -72,7 +69,19 @@ async function main(): Promise<void> {
     token,
     provider,
     allowedOrigins: origins,
-    providerFactory: (tools, session) => provider === 'codex' ? new CodexCliProvider(tools, session) : new ClaudeAgentProvider(tools, session),
+    enableCodexBeta,
+    providerFactory: (tools, session) => {
+      switch (provider) {
+        case 'claude': return new ClaudeAgentProvider(tools, session);
+        case 'codex': return new CodexCliProvider(tools, session);
+        case 'openai': return new OpenAiProvider(tools, session, {
+          apiKey: process.env.OPENAI_API_KEY ?? '',
+          model: process.env.OPENAI_CHAT_MODEL,
+          systemPrompt: OPENAI_SYSTEM_PROMPT,
+          sessionTokenBudget: positiveNumber(process.env.OPENAI_SESSION_TOKEN_BUDGET),
+        });
+      }
+    },
   });
   const listeningPort = await server.start();
   console.log(formatBridgeStartupBlock({
@@ -83,6 +92,11 @@ async function main(): Promise<void> {
   }));
   let stopping = false;
   process.on('SIGINT', () => { if (stopping) return; stopping = true; void server.close().finally(() => process.exit(0)); });
+}
+
+function positiveNumber(value: string | undefined): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
 }
 
 void main().catch(error => { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; });

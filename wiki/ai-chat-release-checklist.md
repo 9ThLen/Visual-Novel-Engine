@@ -40,3 +40,9 @@ never save pairing tokens, credentials, prompts, replies, or story text.
 
 - [ ] Recent Claude smoke: date/version/result recorded.
 - [ ] Recent Codex smoke: date/version/result recorded, or Codex recorded as disabled by its security gate.
+## OpenAI API live gate
+
+- [ ] Run `RUN_OPENAI_LIVE_SMOKE=true OPENAI_API_KEY=... pnpm test:ai-openai-live` against the release build.
+- [ ] Record the date, bridge/protocol version, model, response ID and pass/fail output.
+- [ ] Confirm the output contains no API key, prompt, story content or tool result.
+- [ ] Confirm the smoke covers a short text turn, one VNE model-tool round, Stop cleanup and conversation reset.

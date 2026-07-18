@@ -8,12 +8,14 @@ export interface BridgeCliArgs {
   port?: string;
   help: boolean;
   version?: boolean;
+  enableCodexBeta?: boolean;
 }
 
 export interface BridgeCliConfig {
   provider: BridgeProvider;
   origins: string[];
   port: number;
+  enableCodexBeta: boolean;
 }
 
 export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
@@ -27,6 +29,7 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
       port: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
+      'enable-codex-beta': { type: 'boolean' },
     },
   });
 
@@ -36,6 +39,7 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
     port: parsed.values.port,
     help: parsed.values.help ?? false,
     ...(parsed.values.version ? { version: true } : {}),
+    ...(parsed.values['enable-codex-beta'] ? { enableCodexBeta: true } : {}),
   };
 }
 
@@ -44,8 +48,8 @@ export function resolveBridgeCliConfig(
   env: Readonly<Record<string, string | undefined>>,
 ): BridgeCliConfig {
   const providerValue = (cli.provider ?? env.AI_BRIDGE_PROVIDER ?? 'claude').toLowerCase();
-  if (providerValue !== 'claude' && providerValue !== 'codex') {
-    throw new Error('AI bridge provider must be "claude" or "codex"');
+  if (providerValue !== 'claude' && providerValue !== 'openai' && providerValue !== 'codex') {
+    throw new Error('AI bridge provider must be "claude", "openai", or "codex"');
   }
 
   const portValue = cli.port ?? env.AI_BRIDGE_PORT ?? '8787';
@@ -65,7 +69,11 @@ export function resolveBridgeCliConfig(
       ? normalizeAllowedOrigins(envOrigins)
       : defaultAllowedOrigins();
 
-  return { provider: providerValue, origins, port };
+  const enableCodexBeta = cli.enableCodexBeta ?? env.AI_BRIDGE_ENABLE_CODEX_BETA === '1';
+  if (providerValue === 'codex' && !enableCodexBeta) {
+    throw new Error('Codex CLI Beta requires --enable-codex-beta');
+  }
+  return { provider: providerValue, origins, port, enableCodexBeta };
 }
 
 export function bridgeCliHelp(): string {
@@ -73,7 +81,8 @@ export function bridgeCliHelp(): string {
     'Usage: vne-ai-bridge [options]',
     '',
     'Options:',
-    '  --provider <claude|codex>  AI CLI provider (default: claude)',
+    '  --provider <claude|openai|codex>  AI provider (default: claude)',
+    '  --enable-codex-beta        Explicitly enable experimental Codex CLI',
     '  --origin <origin>          Allowed loopback browser origin; repeatable',
     '  --port <port>              Bridge WebSocket port (default: 8787)',
     '  -h, --help                 Show this help',

@@ -170,7 +170,7 @@ describe('AiChatPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Connection actions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Reset connection' }));
-    expect(useAppStore.getState().aiBridgeSettings).toEqual({ url: '', token: '', disabled: true });
+    expect(useAppStore.getState().aiBridgeSettings).toEqual({ url: '', token: '', disabled: true, preferredProvider: 'openai', codexBetaConsent: undefined });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Connect real AI' })).toBeTruthy());
 
     view.unmount();

@@ -25,6 +25,9 @@ export interface CodexHardeningCapability {
   supported: false;
   reason: typeof CODEX_HARDENING_REASON;
   message: string;
+  cliVersion: string;
+  disclosureVersion: number;
+  isolationPolicyVersion: number;
 }
 
 /**
@@ -40,6 +43,9 @@ export function getCodexHardeningCapability(): CodexHardeningCapability {
     supported: false,
     reason: CODEX_HARDENING_REASON,
     message: 'This Codex CLI cannot prove a zero-data-access model tool surface. Use the Claude provider.',
+    cliVersion: 'unsupported',
+    disclosureVersion: 1,
+    isolationPolicyVersion: 1,
   };
 }
 

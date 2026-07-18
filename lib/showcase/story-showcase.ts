@@ -59,13 +59,16 @@ const MIN_SHELF_SIZE = 2;
 
 const BANNER_EFFECTS: readonly ShowcaseBannerEffect[] = ['rain', 'snow', 'fog'];
 
+// Warm family, tuned to the app's sepia system (constants/theme-colors.json):
+// a poster with no cover should still feel like it belongs on the same shelf as
+// the editor's parchment, not a leftover from a colder palette.
 const FALLBACK_COLORS = [
-  '#2d2a54', // indigo
-  '#12463c', // emerald
-  '#4a1d2b', // bordeaux
-  '#26262e', // graphite
-  '#152a4d', // deep blue
-  '#3a1f4d', // violet
+  '#4a2e22', // umber
+  '#3c3a26', // olive-brown
+  '#4a3320', // clay
+  '#2f2a24', // warm graphite (surface-1)
+  '#4a2420', // terracotta-brown
+  '#3a2c33', // muted plum-brown
 ] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -202,6 +205,40 @@ export function firstBackgroundAssetId(scenes: SceneRecord[], startSceneId: stri
 }
 
 /** djb2 — a stable seed so a story keeps its colour across sessions and devices. */
+function hashSeed(seed: string): number {
+  let hash = 5381;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = ((hash << 5) + hash + seed.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * A poster with no cover art. Light warm fill + a darker ink for the initial,
+ * so an art-less story reads like a printed book spine on the shelf, not a hole.
+ * Tuned to the app's sepia system — the same family as FALLBACK_COLORS, but
+ * inverted in value because a small shelf card wants presence, not a dark void.
+ */
+export interface PosterFallback {
+  bg: string;
+  ink: string;
+}
+
+const POSTER_FALLBACKS: readonly PosterFallback[] = [
+  { bg: '#D9A88C', ink: '#6E3B24' }, // terracotta
+  { bg: '#CDD3C0', ink: '#4A5238' }, // sage
+  { bg: '#E4D3B4', ink: '#6E5326' }, // sand
+  { bg: '#DCB6A6', ink: '#6B3A2C' }, // clay rose
+  { bg: '#D8C6B4', ink: '#5C4632' }, // taupe
+  { bg: '#E0C79A', ink: '#5E4A1E' }, // muted gold
+] as const;
+
+/** Stable warm poster fill+ink for a story that has no cover. */
+export function posterFallbackForSeed(seed: string): PosterFallback {
+  return POSTER_FALLBACKS[hashSeed(seed) % POSTER_FALLBACKS.length];
+}
+
+/** A single dark seeded colour — used behind the cinematic hero banner. */
 export function fallbackColorForSeed(seed: string): string {
   let hash = 5381;
   for (let i = 0; i < seed.length; i += 1) {

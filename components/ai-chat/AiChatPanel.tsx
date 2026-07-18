@@ -70,7 +70,34 @@ type BridgeRuntimeErrorReason =
   | 'CANCELLED'
   | 'PROTOCOL_ERROR'
   | 'VALIDATION_FAILED'
+  | 'OPENAI_API_AUTH_FAILED'
+  | 'OPENAI_API_FORBIDDEN'
+  | 'OPENAI_RATE_LIMITED'
+  | 'OPENAI_MODEL_UNAVAILABLE'
+  | 'OPENAI_API_TIMEOUT'
+  | 'OPENAI_RESPONSE_INCOMPLETE'
+  | 'OPENAI_MALFORMED_RESPONSE'
+  | 'OPENAI_REFUSAL'
+  | 'OPENAI_STREAM_TOO_LARGE'
+  | 'OPENAI_STREAM_EVENT_TOO_LARGE'
+  | 'OPENAI_STREAM_INCOMPLETE'
+  | 'OPENAI_API_FAILED'
+  | 'OPENAI_ROUND_LIMIT'
+  | 'OPENAI_PARALLEL_TOOL_CALLS'
+  | 'OPENAI_MALFORMED_FUNCTION_CALL'
+  | 'OPENAI_NON_REPLAYABLE_REASONING'
+  | 'OPENAI_REQUEST_TOO_LARGE'
+  | 'OPENAI_SESSION_BUDGET_EXHAUSTED'
   | 'PROVIDER_ERROR';
+
+const OPENAI_RUNTIME_REASONS = new Set<BridgeRuntimeErrorReason>([
+  'OPENAI_API_AUTH_FAILED', 'OPENAI_API_FORBIDDEN', 'OPENAI_RATE_LIMITED', 'OPENAI_MODEL_UNAVAILABLE',
+  'OPENAI_API_TIMEOUT', 'OPENAI_RESPONSE_INCOMPLETE', 'OPENAI_MALFORMED_RESPONSE', 'OPENAI_REFUSAL',
+  'OPENAI_STREAM_TOO_LARGE', 'OPENAI_STREAM_EVENT_TOO_LARGE', 'OPENAI_STREAM_INCOMPLETE',
+  'OPENAI_API_FAILED', 'OPENAI_ROUND_LIMIT', 'OPENAI_PARALLEL_TOOL_CALLS',
+  'OPENAI_MALFORMED_FUNCTION_CALL', 'OPENAI_NON_REPLAYABLE_REASONING', 'OPENAI_REQUEST_TOO_LARGE',
+  'OPENAI_SESSION_BUDGET_EXHAUSTED',
+]);
 
 function resolveBridgeRuntimeError(payload: Record<string, unknown>): BridgeRuntimeErrorReason {
   const details = typeof payload.details === 'object' && payload.details
@@ -78,6 +105,9 @@ function resolveBridgeRuntimeError(payload: Record<string, unknown>): BridgeRunt
     : {};
   if (details.reason === 'TURN_ALREADY_RUNNING' || details.reason === 'TOOL_LIMIT_EXCEEDED' || details.reason === 'PROVIDER_ERROR') {
     return details.reason;
+  }
+  if (typeof details.reason === 'string' && OPENAI_RUNTIME_REASONS.has(details.reason as BridgeRuntimeErrorReason)) {
+    return details.reason as BridgeRuntimeErrorReason;
   }
   if (payload.code === 'PERMISSION_DENIED' || payload.code === 'CANCELLED' || payload.code === 'PROTOCOL_ERROR' || payload.code === 'VALIDATION_FAILED') {
     return payload.code;
@@ -265,6 +295,8 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
       url,
       token,
       locale: language,
+      preferredProvider: bridgeConfig.preferredProvider,
+      codexBetaConsent: bridgeConfig.codexBetaConsent,
       onConnectionChange: (next, reason) => {
         setConnectionState(next);
         setConnectionReason(reason);
@@ -278,7 +310,8 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
       },
       onEvent: (message) => {
         const payload = typeof message.payload === 'object' && message.payload ? message.payload as Record<string, unknown> : {};
-        if (message.type === 'session_started' && (payload.provider === 'claude' || payload.provider === 'codex')) setProvider(payload.provider);
+        if (message.type === 'session_started' && (payload.provider === 'claude' || payload.provider === 'openai' || payload.provider === 'codex')) setProvider(payload.provider);
+        if (message.type === 'session_challenge' && typeof payload.reason === 'string') setConnectionReason(payload.reason);
         if (message.type === 'image_result' && typeof payload.requestId === 'string') {
           const result = decodeImageResult(payload);
           if (!result) return;
@@ -301,7 +334,10 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
         }
         if (message.type === 'assistant_delta' && typeof payload.text === 'string') assistantTextRef.current += payload.text;
         if (message.type === 'assistant_done') {
-          if (assistantTextRef.current) addMessage('assistant', assistantTextRef.current);
+          const incompleteWarning = payload.stopReason === 'incomplete' ? t('aiChat.incompleteWarning') : '';
+          if (assistantTextRef.current || incompleteWarning) {
+            addMessage('assistant', [assistantTextRef.current, incompleteWarning].filter(Boolean).join('\n\n'));
+          }
           assistantTextRef.current = '';
           const chat = useAiChatStore.getState();
           setStatus(chat.pendingInteraction?.storyId === storyId ? 'awaiting_confirmation' : 'idle');
@@ -636,10 +672,10 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     setPendingCapability(null);
   }, [setPendingCapability]);
 
-  const handleConnect = useCallback((token: string, url: string) => {
+  const handleConnect = useCallback((token: string, url: string, preferredProvider: BridgeProvider) => {
     setProvider(undefined);
     setConnectionReason(undefined);
-    updateAiBridgeSettings({ token, url, disabled: false });
+    updateAiBridgeSettings({ token, url, disabled: false, preferredProvider });
     setRetryKey(value => value + 1);
   }, [updateAiBridgeSettings]);
 
@@ -664,7 +700,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   const handleResetConnection = useCallback(() => {
     bridgeRef.current?.close();
     BridgeClient.clearPersistedSession(bridgeConfig.url);
-    updateAiBridgeSettings({ url: '', token: '', disabled: true });
+    updateAiBridgeSettings({ url: '', token: '', disabled: true, preferredProvider: 'openai', codexBetaConsent: undefined });
     setProvider(undefined);
     setConnectionReason(undefined);
     setConnectionState('demo');
@@ -696,7 +732,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     <View style={{ flex: 1 }}>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ color: connectionState === 'connected' ? colors.primary : colors.muted, fontSize: 11, fontWeight: '700' }}>
-          {connectionState === 'demo' ? t('aiChat.connection.demo') : connectionState === 'connected' ? t('aiChat.connection.connected', { provider: provider === 'codex' ? 'Codex' : 'Claude Code' }) : connectionState === 'connecting' || connectionState === 'reconnecting' ? t('aiChat.connection.connecting') : t('aiChat.connection.error')}
+          {connectionState === 'demo' ? t('aiChat.connection.demo') : connectionState === 'connected' ? t('aiChat.connection.connected', { provider: provider === 'codex' ? 'Codex CLI · Beta' : provider === 'openai' ? 'OpenAI API' : 'Claude Code' }) : connectionState === 'connecting' || connectionState === 'reconnecting' ? t('aiChat.connection.connecting') : t('aiChat.connection.error')}
         </Text>
         <View style={{ flexDirection: 'row', gap: 12 }}>
           {connectionState === 'connected' ? (
@@ -731,6 +767,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
             token={aiBridgeSettings.token}
             url={aiBridgeSettings.url || bridgeConfig.url}
             provider={provider}
+            preferredProvider={aiBridgeSettings.preferredProvider}
             reason={connectionReason}
             colorScheme={colorScheme}
             onConnect={handleConnect}

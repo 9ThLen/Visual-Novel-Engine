@@ -2,6 +2,8 @@ import {
   BRIDGE_PROTOCOL_VERSION,
   type BridgeEnvelope,
   type BridgeErrorCode,
+  type BridgeProvider,
+  type CodexBetaConsent,
   isServerMessage,
   makeEnvelope,
   maxBytesForEnvelope,
@@ -10,7 +12,7 @@ import {
 
 export type { BridgeProvider } from './bridge-protocol';
 
-export type BridgeConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'unauthorized' | 'error' | 'closed';
+export type BridgeConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'challenge' | 'unauthorized' | 'error' | 'closed';
 export type BridgeConnectionReason =
   | 'CONNECTION_FAILED_OR_ORIGIN'
   | 'INVALID_TOKEN'
@@ -30,6 +32,8 @@ export interface BridgeClientOptions {
   url: string;
   token: string;
   locale?: string;
+  preferredProvider?: BridgeProvider;
+  codexBetaConsent?: CodexBetaConsent;
   onEvent: (msg: BridgeEnvelope) => void;
   onToolCall: (toolCallId: string, toolName: string, input: unknown) => Promise<ToolResult>;
   onConnectionChange: (state: BridgeConnectionState, reason?: BridgeConnectionReason) => void;
@@ -119,9 +123,13 @@ export class BridgeClient {
       if (this.socket !== socket || this.intentionallyClosed) return;
       const persistedSessionId = this.readPersistedSessionId();
       const resumeSessionId = this.sessionId || persistedSessionId;
-      const payload = resumeSessionId
-        ? { token: this.options.token, resumeSessionId, context: { locale: this.options.locale } }
-        : { token: this.options.token, context: { locale: this.options.locale } };
+      const payload = {
+        token: this.options.token,
+        ...(resumeSessionId ? { resumeSessionId } : {}),
+        ...(this.options.preferredProvider ? { preferredProvider: this.options.preferredProvider } : {}),
+        ...(this.options.codexBetaConsent ? { codexBetaConsent: this.options.codexBetaConsent } : {}),
+        context: { locale: this.options.locale },
+      };
       this.send('session_start', payload);
     };
     socket.onmessage = (event: MessageEvent<unknown>) => this.handleMessage(event.data);
@@ -161,6 +169,11 @@ export class BridgeClient {
     }
     if (parsed.type === 'conversation_reset_ack') {
       this.resolvePendingReset({ ok: true });
+    }
+    if (parsed.type === 'session_challenge') {
+      this.blockReconnect('challenge');
+      this.options.onEvent(parsed);
+      return;
     }
     if (parsed.type === 'error' && this.isRecord(parsed.payload)) {
       if (parsed.payload.code === 'UNAUTHORIZED') {
@@ -267,7 +280,7 @@ export class BridgeClient {
     return `vne-bridge-session:${url}`;
   }
 
-  private blockReconnect(state: 'unauthorized' | 'error', reason: BridgeConnectionReason): void {
+  private blockReconnect(state: 'challenge' | 'unauthorized' | 'error', reason?: BridgeConnectionReason): void {
     this.reconnectBlocked = true;
     this.clearAllTimers();
     this.sessionId = '';

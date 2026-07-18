@@ -19,6 +19,7 @@
     "test:coverage": "vitest run --coverage",
     "test:ai-e2e": "playwright test --config=playwright.ai.config.ts",
     "test:ai-live": "playwright test --config=playwright.ai-live.config.ts",
+    "test:ai-openai-live": "tsx tools/ai-bridge/smoke-openai.ts",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "qr": "node scripts/generate_qr.mjs",

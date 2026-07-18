@@ -6,6 +6,7 @@ describe('AI bridge CLI options', () => {
   it('parses provider, port and repeated origins', () => {
     expect(parseBridgeCliArgs([
       '--provider', 'codex',
+      '--enable-codex-beta',
       '--port=9000',
       '--origin', 'http://localhost:8092',
       '--origin=http://127.0.0.1:8092',
@@ -14,12 +15,13 @@ describe('AI bridge CLI options', () => {
       port: '9000',
       origins: ['http://localhost:8092', 'http://127.0.0.1:8092'],
       help: false,
+      enableCodexBeta: true,
     });
   });
 
   it('uses CLI values before environment values and replaces lower-priority origins', () => {
     const config = resolveBridgeCliConfig(
-      parseBridgeCliArgs(['--provider', 'codex', '--port', '9000', '--origin', 'http://localhost:8092']),
+      parseBridgeCliArgs(['--provider', 'codex', '--enable-codex-beta', '--port', '9000', '--origin', 'http://localhost:8092']),
       {
         AI_BRIDGE_PROVIDER: 'claude',
         AI_BRIDGE_PORT: '7000',
@@ -30,6 +32,7 @@ describe('AI bridge CLI options', () => {
       provider: 'codex',
       port: 9000,
       origins: ['http://localhost:8092'],
+      enableCodexBeta: true,
     });
   });
 
@@ -38,10 +41,12 @@ describe('AI bridge CLI options', () => {
       AI_BRIDGE_PROVIDER: 'codex',
       AI_BRIDGE_PORT: '9001',
       AI_BRIDGE_ALLOWED_ORIGINS: 'http://localhost:8093,http://127.0.0.1:8093',
+      AI_BRIDGE_ENABLE_CODEX_BETA: '1',
     })).toEqual({
       provider: 'codex',
       port: 9001,
       origins: ['http://localhost:8093', 'http://127.0.0.1:8093'],
+      enableCodexBeta: true,
     });
   });
 
@@ -76,7 +81,8 @@ describe('AI bridge CLI options', () => {
   });
 
   it('prints the supported options in help', () => {
-    expect(bridgeCliHelp()).toContain('--provider <claude|codex>');
+    expect(bridgeCliHelp()).toContain('--provider <claude|openai|codex>');
+    expect(bridgeCliHelp()).toContain('--enable-codex-beta');
     expect(bridgeCliHelp()).toContain('--origin <origin>');
     expect(bridgeCliHelp()).toContain('--port <port>');
   });

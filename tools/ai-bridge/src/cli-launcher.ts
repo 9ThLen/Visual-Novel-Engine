@@ -21,6 +21,9 @@ export function providerAuthCommand(
   platform: NodeJS.Platform = process.platform,
   comSpec = process.env.ComSpec,
 ): ProviderAuthCommand {
+  if (provider === 'openai') {
+    throw new Error('OpenAI API authentication does not use a CLI');
+  }
   if (platform !== 'win32') {
     return provider === 'codex'
       ? { command: 'codex', args: ['login', 'status'] }
@@ -41,6 +44,9 @@ export function checkProviderAuthentication(
   provider: BridgeProvider,
   run: ProviderAuthRunner = spawnSync,
 ): SpawnSyncReturns<string> {
+  if (provider === 'openai') {
+    return { pid: 0, output: [], stdout: '', stderr: '', status: 0, signal: null };
+  }
   const command = providerAuthCommand(provider);
   return run(command.command, command.args, {
     encoding: 'utf8',

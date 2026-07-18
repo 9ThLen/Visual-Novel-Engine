@@ -10,6 +10,7 @@ import {
   fallbackColorForSeed,
   firstBackgroundAssetId,
   pickBannerEffect,
+  posterFallbackForSeed,
   type ShowcaseStory,
 } from '@/lib/showcase/story-showcase';
 
@@ -290,5 +291,15 @@ describe('fallbackColorForSeed', () => {
   it('is deterministic and stays in the palette', () => {
     expect(fallbackColorForSeed('story-1')).toBe(fallbackColorForSeed('story-1'));
     expect(fallbackColorForSeed('story-1')).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});
+
+describe('posterFallbackForSeed', () => {
+  it('returns a deterministic warm fill + ink pair', () => {
+    const first = posterFallbackForSeed('story-1');
+    expect(posterFallbackForSeed('story-1')).toEqual(first);
+    expect(first.bg).toMatch(/^#[0-9a-fA-F]{6}$/);
+    expect(first.ink).toMatch(/^#[0-9a-fA-F]{6}$/);
+    expect(first.bg).not.toBe(first.ink);
   });
 });

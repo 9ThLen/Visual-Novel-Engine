@@ -1,6 +1,30 @@
 export type AgentEvent =
   | { type: 'text'; text: string }
-  | { type: 'done'; stopReason?: string };
+  | { type: 'done'; stopReason?: string; diagnostics?: ProviderDiagnostics };
+
+export type ProviderFailureReason =
+  | 'OPENAI_API_AUTH_FAILED' | 'OPENAI_API_FORBIDDEN' | 'OPENAI_RATE_LIMITED'
+  | 'OPENAI_MODEL_UNAVAILABLE' | 'OPENAI_API_TIMEOUT' | 'OPENAI_RESPONSE_INCOMPLETE'
+  | 'OPENAI_MALFORMED_RESPONSE' | 'OPENAI_REFUSAL' | 'OPENAI_STREAM_TOO_LARGE'
+  | 'OPENAI_STREAM_EVENT_TOO_LARGE' | 'OPENAI_STREAM_INCOMPLETE' | 'OPENAI_API_FAILED'
+  | 'OPENAI_ROUND_LIMIT' | 'OPENAI_PARALLEL_TOOL_CALLS' | 'OPENAI_MALFORMED_FUNCTION_CALL'
+  | 'OPENAI_NON_REPLAYABLE_REASONING' | 'OPENAI_REQUEST_TOO_LARGE' | 'OPENAI_SESSION_BUDGET_EXHAUSTED';
+
+export interface ProviderDiagnostics {
+  model?: string;
+  requestId?: string;
+  durationMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+}
+
+export class ProviderFailure extends Error {
+  constructor(readonly reason: ProviderFailureReason) {
+    super(reason);
+    this.name = 'ProviderFailure';
+  }
+}
 
 export interface ToolInvoker {
   call(toolName: string, input: unknown, timeoutMs?: number): Promise<unknown>;

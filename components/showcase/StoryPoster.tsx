@@ -4,13 +4,14 @@
  * looks chosen rather than missing.
  */
 
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 
 import { ShowcaseImage } from '@/components/showcase/ShowcaseImage';
+import { Fonts, withAlpha } from '@/lib/_core/theme';
 import { SHOWCASE_COLORS } from '@/lib/showcase/showcase-colors';
-import { fallbackColorForSeed, type ShowcaseStory } from '@/lib/showcase/story-showcase';
+import { posterFallbackForSeed, type ShowcaseStory } from '@/lib/showcase/story-showcase';
 import { buttonFeedback } from '@/lib/ui-feedback';
 
 export const POSTER_WIDTH = 150;
@@ -29,6 +30,8 @@ export const StoryPoster = memo(function StoryPoster({
   caption,
   onPress,
 }: StoryPosterProps) {
+  const fallback = useMemo(() => posterFallbackForSeed(story.id), [story.id]);
+  const initial = story.title.trim().charAt(0).toUpperCase() || '?';
   return (
     <Pressable
       style={({ pressed }) => [styles.card, { opacity: pressed ? 0.82 : 1 }]}
@@ -39,8 +42,10 @@ export const StoryPoster = memo(function StoryPoster({
       accessibilityRole="button"
       accessibilityLabel={story.title}
     >
-      <View style={[styles.frame, { backgroundColor: fallbackColorForSeed(story.id) }]}>
-        <Text style={styles.initial}>{story.title.trim().charAt(0).toUpperCase() || '?'}</Text>
+      <View style={[styles.frame, { backgroundColor: fallback.bg }]}>
+        <Text style={[styles.initial, { color: fallback.ink }]}>{initial}</Text>
+        {/* A hairline in the ink colour gives the flat pastel a printed edge. */}
+        <View style={[styles.frameBorder, { borderColor: withAlpha(fallback.ink, 0.18) }]} pointerEvents="none" />
         {posterAsset ? (
           <ShowcaseImage assetRef={posterAsset} style={styles.imageOverlay} resizeMode="cover" />
         ) : null}
@@ -76,10 +81,15 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  frameBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
   initial: {
-    fontSize: 64,
-    fontWeight: '800',
-    color: `${SHOWCASE_COLORS.text}26`,
+    fontSize: 72,
+    fontFamily: Fonts.serif,
+    fontWeight: '700',
   },
   title: {
     color: SHOWCASE_COLORS.text,

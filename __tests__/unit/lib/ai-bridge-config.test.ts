@@ -23,6 +23,7 @@ describe('AI bridge config', () => {
       url: 'ws://127.0.0.1:9999',
       token: 'store-token',
       enabled: true,
+      preferredProvider: 'openai',
     });
   });
 
@@ -33,6 +34,7 @@ describe('AI bridge config', () => {
       url: DEFAULT_AI_BRIDGE_URL,
       token: 'env-token',
       enabled: true,
+      preferredProvider: 'openai',
     });
   });
 
@@ -44,6 +46,7 @@ describe('AI bridge config', () => {
       url: 'ws://localhost:9000',
       token: 'env-token',
       enabled: false,
+      preferredProvider: 'openai',
     });
   });
 
@@ -55,6 +58,7 @@ describe('AI bridge config', () => {
       url: 'ws://example.com:8787',
       token: 'env-token',
       enabled: false,
+      preferredProvider: 'openai',
     });
   });
 

@@ -2,7 +2,7 @@
 import { once } from 'node:events';
 import WebSocket from 'ws';
 import { makeEnvelope, type BridgeEnvelope } from '../../lib/bridge-protocol';
-import { BridgeToolError, modelToolErrorValue, type AgentEvent, type AgentProvider, type ToolInvoker } from '../../tools/ai-bridge/src/provider';
+import { BridgeToolError, ProviderFailure, modelToolErrorValue, type AgentEvent, type AgentProvider, type ToolInvoker } from '../../tools/ai-bridge/src/provider';
 import { AiBridgeServer } from '../../tools/ai-bridge/src/server';
 import { BRIDGE_TOOLS } from '../../lib/ai/bridge-tools';
 import { z } from 'zod';
@@ -19,9 +19,9 @@ class FakeProvider implements AgentProvider {
 const servers: AiBridgeServer[] = [];
 afterEach(async () => { await Promise.all(servers.splice(0).map(server => server.close())); });
 
-async function setup(behavior: (provider: FakeProvider, text: string) => AsyncIterable<AgentEvent>, toolTimeoutMs = 30) {
+async function setup(behavior: (provider: FakeProvider, text: string) => AsyncIterable<AgentEvent>, toolTimeoutMs = 30, turnTimeoutMs?: number) {
   let provider!: FakeProvider;
-  const server = new AiBridgeServer({ port: 0, token: 'test-token', toolTimeoutMs, logger: vi.fn(), providerFactory: tools => provider = new FakeProvider(tools, behavior) });
+  const server = new AiBridgeServer({ port: 0, token: 'test-token', toolTimeoutMs, turnTimeoutMs, logger: vi.fn(), providerFactory: tools => provider = new FakeProvider(tools, behavior) });
   servers.push(server); const port = await server.start();
   return { server, port, get provider() { return provider; } };
 }
@@ -107,6 +107,16 @@ describe('AI bridge protocol server', () => {
     expect(await next(socket)).toMatchObject({ type: 'assistant_done', payload: { stopReason: 'interrupted' } }); expect(context.provider.aborted).toBe(true);
   });
 
+  it('reports an expired turn as timeout rather than a user interrupt', async () => {
+    const context = await setup(async function* (self) {
+      while (!self.aborted) await new Promise(resolve => setTimeout(resolve, 5));
+    }, 30, 20);
+    const socket = connect(context.port);
+    const started = await handshake(socket);
+    send(socket, 'user_message', { text: 'go' }, String(payload(started).sessionId));
+    expect(await next(socket)).toMatchObject({ type: 'assistant_done', payload: { stopReason: 'timeout' } });
+  });
+
   it('resets provider memory and acknowledges the reset request', async () => {
     const context = await setup(async function* () {});
     const socket = connect(context.port);
@@ -135,7 +145,9 @@ describe('AI bridge protocol server', () => {
     const resetMessages = new Promise<BridgeEnvelope[]>(resolve => {
       const messages: BridgeEnvelope[] = [];
       const onMessage = (data: WebSocket.RawData) => {
-        messages.push(JSON.parse(data.toString()) as BridgeEnvelope);
+        const message = JSON.parse(data.toString()) as BridgeEnvelope;
+        if (message.type === 'assistant_delta') return;
+        messages.push(message);
         if (messages.length === 2) {
           socket.off('message', onMessage);
           resolve(messages);
@@ -175,6 +187,21 @@ describe('AI bridge protocol server', () => {
     send(socket, 'interrupt', {}, sessionId);
   });
 
+  it('forwards only a typed provider reason and no upstream response body', async () => {
+    const { port } = await setup(async function* () {
+      throw new ProviderFailure('OPENAI_RATE_LIMITED');
+    });
+    const socket = connect(port);
+    const started = await handshake(socket);
+    send(socket, 'user_message', { text: 'go' }, String(payload(started).sessionId));
+    const error = await next(socket);
+    expect(error).toMatchObject({
+      type: 'error',
+      payload: { code: 'PROVIDER_UNAVAILABLE', details: { reason: 'OPENAI_RATE_LIMITED' } },
+    });
+    expect(JSON.stringify(error)).not.toContain('redact-me');
+  });
+
   it('resumes a live session with the same sessionId', async () => {
     const { port } = await setup(async function* () {}); const first = connect(port); const started = await handshake(first); first.close(); await once(first, 'close');
     const second = connect(port); const resumed = await handshake(second, String(payload(started).sessionId));
@@ -207,7 +234,7 @@ describe('AI bridge protocol server', () => {
   it('preserves structured tool errors for provider-visible results', async () => {
     let observed: unknown;
     const { port } = await setup(async function* (provider) {
-      try { await provider.tools.call('get_scene', {}); } catch (error) { observed = modelToolErrorValue(error); }
+      try { await provider.tools.call('get_scene', { sceneId: 'scene-1' }); } catch (error) { observed = modelToolErrorValue(error); }
       yield { type: 'done' };
     });
     const socket = connect(port); const started = await handshake(socket); send(socket, 'user_message', { text: 'go' }, String(payload(started).sessionId));
@@ -234,7 +261,7 @@ describe('AI bridge protocol server', () => {
   });
 
   it('rejects an oversized result for an unknown or non-binary pending tool', async () => {
-    const { port } = await setup(async function* (provider) { await provider.tools.call('get_scene', {}); yield { type: 'done' }; }, 1_000);
+    const { port } = await setup(async function* (provider) { await provider.tools.call('get_scene', { sceneId: 'scene-1' }); yield { type: 'done' }; }, 1_000);
     const socket = connect(port); const started = await handshake(socket); send(socket, 'user_message', { text: 'go' }, String(payload(started).sessionId));
     const call = await next(socket);
     send(socket, 'tool_result', { toolCallId: payload(call).toolCallId, ok: true, binaryTool: true, result: 'x'.repeat(1_100_000) }, String(payload(started).sessionId));
