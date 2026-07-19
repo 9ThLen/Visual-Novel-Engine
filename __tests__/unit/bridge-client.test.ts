@@ -330,6 +330,17 @@ describe('BridgeClient', () => {
     client.close();
   });
 
+  it('reports a throwing socket send instead of claiming delivery', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'claude' }, 'session-1'));
+    socket.send = () => { throw new Error('InvalidStateError'); };
+    expect(client.sendUserMessage('hello')).toEqual({ ok: false, reason: 'DELIVERY_FAILED' });
+    client.close();
+  });
+
   it('emits one interrupt only after authentication', () => {
     const client = new BridgeClient(options);
     client.connect();

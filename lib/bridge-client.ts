@@ -24,7 +24,7 @@ export type ToolResult =
   | { ok: false; errorCode: BridgeErrorCode; errorMessage: string; details?: unknown; binaryTool?: boolean };
 export type BridgeDeliveryResult =
   | { ok: true }
-  | { ok: false; reason: 'NOT_AUTHENTICATED' | 'MESSAGE_TOO_LARGE' | 'SERIALIZATION_FAILED' };
+  | { ok: false; reason: 'NOT_AUTHENTICATED' | 'MESSAGE_TOO_LARGE' | 'SERIALIZATION_FAILED' | 'DELIVERY_FAILED' };
 export type BridgeConversationResetResult =
   | { ok: true }
   | { ok: false; reason: 'NOT_AUTHENTICATED' | 'RESET_FAILED' };
@@ -264,7 +264,12 @@ export class BridgeClient {
     try { raw = JSON.stringify(makeEnvelope(type, payload, this.sessionId)); }
     catch { return { ok: false, reason: 'SERIALIZATION_FAILED' }; }
     if (new TextEncoder().encode(raw).byteLength > maxBytesForEnvelope(type, payload)) return { ok: false, reason: 'MESSAGE_TOO_LARGE' };
-    this.socket?.send(raw);
+    // The readyState guard above cannot make send() safe on every platform:
+    // React Native's WebSocket throws where the browser only warns. Reporting
+    // {ok:true} there would strand the caller waiting on a reply the bridge
+    // never received.
+    try { this.socket?.send(raw); }
+    catch { return { ok: false, reason: 'DELIVERY_FAILED' }; }
     return { ok: true };
   }
 
