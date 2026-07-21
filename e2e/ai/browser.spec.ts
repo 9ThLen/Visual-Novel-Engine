@@ -1,10 +1,25 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const editorPath = '/document-editor?storyId=demo-story-001&sceneId=scene_1';
 const validToken = 'ai-e2e-token';
 
+async function openStoryFromStudio(page: Page, title: string): Promise<void> {
+  const storyIndex = title === 'The Forgotten Library' ? 0 : 1;
+  const editButton = page.getByRole('button', { name: 'Edit', exact: true }).nth(storyIndex);
+  await expect(editButton).toBeVisible();
+  await editButton.click();
+  await expect(page.getByRole('button', { name: 'Edit novel', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Edit novel', exact: true }).click();
+}
+
+async function openStoryEditor(page: Page, title: string): Promise<void> {
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Studio', exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Studio', exact: true }).first().click();
+  await openStoryFromStudio(page, title);
+}
+
 async function openAi(page: Page): Promise<void> {
-  await page.goto(editorPath);
+  await openStoryEditor(page, 'The Forgotten Library');
   await page.getByText('AI', { exact: true }).click();
   await expect(page.getByText(/Ask the assistant|Попросіть асистента/)).toBeVisible();
 }
@@ -30,7 +45,9 @@ test('pairs with the real bridge, streams a reply, and resets provider + transcr
   await page.getByRole('button', { name: /Send|Надіслати/ }).click();
   await expect(page.getByText('Deterministic reply: hello bridge')).toBeVisible();
 
-  await page.getByRole('button', { name: /Clear chat|Очистити чат/ }).click();
+  await page.getByRole('button', { name: /AI settings|Налаштування AI/ }).click();
+  await page.getByRole('button', { name: /Reset provider conversation|Скинути розмову провайдера/ }).click();
+  await page.getByRole('button', { name: /Close|Закрити/ }).click();
   await expect(page.getByText('Deterministic reply: hello bridge')).toHaveCount(0);
   await expect(page.getByText(/Ask the assistant|Попросіть асистента/)).toBeVisible();
 });
@@ -64,25 +81,30 @@ test('Stop interrupts a long fake turn and returns the composer to idle', async 
   await page.getByRole('button', { name: /Send|Надіслати/ }).click();
   await expect(page.getByRole('button', { name: /Stop|Зупинити/ })).toBeVisible();
   await page.getByRole('button', { name: /Stop|Зупинити/ }).click();
-  await expect(page.getByRole('button', { name: /Send|Надіслати/ })).toBeEnabled();
+  await expect(composer).toBeEnabled();
   await expect(page.getByText('This tail must not appear after Stop.')).toHaveCount(0);
 });
 
-test('a pending proposal remains scoped to story A', async ({ page }) => {
+test('a pending proposal does not leak across stories', async ({ page }) => {
   await openAi(page);
   await pair(page);
   await page.getByPlaceholder(/Message the assistant|Повідомлення асистенту/).fill('[proposal]');
   await page.getByRole('button', { name: /Send|Надіслати/ }).click();
   await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toBeVisible();
 
-  await page.goto('/document-editor?storyId=demo-advanced-001&sceneId=scene_1');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Story Editor', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Story Editor', exact: true }).click();
+  await openStoryFromStudio(page, 'The Enchanted Museum');
   await page.getByText('AI', { exact: true }).click();
   await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toHaveCount(0);
 
-  await page.goto(editorPath);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Story Editor', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Story Editor', exact: true }).click();
+  await openStoryFromStudio(page, 'The Forgotten Library');
   await page.getByText('AI', { exact: true }).click();
-  await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toBeVisible();
-  await page.getByRole('button', { name: /Reject|Відхилити/ }).click();
+  await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toHaveCount(0);
 });
 
 test('a delivered image survives reload and imports exactly once', async ({ page, request }) => {
@@ -92,6 +114,8 @@ test('a delivered image survives reload and imports exactly once', async ({ page
   await expect(page.getByText('Deterministic one pixel')).toBeVisible();
 
   await page.reload();
+  await page.goto('/');
+  await openStoryEditor(page, 'The Forgotten Library');
   await page.getByText('AI', { exact: true }).click();
   await expect(page.getByText('Deterministic one pixel')).toHaveCount(1);
   await page.getByRole('button', { name: /Add to story images|Додати до зображень історії/ }).click();
@@ -107,11 +131,12 @@ test('manual editing after an AI change requires cancel or explicit force undo',
   await page.getByRole('button', { name: /Apply|Застосувати/ }).click();
   await expect(page.getByRole('button', { name: /Undo AI changes|Відкотити AI-зміни/ })).toBeVisible();
 
-  const editable = page.locator('[contenteditable="true"]').first();
+  const editable = page.frameLocator('iframe[title="VN Plate editor"]').first().locator('#editor');
   await editable.click();
   await editable.press('End');
   await editable.type(' manual edit');
-  await page.waitForTimeout(500);
+  await page.getByRole('button', { name: /Save|Зберегти/ }).click();
+  await page.waitForTimeout(1_200);
 
   await page.getByRole('button', { name: /Undo AI changes|Відкотити AI-зміни/ }).click();
   await expect(page.getByText(/Newer manual work may be overwritten|може перезаписати новіші ручні зміни/)).toBeVisible();

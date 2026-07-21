@@ -13,6 +13,20 @@ The current app uses a canonical scene model: `SceneRecord + TimelineStep`. Edit
 - Read stories with typewriter text, choices, backgrounds, character sprites, audio, save/load, and autosave.
 - Run on web, Android, and iOS through Expo.
 
+## Build Week AI Assistant Contribution
+
+The Build Week contribution adds a controlled AI-assisted editing workflow for creators:
+
+1. Open a story and its active scene in the Studio editor.
+2. Open the AI tab and pair a local bridge with an explicit provider.
+3. Describe a scene or story change in natural language.
+4. Review the validated proposal, then apply or reject it.
+5. Preview the result and roll back the applied AI change when needed.
+
+The assistant receives story and scene context, but mutations pass through validated patches or change sets, revision checks, permission boundaries, and recoverable snapshots. The bridge also supports attachment validation, provider settings, and fail-closed behavior for unsupported capabilities.
+
+For the exact Build Week contribution boundary, commit evidence, validation results, and remaining submission evidence, see [`BUILD_WEEK_CHANGES.md`](BUILD_WEEK_CHANGES.md).
+
 ## Architecture
 
 - `app/` contains Expo Router screens.
@@ -51,6 +65,14 @@ pnpm check
 pnpm test
 pnpm lint
 ```
+
+Run the AI bridge browser suite:
+
+```bash
+pnpm test:ai-e2e
+```
+
+The AI browser tests use the same path as a creator: `Studio → story → Edit novel → AI`. The deterministic local bridge makes pairing, proposals, rollback, attachment persistence, unauthorized access, and session isolation reproducible without provider credentials.
 
 Run native targets:
 

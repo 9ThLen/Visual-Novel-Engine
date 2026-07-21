@@ -23,7 +23,7 @@ export default defineConfig({
       env: { ...process.env, AI_BRIDGE_TOKEN: token },
     },
     {
-      command: 'node node_modules/expo/bin/cli start --web --port 8081',
+      command: 'node node_modules/expo/bin/cli start --web --port 8081 --offline',
       url: appOrigin,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

@@ -23,7 +23,7 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: 'node node_modules/expo/bin/cli start --web --port 8081',
+      command: 'node node_modules/expo/bin/cli start --web --port 8081 --offline',
       url: appOrigin,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
