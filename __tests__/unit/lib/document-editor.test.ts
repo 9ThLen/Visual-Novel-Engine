@@ -2,7 +2,6 @@
 import {
   documentSceneToConnections,
   documentSceneToTimeline,
-  ensureDocumentCharacters,
   ensureDocumentCharactersInBlocks,
   orderSceneRecordsForDocument,
   parseDraftLineToDocumentBlock,
@@ -111,10 +110,11 @@ describe('document scene parser/compiler', () => {
     expect(block.kind).toBe('dialogue');
     if (block.kind !== 'dialogue') throw new Error('Expected dialogue block');
 
-    const characters = ensureDocumentCharacters([block], []);
-    expect(characters).toHaveLength(1);
-    expect(characters[0].name).toBe('ĐśĐ°ĐşŃ');
-    expect(block.characterId).toBe(characters[0].id);
+    const result = ensureDocumentCharactersInBlocks([block], []);
+    expect(result.characters).toHaveLength(1);
+    expect(result.characters[0].name).toBe('ĐśĐ°ĐşŃ');
+    expect(result.blocks[0]).toMatchObject({ characterId: result.characters[0].id });
+    expect(block.characterId).toBeNull();
   });
 
   it('returns updated dialogue blocks when auto-creating missing characters', () => {
@@ -183,10 +183,13 @@ describe('document scene parser/compiler', () => {
     expect(block.kind).toBe('dialogue');
     if (block.kind !== 'dialogue') throw new Error('Expected dialogue block');
 
-    const nextCharacters = ensureDocumentCharacters([block], characters);
-    expect(nextCharacters).toHaveLength(1);
+    const result = ensureDocumentCharactersInBlocks([block], characters);
+    expect(result.characters).toHaveLength(1);
+    expect(result.blocks[0]).toMatchObject({
+      characterId: 'char_max',
+      spriteId: 'sprite_happy',
+    });
     expect(block.characterId).toBe('char_max');
-    expect(block.spriteId).toBe('sprite_happy');
   });
 
   it('does not parse URL-like text as dialogue shorthand', () => {

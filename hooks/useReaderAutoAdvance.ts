@@ -39,6 +39,8 @@ export function useReaderAutoAdvance(params: UseReaderAutoAdvanceParams) {
   const [turbo, setTurbo] = useState(false);
   const autoPlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turboInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const executorRef = useRef(executor);
+  executorRef.current = executor;
 
   // ── Auto-play: schedule advance after delay if active + not typing + no choices ──
   useEffect(() => {
@@ -47,13 +49,14 @@ export function useReaderAutoAdvance(params: UseReaderAutoAdvanceParams) {
 
     autoPlayTimer.current = setTimeout(() => {
       if (hasChoices) return;
-      if (executor.canAdvance) executor.advance();
+      const currentExecutor = executorRef.current;
+      if (currentExecutor.canAdvance) currentExecutor.advance();
     }, AUTO_PLAY_DELAY_MS);
 
     return () => {
       if (autoPlayTimer.current) clearTimeout(autoPlayTimer.current);
     };
-  }, [autoPlayActive, isTyping, hasChoices, executor, pageIndex]);
+  }, [autoPlayActive, isTyping, hasChoices, pageIndex]);
 
   // ── Turbo: aggressive 320ms interval while active ──
   useEffect(() => {
@@ -64,12 +67,12 @@ export function useReaderAutoAdvance(params: UseReaderAutoAdvanceParams) {
     turboInterval.current = setInterval(() => {
       if (isTyping) {
         completeTypewriter();
-        if (executor.isTyping) {
-          executor.advance();
+        if (executorRef.current.isTyping) {
+          executorRef.current.advance();
         }
       } else {
-        if (executor.canAdvance) {
-          executor.advance();
+        if (executorRef.current.canAdvance) {
+          executorRef.current.advance();
         } else {
           setTurbo(false);
         }
@@ -79,25 +82,25 @@ export function useReaderAutoAdvance(params: UseReaderAutoAdvanceParams) {
     return () => {
       if (turboInterval.current) clearInterval(turboInterval.current);
     };
-  }, [turbo, isTyping, executor, completeTypewriter]);
+  }, [turbo, isTyping, completeTypewriter]);
 
   // ── Tap advance: complete text if typing, else advance if can ──
   const handleTapAdvance = useCallback(() => {
     if (isLoading) return;
     if (isTyping) {
       completeTypewriter();
-      if (executor.isTyping) {
-        executor.advance();
+      if (executorRef.current.isTyping) {
+        executorRef.current.advance();
       }
       return;
     }
-    if (executor.sceneState.isTransitioning) return;
-    if (executor.canAdvance) {
-      executor.advance();
+    if (executorRef.current.sceneState.isTransitioning) return;
+    if (executorRef.current.canAdvance) {
+      executorRef.current.advance();
       return;
     }
-    if (executor.sceneState.currentChoices) return;
-  }, [isLoading, isTyping, completeTypewriter, executor]);
+    if (executorRef.current.sceneState.currentChoices) return;
+  }, [isLoading, isTyping, completeTypewriter]);
 
   const toggleAutoPlay = useCallback(() => {
     setAutoPlayActive((a) => !a);

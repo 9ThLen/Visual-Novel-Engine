@@ -32,7 +32,7 @@ import {
 } from '@/lib/character-migration';
 import { migrateStoryImageAssetIds } from '@/lib/story-image-library';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
-import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
+import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
 import { mergeLegacyUserSettings, normalizeUserSettings, type UserSettings } from '@/lib/user-settings';
 import {
   APP_STORE_PERSIST_VERSION,
@@ -134,7 +134,14 @@ export const useAppStore = create<AppStore>()(
                 characterLibraries['default'] = migrateCharacterLibrary(parsed.characters);
               }
             }
-          } catch { }
+          } catch (error) {
+            ErrorHandler.handle(
+              'Legacy default character library migration failed',
+              error,
+              ErrorCategory.STORAGE,
+              ErrorSeverity.LOW,
+            );
+          }
           if (stories.length > 0) {
             const charEntries = await Promise.all(
               stories.map(async (s) => {
@@ -144,7 +151,15 @@ export const useAppStore = create<AppStore>()(
                     const lib = JSON.parse(json);
                     return [s.id, migrateCharacterLibrary(lib.characters || lib)] as const;
                   }
-                } catch { }
+                } catch (error) {
+                  ErrorHandler.handle(
+                    'Legacy story character library migration failed',
+                    error,
+                    ErrorCategory.STORAGE,
+                    ErrorSeverity.LOW,
+                    { storyId: s.id },
+                  );
+                }
                 return [s.id, [] as Character[]] as const;
               })
             );

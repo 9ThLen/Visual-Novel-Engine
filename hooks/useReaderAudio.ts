@@ -273,7 +273,7 @@ export function useReaderAudio(
         currentBgmUriRef.current = null;
         currentBgmBoundToRef.current = 'continuous';
       } else if (newMusicUri) {
-        resolvePlayableAssetUri(newMusicUri).then((uri) => {
+        void resolvePlayableAssetUri(newMusicUri).then((uri) => {
           logDebug('bgm:resolved', {
             sceneId: scene.id,
             requestedUri: newMusicUri,
@@ -332,7 +332,9 @@ export function useReaderAudio(
           currentBgmBoundToRef.current = music.boundTo;
           currentBgmFadeOutMsRef.current = fadeOutMs;
           scheduleAutoFade();
-        });
+        }).catch((err) =>
+          ErrorHandler.handle('BGM asset resolution failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW),
+        );
       } else if (!music.hasExplicitBlock && currentBgmUriRef.current && currentBgmBoundToRef.current === 'scene') {
         void audioManager.stop('bgm', currentBgmFadeOutMsRef.current);
         currentBgmUriRef.current = null;
@@ -342,7 +344,7 @@ export function useReaderAudio(
       }
 
       if (scene.voiceAudioUri?.trim()) {
-        resolvePlayableAssetUri(scene.voiceAudioUri).then((uri) => {
+        void resolvePlayableAssetUri(scene.voiceAudioUri).then((uri) => {
           if (
             sceneGenerationRef.current !== generation ||
             !isReaderAudioSessionValid(sessionId) ||
@@ -358,7 +360,9 @@ export function useReaderAudio(
             .catch((err) =>
               ErrorHandler.handle('Voice playback failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW),
             );
-        });
+        }).catch((err) =>
+          ErrorHandler.handle('Voice asset resolution failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW),
+        );
       }
 
       const triggers = scene.audioTriggers;
@@ -381,7 +385,7 @@ export function useReaderAudio(
           void audioManager.stop(`sfx:${event.assetId}`, eventFadeOutMs);
           continue;
         }
-        resolvePlayableAssetUri(event.assetId).then((uri) => {
+        void resolvePlayableAssetUri(event.assetId).then((uri) => {
           if (
             sceneGenerationRef.current !== generation ||
             !isReaderAudioSessionValid(sessionId) ||
@@ -398,7 +402,9 @@ export function useReaderAudio(
             .catch((err) =>
               ErrorHandler.handle('SFX playback failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW),
             );
-        });
+        }).catch((err) =>
+          ErrorHandler.handle('SFX asset resolution failed', err, ErrorCategory.MEDIA, ErrorSeverity.LOW),
+        );
       }
     },
     [audioManager, clearAutoFadeTimer, logDebug, settings.sfxVolume, storyId],

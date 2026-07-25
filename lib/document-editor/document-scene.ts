@@ -463,17 +463,6 @@ export function parseDraftLineToDocumentBlock(line: string, characters: Characte
   };
 }
 
-export function ensureDocumentCharacters(blocks: DocumentBlock[], characters: Character[]): Character[] {
-  const result = ensureDocumentCharactersInBlocks(blocks, characters);
-  result.blocks.forEach((block, index) => {
-    if (blocks[index] && blocks[index].kind === block.kind) {
-      Object.assign(blocks[index], block);
-    }
-    blocks[index] = block;
-  });
-  return result.characters;
-}
-
 export function ensureDocumentCharactersInBlocks(
   blocks: DocumentBlock[],
   characters: Character[]

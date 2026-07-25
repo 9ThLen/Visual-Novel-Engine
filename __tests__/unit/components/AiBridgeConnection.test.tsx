@@ -1,10 +1,41 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { ConnectionCard } from '@/components/ai-chat/ConnectionCard';
 import { resolveAiBridgeConfig } from '@/lib/ai/bridge-config';
 
 describe('AI bridge connection UI', () => {
+  it('clears the copied-command timer when unmounted', async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    try {
+      const view = render(
+        <ConnectionCard
+          state="demo"
+          token=""
+          url="ws://127.0.0.1:8787"
+          onConnect={vi.fn()}
+          onRetry={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByText('Connect real AI'));
+      await act(async () => {
+        fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[0]);
+        await Promise.resolve();
+      });
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+      view.unmount();
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('prefers persisted runtime settings over environment values', () => {
     vi.stubEnv('EXPO_PUBLIC_AI_BRIDGE_URL', 'ws://localhost:8788');
     vi.stubEnv('EXPO_PUBLIC_AI_BRIDGE_TOKEN', 'env-token');

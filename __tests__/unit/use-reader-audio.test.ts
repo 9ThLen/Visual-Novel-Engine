@@ -5,6 +5,7 @@ import { enhancedAudioManager } from '../../lib/audio-manager-enhanced';
 import { resolvePlayableAssetUri } from '../../lib/asset-resolver';
 import { getPlaybackAudioLibraryPure } from '../../lib/audio-library';
 import { deactivateReaderAudioSession } from '../../lib/reader-audio-session';
+import { ErrorHandler } from '../../lib/error-handler';
 import type { UserSettings } from '../../lib/user-settings';
 import type { AudioTrigger } from '../../lib/audio-types';
 import type { SceneState } from '../../lib/engine/runtime-types';
@@ -101,6 +102,72 @@ describe('useReaderAudio', () => {
   });
 
   describe('scene transitions', () => {
+    it('reports asset resolution failures instead of leaking rejected promises', async () => {
+      const resolutionError = new Error('asset lookup failed');
+      (resolvePlayableAssetUri as any).mockRejectedValue(resolutionError);
+      const handleSpy = vi.spyOn(ErrorHandler, 'handle');
+
+      renderHook(() =>
+        useReaderAudio(
+          STORY_ID,
+          createScene({
+            musicUri: 'music.mp3',
+            voiceAudioUri: 'voice.mp3',
+          }),
+          defaultSettings,
+          {
+            sceneState: {
+              backgroundAssetId: null,
+              backgroundTransition: 'fade',
+              characters: [],
+              activeEffects: [],
+              soundEvents: [{
+                id: 'sound-event-1',
+                assetId: 'sfx-door',
+                mode: 'track',
+                volume: 1,
+                loop: false,
+                fadeIn: 0,
+                fadeOut: 0,
+                pitchVariation: 0,
+                timestamp: 1,
+              }],
+              musicTrackId: null,
+              musicPlaying: false,
+              musicVolume: 1,
+              variables: {},
+              dialogueHistory: [],
+              currentChoices: null,
+              isTransitioning: false,
+              transitionTarget: null,
+            },
+          },
+        ),
+      );
+
+      await waitFor(() => {
+        expect(handleSpy).toHaveBeenCalledWith(
+          'BGM asset resolution failed',
+          resolutionError,
+          expect.anything(),
+          expect.anything(),
+        );
+        expect(handleSpy).toHaveBeenCalledWith(
+          'Voice asset resolution failed',
+          resolutionError,
+          expect.anything(),
+          expect.anything(),
+        );
+        expect(handleSpy).toHaveBeenCalledWith(
+          'SFX asset resolution failed',
+          resolutionError,
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+      handleSpy.mockRestore();
+    });
+
     it('should cancel triggers and stop voice on scene change', () => {
       renderHook(() =>
         useReaderAudio(STORY_ID, createScene(), defaultSettings, { blockedByOverlay: false }),

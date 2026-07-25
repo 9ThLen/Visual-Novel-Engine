@@ -59,6 +59,29 @@ describe('useReaderAutoAdvance', () => {
       expect(executor.advance).toHaveBeenCalledTimes(1);
     });
 
+    it('does not restart the timer when the executor object identity changes', () => {
+      const advance = vi.fn();
+      const { rerender } = renderHook(
+        ({ executor }) =>
+          useReaderAutoAdvance({
+            isLoading: false,
+            isTyping: false,
+            hasChoices: false,
+            executor,
+            completeTypewriter: vi.fn(),
+            initialAutoPlay: true,
+            pageIndex: 0,
+          }),
+        { initialProps: { executor: createExecutor({ advance }) } },
+      );
+
+      act(() => { vi.advanceTimersByTime(1200); });
+      rerender({ executor: createExecutor({ advance }) });
+      act(() => { vi.advanceTimersByTime(1200); });
+
+      expect(advance).toHaveBeenCalledTimes(1);
+    });
+
     it('does not auto-advance while typing', () => {
       const executor = createExecutor();
       const { rerender } = renderHook(

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 
 import { useColors } from '@/hooks/use-colors';
@@ -102,12 +102,16 @@ export function ConnectionCard({
   const [showWizard, setShowWizard] = useState(state !== 'demo');
   const [clipboardError, setClipboardError] = useState(false);
   const [copiedCommand, setCopiedCommand] = useState('');
+  const copiedCommandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setValue(token), [token]);
   useEffect(() => setUrlValue(url), [url]);
   useEffect(() => {
     setShowWizard(state !== 'demo');
   }, [state]);
+  useEffect(() => () => {
+    if (copiedCommandTimerRef.current) clearTimeout(copiedCommandTimerRef.current);
+  }, []);
 
   const normalizedUrl = useMemo(() => normalizeLocalBridgeUrl(urlValue), [urlValue]);
   const command = bridgeCommand(providerChoice, normalizedUrl.ok ? normalizedUrl.url : urlValue);
@@ -121,7 +125,11 @@ export function ConnectionCard({
   const copy = async (text: string) => {
     if (await copyToClipboard(text)) {
       setCopiedCommand(text);
-      setTimeout(() => setCopiedCommand(current => current === text ? '' : current), 1500);
+      if (copiedCommandTimerRef.current) clearTimeout(copiedCommandTimerRef.current);
+      copiedCommandTimerRef.current = setTimeout(() => {
+        copiedCommandTimerRef.current = null;
+        setCopiedCommand(current => current === text ? '' : current);
+      }, 1500);
     }
   };
 

@@ -1405,8 +1405,10 @@ const EMBEDDED_SCRIPT_BODY = `
 
     function currentSpriteId(character) {
       if (!character) return null;
-      return character.authoring && character.authoring.currentSpriteId
-        || character.defaultSpriteId
+      var authoredSpriteId = character.authoring && character.authoring.currentSpriteId;
+      return authoredSpriteId != null
+        ? authoredSpriteId
+        : character.defaultSpriteId
         || (character.sprites && character.sprites[0] && character.sprites[0].id)
         || null;
     }
