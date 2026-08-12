@@ -38,11 +38,13 @@ export function createStorySlice(set: AppStoreSet): StorySlice {
         const { [storyId]: __, ...recordRest } = s.sceneRecordsByStory;
         const { [storyId]: ___, ...hydrationRest } = s.sceneRecordHydration;
         const { [storyId]: ____, ...imageAssetIdsRest } = s.imageAssetIdsByStory;
+        const { [storyId]: _____, ...mediaAssetIdsRest } = s.mediaAssetIdsByStory;
         return {
           storiesMetadata: s.storiesMetadata.filter((m) => m.id !== storyId),
           sceneRecordsByStory: recordRest,
           sceneRecordHydration: hydrationRest,
           imageAssetIdsByStory: imageAssetIdsRest,
+          mediaAssetIdsByStory: mediaAssetIdsRest,
         };
       }),
 

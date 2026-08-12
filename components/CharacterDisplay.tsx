@@ -49,7 +49,9 @@ export const CharacterDisplay = React.memo(function CharacterDisplay({
         bottom: 0,
         left: positionPercent(position || instance.position),
         width: charWidth,
-        opacity: dimmed ? 0.58 : instance.animatedOpacity,
+        opacity: dimmed
+          ? Animated.multiply(instance.animatedOpacity, 0.58)
+          : instance.animatedOpacity,
         transform: [
           { translateX: -charWidth / 2 },
           { translateX: instance.animatedTranslateX },

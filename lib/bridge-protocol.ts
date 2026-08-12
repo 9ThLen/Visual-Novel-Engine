@@ -41,7 +41,7 @@ export interface BridgeError {
   details?: unknown;
 }
 
-export type BridgeProvider = 'claude' | 'openai' | 'codex';
+export type BridgeProvider = 'claude' | 'openai' | 'codex' | 'gemini';
 export interface CodexBetaConsent {
   acceptedAt: string;
   disclosureVersion: number;
@@ -52,6 +52,9 @@ export type SessionChallengeReason =
   | 'OPENAI_API_KEY_MISSING'
   | 'OPENAI_API_AUTH_FAILED'
   | 'OPENAI_MODEL_UNAVAILABLE'
+  | 'GEMINI_API_KEY_MISSING'
+  | 'GEMINI_API_AUTH_FAILED'
+  | 'GEMINI_MODEL_UNAVAILABLE'
   | 'CODEX_BETA_CONSENT_REQUIRED'
   | 'CODEX_BETA_CONSENT_STALE'
   | 'CODEX_KEYRING_REQUIRED'

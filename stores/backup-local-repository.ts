@@ -20,6 +20,7 @@ import {
 } from '@/lib/idb-storage';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import { createPersistentStorage } from '@/lib/persistent-storage';
+import { migrateStoryMediaAssetIds } from '@/lib/story-media-library';
 import {
   loadSceneRecordsForStory,
   type SceneRecordStorageLike,
@@ -224,6 +225,7 @@ export function createAppLocalRepository(
         characterLibraries: current.characterLibraries,
         audioLibraries: current.audioLibraries,
         imageAssetIdsByStory: current.imageAssetIdsByStory,
+        mediaAssetIdsByStory: current.mediaAssetIdsByStory,
         mediaLibrary: current.mediaLibrary,
         currentStoryId: current.currentStoryId,
         playbackState: current.playbackState,
@@ -237,6 +239,15 @@ export function createAppLocalRepository(
       const nextStoryId = manifest.stories.some((story) => story.id === current.currentStoryId)
         ? current.currentStoryId
         : manifest.stories[0]?.id ?? null;
+      const mediaAssetIdsByStory = migrateStoryMediaAssetIds({
+        current: {},
+        imageAssetIdsByStory: manifest.libraries.imageAssetIdsByStory,
+        stories: manifest.stories,
+        scenesByStory: manifest.scenes,
+        characterLibraries: manifest.libraries.characters,
+        audioLibraries: manifest.libraries.audio,
+        mediaLibrary,
+      });
 
       useAppStore.setState({
         storiesMetadata: structuredClone(manifest.stories),
@@ -247,6 +258,7 @@ export function createAppLocalRepository(
         characterLibraries: structuredClone(manifest.libraries.characters),
         audioLibraries: structuredClone(manifest.libraries.audio),
         imageAssetIdsByStory: structuredClone(manifest.libraries.imageAssetIdsByStory),
+        mediaAssetIdsByStory,
         mediaLibrary,
         currentStoryId: nextStoryId,
         playbackState: null,

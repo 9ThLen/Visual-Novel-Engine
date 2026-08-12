@@ -75,13 +75,13 @@ describe('AI bridge CLI options', () => {
   });
 
   it('rejects invalid providers and ports', () => {
-    expect(() => resolveBridgeCliConfig({ help: false, provider: 'gemini' }, {})).toThrow(/provider/);
+    expect(() => resolveBridgeCliConfig({ help: false, provider: 'unknown' }, {})).toThrow(/provider/);
     expect(() => resolveBridgeCliConfig({ help: false, port: '0' }, {})).toThrow(/port/);
     expect(() => resolveBridgeCliConfig({ help: false, port: '8787x' }, {})).toThrow(/port/);
   });
 
   it('prints the supported options in help', () => {
-    expect(bridgeCliHelp()).toContain('--provider <claude|openai|codex>');
+    expect(bridgeCliHelp()).toContain('--provider <claude|openai|codex|gemini>');
     expect(bridgeCliHelp()).toContain('--enable-codex-beta');
     expect(bridgeCliHelp()).toContain('--origin <origin>');
     expect(bridgeCliHelp()).toContain('--port <port>');

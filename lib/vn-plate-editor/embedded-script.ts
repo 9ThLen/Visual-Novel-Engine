@@ -66,6 +66,7 @@ const EMBEDDED_SCRIPT_BODY = `
     var activeAudioChip = null;
     var draggedEffectChip = null;
     var activeIndex = 0;
+    var editorPopoverBackdrop = null;
 
     function uid(prefix) {
       return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
@@ -78,6 +79,51 @@ const EMBEDDED_SCRIPT_BODY = `
       } else {
         window.parent.postMessage(full, '*');
       }
+    }
+
+    function dismissEditorPopovers() {
+      var removeNewInteractiveObject = activeInteractiveObjectBlock
+        && activeInteractiveObjectBlock.dataset.interactiveNew === 'true';
+      closeEffectPopover();
+      closeAudioPopover();
+      closeCharacterPopover();
+      closeBackgroundPopover();
+      closeTransitionPopover();
+      closeChoicePopover();
+      closeLabelPopover();
+      closeGotoPopover();
+      closeStopEffectPopover();
+      if (removeNewInteractiveObject && activeInteractiveObjectBlock) activeInteractiveObjectBlock.remove();
+      closeInteractiveObjectPopover();
+    }
+
+    function syncEditorPopoverBackdrop() {
+      var hasTopLevelPopover = Boolean(document.querySelector('[data-editor-popover="top-level"]'));
+      if (hasTopLevelPopover && !editorPopoverBackdrop) {
+        editorPopoverBackdrop = document.createElement('div');
+        editorPopoverBackdrop.className = 'editor-popover-backdrop';
+        editorPopoverBackdrop.setAttribute('aria-hidden', 'true');
+        editorPopoverBackdrop.addEventListener('click', function(event) {
+          event.preventDefault();
+          event.stopPropagation();
+          dismissEditorPopovers();
+        });
+        document.body.appendChild(editorPopoverBackdrop);
+      } else if (!hasTopLevelPopover && editorPopoverBackdrop) {
+        editorPopoverBackdrop.remove();
+        editorPopoverBackdrop = null;
+      }
+    }
+
+    function mountEditorPopover(popover, nested) {
+      popover.dataset.editorPopover = nested ? 'nested' : 'top-level';
+      document.body.appendChild(popover);
+      syncEditorPopoverBackdrop();
+    }
+
+    function unmountEditorPopover(popover) {
+      if (popover) popover.remove();
+      syncEditorPopoverBackdrop();
     }
 
     function scheduleSave() {
@@ -272,6 +318,16 @@ const EMBEDDED_SCRIPT_BODY = `
 
     function normalizeSpeakerLookup(value) {
       return normalizeSpeakerName(value).toLocaleLowerCase();
+    }
+
+    function parseSpeakerLine(value) {
+      var match = /^([^:\\n]{1,48}):\\s*([\\s\\S]*)$/.exec(String(value || ''));
+      if (!match) return null;
+      var speaker = normalizeSpeakerName(match[1]);
+      var text = match[2] || '';
+      if (!speaker || speaker[0] === '/') return null;
+      if (/^[a-z][a-z0-9+.-]*$/i.test(speaker) && text.trim().indexOf('//') === 0) return null;
+      return { speaker: speaker, text: text };
     }
 
     function escapeRegExp(value) {
@@ -833,7 +889,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function closeEffectPopover() {
-      if (effectPopover) effectPopover.remove();
+      unmountEditorPopover(effectPopover);
       effectPopover = null;
       if (activeEffectChip) activeEffectChip.classList.remove('is-selected');
       activeEffectChip = null;
@@ -844,8 +900,8 @@ const EMBEDDED_SCRIPT_BODY = `
       if (audioPopover) {
         var audio = audioPopover.querySelector('audio');
         if (audio) audio.pause();
-        audioPopover.remove();
       }
+      unmountEditorPopover(audioPopover);
       audioPopover = null;
       if (activeAudioChip) activeAudioChip.classList.remove('is-selected');
       activeAudioChip = null;
@@ -1111,7 +1167,7 @@ const EMBEDDED_SCRIPT_BODY = `
           '</div>' +
         '</div>' +
         '<div class="popover-footer"><button type="button" class="popover-button" data-action="reset-effect">Скинути</button><button type="button" class="popover-button primary" data-action="save-effect">Зберегти</button></div>';
-      document.body.appendChild(popover);
+      mountEditorPopover(popover, false);
       effectPopover = popover;
       updateEffectSections();
       afterLayout(function() { positionEffectPopover(chip); });
@@ -1374,7 +1430,7 @@ const EMBEDDED_SCRIPT_BODY = `
           '<div class="effect-range-row" data-audio-row="sound"><input data-audio-field="pitchVariation" type="range" min="0" max="100" step="1" value="' + escapeHtml(String(Math.round(data.pitchVariation * 100))) + '" /><span class="effect-range-value">' + escapeHtml(String(Math.round(data.pitchVariation * 100))) + '</span></div>' +
         '</div>' +
         '<div class="popover-footer"><button type="button" class="popover-button" data-action="reset-audio">Скинути</button><button type="button" class="popover-button primary" data-action="save-audio">Зберегти</button></div>';
-      document.body.appendChild(popover);
+      mountEditorPopover(popover, false);
       audioPopover = popover;
       updateAudioSections();
       var audio = popover.querySelector('audio');
@@ -1429,6 +1485,8 @@ const EMBEDDED_SCRIPT_BODY = `
       next.authoring = Object.assign({
         currentSpriteId: next.defaultSpriteId || (next.sprites[0] && next.sprites[0].id) || null,
         currentPosition: 'center',
+        entranceTransition: 'fade',
+        exitTransition: 'fade',
         focusOnSpeak: true
       }, next.authoring || {});
       return next;
@@ -1461,7 +1519,7 @@ const EMBEDDED_SCRIPT_BODY = `
       token.contentEditable = 'false';
       token.tabIndex = 0;
       token.setAttribute('role', 'button');
-      token.setAttribute('aria-label', 'Edit character ' + character.name);
+      token.setAttribute('aria-label', characterPopoverLabels().editCharacter + ' ' + character.name);
       token.dataset.characterId = character.id;
       token.dataset.blockId = blockId || '';
       token.style.setProperty('--speaker-color', character.color || colorForCharacterKey(character.id));
@@ -1469,7 +1527,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function closeCharacterPopover() {
-      if (characterPopover) characterPopover.remove();
+      unmountEditorPopover(characterPopover);
       characterPopover = null;
       activeCharacterToken = null;
       scheduleResize();
@@ -1623,6 +1681,86 @@ const EMBEDDED_SCRIPT_BODY = `
       return true;
     }
 
+    function characterPopoverLabels() {
+      if (payload.language === 'uk') {
+        return {
+          editCharacter: 'Редагувати персонажа',
+          noSprites: 'Для цього персонажа ще немає спрайтів.',
+          name: 'Ім’я',
+          color: 'Колір',
+          currentSprite: 'Поточний спрайт',
+          spriteName: 'Назва спрайта',
+          uploadSprite: 'Завантажити спрайт',
+          deleteSelected: 'Видалити вибраний',
+          position: 'Позиція',
+          farLeft: 'Далеко ліворуч',
+          left: 'Ліворуч',
+          center: 'По центру',
+          right: 'Праворуч',
+          farRight: 'Далеко праворуч',
+          animationEvent: 'Подія блока',
+          appearance: 'Поява',
+          disappearance: 'Зникнення',
+          animation: 'Анімація',
+          focusWhenSpeaking: 'Фокус під час репліки',
+          help: 'Налаштування персонажа зберігаються окремо від історії змін тексту.',
+          close: 'Закрити',
+          save: 'Зберегти',
+          fadeIn: 'Плавна поява на місці',
+          fadeOut: 'Плавне зникнення на місці',
+          enterLeft: 'Виїзд зліва',
+          exitLeft: 'Виїзд ліворуч',
+          enterRight: 'Виїзд справа',
+          exitRight: 'Виїзд праворуч',
+          zoomIn: 'М’яке наближення',
+          zoomOut: 'М’яке віддалення',
+          instant: 'Миттєво'
+        };
+      }
+      return {
+        editCharacter: 'Edit character',
+        noSprites: 'No sprites uploaded for this character.',
+        name: 'Name',
+        color: 'Color',
+        currentSprite: 'Current sprite',
+        spriteName: 'Sprite name',
+        uploadSprite: 'Upload sprite',
+        deleteSelected: 'Delete selected',
+        position: 'Position',
+        farLeft: 'Far left',
+        left: 'Left',
+        center: 'Center',
+        right: 'Right',
+        farRight: 'Far right',
+        animationEvent: 'Block event',
+        appearance: 'Appearance',
+        disappearance: 'Disappearance',
+        animation: 'Animation',
+        focusWhenSpeaking: 'Focus when speaking',
+        help: 'Character settings are saved separately from text undo history.',
+        close: 'Close',
+        save: 'Save',
+        fadeIn: 'Soft fade in place',
+        fadeOut: 'Soft fade out in place',
+        enterLeft: 'Enter from left',
+        exitLeft: 'Exit to left',
+        enterRight: 'Enter from right',
+        exitRight: 'Exit to right',
+        zoomIn: 'Soft zoom in',
+        zoomOut: 'Soft zoom out',
+        instant: 'Instant'
+      };
+    }
+
+    function characterTransitionOptions(action, selected, labels) {
+      var hide = action === 'hide';
+      return option('fade', hide ? labels.fadeOut : labels.fadeIn, selected)
+        + option('slide-left', hide ? labels.exitLeft : labels.enterLeft, selected)
+        + option('slide-right', hide ? labels.exitRight : labels.enterRight, selected)
+        + option('zoom', hide ? labels.zoomOut : labels.zoomIn, selected)
+        + option('instant', labels.instant, selected);
+    }
+
     function renderCharacterPopover(token) {
       var character = findCharacterById(token && token.dataset.characterId);
       if (!character) return;
@@ -1636,39 +1774,68 @@ const EMBEDDED_SCRIPT_BODY = `
       closeStopEffectPopover();
       closeCharacterPopover();
       activeCharacterToken = token;
+      var labels = characterPopoverLabels();
+      var paragraph = token.closest('p');
+      var selectedAction = paragraph && paragraph.dataset.characterAction || 'show';
+      var selectedTransition = paragraph && paragraph.dataset.characterTransition
+        || (selectedAction === 'hide'
+          ? character.authoring && character.authoring.exitTransition
+          : character.authoring && character.authoring.entranceTransition)
+        || 'fade';
+      var nestedPopover = Boolean(token.closest('[data-editor-popover="top-level"]'));
       var popover = document.createElement('div');
-      popover.className = 'character-popover';
-      var selectedSpriteId = token.closest('p') && token.closest('p').dataset.spriteId || currentSpriteId(character) || '';
+      popover.className = 'character-popover' + (nestedPopover ? ' is-nested' : '');
+      var selectedSpriteId = paragraph && paragraph.dataset.spriteId || currentSpriteId(character) || '';
       var spriteRows = (character.sprites || []).length
         ? character.sprites.map(function(sprite) {
             return '<label class="sprite-row"><span>' + escapeHtml(sprite.name || sprite.id) + '</span>' +
               '<input type="radio" name="characterSprite" value="' + escapeHtml(sprite.id) + '"' + (sprite.id === selectedSpriteId ? ' checked' : '') + ' /></label>';
           }).join('')
-        : '<div class="asset-empty">No sprites uploaded for this character.</div>';
+        : '<div class="asset-empty">' + labels.noSprites + '</div>';
       popover.innerHTML =
-        '<label class="popover-label">Name</label>' +
+        '<label class="popover-label">' + labels.name + '</label>' +
         '<input class="popover-control" data-field="character-name" value="' + escapeHtml(character.name) + '" />' +
-        '<label class="popover-label">Color</label>' +
+        '<label class="popover-label">' + labels.color + '</label>' +
         '<input class="popover-control" data-field="character-color" type="color" value="' + escapeHtml(character.color || '#ff4d6d') + '" />' +
-        '<label class="popover-label">Current sprite</label>' +
+        '<label class="popover-label">' + labels.currentSprite + '</label>' +
         '<div class="sprite-list">' + spriteRows + '</div>' +
-        '<input class="popover-control" data-field="sprite-name" placeholder="Sprite name" />' +
-        '<div class="preview-actions"><button type="button" class="popover-button" data-action="upload-character-sprite">Upload sprite</button><button type="button" class="popover-button" data-action="delete-character-sprite">Delete selected</button></div>' +
+        '<input class="popover-control" data-field="sprite-name" placeholder="' + labels.spriteName + '" />' +
+        '<div class="preview-actions"><button type="button" class="popover-button" data-action="upload-character-sprite">' + labels.uploadSprite + '</button><button type="button" class="popover-button" data-action="delete-character-sprite">' + labels.deleteSelected + '</button></div>' +
         '<div class="asset-error" role="alert" style="display:none"></div>' +
         '<input class="character-sprite-file" type="file" accept="image/png,image/webp,image/jpeg" hidden />' +
-        '<label class="popover-label">Position</label>' +
+        '<label class="popover-label">' + labels.position + '</label>' +
         '<select class="popover-control" data-field="character-position">' +
-          option('far-left', 'Far left', character.authoring && character.authoring.currentPosition) +
-          option('left', 'Left', character.authoring && character.authoring.currentPosition) +
-          option('center', 'Center', character.authoring && character.authoring.currentPosition) +
-          option('right', 'Right', character.authoring && character.authoring.currentPosition) +
-          option('far-right', 'Far right', character.authoring && character.authoring.currentPosition) +
+          option('far-left', labels.farLeft, character.authoring && character.authoring.currentPosition) +
+          option('left', labels.left, character.authoring && character.authoring.currentPosition) +
+          option('center', labels.center, character.authoring && character.authoring.currentPosition) +
+          option('right', labels.right, character.authoring && character.authoring.currentPosition) +
+          option('far-right', labels.farRight, character.authoring && character.authoring.currentPosition) +
         '</select>' +
-        '<label class="sprite-row"><span>Focus when speaking</span><input type="checkbox" data-field="focus-on-speak"' + (!character.authoring || character.authoring.focusOnSpeak !== false ? ' checked' : '') + ' /></label>' +
-        '<p class="popover-help">Character edits are saved as library changes, outside text undo.</p>' +
-        '<div class="popover-footer"><button type="button" class="popover-button" data-action="close-character">Close</button><button type="button" class="popover-button primary" data-action="save-character">Save</button></div>';
-      document.body.appendChild(popover);
+        '<label class="popover-label">' + labels.animationEvent + '</label>' +
+        '<select class="popover-control" data-field="character-action">' +
+          option('show', labels.appearance, selectedAction) +
+          option('hide', labels.disappearance, selectedAction) +
+        '</select>' +
+        '<label class="popover-label">' + labels.animation + '</label>' +
+        '<select class="popover-control" data-field="character-transition">' +
+          characterTransitionOptions(selectedAction, selectedTransition, labels) +
+        '</select>' +
+        '<label class="sprite-row"><span>' + labels.focusWhenSpeaking + '</span><input type="checkbox" data-field="focus-on-speak"' + (!character.authoring || character.authoring.focusOnSpeak !== false ? ' checked' : '') + ' /></label>' +
+        '<p class="popover-help">' + labels.help + '</p>' +
+        '<div class="popover-footer"><button type="button" class="popover-button" data-action="close-character">' + labels.close + '</button><button type="button" class="popover-button primary" data-action="save-character">' + labels.save + '</button></div>';
+      mountEditorPopover(popover, nestedPopover);
       characterPopover = popover;
+      var actionInput = popover.querySelector('[data-field="character-action"]');
+      var transitionInput = popover.querySelector('[data-field="character-transition"]');
+      if (actionInput && transitionInput) {
+        actionInput.addEventListener('change', function() {
+          var action = actionInput.value || 'show';
+          var defaultTransition = action === 'hide'
+            ? character.authoring && character.authoring.exitTransition
+            : character.authoring && character.authoring.entranceTransition;
+          transitionInput.innerHTML = characterTransitionOptions(action, defaultTransition || 'fade', labels);
+        });
+      }
       clearCharacterSpriteError();
       afterLayout(function() { positionCharacterPopover(token); });
       post({ type: 'openCharacterPopover', characterId: character.id, blockId: token.dataset.blockId || '' });
@@ -1682,20 +1849,29 @@ const EMBEDDED_SCRIPT_BODY = `
       var nameInput = characterPopover.querySelector('[data-field="character-name"]');
       var colorInput = characterPopover.querySelector('[data-field="character-color"]');
       var positionInput = characterPopover.querySelector('[data-field="character-position"]');
+      var actionInput = characterPopover.querySelector('[data-field="character-action"]');
+      var transitionInput = characterPopover.querySelector('[data-field="character-transition"]');
       var focusInput = characterPopover.querySelector('[data-field="focus-on-speak"]');
       var selectedSprite = characterPopover.querySelector('input[name="characterSprite"]:checked');
+      var characterAction = actionInput && actionInput.value === 'hide' ? 'hide' : 'show';
+      var characterTransition = transitionInput && transitionInput.value || 'fade';
       character.name = normalizeSpeakerName(nameInput && nameInput.value) || character.name;
       character.color = colorInput && colorInput.value || character.color || colorForCharacterKey(character.id);
-      character.authoring = Object.assign({}, character.authoring || {}, {
+      var nextAuthoring = Object.assign({}, character.authoring || {}, {
         currentSpriteId: selectedSprite && selectedSprite.value || currentSpriteId(character),
         currentPosition: positionInput && positionInput.value || 'center',
         focusOnSpeak: Boolean(focusInput && focusInput.checked)
       });
+      if (characterAction === 'hide') nextAuthoring.exitTransition = characterTransition;
+      else nextAuthoring.entranceTransition = characterTransition;
+      character.authoring = nextAuthoring;
       if (!character.defaultSpriteId && character.authoring.currentSpriteId) character.defaultSpriteId = character.authoring.currentSpriteId;
       if (paragraph) {
         paragraph.dataset.speaker = character.name;
         paragraph.dataset.characterId = character.id;
         paragraph.dataset.spriteId = character.authoring.currentSpriteId || '';
+        paragraph.dataset.characterAction = characterAction;
+        paragraph.dataset.characterTransition = characterTransition;
       }
       configureSpeakerToken(activeCharacterToken, character, paragraph && paragraph.dataset.id);
     }
@@ -1777,7 +1953,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function closeBackgroundPopover() {
-      if (backgroundPopover) backgroundPopover.remove();
+      unmountEditorPopover(backgroundPopover);
       backgroundPopover = null;
       backgroundDraft = null;
       if (activeBackgroundBlock) activeBackgroundBlock.classList.remove('is-editing', 'is-selected');
@@ -1848,7 +2024,7 @@ const EMBEDDED_SCRIPT_BODY = `
           '<button type="button" class="popover-button primary" data-action="save-background">Зберегти</button>' +
         '</div>';
 
-      document.body.appendChild(popover);
+      mountEditorPopover(popover, false);
       backgroundPopover = popover;
       popover.querySelector('#bgAssetValue').textContent = backgroundDraft.assetId || '';
       var selectedAsset = findBackgroundAsset(backgroundDraft.assetId);
@@ -2021,7 +2197,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function closeTransitionPopover() {
-      if (transitionPopover) transitionPopover.remove();
+      unmountEditorPopover(transitionPopover);
       transitionPopover = null;
       transitionDraft = null;
       if (activeTransitionBlock) activeTransitionBlock.classList.remove('is-editing', 'is-selected');
@@ -2121,7 +2297,7 @@ const EMBEDDED_SCRIPT_BODY = `
           '<button type="button" class="popover-button primary" data-action="save-transition">Зберегти</button>' +
         '</div>';
 
-      document.body.appendChild(popover);
+      mountEditorPopover(popover, false);
       transitionPopover = popover;
       popover.dataset.mode = transitionDraft.mode;
       if (transitionDraft.targetSceneId) popover.dataset.selectedSceneId = transitionDraft.targetSceneId;
@@ -2264,7 +2440,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function closeLabelPopover() {
-      if (labelPopover) labelPopover.remove();
+      unmountEditorPopover(labelPopover);
       labelPopover = null;
       labelDraft = null;
       if (activeLabelBlock) activeLabelBlock.classList.remove('is-editing', 'is-selected');
@@ -2303,7 +2479,7 @@ const EMBEDDED_SCRIPT_BODY = `
           '<button type="button" class="popover-button primary" data-action="save-label">Зберегти</button>' +
         '</div>';
 
-      document.body.appendChild(popover);
+      mountEditorPopover(popover, false);
       labelPopover = popover;
       popover.querySelector('#lbName').value = labelDraft.name;
       afterLayout(function() {
@@ -2320,7 +2496,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function closeGotoPopover() {
-      if (gotoPopover) gotoPopover.remove();
+      unmountEditorPopover(gotoPopover);
       gotoPopover = null;
       gotoDraft = null;
       if (activeGotoBlock) activeGotoBlock.classList.remove('is-editing', 'is-selected');
@@ -2399,7 +2575,7 @@ const EMBEDDED_SCRIPT_BODY = `
           '<button type="button" class="popover-button primary" data-action="save-goto">Зберегти</button>' +
         '</div>';
 
-      document.body.appendChild(popover);
+      mountEditorPopover(popover, false);
       gotoPopover = popover;
       if (condition) {
         popover.querySelector('#gtVar').value = condition.variableName;
@@ -2467,7 +2643,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function closeStopEffectPopover() {
-      if (stopEffectPopover) stopEffectPopover.remove();
+      unmountEditorPopover(stopEffectPopover);
       stopEffectPopover = null;
       stopEffectDraft = null;
       if (activeStopEffectBlock) activeStopEffectBlock.classList.remove('is-editing', 'is-selected');
@@ -2516,7 +2692,7 @@ const EMBEDDED_SCRIPT_BODY = `
           '<button type="button" class="popover-button primary" data-action="save-stop-effect">Зберегти</button>' +
         '</div>';
 
-      document.body.appendChild(popover);
+      mountEditorPopover(popover, false);
       stopEffectPopover = popover;
       afterLayout(function() { positionBranchPopover(stopEffectPopover, anchor || block); });
     }
@@ -2573,9 +2749,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function closeInteractiveObjectPopover() {
-      if (interactiveObjectPopover) interactiveObjectPopover.remove();
-      var backdrop = document.querySelector('.interactive-object-backdrop');
-      if (backdrop) backdrop.remove();
+      unmountEditorPopover(interactiveObjectPopover);
       interactiveObjectPopover = null;
       interactiveObjectDraft = null;
       if (activeInteractiveObjectBlock) activeInteractiveObjectBlock.classList.remove('is-editing', 'is-selected');
@@ -2588,7 +2762,19 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function interactiveActionFields(action) {
-      if (action.type === 'dialogue') return '<label class="popover-label">Текст<textarea class="popover-control" data-action-field="text">' + escapeHtml(action.text || '') + '</textarea></label><label class="popover-label">Мовець<input class="popover-control" data-action-field="speaker" value="' + escapeHtml(action.speaker || '') + '"></label>';
+      if (action.type === 'dialogue') {
+        var parsed = action.speaker ? null : parseSpeakerLine(action.text || '');
+        var speaker = normalizeSpeakerName(action.speaker || parsed && parsed.speaker);
+        var text = parsed ? parsed.text : action.text || '';
+        var character = findCharacterById(action.characterId) || findCharacterByName(speaker);
+        if (character) speaker = character.name;
+        var characterId = character && character.id || action.characterId || '';
+        var speakerColor = character && character.color || colorForCharacterKey(characterId || speaker);
+        var badge = speaker
+          ? '<span class="speaker-token dialogue-badge" contenteditable="false" tabindex="0" role="button" aria-label="' + characterPopoverLabels().editCharacter + ' ' + escapeHtml(speaker) + '" data-character-id="' + escapeHtml(characterId) + '" style="--speaker-color:' + escapeHtml(speakerColor) + '">' + escapeHtml(speaker) + ':</span> '
+          : '';
+        return '<label class="popover-label">Репліка<div class="popover-control interactive-dialogue-editor" contenteditable="true" role="textbox" aria-multiline="true" data-action-field="dialogue" data-placeholder="Маша: Привіт!">' + badge + escapeHtml(text) + '</div><span class="interactive-dialogue-help">Напишіть «Маша: текст», щоб додати персонажа до репліки.</span></label>';
+      }
       if (action.type === 'scene_transition') return '<label class="popover-label">Сцена<select class="popover-control" data-action-field="targetSceneId"><option value="">Оберіть сцену</option>' + storyScenes.map(function(scene) { return option(scene.id, scene.name || scene.id, action.targetSceneId || ''); }).join('') + '</select></label><label class="popover-label">Перехід<select class="popover-control" data-action-field="transition">' + option('fade', 'Згасання', action.transition || 'fade') + option('slide', 'Зсув', action.transition || 'fade') + option('instant', 'Миттєво', action.transition || 'fade') + '</select></label>';
       if (action.type === 'play_audio') return '<label class="popover-label">Аудіо<select class="popover-control" data-action-field="audioUri"><option value="">Оберіть аудіо</option>' + audioAssets.map(function(asset) { return option(asset.uri, asset.name, action.audioUri || ''); }).join('') + '</select></label><div class="popover-grid"><label class="popover-label">Гучність<input type="number" min="0" max="1" step="0.1" class="popover-control" data-action-field="volume" value="' + (action.volume == null ? 0.8 : action.volume) + '"></label><label class="toggle-row"><input type="checkbox" data-action-field="loop"' + (action.loop ? ' checked' : '') + '> Зациклити</label></div>';
       if (action.type === 'show_image') return '<label class="popover-label">Зображення<select class="popover-control" data-action-field="imageUri"><option value="">Оберіть зображення</option>' + backgroundAssets.map(function(asset) { return option(asset.uri, asset.name, action.imageUri || ''); }).join('') + '</select></label><label class="popover-label">Тривалість, мс<input type="number" min="0" step="100" class="popover-control" data-action-field="duration" value="' + (action.duration == null ? 1000 : action.duration) + '"></label>';
@@ -2603,6 +2789,19 @@ const EMBEDDED_SCRIPT_BODY = `
       }).join('') || '<p class="interactive-empty-actions">Об’єкт ще нічого не робить. Додайте першу дію.</p>';
     }
 
+    function transformInteractiveDialogueEditorIfNeeded(field) {
+      if (!field || field.querySelector('.speaker-token')) return;
+      var parsed = parseSpeakerLine(textOf(field));
+      if (!parsed) return;
+      var ensuredCharacter = ensureCharacterWithStatus(parsed.speaker);
+      var character = ensuredCharacter.character;
+      field.innerHTML = '<span class="speaker-token dialogue-badge" contenteditable="false"></span> ';
+      configureSpeakerToken(field.querySelector('.speaker-token'), character, '');
+      field.appendChild(document.createTextNode(parsed.text));
+      moveCaretToEnd(field);
+      if (ensuredCharacter.created) renderCharacterPopover(field.querySelector('.speaker-token'));
+    }
+
     function syncInteractiveDraftFromDom() {
       if (!interactiveObjectPopover) return;
       interactiveObjectDraft.name = interactiveObjectPopover.querySelector('#ioName').value.trim();
@@ -2612,6 +2811,23 @@ const EMBEDDED_SCRIPT_BODY = `
       interactiveObjectDraft.pulseAnimation = interactiveObjectPopover.querySelector('#ioPulse').checked;
       interactiveObjectDraft.actions = Array.prototype.slice.call(interactiveObjectPopover.querySelectorAll('.interactive-action-card')).map(function(card) {
         var result = { type: selectedValue(card.querySelector('[data-action-type]'), 'dialogue') };
+        if (result.type === 'dialogue') {
+          var dialogueField = card.querySelector('.interactive-dialogue-editor');
+          var token = dialogueField.querySelector('.speaker-token');
+          var parsed = token ? null : parseSpeakerLine(textOf(dialogueField));
+          var tokenCharacter = token && findCharacterById(token.dataset.characterId);
+          var speaker = tokenCharacter && tokenCharacter.name
+            || token && (token.textContent || '').replace(/:\\s*$/, '')
+            || parsed && parsed.speaker
+            || '';
+          result.text = token ? textWithoutBadge(dialogueField, token) : parsed ? parsed.text : textOf(dialogueField);
+          if (speaker) {
+            var character = ensureCharacter(speaker);
+            result.speaker = character.name;
+            result.characterId = character.id;
+          }
+          return result;
+        }
         Array.prototype.slice.call(card.querySelectorAll('[data-action-field]')).forEach(function(input) {
           var field = input.dataset.actionField;
           var value = input.type === 'checkbox' ? input.checked : input.value;
@@ -2636,6 +2852,18 @@ const EMBEDDED_SCRIPT_BODY = `
       return '';
     }
 
+    function sceneBackgroundAssetForInteractiveObject(block) {
+      var cursor = block && block.previousElementSibling;
+      while (cursor) {
+        if (cursor.classList && cursor.classList.contains('background-block')) {
+          var asset = findBackgroundAsset(cursor.dataset.assetId);
+          if (asset) return asset;
+        }
+        cursor = cursor.previousElementSibling;
+      }
+      return null;
+    }
+
     function updateInteractiveStage() {
       if (!interactiveObjectPopover) return;
       var stage = interactiveObjectPopover.querySelector('.interactive-stage');
@@ -2644,10 +2872,17 @@ const EMBEDDED_SCRIPT_BODY = `
         var value = Math.max(0, Math.min(100, Number(interactiveObjectPopover.querySelector('[data-position="' + field + '"]').value) || 0));
         hotspot.style[field === 'x' ? 'left' : field === 'y' ? 'top' : field] = value + '%';
       });
-      var assetId = selectedValue(interactiveObjectPopover.querySelector('#ioAsset'), '');
-      var asset = backgroundAssets.find(function(item) { return item.id === assetId; });
-      stage.style.backgroundImage = asset && asset.uri ? 'url("' + String(asset.uri).replace(/"/g, '%22') + '")' : '';
-      stage.classList.toggle('has-image', Boolean(asset && asset.uri));
+      var sceneAsset = sceneBackgroundAssetForInteractiveObject(activeInteractiveObjectBlock);
+      var sceneUri = sceneAsset && (sceneAsset.uri || sceneAsset.assetUri);
+      stage.style.backgroundImage = sceneUri
+        ? 'linear-gradient(180deg, rgba(6, 16, 32, 0.04), rgba(6, 16, 32, 0.18)), url("' + String(sceneUri).replace(/"/g, '%22') + '")'
+        : '';
+      stage.classList.toggle('has-image', Boolean(sceneUri));
+      var objectAssetId = selectedValue(interactiveObjectPopover.querySelector('#ioAsset'), '');
+      var objectAsset = findBackgroundAsset(objectAssetId);
+      var objectUri = objectAsset && (objectAsset.uri || objectAsset.assetUri);
+      hotspot.style.backgroundImage = objectUri ? 'url("' + String(objectUri).replace(/"/g, '%22') + '")' : '';
+      hotspot.classList.toggle('has-image', Boolean(objectUri));
     }
 
     function setInteractivePositionInputs(values) {
@@ -2709,22 +2944,23 @@ const EMBEDDED_SCRIPT_BODY = `
       block.classList.add('is-editing', 'is-selected');
       var assets = '<option value="">Без зображення</option>' + backgroundAssets.map(function(asset) { return option(asset.id, asset.name, interactiveObjectDraft.assetId || ''); }).join('');
       var popover = document.createElement('div');
-      var backdrop = document.createElement('div');
-      backdrop.className = 'interactive-object-backdrop';
       popover.className = 'interactive-object-popover';
-      popover.innerHTML = '<div class="interactive-popover-header"><div><strong>Інтерактивний об’єкт</strong><p>Клікабельна область поверх сцени</p></div><button type="button" class="icon-button" data-object-action="cancel">×</button></div><div class="interactive-popover-body">' +
-        '<label class="popover-label">Назва<input id="ioName" class="popover-control" value="' + escapeHtml(interactiveObjectDraft.name) + '"></label><label class="popover-label">Зображення<select id="ioAsset" class="popover-control">' + assets + '</select></label>' +
+      popover.innerHTML = '<div class="interactive-popover-header"><div><strong>Інтерактивний об’єкт</strong><p>Клікабельна область поверх сцени</p></div></div><div class="interactive-popover-body">' +
+        '<label class="popover-label">Назва<input id="ioName" class="popover-control" value="' + escapeHtml(interactiveObjectDraft.name) + '"></label><label class="popover-label">Зображення об’єкта<select id="ioAsset" class="popover-control">' + assets + '</select></label>' +
         '<div class="interactive-stage" aria-label="Попередній перегляд області"><div class="interactive-stage-hotspot" tabindex="0" role="application" aria-label="Область об’єкта. Стрілки переміщують, Shift і стрілки змінюють розмір"><span class="interactive-resize-handle" aria-hidden="true"></span></div></div><div class="interactive-geometry">' + ['x', 'y', 'width', 'height'].map(function(field) { var label = field === 'width' ? 'Ширина' : field === 'height' ? 'Висота' : field.toUpperCase(); return '<label class="popover-label">' + label + ', %<input type="number" min="0" max="100" class="popover-control" data-position="' + field + '" value="' + interactiveObjectDraft.position[field] + '"></label>'; }).join('') + '</div>' +
         '<div class="interactive-presets"><button type="button" class="popover-button" data-object-action="center">По центру</button><button type="button" class="popover-button" data-object-action="full">На всю сцену</button><button type="button" class="popover-button" data-object-action="clear-asset">Прибрати зображення</button></div>' +
         '<div class="interactive-toggles"><label class="toggle-row"><input id="ioOnce" type="checkbox"' + (interactiveObjectDraft.oneTimeOnly ? ' checked' : '') + '> Спрацьовує один раз</label><label class="toggle-row"><input id="ioPulse" type="checkbox"' + (interactiveObjectDraft.pulseAnimation ? ' checked' : '') + '> Пульсація</label></div>' +
         '<div class="interactive-actions-heading"><strong>Дії</strong><button type="button" class="popover-button" data-object-action="add">+ Додати дію</button></div><div class="interactive-actions-list"></div><p class="interactive-object-error" role="alert"></p></div>' +
         '<div class="popover-footer interactive-popover-footer"><button type="button" class="popover-button danger" data-object-action="delete">Видалити блок</button><span></span><button type="button" class="popover-button" data-object-action="cancel">Скасувати</button><button type="button" class="popover-button primary" data-object-action="save">Зберегти</button></div>';
-      document.body.appendChild(backdrop);
-      document.body.appendChild(popover);
+      mountEditorPopover(popover, false);
       interactiveObjectPopover = popover;
       renderInteractiveActions(); updateInteractiveStage();
       popover.querySelector('#ioName').focus();
-      popover.addEventListener('input', updateInteractiveStage);
+      popover.addEventListener('input', function(event) {
+        var dialogueEditor = event.target && event.target.closest && event.target.closest('.interactive-dialogue-editor');
+        if (dialogueEditor) transformInteractiveDialogueEditorIfNeeded(dialogueEditor);
+        updateInteractiveStage();
+      });
       popover.querySelector('.interactive-stage').addEventListener('pointerdown', startInteractiveStageGesture);
       popover.querySelector('.interactive-stage-hotspot').addEventListener('keydown', handleInteractiveStageKey);
       popover.addEventListener('change', function(event) {
@@ -2736,14 +2972,16 @@ const EMBEDDED_SCRIPT_BODY = `
         renderInteractiveActions();
       });
       popover.addEventListener('click', handleInteractiveObjectAction);
-      backdrop.addEventListener('click', function() {
-        if (activeInteractiveObjectBlock && activeInteractiveObjectBlock.dataset.interactiveNew === 'true') activeInteractiveObjectBlock.remove();
-        closeInteractiveObjectPopover();
-      });
       scheduleResize();
     }
 
     function handleInteractiveObjectAction(event) {
+      var speakerToken = event.target && event.target.closest && event.target.closest('.interactive-dialogue-editor .speaker-token');
+      if (speakerToken) {
+        event.preventDefault();
+        renderCharacterPopover(speakerToken);
+        return;
+      }
       var button = event.target && event.target.closest ? event.target.closest('[data-object-action]') : null;
       if (!button || !interactiveObjectPopover) return;
       event.preventDefault();
@@ -2897,7 +3135,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function closeChoicePopover() {
-      if (choicePopover) choicePopover.remove();
+      unmountEditorPopover(choicePopover);
       choicePopover = null;
       choiceDraft = null;
       if (activeChoiceBlock) activeChoiceBlock.classList.remove('is-editing', 'is-selected');
@@ -3016,7 +3254,7 @@ const EMBEDDED_SCRIPT_BODY = `
           '<button type="button" class="popover-button primary" data-action="save-choice">Зберегти</button>' +
         '</div>';
 
-      document.body.appendChild(popover);
+      mountEditorPopover(popover, false);
       choicePopover = popover;
       popover.querySelector('#choiceQuestion').value = choiceDraft.question;
       renderChoiceOptionsList();
@@ -3235,6 +3473,8 @@ const EMBEDDED_SCRIPT_BODY = `
             speakerName: character && character.name || speaker || originalDialogue.speakerName,
             characterId: characterId || originalDialogue.characterId || null,
             spriteId: node.dataset.spriteId || originalDialogue.spriteId || currentSpriteId(character),
+            characterAction: node.dataset.characterAction || originalDialogue.characterAction,
+            characterTransition: node.dataset.characterTransition || originalDialogue.characterTransition,
             tokenColor: character && character.color || originalDialogue.tokenColor,
             openCharacterControls: false,
             text: text
@@ -3249,6 +3489,8 @@ const EMBEDDED_SCRIPT_BODY = `
           speakerName: character && character.name || speaker,
           characterId: characterId,
           spriteId: node.dataset.spriteId || currentSpriteId(character),
+          characterAction: node.dataset.characterAction || undefined,
+          characterTransition: node.dataset.characterTransition || undefined,
           tokenColor: character && character.color,
           openCharacterControls: false,
           text: text
@@ -3498,14 +3740,9 @@ const EMBEDDED_SCRIPT_BODY = `
     function transformParagraphDialogueIfNeeded(p, options) {
       if (!p) return;
       if (p.dataset.kind === 'dialogue' && p.querySelector('.speaker-token')) return;
-      var value = textOf(p);
-      var match = /^([^:\\n]{1,48}):\\s*(.*)$/.exec(value);
-      if (!match) return;
-      var speaker = match[1].trim();
-      if (!speaker || speaker[0] === '/') return;
-      var text = match[2] || '';
-      if (/^[a-z][a-z0-9+.-]*$/i.test(speaker) && text.trim().indexOf('//') === 0) return;
-      createDialogueBlockFromCharacterName(p, speaker, text, options || { openControls: true });
+      var parsed = parseSpeakerLine(textOf(p));
+      if (!parsed) return;
+      createDialogueBlockFromCharacterName(p, parsed.speaker, parsed.text, options || { openControls: true });
     }
 
     function transformDialogueIfNeeded() {
@@ -4789,6 +5026,7 @@ const EMBEDDED_SCRIPT_BODY = `
           }
           updatePreview(backgroundPopover, currentAssetId);
         }
+        if (interactiveObjectPopover) updateInteractiveStage();
       }
       if (message.type === 'scenesUpdated' && Array.isArray(message.scenes)) {
         storyScenes = message.scenes;

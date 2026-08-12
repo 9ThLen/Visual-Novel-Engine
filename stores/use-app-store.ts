@@ -31,6 +31,7 @@ import {
   migrateCharacterLibrary,
 } from '@/lib/character-migration';
 import { migrateStoryImageAssetIds } from '@/lib/story-image-library';
+import { migrateStoryMediaAssetIds } from '@/lib/story-media-library';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
 import { mergeLegacyUserSettings, normalizeUserSettings, type UserSettings } from '@/lib/user-settings';
@@ -197,23 +198,37 @@ export const useAppStore = create<AppStore>()(
             current.sceneRecordsByStory,
             sceneRecordsByStory
           );
+          const nextStoriesMetadata = stories.length > 0 && current.storiesMetadata.length === 0
+            ? stories
+            : current.storiesMetadata;
+          const nextCharacterLibraries = Object.keys(characterLibraries).length > 0
+            ? migrateCharacterLibraries({
+                ...current.characterLibraries,
+                ...characterLibraries,
+              })
+            : migrateCharacterLibraries(current.characterLibraries);
+          const nextImageAssetIdsByStory = migrateStoryImageAssetIds(
+            current.imageAssetIdsByStory,
+            mergedSceneRecordsByStory,
+            current.mediaLibrary,
+            Object.keys(current.imageAssetIdsByStory).length === 0,
+          );
           set({
-            storiesMetadata: stories.length > 0 && current.storiesMetadata.length === 0 ? stories : current.storiesMetadata,
+            storiesMetadata: nextStoriesMetadata,
             sceneRecordsByStory: mergedSceneRecordsByStory,
             saveSlots: saveSlots.length > 0 && current.saveSlots.length === 0 ? saveSlots : current.saveSlots,
             settings: settings ? mergeLegacyUserSettings(settings, current.settings) : normalizeUserSettings(current.settings),
-            characterLibraries: Object.keys(characterLibraries).length > 0
-              ? migrateCharacterLibraries({
-                  ...current.characterLibraries,
-                  ...characterLibraries,
-                })
-              : migrateCharacterLibraries(current.characterLibraries),
-            imageAssetIdsByStory: migrateStoryImageAssetIds(
-              current.imageAssetIdsByStory,
-              mergedSceneRecordsByStory,
-              current.mediaLibrary,
-              Object.keys(current.imageAssetIdsByStory).length === 0,
-            ),
+            characterLibraries: nextCharacterLibraries,
+            imageAssetIdsByStory: nextImageAssetIdsByStory,
+            mediaAssetIdsByStory: migrateStoryMediaAssetIds({
+              current: current.mediaAssetIdsByStory,
+              imageAssetIdsByStory: nextImageAssetIdsByStory,
+              stories: nextStoriesMetadata,
+              scenesByStory: mergedSceneRecordsByStory,
+              characterLibraries: nextCharacterLibraries,
+              audioLibraries: current.audioLibraries,
+              mediaLibrary: current.mediaLibrary,
+            }),
             language,
             isLoaded: true,
           });

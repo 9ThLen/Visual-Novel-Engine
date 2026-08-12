@@ -67,6 +67,7 @@ export default function DocumentEditorRoute() {
   const setCharacterLibrary = useAppStore((state) => state.setCharacterLibrary);
   const setMediaLibrary = useAppStore((state) => state.setMediaLibrary);
   const addImageAssetToStory = useAppStore((state) => state.addImageAssetToStory);
+  const addMediaAssetToStory = useAppStore((state) => state.addMediaAssetToStory);
   const reorderScenes = useAppStore((state) => state.reorderScenes);
   const deleteScene = useAppStore((state) => state.deleteScene);
   const updateStoryMetadata = useAppStore((state) => state.updateStoryMetadata);
@@ -247,6 +248,7 @@ export default function DocumentEditorRoute() {
     const result = await addAssetToLibraryPure(dataUri, name || 'background.png', 'image', mediaLibrary);
     setMediaLibrary(result.assets);
     if (purpose === 'background') addImageAssetToStory(storyId, result.asset.id);
+    else addMediaAssetToStory(storyId, result.asset.id);
     return {
       id: result.asset.id,
       name: result.asset.name,
@@ -258,6 +260,7 @@ export default function DocumentEditorRoute() {
     if (!dataUri.startsWith('data:audio/')) return null;
     const result = await addAssetToLibraryPure(dataUri, name || 'audio.mp3', 'audio', mediaLibrary);
     setMediaLibrary(result.assets);
+    addMediaAssetToStory(storyId, result.asset.id);
     const playbackAsset = getPlaybackAudioLibraryPure(storyId, audioLibraries, result.assets)
       .find((asset) => asset.id === result.asset.id);
     return {

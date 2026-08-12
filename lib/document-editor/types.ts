@@ -1,5 +1,6 @@
 import type { BlockType, EffectType, TimelineStep } from '@/lib/engine/types';
 import type { FogEffectOptions, RainEffectOptions, SnowEffectOptions } from '@/lib/engine/effect-options';
+import type { CharacterEntranceTransition } from '@/lib/character-types';
 
 export type DocumentBlockKind = 'text' | 'dialogue' | 'choice' | 'technical';
 
@@ -87,6 +88,8 @@ export interface DocumentDialogueBlock extends BaseDocumentBlock {
   speakerName: string;
   characterId: string | null;
   spriteId: string | null;
+  characterAction?: 'show' | 'hide';
+  characterTransition?: CharacterEntranceTransition;
   tokenColor?: string;
   openCharacterControls?: boolean;
   text: string;

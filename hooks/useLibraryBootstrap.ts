@@ -17,6 +17,7 @@ import { createBundledStorySyncPayload, upsertBundledStory } from '@/lib/bundled
 import { ErrorCategory, ErrorHandler } from '@/lib/error-handler';
 import type { Story } from '@/lib/scene-operations';
 import { migrateStoryImageAssetIds } from '@/lib/story-image-library';
+import { migrateStoryMediaAssetIds } from '@/lib/story-media-library';
 import { StoryValidator } from '@/lib/story-validator';
 import { cleanupOrphanedWebMedia } from '@/lib/web-media-cleanup';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
@@ -91,13 +92,25 @@ export function useLibraryBootstrap(): { isInitialized: boolean } {
 
     // Seeded and legacy images become visible only in stories that already
     // reference them as backgrounds; unrelated media remains hidden.
-    useAppStore.setState((state) => ({
-      imageAssetIdsByStory: migrateStoryImageAssetIds(
+    useAppStore.setState((state) => {
+      const imageAssetIdsByStory = migrateStoryImageAssetIds(
         state.imageAssetIdsByStory,
         state.sceneRecordsByStory,
         state.mediaLibrary,
-      ),
-    }));
+      );
+      return {
+        imageAssetIdsByStory,
+        mediaAssetIdsByStory: migrateStoryMediaAssetIds({
+          current: state.mediaAssetIdsByStory,
+          imageAssetIdsByStory,
+          stories: state.storiesMetadata,
+          scenesByStory: state.sceneRecordsByStory,
+          characterLibraries: state.characterLibraries,
+          audioLibraries: state.audioLibraries,
+          mediaLibrary: state.mediaLibrary,
+        }),
+      };
+    });
 
     if (Platform.OS === 'web') {
       try {

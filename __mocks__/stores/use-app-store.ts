@@ -22,11 +22,16 @@ const storeVal: any = {
   audioLibraries: {},
   characterLibraries: {},
   imageAssetIdsByStory: {},
+  mediaAssetIdsByStory: {},
   language: 'en',
   syncAutoSave: mockFn(),
   setLanguage: mockFn(),
   setMediaLibrary: mockFn(),
   setAudioLibrary: mockFn(),
+  addImageAssetToStory: mockFn(),
+  addMediaAssetToStory: mockFn(),
+  removeImageAssetFromStory: mockFn(),
+  removeMediaAssetFromStory: mockFn(),
   migrateFromLegacyKeys: mockFn(),
   createStorySnapshot: mockFn().mockResolvedValue(undefined),
 };
@@ -50,6 +55,7 @@ export const resetAppStoreState = () => {
   storeVal.sceneRecordsByStory = {};
   storeVal.sceneRecordHydration = {};
   storeVal.imageAssetIdsByStory = {};
+  storeVal.mediaAssetIdsByStory = {};
   storeVal.createStorySnapshot = mockFn().mockResolvedValue(undefined);
   persistAppStoreStateNow.mockResolvedValue(undefined);
   storeVal.currentStoryId = null;
@@ -65,6 +71,10 @@ export const resetAppStoreState = () => {
   storeVal.setLanguage = mockFn();
   storeVal.setMediaLibrary = mockFn();
   storeVal.setAudioLibrary = mockFn();
+  storeVal.addImageAssetToStory = mockFn();
+  storeVal.addMediaAssetToStory = mockFn();
+  storeVal.removeImageAssetFromStory = mockFn();
+  storeVal.removeMediaAssetFromStory = mockFn();
   storeVal.migrateFromLegacyKeys = mockFn();
 };
 

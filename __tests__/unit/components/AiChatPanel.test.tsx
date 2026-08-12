@@ -13,6 +13,8 @@ import {
 import type { AiScenePatch } from '@/lib/ai/scene-patch-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
+import { setChatAttachmentStorageAdapterForTests } from '@/lib/idb-storage';
+import { MAX_BINARY_ATTACHMENT_BYTES } from '@/lib/ai/attachments';
 import { useAppStore } from '@/stores/use-app-store';
 import { makeEnvelope } from '@/lib/bridge-protocol';
 
@@ -89,6 +91,87 @@ describe('AiChatPanel', () => {
         aiBridgeSettings: { ...state.aiBridgeSettings, ...partial },
       })),
     });
+  });
+
+  afterEach(() => {
+    setChatAttachmentStorageAdapterForTests(null);
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the attachment control visible and explains why it is unavailable', () => {
+    useAppStore.setState({ aiBridgeSettings: { url: '', token: '', disabled: true } });
+
+    render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" />);
+
+    const attach = screen.getByRole('button', { name: 'Attach file' });
+    expect(attach.hasAttribute('disabled')).toBe(false);
+    expect(screen.getByText('Connect a real AI assistant to attach files.')).toBeTruthy();
+    fireEvent.click(attach);
+    expect(screen.getByRole('alert').textContent).toContain('Connect a real AI assistant');
+  });
+
+  it('announces supported attachment formats after the bridge capability handshake', async () => {
+    const attachmentRecords = new Map<string, unknown>();
+    setChatAttachmentStorageAdapterForTests({
+      get: async id => attachmentRecords.get(id) ?? null,
+      put: async (id, value) => { attachmentRecords.set(id, value); },
+      delete: async id => { attachmentRecords.delete(id); },
+      list: async () => [...attachmentRecords.values()],
+    });
+    class SocketMock {
+      static instances: SocketMock[] = [];
+      static readonly CONNECTING = 0; static readonly OPEN = 1; static readonly CLOSED = 3;
+      readonly CONNECTING = 0; readonly OPEN = 1; readonly CLOSED = 3;
+      readyState = 0;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent<string>) => void) | null = null;
+      onerror = null;
+      onclose = null;
+      close = vi.fn(() => { this.readyState = 3; });
+      send = vi.fn();
+      constructor() { SocketMock.instances.push(this); }
+      start() {
+        this.readyState = 1;
+        this.onopen?.(new Event('open'));
+        this.onmessage?.({
+          data: JSON.stringify(makeEnvelope('session_started', {
+            sessionId: 'session-1',
+            provider: 'openai',
+            capabilities: {
+              attachments: { supported: true, kinds: ['image', 'pdf', 'text'], maxCount: 4, maxDecodedBytes: 5 * 1024 * 1024 },
+            },
+          }, 'session-1')),
+        } as MessageEvent<string>);
+      }
+    }
+    vi.stubGlobal('WebSocket', SocketMock);
+    useAppStore.setState({ aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'token', disabled: false } });
+
+    const view = render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" />);
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
+    act(() => SocketMock.instances[0].start());
+
+    await waitFor(() => expect(screen.getByText(/PNG, JPG, WebP, PDF, TXT, Markdown or Fountain/)).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Attach file' }).hasAttribute('disabled')).toBe(false);
+    const composer = screen.getByText(/PNG, JPG, WebP, PDF, TXT, Markdown or Fountain/).parentElement;
+    const script = new File(['INT. LIBRARY - NIGHT'], 'scene.fountain', { type: 'text/plain' });
+    fireEvent.drop(composer!, { dataTransfer: { files: [script], types: ['Files'] } });
+    await waitFor(() => expect(screen.getByText('scene.fountain')).toBeTruthy());
+    const readOversized = vi.fn(async () => new ArrayBuffer(0));
+    const oversized = {
+      name: 'too-large.pdf',
+      size: MAX_BINARY_ATTACHMENT_BYTES + 1,
+      arrayBuffer: readOversized,
+    } as unknown as File;
+    fireEvent.drop(composer!, { dataTransfer: { files: [oversized], types: ['Files'] } });
+    await waitFor(() => expect(screen.getByText('This file is unsupported, malformed, or too large.')).toBeTruthy());
+    expect(readOversized).not.toHaveBeenCalled();
+    expect(attachmentRecords.size).toBe(1);
+    fireEvent.click(screen.getByRole('button', { name: 'AI settings' }));
+    expect(screen.getByText('Images, PDF and text supported · up to 4 files / 5 MB')).toBeTruthy();
+
+    view.unmount();
+    useAppStore.setState({ aiBridgeSettings: { url: '', token: '', disabled: false } });
   });
 
   it('rebuilds the bridge client when runtime connection settings change', async () => {

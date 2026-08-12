@@ -48,8 +48,8 @@ export function resolveBridgeCliConfig(
   env: Readonly<Record<string, string | undefined>>,
 ): BridgeCliConfig {
   const providerValue = (cli.provider ?? env.AI_BRIDGE_PROVIDER ?? 'claude').toLowerCase();
-  if (providerValue !== 'claude' && providerValue !== 'openai' && providerValue !== 'codex') {
-    throw new Error('AI bridge provider must be "claude", "openai", or "codex"');
+  if (providerValue !== 'claude' && providerValue !== 'openai' && providerValue !== 'codex' && providerValue !== 'gemini') {
+    throw new Error('AI bridge provider must be "claude", "openai", "codex", or "gemini"');
   }
 
   const portValue = cli.port ?? env.AI_BRIDGE_PORT ?? '8787';
@@ -81,7 +81,7 @@ export function bridgeCliHelp(): string {
     'Usage: vne-ai-bridge [options]',
     '',
     'Options:',
-    '  --provider <claude|openai|codex>  AI provider (default: claude)',
+    '  --provider <claude|openai|codex|gemini>  AI provider (default: claude)',
     '  --enable-codex-beta        Explicitly enable experimental Codex CLI',
     '  --origin <origin>          Allowed loopback browser origin; repeatable',
     '  --port <port>              Bridge WebSocket port (default: 8787)',

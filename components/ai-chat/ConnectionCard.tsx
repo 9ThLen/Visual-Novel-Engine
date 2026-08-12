@@ -33,6 +33,11 @@ const PROVIDERS: Record<ProviderChoice, { label: string; install: string; login:
     install: 'Set OPENAI_API_KEY in the bridge .env file',
     login: 'API billing is separate from a ChatGPT subscription',
   },
+  gemini: {
+    label: 'Google Gemini',
+    install: 'Set GEMINI_API_KEY in the bridge .env file',
+    login: 'API key from Google AI Studio',
+  },
   codex: {
     label: 'Codex',
     install: 'npm install -g @openai/codex',
@@ -152,7 +157,7 @@ export function ConnectionCard({
     return (
       <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12 }}>
         <Text style={{ color: colors.foreground, fontWeight: '700' }}>
-          {t('aiChat.connection.connected', { provider: provider === 'codex' ? 'Codex CLI · Beta' : provider === 'openai' ? 'OpenAI API' : 'Claude Code' })}
+          {t('aiChat.connection.connected', { provider: provider === 'codex' ? 'Codex CLI · Beta' : provider === 'openai' ? 'OpenAI API' : provider === 'gemini' ? 'Google Gemini' : 'Claude Code' })}
         </Text>
       </View>
     );

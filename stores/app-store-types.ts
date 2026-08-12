@@ -9,6 +9,7 @@ import type { Character } from '@/lib/character-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { AudioLibraryItem } from '@/lib/audio-types';
 import type { StoryImageAssetIds } from '@/lib/story-image-library';
+import type { StoryMediaAssetIds } from '@/lib/story-media-library';
 import type { AiChangeSetApplyResult } from '@/lib/ai/change-set';
 import type { AiBridgeSettings } from '@/lib/ai/bridge-config';
 
@@ -26,6 +27,7 @@ export interface AppState {
   language: Language;
   mediaLibrary: LibraryAsset[];
   imageAssetIdsByStory: StoryImageAssetIds;
+  mediaAssetIdsByStory: StoryMediaAssetIds;
   /** storyId → ids of terminal scenes the reader has reached. */
   endingsReachedByStory: Record<string, string[]>;
   isLoaded: boolean;
@@ -55,6 +57,8 @@ export interface AppActions {
   recordEndingReached: (storyId: string, sceneId: string) => void;
   addImageAssetToStory: (storyId: string, assetId: string) => void;
   removeImageAssetFromStory: (storyId: string, assetId: string) => void;
+  addMediaAssetToStory: (storyId: string, assetId: string) => void;
+  removeMediaAssetFromStory: (storyId: string, assetId: string) => void;
 
   hydrateReaderSceneWindow: (
     storyId: string,

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import { ClaudeAgentProvider } from './claude-provider';
 import { CodexCliProvider } from './codex-provider';
+import { GeminiProvider } from './gemini-provider';
 import { AiBridgeServer } from './server';
 import { bridgeCliHelp, parseBridgeCliArgs, resolveBridgeCliConfig } from './cli-options';
 import { checkProviderAuthentication } from './cli-launcher';
@@ -11,8 +12,7 @@ import { OpenAiProvider } from './openai-provider';
 
 export const BRIDGE_CLI_VERSION = '0.1.0';
 
-// The OpenAI provider is intentionally import.meta-free so it stays loadable
-// under the CommonJS test transpiler; the entrypoint owns the prompt read.
+// Injected system prompt for API providers
 const OPENAI_SYSTEM_PROMPT = readFileSync(fileURLToPath(new URL('./system-prompt.md', import.meta.url)), 'utf8');
 
 /**
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
 
   loadDotEnv();
   const { origins, port, provider, enableCodexBeta } = resolveBridgeCliConfig(cli, process.env);
-  const check = provider === 'claude' ? checkProviderAuthentication(provider) : null;
+  const check = (provider === 'claude' || provider === 'codex') ? checkProviderAuthentication(provider) : null;
   if (check && (check.error || check.status !== 0)) {
     const detail = check.error?.message || check.stderr?.trim() || check.stdout?.trim();
     console.error(provider === 'codex'
@@ -76,6 +76,11 @@ async function main(): Promise<void> {
       allowedModels: csv(process.env.OPENAI_ALLOWED_CHAT_MODELS),
       defaultTokenBudget: positiveNumber(process.env.OPENAI_SESSION_TOKEN_BUDGET),
       maxTokenBudget: positiveNumber(process.env.OPENAI_MAX_SESSION_TOKEN_BUDGET),
+    } : provider === 'gemini' ? {
+      defaultModel: process.env.GEMINI_CHAT_MODEL,
+      allowedModels: csv(process.env.GEMINI_ALLOWED_CHAT_MODELS),
+      defaultTokenBudget: positiveNumber(process.env.GEMINI_SESSION_TOKEN_BUDGET),
+      maxTokenBudget: positiveNumber(process.env.GEMINI_MAX_SESSION_TOKEN_BUDGET),
     } : undefined,
     providerFactory: (tools, session) => {
       switch (provider) {
@@ -86,6 +91,12 @@ async function main(): Promise<void> {
           model: session?.model ?? process.env.OPENAI_CHAT_MODEL,
           systemPrompt: OPENAI_SYSTEM_PROMPT,
           sessionTokenBudget: session?.sessionTokenBudget ?? positiveNumber(process.env.OPENAI_SESSION_TOKEN_BUDGET),
+        });
+        case 'gemini': return new GeminiProvider(tools, session, {
+          apiKey: process.env.GEMINI_API_KEY ?? '',
+          model: session?.model ?? process.env.GEMINI_CHAT_MODEL,
+          systemPrompt: OPENAI_SYSTEM_PROMPT,
+          sessionTokenBudget: session?.sessionTokenBudget ?? positiveNumber(process.env.GEMINI_SESSION_TOKEN_BUDGET),
         });
       }
     },

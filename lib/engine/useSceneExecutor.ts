@@ -212,13 +212,29 @@ export function useSceneExecutor(
           const existingIdx = nextState.characters.findIndex((c) => c.characterId === d.characterId);
           const existing = existingIdx >= 0 ? nextState.characters[existingIdx] : null;
           if (action === 'hide') {
-            nextState.characters = nextState.characters.filter((c) => c.characterId !== d.characterId);
+            if (existingIdx >= 0 && existing) {
+              const nextChars = [...nextState.characters];
+              nextChars[existingIdx] = {
+                ...existing,
+                exitTransition: d.transition ?? 'fade',
+                exitDelay: d.delay ?? 0,
+                visible: false,
+              };
+              nextState.characters = nextChars;
+            }
+            if (nextState.activeSpeakerCharacterId === d.characterId) {
+              nextState.activeSpeakerCharacterId = null;
+            }
             break;
           }
           const charState = {
             characterId: d.characterId,
             spriteId: action === 'move' ? existing?.spriteId ?? d.spriteId : d.spriteId || existing?.spriteId || '',
             position: action === 'change_sprite' ? existing?.position ?? d.position : d.position || existing?.position || 'center',
+            entranceTransition: d.transition ?? existing?.entranceTransition ?? 'fade',
+            entranceDelay: d.delay ?? existing?.entranceDelay ?? 0,
+            exitTransition: existing?.exitTransition ?? 'fade',
+            exitDelay: existing?.exitDelay ?? 0,
             visible: true,
             opacity: existing?.opacity ?? 1,
             scale: existing?.scale ?? 1,

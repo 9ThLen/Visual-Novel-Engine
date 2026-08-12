@@ -19,11 +19,16 @@ import {
   type SceneRecord,
   type TimelineStep,
 } from '@/lib/engine/types';
-import type { CanonicalStory, StoryMetadata } from '@/lib/story-domain';
-import { normalizeStoryMetadata } from '@/lib/story-domain';
+import {
+  MAX_STORY_TAG_LENGTH,
+  MAX_STORY_TAGS,
+  normalizeStoryMetadata,
+  sanitizeStoryTags,
+  type CanonicalStory,
+  type StoryMetadata,
+} from '@/lib/story-domain';
 import type { StoryReaderLayoutPreset, StoryReaderTheme } from '@/lib/story-theme';
-import type { AppState } from '@/stores/use-app-store';
-import { useAppStore } from '@/stores/use-app-store';
+import { useAppStore, type AppState } from '@/stores/use-app-store';
 import { normalizeEditorTimeline } from '@/lib/editor-scene-draft';
 import {
   CHARACTER_AUTHORING_SCHEMA_VERSION,
@@ -69,30 +74,7 @@ function buildCanonicalStory(
   };
 }
 
-export const MAX_STORY_TAGS = 20;
-export const MAX_STORY_TAG_LENGTH = 40;
-
-/**
- * Normalize a raw tag list into a clean, bounded array: strings only, trimmed,
- * length-capped, de-duplicated case-insensitively, and limited in count.
- * Returns undefined when nothing usable remains so the field can be omitted.
- */
-export function sanitizeStoryTags(raw: unknown): string[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const seen = new Set<string>();
-  const tags: string[] = [];
-  for (const entry of raw) {
-    if (typeof entry !== 'string') continue;
-    const trimmed = entry.trim().slice(0, MAX_STORY_TAG_LENGTH);
-    if (!trimmed) continue;
-    const key = trimmed.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    tags.push(trimmed);
-    if (tags.length >= MAX_STORY_TAGS) break;
-  }
-  return tags.length > 0 ? tags : undefined;
-}
+export { MAX_STORY_TAG_LENGTH, MAX_STORY_TAGS, sanitizeStoryTags };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;

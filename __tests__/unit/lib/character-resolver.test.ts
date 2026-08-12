@@ -79,7 +79,23 @@ describe('character migration', () => {
     expect(migrated[0].color).toMatch(/^#/);
     expect(migrated[0].authoring?.currentSpriteId).toBe('sprite_idle');
     expect(migrated[0].authoring?.currentPosition).toBe('center');
+    expect(migrated[0].authoring?.entranceTransition).toBe('fade');
+    expect(migrated[0].authoring?.exitTransition).toBe('fade');
     expect(migrated[0].characterAuthoringSchemaVersion).toBe(CHARACTER_AUTHORING_SCHEMA_VERSION);
+  });
+
+  it('preserves a supported first-appearance transition', () => {
+    const migrated = migrateCharacterLibrary([{
+      ...character,
+      authoring: {
+        ...character.authoring,
+        entranceTransition: 'slide-left',
+        exitTransition: 'slide-right',
+      },
+    }]);
+
+    expect(migrated[0].authoring?.entranceTransition).toBe('slide-left');
+    expect(migrated[0].authoring?.exitTransition).toBe('slide-right');
   });
 
   it('is idempotent', () => {

@@ -232,6 +232,7 @@ describe('document scene parser/compiler', () => {
       id: 'char_max',
       name: 'ĐśĐ°ĐşŃ',
       sprites: [],
+      authoring: { currentPosition: 'center', entranceTransition: 'slide-left' },
       createdAt: 1,
     }];
 
@@ -262,9 +263,50 @@ describe('document scene parser/compiler', () => {
       ],
     };
 
-    const timeline = documentSceneToTimeline(documentScene);
+    const timeline = documentSceneToTimeline(documentScene, characters);
     expect(timeline.map((step) => step.blockType)).toEqual(['text', 'character', 'dialogue', 'choice', 'background']);
     expect((timeline[1].data as any).generatedByInlineDialogue).toBe(true);
+    expect((timeline[1].data as any).transition).toBe('slide-left');
+  });
+
+  it('compiles disappearance and shows the character again on their next use', () => {
+    const characters: Character[] = [{
+      id: 'char_ada',
+      name: 'Ada',
+      sprites: [{ id: 'sprite_idle', name: 'Idle', uri: 'ada.png', createdAt: 1 }],
+      authoring: {
+        currentSpriteId: 'sprite_idle',
+        currentPosition: 'center',
+        entranceTransition: 'slide-left',
+        exitTransition: 'slide-right',
+      },
+      createdAt: 1,
+    }];
+    const documentScene: DocumentScene = {
+      sceneId: 'scene_1',
+      sceneName: 'Scene',
+      blocks: [
+        { id: 'hello', kind: 'dialogue', speakerName: 'Ada', characterId: 'char_ada', spriteId: 'sprite_idle', text: 'Hello' },
+        {
+          id: 'exit',
+          kind: 'dialogue',
+          speakerName: 'Ada',
+          characterId: 'char_ada',
+          spriteId: 'sprite_idle',
+          characterAction: 'hide',
+          characterTransition: 'slide-right',
+          text: '',
+        },
+        { id: 'return', kind: 'dialogue', speakerName: 'Ada', characterId: 'char_ada', spriteId: 'sprite_idle', text: 'I am back' },
+      ],
+    };
+
+    const timeline = documentSceneToTimeline(documentScene, characters);
+    const characterSteps = timeline.filter((step) => step.blockType === 'character');
+
+    expect(characterSteps.map((step) => (step.data as any).action)).toEqual(['show', 'hide', 'show']);
+    expect((characterSteps[1].data as any).transition).toBe('slide-right');
+    expect((characterSteps[2].data as any).transition).toBe('slide-left');
   });
 
   it('saves next-scene connection for document page creation', () => {

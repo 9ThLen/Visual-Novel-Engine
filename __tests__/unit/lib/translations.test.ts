@@ -22,6 +22,8 @@ const REQUIRED_DOCUMENT_UX_KEYS = [
   'editor.unsaved',
   'document.sceneCounter',
   'document.commandMenuHint',
+  'document.untitledScene',
+  'document.blockCount',
   'document.command.background',
   'document.command.background.description',
   'document.command.character',

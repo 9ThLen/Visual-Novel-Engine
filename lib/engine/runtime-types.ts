@@ -1,3 +1,4 @@
+import type { CharacterEntranceTransition } from '@/lib/character-types';
 import type { InteractiveObject } from '@/lib/interactive-types';
 import type { FogEffectOptions, RainEffectOptions, SnowEffectOptions } from './effect-options';
 import type { EffectDurationMode, TransitionMode, TransitionType } from './types';
@@ -70,6 +71,10 @@ export interface CharacterRuntimeState {
   characterId: string;
   spriteId: string;
   position: string;
+  entranceTransition?: CharacterEntranceTransition;
+  entranceDelay?: number;
+  exitTransition?: CharacterEntranceTransition;
+  exitDelay?: number;
   visible: boolean;
   opacity: number;
   scale: number;

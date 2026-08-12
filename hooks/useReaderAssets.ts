@@ -9,7 +9,7 @@ import { useSceneImages, type ImageSource } from '@/hooks/useSceneImages';
 import { useCharacterAnimations, buildCharacterInstance } from '@/hooks/useCharacterAnimations';
 import { createExecutorSceneImageState } from '@/lib/reader-runtime';
 import { resolveCharacterSpriteUri } from '@/lib/character-resolver';
-import type { Character } from '@/lib/character-types';
+import type { Character, CharacterEntranceTransition } from '@/lib/character-types';
 
 export interface ReaderAssets {
   bgSource: ImageSource | null;
@@ -20,12 +20,20 @@ export interface ReaderAssets {
 export function useReaderAssets(
   displaySceneId: string,
   displayBackgroundUri: string | null | undefined,
-  characters: { characterId: string; spriteId?: string | null; position?: string; zIndex?: number }[],
+  characters: {
+    characterId: string;
+    spriteId?: string | null;
+    position?: string;
+    zIndex?: number;
+    visible?: boolean;
+    entranceTransition?: CharacterEntranceTransition;
+    entranceDelay?: number;
+    exitTransition?: CharacterEntranceTransition;
+    exitDelay?: number;
+  }[],
   characterLibrary: Character[] = [],
   storyId = 'current',
 ): ReaderAssets {
-  const { getAnimValues } = useCharacterAnimations();
-
   const executorImageState = useMemo(
     () => createExecutorSceneImageState(
       displaySceneId,
@@ -45,6 +53,11 @@ export function useReaderAssets(
   );
 
   const { bgSource, resolvedCharUris } = useSceneImages(executorImageState);
+  const animationCharacters = useMemo(
+    () => characters.filter((character) => resolvedCharUris[character.characterId] != null),
+    [characters, resolvedCharUris],
+  );
+  const { getAnimValues } = useCharacterAnimations(animationCharacters);
 
   const characterInstances = useMemo(
     () =>

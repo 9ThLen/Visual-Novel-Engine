@@ -693,6 +693,9 @@ function generatedCharacterStepsForDialogue(
   const character = characterForId(characters, block.characterId);
   const spriteId = block.spriteId || currentSpriteIdForCharacter(character) || '';
   const position = character?.authoring?.currentPosition || 'center';
+  const entranceTransition = block.characterAction === 'hide'
+    ? character?.authoring?.entranceTransition || 'fade'
+    : block.characterTransition || character?.authoring?.entranceTransition || 'fade';
   const result: TimelineStep[] = [];
 
   if (!visibleCharacters.has(block.characterId)) {
@@ -702,7 +705,7 @@ function generatedCharacterStepsForDialogue(
       characterId: block.characterId,
       spriteId,
       position,
-      transition: 'fade',
+      transition: entranceTransition,
     }));
     visibleCharacters.add(block.characterId);
     currentSpriteByCharacter.set(block.characterId, spriteId);
@@ -735,6 +738,22 @@ function generatedCharacterStepsForDialogue(
   }
 
   return result;
+}
+
+function generatedCharacterHideStep(
+  block: DocumentDialogueBlock,
+  characters: Character[],
+): TimelineStep | null {
+  if (!block.characterId || block.characterAction !== 'hide') return null;
+  const character = characterForId(characters, block.characterId);
+  return createCharacterStep({
+    action: 'hide',
+    generatedByInlineDialogue: true,
+    characterId: block.characterId,
+    spriteId: block.spriteId || currentSpriteIdForCharacter(character) || '',
+    position: character?.authoring?.currentPosition || 'center',
+    transition: block.characterTransition || character?.authoring?.exitTransition || 'fade',
+  });
 }
 
 function applyExplicitCharacterState(
@@ -793,8 +812,10 @@ export function documentSceneToTimeline(documentScene: DocumentScene, characters
           ...block.sourceStep,
           data: {
             ...sourceData,
+            action: block.characterAction ?? sourceData.action,
             characterId: block.characterId ?? sourceData.characterId,
             spriteId: block.spriteId ?? sourceData.spriteId,
+            transition: block.characterTransition ?? sourceData.transition,
           },
         };
         applyExplicitCharacterState(step, visibleCharacters, currentSpriteByCharacter, currentPositionByCharacter);
@@ -807,14 +828,17 @@ export function documentSceneToTimeline(documentScene: DocumentScene, characters
         currentSpriteByCharacter,
         currentPositionByCharacter,
       );
-      if (block.parts?.length) {
-        return [
-          ...characterSteps,
-          ...timelineFromDialogueInlineParts(block, characters),
-        ];
+      const hideStep = generatedCharacterHideStep(block, characters);
+      const contentSteps = block.parts?.length
+        ? timelineFromDialogueInlineParts(block, characters)
+        : (() => {
+            const dialogueStep = dialogueStepForBlock(block, characters);
+            return dialogueStep ? [dialogueStep] : [];
+          })();
+      if (hideStep) {
+        applyExplicitCharacterState(hideStep, visibleCharacters, currentSpriteByCharacter, currentPositionByCharacter);
       }
-      const dialogueStep = dialogueStepForBlock(block, characters);
-      return dialogueStep ? [...characterSteps, dialogueStep] : [];
+      return [...characterSteps, ...contentSteps, ...(hideStep ? [hideStep] : [])];
     }
 
     if (block.kind === 'choice') {

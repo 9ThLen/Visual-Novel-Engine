@@ -8,8 +8,7 @@ import type { Character } from '@/lib/character-types';
 import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import { canConvertDataUri, type AssetType, type LibraryAsset } from '@/lib/media-library-service';
-import type { SaveSlot, StoryMetadata } from '@/lib/story-domain';
-import { normalizeStoryMetadata } from '@/lib/story-domain';
+import { normalizeStoryMetadata, type SaveSlot, type StoryMetadata } from '@/lib/story-domain';
 import type { Language } from '@/lib/translations';
 import type { UserSettings } from '@/lib/user-settings';
 import {
@@ -19,8 +18,13 @@ import {
 } from '@/lib/story-image-library';
 import type { AiBridgeSettings } from '@/lib/ai/bridge-config';
 import type { BridgeProvider, CodexBetaConsent } from '@/lib/bridge-protocol';
+import {
+  migrateStoryMediaAssetIds,
+  normalizeStoryMediaAssetIds,
+  type StoryMediaAssetIds,
+} from '@/lib/story-media-library';
 
-export const APP_STORE_PERSIST_VERSION = 6;
+export const APP_STORE_PERSIST_VERSION = 7;
 
 export type AppStorePersistenceState = {
   storiesMetadata: StoryMetadata[];
@@ -36,6 +40,7 @@ export type AppStorePersistenceState = {
   language: Language;
   mediaLibrary: LibraryAsset[];
   imageAssetIdsByStory: StoryImageAssetIds;
+  mediaAssetIdsByStory: StoryMediaAssetIds;
   endingsReachedByStory: Record<string, string[]>;
 };
 
@@ -65,7 +70,7 @@ function getBase64DataUriBytes(uri: string): number | null {
 export function getPersistableMediaLibrary(assets: unknown): LibraryAsset[] {
   if (!Array.isArray(assets)) return [];
 
-  const candidates: Array<{ asset: LibraryAsset; dataUriBytes: number; index: number }> = [];
+  const candidates: { asset: LibraryAsset; dataUriBytes: number; index: number }[] = [];
 
   assets.forEach((asset, index) => {
     if (!asset || typeof asset !== 'object') return;
@@ -144,7 +149,11 @@ export function getHydratableMediaLibrary(assets: unknown): LibraryAsset[] {
     if (candidate.uri.startsWith('blob:')) continue;
 
     if (candidate.uri.startsWith('data:')) {
-      const type: AssetType = candidate.type === 'audio' ? 'audio' : 'image';
+      const type: AssetType = candidate.type === 'audio'
+        ? 'audio'
+        : candidate.type === 'other'
+          ? 'other'
+          : 'image';
       if (!canConvertDataUri(candidate.uri, type)) continue;
     }
 
@@ -169,6 +178,7 @@ export function buildPersistedAppState(state: AppStorePersistenceState): AppStor
     language: state.language,
     mediaLibrary: getPersistableMediaLibrary(state.mediaLibrary),
     imageAssetIdsByStory: state.imageAssetIdsByStory,
+    mediaAssetIdsByStory: state.mediaAssetIdsByStory,
     // Which endings a reader has reached is progress, not cache: losing it would
     // silently re-ask for a review and reset their collection.
     endingsReachedByStory: state.endingsReachedByStory,
@@ -180,7 +190,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeProvider(value: unknown, fallback: BridgeProvider): BridgeProvider {
-  return value === 'claude' || value === 'openai' || value === 'codex' ? value : fallback;
+  return value === 'claude' || value === 'openai' || value === 'codex' || value === 'gemini' ? value : fallback;
 }
 
 function normalizeCodexConsent(value: unknown): CodexBetaConsent | undefined {
@@ -248,6 +258,15 @@ export function migratePersistedAppState(
     getHydratableMediaLibrary(migrated.mediaLibrary),
     needsStoryImageMigration,
   );
+  migrated.mediaAssetIdsByStory = migrateStoryMediaAssetIds({
+    current: migrated.mediaAssetIdsByStory,
+    imageAssetIdsByStory: migrated.imageAssetIdsByStory,
+    stories: Array.isArray(migrated.storiesMetadata) ? migrated.storiesMetadata : [],
+    scenesByStory: migrated.sceneRecordsByStory ?? {},
+    characterLibraries: migrated.characterLibraries ?? {},
+    audioLibraries: migrated.audioLibraries ?? {},
+    mediaLibrary: getHydratableMediaLibrary(migrated.mediaLibrary),
+  });
   if (Array.isArray(migrated.storiesMetadata)) {
     migrated.storiesMetadata = withCharacterSchemaVersion(migrated.storiesMetadata).map(
       normalizeStoryMetadata,
@@ -269,6 +288,28 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
   }
 
   const persisted = migratePersistedAppState(persistedState, 0) as Partial<AppStorePersistenceState>;
+  const mediaLibrary = 'mediaLibrary' in persisted
+    ? getHydratableMediaLibrary(persisted.mediaLibrary)
+    : currentState.mediaLibrary;
+  const sceneRecordsByStory = 'sceneRecordsByStory' in persisted
+    ? migrateSceneRecordsByStory(persisted.sceneRecordsByStory)
+    : currentState.sceneRecordsByStory;
+  const characterLibraries = 'characterLibraries' in persisted
+    ? migrateCharacterLibraries(persisted.characterLibraries)
+    : currentState.characterLibraries;
+  const storiesMetadata = withCharacterSchemaVersion(
+    Array.isArray(persisted.storiesMetadata)
+      ? persisted.storiesMetadata
+      : currentState.storiesMetadata,
+  ).map(normalizeStoryMetadata);
+  const imageAssetIdsByStory = migrateStoryImageAssetIds(
+    'imageAssetIdsByStory' in persisted
+      ? normalizeStoryImageAssetIds(persisted.imageAssetIdsByStory)
+      : currentState.imageAssetIdsByStory,
+    sceneRecordsByStory,
+    mediaLibrary,
+    false,
+  );
   return {
     ...currentState,
     ...persisted,
@@ -295,35 +336,24 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
             : {}),
         }
       : currentState.aiBridgeSettings,
-    mediaLibrary:
-      'mediaLibrary' in persisted
-        ? getHydratableMediaLibrary(persisted.mediaLibrary)
-        : currentState.mediaLibrary,
-    imageAssetIdsByStory: migrateStoryImageAssetIds(
-      'imageAssetIdsByStory' in persisted
-        ? normalizeStoryImageAssetIds(persisted.imageAssetIdsByStory)
-        : currentState.imageAssetIdsByStory,
-      'sceneRecordsByStory' in persisted
-        ? migrateSceneRecordsByStory(persisted.sceneRecordsByStory)
-        : currentState.sceneRecordsByStory,
-      'mediaLibrary' in persisted
-        ? getHydratableMediaLibrary(persisted.mediaLibrary)
-        : currentState.mediaLibrary,
-      false,
-    ),
-    characterLibraries:
-      'characterLibraries' in persisted
-        ? migrateCharacterLibraries(persisted.characterLibraries)
-        : currentState.characterLibraries,
-    sceneRecordsByStory:
-      'sceneRecordsByStory' in persisted
-        ? migrateSceneRecordsByStory(persisted.sceneRecordsByStory)
-        : currentState.sceneRecordsByStory,
-    storiesMetadata: withCharacterSchemaVersion(
-      Array.isArray(persisted.storiesMetadata)
-        ? persisted.storiesMetadata
-        : currentState.storiesMetadata,
-    ).map(normalizeStoryMetadata),
+    mediaLibrary,
+    imageAssetIdsByStory,
+    mediaAssetIdsByStory: migrateStoryMediaAssetIds({
+      current: 'mediaAssetIdsByStory' in persisted
+        ? normalizeStoryMediaAssetIds(persisted.mediaAssetIdsByStory)
+        : currentState.mediaAssetIdsByStory,
+      imageAssetIdsByStory,
+      stories: storiesMetadata,
+      scenesByStory: sceneRecordsByStory,
+      characterLibraries,
+      audioLibraries: 'audioLibraries' in persisted
+        ? persisted.audioLibraries ?? {}
+        : currentState.audioLibraries,
+      mediaLibrary,
+    }),
+    characterLibraries,
+    sceneRecordsByStory,
+    storiesMetadata,
     playbackState:
       'playbackState' in persisted
         ? normalizePlaybackState(persisted.playbackState)

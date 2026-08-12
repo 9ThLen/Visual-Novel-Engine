@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
@@ -36,7 +36,16 @@ import {
 } from '@/lib/ai/image-tools';
 import { pendingImageRepository } from '@/lib/ai/pending-image-storage.web';
 import { chatAttachmentRepository } from '@/lib/ai/attachment-storage.web';
-import { detectAttachment, sanitizeAttachmentName, type AttachmentRef, type StoredChatAttachment } from '@/lib/ai/attachments';
+import {
+  detectAttachment,
+  MAX_BINARY_ATTACHMENT_BYTES,
+  MAX_CHAT_ATTACHMENTS,
+  MAX_MESSAGE_ATTACHMENT_BYTES,
+  MAX_TEXT_ATTACHMENT_BYTES,
+  sanitizeAttachmentName,
+  type AttachmentRef,
+  type StoredChatAttachment,
+} from '@/lib/ai/attachments';
 import { APP_BRIDGE_TOOL_NAMES } from '@/lib/ai/bridge-tools';
 import { AI_CAPABILITIES, normalizeAiPermissions, resolveCapability, resolveEffectiveCapability, type AiCapability, type AiPermissions } from '@/lib/ai/permissions';
 import { resolveAiBridgeConfig } from '@/lib/ai/bridge-config';
@@ -94,6 +103,22 @@ type BridgeRuntimeErrorReason =
   | 'OPENAI_NON_REPLAYABLE_REASONING'
   | 'OPENAI_REQUEST_TOO_LARGE'
   | 'OPENAI_SESSION_BUDGET_EXHAUSTED'
+  | 'GEMINI_API_AUTH_FAILED'
+  | 'GEMINI_API_FORBIDDEN'
+  | 'GEMINI_RATE_LIMITED'
+  | 'GEMINI_MODEL_UNAVAILABLE'
+  | 'GEMINI_API_TIMEOUT'
+  | 'GEMINI_RESPONSE_INCOMPLETE'
+  | 'GEMINI_MALFORMED_RESPONSE'
+  | 'GEMINI_REFUSAL'
+  | 'GEMINI_STREAM_TOO_LARGE'
+  | 'GEMINI_STREAM_EVENT_TOO_LARGE'
+  | 'GEMINI_STREAM_INCOMPLETE'
+  | 'GEMINI_API_FAILED'
+  | 'GEMINI_ROUND_LIMIT'
+  | 'GEMINI_MALFORMED_FUNCTION_CALL'
+  | 'GEMINI_REQUEST_TOO_LARGE'
+  | 'GEMINI_SESSION_BUDGET_EXHAUSTED'
   | 'PROVIDER_ERROR';
 
 const OPENAI_RUNTIME_REASONS = new Set<BridgeRuntimeErrorReason>([
@@ -103,6 +128,11 @@ const OPENAI_RUNTIME_REASONS = new Set<BridgeRuntimeErrorReason>([
   'OPENAI_API_FAILED', 'OPENAI_ROUND_LIMIT', 'OPENAI_PARALLEL_TOOL_CALLS',
   'OPENAI_MALFORMED_FUNCTION_CALL', 'OPENAI_NON_REPLAYABLE_REASONING', 'OPENAI_REQUEST_TOO_LARGE',
   'OPENAI_SESSION_BUDGET_EXHAUSTED',
+  'GEMINI_API_AUTH_FAILED', 'GEMINI_API_FORBIDDEN', 'GEMINI_RATE_LIMITED', 'GEMINI_MODEL_UNAVAILABLE',
+  'GEMINI_API_TIMEOUT', 'GEMINI_RESPONSE_INCOMPLETE', 'GEMINI_MALFORMED_RESPONSE', 'GEMINI_REFUSAL',
+  'GEMINI_STREAM_TOO_LARGE', 'GEMINI_STREAM_EVENT_TOO_LARGE', 'GEMINI_STREAM_INCOMPLETE',
+  'GEMINI_API_FAILED', 'GEMINI_ROUND_LIMIT',
+  'GEMINI_MALFORMED_FUNCTION_CALL', 'GEMINI_REQUEST_TOO_LARGE', 'GEMINI_SESSION_BUDGET_EXHAUSTED',
 ]);
 
 function resolveBridgeRuntimeError(payload: Record<string, unknown>): BridgeRuntimeErrorReason {
@@ -256,6 +286,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   const [capabilities, setCapabilities] = useState<BridgeCapabilities>();
   const [draftAttachments, setDraftAttachments] = useState<StoredChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string>();
+  const [attachmentDropActive, setAttachmentDropActive] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [imageResults, setImageResults] = useState<AiImageResult[]>([]);
@@ -264,6 +295,8 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   const [confirmUndo, setConfirmUndo] = useState(false);
   const [imagePersistenceFailed, setImagePersistenceFailed] = useState(false);
   const bridgeRef = useRef<BridgeClient | null>(null);
+  const composerRef = useRef<View | null>(null);
+  const attachmentAddingRef = useRef(false);
   const activeSceneIdRef = useRef(activeSceneId);
   const imageResultIdsRef = useRef(new Set<string>());
   const assistantTextRef = useRef('');
@@ -292,7 +325,9 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   }, [storiesMetadata]);
 
   useEffect(() => {
-    const { token, url, enabled } = bridgeConfig;
+    const token = bridgeConfig.token;
+    const url = bridgeConfig.url;
+    const enabled = bridgeConfig.enabled;
     if (!enabled || typeof WebSocket === 'undefined') {
       setConnectionState(aiBridgeSettings.disabled && aiBridgeSettings.token ? 'closed' : 'demo');
       return;
@@ -321,7 +356,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
       },
       onEvent: (message) => {
         const payload = typeof message.payload === 'object' && message.payload ? message.payload as Record<string, unknown> : {};
-        if (message.type === 'session_started' && (payload.provider === 'claude' || payload.provider === 'openai' || payload.provider === 'codex')) {
+        if (message.type === 'session_started' && (payload.provider === 'claude' || payload.provider === 'openai' || payload.provider === 'codex' || payload.provider === 'gemini')) {
           setProvider(payload.provider);
           if (payload.capabilities && typeof payload.capabilities === 'object') setCapabilities(payload.capabilities as BridgeCapabilities);
         }
@@ -477,7 +512,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
       client.close();
       bridgeRef.current = null;
     };
-  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, addMessage, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, t]);
+  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.preferredProvider, bridgeConfig.codexBetaConsent, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, addMessage, cancelPendingInteraction, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, t]);
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
@@ -568,40 +603,132 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     setPendingPatch({ patch: response.patch, description });
   }, [inputText, draftAttachments, status, activeSceneId, storyId, addMessage, setStatus, setPendingPatch, setPendingAppearance, t, connectionState]);
 
+  const addDraftFiles = useCallback(async (files: readonly File[]) => {
+    if (!files.length) return;
+    if (attachmentAddingRef.current) {
+      setAttachmentError(t('aiChat.attach.wait'));
+      return;
+    }
+    attachmentAddingRef.current = true;
+    setAttachmentError(undefined);
+    const added: StoredChatAttachment[] = [];
+    try {
+      const remaining = MAX_CHAT_ATTACHMENTS - draftAttachments.length;
+      if (remaining <= 0) {
+        setAttachmentError(t('aiChat.attach.limit'));
+        return;
+      }
+      const selected = files.slice(0, remaining);
+      let totalBytes = draftAttachments.reduce((sum, attachment) => sum + attachment.byteSize, 0);
+      for (const file of selected) {
+        if (!file.size || file.size > MAX_BINARY_ATTACHMENT_BYTES) {
+          throw new Error('attachment size is invalid');
+        }
+        let blob: Blob = file;
+        let detected = detectAttachment(new Uint8Array(await blob.arrayBuffer()));
+        if (detected.kind === 'image') {
+          const sanitized = await downscaleImage(blob);
+          if (!sanitized) throw new Error('image sanitation failed');
+          blob = sanitized;
+          detected = detectAttachment(new Uint8Array(await blob.arrayBuffer()));
+        }
+        const itemLimit = detected.kind === 'text' ? MAX_TEXT_ATTACHMENT_BYTES : MAX_BINARY_ATTACHMENT_BYTES;
+        totalBytes += blob.size;
+        if (!blob.size || blob.size > itemLimit || totalBytes > MAX_MESSAGE_ATTACHMENT_BYTES) {
+          throw new Error('attachment size is invalid');
+        }
+        const value: StoredChatAttachment = {
+          id: crypto.randomUUID(), storyId, name: sanitizeAttachmentName(file.name || `attachment-${Date.now()}`),
+          kind: detected.kind, mimeType: detected.mimeType, byteSize: blob.size, blob, createdAt: Date.now(),
+        };
+        added.push(value);
+      }
+      await Promise.all(added.map(value => chatAttachmentRepository.put(value)));
+      setDraftAttachments(current => [...current, ...added]);
+      if (files.length > selected.length) setAttachmentError(t('aiChat.attach.limit'));
+    } catch {
+      await Promise.allSettled(added.map(value => chatAttachmentRepository.delete(value.id)));
+      setAttachmentError(t('aiChat.attach.invalid'));
+    } finally {
+      attachmentAddingRef.current = false;
+    }
+  }, [draftAttachments, storyId, t]);
+
   const handleAttach = useCallback(() => {
     if (typeof document === 'undefined') return;
     const picker = document.createElement('input');
     picker.type = 'file';
     picker.multiple = true;
-    picker.accept = 'image/jpeg,image/png,image/webp,application/pdf,text/plain,text/markdown,.md';
-    picker.onchange = () => {
-      void (async () => {
-        setAttachmentError(undefined);
-        try {
-          const selected = Array.from(picker.files ?? []).slice(0, 4 - draftAttachments.length);
-          const added: StoredChatAttachment[] = [];
-          for (const file of selected) {
-            let blob: Blob = file;
-            let detected = detectAttachment(new Uint8Array(await blob.arrayBuffer()));
-            if (detected.kind === 'image') {
-              const sanitized = await downscaleImage(blob);
-              if (!sanitized) throw new Error('image sanitation failed');
-              blob = sanitized;
-              detected = detectAttachment(new Uint8Array(await blob.arrayBuffer()));
-            }
-            const value: StoredChatAttachment = {
-              id: crypto.randomUUID(), storyId, name: sanitizeAttachmentName(file.name),
-              kind: detected.kind, mimeType: detected.mimeType, byteSize: blob.size, blob, createdAt: Date.now(),
-            };
-            await chatAttachmentRepository.put(value);
-            added.push(value);
-          }
-          setDraftAttachments(current => [...current, ...added]);
-        } catch { setAttachmentError(t('aiChat.attach.invalid')); }
-      })();
-    };
+    picker.accept = 'image/jpeg,image/png,image/webp,application/pdf,text/plain,text/markdown,.md,.fountain';
+    picker.onchange = () => { void addDraftFiles(Array.from(picker.files ?? [])); };
     picker.click();
-  }, [draftAttachments.length, storyId, t]);
+  }, [addDraftFiles]);
+
+  const attachmentsSupported = connectionState === 'connected' && capabilities?.attachments.supported === true;
+  const canAttach = attachmentsSupported && status === 'idle' && draftAttachments.length < MAX_CHAT_ATTACHMENTS;
+  const attachmentHelp = connectionState !== 'connected'
+    ? t('aiChat.attach.connectFirst')
+    : !capabilities?.attachments.supported
+      ? provider === 'codex'
+        ? t('aiChat.attach.codexUnsupported')
+        : provider === 'claude'
+          ? t('aiChat.attach.claudeUnavailable')
+          : t('aiChat.attach.providerUnsupported')
+      : status !== 'idle'
+        ? t('aiChat.attach.wait')
+        : draftAttachments.length >= MAX_CHAT_ATTACHMENTS
+          ? t('aiChat.attach.limit')
+          : t('aiChat.attach.hint');
+
+  const handleAttachmentButton = useCallback(() => {
+    if (!canAttach) {
+      setAttachmentError(attachmentHelp);
+      return;
+    }
+    handleAttach();
+  }, [attachmentHelp, canAttach, handleAttach]);
+
+  useEffect(() => {
+    if (typeof HTMLElement === 'undefined') return;
+    const node = composerRef.current as unknown as HTMLElement | null;
+    if (!node?.addEventListener) return;
+    const filesFrom = (list: FileList | null | undefined) => Array.from(list ?? []);
+    const onDragOver = (event: DragEvent) => {
+      if (!canAttach || !event.dataTransfer?.types.includes('Files')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      setAttachmentDropActive(true);
+    };
+    const onDragLeave = (event: DragEvent) => {
+      const next = event.relatedTarget;
+      if (!(next instanceof Node) || !node.contains(next)) setAttachmentDropActive(false);
+    };
+    const onDrop = (event: DragEvent) => {
+      const files = filesFrom(event.dataTransfer?.files);
+      if (!files.length) return;
+      event.preventDefault();
+      setAttachmentDropActive(false);
+      if (canAttach) void addDraftFiles(files);
+      else setAttachmentError(attachmentHelp);
+    };
+    const onPaste = (event: ClipboardEvent) => {
+      const files = filesFrom(event.clipboardData?.files);
+      if (!files.length) return;
+      event.preventDefault();
+      if (canAttach) void addDraftFiles(files);
+      else setAttachmentError(attachmentHelp);
+    };
+    node.addEventListener('dragover', onDragOver);
+    node.addEventListener('dragleave', onDragLeave);
+    node.addEventListener('drop', onDrop);
+    node.addEventListener('paste', onPaste);
+    return () => {
+      node.removeEventListener('dragover', onDragOver);
+      node.removeEventListener('dragleave', onDragLeave);
+      node.removeEventListener('drop', onDrop);
+      node.removeEventListener('paste', onPaste);
+    };
+  }, [addDraftFiles, attachmentHelp, canAttach]);
 
   const handleApply = useCallback(async () => {
     if (!pendingPatch) return;
@@ -724,6 +851,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
 
   const canSend = status === 'idle'
     && (inputText.trim().length > 0 || draftAttachments.length > 0)
+    && (draftAttachments.length === 0 || (connectionState === 'connected' && attachmentsSupported))
     && (connectionState === 'demo' || connectionState === 'connected');
 
   const handleStop = useCallback(() => {
@@ -829,7 +957,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     <View style={{ flex: 1 }}>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ color: connectionState === 'connected' ? colors.primary : colors.muted, fontSize: 11, fontWeight: '700' }}>
-          {connectionState === 'demo' ? t('aiChat.connection.demo') : connectionState === 'connected' ? t('aiChat.connection.connected', { provider: provider === 'codex' ? 'Codex CLI · Beta' : provider === 'openai' ? 'OpenAI API' : 'Claude Code' }) : connectionState === 'connecting' || connectionState === 'reconnecting' ? t('aiChat.connection.connecting') : t('aiChat.connection.error')}
+          {connectionState === 'demo' ? t('aiChat.connection.demo') : connectionState === 'connected' ? t('aiChat.connection.connected', { provider: provider === 'codex' ? 'Codex CLI · Beta' : provider === 'openai' ? 'OpenAI API' : provider === 'gemini' ? 'Google Gemini' : 'Claude Code' }) : connectionState === 'connecting' || connectionState === 'reconnecting' ? t('aiChat.connection.connecting') : t('aiChat.connection.error')}
         </Text>
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <Pressable accessibilityRole="button" accessibilityLabel={t('aiChat.settings.open')} onPress={() => setShowSettings(true)}><Text style={{ color: colors.muted, fontSize: 15 }}>⚙</Text></Pressable>
@@ -971,64 +1099,157 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
         ) : null}
       </ScrollView>
 
-      {draftAttachments.length ? <View style={{ paddingHorizontal: 10, gap: 4 }}>{draftAttachments.map(item => <View key={item.id} style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: colors.foreground, fontSize: 11 }}>{item.name} · {Math.ceil(item.byteSize / 1024)} KB</Text><Pressable accessibilityRole="button" onPress={() => { void chatAttachmentRepository.delete(item.id); setDraftAttachments(current => current.filter(value => value.id !== item.id)); }}><Text style={{ color: colors.danger }}>×</Text></Pressable></View>)}</View> : null}
-      {attachmentError ? <Text accessibilityRole="alert" style={{ color: colors.danger, paddingHorizontal: 10, fontSize: 11 }}>{attachmentError}</Text> : null}
-      <View style={{ flexDirection: 'row', gap: 8, padding: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('aiChat.attach.button')} disabled={connectionState !== 'connected' || !capabilities?.attachments.supported || status !== 'idle' || draftAttachments.length >= 4} onPress={handleAttach} style={{ minWidth: 38, alignItems: 'center', justifyContent: 'center', opacity: connectionState === 'connected' && capabilities?.attachments.supported ? 1 : 0.4 }}><Text style={{ color: colors.foreground, fontSize: 20 }}>＋</Text></Pressable>
-        <TextInput
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder={t('aiChat.inputPlaceholder')}
-          placeholderTextColor={colors.muted}
-          editable={status === 'idle'}
-          onSubmitEditing={handleSend}
-          style={{
-            flex: 1,
-            minHeight: 38,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 8,
-            paddingHorizontal: 10,
-            color: colors.foreground,
-          }}
-        />
-        {status === 'thinking' || status === 'interrupting' ? (
+      <View
+        ref={composerRef}
+        style={{
+          borderTopWidth: 1,
+          borderTopColor: attachmentDropActive ? colors.primary : colors.border,
+          backgroundColor: attachmentDropActive ? `${colors.primary}12` : 'transparent',
+          paddingVertical: 8,
+        }}
+      >
+        {attachmentDropActive ? (
+          <Text accessibilityRole="alert" style={{ color: colors.primary, paddingHorizontal: 10, paddingBottom: 6, fontSize: 12, fontWeight: '700' }}>
+            {t('aiChat.attach.drop')}
+          </Text>
+        ) : null}
+        {draftAttachments.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 7, gap: 8 }}>
+            {draftAttachments.map(item => (
+              <DraftAttachmentCard
+                key={item.id}
+                attachment={item}
+                colors={colors}
+                removeLabel={t('aiChat.attach.remove', { name: item.name })}
+                onRemove={() => {
+                  void chatAttachmentRepository.delete(item.id);
+                  setDraftAttachments(current => current.filter(value => value.id !== item.id));
+                  setAttachmentError(undefined);
+                }}
+              />
+            ))}
+          </ScrollView>
+        ) : null}
+        {attachmentError ? <Text accessibilityRole="alert" style={{ color: colors.danger, paddingHorizontal: 10, paddingBottom: 5, fontSize: 11 }}>{attachmentError}</Text> : null}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10 }}>
           <Pressable
             accessibilityRole="button"
-            disabled={status === 'interrupting'}
-            onPress={handleStop}
+            accessibilityLabel={t('aiChat.attach.button')}
+            accessibilityHint={attachmentHelp}
+            onPress={handleAttachmentButton}
             style={{
-              minWidth: 76,
-              minHeight: 38,
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: canAttach ? colors.primary : colors.border,
               alignItems: 'center',
               justifyContent: 'center',
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.danger,
-              opacity: status === 'interrupting' ? 0.5 : 1,
+              opacity: canAttach ? 1 : 0.72,
             }}
           >
-            <Text style={{ color: colors.danger, fontSize: 13, fontWeight: '700' }}>
-              {t('aiChat.stop')}
-            </Text>
+            <Text style={{ color: canAttach ? colors.primary : colors.muted, fontSize: 18 }}>📎</Text>
           </Pressable>
-        ) : <Pressable
-          accessibilityRole="button"
-          disabled={!canSend}
-          onPress={handleSend}
-          style={{
-            minWidth: 76,
-            minHeight: 38,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 8,
-            backgroundColor: colors.primary,
-            opacity: canSend ? 1 : 0.5,
-          }}
-        >
-          <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '700' }}>{t('aiChat.send')}</Text>
-        </Pressable>}
+          <TextInput
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder={t('aiChat.inputPlaceholder')}
+            placeholderTextColor={colors.muted}
+            editable={status === 'idle'}
+            multiline
+            onSubmitEditing={handleSend}
+            style={{
+              flex: 1,
+              minHeight: 40,
+              maxHeight: 120,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              paddingHorizontal: 11,
+              paddingVertical: 9,
+              color: colors.foreground,
+            }}
+          />
+          {status === 'thinking' || status === 'interrupting' ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={status === 'interrupting'}
+              onPress={handleStop}
+              style={{
+                minWidth: 76,
+                minHeight: 40,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.danger,
+                opacity: status === 'interrupting' ? 0.5 : 1,
+              }}
+            >
+              <Text style={{ color: colors.danger, fontSize: 13, fontWeight: '700' }}>
+                {t('aiChat.stop')}
+              </Text>
+            </Pressable>
+          ) : <Pressable
+            accessibilityRole="button"
+            disabled={!canSend}
+            onPress={handleSend}
+            style={{
+              minWidth: 76,
+              minHeight: 40,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 10,
+              backgroundColor: colors.primary,
+              opacity: canSend ? 1 : 0.5,
+            }}
+          >
+            <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '700' }}>{t('aiChat.send')}</Text>
+          </Pressable>}
+        </View>
+        <Text style={{ color: canAttach ? colors.muted : colors.danger, paddingHorizontal: 58, paddingTop: 5, fontSize: 10 }}>
+          {attachmentHelp}
+        </Text>
       </View>
+    </View>
+  );
+}
+
+function DraftAttachmentCard({
+  attachment,
+  colors,
+  removeLabel,
+  onRemove,
+}: {
+  attachment: StoredChatAttachment;
+  colors: ReturnType<typeof useColors>;
+  removeLabel: string;
+  onRemove(): void;
+}) {
+  const [previewUri, setPreviewUri] = useState<string>();
+  useEffect(() => {
+    if (attachment.kind !== 'image' || typeof URL === 'undefined') return;
+    const uri = URL.createObjectURL(attachment.blob);
+    setPreviewUri(uri);
+    return () => URL.revokeObjectURL(uri);
+  }, [attachment.blob, attachment.kind]);
+  const kindLabel = attachment.kind === 'image' ? 'IMG' : attachment.kind === 'pdf' ? 'PDF' : 'TXT';
+  return (
+    <View style={{ width: 176, minHeight: 54, borderWidth: 1, borderColor: colors.border, borderRadius: 9, padding: 6, flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+      {previewUri ? (
+        <Image source={{ uri: previewUri }} resizeMode="cover" style={{ width: 42, height: 42, borderRadius: 6, backgroundColor: colors.border }} />
+      ) : (
+        <View style={{ width: 42, height: 42, borderRadius: 6, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '800' }}>{kindLabel}</Text>
+        </View>
+      )}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 11, fontWeight: '700' }}>{attachment.name}</Text>
+        <Text style={{ color: colors.muted, fontSize: 10 }}>{Math.ceil(attachment.byteSize / 1024)} KB</Text>
+      </View>
+      <Pressable accessibilityRole="button" accessibilityLabel={removeLabel} onPress={onRemove} style={{ alignSelf: 'flex-start', paddingHorizontal: 3 }}>
+        <Text style={{ color: colors.danger, fontSize: 16 }}>×</Text>
+      </Pressable>
     </View>
   );
 }

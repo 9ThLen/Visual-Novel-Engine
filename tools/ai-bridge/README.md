@@ -77,13 +77,26 @@ publishable package with `pnpm ai-bridge:build` and `pnpm ai-bridge:pack`.
 
 Before an OpenAI release, run the explicit, billable smoke test. It refuses to
 run unless both the opt-in flag and API key are present and prints only
-allowlisted diagnostics (never the key, prompt, story data, or tool output):
+allowlisted diagnostics (never the key, prompt, story data, attachment
+contents, or tool output):
 
 ```sh
 RUN_OPENAI_LIVE_SMOKE=true OPENAI_API_KEY=... pnpm test:ai-openai-live
 ```
 
 On PowerShell, set the two environment variables first, then run the command.
+
+The smoke test covers text, one app-tool call, PNG/PDF/text attachments, an
+attachment follow-up, conversation reset, and abort. Claude attachments remain
+disabled by default until the equivalent opt-in smoke passes in the target
+environment:
+
+```sh
+RUN_CLAUDE_LIVE_SMOKE=true pnpm test:ai-claude-live
+```
+
+Only after that command passes should the bridge be started with
+`AI_BRIDGE_ENABLE_CLAUDE_ATTACHMENTS=true`.
 
 CLI options override environment values. `AI_BRIDGE_PROVIDER`, `AI_BRIDGE_ALLOWED_ORIGINS` (comma-separated), and `AI_BRIDGE_PORT` override defaults. Supplying one or more `--origin` values replaces the environment/default list instead of extending it. The default allowed origins are only `http://localhost:8081` and `http://127.0.0.1:8081`.
 

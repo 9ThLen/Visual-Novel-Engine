@@ -147,6 +147,9 @@ export class AiBridgeServer {
     if (provider === 'openai' && !process.env.OPENAI_API_KEY?.trim()) {
       return { provider, reason: 'OPENAI_API_KEY_MISSING', retryable: true };
     }
+    if (provider === 'gemini' && !process.env.GEMINI_API_KEY?.trim()) {
+      return { provider, reason: 'GEMINI_API_KEY_MISSING', retryable: true };
+    }
     if (provider === 'codex') {
       if (!this.options.enableCodexBeta) return { provider, reason: 'CODEX_HARDENING_UNSUPPORTED', retryable: false };
       const capability = getCodexHardeningCapability();

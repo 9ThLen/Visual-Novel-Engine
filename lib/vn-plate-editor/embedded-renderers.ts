@@ -3,6 +3,7 @@ import { branchColorForOptionIndex, branchShadowColor } from '@/lib/document-edi
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import type { BackgroundBlockData, CharacterBlockData, GotoBlockData, InteractiveObjectBlockData, LabelBlockData, StopEffectBlockData } from '@/lib/engine/types';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
+import type { Language } from '@/lib/translations';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateSceneRef } from './types';
 import { escapeHtml } from './embedded-utils';
 import { parseRichText, richTextAlignment } from '@/lib/rich-text';
@@ -363,6 +364,7 @@ export function blockToHtml(
   backgroundAssets: VNPlateBackgroundAsset[] = [],
   audioAssets: VNPlateAudioAsset[] = [],
   scenes: VNPlateSceneRef[] = [],
+  language: Language = 'en',
 ): string {
   if (block.kind === 'text') {
     return `<p data-kind="text" data-id="${escapeHtml(block.id)}"${blockAlignmentStyle(block.parts, block.content)}>${inlinePartsToHtml(block.parts, block.content, audioAssets)}</p>`;
@@ -372,9 +374,12 @@ export function blockToHtml(
     const characterId = block.characterId || '';
     const color = block.tokenColor || '#ff4d6d';
     const openControls = block.openCharacterControls ? ' data-open-character-controls="true"' : '';
+    const characterAction = block.characterAction ? ` data-character-action="${escapeHtml(block.characterAction)}"` : '';
+    const characterTransition = block.characterTransition ? ` data-character-transition="${escapeHtml(block.characterTransition)}"` : '';
+    const editCharacterLabel = language === 'uk' ? 'Редагувати персонажа' : 'Edit character';
     return [
-      `<p data-kind="dialogue" data-id="${escapeHtml(block.id)}" data-speaker="${escapeHtml(block.speakerName)}" data-character-id="${escapeHtml(characterId)}" data-sprite-id="${escapeHtml(block.spriteId || '')}"${openControls}${blockAlignmentStyle(block.parts, block.text)}>`,
-      `<span class="speaker-token dialogue-badge" contenteditable="false" tabindex="0" role="button" aria-label="Edit character ${escapeHtml(block.speakerName || 'Character')}" data-character-id="${escapeHtml(characterId)}" data-block-id="${escapeHtml(block.id)}" style="--speaker-color:${escapeHtml(color)}">${escapeHtml(block.speakerName || 'Character')}:</span> `,
+      `<p data-kind="dialogue" data-id="${escapeHtml(block.id)}" data-speaker="${escapeHtml(block.speakerName)}" data-character-id="${escapeHtml(characterId)}" data-sprite-id="${escapeHtml(block.spriteId || '')}"${characterAction}${characterTransition}${openControls}${blockAlignmentStyle(block.parts, block.text)}>`,
+      `<span class="speaker-token dialogue-badge" contenteditable="false" tabindex="0" role="button" aria-label="${editCharacterLabel} ${escapeHtml(block.speakerName || 'Character')}" data-character-id="${escapeHtml(characterId)}" data-block-id="${escapeHtml(block.id)}" style="--speaker-color:${escapeHtml(color)}">${escapeHtml(block.speakerName || 'Character')}:</span> `,
       inlinePartsToHtml(block.parts, block.text, audioAssets),
       '</p>',
     ].join('');
@@ -445,9 +450,12 @@ export function blockToHtml(
     const data = block.step.data as Partial<CharacterBlockData>;
     const characterId = data.characterId || '';
     const speakerName = block.label || characterId || 'Character';
+    const action = data.action || 'show';
+    const transition = data.transition || 'fade';
+    const editCharacterLabel = language === 'uk' ? 'Редагувати персонажа' : 'Edit character';
     return [
-      `<p data-kind="dialogue" data-id="${escapeHtml(block.id)}" data-speaker="${escapeHtml(speakerName)}" data-character-id="${escapeHtml(characterId)}" data-sprite-id="${escapeHtml(data.spriteId || '')}" data-open-character-controls="true">`,
-      `<span class="speaker-token dialogue-badge" contenteditable="false" tabindex="0" role="button" aria-label="Edit character ${escapeHtml(speakerName)}" data-character-id="${escapeHtml(characterId)}" data-block-id="${escapeHtml(block.id)}" style="--speaker-color:#ff4d6d">${escapeHtml(speakerName)}:</span> `,
+      `<p data-kind="dialogue" data-id="${escapeHtml(block.id)}" data-speaker="${escapeHtml(speakerName)}" data-character-id="${escapeHtml(characterId)}" data-sprite-id="${escapeHtml(data.spriteId || '')}" data-character-action="${escapeHtml(action)}" data-character-transition="${escapeHtml(transition)}" data-open-character-controls="true">`,
+      `<span class="speaker-token dialogue-badge" contenteditable="false" tabindex="0" role="button" aria-label="${editCharacterLabel} ${escapeHtml(speakerName)}" data-character-id="${escapeHtml(characterId)}" data-block-id="${escapeHtml(block.id)}" style="--speaker-color:#ff4d6d">${escapeHtml(speakerName)}:</span> `,
       '<br>',
       '</p>',
     ].join('');
@@ -467,6 +475,7 @@ export function sceneToEditorHtml(
   audioAssets: VNPlateAudioAsset[] = [],
   characters: Character[] = [],
   scenes: VNPlateSceneRef[] = [],
+  language: Language = 'en',
 ): string {
   const blocks = scene.blocks.length
     ? scene.blocks
@@ -474,8 +483,8 @@ export function sceneToEditorHtml(
   const colorById = new Map(characters.map((character) => [character.id, character.color]));
   return blocks.map((block) => {
     if (block.kind === 'dialogue' && block.characterId && !block.tokenColor) {
-      return blockToHtml({ ...block, tokenColor: colorById.get(block.characterId) }, backgroundAssets, audioAssets, scenes);
+      return blockToHtml({ ...block, tokenColor: colorById.get(block.characterId) }, backgroundAssets, audioAssets, scenes, language);
     }
-    return blockToHtml(block, backgroundAssets, audioAssets, scenes);
+    return blockToHtml(block, backgroundAssets, audioAssets, scenes, language);
   }).join('');
 }

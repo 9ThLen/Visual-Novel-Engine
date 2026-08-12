@@ -16,9 +16,10 @@ import {
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { getBundledAsset } from '@/lib/asset-resolver';
-import type {
-  InteractiveObject,
-  InteractiveAction,
+import {
+  resolveInteractiveDialogueAction,
+  type InteractiveAction,
+  type InteractiveObject,
 } from '@/lib/interactive-types';
 import {
   getPointerEventsStyle,
@@ -28,7 +29,7 @@ import {
 interface Props {
   objects: InteractiveObject[];
   onSceneTransition?: (sceneId: string) => void;
-  onDialogue?: (text: string, speaker?: string) => void;
+  onDialogue?: (text: string, speaker?: string, characterId?: string) => void;
   onPlayAudio?: (audioUri: string, volume?: number, loop?: boolean) => void;
   onShowImage?: (imageUri: string, duration?: number) => void;
   onEvent?: (eventId: string, data?: Record<string, unknown>) => void;
@@ -65,7 +66,10 @@ export function InteractiveObjectsLayer({
   const executeAction = async (action: InteractiveAction): Promise<void> => {
     switch (action.type) {
       case 'dialogue':
-        onDialogue?.(action.text, action.speaker);
+        {
+          const dialogue = resolveInteractiveDialogueAction(action);
+          onDialogue?.(dialogue.text, dialogue.speaker, dialogue.characterId);
+        }
         break;
 
       case 'scene_transition':

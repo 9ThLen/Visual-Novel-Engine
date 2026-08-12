@@ -13,7 +13,7 @@ export function summarizeStep(step: TimelineStep): string {
   const data = step.data as unknown as Record<string, unknown>;
   switch (step.blockType) {
     case 'dialogue': {
-      const entries = data.entries as Array<{ characterId: string; text: string }> | undefined;
+      const entries = data.entries as { characterId: string; text: string }[] | undefined;
       const first = entries?.[0];
       return first ? `${step.blockType}: ${first.characterId} — ${stringifyValue(first.text)}` : step.blockType;
     }
@@ -24,7 +24,7 @@ export function summarizeStep(step: TimelineStep): string {
     case 'character':
       return `${step.blockType}: ${stringifyValue(data.characterId)} (${stringifyValue(data.position)})`;
     case 'choice': {
-      const options = data.options as Array<{ text: string }> | undefined;
+      const options = data.options as { text: string }[] | undefined;
       return `${step.blockType}: ${options?.length ?? 0} options`;
     }
     default:

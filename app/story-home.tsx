@@ -28,6 +28,10 @@ import { showToast } from '@/lib/toast-store';
 import { pickImageFromDevice } from '@/lib/pick-image';
 import { saveStoryExport } from '@/lib/export-story-file';
 import { exportStory, MAX_STORY_TAGS, MAX_STORY_TAG_LENGTH, sanitizeStoryTags } from '@/lib/story-hooks';
+import {
+  exportFullStoryBackup,
+  type StoryBackupProgress,
+} from '@/lib/story-backup/service';
 import { computeStoryStats } from '@/lib/story-stats';
 import { runStoryDoctor } from '@/lib/story-doctor';
 import { createPersistentStorage } from '@/lib/persistent-storage';
@@ -301,6 +305,7 @@ export default function StoryHomeScreen() {
       const picked = await pickImageFromDevice();
       if (!picked) return;
       const asset = await addAssetToLibrary(picked.uri, picked.name, 'image');
+      useAppStore.getState().addImageAssetToStory(story.id, asset.id);
       updateStoryMetadata(story.id, { thumbnailUri: asset.uri });
       showToast(t('storyHome.coverUpdated'), 'success');
     } catch {
@@ -316,6 +321,25 @@ export default function StoryHomeScreen() {
   const [showExportWarning, setShowExportWarning] = useState(false);
   const [showResetCoverage, setShowResetCoverage] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupProgress, setBackupProgress] = useState<StoryBackupProgress | null>(null);
+
+  const handleFullBackup = useCallback(async () => {
+    if (!story || backingUp) return;
+    setBackingUp(true);
+    try {
+      await exportFullStoryBackup(story.id, story.title || 'story', setBackupProgress);
+      showToast(t('storyHome.fullBackupSuccess'), 'success');
+    } catch (error) {
+      if (!(error instanceof Error && error.name === 'AbortError')) {
+        const detail = error instanceof Error ? `: ${error.message}` : '';
+        showToast(`${t('storyHome.fullBackupFailed')}${detail}`, 'error');
+      }
+    } finally {
+      setBackupProgress(null);
+      setBackingUp(false);
+    }
+  }, [story, backingUp, t]);
 
   const handleExport = useCallback(async () => {
     if (!story) return;
@@ -653,14 +677,24 @@ export default function StoryHomeScreen() {
   const backupCard = (
     <View style={[styles.card, cardBase, shadowCard]}>
       <SectionHeader colors={colors} iconName="save" title={t('storyHome.backup')} />
-      <Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.exportHint')}</Text>
+      <Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.fullBackupHint')}</Text>
       <ActionButton
         colors={colors}
-        label={t('storyHome.export')}
+        label={backingUp && backupProgress
+          ? t(`storyHome.backupProgress.${backupProgress}`)
+          : t('storyHome.fullBackup')}
+        iconName="save"
+        onPress={handleFullBackup}
+        disabled={backingUp || exporting}
+        style={styles.backupButton}
+      />
+      <ActionButton
+        colors={colors}
+        label={t('storyHome.exportJson')}
         iconName="square.and.arrow.up"
         tone="outline"
         onPress={() => setShowExportWarning(true)}
-        disabled={exporting}
+        disabled={exporting || backingUp}
         style={styles.backupButton}
       />
     </View>

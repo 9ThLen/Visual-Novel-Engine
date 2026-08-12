@@ -30,6 +30,15 @@ export function createEmbeddedStyles(): string {
       box-shadow: 0 18px 48px var(--page-branch-shadow, rgba(31, 41, 55, 0.16)), 0 2px 8px rgba(31, 41, 55, 0.08);
       transition: box-shadow 0.35s ease;
     }
+    .editor-popover-backdrop {
+      position: fixed;
+      z-index: 25;
+      inset: 0;
+      background: rgba(58, 40, 31, 0.12);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      cursor: default;
+    }
     .eyebrow {
       margin: 0 0 8px;
       color: var(--plate-foreground-secondary, #655D56);
@@ -156,6 +165,7 @@ export function createEmbeddedStyles(): string {
       font-family: Inter, ui-sans-serif, system-ui, sans-serif;
       color: var(--plate-foreground, #3A281F);
     }
+    .character-popover.is-nested { z-index: 121; }
     .character-popover .sprite-list {
       display: grid;
       gap: 6px;
@@ -248,7 +258,6 @@ export function createEmbeddedStyles(): string {
     .interactive-object-name { color: var(--plate-foreground, #3A281F); font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .interactive-object-meta { color: var(--plate-foreground-secondary, #74665C); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .interactive-object-warning { padding: 3px 7px; color: #7C4A03; background: #FEF3C7; border-radius: 999px; font-size: 11px; white-space: nowrap; }
-    .interactive-object-backdrop { position: fixed; z-index: 119; inset: 0; background: rgba(58, 40, 31, .34); backdrop-filter: blur(1px); }
     .interactive-object-popover {
       position: fixed;
       z-index: 120;
@@ -270,7 +279,8 @@ export function createEmbeddedStyles(): string {
     .interactive-popover-header p { margin: 3px 0 0; color: var(--plate-foreground-secondary, #74665C); font-size: 12px; }
     .interactive-popover-body { display: grid; gap: 12px; padding: 16px 18px; overflow-y: auto; }
     .interactive-stage { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background-color: var(--plate-surface-muted, #F6F0E9); background-image: linear-gradient(145deg, var(--plate-surface-muted, #F6F0E9), var(--plate-border-subtle, #E5DDD3)); background-position: center; background-size: cover; border: 1px solid var(--plate-border, #D5CBC1); border-radius: 10px; }
-    .interactive-stage-hotspot { position: absolute; min-width: 1%; min-height: 1%; touch-action: none; background: color-mix(in srgb, var(--plate-primary, #67683F) 24%, transparent); border: 2px solid var(--plate-primary, #67683F); border-radius: 6px; cursor: move; }
+    .interactive-stage-hotspot { position: absolute; min-width: 1%; min-height: 1%; touch-action: none; background-color: color-mix(in srgb, var(--plate-primary, #67683F) 24%, transparent); background-position: center; background-repeat: no-repeat; background-size: contain; border: 2px solid var(--plate-primary, #67683F); border-radius: 6px; cursor: move; }
+    .interactive-stage-hotspot.has-image { background-color: color-mix(in srgb, var(--plate-surface, #FEFAF6) 18%, transparent); }
     .interactive-stage-hotspot:focus-visible { outline: 3px solid color-mix(in srgb, var(--plate-primary, #67683F) 45%, transparent); outline-offset: 2px; }
     .interactive-stage-hotspot.is-manipulating { cursor: grabbing; }
     .interactive-resize-handle { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; background: var(--plate-primary, #67683F); border: 2px solid var(--plate-surface, #FEFAF6); border-radius: 50%; cursor: nwse-resize; }
@@ -281,6 +291,9 @@ export function createEmbeddedStyles(): string {
     .interactive-actions-heading, .interactive-action-header { justify-content: space-between; }
     .interactive-actions-list { display: grid; gap: 10px; }
     .interactive-action-card { display: grid; gap: 9px; padding: 12px; border: 1px solid var(--plate-border-subtle, #E5DDD3); border-radius: 12px; }
+    .interactive-dialogue-editor { height: auto; min-height: 72px; padding: 10px 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .interactive-dialogue-editor:empty::before { color: var(--plate-foreground-secondary, #74665C); content: attr(data-placeholder); pointer-events: none; }
+    .interactive-dialogue-help { color: var(--plate-foreground-secondary, #74665C); font-size: 11px; font-weight: 400; }
     .interactive-empty-actions { margin: 0; padding: 14px; color: var(--plate-foreground-secondary, #74665C); background: var(--plate-surface-muted, #F6F0E9); border-radius: 10px; font-size: 12px; text-align: center; }
     .interactive-object-error { min-height: 16px; margin: 0; color: #B42318; font-size: 12px; }
     .interactive-popover-footer { display: grid; grid-template-columns: auto 1fr auto auto; padding: 12px 18px; border-top: 1px solid var(--plate-border-subtle, #E5DDD3); }

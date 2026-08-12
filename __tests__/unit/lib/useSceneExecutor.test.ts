@@ -6,6 +6,109 @@ import { createEffectStep } from '@/lib/engine/event-factory';
 import { SCENE_BOUND_END_TIME } from '@/lib/engine/effect-duration';
 
 describe('useSceneExecutor', () => {
+  it('exposes a character entrance transition to the reader runtime', async () => {
+    const timeline: TimelineStep[] = [
+      {
+        id: 'character-1',
+        blockType: 'character',
+        data: {
+          action: 'show',
+          characterId: 'hero',
+          spriteId: 'hero-neutral',
+          position: 'center',
+          transition: 'slide-right',
+          delay: 0.2,
+          duration: null,
+        },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+      {
+        id: 'text-1',
+        blockType: 'text',
+        data: { content: 'Hello', typewriterSpeed: 0.5, anchorTo: 'background' },
+        collapsed: false,
+        enabled: true,
+      } as TimelineStep,
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.sceneState.characters[0]).toMatchObject({
+        characterId: 'hero',
+        entranceTransition: 'slide-right',
+        entranceDelay: 0.2,
+      });
+    });
+  });
+
+  it('keeps a hidden character for exit animation and makes the next show visible again', async () => {
+    const characterStep = (
+      id: string,
+      action: 'show' | 'hide',
+      transition: 'slide-left' | 'slide-right',
+    ): TimelineStep => ({
+      id,
+      blockType: 'character',
+      data: {
+        action,
+        characterId: 'hero',
+        spriteId: 'hero-neutral',
+        position: 'center',
+        transition,
+        delay: 0,
+        duration: null,
+      },
+      collapsed: false,
+      enabled: true,
+    } as TimelineStep);
+    const textStep = (id: string, content: string): TimelineStep => ({
+      id,
+      blockType: 'text',
+      data: { content, typewriterSpeed: 0.5, anchorTo: 'background' },
+      collapsed: false,
+      enabled: true,
+    } as TimelineStep);
+    const timeline = [
+      characterStep('show-1', 'show', 'slide-left'),
+      textStep('text-1', 'Visible'),
+      characterStep('hide-1', 'hide', 'slide-right'),
+      textStep('text-2', 'Hidden'),
+      characterStep('show-2', 'show', 'slide-left'),
+      textStep('text-3', 'Visible again'),
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+
+    await waitFor(() => {
+      expect(result.current.sceneState.characters[0]).toMatchObject({
+        visible: true,
+        entranceTransition: 'slide-left',
+      });
+    });
+
+    act(() => result.current.advance());
+    act(() => result.current.advance());
+
+    await waitFor(() => {
+      expect(result.current.sceneState.characters[0]).toMatchObject({
+        visible: false,
+        exitTransition: 'slide-right',
+      });
+    });
+
+    act(() => result.current.advance());
+    act(() => result.current.advance());
+
+    await waitFor(() => {
+      expect(result.current.sceneState.characters[0]).toMatchObject({
+        visible: true,
+        entranceTransition: 'slide-left',
+      });
+    });
+  });
+
   it('stays advanceable after text typing is completed so the next tap can continue', async () => {
     const timeline: TimelineStep[] = [
       { id: 'step-1', blockType: 'text', data: { content: 'First line', typewriterSpeed: 0.5, anchorTo: 'background' }, collapsed: false, enabled: true } as TimelineStep,

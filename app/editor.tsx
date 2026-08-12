@@ -17,8 +17,14 @@ import { useI18n } from '@/hooks/use-i18n';
 import { withAlpha } from '@/lib/_core/theme';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import { StoryMetadata } from '@/lib/story-domain';
-import { pickStoryFile } from '@/lib/pick-story-file';
 import { importStory } from '@/lib/story-hooks';
+import { previewStoryArchive } from '@/lib/story-backup/archive';
+import { importStoryArchive } from '@/lib/story-backup/import';
+import {
+  pickStoryImportFile,
+  type PickedStoryImportFile,
+} from '@/lib/story-backup/platform-file';
+import type { StoryArchivePreview } from '@/lib/story-backup/types';
 import { showToast } from '@/lib/toast-store';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { useAppStore } from '@/stores/use-app-store';
@@ -36,6 +42,8 @@ export default function EditorScreen() {
   const [newStoryTitle, setNewStoryTitle] = useState('');
   const [storyIdToDelete, setStoryIdToDelete] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [pendingBackup, setPendingBackup] = useState<Extract<PickedStoryImportFile, { kind: 'backup' }> | null>(null);
+  const [backupPreview, setBackupPreview] = useState<StoryArchivePreview | null>(null);
 
   const storyColumns = useMemo(() => {
     if (Platform.OS !== 'web') return 1;
@@ -78,20 +86,61 @@ export default function EditorScreen() {
     if (importing) return;
     setImporting(true);
     try {
-      const json = await pickStoryFile();
-      if (!json) return;
-      const imported = await importStory(json);
-      showToast(t('editor.importSuccess'), 'success');
-      navigateWithViewTransition(() => router.push({
-        pathname: '/story-home',
-        params: { storyId: imported.id },
-      }));
+      const picked = await pickStoryImportFile();
+      if (!picked) return;
+      if (picked.kind === 'json') {
+        const imported = await importStory(picked.text);
+        showToast(t('editor.importSuccess'), 'success');
+        navigateWithViewTransition(() => router.push({
+          pathname: '/story-home',
+          params: { storyId: imported.id },
+        }));
+      } else {
+        const preview = await previewStoryArchive(picked.source);
+        setPendingBackup(picked);
+        setBackupPreview(preview);
+      }
     } catch {
       showToast(t('editor.importFailed'), 'error');
     } finally {
       setImporting(false);
     }
   }, [importing, router, t]);
+
+  const confirmBackupImport = useCallback(async () => {
+    if (!pendingBackup || importing) return;
+    setImporting(true);
+    try {
+      const imported = await importStoryArchive(pendingBackup.source);
+      setPendingBackup(null);
+      setBackupPreview(null);
+      showToast(t('editor.fullImportSuccess'), 'success');
+      navigateWithViewTransition(() => router.push({
+        pathname: '/story-home',
+        params: { storyId: imported.storyId },
+      }));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : t('editor.importFailed'), 'error');
+    } finally {
+      setImporting(false);
+    }
+  }, [pendingBackup, importing, router, t]);
+
+  const backupPreviewMessage = useMemo(() => {
+    if (!backupPreview) return '';
+    const kinds = Object.entries(backupPreview.mediaKinds)
+      .map(([kind, count]) => `${kind}: ${count}`)
+      .join(', ');
+    return t('editor.backupPreview', {
+      title: backupPreview.story.title,
+      author: backupPreview.story.author || t('editor.unknownAuthor'),
+      scenes: backupPreview.counts.scenes,
+      characters: backupPreview.counts.characters,
+      assets: backupPreview.counts.embeddedAssets,
+      size: backupPreview.counts.totalAssetBytes.toLocaleString(),
+      kinds: kinds || '—',
+    });
+  }, [backupPreview, t]);
 
   const handleDeleteStory = useCallback((storyId: string) => {
     setStoryIdToDelete(storyId);
@@ -211,6 +260,18 @@ export default function EditorScreen() {
           </View>
         )}
       </ScrollView>
+      <ConfirmDialog
+        visible={pendingBackup !== null && backupPreview !== null}
+        title={t('editor.importBackupTitle')}
+        message={backupPreviewMessage}
+        confirmLabel={t('editor.importAsNewStory')}
+        onConfirm={confirmBackupImport}
+        onCancel={() => {
+          if (importing) return;
+          setPendingBackup(null);
+          setBackupPreview(null);
+        }}
+      />
       <ConfirmDialog
         visible={storyIdToDelete !== null}
         title={t('editor.deleteTitle')}

@@ -61,7 +61,7 @@ export function AiSettingsPanel(props: AiSettingsPanelProps) {
         <View style={section}>
           <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.settings.provider')}</Text>
           <Text style={{ color: colors.muted, fontSize: 12 }}>{t('aiChat.settings.bridgeManaged')}</Text>
-          {props.provider === 'openai' && props.capabilities?.modelPolicy ? <>
+          {(props.provider === 'openai' || props.provider === 'gemini') && props.capabilities?.modelPolicy ? <>
             <TextInput value={model} onChangeText={setModel} editable={!props.capabilities.modelPolicy.modelLocked} placeholder={props.capabilities.modelPolicy.effectiveModel ?? 'Model'} placeholderTextColor={colors.muted} style={{ color: colors.foreground, borderWidth: 1, borderColor: colors.border, borderRadius: 7, padding: 8 }} />
             <TextInput value={budget} onChangeText={setBudget} editable={!props.capabilities.modelPolicy.tokenBudgetLocked} keyboardType="numeric" placeholder={props.capabilities.modelPolicy.effectiveTokenBudget?.toString() ?? 'Token budget'} placeholderTextColor={colors.muted} style={{ color: colors.foreground, borderWidth: 1, borderColor: colors.border, borderRadius: 7, padding: 8 }} />
             {action(t('aiChat.settings.applyProvider'), () => props.onApplyProviderSettings(model.trim() || undefined, Number(budget) > 0 ? Math.floor(Number(budget)) : undefined))}
@@ -72,6 +72,20 @@ export function AiSettingsPanel(props: AiSettingsPanelProps) {
         </View>
         <View style={section}>
           <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.settings.attachments')}</Text>
+          <Text style={{ color: props.capabilities?.attachments.supported ? colors.primary : colors.danger, fontSize: 12, fontWeight: '700' }}>
+            {props.connectionState !== 'connected'
+              ? t('aiChat.attach.connectFirst')
+              : props.capabilities?.attachments.supported
+                ? t('aiChat.settings.attachmentSupported', {
+                    count: props.capabilities.attachments.maxCount,
+                    mb: Math.floor(props.capabilities.attachments.maxDecodedBytes / (1024 * 1024)),
+                  })
+                : props.provider === 'codex'
+                  ? t('aiChat.attach.codexUnsupported')
+                  : props.provider === 'claude'
+                    ? t('aiChat.attach.claudeUnavailable')
+                    : t('aiChat.attach.providerUnsupported')}
+          </Text>
           <Text style={{ color: colors.muted, fontSize: 12 }}>{t('aiChat.settings.privacy')}</Text>
         </View>
         <View style={section}>

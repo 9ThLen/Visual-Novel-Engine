@@ -16,6 +16,29 @@ export interface DialogueAction {
   type: 'dialogue';
   text: string;
   speaker?: string;
+  characterId?: string;
+}
+
+function normalizeInteractiveSpeaker(value: string | undefined): string {
+  return (value ?? '').normalize('NFC').trim().replace(/\s+/g, ' ');
+}
+
+export function resolveInteractiveDialogueAction(action: DialogueAction): DialogueAction {
+  const speaker = normalizeInteractiveSpeaker(action.speaker);
+  const match = /^([^:\n]{1,48}):\s*([\s\S]*)$/.exec(action.text ?? '');
+  const shorthandSpeaker = normalizeInteractiveSpeaker(match?.[1]);
+  const shorthandText = match?.[2] ?? '';
+  const isUrl = /^[a-z][a-z0-9+.-]*$/i.test(shorthandSpeaker) && shorthandText.trimStart().startsWith('//');
+
+  if (speaker) {
+    const text = match && shorthandSpeaker.toLocaleLowerCase() === speaker.toLocaleLowerCase()
+      ? shorthandText
+      : action.text;
+    return { ...action, speaker, text };
+  }
+
+  if (!match || !shorthandSpeaker || shorthandSpeaker.startsWith('/') || isUrl) return action;
+  return { ...action, speaker: shorthandSpeaker, text: shorthandText };
 }
 
 export interface SceneTransitionAction {

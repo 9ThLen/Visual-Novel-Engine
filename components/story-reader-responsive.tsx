@@ -27,7 +27,8 @@ import {
 import { useReaderColors } from '@/hooks/use-reader-colors';
 import type { UserSettings } from '@/lib/user-settings';
 import type { TimelineStep } from '@/lib/engine/types';
-import type { RuntimeVariables, SceneState } from '@/lib/engine/runtime-types';
+import type { CharacterRuntimeState, RuntimeVariables, SceneState } from '@/lib/engine/runtime-types';
+import type { Character } from '@/lib/character-types';
 import type { ReaderTransitionEvent } from '@/lib/reader-runtime';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
 import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
@@ -55,6 +56,31 @@ function extractSpeaker(text: string): { speaker: string | null; body: string } 
   const match = text.match(/^([A-Za-zА-Яа-яҐґЄєІіЇї\u4e00-\u9fff][\w \u00c0-\u024f'.-]{0,30}?)\s*:\s*([\s\S]+)$/);
   if (match) return { speaker: match[1], body: match[2] };
   return { speaker: null, body: text };
+}
+
+function resolveInteractiveDialogueCharacter(
+  characters: Character[],
+  characterId?: string,
+  speaker?: string,
+): CharacterRuntimeState | null {
+  const normalizedSpeaker = speaker?.normalize('NFC').trim().toLocaleLowerCase();
+  const character = characters.find((item) => item.id === characterId)
+    ?? characters.find((item) => item.name.normalize('NFC').trim().toLocaleLowerCase() === normalizedSpeaker);
+  if (!character) return null;
+
+  return {
+    characterId: character.id,
+    spriteId: character.authoring?.currentSpriteId ?? character.defaultSpriteId ?? character.sprites[0]?.id ?? '',
+    position: character.authoring?.currentPosition ?? 'center',
+    entranceTransition: character.authoring?.entranceTransition ?? 'fade',
+    entranceDelay: 0,
+    exitTransition: character.authoring?.exitTransition ?? 'fade',
+    exitDelay: 0,
+    visible: true,
+    opacity: 1,
+    scale: 1,
+    zIndex: 1,
+  };
 }
 
 interface Props {
@@ -139,19 +165,44 @@ export function StoryReaderResponsive({
       executor.sceneState.backgroundAssetId,
     );
 
+  const [temporaryDialogue, setTemporaryDialogue] = useState<{
+    text: string;
+    speaker?: string;
+    characterId?: string;
+  } | null>(null);
+  const temporaryCharacter = useMemo(
+    () => resolveInteractiveDialogueCharacter(
+      characterLibrary,
+      temporaryDialogue?.characterId,
+      temporaryDialogue?.speaker,
+    ),
+    [characterLibrary, temporaryDialogue?.characterId, temporaryDialogue?.speaker],
+  );
+  const readerCharacters = useMemo(() => {
+    if (!temporaryCharacter) return executor.sceneState.characters;
+    const exists = executor.sceneState.characters.some(
+      (character) => character.characterId === temporaryCharacter.characterId,
+    );
+    if (!exists) return [...executor.sceneState.characters, temporaryCharacter];
+    return executor.sceneState.characters.map((character) => (
+      character.characterId === temporaryCharacter.characterId
+        ? { ...character, visible: true }
+        : character
+    ));
+  }, [executor.sceneState.characters, temporaryCharacter]);
+
   // ── Assets: images + character instances (extracted) ──────────────────
   const { bgSource, resolvedCharUris, characterInstances } =
     useReaderAssets(
       displaySceneId,
       displayBackgroundUri,
-      executor.sceneState.characters,
+      readerCharacters,
       characterLibrary,
       storyIdForCharacters,
     );
 
   // ── Page index ────────────────────────────────────────────────────────
   const [pageIndex, setPageIndex] = useState(0);
-  const [temporaryDialogue, setTemporaryDialogue] = useState<{ text: string; speaker?: string } | null>(null);
 
   // ── Typewriter ─────────────────────────────────────────────────────────
   const [isTyping, setIsTyping] = useState(false);
@@ -399,14 +450,18 @@ export function StoryReaderResponsive({
         speaker={displaySpeaker}
         speakerTextStyle={getStoryReaderSpeakerTextStyle({ nameText: colors.nameText })}
         instances={characterInstances}
-        activeSpeakerCharacterId={executor.sceneState.activeSpeakerCharacterId ?? null}
+        activeSpeakerCharacterId={temporaryCharacter?.characterId ?? executor.sceneState.activeSpeakerCharacterId ?? null}
         activeSpeakerFocusScale={executor.sceneState.activeSpeakerFocusScale}
-        dimNonSpeakerCharacters={executor.sceneState.dimNonSpeakerCharacters}
+        dimNonSpeakerCharacters={temporaryCharacter ? true : executor.sceneState.dimNonSpeakerCharacters}
         activeEffects={executor.sceneState.activeEffects}
         cameraState={executor.sceneState.cameraState}
         parallaxEnabled={parallaxEnabled}
         interactiveObjects={executor.sceneState.interactiveObjects}
-        onInteractiveDialogue={(text, actionSpeaker) => setTemporaryDialogue({ text, speaker: actionSpeaker })}
+        onInteractiveDialogue={(text, actionSpeaker, characterId) => setTemporaryDialogue({
+          text,
+          speaker: actionSpeaker,
+          characterId,
+        })}
         onInteractiveSceneTransition={(targetSceneId) => onTransition?.(targetSceneId)}
         onInteractivePlayAudio={(audioUri, volume = settings.sfxVolume ?? 1, loop = false) => {
           void resolvePlayableAssetUri(audioUri).then((uri) => {

@@ -168,7 +168,9 @@ function createSnippetHarness() {
   };
 }
 
-function createVoidBlockHarness() {
+function createVoidBlockHarness(
+  backgroundAssets: NonNullable<Parameters<typeof createEmbeddedScript>[0]['backgroundAssets']> = [],
+) {
   const messages: unknown[] = [];
   const originalBridge = (window as unknown as { ReactNativeWebView?: { postMessage: (message: string) => void } }).ReactNativeWebView;
 
@@ -193,7 +195,7 @@ function createVoidBlockHarness() {
     scene: { sceneId: 'scene_1', sceneName: 'Scene 1', blocks: [] },
     characters: [],
     isPhone: false,
-    backgroundAssets: [],
+    backgroundAssets,
     audioAssets: [],
     scenes: [{ id: 'scene_2', name: 'Scene 2' }],
   }, getEmbeddedCommands('en'));
@@ -294,8 +296,17 @@ function openCharacterPopover(api: EmbeddedHarnessApi) {
 // executing) catches syntax errors introduced by edits to the template.
 describe('createEmbeddedScript', () => {
   it('creates, edits, validates, and serializes an interactive object without browser prompts', () => {
-    const harness = createVoidBlockHarness();
+    const harness = createVoidBlockHarness([{
+      id: 'scene_background',
+      name: 'Scene background.png',
+      uri: 'blob:scene-background',
+      assetUri: 'assets/background/scene-background.png',
+    }]);
     const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+    const editor = document.getElementById('editor') as HTMLElement;
+    editor.innerHTML = '';
+    const background = appendVoidBlock(editor, 'background_1', 'background', 'background-block');
+    background.dataset.assetId = 'scene_background';
     placeCaretInNewParagraph();
 
     api.insertCommand('interactive_object');
@@ -305,10 +316,24 @@ describe('createEmbeddedScript', () => {
     expect(block).not.toBeNull();
     expect(block.textContent).toContain('Немає дій');
     expect(popover).not.toBeNull();
+    expect(document.querySelectorAll('.editor-popover-backdrop')).toHaveLength(1);
+    expect(popover.querySelector('.interactive-popover-header [data-object-action="cancel"]')).toBeNull();
+    expect(popover.querySelector<HTMLElement>('.interactive-stage')?.style.backgroundImage)
+      .toContain('blob:scene-background');
 
     (popover.querySelector('[data-object-action="add"]') as HTMLButtonElement).click();
     (popover.querySelector('#ioName') as HTMLInputElement).value = 'Двері';
-    (popover.querySelector('[data-action-field="text"]') as HTMLTextAreaElement).value = 'Зачинено.';
+    const dialogueEditor = popover.querySelector('[data-action-field="dialogue"]') as HTMLElement;
+    expect(dialogueEditor).not.toBeNull();
+    expect(popover.querySelector('[data-action-field="speaker"]')).toBeNull();
+    dialogueEditor.textContent = 'Маша: Зачинено.';
+    dialogueEditor.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(dialogueEditor.querySelector('.speaker-token')?.textContent).toBe('Маша:');
+    expect(document.querySelector('.character-popover.is-nested')).not.toBeNull();
+    expect(document.querySelectorAll('.editor-popover-backdrop')).toHaveLength(1);
+    expect(api.getCharacters()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Маша' }),
+    ]));
     const hotspot = popover.querySelector('.interactive-stage-hotspot') as HTMLElement;
     hotspot.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
     expect((popover.querySelector('[data-position="x"]') as HTMLInputElement).value).toBe('45');
@@ -320,27 +345,36 @@ describe('createEmbeddedScript', () => {
     (popover.querySelector('[data-object-action="save"]') as HTMLButtonElement).click();
 
     expect(document.querySelector('.interactive-object-popover')).toBeNull();
+    expect(document.querySelector('.editor-popover-backdrop')).toBeNull();
     expect(block.textContent).toContain('Двері');
     expect(block.textContent).toContain('1 дія');
     const lastSave = saveMessages(harness.messages).at(-1);
     const saved = lastSave?.scene.blocks.find((item) => item.id === block.dataset.id) as unknown as {
       blockType: string;
-      step: { blockType: string; data: { name: string; actions: { type: string; text: string }[] } };
+      step: { blockType: string; data: { name: string; actions: { type: string; text: string; speaker?: string; characterId?: string }[] } };
     };
     expect(saved.blockType).toBe('interactive_object');
     expect(saved.step.blockType).toBe('interactive_object');
-    expect(saved.step.data).toMatchObject({ name: 'Двері', actions: [{ type: 'dialogue', text: 'Зачинено.' }] });
+    expect(saved.step.data).toMatchObject({
+      name: 'Двері',
+      actions: [{
+        type: 'dialogue',
+        text: 'Зачинено.',
+        speaker: 'Маша',
+        characterId: expect.any(String),
+      }],
+    });
     harness.cleanup();
   });
 
-  it('removes a newly inserted interactive object when its editor is cancelled', () => {
+  it('removes a newly inserted interactive object when clicking outside its editor', () => {
     const harness = createVoidBlockHarness();
     const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
     placeCaretInNewParagraph();
 
     api.insertCommand('interactive_object');
     expect(document.querySelector('.interactive-object-block')).not.toBeNull();
-    (document.querySelector('[data-object-action="cancel"]') as HTMLButtonElement).click();
+    (document.querySelector('.editor-popover-backdrop') as HTMLElement).click();
 
     expect(document.querySelector('.interactive-object-block')).toBeNull();
     expect(document.querySelector('.interactive-object-popover')).toBeNull();
@@ -403,6 +437,61 @@ describe('createEmbeddedScript', () => {
     expect(() => new Function(script)).not.toThrow();
   });
 
+  it('offers localized appearance and disappearance controls in the character block popover', () => {
+    const script = createEmbeddedScript({
+      editorId: 'editor_character_entrance',
+      scene: { sceneId: 'scene_1', sceneName: 'Scene 1', blocks: [] },
+      characters: [],
+      isPhone: false,
+      backgroundAssets: [],
+      audioAssets: [],
+      scenes: [],
+    }, embeddedCommands);
+
+    expect(script).toContain('data-field="character-action"');
+    expect(script).toContain('data-field="character-transition"');
+    expect(script).toContain("appearance: 'Appearance'");
+    expect(script).toContain("disappearance: 'Disappearance'");
+    expect(script).toContain("appearance: 'Поява'");
+    expect(script).toContain("disappearance: 'Зникнення'");
+    expect(script).toContain("paragraph.dataset.characterAction = characterAction");
+    expect(script).toContain("paragraph.dataset.characterTransition = characterTransition");
+  });
+
+  it('renders localized character controls and persists a hide action in the document', () => {
+    const scene = {
+      sceneId: 'scene_1',
+      sceneName: 'Scene 1',
+      blocks: [{
+        id: 'character_exit',
+        kind: 'dialogue' as const,
+        speakerName: 'Ada',
+        characterId: 'char_ada',
+        spriteId: 'sprite_idle',
+        characterAction: 'hide' as const,
+        characterTransition: 'slide-right' as const,
+        text: '',
+      }],
+    };
+    const base = {
+      editorId: 'editor_character_exit',
+      scene,
+      characters: [],
+      isPhone: false,
+      backgroundAssets: [],
+      audioAssets: [],
+      scenes: [],
+    };
+
+    const ukHtml = createVNPlateEditorHtml({ ...base, language: 'uk' });
+    const enHtml = createVNPlateEditorHtml({ ...base, language: 'en' });
+
+    expect(ukHtml).toContain('data-character-action="hide"');
+    expect(ukHtml).toContain('data-character-transition="slide-right"');
+    expect(ukHtml).toContain('aria-label="Редагувати персонажа Ada"');
+    expect(enHtml).toContain('aria-label="Edit character Ada"');
+  });
+
   it('injects semantic plate colors without replacing character colors', () => {
     const html = createVNPlateEditorHtml({
       editorId: 'editor_theme_contract',
@@ -451,6 +540,8 @@ describe('createEmbeddedScript', () => {
   it('styles popover menus with semantic palette tokens', () => {
     const styles = createEmbeddedStyles();
 
+    expect(styles).toContain('.editor-popover-backdrop');
+    expect(styles).toContain('backdrop-filter: blur(2px)');
     expect(styles).toContain('background: var(--plate-surface, #FEFAF6)');
     expect(styles).toContain('background: var(--plate-secondary, #985A3E)');
     expect(styles).toContain('border-color: var(--plate-primary, #67683F)');
@@ -816,6 +907,12 @@ describe('createEmbeddedScript', () => {
     expect(document.querySelector('#bgAssetValue')?.textContent).toBe('Ancient Library');
     expect(document.querySelector<HTMLElement>('.background-preview')?.style.backgroundImage)
       .toContain('blob:resolved-background');
+    expect(document.querySelector('.editor-popover-backdrop')).not.toBeNull();
+
+    (document.querySelector('.editor-popover-backdrop') as HTMLElement).click();
+
+    expect(document.querySelector('.background-popover')).toBeNull();
+    expect(document.querySelector('.editor-popover-backdrop')).toBeNull();
 
     delete (window as unknown as { __embeddedHarnessApi?: EmbeddedHarnessApi }).__embeddedHarnessApi;
     document.body.innerHTML = '';

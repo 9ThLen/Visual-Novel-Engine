@@ -27,6 +27,26 @@ export interface StoryMetadata {
   readerLayoutPreset?: StoryReaderLayoutPreset;
 }
 
+export const MAX_STORY_TAGS = 20;
+export const MAX_STORY_TAG_LENGTH = 40;
+
+export function sanitizeStoryTags(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue;
+    const trimmed = entry.trim().slice(0, MAX_STORY_TAG_LENGTH);
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push(trimmed);
+    if (tags.length >= MAX_STORY_TAGS) break;
+  }
+  return tags.length > 0 ? tags : undefined;
+}
+
 /**
  * The single normalization funnel for story metadata. Runs at every data-entry
  * boundary (import, bundled/player-mode seeding, persist hydration) so a broken
@@ -37,6 +57,12 @@ export interface StoryMetadata {
 export function normalizeStoryMetadata(metadata: StoryMetadata): StoryMetadata {
   const theme = sanitizeStoryTheme(metadata.theme);
   const normalized: StoryMetadata = { ...metadata };
+  const tags = sanitizeStoryTags(metadata.tags);
+  if (tags) {
+    normalized.tags = tags;
+  } else {
+    delete normalized.tags;
+  }
   if (theme) {
     normalized.theme = theme;
   } else {

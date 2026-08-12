@@ -22,6 +22,8 @@ export interface CharacterSprite {
 export interface CharacterAuthoringDefaults {
   currentSpriteId?: string;
   currentPosition?: CharacterPosition;
+  entranceTransition?: CharacterEntranceTransition;
+  exitTransition?: CharacterEntranceTransition;
   focusOnSpeak?: boolean;
 }
 
@@ -43,6 +45,7 @@ export interface CharacterLibrary {
 // ── Character Animation ───────────────────────────────────────────────────
 
 export type CharacterPosition = 'left' | 'center' | 'right' | 'far-left' | 'far-right';
+export type CharacterEntranceTransition = 'instant' | 'fade' | 'slide-left' | 'slide-right' | 'zoom';
 
 export type CharacterTransition =
   | 'instant' // Instant appearance

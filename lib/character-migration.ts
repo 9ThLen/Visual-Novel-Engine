@@ -1,6 +1,10 @@
-import type { Character, CharacterPosition } from '@/lib/character-types';
+import type {
+  Character,
+  CharacterEntranceTransition,
+  CharacterPosition,
+} from '@/lib/character-types';
 
-export const CHARACTER_AUTHORING_SCHEMA_VERSION = 1;
+export const CHARACTER_AUTHORING_SCHEMA_VERSION = 3;
 
 const CHARACTER_COLOR_PALETTE = [
   '#ff4d6d',
@@ -30,6 +34,14 @@ function isCharacterPosition(value: unknown): value is CharacterPosition {
     || value === 'far-right';
 }
 
+function isCharacterEntranceTransition(value: unknown): value is CharacterEntranceTransition {
+  return value === 'instant'
+    || value === 'fade'
+    || value === 'slide-left'
+    || value === 'slide-right'
+    || value === 'zoom';
+}
+
 export function migrateCharacter(character: Character): Character {
   const currentSpriteId = character.authoring?.currentSpriteId
     ?? character.defaultSpriteId
@@ -37,6 +49,12 @@ export function migrateCharacter(character: Character): Character {
   const currentPosition = isCharacterPosition(character.authoring?.currentPosition)
     ? character.authoring?.currentPosition
     : 'center';
+  const entranceTransition = isCharacterEntranceTransition(character.authoring?.entranceTransition)
+    ? character.authoring.entranceTransition
+    : 'fade';
+  const exitTransition = isCharacterEntranceTransition(character.authoring?.exitTransition)
+    ? character.authoring.exitTransition
+    : 'fade';
 
   return {
     ...character,
@@ -44,6 +62,8 @@ export function migrateCharacter(character: Character): Character {
     authoring: {
       currentSpriteId,
       currentPosition,
+      entranceTransition,
+      exitTransition,
       focusOnSpeak: character.authoring?.focusOnSpeak ?? true,
     },
     characterAuthoringSchemaVersion: CHARACTER_AUTHORING_SCHEMA_VERSION,

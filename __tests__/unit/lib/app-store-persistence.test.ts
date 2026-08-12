@@ -12,6 +12,7 @@ import {
 } from '@/lib/app-store-persistence';
 import type { SceneRecord } from '@/lib/engine/types';
 import { resolveLibraryAssetUri, type LibraryAsset } from '@/lib/media-library-service';
+import { CHARACTER_AUTHORING_SCHEMA_VERSION } from '@/lib/character-migration';
 
 function makeDataImageUri(decodedBytes: number): string {
   const base64Length = Math.ceil((decodedBytes * 4) / 3);
@@ -114,6 +115,7 @@ function makeState(): AppStorePersistenceState {
       },
     ],
     imageAssetIdsByStory: {},
+    mediaAssetIdsByStory: {},
     endingsReachedByStory: { 'story-1': ['scene-1'] },
   };
 }
@@ -387,7 +389,7 @@ describe('app store persistence helpers', () => {
       currentState,
     );
 
-    expect(merged.storiesMetadata[0].characterAuthoringSchemaVersion).toBe(1);
+    expect(merged.storiesMetadata[0].characterAuthoringSchemaVersion).toBe(CHARACTER_AUTHORING_SCHEMA_VERSION);
     expect(merged.mediaLibrary.map((asset) => asset.id)).toEqual(['inline']);
     expect(merged.characterLibraries['story-2'][0]).toMatchObject({
       color: expect.any(String),
@@ -396,7 +398,7 @@ describe('app store persistence helpers', () => {
         currentPosition: 'center',
         focusOnSpeak: true,
       },
-      characterAuthoringSchemaVersion: 1,
+      characterAuthoringSchemaVersion: CHARACTER_AUTHORING_SCHEMA_VERSION,
     });
   });
 
@@ -411,11 +413,12 @@ describe('app store persistence helpers', () => {
       0,
     ) as Partial<AppStorePersistenceState>;
 
-    expect(APP_STORE_PERSIST_VERSION).toBe(6);
+    expect(APP_STORE_PERSIST_VERSION).toBe(7);
     expect(migrated.mediaLibrary?.map((asset) => asset.id)).toEqual(['image-file', 'image-data']);
     expect(migrated.imageAssetIdsByStory).toEqual({});
+    expect(migrated.mediaAssetIdsByStory).toEqual({ 'story-1': [] });
     expect(migrated.sceneRecordsByStory?.['story-1']?.['scene-1']).toBeTruthy();
-    expect(migrated.storiesMetadata?.[0].characterAuthoringSchemaVersion).toBe(1);
+    expect(migrated.storiesMetadata?.[0].characterAuthoringSchemaVersion).toBe(CHARACTER_AUTHORING_SCHEMA_VERSION);
   });
 
   it('migrates persisted legacy audio blocks while preserving the app store shape', () => {

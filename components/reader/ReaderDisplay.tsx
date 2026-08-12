@@ -83,7 +83,7 @@ interface ReaderDisplayProps {
   cameraState?: CameraRuntimeState;
   parallaxEnabled?: boolean;
   interactiveObjects?: InteractiveObject[];
-  onInteractiveDialogue?: (text: string, speaker?: string) => void;
+  onInteractiveDialogue?: (text: string, speaker?: string, characterId?: string) => void;
   onInteractiveSceneTransition?: (sceneId: string) => void;
   onInteractivePlayAudio?: (audioUri: string, volume?: number, loop?: boolean) => void;
   layoutPreset?: StoryReaderLayoutPreset;

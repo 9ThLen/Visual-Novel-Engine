@@ -16,13 +16,16 @@ import {
 } from './idb-storage';
 import { generateAssetId } from './id-utils';
 
-export type AssetType = 'image' | 'audio';
+export type AssetType = 'image' | 'audio' | 'other';
 
 export interface LibraryAsset {
   id: string;
   type: AssetType;
   uri: string;
   name: string;
+  mimeType?: string;
+  size?: number;
+  contentHash?: string;
   addedAt: number;
 }
 
@@ -42,7 +45,7 @@ function getDataUriExtension(mimeType: string, type: AssetType): string {
   if (normalized === 'audio/mpeg') return 'mp3';
   if (normalized === 'audio/wav') return 'wav';
   if (normalized === 'audio/ogg') return 'ogg';
-  return type === 'image' ? 'png' : 'mp3';
+  return type === 'image' ? 'png' : type === 'audio' ? 'mp3' : 'bin';
 }
 
 function stableContentHash(value: string): string {
@@ -68,6 +71,7 @@ function parseBase64DataUri(uri: string, type: AssetType): ParsedDataUri | null 
   if (type === 'audio' && !mimeType.startsWith('audio/')) {
     return null;
   }
+  if (type === 'other' && (!mimeType || mimeType === 'image/svg+xml')) return null;
 
   const base64 = match[2].replace(/\s/g, '');
   if (!base64) return null;
@@ -93,7 +97,9 @@ function validateMediaBlob(blob: Blob, type: AssetType): void {
   const mimeType = blob.type.toLowerCase();
   const valid = type === 'image'
     ? mimeType.startsWith('image/') && mimeType !== 'image/svg+xml'
-    : mimeType.startsWith('audio/');
+    : type === 'audio'
+      ? mimeType.startsWith('audio/')
+      : mimeType.length > 0 && mimeType !== 'image/svg+xml';
   if (!valid || blob.size <= 0) throw new Error(`Invalid ${type} upload`);
 }
 
@@ -174,7 +180,7 @@ export async function addAssetToLibraryPure(
   assets: LibraryAsset[],
 ): Promise<{ asset: LibraryAsset; assets: LibraryAsset[] }> {
   const filename = name || uri.split('/').pop() || `asset-${Date.now()}`;
-  const ext = filename.includes('.') ? '' : (type === 'image' ? '.png' : '.mp3');
+  const ext = filename.includes('.') ? '' : (type === 'image' ? '.png' : type === 'audio' ? '.mp3' : '.bin');
   const fullFilename = filename.includes('.') ? filename : `${filename}${ext}`;
 
   const existingByUri = assets.find((a) => a.uri === uri);
