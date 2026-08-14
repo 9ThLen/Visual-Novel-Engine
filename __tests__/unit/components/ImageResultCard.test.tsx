@@ -32,7 +32,7 @@ describe('ImageResultCard', () => {
     expect(screen.getByText('A misty forest')).toBeTruthy();
     expect(importAsset).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Add to story images' }));
-    await waitFor(() => expect(importAsset).toHaveBeenCalledWith('blob:preview', 'ai-image-result-1.webp', 'image'));
+    await waitFor(() => expect(importAsset).toHaveBeenCalledWith('data:image/webp;base64,aW1hZ2U=', 'ai-image-result-1.webp', 'image'));
     expect(useAppStore.getState().addImageAssetToStory).toHaveBeenCalledWith('story-1', 'asset-1');
     expect(useAppStore.getState().imageAssetIdsByStory['story-1']).toEqual(['asset-1']);
     expect(onImported).toHaveBeenCalledWith('asset-1');
@@ -58,5 +58,31 @@ describe('ImageResultCard', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('storage full');
     expect(onImported).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Add to story images' }).getAttribute('disabled')).toBeNull();
+  });
+
+  it('discloses requested scene placement before approval', () => {
+    render(<ImageResultCard
+      result={{ ...result, placement: { kind: 'scene_background', operation: 'insert', sceneId: 'scene-1' } }}
+      storyId="story-1"
+      onImported={vi.fn()}
+      onDiscard={vi.fn()}
+      importAsset={importAsset}
+    />);
+
+    expect(screen.getByText('Will be used as the background in scene scene-1')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Add and apply' })).toBeTruthy();
+  });
+
+  it('formats a fixed cost without rendering a duplicate range', () => {
+    render(<ImageResultCard
+      result={{ ...result, estimatedCostUsd: { min: 0.067, max: 0.067, currency: 'USD' } }}
+      storyId="story-1"
+      onImported={vi.fn()}
+      onDiscard={vi.fn()}
+      importAsset={importAsset}
+    />);
+
+    expect(screen.getByText(/estimated cost \$0\.067 USD/)).toBeTruthy();
+    expect(screen.queryByText(/\$0\.067–\$0\.067/)).toBeNull();
   });
 });

@@ -114,6 +114,7 @@ describe('app store slices', () => {
       token: 'pairing-secret',
       disabled: false,
       preferredProvider: 'openai',
+      profiles: { openai: { url: '', token: 'pairing-secret' } },
     });
   });
 

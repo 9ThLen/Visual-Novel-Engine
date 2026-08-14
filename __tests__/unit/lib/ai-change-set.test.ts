@@ -20,7 +20,7 @@ function state(scenes = [scene()], characters = [character()]): AiChangeSetState
   return {
     scenes: new Map(scenes.map(record => [record.id, record])),
     characters,
-    context: { sceneIds: scenes.map(record => record.id), sceneOrder: scenes.map(record => record.id), characterIds: characters.map(entry => entry.id), variableNames: [], assetIds: [] },
+    context: { sceneIds: scenes.map(record => record.id), sceneOrder: scenes.map(record => record.id), characterIds: characters.map(entry => entry.id), spritesByCharacterId: Object.fromEntries(characters.map(entry => [entry.id, entry.sprites.map(sprite => sprite.id)])), variableNames: [], assetIds: [] },
   };
 }
 
@@ -29,7 +29,7 @@ function changeSet(items: AiChangeSet['items'], current = state()): AiChangeSet 
   return {
     storyId: 'story',
     expectedSceneRevisions: Object.fromEntries([...touched].map(id => [id, computeSceneRevision(current.scenes.get(id)!)])),
-    ...(items.some(item => item.kind === 'create_character' || item.kind === 'update_character') ? { expectedCharacterRevision: computeCharacterLibraryRevision(current.characters) } : {}),
+    ...(items.some(item => item.kind === 'create_character' || item.kind === 'update_character' || item.kind === 'add_character_sprite') ? { expectedCharacterRevision: computeCharacterLibraryRevision(current.characters) } : {}),
     items,
     explanation: 'Build a branch',
   };
@@ -75,6 +75,28 @@ describe('AiChangeSet', () => {
       expect((result.scenesToSave[0].timeline[0].data as { entries: Array<{ characterId: string }> }).entries[0].characterId).toBe('char-hero');
     }
     expect(applyAiChangeSet(changeSet([items[1], items[0]], input), input)).toMatchObject({ ok: false, code: 'ITEM_ORDER' });
+  });
+
+  it('adds a library-backed sprite and resolves its temporary id in a scene patch', () => {
+    const base = state();
+    const input: AiChangeSetState = {
+      ...base,
+      context: { ...base.context, assetIds: ['asset-1'], spritesByCharacterId: { 'char-existing': [] } },
+    };
+    const spriteStep: TimelineStep = {
+      id: 'show-hero', blockType: 'character',
+      data: { characterId: 'char-existing', spriteId: 'newsprite:happy', position: 'left', transition: 'fade', delay: 0, duration: null },
+      collapsed: false, enabled: true,
+    };
+    const result = applyAiChangeSet(changeSet([
+      { kind: 'add_character_sprite', addition: { characterId: 'char-existing', assetId: 'asset-1', sprite: { tempId: 'newsprite:happy', name: 'Happy', setAsDefault: true } } },
+      { kind: 'patch_scene', sceneRef: 'anchor', operations: [{ op: 'insert_steps', afterStepId: 'existing', steps: [spriteStep] }] },
+    ], input), input, { generateId: ids('sprite-happy'), now: () => 42 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.charactersToSave?.[0]).toMatchObject({ defaultSpriteId: 'sprite-happy', sprites: [{ id: 'sprite-happy', uri: 'asset-1', name: 'Happy' }] });
+    expect((result.scenesToSave[0].timeline[1].data as { spriteId: string }).spriteId).toBe('sprite-happy');
   });
 
   it('patches a created scene and resolves a temp target inserted in a choice option', () => {

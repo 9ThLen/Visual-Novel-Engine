@@ -18,7 +18,9 @@ export type BridgeConnectionReason =
   | 'CONNECTION_FAILED_OR_ORIGIN'
   | 'INVALID_TOKEN'
   | 'SESSION_ALREADY_ACTIVE'
-  | 'PROTOCOL_VERSION_MISMATCH';
+  | 'PROTOCOL_VERSION_MISMATCH'
+  | 'MODEL_NOT_ALLOWED'
+  | 'TOKEN_BUDGET_NOT_ALLOWED';
 export type ToolResult =
   | { ok: true; result: unknown; binaryTool?: boolean }
   | { ok: false; errorCode: BridgeErrorCode; errorMessage: string; details?: unknown; binaryTool?: boolean };
@@ -163,6 +165,19 @@ export class BridgeClient {
       return;
     }
     if (parsed.type === 'session_started' && this.isRecord(parsed.payload)
+      && typeof parsed.payload.provider === 'string'
+      && this.options.preferredProvider
+      && parsed.payload.provider !== this.options.preferredProvider) {
+      const mismatch = makeEnvelope('session_challenge', {
+        provider: parsed.payload.provider,
+        reason: 'PROVIDER_MISMATCH',
+        retryable: false,
+      });
+      this.blockReconnect('challenge');
+      this.options.onEvent(mismatch);
+      return;
+    }
+    if (parsed.type === 'session_started' && this.isRecord(parsed.payload)
       && typeof parsed.payload.sessionId === 'string') {
       this.sessionId = parsed.payload.sessionId;
       this.authenticated = true;
@@ -192,6 +207,13 @@ export class BridgeClient {
       }
       if (parsed.payload.code === 'PROTOCOL_ERROR') {
         this.blockReconnect('error', 'PROTOCOL_VERSION_MISMATCH');
+        return;
+      }
+      if (parsed.payload.code === 'VALIDATION_FAILED'
+        && this.isRecord(parsed.payload.details)
+        && (parsed.payload.details.reason === 'MODEL_NOT_ALLOWED'
+          || parsed.payload.details.reason === 'TOKEN_BUDGET_NOT_ALLOWED')) {
+        this.blockReconnect('error', parsed.payload.details.reason);
         return;
       }
       if (this.isRecord(parsed.payload.details)

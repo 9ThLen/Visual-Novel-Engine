@@ -5,7 +5,7 @@ import type { AiScenePatch, ScenePatchOperation } from '@/lib/ai/scene-patch-typ
 
 const text = (id: string, content = id): TimelineStep => ({ id, blockType: 'text', data: { content, typewriterSpeed: 1, anchorTo: 'background' }, collapsed: false, enabled: true });
 const scene = (): SceneRecord => ({ id: 'scene-1', storyId: 'story-1', name: 'Scene', description: 'Desc', tags: ['a'], timeline: [text('a')], sceneState: {} as SceneRecord['sceneState'], flowX: 1, flowY: 2, connections: [], isStart: true, createdAt: 1, updatedAt: 2 });
-const ctx = { sceneIds: ['scene-1', 'scene-2'], characterIds: ['char-1'], variableNames: ['score'], assetIds: ['asset-1'] };
+const ctx = { sceneIds: ['scene-1', 'scene-2'], characterIds: ['char-1'], spritesByCharacterId: { 'char-1': ['sprite-1'] }, variableNames: ['score'], assetIds: ['asset-1'] };
 const patch = (s: SceneRecord, ...operations: ScenePatchOperation[]): AiScenePatch => ({ storyId: s.storyId, sceneId: s.id, expectedRevision: computeSceneRevision(s), operations, explanation: 'ignored' });
 const deepFreeze = <T>(value: T): T => { if (value && typeof value === 'object') { Object.freeze(value); Object.values(value).forEach(deepFreeze); } return value; };
 
@@ -28,6 +28,12 @@ describe('ScenePatch', () => {
   ] as Array<[ScenePatchOperation, string]>)('rejects invalid reference naming its id', (operation, id) => { const s = scene(); const result = validateAiScenePatch(s, patch(s, operation), ctx); expect(result).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' }); if (!result.ok) expect(result.errors.join(' ')).toContain(id); });
 
   it('rejects duplicate inserted ids', () => { const s = scene(); expect(validateAiScenePatch(s, patch(s, { op: 'insert_steps', afterStepId: null, steps: [text('x'), text('x')] }), ctx)).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' }); });
+  it('validates a sprite against its owning character instead of a flat sprite list', () => {
+    const s = scene();
+    const step: TimelineStep = { id: 'character', blockType: 'character', data: { characterId: 'char-1', spriteId: 'sprite-other', position: 'left', transition: 'instant', delay: 0, duration: null }, collapsed: false, enabled: true };
+    const result = validateAiScenePatch(s, patch(s, { op: 'insert_steps', afterStepId: null, steps: [step] }), ctx);
+    expect(result).toMatchObject({ ok: false, errors: [expect.stringContaining("spriteId 'sprite-other' does not exist for characterId 'char-1'")] });
+  });
   it('validates operations sequentially', () => { const s = scene(); expect(validateAiScenePatch(s, patch(s, { op: 'insert_steps', afterStepId: 'a', steps: [text('b')] }, { op: 'replace_step', stepId: 'b', step: text('c') }), ctx).ok).toBe(true); expect(validateAiScenePatch(s, patch(s, { op: 'delete_steps', stepIds: ['a'] }, { op: 'replace_step', stepId: 'a', step: text('b') }), ctx)).toMatchObject({ ok: false }); });
   it('rejects deleting a referenced label', () => { const s = scene(); s.timeline = [{ id: 'label', blockType: 'label', data: { name: 'loop' }, collapsed: false, enabled: true }, { id: 'goto', blockType: 'goto', data: { targetLabel: 'loop' }, collapsed: false, enabled: true }]; expect(validateAiScenePatch(s, patch(s, { op: 'delete_steps', stepIds: ['label'] }), ctx)).toMatchObject({ ok: false }); });
   it('does not mutate a deeply frozen input', () => { const s = deepFreeze(scene()); const result = applyAiScenePatch(s, patch(s, { op: 'insert_steps', afterStepId: 'a', steps: [text('b')] })); expect(result).not.toBe(s); expect(s.timeline).toHaveLength(1); });

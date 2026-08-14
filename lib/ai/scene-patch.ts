@@ -7,6 +7,8 @@ export type PatchProjectContext = {
   characterIds: string[];
   variableNames: string[];
   assetIds: string[];
+  /** Sprite ids keyed by owning character. */
+  spritesByCharacterId: Record<string, string[]>;
   /** Canonical ordering used by multi-scene changes. Optional for legacy single-scene patches. */
   sceneOrder?: string[];
 };
@@ -29,6 +31,23 @@ function references(step: TimelineStep): Array<[string, string]> {
   return found;
 }
 
+function characterSpriteReferences(step: TimelineStep): Array<{ characterId: string; spriteId: string }> {
+  const data = step.data as unknown as Record<string, unknown>;
+  if (step.blockType === 'character' || step.blockType === 'text') {
+    return typeof data.characterId === 'string' && typeof data.spriteId === 'string' && data.spriteId
+      ? [{ characterId: data.characterId, spriteId: data.spriteId }]
+      : [];
+  }
+  if (step.blockType !== 'dialogue' || !Array.isArray(data.entries)) return [];
+  return data.entries.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const value = entry as Record<string, unknown>;
+    return typeof value.characterId === 'string' && typeof value.spriteId === 'string' && value.spriteId
+      ? [{ characterId: value.characterId, spriteId: value.spriteId }]
+      : [];
+  });
+}
+
 export function validateAiScenePatch(scene: SceneRecord, patch: AiScenePatch, ctx: PatchProjectContext): { ok: true; warnings: string[] } | { ok: false; code: 'STALE_REVISION' | 'VALIDATION_FAILED'; errors: string[] } {
   if (patch.expectedRevision !== computeSceneRevision(scene)) return { ok: false, code: 'STALE_REVISION', errors: [`Expected revision ${patch.expectedRevision} does not match current scene revision`] };
   const errors: string[] = []; const working = clone(scene);
@@ -41,7 +60,14 @@ export function validateAiScenePatch(scene: SceneRecord, patch: AiScenePatch, ct
     if (operation.op === 'delete_steps') operation.stepIds.filter(id => !working.timeline.some(s => s.id === id)).forEach(id => errors.push(`stepId '${id}' does not exist`));
     if (operation.op === 'set_connection' && operation.targetSceneId !== null && !allowed.targetSceneId.has(operation.targetSceneId)) errors.push(`targetSceneId '${operation.targetSceneId}' does not exist`);
     const incoming = operation.op === 'insert_steps' ? operation.steps : operation.op === 'replace_step' ? [operation.step] : [];
-    incoming.forEach(step => references(step).forEach(([kind, id]) => { if (!allowed[kind].has(id)) errors.push(`${kind} '${id}' does not exist`); }));
+    incoming.forEach((step) => {
+      references(step).forEach(([kind, id]) => { if (!allowed[kind].has(id)) errors.push(`${kind} '${id}' does not exist`); });
+      characterSpriteReferences(step).forEach(({ characterId, spriteId }) => {
+        if (!(ctx.spritesByCharacterId[characterId] ?? []).includes(spriteId)) {
+          errors.push(`spriteId '${spriteId}' does not exist for characterId '${characterId}'`);
+        }
+      });
+    });
     if (errors.length) continue;
     applyOperation(working, operation);
     const ids = working.timeline.map(s => s.id); new Set(ids.filter((id, i) => ids.indexOf(id) !== i)).forEach(id => errors.push(`Duplicate step id '${id}'`));

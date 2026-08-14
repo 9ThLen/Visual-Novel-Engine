@@ -17,6 +17,23 @@ export function createPreferencesSlice(set: AppStoreSet): PreferencesSliceAction
       set((state) => ({ settings: normalizeUserSettings({ ...state.settings, ...partial }) })),
 
     updateAiBridgeSettings: (partial) =>
-      set((state) => ({ aiBridgeSettings: { ...state.aiBridgeSettings, ...partial } })),
+      set((state) => {
+        const aiBridgeSettings = { ...state.aiBridgeSettings, ...partial };
+        const provider = aiBridgeSettings.preferredProvider ?? 'openai';
+        return {
+          aiBridgeSettings: {
+            ...aiBridgeSettings,
+            profiles: {
+              ...aiBridgeSettings.profiles,
+              [provider]: {
+                url: aiBridgeSettings.url,
+                token: aiBridgeSettings.token,
+                ...(aiBridgeSettings.requestedModel ? { requestedModel: aiBridgeSettings.requestedModel } : {}),
+                ...(aiBridgeSettings.requestedTokenBudget ? { requestedTokenBudget: aiBridgeSettings.requestedTokenBudget } : {}),
+              },
+            },
+          },
+        };
+      }),
   };
 }

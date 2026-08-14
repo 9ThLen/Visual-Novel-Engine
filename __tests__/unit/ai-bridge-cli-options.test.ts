@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { bridgeCliHelp, parseBridgeCliArgs, resolveBridgeCliConfig } from '../../tools/ai-bridge/src/cli-options';
+import { resolveImageProvider } from '../../tools/ai-bridge/src/image-provider-config';
 import { normalizeLoopbackOrigin } from '../../tools/ai-bridge/src/origin-policy';
 
 describe('AI bridge CLI options', () => {
@@ -30,6 +31,7 @@ describe('AI bridge CLI options', () => {
     );
     expect(config).toEqual({
       provider: 'codex',
+      imageProvider: 'auto',
       port: 9000,
       origins: ['http://localhost:8092'],
       enableCodexBeta: true,
@@ -44,6 +46,7 @@ describe('AI bridge CLI options', () => {
       AI_BRIDGE_ENABLE_CODEX_BETA: '1',
     })).toEqual({
       provider: 'codex',
+      imageProvider: 'auto',
       port: 9001,
       origins: ['http://localhost:8093', 'http://127.0.0.1:8093'],
       enableCodexBeta: true,
@@ -53,6 +56,7 @@ describe('AI bridge CLI options', () => {
   it('defaults only to the Expo origins on port 8081', () => {
     expect(resolveBridgeCliConfig(parseBridgeCliArgs([]), {})).toMatchObject({
       provider: 'claude',
+      imageProvider: 'auto',
       port: 8787,
       origins: ['http://localhost:8081', 'http://127.0.0.1:8081'],
     });
@@ -83,7 +87,29 @@ describe('AI bridge CLI options', () => {
   it('prints the supported options in help', () => {
     expect(bridgeCliHelp()).toContain('--provider <claude|openai|codex|gemini>');
     expect(bridgeCliHelp()).toContain('--enable-codex-beta');
+    expect(bridgeCliHelp()).toContain('--image-provider <auto|openai|gemini|none>');
     expect(bridgeCliHelp()).toContain('--origin <origin>');
     expect(bridgeCliHelp()).toContain('--port <port>');
+  });
+
+  it('resolves image auto deterministically and preserves OpenAI priority for CLI providers', () => {
+    const both = { OPENAI_API_KEY: 'openai', GEMINI_API_KEY: 'gemini' };
+    expect(resolveImageProvider('auto', 'gemini', both)).toEqual({ provider: 'gemini', configured: true });
+    expect(resolveImageProvider('auto', 'openai', both)).toEqual({ provider: 'openai', configured: true });
+    expect(resolveImageProvider('auto', 'claude', both)).toEqual({ provider: 'openai', configured: true });
+    expect(resolveImageProvider('auto', 'codex', { GEMINI_API_KEY: 'gemini' })).toEqual({ provider: 'gemini', configured: true });
+    expect(resolveImageProvider('auto', 'gemini', { OPENAI_API_KEY: 'openai' })).toEqual({
+      provider: 'gemini', configured: false, alternativeProvider: 'openai',
+    });
+    expect(resolveImageProvider('none', 'gemini', both)).toEqual({ configured: false });
+  });
+
+  it('parses explicit image provider CLI configuration before the environment', () => {
+    const config = resolveBridgeCliConfig(
+      parseBridgeCliArgs(['--image-provider', 'gemini']),
+      { AI_BRIDGE_IMAGE_PROVIDER: 'openai' },
+    );
+    expect(config.imageProvider).toBe('gemini');
+    expect(() => resolveBridgeCliConfig({ help: false, imageProvider: 'unknown' }, {})).toThrow(/image provider/);
   });
 });

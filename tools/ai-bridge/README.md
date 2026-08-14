@@ -1,6 +1,6 @@
 # Local AI Bridge
 
-Runs Claude Code, OpenAI API, or the fail-closed Codex CLI Beta behind a local WebSocket process bound only to `127.0.0.1`.
+Runs Claude Code, OpenAI API, Google Gemini, or the fail-closed Codex CLI Beta behind a local WebSocket process bound only to `127.0.0.1`.
 
 ## Start
 
@@ -11,11 +11,10 @@ npm install -g @anthropic-ai/claude-code
 claude
 ```
 
-Then start the standalone bridge (the source repository and pnpm are not
-required):
+Then start the bridge from the source repository:
 
 ```sh
-npx @visual-novel-engine/ai-bridge --provider claude
+pnpm ai-bridge --provider claude
 ```
 
 The recommended OpenAI route uses a normal API key in the bridge process. A
@@ -24,18 +23,48 @@ ChatGPT subscription is not an API key and API billing is separate. Put
 then restart the bridge after changing either value:
 
 ```sh
-npx @visual-novel-engine/ai-bridge --provider openai
+pnpm ai-bridge --provider openai
 ```
 
 The browser never receives or persists this key. Chat requests use stateless
 Responses (`store:false`); OpenAI's API data-handling policy still applies.
+
+For Google Gemini chat, put `GEMINI_API_KEY` (and optionally
+`GEMINI_CHAT_MODEL`) in the project-root `.env`, then start:
+
+```sh
+pnpm ai-bridge --provider gemini
+```
+
+Gemini supports image, PDF, and text attachments. Image generation and editing
+can use either Google Gemini or OpenAI Images, independently of the chat
+provider. Select the backend explicitly, or leave it on deterministic `auto`:
+
+```sh
+pnpm ai-bridge --provider gemini --image-provider gemini
+pnpm ai-bridge --provider claude --image-provider openai
+```
+
+`auto` uses Gemini for Gemini chat, OpenAI for OpenAI chat, and prefers OpenAI
+for Claude/Codex when both image keys are configured. The startup summary and
+the connected app settings always show the backend actually selected. `auto`
+does not silently cross providers for Gemini/OpenAI chat: if that provider's
+image key is missing but the other image key exists, the startup block prints
+the explicit `--image-provider` command needed to opt into the configured
+alternative.
+
+For Gemini Images, `jpeg` and `png` are sent as explicit output MIME requests.
+The Interactions API currently does not document WebP as a selectable image
+response format, so `webp` is treated as a preference: the request leaves MIME
+unspecified and the bridge preserves and displays the actual MIME returned by
+Google. OpenAI Images continues to receive all three formats explicitly.
 
 For Codex, install and authenticate the CLI, then select it explicitly:
 
 ```sh
 npm install -g @openai/codex
 codex login
-npx @visual-novel-engine/ai-bridge --provider codex --enable-codex-beta
+pnpm ai-bridge --provider codex --enable-codex-beta
 ```
 
 Codex is currently fail-closed: the supported CLI does not expose a
@@ -46,9 +75,9 @@ testable zero-data-access tool boundary.
 
 The bridge prints one pairing block containing the provider, WebSocket URL, allowed browser origins, and a random token. Paste the token into the editor's AI panel; editing `.env` is optional.
 
-In the editor, open the AI tab and choose **Connect real AI**. The wizard shows
-the install/sign-in commands, a copyable bridge command for the selected
-provider, an optional loopback WebSocket URL, and the pairing-token field. The
+In the editor, open the AI tab and choose a visible provider card. The setup
+panel shows the provider-specific instructions, a copyable bridge command, an
+optional loopback WebSocket URL, and the pairing-token field. The
 provider shown after connection comes from the bridge handshake, not from the
 wizard selection.
 
@@ -64,7 +93,8 @@ The connected-state menu offers:
 Available CLI options:
 
 ```text
---provider <claude|openai|codex>
+--provider <claude|openai|codex|gemini>
+--image-provider <auto|openai|gemini|none>
 --enable-codex-beta       Required for Codex CLI Beta
 --origin <origin>          Repeat for each allowed browser origin
 --port <port>
@@ -72,8 +102,9 @@ Available CLI options:
 --version
 ```
 
-Repository developers can keep using `pnpm ai-bridge`. Build and inspect the
-publishable package with `pnpm ai-bridge:build` and `pnpm ai-bridge:pack`.
+`@visual-novel-engine/ai-bridge` is not currently published to npm. Do not use
+the old `npx @visual-novel-engine/ai-bridge` examples. Build and inspect the
+future publishable package with `pnpm ai-bridge:build` and `pnpm ai-bridge:pack`.
 
 Before an OpenAI release, run the explicit, billable smoke test. It refuses to
 run unless both the opt-in flag and API key are present and prints only
@@ -85,6 +116,20 @@ RUN_OPENAI_LIVE_SMOKE=true OPENAI_API_KEY=... pnpm test:ai-openai-live
 ```
 
 On PowerShell, set the two environment variables first, then run the command.
+
+Before enabling Gemini image generation for a release, run its separate,
+billable end-to-end smoke. It uses the production `generate_image` handler,
+requests one low-cost 1K draft image, validates the returned MIME type, byte
+size, and file signature, and prints no API key, prompt, or image contents:
+
+```sh
+RUN_GEMINI_IMAGE_LIVE_SMOKE=true GEMINI_API_KEY=... pnpm test:ai-gemini-image-live
+```
+
+On PowerShell, set `RUN_GEMINI_IMAGE_LIVE_SMOKE` and `GEMINI_API_KEY` first,
+then run `pnpm test:ai-gemini-image-live`. The smoke requests WebP so its
+allowlisted JSON output makes Gemini's actual returned MIME visible alongside
+the model and byte count.
 
 The smoke test covers text, one app-tool call, PNG/PDF/text attachments, an
 attachment follow-up, conversation reset, and abort. Claude attachments remain
@@ -113,6 +158,7 @@ The bridge is local, but messages and required story context are still sent to t
 - `CODEX_HARDENING_UNSUPPORTED`: use Claude; this Codex CLI cannot be
   restricted to the VNE app-tool surface deterministically.
 - `UNAUTHORIZED`: paste the fresh token printed by the current bridge process.
+- `PROVIDER_MISMATCH`: use the provider detected by the editor, or start the selected provider on a different port.
 - Origin rejected: use Expo web on port 8081 or start the bridge with the exact loopback origin, for example `--origin http://localhost:8092`.
 - `SESSION_ALREADY_ACTIVE`: close the other editor tab or continue there. One bridge process supports one live session.
 - `PROVIDER_UNAVAILABLE`: finish or interrupt the active turn and retry.

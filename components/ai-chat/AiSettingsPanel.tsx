@@ -16,6 +16,7 @@ export interface AiSettingsPanelProps {
   provider?: BridgeProvider;
   preferredProvider?: BridgeProvider;
   reason?: string;
+  retryable?: boolean;
   token: string;
   url: string;
   permissions: AiPermissions;
@@ -25,6 +26,7 @@ export interface AiSettingsPanelProps {
   colorScheme?: ColorScheme;
   onPermissionsChange(value: AiPermissions): void;
   onConnect(token: string, url: string, provider: BridgeProvider): void;
+  onProviderChange(provider: BridgeProvider): void;
   onRetry(): void;
   onDisconnect(): void;
   onResetConnection(): void;
@@ -40,6 +42,7 @@ export function AiSettingsPanel(props: AiSettingsPanelProps) {
   const [confirmClear, setConfirmClear] = useState(false);
   const [model, setModel] = useState(props.requestedModel ?? '');
   const [budget, setBudget] = useState(props.requestedTokenBudget?.toString() ?? '');
+  const imageProvider = props.capabilities?.imageGeneration?.provider === 'gemini' ? 'Google Gemini' : 'OpenAI';
   const section = { borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, gap: 8 } as const;
   const action = (label: string, onPress: () => void, danger = false) => (
     <Pressable accessibilityRole="button" onPress={onPress} style={{ borderWidth: 1, borderColor: danger ? colors.danger : colors.border, borderRadius: 7, padding: 8 }}>
@@ -55,7 +58,7 @@ export function AiSettingsPanel(props: AiSettingsPanelProps) {
       <ScrollView contentContainerStyle={{ padding: 12, gap: 10 }}>
         <View style={section}>
           <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.settings.connection')}</Text>
-          <ConnectionCard state={props.connectionState} provider={props.provider} preferredProvider={props.preferredProvider} reason={props.reason} token={props.token} url={props.url} colorScheme={props.colorScheme} onConnect={props.onConnect} onRetry={props.onRetry} />
+          <ConnectionCard state={props.connectionState} provider={props.provider} preferredProvider={props.preferredProvider} reason={props.reason} retryable={props.retryable} token={props.token} url={props.url} colorScheme={props.colorScheme} onConnect={props.onConnect} onProviderChange={props.onProviderChange} onRetry={props.onRetry} />
           {props.connectionState === 'connected' ? action(t('aiChat.connection.disconnect'), props.onDisconnect) : null}
         </View>
         <View style={section}>
@@ -86,6 +89,16 @@ export function AiSettingsPanel(props: AiSettingsPanelProps) {
                     ? t('aiChat.attach.claudeUnavailable')
                     : t('aiChat.attach.providerUnsupported')}
           </Text>
+          {props.connectionState === 'connected' ? (
+            <Text style={{ color: props.capabilities?.imageGeneration?.supported ? colors.primary : colors.muted, fontSize: 12 }}>
+              {props.capabilities?.imageGeneration?.supported
+                ? t('aiChat.settings.imagesEnabled', {
+                    provider: imageProvider,
+                    model: props.capabilities.imageGeneration.model ?? '',
+                  })
+                : t('aiChat.settings.imagesDisabled')}
+            </Text>
+          ) : null}
           <Text style={{ color: colors.muted, fontSize: 12 }}>{t('aiChat.settings.privacy')}</Text>
         </View>
         <View style={section}>

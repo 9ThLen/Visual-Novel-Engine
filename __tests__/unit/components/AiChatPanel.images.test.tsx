@@ -56,7 +56,7 @@ describe('AiChatPanel image delivery', () => {
     const view = render(<AiChatPanel storyId="story-1" activeSceneId={null} />);
     const socket = SocketMock.instances[0];
     act(() => socket.open());
-    act(() => socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'codex' }, 'session-1')));
+    act(() => socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'openai' }, 'session-1')));
     const payload = { requestId: 'image-1', purpose: 'generated', prompt: 'One castle', mimeType: 'image/png', base64: 'YWJj' };
     act(() => { socket.receive(makeEnvelope('image_result', payload, 'session-1')); socket.receive(makeEnvelope('image_result', payload, 'session-1')); });
     await waitFor(() => expect(screen.getAllByText('One castle')).toHaveLength(1));

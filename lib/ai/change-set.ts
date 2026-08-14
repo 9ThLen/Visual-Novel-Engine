@@ -25,9 +25,16 @@ export interface AiCharacterUpdate {
   updates: { name?: string; color?: string };
 }
 
+export interface AiCharacterSpriteAdd {
+  characterId: string;
+  assetId: string;
+  sprite: { tempId: string; name: string; tags?: string[]; setAsDefault?: boolean };
+}
+
 export type AiChangeSetItem =
   | { kind: 'create_character'; character: AiCharacterCreate }
   | { kind: 'update_character'; update: AiCharacterUpdate }
+  | { kind: 'add_character_sprite'; addition: AiCharacterSpriteAdd }
   | { kind: 'create_scene'; tempId: string; afterRef: string; name: string; description?: string; timeline: TimelineStep[] }
   | { kind: 'patch_scene'; sceneRef: string; operations: ScenePatchOperation[] }
   | { kind: 'set_choice_target'; sceneRef: string; choiceStepId: string; optionId: string; targetRef: string | null }
@@ -72,6 +79,13 @@ export interface AiChangeSetDescription {
 
 const characterCreateSchema = z.object({ tempId: z.string().regex(/^newchar:/), name: z.string().min(1), color: z.string().optional() });
 const characterUpdateSchema = z.object({ characterId: z.string().min(1), updates: z.object({ name: z.string().optional(), color: z.string().optional() }) });
+const characterSpriteAddSchema = z.object({
+  characterId: z.string().min(1),
+  assetId: z.string().min(1),
+  sprite: z.object({
+    tempId: z.string().regex(/^newsprite:/), name: z.string().min(1), tags: z.array(z.string().min(1)).max(20).optional(), setAsDefault: z.boolean().optional(),
+  }),
+});
 
 export const aiChangeSetSchema = z.object({
   storyId: z.string().min(1),
@@ -80,6 +94,7 @@ export const aiChangeSetSchema = z.object({
   items: z.array(z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('create_character'), character: characterCreateSchema }),
     z.object({ kind: z.literal('update_character'), update: characterUpdateSchema }),
+    z.object({ kind: z.literal('add_character_sprite'), addition: characterSpriteAddSchema }),
     z.object({ kind: z.literal('create_scene'), tempId: z.string().regex(/^new:/), afterRef: z.string().min(1), name: z.string().min(1), description: z.string().optional(), timeline: z.array(timelineStepSchema) }),
     z.object({ kind: z.literal('patch_scene'), sceneRef: z.string().min(1), operations: z.array(scenePatchOperationSchema) }),
     z.object({ kind: z.literal('set_choice_target'), sceneRef: z.string().min(1), choiceStepId: z.string().min(1), optionId: z.string().min(1), targetRef: z.string().nullable() }),
@@ -95,7 +110,7 @@ export interface AiChangeSetState {
 }
 
 export interface AiChangeSetApplyOptions {
-  generateId?: (prefix: 'scene' | 'character') => string;
+  generateId?: (prefix: 'scene' | 'character' | 'sprite') => string;
   now?: () => number;
 }
 
@@ -108,9 +123,10 @@ export function computeCharacterLibraryRevision(characters: Character[]): string
 
 function itemRank(item: AiChangeSetItem): number {
   if (item.kind === 'create_character' || item.kind === 'update_character') return 0;
-  if (item.kind === 'create_scene') return 1;
-  if (item.kind === 'patch_scene') return 2;
-  return 3;
+  if (item.kind === 'add_character_sprite') return 1;
+  if (item.kind === 'create_scene') return 2;
+  if (item.kind === 'patch_scene') return 3;
+  return 4;
 }
 
 function touchedExistingScenes(changeSet: AiChangeSet, scenes: Map<string, SceneRecord>): Set<string> {
@@ -134,7 +150,9 @@ export function validateAiChangeSet(changeSet: AiChangeSet, state: AiChangeSetSt
 
   const sceneTempIds = changeSet.items.filter((item): item is Extract<AiChangeSetItem, { kind: 'create_scene' }> => item.kind === 'create_scene').map(item => item.tempId);
   const characterTempIds = changeSet.items.filter((item): item is Extract<AiChangeSetItem, { kind: 'create_character' }> => item.kind === 'create_character').map(item => item.character.tempId);
-  if (new Set(sceneTempIds).size !== sceneTempIds.length || new Set(characterTempIds).size !== characterTempIds.length) {
+  const spriteTempIds = changeSet.items.filter((item): item is Extract<AiChangeSetItem, { kind: 'add_character_sprite' }> => item.kind === 'add_character_sprite').map(item => item.addition.sprite.tempId);
+  if (new Set(sceneTempIds).size !== sceneTempIds.length || new Set(characterTempIds).size !== characterTempIds.length
+    || new Set(spriteTempIds).size !== spriteTempIds.length) {
     return fail('VALIDATION_FAILED', 'Temporary ids must be unique');
   }
 
@@ -148,7 +166,7 @@ export function validateAiChangeSet(changeSet: AiChangeSet, state: AiChangeSetSt
     if (computeSceneRevision(scene) !== revision) return fail('STALE_REVISION', `Scene '${sceneId}' has changed`);
   }
 
-  const hasCharacterItems = changeSet.items.some(item => item.kind === 'create_character' || item.kind === 'update_character');
+  const hasCharacterItems = changeSet.items.some(item => item.kind === 'create_character' || item.kind === 'update_character' || item.kind === 'add_character_sprite');
   if (hasCharacterItems && !changeSet.expectedCharacterRevision) return fail('MISSING_REVISION', 'Missing character-library revision');
   if (changeSet.expectedCharacterRevision && computeCharacterLibraryRevision(state.characters) !== changeSet.expectedCharacterRevision) {
     return fail('STALE_REVISION', 'Character library has changed');
@@ -157,9 +175,9 @@ export function validateAiChangeSet(changeSet: AiChangeSet, state: AiChangeSetSt
 }
 
 function allocateId(
-  prefix: 'scene' | 'character',
+  prefix: 'scene' | 'character' | 'sprite',
   occupied: Set<string>,
-  generateId: (prefix: 'scene' | 'character') => string,
+  generateId: (prefix: 'scene' | 'character' | 'sprite') => string,
 ): string | undefined {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const id = generateId(prefix);
@@ -172,7 +190,12 @@ function allocateId(
 }
 
 /** Resolves only canonical reference property names; arbitrary strings remain untouched. */
-function resolveDeep<T>(value: T, sceneRefs: Map<string, string>, characterRefs: Map<string, string>): T | undefined {
+function resolveDeep<T>(
+  value: T,
+  sceneRefs: Map<string, string>,
+  characterRefs: Map<string, string>,
+  spriteRefs: Map<string, string>,
+): T | undefined {
   let invalid = false;
   const walk = (current: unknown, key?: string): unknown => {
     if (Array.isArray(current)) return current.map(entry => walk(entry));
@@ -183,6 +206,9 @@ function resolveDeep<T>(value: T, sceneRefs: Map<string, string>, characterRefs:
     }
     if (key === 'characterId' && current.startsWith('newchar:')) {
       const resolved = characterRefs.get(current); if (!resolved) invalid = true; return resolved ?? current;
+    }
+    if (key === 'spriteId' && current.startsWith('newsprite:')) {
+      const resolved = spriteRefs.get(current); if (!resolved) invalid = true; return resolved ?? current;
     }
     return current;
   };
@@ -221,14 +247,20 @@ export function applyAiChangeSet(changeSet: AiChangeSet, state: AiChangeSetState
   let characters = clone(state.characters);
   const sceneRefs = new Map<string, string>();
   const characterRefs = new Map<string, string>();
+  const spriteRefs = new Map<string, string>();
   const occupiedSceneIds = new Set(scenes.keys());
   const occupiedCharacterIds = new Set(characters.map(character => character.id));
+  const occupiedSpriteIds = new Set(characters.flatMap(character => character.sprites.map(sprite => sprite.id)));
 
   for (const item of changeSet.items) {
     if (item.kind === 'create_character') {
       const id = allocateId('character', occupiedCharacterIds, generateId);
       if (!id) return fail('ID_COLLISION', `Could not allocate id for '${item.character.tempId}'`);
       characterRefs.set(item.character.tempId, id);
+    } else if (item.kind === 'add_character_sprite') {
+      const id = allocateId('sprite', occupiedSpriteIds, generateId);
+      if (!id) return fail('ID_COLLISION', `Could not allocate id for '${item.addition.sprite.tempId}'`);
+      spriteRefs.set(item.addition.sprite.tempId, id);
     } else if (item.kind === 'create_scene') {
       const id = allocateId('scene', occupiedSceneIds, generateId);
       if (!id) return fail('ID_COLLISION', `Could not allocate id for '${item.tempId}'`);
@@ -265,12 +297,38 @@ export function applyAiChangeSet(changeSet: AiChangeSet, state: AiChangeSetState
       charactersChanged = true;
       continue;
     }
+    if (item.kind === 'add_character_sprite') {
+      const characterId = characterRefs.get(item.addition.characterId) ?? item.addition.characterId;
+      const index = characters.findIndex(character => character.id === characterId);
+      if (index < 0) return fail('VALIDATION_FAILED', `Unknown character '${item.addition.characterId}'`);
+      if (!state.context.assetIds.includes(item.addition.assetId)) {
+        return fail('VALIDATION_FAILED', `Unknown image asset '${item.addition.assetId}'`);
+      }
+      const character = characters[index];
+      if (character.sprites.some(sprite => sprite.name.trim().toLocaleLowerCase() === item.addition.sprite.name.trim().toLocaleLowerCase())) {
+        return fail('VALIDATION_FAILED', `Sprite name '${item.addition.sprite.name}' already exists for character '${characterId}'`);
+      }
+      const spriteId = spriteRefs.get(item.addition.sprite.tempId)!;
+      characters[index] = {
+        ...character,
+        sprites: [...character.sprites, {
+          id: spriteId,
+          name: item.addition.sprite.name,
+          uri: item.addition.assetId,
+          ...(item.addition.sprite.tags ? { tags: item.addition.sprite.tags } : {}),
+          createdAt: now(),
+        }],
+        ...((item.addition.sprite.setAsDefault || !character.defaultSpriteId) ? { defaultSpriteId: spriteId } : {}),
+      };
+      charactersChanged = true;
+      continue;
+    }
     if (item.kind === 'create_scene') {
       const afterId = sceneRefs.get(item.afterRef) ?? item.afterRef;
       const source = scenes.get(afterId);
       if (!source) return fail('VALIDATION_FAILED', `Unknown afterRef '${item.afterRef}'`);
       if (source.storyId !== changeSet.storyId) return fail('VALIDATION_FAILED', `Anchor '${item.afterRef}' belongs to another story`);
-      const timeline = resolveDeep(item.timeline, sceneRefs, characterRefs);
+      const timeline = resolveDeep(item.timeline, sceneRefs, characterRefs, spriteRefs);
       if (!timeline) return fail('VALIDATION_FAILED', `Unknown temporary reference in scene '${item.tempId}'`);
       const created = createNextSceneRecordAfter(source, [...scenes.values()]);
       const sibling = siblingCounts.get(afterId) ?? 0;
@@ -289,6 +347,7 @@ export function applyAiChangeSet(changeSet: AiChangeSet, state: AiChangeSetState
         // All temp ids are allocated up front, so forward timeline targets are valid.
         sceneIds: [...occupiedSceneIds],
         characterIds: characters.map(character => character.id),
+        spritesByCharacterId: Object.fromEntries(characters.map(character => [character.id, character.sprites.map(sprite => sprite.id)])),
         sceneOrder: nextSceneOrder,
       };
       const initialValidation = validateAiScenePatch(baseScene, initialPatch, initialContext);
@@ -307,10 +366,16 @@ export function applyAiChangeSet(changeSet: AiChangeSet, state: AiChangeSetState
     const scene = scenes.get(sceneId);
     if (!scene) return fail('VALIDATION_FAILED', `Unknown sceneRef '${item.sceneRef}'`);
     if (item.kind === 'patch_scene') {
-      const operations = resolveDeep(item.operations, sceneRefs, characterRefs);
+      const operations = resolveDeep(item.operations, sceneRefs, characterRefs, spriteRefs);
       if (!operations) return fail('VALIDATION_FAILED', `Unknown temporary reference in patch for '${item.sceneRef}'`);
       const patch = { storyId: changeSet.storyId, sceneId, expectedRevision: computeSceneRevision(scene), operations, explanation: changeSet.explanation };
-      const context: PatchProjectContext = { ...state.context, sceneIds: [...scenes.keys()], characterIds: characters.map(character => character.id), sceneOrder: nextSceneOrder };
+      const context: PatchProjectContext = {
+        ...state.context,
+        sceneIds: [...scenes.keys()],
+        characterIds: characters.map(character => character.id),
+        spritesByCharacterId: Object.fromEntries(characters.map(character => [character.id, character.sprites.map(sprite => sprite.id)])),
+        sceneOrder: nextSceneOrder,
+      };
       const patchValidation = validateAiScenePatch(scene, patch, context);
       if (!patchValidation.ok) return fail('VALIDATION_FAILED', patchValidation.errors.join('; '));
       scenes.set(sceneId, applyAiScenePatch(scene, patch));
@@ -369,6 +434,7 @@ export function describeAiChangeSet(changeSet: AiChangeSet, state: Pick<AiChange
   for (const item of changeSet.items) {
     if (item.kind === 'create_character') characters.push({ kind: 'created', ref: item.character.tempId, name: item.character.name });
     else if (item.kind === 'update_character') characters.push({ kind: 'updated', ref: item.update.characterId, name: item.update.updates.name });
+    else if (item.kind === 'add_character_sprite') characters.push({ kind: 'updated', ref: item.addition.characterId, name: item.addition.sprite.name });
     else if (item.kind === 'create_scene') scenes.push({ kind: 'created', sceneRef: item.tempId, name: item.name, stepCount: item.timeline.length, teaser: firstDialogueTeaser(item.timeline) });
     else if (item.kind === 'patch_scene') {
       const scene = state.scenes.get(item.sceneRef);

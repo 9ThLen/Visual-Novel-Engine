@@ -18,10 +18,10 @@ describe('AI bridge connection UI', () => {
           token=""
           url="ws://127.0.0.1:8787"
           onConnect={vi.fn()}
+          onProviderChange={vi.fn()}
           onRetry={vi.fn()}
         />,
       );
-      fireEvent.click(screen.getByText('Connect real AI'));
       await act(async () => {
         fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[0]);
         await Promise.resolve();
@@ -57,16 +57,22 @@ describe('AI bridge connection UI', () => {
   it('renders onboarding, connecting, failure and connected states', () => {
     const onConnect = vi.fn();
     const onRetry = vi.fn();
-    const common = { token: '', url: 'ws://127.0.0.1:8787', onConnect, onRetry };
+    const onProviderChange = vi.fn();
+    const common = { token: '', url: 'ws://127.0.0.1:8787', onConnect, onProviderChange, onRetry };
     const view = render(<ConnectionCard state="demo" {...common} />);
     expect(screen.getByText('Connect the AI assistant')).toBeTruthy();
-    fireEvent.click(screen.getByText('Connect real AI'));
     expect(screen.getByText(/OpenAI API.*Recommended/)).toBeTruthy();
+    expect(screen.getAllByText('Google Gemini')).toHaveLength(2);
     expect(screen.queryByText(/Codex.*Beta/)).toBeNull();
-    expect(screen.getByText(/npx @visual-novel-engine\/ai-bridge --provider openai/)).toBeTruthy();
+    expect(screen.getByText(/pnpm ai-bridge --provider openai --image-provider auto/)).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Google Gemini' })[0]);
+    expect(onProviderChange).toHaveBeenCalledWith('gemini');
+    expect(screen.getByText(/pnpm ai-bridge --provider gemini/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Google Gemini' }));
+    expect(screen.getByText(/pnpm ai-bridge --provider gemini --image-provider gemini/)).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText('Pairing token'), { target: { value: 'new-token' } });
     fireEvent.click(screen.getByText('Connect'));
-    expect(onConnect).toHaveBeenCalledWith('new-token', 'ws://127.0.0.1:8787', 'openai');
+    expect(onConnect).toHaveBeenCalledWith('new-token', 'ws://127.0.0.1:8787', 'gemini');
 
     view.rerender(<ConnectionCard state="connecting" {...common} />);
     expect(screen.getByText(/Waiting for the bridge/)).toBeTruthy();
@@ -85,10 +91,10 @@ describe('AI bridge connection UI', () => {
         token="token"
         url="ws://example.com:8787"
         onConnect={vi.fn()}
+        onProviderChange={vi.fn()}
         onRetry={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByText('Connect real AI'));
     fireEvent.click(screen.getByText('Advanced connection settings'));
     expect(screen.getByText(/Use a local ws/)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Connect' }) as HTMLButtonElement).disabled).toBe(true);

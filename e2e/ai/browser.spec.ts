@@ -24,13 +24,8 @@ async function openAi(page: Page): Promise<void> {
   await expect(page.getByText(/Ask the assistant|Попросіть асистента/)).toBeVisible();
 }
 
-async function showConnectionWizard(page: Page): Promise<void> {
-  const configure = page.getByRole('button', { name: /Connect real AI|Підключити справжній AI/ });
-  if (await configure.isVisible()) await configure.click();
-}
-
 async function pair(page: Page, token = validToken): Promise<void> {
-  await showConnectionWizard(page);
+  await page.getByText('Claude Code', { exact: true }).click();
   await page.getByLabel(/Pairing token|Токен підключення/).fill(token);
   await page.getByRole('button', { name: /Connect|Підключити/ }).click();
 }

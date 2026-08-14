@@ -42,6 +42,34 @@ export interface BridgeError {
 }
 
 export type BridgeProvider = 'claude' | 'openai' | 'codex' | 'gemini';
+export type BridgeImageProvider = 'openai' | 'gemini';
+
+export type BridgeImagePlacement =
+  | {
+      kind: 'scene_background';
+      sceneId: string;
+      operation: 'insert' | 'replace';
+      stepId?: string;
+      afterStepId?: string | null;
+      transition?: 'fade' | 'dissolve' | 'instant' | 'wipe';
+      duration?: number;
+    }
+  | {
+      kind: 'character_sprite';
+      characterId: string;
+      spriteName: string;
+      tags?: string[];
+      setAsDefault?: boolean;
+      scenePlacement?: {
+        sceneId: string;
+        operation: 'insert' | 'replace';
+        stepId?: string;
+        afterStepId?: string | null;
+        position?: 'left' | 'center' | 'right' | 'far-left' | 'far-right';
+        transition?: 'instant' | 'fade' | 'slide-left' | 'slide-right' | 'zoom';
+        duration?: number | null;
+      };
+    };
 export interface CodexBetaConsent {
   acceptedAt: string;
   disclosureVersion: number;
@@ -49,6 +77,7 @@ export interface CodexBetaConsent {
   codexCliVersion: string;
 }
 export type SessionChallengeReason =
+  | 'PROVIDER_MISMATCH'
   | 'OPENAI_API_KEY_MISSING'
   | 'OPENAI_API_AUTH_FAILED'
   | 'OPENAI_MODEL_UNAVAILABLE'
@@ -88,6 +117,12 @@ export interface BridgeCapabilities {
     kinds: Array<'image' | 'pdf' | 'text'>;
     maxCount: number;
     maxDecodedBytes: number;
+  };
+  imageGeneration?: {
+    supported: boolean;
+    provider?: BridgeImageProvider;
+    model?: string;
+    modes?: Array<'generate' | 'edit'>;
   };
   modelPolicy?: {
     effectiveModel?: string;

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import type { AiCapability, AiCapabilityEstimate } from '@/lib/ai/permissions';
+import { formatUsdEstimate, type AiCapability, type AiCapabilityEstimate } from '@/lib/ai/permissions';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import type { ColorScheme } from '@/constants/theme';
@@ -17,9 +17,7 @@ export function CapabilityConfirmChip({ capability, estimate, colorScheme, onAcc
   const { t } = useI18n();
   const details = typeof estimate === 'object' && estimate ? estimate : null;
   const range = details?.costUsdRange;
-  const cost = range && typeof range.min === 'number' && typeof range.max === 'number'
-    ? `$${range.min.toFixed(3)}–$${range.max.toFixed(3)}`
-    : t('aiChat.permissions.estimateUnavailable');
+  const cost = formatUsdEstimate(range) ?? t('aiChat.permissions.estimateUnavailable');
   return (
     <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, gap: 8 }}>
       <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '700' }}>

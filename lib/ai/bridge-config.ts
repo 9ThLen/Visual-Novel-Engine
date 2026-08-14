@@ -1,14 +1,63 @@
 export const DEFAULT_AI_BRIDGE_URL = 'ws://127.0.0.1:8787';
 
+export type AiBridgeConnectionProfile = {
+  url: string;
+  token: string;
+  requestedModel?: string;
+  requestedTokenBudget?: number;
+};
+
 export type AiBridgeSettings = {
   url: string;
   token: string;
   disabled: boolean;
   preferredProvider?: BridgeProvider;
+  profiles?: Partial<Record<BridgeProvider, AiBridgeConnectionProfile>>;
   codexBetaConsent?: CodexBetaConsent;
   requestedModel?: string;
   requestedTokenBudget?: number;
 };
+
+function activeProfile(settings: AiBridgeSettings): AiBridgeConnectionProfile {
+  return {
+    url: settings.url,
+    token: settings.token,
+    ...(settings.requestedModel ? { requestedModel: settings.requestedModel } : {}),
+    ...(settings.requestedTokenBudget ? { requestedTokenBudget: settings.requestedTokenBudget } : {}),
+  };
+}
+
+export function selectAiBridgeProvider(
+  settings: AiBridgeSettings,
+  provider: BridgeProvider,
+): AiBridgeSettings {
+  const currentProvider = settings.preferredProvider ?? 'openai';
+  const profiles = { ...settings.profiles, [currentProvider]: activeProfile(settings) };
+  const selected = profiles[provider];
+  return {
+    ...settings,
+    preferredProvider: provider,
+    profiles,
+    url: selected?.url ?? '',
+    token: selected?.token ?? '',
+    requestedModel: selected?.requestedModel,
+    requestedTokenBudget: selected?.requestedTokenBudget,
+    disabled: false,
+  };
+}
+
+export function updateActiveAiBridgeProfile(
+  settings: AiBridgeSettings,
+  partial: Partial<AiBridgeConnectionProfile>,
+): AiBridgeSettings {
+  const provider = settings.preferredProvider ?? 'openai';
+  const profile = { ...activeProfile(settings), ...partial };
+  return {
+    ...settings,
+    ...partial,
+    profiles: { ...settings.profiles, [provider]: profile },
+  };
+}
 
 export type ResolvedAiBridgeConfig = {
   url: string;

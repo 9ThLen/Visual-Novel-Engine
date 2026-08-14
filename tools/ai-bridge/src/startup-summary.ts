@@ -1,16 +1,25 @@
-import type { BridgeProvider } from '../../../lib/bridge-protocol';
+import type { BridgeImageProvider, BridgeProvider } from '../../../lib/bridge-protocol';
+import { aiProviderLabel } from '../../../lib/ai/providers';
+import { imageProviderLabel } from './image-provider-config';
 
 export interface BridgeStartupSummary {
   origins: readonly string[];
   port: number;
   provider: BridgeProvider;
+  imageProvider?: BridgeImageProvider;
+  imageProviderConfigured?: boolean;
+  imageProviderAlternative?: BridgeImageProvider;
   token: string;
 }
 
 export function formatBridgeStartupBlock(options: BridgeStartupSummary): string {
   return [
     '================ AI BRIDGE PAIRING ================',
-    `Provider: ${options.provider === 'claude' ? 'Claude Code' : 'Codex'}`,
+    `Provider: ${aiProviderLabel(options.provider)}`,
+    `Image provider: ${options.imageProvider ? `${imageProviderLabel(options.imageProvider)}${options.imageProviderConfigured === false ? ' (missing API key)' : ''}` : 'Disabled'}`,
+    ...(options.imageProviderConfigured === false && options.imageProviderAlternative
+      ? [`Image hint: ${imageProviderLabel(options.imageProviderAlternative)} is configured; restart with --image-provider ${options.imageProviderAlternative} to use it.`]
+      : []),
     `URL: ws://127.0.0.1:${options.port}`,
     `Allowed origins: ${options.origins.join(', ')}`,
     `Token: ${options.token}`,

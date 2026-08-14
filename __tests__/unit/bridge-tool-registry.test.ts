@@ -21,6 +21,16 @@ describe('bridge tool registry', () => {
     const tool = BRIDGE_TOOLS.find(item => item.name === 'authorize_capability');
     expect(tool).toMatchObject({ exposure: 'internal', site: 'app', timeoutMs: 600_000 });
     expect(MODEL_BRIDGE_TOOLS).not.toContainEqual(tool);
+    expect(tool?.inputSchema.parse({
+      capability: 'image_generate',
+      estimate: {
+        provider: 'Google Gemini',
+        costUsdRange: { min: 0.067, max: 0.067, currency: 'USD' },
+        model: 'gemini-3.1-flash-image',
+        size: '1K',
+        quality: 'standard',
+      },
+    })).toMatchObject({ estimate: { provider: 'Google Gemini' } });
   });
 
   it('exposes only the closed reader layout preset enum', () => {

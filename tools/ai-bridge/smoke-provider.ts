@@ -1,33 +1,125 @@
-import { BRIDGE_PROTOCOL_VERSION } from '../../lib/bridge-protocol';
+import { BRIDGE_PROTOCOL_VERSION, MAX_DECODED_IMAGE_BYTES } from '../../lib/bridge-protocol';
 import { ClaudeAgentProvider } from './src/claude-provider';
+import { createImageToolHandlers } from './src/image-tools';
 import { OpenAiProvider } from './src/openai-provider';
-import type {
-  AgentAttachment,
-  AgentEvent,
-  AgentProvider,
-  ProviderDiagnostics,
-  ToolInvoker,
+import {
+  BridgeToolError,
+  type AgentAttachment,
+  type AgentEvent,
+  type AgentProvider,
+  type ProviderDiagnostics,
+  type ToolInvoker,
 } from './src/provider';
+type LiveProvider = 'openai' | 'claude' | 'gemini';
+type ChatLiveProvider = Exclude<LiveProvider, 'gemini'>;
 
-type LiveProvider = 'openai' | 'claude';
+const args = process.argv.slice(2);
+const providerFlagIndex = args.indexOf('--provider');
+const providerName = (providerFlagIndex >= 0 ? args[providerFlagIndex + 1] : args.find(arg => !arg.startsWith('--'))) as LiveProvider | undefined;
+const imageMode = args.includes('--image');
+const optInVariable = imageMode
+  ? 'RUN_GEMINI_IMAGE_LIVE_SMOKE'
+  : providerName === 'claude' ? 'RUN_CLAUDE_LIVE_SMOKE' : 'RUN_OPENAI_LIVE_SMOKE';
 
-const providerName = process.argv[2] as LiveProvider | undefined;
-const optInVariable = providerName === 'claude' ? 'RUN_CLAUDE_LIVE_SMOKE' : 'RUN_OPENAI_LIVE_SMOKE';
-
-if (providerName !== 'openai' && providerName !== 'claude') {
-  console.error('Usage: tsx tools/ai-bridge/smoke-provider.ts <openai|claude>');
+if ((imageMode && providerName !== 'gemini') || (!imageMode && providerName !== 'openai' && providerName !== 'claude')) {
+  console.error('Usage: tsx tools/ai-bridge/smoke-provider.ts <openai|claude> | --provider gemini --image');
   process.exitCode = 2;
 } else if (process.env[optInVariable] !== 'true') {
-  console.error(`Set ${optInVariable}=true to run the billable ${providerName} smoke test.`);
+  console.error(`Set ${optInVariable}=true to run the billable ${providerName}${imageMode ? ' image' : ''} smoke test.`);
   process.exitCode = 2;
-} else if (providerName === 'openai' && !process.env.OPENAI_API_KEY?.trim()) {
-  console.error('OPENAI_API_KEY is required.');
+} else if ((providerName === 'openai' && !process.env.OPENAI_API_KEY?.trim())
+  || (imageMode && !process.env.GEMINI_API_KEY?.trim())) {
+  console.error(`${providerName === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY'} is required.`);
   process.exitCode = 2;
-} else {
+} else if (imageMode) {
+  await runGeminiImage();
+} else if (providerName === 'openai' || providerName === 'claude') {
   await run(providerName);
 }
 
-async function run(providerName: LiveProvider): Promise<void> {
+async function runGeminiImage(): Promise<void> {
+  let emitted: Record<string, unknown> | undefined;
+  try {
+    const handler = createImageToolHandlers({
+      provider: 'gemini',
+      apiKey: process.env.GEMINI_API_KEY,
+      model: process.env.GEMINI_IMAGE_MODEL,
+    }).generate_image;
+    const result = await handler({
+      prompt: 'A simple blue circle centered on a plain white background.',
+      purpose: 'other',
+      aspectRatio: '1:1',
+      resolution: '1K',
+      quality: 'draft',
+      outputFormat: 'webp',
+    }, {
+      callApp: async name => {
+        if (name !== 'authorize_capability') throw new Error(`UNEXPECTED_APP_TOOL:${name}`);
+        return { allowed: true };
+      },
+      emitImage: payload => {
+        emitted = payload;
+        return typeof payload.requestId === 'string' ? payload.requestId : 'smoke-image';
+      },
+    });
+    if (!emitted) throw new Error('IMAGE_RESULT_NOT_EMITTED');
+    const mimeType = emitted.mimeType;
+    const base64 = emitted.base64;
+    if (typeof mimeType !== 'string' || !['image/png', 'image/jpeg', 'image/webp'].includes(mimeType)) {
+      throw new Error('UNSUPPORTED_IMAGE_MIME');
+    }
+    if (typeof base64 !== 'string') throw new Error('IMAGE_BYTES_MISSING');
+    const bytes = Buffer.from(base64, 'base64');
+    if (bytes.length === 0 || bytes.length > MAX_DECODED_IMAGE_BYTES) throw new Error('INVALID_IMAGE_SIZE');
+    assertImageSignature(mimeType, bytes);
+    const metadata = result && typeof result === 'object' ? result as Record<string, unknown> : {};
+    console.log(JSON.stringify({
+      date: new Date().toISOString(),
+      bridgeVersion: '0.1.0',
+      protocolVersion: BRIDGE_PROTOCOL_VERSION,
+      provider: 'gemini',
+      model: typeof metadata.model === 'string' ? metadata.model : process.env.GEMINI_IMAGE_MODEL,
+      requestedFormat: 'webp',
+      mimeType,
+      sizeBytes: bytes.length,
+      passed: true,
+    }));
+  } catch (error) {
+    console.error(JSON.stringify({
+      date: new Date().toISOString(),
+      bridgeVersion: '0.1.0',
+      protocolVersion: BRIDGE_PROTOCOL_VERSION,
+      provider: 'gemini',
+      passed: false,
+      reason: smokeFailureReason(error),
+    }));
+    process.exitCode = 1;
+  }
+}
+
+function assertImageSignature(mimeType: string, bytes: Buffer): void {
+  const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  const valid = mimeType === 'image/png'
+    ? pngSignature.every((value, index) => bytes[index] === value)
+    : mimeType === 'image/jpeg'
+      ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+      : bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+  if (!valid) throw new Error('IMAGE_SIGNATURE_MISMATCH');
+}
+
+function smokeFailureReason(error: unknown): string {
+  // Never print raw provider errors: upstream messages can echo request data.
+  if (error instanceof BridgeToolError) {
+    const details = error.details && typeof error.details === 'object' ? error.details as Record<string, unknown> : {};
+    return typeof details.reason === 'string' ? details.reason : error.errorCode;
+  }
+  const known = error instanceof Error ? error.message : '';
+  return /^(?:UNEXPECTED_APP_TOOL:[a-z_]+|IMAGE_RESULT_NOT_EMITTED|UNSUPPORTED_IMAGE_MIME|IMAGE_BYTES_MISSING|INVALID_IMAGE_SIZE|IMAGE_SIGNATURE_MISMATCH)$/u.test(known)
+    ? known
+    : 'UNKNOWN';
+}
+
+async function run(providerName: ChatLiveProvider): Promise<void> {
   const calls: string[] = [];
   const tools: ToolInvoker = {
     async call(name) {

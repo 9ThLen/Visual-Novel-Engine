@@ -1,9 +1,11 @@
 import { parseArgs } from 'node:util';
 import { defaultAllowedOrigins, normalizeAllowedOrigins } from './origin-policy';
 import type { BridgeProvider } from '../../../lib/bridge-protocol';
+import { parseImageProviderSelection, type ImageProviderSelection } from './image-provider-config';
 
 export interface BridgeCliArgs {
   provider?: string;
+  imageProvider?: string;
   origins?: string[];
   port?: string;
   help: boolean;
@@ -13,6 +15,7 @@ export interface BridgeCliArgs {
 
 export interface BridgeCliConfig {
   provider: BridgeProvider;
+  imageProvider: ImageProviderSelection;
   origins: string[];
   port: number;
   enableCodexBeta: boolean;
@@ -25,6 +28,7 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
     strict: true,
     options: {
       provider: { type: 'string' },
+      'image-provider': { type: 'string' },
       origin: { type: 'string', multiple: true },
       port: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
@@ -35,6 +39,7 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
 
   return {
     provider: parsed.values.provider,
+    ...(parsed.values['image-provider'] ? { imageProvider: parsed.values['image-provider'] } : {}),
     origins: parsed.values.origin,
     port: parsed.values.port,
     help: parsed.values.help ?? false,
@@ -73,7 +78,8 @@ export function resolveBridgeCliConfig(
   if (providerValue === 'codex' && !enableCodexBeta) {
     throw new Error('Codex CLI Beta requires --enable-codex-beta');
   }
-  return { provider: providerValue, origins, port, enableCodexBeta };
+  const imageProvider = parseImageProviderSelection(cli.imageProvider ?? env.AI_BRIDGE_IMAGE_PROVIDER);
+  return { provider: providerValue, imageProvider, origins, port, enableCodexBeta };
 }
 
 export function bridgeCliHelp(): string {
@@ -82,12 +88,13 @@ export function bridgeCliHelp(): string {
     '',
     'Options:',
     '  --provider <claude|openai|codex|gemini>  AI provider (default: claude)',
+    '  --image-provider <auto|openai|gemini|none>  Image backend (default: auto)',
     '  --enable-codex-beta        Explicitly enable experimental Codex CLI',
     '  --origin <origin>          Allowed loopback browser origin; repeatable',
     '  --port <port>              Bridge WebSocket port (default: 8787)',
     '  -h, --help                 Show this help',
     '  -v, --version              Show the bridge version',
     '',
-    'CLI options override AI_BRIDGE_PROVIDER, AI_BRIDGE_ALLOWED_ORIGINS, and AI_BRIDGE_PORT.',
+    'CLI options override AI_BRIDGE_PROVIDER, AI_BRIDGE_IMAGE_PROVIDER, AI_BRIDGE_ALLOWED_ORIGINS, and AI_BRIDGE_PORT.',
   ].join('\n');
 }

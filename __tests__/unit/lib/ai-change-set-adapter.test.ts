@@ -132,4 +132,37 @@ describe('AI change-set store adapter', () => {
     expect(restored).toMatchObject({ name: 'Before', color: '#111111' });
     expect(restored.sprites.map((sprite) => sprite.id)).toEqual(['sprite-1', 'sprite-2']);
   });
+
+  it('undoes an AI-added character sprite together with the scene block that uses it', async () => {
+    const original = { id: 'char-1', name: 'Nova', sprites: [], createdAt: 1 };
+    const asset = { id: 'asset-1', type: 'image' as const, uri: 'idb://media/asset-1', name: 'nova.png', addedAt: 1 };
+    useAppStore.setState({
+      characterLibraries: { 'story-1': [original] },
+      mediaLibrary: [asset],
+      imageAssetIdsByStory: { 'story-1': [asset.id] },
+    });
+    const record = useAppStore.getState().sceneRecordsByStory['story-1']['scene-1'];
+    const result = await applyAiChangeSetToStore({
+      storyId: 'story-1',
+      expectedSceneRevisions: { 'scene-1': computeSceneRevision(record) },
+      expectedCharacterRevision: computeCharacterLibraryRevision([original]),
+      explanation: 'add Nova sprite',
+      items: [
+        { kind: 'add_character_sprite', addition: { characterId: 'char-1', assetId: 'asset-1', sprite: { tempId: 'newsprite:nova', name: 'Default', setAsDefault: true } } },
+        { kind: 'patch_scene', sceneRef: 'scene-1', operations: [{ op: 'insert_steps', afterStepId: null, steps: [{ id: 'show-nova', blockType: 'character', data: { characterId: 'char-1', spriteId: 'newsprite:nova', position: 'center', transition: 'fade', delay: 0, duration: null }, collapsed: false, enabled: true }] }] },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    const appliedCharacter = useAppStore.getState().characterLibraries['story-1'][0];
+    expect(appliedCharacter.sprites).toHaveLength(1);
+    expect(useAppStore.getState().sceneRecordsByStory['story-1']['scene-1'].timeline).toHaveLength(1);
+    expect(useAiChatStore.getState().getTopAppliedChange('story-1')).toMatchObject({
+      characterUndo: { spriteChanges: [{ id: 'char-1', createdSpriteIds: [appliedCharacter.sprites[0].id] }] },
+    });
+
+    await expect(rollbackTopAppliedChange('story-1')).resolves.toEqual({ ok: true });
+    expect(useAppStore.getState().characterLibraries['story-1'][0]).toMatchObject({ sprites: [], defaultSpriteId: undefined });
+    expect(useAppStore.getState().sceneRecordsByStory['story-1']['scene-1'].timeline).toEqual([]);
+  });
 });

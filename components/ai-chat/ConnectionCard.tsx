@@ -5,10 +5,13 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import type { ColorScheme } from '@/constants/theme';
 import { normalizeLocalBridgeUrl } from '@/lib/ai/bridge-config';
+import { AI_PROVIDER_INFO, VISIBLE_AI_PROVIDERS, aiProviderLabel } from '@/lib/ai/providers';
 import type { BridgeConnectionState, BridgeProvider } from '@/lib/bridge-client';
 import { copyToClipboard, readFromClipboard } from '@/lib/web-utils';
 
 type ProviderChoice = BridgeProvider;
+type ImageProviderChoice = 'auto' | 'openai' | 'gemini' | 'none';
+const IMAGE_PROVIDER_CHOICES: ImageProviderChoice[] = ['auto', 'openai', 'gemini', 'none'];
 
 export interface ConnectionCardProps {
   state: 'demo' | BridgeConnectionState;
@@ -17,39 +20,18 @@ export interface ConnectionCardProps {
   provider?: BridgeProvider;
   preferredProvider?: BridgeProvider;
   reason?: string;
+  retryable?: boolean;
   colorScheme?: ColorScheme;
   onConnect(token: string, url: string, provider: BridgeProvider): void;
+  onProviderChange(provider: BridgeProvider): void;
   onRetry(): void;
 }
-
-const PROVIDERS: Record<ProviderChoice, { label: string; install: string; login: string }> = {
-  claude: {
-    label: 'Claude Code',
-    install: 'npm install -g @anthropic-ai/claude-code',
-    login: 'claude',
-  },
-  openai: {
-    label: 'OpenAI API',
-    install: 'Set OPENAI_API_KEY in the bridge .env file',
-    login: 'API billing is separate from a ChatGPT subscription',
-  },
-  gemini: {
-    label: 'Google Gemini',
-    install: 'Set GEMINI_API_KEY in the bridge .env file',
-    login: 'API key from Google AI Studio',
-  },
-  codex: {
-    label: 'Codex',
-    install: 'npm install -g @openai/codex',
-    login: 'codex login',
-  },
-};
 
 function currentBrowserOrigin(): string {
   return typeof window === 'undefined' ? '' : window.location.origin;
 }
 
-function bridgeCommand(choice: ProviderChoice, url: string): string {
+function bridgeCommand(choice: ProviderChoice, imageProvider: ImageProviderChoice, url: string): string {
   const normalized = normalizeLocalBridgeUrl(url);
   let portFlag = '';
   if (normalized.ok) {
@@ -60,7 +42,7 @@ function bridgeCommand(choice: ProviderChoice, url: string): string {
   const originFlag = origin.startsWith('http://') || origin.startsWith('https://')
     ? ` --origin ${origin}`
     : '';
-  return `npx @visual-novel-engine/ai-bridge --provider ${choice}${choice === 'codex' ? ' --enable-codex-beta' : ''}${originFlag}${portFlag}`;
+  return `pnpm ai-bridge --provider ${choice} --image-provider ${imageProvider}${choice === 'codex' ? ' --enable-codex-beta' : ''}${originFlag}${portFlag}`;
 }
 
 function CommandRow({
@@ -93,8 +75,10 @@ export function ConnectionCard({
   provider,
   preferredProvider,
   reason,
+  retryable,
   colorScheme,
   onConnect,
+  onProviderChange,
   onRetry,
 }: ConnectionCardProps) {
   const colors = useColors(colorScheme);
@@ -102,25 +86,24 @@ export function ConnectionCard({
   const [value, setValue] = useState(token);
   const [urlValue, setUrlValue] = useState(url);
   const [providerChoice, setProviderChoice] = useState<ProviderChoice>(preferredProvider === 'codex' ? 'openai' : (preferredProvider ?? 'openai'));
-  const [showInstall, setShowInstall] = useState(false);
+  const [imageProviderChoice, setImageProviderChoice] = useState<ImageProviderChoice>('auto');
+  const [showInstall, setShowInstall] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showWizard, setShowWizard] = useState(state !== 'demo');
+  const [showSwitch, setShowSwitch] = useState(false);
   const [clipboardError, setClipboardError] = useState(false);
   const [copiedCommand, setCopiedCommand] = useState('');
   const copiedCommandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setValue(token), [token]);
   useEffect(() => setUrlValue(url), [url]);
-  useEffect(() => {
-    setShowWizard(state !== 'demo');
-  }, [state]);
+  useEffect(() => setProviderChoice(preferredProvider === 'codex' ? 'openai' : (preferredProvider ?? 'openai')), [preferredProvider]);
   useEffect(() => () => {
     if (copiedCommandTimerRef.current) clearTimeout(copiedCommandTimerRef.current);
   }, []);
 
   const normalizedUrl = useMemo(() => normalizeLocalBridgeUrl(urlValue), [urlValue]);
-  const command = bridgeCommand(providerChoice, normalizedUrl.ok ? normalizedUrl.url : urlValue);
-  const selected = PROVIDERS[providerChoice];
+  const command = bridgeCommand(providerChoice, imageProviderChoice, normalizedUrl.ok ? normalizedUrl.url : urlValue);
+  const selected = AI_PROVIDER_INFO[providerChoice];
   const connected = state === 'connected';
   const hasError = state === 'unauthorized' || state === 'error' || state === 'challenge';
   const localizedReason = reason
@@ -153,27 +136,17 @@ export function ConnectionCard({
     onConnect(value.trim(), normalizedUrl.url, providerChoice);
   };
 
-  if (connected) {
+  if (connected && !showSwitch) {
     return (
       <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12 }}>
-        <Text style={{ color: colors.foreground, fontWeight: '700' }}>
-          {t('aiChat.connection.connected', { provider: provider === 'codex' ? 'Codex CLI · Beta' : provider === 'openai' ? 'OpenAI API' : provider === 'gemini' ? 'Google Gemini' : 'Claude Code' })}
-        </Text>
-      </View>
-    );
-  }
-
-  if (!showWizard) {
-    return (
-      <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, gap: 10 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 15 }}>{t('aiChat.connection.title')}</Text>
-          <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.connection.demo')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <Text style={{ color: colors.foreground, fontWeight: '700' }}>
+            {t('aiChat.connection.connected', { provider: aiProviderLabel(provider) })}
+          </Text>
+          <Pressable accessibilityRole="button" onPress={() => setShowSwitch(true)}>
+            <Text style={{ color: colors.primary, fontWeight: '700' }}>{t('aiChat.connection.changeProvider')}</Text>
+          </Pressable>
         </View>
-        <Pressable accessibilityRole="button" onPress={() => setShowWizard(true)} style={{ borderWidth: 1, borderColor: colors.primary, borderRadius: 8, padding: 9 }}>
-          <Text style={{ color: colors.primary, textAlign: 'center', fontWeight: '700' }}>{t('aiChat.connection.configure')}</Text>
-        </Pressable>
-        <Text style={{ color: colors.muted, fontSize: 11, textAlign: 'center' }}>{t('aiChat.connection.privacy')}</Text>
       </View>
     );
   }
@@ -182,7 +155,11 @@ export function ConnectionCard({
     <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, gap: 12 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 15 }}>{t('aiChat.connection.title')}</Text>
-        {state === 'demo' || state === 'closed' ? (
+        {connected && showSwitch ? (
+          <Pressable accessibilityRole="button" onPress={() => setShowSwitch(false)}>
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '700' }}>{t('common.cancel')}</Text>
+          </Pressable>
+        ) : state === 'demo' || state === 'closed' ? (
           <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.connection.demo')}</Text>
         ) : null}
       </View>
@@ -200,13 +177,18 @@ export function ConnectionCard({
             {reason === 'INVALID_TOKEN' || state === 'unauthorized' ? t('aiChat.connection.badToken') : t('aiChat.connection.error')}
           </Text>
           <Text style={{ color: colors.muted }}>{localizedReason || t('aiChat.connection.reason.unknown')}</Text>
+          {reason === 'PROVIDER_MISMATCH' && provider && provider !== preferredProvider ? (
+            <Pressable accessibilityRole="button" onPress={() => onProviderChange(provider)} style={{ alignSelf: 'flex-start', paddingVertical: 4 }}>
+              <Text style={{ color: colors.primary, fontWeight: '700' }}>{t('aiChat.connection.useDetectedProvider', { provider: aiProviderLabel(provider) })}</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
 
       <View style={{ gap: 8 }}>
         <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.connection.chooseProvider')}</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {(Object.keys(PROVIDERS) as ProviderChoice[]).filter(choice => choice !== 'codex').map(choice => {
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {VISIBLE_AI_PROVIDERS.map(choice => {
             const active = providerChoice === choice;
             const unavailable = false;
             return (
@@ -215,10 +197,13 @@ export function ConnectionCard({
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 disabled={unavailable}
-                onPress={() => setProviderChoice(choice)}
-                style={{ flex: 1, borderWidth: 1, borderColor: active ? colors.primary : colors.border, borderRadius: 8, padding: 10, opacity: unavailable ? 0.55 : 1 }}
+                onPress={() => {
+                  setProviderChoice(choice);
+                  if (choice !== preferredProvider) onProviderChange(choice);
+                }}
+                style={{ flexGrow: 1, flexBasis: 140, borderWidth: 1, borderColor: active ? colors.primary : colors.border, borderRadius: 8, padding: 10, opacity: unavailable ? 0.55 : 1 }}
               >
-                <Text style={{ color: active ? colors.primary : colors.foreground, textAlign: 'center', fontWeight: '700' }}>{PROVIDERS[choice].label}{choice === 'openai' ? ' · Recommended' : ''}</Text>
+                <Text style={{ color: active ? colors.primary : colors.foreground, textAlign: 'center', fontWeight: '700' }}>{AI_PROVIDER_INFO[choice].label}{AI_PROVIDER_INFO[choice].badge ? ` · ${t(`aiChat.providerBadge.${AI_PROVIDER_INFO[choice].badge}`)}` : ''}</Text>
                 <Text style={{ color: colors.muted, textAlign: 'center', fontSize: 10 }}>
                   {unavailable ? t('aiChat.connection.providerUnavailable') : active ? t('aiChat.connection.selected') : ''}
                 </Text>
@@ -232,12 +217,37 @@ export function ConnectionCard({
         {showInstall ? (
           <View style={{ gap: 6 }}>
             <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.connection.installHint')}</Text>
-            <CommandRow command={selected.install} copied={copiedCommand === selected.install} onCopy={() => void copy(selected.install)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
-            <CommandRow command={selected.login} copied={copiedCommand === selected.login} onCopy={() => void copy(selected.login)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
-            <Text style={{ color: colors.muted, fontSize: 11 }}>Developing from the source repository:</Text>
-            <CommandRow command={`pnpm ai-bridge --provider ${providerChoice}${providerChoice === 'codex' ? ' --enable-codex-beta' : ''}`} copied={false} onCopy={() => void copy(`pnpm ai-bridge --provider ${providerChoice}${providerChoice === 'codex' ? ' --enable-codex-beta' : ''}`)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
+            {selected.setup.map(step => step.kind === 'command' ? (
+              <CommandRow key={step.value} command={step.value} copied={copiedCommand === step.value} onCopy={() => void copy(step.value)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
+            ) : (
+              <Text key={step.translationKey} style={{ color: colors.muted, fontSize: 11 }}>{t(step.translationKey)}</Text>
+            ))}
           </View>
         ) : null}
+      </View>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.connection.chooseImageProvider')}</Text>
+        <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.connection.imageProviderHint')}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {IMAGE_PROVIDER_CHOICES.map((choice) => {
+            const active = imageProviderChoice === choice;
+            return (
+              <Pressable
+                key={choice}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => setImageProviderChoice(choice)}
+                style={{ flexGrow: 1, flexBasis: 100, borderWidth: 1, borderColor: active ? colors.primary : colors.border, borderRadius: 8, padding: 9 }}
+              >
+                <Text style={{ color: active ? colors.primary : colors.foreground, textAlign: 'center', fontWeight: '700', fontSize: 12 }}>
+                  {t(`aiChat.connection.imageProvider.${choice}`)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={{ color: colors.muted, fontSize: 11 }}>{t(`aiChat.connection.imageProviderHelp.${imageProviderChoice}`)}</Text>
       </View>
 
       <View style={{ gap: 8 }}>
@@ -296,7 +306,7 @@ export function ConnectionCard({
           <Text style={{ color: colors.primary, textAlign: 'center', fontWeight: '700' }}>{t('aiChat.connection.reconnect')}</Text>
         </Pressable>
       ) : null}
-      {hasError ? (
+      {hasError && retryable !== false ? (
         <Pressable accessibilityRole="button" onPress={onRetry} style={{ borderWidth: 1, borderColor: colors.primary, borderRadius: 8, padding: 9 }}>
           <Text style={{ color: colors.primary, textAlign: 'center', fontWeight: '700' }}>{t('aiChat.connection.retry')}</Text>
         </Pressable>

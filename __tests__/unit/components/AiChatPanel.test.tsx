@@ -230,11 +230,11 @@ describe('AiChatPanel', () => {
       }
     }
     vi.stubGlobal('WebSocket', SocketMock);
-    useAppStore.setState({ aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'runtime-token', disabled: false } });
+    useAppStore.setState({ aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'runtime-token', disabled: false, preferredProvider: 'codex' } });
     const view = render(<AiChatPanel storyId="story-1" activeSceneId={null} />);
     await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
     act(() => SocketMock.instances[0].start('session-1'));
-    await waitFor(() => expect(screen.getByText(/Connected.*Codex/)).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText(/Connected.*Codex/)).toHaveLength(2));
 
     act(() => SocketMock.instances[0].emitError('session-1', 'TURN_ALREADY_RUNNING', 'A turn is already running'));
     expect(screen.getByText(/still working on the previous request/)).toBeTruthy();
@@ -249,14 +249,15 @@ describe('AiChatPanel', () => {
       url: 'ws://127.0.0.1:8787',
       token: 'runtime-token',
       disabled: true,
+      preferredProvider: 'codex',
     });
     fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
     await waitFor(() => expect(SocketMock.instances).toHaveLength(2));
     act(() => SocketMock.instances[1].start('session-2'));
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset connection' }));
-    expect(useAppStore.getState().aiBridgeSettings).toEqual({ url: '', token: '', disabled: true, preferredProvider: 'openai', codexBetaConsent: undefined });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Connect real AI' })).toBeTruthy());
+    expect(useAppStore.getState().aiBridgeSettings).toEqual({ url: '', token: '', disabled: true, preferredProvider: 'openai', profiles: {}, requestedModel: undefined, requestedTokenBudget: undefined, codexBetaConsent: undefined });
+    await waitFor(() => expect(screen.getAllByText('Google Gemini')).toHaveLength(2));
 
     view.unmount();
     vi.unstubAllGlobals();

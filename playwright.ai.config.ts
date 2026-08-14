@@ -5,6 +5,7 @@ const appOrigin = 'http://127.0.0.1:8081';
 export default defineConfig({
   testDir: './e2e/ai',
   testMatch: /browser\.spec\.ts/,
+  timeout: 60_000,
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,

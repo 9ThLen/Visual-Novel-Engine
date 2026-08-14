@@ -38,6 +38,28 @@ describe('AI capability authorization', () => {
     expect(setPending).toHaveBeenCalledWith({ capability: 'image_generate', estimate: '$0.04–$0.08' });
   });
 
+  it('keeps the image provider visible in the confirmation disclosure', async () => {
+    const setPending = vi.fn();
+    const estimate = {
+      provider: 'Google Gemini',
+      costUsdRange: { min: 0.067, max: 0.067 },
+      model: 'gemini-3.1-flash-image',
+      size: '1K',
+      quality: 'standard',
+    };
+    await executeAuthorizeCapability(
+      { capability: 'image_generate', estimate },
+      defaultAiPermissions,
+      setPending,
+      async () => ({ allowed: false }),
+    );
+    expect(setPending).toHaveBeenCalledWith({ capability: 'image_generate', estimate });
+
+    render(<CapabilityConfirmChip capability="image_generate" estimate={estimate} onAccept={vi.fn()} onDecline={vi.fn()} />);
+    expect(screen.getByText(/Google Gemini · gemini-3\.1-flash-image/)).toBeTruthy();
+    expect(screen.getByText(/Approximate cost: \$0\.067$/)).toBeTruthy();
+  });
+
   it('wires accept and decline buttons', () => {
     const onAccept = vi.fn();
     const onDecline = vi.fn();

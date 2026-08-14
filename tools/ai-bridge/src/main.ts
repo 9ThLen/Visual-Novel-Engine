@@ -9,6 +9,7 @@ import { bridgeCliHelp, parseBridgeCliArgs, resolveBridgeCliConfig } from './cli
 import { checkProviderAuthentication } from './cli-launcher';
 import { formatBridgeStartupBlock } from './startup-summary';
 import { OpenAiProvider } from './openai-provider';
+import { imageProviderLabel, resolveImageProvider } from './image-provider-config';
 
 export const BRIDGE_CLI_VERSION = '0.1.0';
 
@@ -47,7 +48,8 @@ async function main(): Promise<void> {
   }
 
   loadDotEnv();
-  const { origins, port, provider, enableCodexBeta } = resolveBridgeCliConfig(cli, process.env);
+  const { origins, port, provider, imageProvider: imageProviderSelection, enableCodexBeta } = resolveBridgeCliConfig(cli, process.env);
+  const imageProvider = resolveImageProvider(imageProviderSelection, provider, process.env);
   const check = (provider === 'claude' || provider === 'codex') ? checkProviderAuthentication(provider) : null;
   if (check && (check.error || check.status !== 0)) {
     const detail = check.error?.message || check.stderr?.trim() || check.stdout?.trim();
@@ -58,8 +60,11 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  if (provider !== 'openai' && !process.env.OPENAI_API_KEY) {
-    console.warn('Image diagnostic: OPENAI_API_KEY is not set; image generation and editing will be unavailable.');
+  if (imageProvider.provider && !imageProvider.configured) {
+    const key = imageProvider.provider === 'gemini' ? 'GEMINI_API_KEY' : 'OPENAI_API_KEY';
+    console.warn(`Image diagnostic: ${key} is not set; ${imageProviderLabel(imageProvider.provider)} will be unavailable.`);
+  } else if (!imageProvider.provider) {
+    console.warn('Image diagnostic: no image provider is configured; image generation and editing will be unavailable.');
   }
   // A fixed token lets the browser and bridge share one value from .env. Falls
   // back to the browser-facing key, then to a random token if neither is set.
@@ -68,6 +73,11 @@ async function main(): Promise<void> {
     port,
     token,
     provider,
+    imageTools: imageProvider.provider ? {
+      provider: imageProvider.provider,
+      apiKey: imageProvider.provider === 'gemini' ? process.env.GEMINI_API_KEY : process.env.OPENAI_API_KEY,
+      model: imageProvider.provider === 'gemini' ? process.env.GEMINI_IMAGE_MODEL : process.env.OPENAI_IMAGE_MODEL,
+    } : { provider: 'none' },
     allowedOrigins: origins,
     enableCodexBeta,
     enableClaudeAttachments: process.env.AI_BRIDGE_ENABLE_CLAUDE_ATTACHMENTS === 'true',
@@ -106,6 +116,9 @@ async function main(): Promise<void> {
     token: server.token,
     port: listeningPort,
     provider,
+    imageProvider: imageProvider.provider,
+    imageProviderConfigured: imageProvider.configured,
+    imageProviderAlternative: imageProvider.alternativeProvider,
     origins,
   }));
   let stopping = false;

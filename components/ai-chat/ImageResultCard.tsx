@@ -4,10 +4,11 @@ import { Image, Pressable, Text, View } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import type { ColorScheme } from '@/constants/theme';
-import type { AiImageResult } from '@/lib/ai/image-tools';
+import { imageResultToDataUri, type AiImageResult } from '@/lib/ai/image-tools';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
 import { useAppStore } from '@/stores/use-app-store';
 import type { LibraryAsset } from '@/lib/media-library-service';
+import { formatUsdEstimate } from '@/lib/ai/permissions';
 
 interface ImageResultCardProps {
   result: AiImageResult;
@@ -38,7 +39,8 @@ export function ImageResultCard({
     setError(null);
     try {
       const extension = result.mimeType === 'image/webp' ? 'webp' : result.mimeType === 'image/jpeg' ? 'jpg' : 'png';
-      const asset = await importAsset(result.blobUrl, `ai-image-${result.requestId}.${extension}`, 'image');
+      const dataUri = await imageResultToDataUri(result);
+      const asset = await importAsset(dataUri, `ai-image-${result.requestId}.${extension}`, 'image');
       useAppStore.getState().addImageAssetToStory(storyId, asset.id);
       setAssetId(asset.id);
       await onImported(asset.id);
@@ -74,21 +76,27 @@ export function ImageResultCard({
     }
   };
 
-  const cost = result.estimatedCostUsd == null
-    ? null
-    : typeof result.estimatedCostUsd === 'object'
-      ? JSON.stringify(result.estimatedCostUsd)
-      : String(result.estimatedCostUsd);
+  const cost = formatUsdEstimate(result.estimatedCostUsd);
+  const placementText = result.placement?.kind === 'scene_background'
+    ? t('aiChat.images.placement', { sceneId: result.placement.sceneId })
+    : result.placement?.kind === 'character_sprite'
+      ? t('aiChat.images.spritePlacement', { characterId: result.placement.characterId })
+      : null;
 
   return (
     <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, gap: 8, backgroundColor: colors.surface }}>
       <Image accessibilityLabel={t('aiChat.images.preview')} source={{ uri: result.blobUrl }} style={{ width: '100%', height: 180, borderRadius: 8 }} resizeMode="contain" />
       <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '700' }}>{result.prompt || t('aiChat.images.result')}</Text>
       <Text style={{ color: colors.muted, fontSize: 11 }}>
-        {result.purpose} · {Math.ceil(result.blob.size / 1024)} KB
+        {[result.provider, result.model, result.purpose].filter(Boolean).join(' · ')} · {Math.ceil(result.blob.size / 1024)} KB
         {result.width && result.height ? ` · ${result.width}×${result.height}` : ''}
         {cost ? ` · ${t('aiChat.images.cost', { cost })}` : ''}
       </Text>
+      {placementText ? (
+        <Text style={{ color: colors.muted, fontSize: 11 }}>
+          {placementText}
+        </Text>
+      ) : null}
       {error ? <Text accessibilityRole="alert" style={{ color: colors.error, fontSize: 11 }}>{error}</Text> : null}
       {assetId ? (
         <View style={{ gap: 6 }}>
@@ -102,7 +110,9 @@ export function ImageResultCard({
       ) : (
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable accessibilityRole="button" onPress={importImage} disabled={importing || discarding} style={{ paddingHorizontal: 10, minHeight: 34, justifyContent: 'center', borderRadius: 8, backgroundColor: colors.primary }}>
-            <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 12 }}>{importing ? t('aiChat.images.importing') : t('aiChat.images.add')}</Text>
+            <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 12 }}>
+              {importing ? t('aiChat.images.importing') : t(result.placement ? 'aiChat.images.addAndPlace' : 'aiChat.images.add')}
+            </Text>
           </Pressable>
           <Pressable accessibilityRole="button" onPress={discardImage} disabled={importing || discarding} style={{ paddingHorizontal: 10, minHeight: 34, justifyContent: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
             <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 12 }}>{discarding ? t('aiChat.images.discarding') : t('aiChat.images.discard')}</Text>

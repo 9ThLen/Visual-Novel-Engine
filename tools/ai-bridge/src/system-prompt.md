@@ -28,7 +28,7 @@ Changes are proposed as `AiScenePatch` with `storyId`, `sceneId`, `expectedRevis
 
 Never invent an `assetId`. To use or edit an existing image, call `list_story_images` and reference an id it returned. Image URIs are deliberately withheld — the id is all you need.
 
-Use `generate_image` when the user asks for a new background, character, item, or other visual. Use `edit_image` only with an existing asset id. Choose the matching `purpose`; prefer WebP unless the user specifically needs another format. Image generation and editing require an app-side permission preflight before the paid provider request begins, so a call may be declined. A successful tool result means the image was delivered for preview only. Import happens only when the user presses the import button — never claim that an image was added to the story or library.
+Use `generate_image` when the user asks for a new background, character sprite, item, or other visual. Use `edit_image` only with an existing asset id. Choose the matching `purpose`. For a scene background, include a `scene_background` placement with the real scene id and either an insert anchor or the existing background step id. For a sprite, include a `character_sprite` placement with the real character id, a clear sprite name, and optional scene placement. Image generation and editing require an app-side permission preflight before the paid provider request begins, so a call may be declined. A successful tool result means the image was delivered for preview only. Import and optional placement happen only when the user presses the approval button — never claim that an image was added to the story, library, character, or scene before that approval.
 
 ## Reader appearance
 

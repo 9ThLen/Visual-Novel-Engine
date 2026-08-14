@@ -131,7 +131,10 @@ describe('app store persistence helpers', () => {
     };
     const persisted = buildPersistedAppState(state);
     expect(persisted.aiBridgeSettings).toEqual(state.aiBridgeSettings);
-    expect(mergePersistedAppState(persisted, makeState()).aiBridgeSettings).toEqual(state.aiBridgeSettings);
+    expect(mergePersistedAppState(persisted, makeState()).aiBridgeSettings).toEqual({
+      ...state.aiBridgeSettings,
+      profiles: { openai: { url: 'ws://localhost:9999', token: 'local-secret' } },
+    });
   });
 
   it('hydrates legacy bridge settings without the disabled flag using the current safe default', () => {
@@ -150,6 +153,7 @@ describe('app store persistence helpers', () => {
       token: 'legacy-secret',
       disabled: false,
       preferredProvider: 'openai',
+      profiles: { openai: { url: 'ws://localhost:9999', token: 'legacy-secret' } },
     });
   });
 
@@ -413,7 +417,7 @@ describe('app store persistence helpers', () => {
       0,
     ) as Partial<AppStorePersistenceState>;
 
-    expect(APP_STORE_PERSIST_VERSION).toBe(7);
+    expect(APP_STORE_PERSIST_VERSION).toBe(8);
     expect(migrated.mediaLibrary?.map((asset) => asset.id)).toEqual(['image-file', 'image-data']);
     expect(migrated.imageAssetIdsByStory).toEqual({});
     expect(migrated.mediaAssetIdsByStory).toEqual({ 'story-1': [] });

@@ -1,4 +1,5 @@
 import { MAX_DECODED_IMAGE_BYTES } from '@/lib/bridge-protocol';
+import type { BridgeImagePlacement } from '@/lib/bridge-protocol';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 import { getStoryImageAssets } from '@/lib/story-image-library';
 import { useAppStore } from '@/stores/use-app-store';
@@ -10,6 +11,9 @@ export interface AiImageResult {
   purpose: string;
   prompt: string;
   mimeType: string;
+  provider?: 'openai' | 'gemini';
+  model?: string;
+  placement?: BridgeImagePlacement;
   blob: Blob;
   blobUrl: string;
   width?: number;
@@ -21,7 +25,8 @@ export interface AiImageResult {
 export function toPendingAiImage(result: AiImageResult, storyId: string, createdAt = Date.now()): PendingAiImage {
   return {
     requestId: result.requestId, storyId, purpose: result.purpose, prompt: result.prompt,
-    mimeType: result.mimeType, blob: result.blob, width: result.width, height: result.height,
+    mimeType: result.mimeType, provider: result.provider, model: result.model, placement: result.placement,
+    blob: result.blob, width: result.width, height: result.height,
     estimatedCostUsd: result.estimatedCostUsd, createdAt,
   };
 }
@@ -29,7 +34,8 @@ export function toPendingAiImage(result: AiImageResult, storyId: string, created
 export function fromPendingAiImage(image: PendingAiImage): AiImageResult {
   return {
     requestId: image.requestId, purpose: image.purpose, prompt: image.prompt,
-    mimeType: image.mimeType, blob: image.blob, blobUrl: URL.createObjectURL(image.blob),
+    mimeType: image.mimeType, provider: image.provider, model: image.model, placement: image.placement,
+    blob: image.blob, blobUrl: URL.createObjectURL(image.blob),
     width: image.width, height: image.height, estimatedCostUsd: image.estimatedCostUsd,
   };
 }
@@ -50,6 +56,9 @@ export function decodeImageResult(payload: unknown): AiImageResult | null {
       purpose: typeof value.purpose === 'string' ? value.purpose : 'generated',
       prompt: typeof value.prompt === 'string' ? value.prompt : '',
       mimeType: value.mimeType,
+      provider: value.provider === 'openai' || value.provider === 'gemini' ? value.provider : undefined,
+      model: typeof value.model === 'string' ? value.model : undefined,
+      placement: decodeImagePlacement(value.placement),
       blob,
       blobUrl: URL.createObjectURL(blob),
       width: typeof value.width === 'number' ? value.width : undefined,
@@ -61,6 +70,37 @@ export function decodeImageResult(payload: unknown): AiImageResult | null {
   }
 }
 
+function decodeImagePlacement(value: unknown): BridgeImagePlacement | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const placement = value as Record<string, unknown>;
+  if (placement.kind === 'scene_background') {
+    if (typeof placement.sceneId !== 'string' || (placement.operation !== 'insert' && placement.operation !== 'replace')) return undefined;
+    if (placement.operation === 'replace' && typeof placement.stepId !== 'string') return undefined;
+    if (placement.afterStepId !== undefined && placement.afterStepId !== null && typeof placement.afterStepId !== 'string') return undefined;
+    if (placement.transition !== undefined && !['fade', 'dissolve', 'instant', 'wipe'].includes(String(placement.transition))) return undefined;
+    if (placement.duration !== undefined && (typeof placement.duration !== 'number' || placement.duration < 0 || placement.duration > 30)) return undefined;
+    return {
+      kind: 'scene_background', sceneId: placement.sceneId, operation: placement.operation,
+      ...(typeof placement.stepId === 'string' ? { stepId: placement.stepId } : {}),
+      ...(placement.afterStepId === null || typeof placement.afterStepId === 'string' ? { afterStepId: placement.afterStepId } : {}),
+      ...(typeof placement.transition === 'string' ? { transition: placement.transition as 'fade' | 'dissolve' | 'instant' | 'wipe' } : {}),
+      ...(typeof placement.duration === 'number' ? { duration: placement.duration } : {}),
+    };
+  }
+  if (placement.kind !== 'character_sprite' || typeof placement.characterId !== 'string' || typeof placement.spriteName !== 'string') return undefined;
+  const scene = placement.scenePlacement;
+  if (scene !== undefined && (!scene || typeof scene !== 'object')) return undefined;
+  const scenePlacement = scene as Record<string, unknown> | undefined;
+  if (scenePlacement && (typeof scenePlacement.sceneId !== 'string' || (scenePlacement.operation !== 'insert' && scenePlacement.operation !== 'replace'))) return undefined;
+  if (scenePlacement?.operation === 'replace' && typeof scenePlacement.stepId !== 'string') return undefined;
+  return {
+    kind: 'character_sprite', characterId: placement.characterId, spriteName: placement.spriteName,
+    ...(Array.isArray(placement.tags) && placement.tags.every((tag) => typeof tag === 'string') ? { tags: placement.tags as string[] } : {}),
+    ...(typeof placement.setAsDefault === 'boolean' ? { setAsDefault: placement.setAsDefault } : {}),
+    ...(scenePlacement ? { scenePlacement: scenePlacement as NonNullable<Extract<BridgeImagePlacement, { kind: 'character_sprite' }>['scenePlacement']> } : {}),
+  };
+}
+
 export function blobToBase64(blob: Blob): Promise<string> {
   return blob.arrayBuffer().then((buffer) => {
     const bytes = new Uint8Array(buffer);
@@ -70,6 +110,12 @@ export function blobToBase64(blob: Blob): Promise<string> {
     }
     return btoa(binary);
   });
+}
+
+export async function imageResultToDataUri(
+  result: Pick<AiImageResult, 'blob' | 'mimeType'>,
+): Promise<string> {
+  return `data:${result.mimeType};base64,${await blobToBase64(result.blob)}`;
 }
 
 export async function downscaleImage(blob: Blob): Promise<Blob | null> {

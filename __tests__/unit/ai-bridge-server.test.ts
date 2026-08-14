@@ -23,7 +23,7 @@ class FakeProvider implements AgentProvider {
 const servers: AiBridgeServer[] = [];
 afterEach(async () => { await Promise.all(servers.splice(0).map(server => server.close())); });
 
-async function setup(behavior: (provider: FakeProvider, input: AgentUserInput) => AsyncIterable<AgentEvent>, toolTimeoutMs = 30, turnTimeoutMs?: number, providerName?: 'claude' | 'openai' | 'codex', enableClaudeAttachments?: boolean) {
+async function setup(behavior: (provider: FakeProvider, input: AgentUserInput) => AsyncIterable<AgentEvent>, toolTimeoutMs = 30, turnTimeoutMs?: number, providerName?: 'claude' | 'openai' | 'codex' | 'gemini', enableClaudeAttachments?: boolean) {
   let provider!: FakeProvider;
   const server = new AiBridgeServer({ port: 0, token: 'test-token', toolTimeoutMs, turnTimeoutMs, provider: providerName, enableClaudeAttachments, logger: vi.fn(), providerFactory: tools => provider = new FakeProvider(tools, behavior) });
   servers.push(server); const port = await server.start();
@@ -32,6 +32,17 @@ async function setup(behavior: (provider: FakeProvider, input: AgentUserInput) =
 function connect(port: number, origin = 'http://localhost:8081') { return new WebSocket(`ws://127.0.0.1:${port}`, { origin }); }
 function send(socket: WebSocket, type: Parameters<typeof makeEnvelope>[0], payload: unknown, sessionId = '') { socket.send(JSON.stringify(makeEnvelope(type, payload, sessionId))); }
 function next(socket: WebSocket): Promise<BridgeEnvelope> { return new Promise(resolve => socket.once('message', data => resolve(JSON.parse(data.toString())))); }
+function nextMatching(socket: WebSocket, predicate: (message: BridgeEnvelope) => boolean): Promise<BridgeEnvelope> {
+  return new Promise((resolve) => {
+    const onMessage = (data: WebSocket.RawData) => {
+      const message = JSON.parse(data.toString()) as BridgeEnvelope;
+      if (!predicate(message)) return;
+      socket.off('message', onMessage);
+      resolve(message);
+    };
+    socket.on('message', onMessage);
+  });
+}
 async function handshake(socket: WebSocket, resumeSessionId?: string) { await once(socket, 'open'); send(socket, 'session_start', resumeSessionId ? { token: 'test-token', resumeSessionId } : { token: 'test-token' }); return next(socket); }
 const payload = (message: BridgeEnvelope) => message.payload as Record<string, unknown>;
 const textAttachment = (text = 'hello') => {
@@ -40,6 +51,34 @@ const textAttachment = (text = 'hello') => {
 };
 
 describe('AI bridge protocol server', () => {
+  it('rejects a selected provider that does not match the running bridge', async () => {
+    const { port } = await setup(async function* () {}, 30, undefined, 'claude');
+    const socket = connect(port);
+    await once(socket, 'open');
+    send(socket, 'session_start', { token: 'test-token', preferredProvider: 'gemini' });
+    expect(await next(socket)).toMatchObject({
+      type: 'session_challenge',
+      payload: { provider: 'claude', reason: 'PROVIDER_MISMATCH', retryable: false },
+    });
+  });
+
+  it('advertises Gemini attachments when the Gemini bridge is configured', async () => {
+    const previous = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = 'AIza-test-key';
+    try {
+      const { port } = await setup(async function* () {}, 30, undefined, 'gemini');
+      const socket = connect(port);
+      await once(socket, 'open');
+      send(socket, 'session_start', { token: 'test-token', preferredProvider: 'gemini' });
+      expect(await next(socket)).toMatchObject({
+        type: 'session_started',
+        payload: { provider: 'gemini', capabilities: { attachments: { supported: true } } },
+      });
+    } finally {
+      if (previous === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = previous;
+    }
+  });
+
   it('decodes and validates attachment bytes before calling the provider', async () => {
     let observed: AgentUserInput | undefined;
     const { port } = await setup(async function* (_provider, input) { observed = input; yield { type: 'done' }; }, 30, undefined, 'claude', true);
@@ -69,6 +108,23 @@ describe('AI bridge protocol server', () => {
       type: 'session_started',
       payload: { resumed: true, untrustedAttachmentMode: true },
     });
+  });
+
+  it('redacts Gemini API keys from provider errors', async () => {
+    const previous = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = 'AIza-secret-value';
+    try {
+      const context = await setup(async function* () {});
+      const socket = connect(context.port);
+      const started = await handshake(socket);
+      context.provider.resetFailure = new Error(`failed with ${process.env.GEMINI_API_KEY}`);
+      send(socket, 'conversation_reset', {}, String(payload(started).sessionId));
+      const error = await next(socket);
+      expect(JSON.stringify(error)).not.toContain('AIza-secret-value');
+      expect(JSON.stringify(error)).toContain('[REDACTED]');
+    } finally {
+      if (previous === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = previous;
+    }
   });
 
   it('preserves untrusted attachment mode when resuming the same session', async () => {
@@ -173,8 +229,10 @@ describe('AI bridge protocol server', () => {
   it('interrupt aborts streaming and emits interrupted completion', async () => {
     const context = await setup(async function* (self) { while (!self.aborted) { await new Promise(resolve => setTimeout(resolve, 5)); yield { type: 'text', text: 'x' }; } });
     const socket = connect(context.port); const started = await handshake(socket); send(socket, 'user_message', { text: 'go' }, String(payload(started).sessionId));
-    await next(socket); send(socket, 'interrupt', {}, String(payload(started).sessionId));
-    expect(await next(socket)).toMatchObject({ type: 'assistant_done', payload: { stopReason: 'interrupted' } }); expect(context.provider.aborted).toBe(true);
+    await next(socket);
+    const completion = nextMatching(socket, message => message.type === 'assistant_done');
+    send(socket, 'interrupt', {}, String(payload(started).sessionId));
+    expect(await completion).toMatchObject({ type: 'assistant_done', payload: { stopReason: 'interrupted' } }); expect(context.provider.aborted).toBe(true);
   });
 
   it('reports an expired turn as timeout rather than a user interrupt', async () => {

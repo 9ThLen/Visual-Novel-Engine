@@ -2,6 +2,7 @@ import {
   DEFAULT_AI_BRIDGE_URL,
   normalizeLocalBridgeUrl,
   resolveAiBridgeConfig,
+  selectAiBridgeProvider,
 } from '@/lib/ai/bridge-config';
 
 describe('AI bridge config', () => {
@@ -47,6 +48,26 @@ describe('AI bridge config', () => {
       token: 'env-token',
       enabled: false,
       preferredProvider: 'openai',
+    });
+  });
+
+  it('keeps URL, token, model and budget separate for each provider', () => {
+    const openAi = {
+      url: 'ws://127.0.0.1:8787',
+      token: 'openai-token',
+      disabled: false,
+      preferredProvider: 'openai' as const,
+      requestedModel: 'gpt-test',
+      requestedTokenBudget: 1000,
+      profiles: { gemini: { url: 'ws://127.0.0.1:8788', token: 'gemini-token', requestedModel: 'gemini-test', requestedTokenBudget: 2000 } },
+    };
+    expect(selectAiBridgeProvider(openAi, 'gemini')).toMatchObject({
+      preferredProvider: 'gemini',
+      url: 'ws://127.0.0.1:8788',
+      token: 'gemini-token',
+      requestedModel: 'gemini-test',
+      requestedTokenBudget: 2000,
+      profiles: { openai: { url: 'ws://127.0.0.1:8787', token: 'openai-token', requestedModel: 'gpt-test', requestedTokenBudget: 1000 } },
     });
   });
 

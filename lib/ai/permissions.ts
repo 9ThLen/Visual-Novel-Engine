@@ -17,6 +17,14 @@ export interface AiCapabilityEstimate {
   costUsdRange?: { min?: number; max?: number } | null;
 }
 
+export function formatUsdEstimate(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return `$${value.toFixed(3)}`;
+  if (!value || typeof value !== 'object') return null;
+  const { min, max } = value as { min?: unknown; max?: unknown };
+  if (typeof min !== 'number' || !Number.isFinite(min) || typeof max !== 'number' || !Number.isFinite(max)) return null;
+  return min === max ? `$${min.toFixed(3)}` : `$${min.toFixed(3)}–$${max.toFixed(3)}`;
+}
+
 export const defaultAiPermissions: AiPermissions = {
   scene_edit: 'confirm',
   appearance: 'confirm',

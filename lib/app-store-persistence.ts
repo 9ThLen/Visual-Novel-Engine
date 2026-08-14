@@ -16,7 +16,7 @@ import {
   normalizeStoryImageAssetIds,
   type StoryImageAssetIds,
 } from '@/lib/story-image-library';
-import type { AiBridgeSettings } from '@/lib/ai/bridge-config';
+import type { AiBridgeConnectionProfile, AiBridgeSettings } from '@/lib/ai/bridge-config';
 import type { BridgeProvider, CodexBetaConsent } from '@/lib/bridge-protocol';
 import {
   migrateStoryMediaAssetIds,
@@ -24,7 +24,7 @@ import {
   type StoryMediaAssetIds,
 } from '@/lib/story-media-library';
 
-export const APP_STORE_PERSIST_VERSION = 7;
+export const APP_STORE_PERSIST_VERSION = 8;
 
 export type AppStorePersistenceState = {
   storiesMetadata: StoryMetadata[];
@@ -193,6 +193,32 @@ function normalizeProvider(value: unknown, fallback: BridgeProvider): BridgeProv
   return value === 'claude' || value === 'openai' || value === 'codex' || value === 'gemini' ? value : fallback;
 }
 
+function normalizeBridgeProfile(value: unknown): AiBridgeConnectionProfile | undefined {
+  if (!isRecord(value)) return undefined;
+  const url = typeof value.url === 'string' ? value.url : '';
+  const token = typeof value.token === 'string' ? value.token : '';
+  return {
+    url,
+    token,
+    ...(typeof value.requestedModel === 'string' && value.requestedModel.trim()
+      ? { requestedModel: value.requestedModel.trim() }
+      : {}),
+    ...(typeof value.requestedTokenBudget === 'number' && Number.isFinite(value.requestedTokenBudget) && value.requestedTokenBudget > 0
+      ? { requestedTokenBudget: Math.floor(value.requestedTokenBudget) }
+      : {}),
+  };
+}
+
+function normalizeBridgeProfiles(value: unknown): NonNullable<AiBridgeSettings['profiles']> {
+  if (!isRecord(value)) return {};
+  const profiles: NonNullable<AiBridgeSettings['profiles']> = {};
+  for (const provider of ['claude', 'openai', 'codex', 'gemini'] as const) {
+    const profile = normalizeBridgeProfile(value[provider]);
+    if (profile) profiles[provider] = profile;
+  }
+  return profiles;
+}
+
 function normalizeCodexConsent(value: unknown): CodexBetaConsent | undefined {
   if (!isRecord(value)
     || typeof value.acceptedAt !== 'string'
@@ -275,6 +301,14 @@ export function migratePersistedAppState(
   if ('playbackState' in migrated) {
     migrated.playbackState = normalizePlaybackState(migrated.playbackState);
   }
+  if (isRecord(migrated.aiBridgeSettings)) {
+    const provider = normalizeProvider(migrated.aiBridgeSettings.preferredProvider, 'openai');
+    const profiles = normalizeBridgeProfiles(migrated.aiBridgeSettings.profiles);
+    if (!profiles[provider]) {
+      profiles[provider] = normalizeBridgeProfile(migrated.aiBridgeSettings) ?? { url: '', token: '' };
+    }
+    migrated.aiBridgeSettings = { ...migrated.aiBridgeSettings, profiles } as AiBridgeSettings;
+  }
 
   return migrated;
 }
@@ -325,6 +359,7 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
             persisted.aiBridgeSettings.preferredProvider,
             currentState.aiBridgeSettings.preferredProvider ?? 'openai',
           ),
+          profiles: normalizeBridgeProfiles(persisted.aiBridgeSettings.profiles),
           ...(normalizeCodexConsent(persisted.aiBridgeSettings.codexBetaConsent)
             ? { codexBetaConsent: normalizeCodexConsent(persisted.aiBridgeSettings.codexBetaConsent) }
             : {}),

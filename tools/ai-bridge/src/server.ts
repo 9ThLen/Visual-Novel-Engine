@@ -5,7 +5,7 @@ import { MAX_IMAGE_MESSAGE_BYTES, MAX_MESSAGE_BYTES, makeEnvelope, parseEnvelope
 import { getBridgeTool } from '../../../lib/ai/bridge-tools';
 import { BridgeToolError, ProviderFailure, type AgentAttachment, type AgentProvider, type AgentProviderFactory, type AgentUserInput } from './provider';
 import { BridgeToolRuntime } from './tool-runtime';
-import { createImageToolHandlers } from './image-tools';
+import { createImageToolHandlers, describeImageToolCapability, type ImageToolOptions } from './image-tools';
 import { normalizeAllowedOrigins } from './origin-policy';
 import { getCodexHardeningCapability } from './codex-launch-policy';
 import { validateCodexBetaConsent } from '../../../lib/ai/codex-beta-consent';
@@ -27,7 +27,7 @@ type LiveSession = {
   untrustedAttachmentMode: boolean;
 };
 
-export interface BridgeServerOptions { port?: number; token?: string; allowedOrigins?: string[]; provider?: BridgeProvider; enableCodexBeta?: boolean; enableClaudeAttachments?: boolean; providerFactory: AgentProviderFactory; logger?: (line: string) => void; toolTimeoutMs?: number; turnTimeoutMs?: number; modelPolicy?: { defaultModel?: string; allowedModels?: string[]; defaultTokenBudget?: number; maxTokenBudget?: number } }
+export interface BridgeServerOptions { port?: number; token?: string; allowedOrigins?: string[]; provider?: BridgeProvider; imageTools?: ImageToolOptions; enableCodexBeta?: boolean; enableClaudeAttachments?: boolean; providerFactory: AgentProviderFactory; logger?: (line: string) => void; toolTimeoutMs?: number; turnTimeoutMs?: number; modelPolicy?: { defaultModel?: string; allowedModels?: string[]; defaultTokenBudget?: number; maxTokenBudget?: number } }
 
 export class AiBridgeServer {
   readonly token: string;
@@ -47,7 +47,7 @@ export class AiBridgeServer {
       emit: (type, payload) => this.sendCurrent(type, payload),
       logger: this.log,
     });
-    this.toolRuntime.setHandlers(createImageToolHandlers({ logger: this.log, debug: process.env.AI_BRIDGE_DEBUG === 'true' }));
+    this.toolRuntime.setHandlers(createImageToolHandlers({ ...options.imageTools, logger: this.log, debug: process.env.AI_BRIDGE_DEBUG === 'true' }));
   }
 
   async start(): Promise<number> {
@@ -144,6 +144,10 @@ export class AiBridgeServer {
 
   private preflightChallenge(payload: Record<string, unknown> | null): SessionChallengePayload | null {
     const provider = this.options.provider ?? 'claude';
+    const preferredProvider = payload?.preferredProvider;
+    if (typeof preferredProvider === 'string' && preferredProvider !== provider) {
+      return { provider, reason: 'PROVIDER_MISMATCH', retryable: false };
+    }
     if (provider === 'openai' && !process.env.OPENAI_API_KEY?.trim()) {
       return { provider, reason: 'OPENAI_API_KEY_MISSING', retryable: true };
     }
@@ -323,10 +327,14 @@ export class AiBridgeServer {
   }
 
   private capabilities() {
-    const supported = this.options.provider === 'openai'
+    const supported = this.options.provider === 'openai' || this.options.provider === 'gemini'
       || (this.options.provider === 'claude' && this.options.enableClaudeAttachments === true);
     const policy = this.options.modelPolicy;
-    return { attachments: { supported, kinds: supported ? ['image', 'pdf', 'text'] as Array<'image' | 'pdf' | 'text'> : [], maxCount: 4, maxDecodedBytes: 5 * 1024 * 1024 }, modelPolicy: { effectiveModel: policy?.defaultModel, allowedModels: policy?.allowedModels, modelLocked: !policy?.allowedModels?.length, effectiveTokenBudget: policy?.defaultTokenBudget, maxTokenBudget: policy?.maxTokenBudget, tokenBudgetLocked: !policy?.maxTokenBudget } };
+    return {
+      attachments: { supported, kinds: supported ? ['image', 'pdf', 'text'] as Array<'image' | 'pdf' | 'text'> : [], maxCount: 4, maxDecodedBytes: 5 * 1024 * 1024 },
+      imageGeneration: describeImageToolCapability(this.options.imageTools),
+      modelPolicy: { effectiveModel: policy?.defaultModel, allowedModels: policy?.allowedModels, modelLocked: !policy?.allowedModels?.length, effectiveTokenBudget: policy?.defaultTokenBudget, maxTokenBudget: policy?.maxTokenBudget, tokenBudgetLocked: !policy?.maxTokenBudget },
+    };
   }
 
   private resolveModelPolicy(payload: Record<string, unknown> | null): { ok: true; model?: string; tokenBudget?: number } | { ok: false; reason: string } {
@@ -358,7 +366,8 @@ export class AiBridgeServer {
   private safeError(error: unknown): string {
     let message = (error instanceof Error ? error.message : 'Provider failed').replaceAll(this.token, '[REDACTED]');
     if (process.env.OPENAI_API_KEY) message = message.replaceAll(process.env.OPENAI_API_KEY, '[REDACTED]');
-    return message.replace(/(?:sk-(?:ant-)?|(?:ANTHROPIC|OPENAI)_API_KEY\s*[=:]\s*)\S+/gi, '[REDACTED]');
+    if (process.env.GEMINI_API_KEY) message = message.replaceAll(process.env.GEMINI_API_KEY, '[REDACTED]');
+    return message.replace(/(?:sk-(?:ant-)?|AIza[\w-]+|(?:ANTHROPIC|OPENAI|GEMINI)_API_KEY\s*[=:]\s*)\S+/gi, '[REDACTED]');
   }
   private sendCurrent(type: Parameters<typeof makeEnvelope>[0], payload: unknown): void { if (this.session?.socket) this.send(this.session.socket, type, payload, this.session.id); }
   private send(socket: WebSocket, type: Parameters<typeof makeEnvelope>[0], payload: unknown, id = ''): void { if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(makeEnvelope(type, payload, id))); }

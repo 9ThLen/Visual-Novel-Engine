@@ -104,6 +104,33 @@ describe('BridgeClient', () => {
     client.close();
   });
 
+  it('blocks an older bridge that starts a different provider', () => {
+    options.preferredProvider = 'gemini';
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'openai' }, 'session-1'));
+    expect(options.onConnectionChange).toHaveBeenLastCalledWith('challenge', undefined);
+    expect(options.onEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'session_challenge',
+      payload: { provider: 'openai', reason: 'PROVIDER_MISMATCH', retryable: false },
+    }));
+    vi.advanceTimersByTime(30_000);
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
+  it('does not reconnect after a rejected startup model override', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('error', { code: 'VALIDATION_FAILED', message: 'Rejected', details: { reason: 'MODEL_NOT_ALLOWED' } }));
+    expect(options.onConnectionChange).toHaveBeenLastCalledWith('error', 'MODEL_NOT_ALLOWED');
+    vi.advanceTimersByTime(30_000);
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
   it('acknowledges a processed image result with its delivery id', () => {
     const client = new BridgeClient(options);
     client.connect();

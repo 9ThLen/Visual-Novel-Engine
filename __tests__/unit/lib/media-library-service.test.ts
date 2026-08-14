@@ -3,6 +3,7 @@ import { addAssetToLibraryPure, resolveLibraryAssetUri } from '@/lib/media-libra
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IdbStorage from '@/lib/idb-storage';
 import { Platform } from 'react-native';
+import { imageResultToDataUri, type AiImageResult } from '@/lib/ai/image-tools';
 
 const idbMocks = {
   has: vi.fn(),
@@ -196,6 +197,37 @@ describe('media-library-service', () => {
     expect(second.asset).toBe(first.asset);
     expect(second.assets).toBe(first.assets);
     expect(idbMocks.put).not.toHaveBeenCalled();
+  });
+
+  it('imports the same AI image result twice as one content-addressed asset', async () => {
+    Platform.OS = 'web';
+    mockFileSystem.mockSetDocumentDirectory(null);
+    const result: AiImageResult = {
+      requestId: 'ai-result-1',
+      purpose: 'background',
+      prompt: 'A misty forest',
+      mimeType: 'image/png',
+      blob: new Blob(['same-image'], { type: 'image/png' }),
+      blobUrl: 'blob:first-preview',
+    };
+
+    const first = await addAssetToLibraryPure(
+      await imageResultToDataUri(result),
+      'ai-image-first.png',
+      'image',
+      [],
+    );
+    idbMocks.has.mockResolvedValue(true);
+    const second = await addAssetToLibraryPure(
+      await imageResultToDataUri(result),
+      'ai-image-retry.png',
+      'image',
+      first.assets,
+    );
+
+    expect(second.asset.id).toBe(first.asset.id);
+    expect(second.assets).toHaveLength(1);
+    expect(idbMocks.put).toHaveBeenCalledOnce();
   });
 
   it('repairs a missing IndexedDB Blob when matching metadata already exists', async () => {

@@ -34,7 +34,7 @@ export function capturePostRevisions(
       ? {
           characters: hashStable((state.characterLibraries[storyId] ?? [])
             .filter((character) => characterIds.has(character.id))
-            .map(({ id, name, color }) => ({ id, name, color }))
+            .map(({ id, name, color, defaultSpriteId, sprites }) => ({ id, name, color, defaultSpriteId, sprites }))
             .sort((left, right) => left.id.localeCompare(right.id))),
         }
       : {}),
@@ -47,6 +47,7 @@ export function hasNewerEdits(change: AiChatAppliedChange): boolean {
     ? [
         ...(change.characterUndo?.createdCharacterIds ?? []),
         ...(change.characterUndo?.previousValues.map(({ id }) => id) ?? []),
+        ...(change.characterUndo?.spriteChanges?.map(({ id }) => id) ?? []),
       ]
     : [];
   const current = capturePostRevisions(change.storyId, {
@@ -91,11 +92,16 @@ export async function rollbackTopAppliedChange(
       const delta = change.characterUndo;
       const created = new Set(delta.createdCharacterIds);
       const previous = new Map(delta.previousValues.map((value) => [value.id, value]));
+      const spriteChanges = new Map((delta.spriteChanges ?? []).map((value) => [value.id, value]));
       const characters = (useAppStore.getState().characterLibraries[change.storyId] ?? [])
         .filter((character) => !created.has(character.id))
         .map((character) => {
           const value = previous.get(character.id);
-          return value ? { ...character, name: value.name, color: value.color } : character;
+          const spriteChange = spriteChanges.get(character.id);
+          const withoutCreatedSprites = spriteChange
+            ? { ...character, sprites: character.sprites.filter((sprite) => !spriteChange.createdSpriteIds.includes(sprite.id)), defaultSpriteId: spriteChange.previousDefaultSpriteId }
+            : character;
+          return value ? { ...withoutCreatedSprites, name: value.name, color: value.color } : withoutCreatedSprites;
         });
       useAppStore.getState().setCharacterLibrary(change.storyId, characters);
     }

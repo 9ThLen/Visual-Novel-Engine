@@ -6,7 +6,7 @@ import { useI18n } from '@/hooks/use-i18n';
 import type { ColorScheme } from '@/constants/theme';
 import { respond } from '@/lib/ai/fake-agent';
 import { applyAiScenePatchToStore, rollbackAiPatch } from '@/lib/ai/scene-patch-adapter';
-import { describeAiScenePatch, validateAiScenePatch, type PatchProjectContext } from '@/lib/ai/scene-patch';
+import { describeAiScenePatch, validateAiScenePatch } from '@/lib/ai/scene-patch';
 import { applyAiAppearancePatchToStore, rollbackAiAppearancePatch } from '@/lib/ai/appearance-patch-adapter';
 import { rollbackTopAppliedChange } from '@/lib/ai/applied-change-journal';
 import { applyAiChangeSetToStore } from '@/lib/ai/change-set-adapter';
@@ -35,6 +35,7 @@ import {
   type AiImageResult,
 } from '@/lib/ai/image-tools';
 import { pendingImageRepository } from '@/lib/ai/pending-image-storage.web';
+import { applyImportedImagePlacement } from '@/lib/ai/image-placement';
 import { chatAttachmentRepository } from '@/lib/ai/attachment-storage.web';
 import {
   detectAttachment,
@@ -48,9 +49,10 @@ import {
 } from '@/lib/ai/attachments';
 import { APP_BRIDGE_TOOL_NAMES } from '@/lib/ai/bridge-tools';
 import { AI_CAPABILITIES, normalizeAiPermissions, resolveCapability, resolveEffectiveCapability, type AiCapability, type AiPermissions } from '@/lib/ai/permissions';
-import { resolveAiBridgeConfig } from '@/lib/ai/bridge-config';
+import { resolveAiBridgeConfig, selectAiBridgeProvider, updateActiveAiBridgeProfile } from '@/lib/ai/bridge-config';
+import { aiProviderLabel } from '@/lib/ai/providers';
 import { buildAiStoryContext } from '@/lib/ai/story-context';
-import { getStoryImageAssets } from '@/lib/story-image-library';
+import { buildAiChangeSetState, buildPatchProjectContext } from '@/lib/ai/project-context';
 import { BridgeClient, type BridgeConnectionState, type BridgeProvider } from '@/lib/bridge-client';
 import type { BridgeCapabilities } from '@/lib/bridge-protocol';
 import { removeImageBackground } from '@/lib/remove-background.web';
@@ -71,6 +73,9 @@ import { MarkdownText } from './MarkdownText';
 import { AiSettingsPanel } from './AiSettingsPanel';
 import { CapabilityConfirmChip } from './CapabilityConfirmChip';
 import { ImageResultCard } from './ImageResultCard';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+
+const EMPTY_AI_BRIDGE_SETTINGS = { url: '', token: '', disabled: false } as const;
 
 interface AiChatPanelProps {
   storyId: string;
@@ -151,29 +156,8 @@ function resolveBridgeRuntimeError(payload: Record<string, unknown>): BridgeRunt
   return 'PROVIDER_ERROR';
 }
 
-function buildPatchProjectContext(storyId: string): PatchProjectContext {
-  const state = useAppStore.getState();
-  const storyScenes = Object.values(state.sceneRecordsByStory[storyId] ?? {});
-  return {
-    sceneIds: storyScenes.map((scene) => scene.id),
-    characterIds: (state.characterLibraries[storyId] ?? []).map((character) => character.id),
-    variableNames: Array.from(new Set(storyScenes.flatMap((scene) => Object.keys(scene.sceneState.variables)))),
-    assetIds: getStoryImageAssets(storyId, state.imageAssetIdsByStory, state.mediaLibrary).map((asset) => asset.id),
-  };
-}
-
 function buildChangeSetState(storyId: string): AiChangeSetState {
-  const state = useAppStore.getState();
-  const scenes = new Map(Object.entries(state.sceneRecordsByStory[storyId] ?? {}));
-  const characters = state.characterLibraries[storyId] ?? [];
-  return {
-    scenes,
-    characters,
-    context: {
-      ...buildPatchProjectContext(storyId),
-      sceneOrder: state.storiesMetadata.find((story) => story.id === storyId)?.sceneOrder,
-    },
-  };
+  return buildAiChangeSetState(storyId);
 }
 
 function mapChangeSetError(code: AiChangeSetErrorCode, message: string) {
@@ -271,7 +255,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   }, [setPendingInteraction, storyId]);
   const setLastAppliedChange = useAiChatStore((s) => s.setLastAppliedChange);
   const aiBridgeSettings = useAppStore((s) => s.aiBridgeSettings)
-    ?? { url: '', token: '', disabled: false };
+    ?? EMPTY_AI_BRIDGE_SETTINGS;
   const updateAiBridgeSettings = useAppStore((s) => s.updateAiBridgeSettings);
   const settings = useAppStore((s) => s.settings);
   const storiesMetadata = useAppStore((s) => s.storiesMetadata);
@@ -282,6 +266,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   const [applying, setApplying] = useState(false);
   const [connectionState, setConnectionState] = useState<'demo' | BridgeConnectionState>(bridgeConfig.enabled ? 'connecting' : 'demo');
   const [connectionReason, setConnectionReason] = useState<string>();
+  const [connectionRetryable, setConnectionRetryable] = useState(true);
   const [provider, setProvider] = useState<BridgeProvider>();
   const [capabilities, setCapabilities] = useState<BridgeCapabilities>();
   const [draftAttachments, setDraftAttachments] = useState<StoredChatAttachment[]>([]);
@@ -294,6 +279,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   const [clearingChat, setClearingChat] = useState(false);
   const [confirmUndo, setConfirmUndo] = useState(false);
   const [imagePersistenceFailed, setImagePersistenceFailed] = useState(false);
+  const [pendingProviderSwitch, setPendingProviderSwitch] = useState<BridgeProvider>();
   const bridgeRef = useRef<BridgeClient | null>(null);
   const composerRef = useRef<View | null>(null);
   const attachmentAddingRef = useRef(false);
@@ -334,6 +320,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     }
     setConnectionState('connecting');
     setConnectionReason(undefined);
+    setConnectionRetryable(true);
     setRuntimeErrorReason(undefined);
     const client = new BridgeClient({
       url,
@@ -360,7 +347,13 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
           setProvider(payload.provider);
           if (payload.capabilities && typeof payload.capabilities === 'object') setCapabilities(payload.capabilities as BridgeCapabilities);
         }
-        if (message.type === 'session_challenge' && typeof payload.reason === 'string') setConnectionReason(payload.reason);
+        if (message.type === 'session_challenge' && typeof payload.reason === 'string') {
+          setConnectionReason(payload.reason);
+          setConnectionRetryable(payload.retryable !== false);
+          if (payload.provider === 'claude' || payload.provider === 'openai' || payload.provider === 'codex' || payload.provider === 'gemini') {
+            setProvider(payload.provider);
+          }
+        }
         if (message.type === 'image_result' && typeof payload.requestId === 'string') {
           const result = decodeImageResult(payload);
           if (!result) return;
@@ -869,13 +862,43 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   const handleConnect = useCallback((token: string, url: string, preferredProvider: BridgeProvider) => {
     setProvider(undefined);
     setConnectionReason(undefined);
-    updateAiBridgeSettings({ token, url, disabled: false, preferredProvider });
+    const selected = selectAiBridgeProvider(aiBridgeSettings, preferredProvider);
+    updateAiBridgeSettings(updateActiveAiBridgeProfile({ ...selected, disabled: false }, { token, url }));
     setRetryKey(value => value + 1);
-  }, [updateAiBridgeSettings]);
+  }, [aiBridgeSettings, updateAiBridgeSettings]);
+
+  const applyProviderSwitch = useCallback((nextProvider: BridgeProvider) => {
+    const previousProvider = aiBridgeSettings.preferredProvider ?? 'openai';
+    if (nextProvider === previousProvider && nextProvider === aiBridgeSettings.preferredProvider) return;
+    bridgeRef.current?.close();
+    setProvider(undefined);
+    setCapabilities(undefined);
+    setConnectionReason(undefined);
+    setConnectionRetryable(true);
+    updateAiBridgeSettings(selectAiBridgeProvider(aiBridgeSettings, nextProvider));
+    if (connectionState === 'connected') {
+      addMessage('system', t('aiChat.providerChanged', {
+        from: aiProviderLabel(previousProvider),
+        to: aiProviderLabel(nextProvider),
+      }));
+    }
+    setRetryKey(value => value + 1);
+  }, [addMessage, aiBridgeSettings, connectionState, t, updateAiBridgeSettings]);
+
+  const handleProviderChange = useCallback((nextProvider: BridgeProvider) => {
+    if (nextProvider === (aiBridgeSettings.preferredProvider ?? 'openai')) return;
+    if (status !== 'idle' || (pendingInteraction?.storyId === storyId)) {
+      setShowSettings(false);
+      setPendingProviderSwitch(nextProvider);
+      return;
+    }
+    applyProviderSwitch(nextProvider);
+  }, [aiBridgeSettings.preferredProvider, applyProviderSwitch, pendingInteraction, status, storyId]);
 
   const handleRetryConnection = useCallback(() => {
     updateAiBridgeSettings({ disabled: false });
     setConnectionReason(undefined);
+    setConnectionRetryable(true);
     setRetryKey(value => value + 1);
   }, [updateAiBridgeSettings]);
 
@@ -893,7 +916,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   const handleResetConnection = useCallback(() => {
     bridgeRef.current?.close();
     BridgeClient.clearPersistedSession(bridgeConfig.url);
-    updateAiBridgeSettings({ url: '', token: '', disabled: true, preferredProvider: 'openai', codexBetaConsent: undefined });
+    updateAiBridgeSettings({ url: '', token: '', disabled: true, preferredProvider: 'openai', profiles: {}, requestedModel: undefined, requestedTokenBudget: undefined, codexBetaConsent: undefined });
     setProvider(undefined);
     setConnectionReason(undefined);
     setConnectionState('demo');
@@ -929,6 +952,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     provider={provider}
     preferredProvider={aiBridgeSettings.preferredProvider}
     reason={connectionReason}
+    retryable={connectionRetryable}
     token={aiBridgeSettings.token}
     url={aiBridgeSettings.url || bridgeConfig.url}
     permissions={normalizeAiPermissions(settings.aiPermissions)}
@@ -938,6 +962,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     colorScheme={colorScheme}
     onPermissionsChange={(aiPermissions) => updateSettings({ aiPermissions })}
     onConnect={handleConnect}
+    onProviderChange={handleProviderChange}
     onRetry={handleRetryConnection}
     onDisconnect={handleDisconnect}
     onResetConnection={handleResetConnection}
@@ -957,14 +982,13 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     <View style={{ flex: 1 }}>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ color: connectionState === 'connected' ? colors.primary : colors.muted, fontSize: 11, fontWeight: '700' }}>
-          {connectionState === 'demo' ? t('aiChat.connection.demo') : connectionState === 'connected' ? t('aiChat.connection.connected', { provider: provider === 'codex' ? 'Codex CLI · Beta' : provider === 'openai' ? 'OpenAI API' : provider === 'gemini' ? 'Google Gemini' : 'Claude Code' }) : connectionState === 'connecting' || connectionState === 'reconnecting' ? t('aiChat.connection.connecting') : t('aiChat.connection.error')}
+          {connectionState === 'demo' ? t('aiChat.connection.demo') : connectionState === 'connected' ? t('aiChat.connection.connected', { provider: aiProviderLabel(provider) }) : connectionState === 'connecting' || connectionState === 'reconnecting' ? t('aiChat.connection.connecting') : t('aiChat.connection.error')}
         </Text>
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <Pressable accessibilityRole="button" accessibilityLabel={t('aiChat.settings.open')} onPress={() => setShowSettings(true)}><Text style={{ color: colors.muted, fontSize: 15 }}>⚙</Text></Pressable>
         </View>
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 10 }}>
-        {connectionState !== 'connected' ? (
           <ConnectionCard
             state={connectionState}
             token={aiBridgeSettings.token}
@@ -972,11 +996,12 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
             provider={provider}
             preferredProvider={aiBridgeSettings.preferredProvider}
             reason={connectionReason}
+            retryable={connectionRetryable}
             colorScheme={colorScheme}
             onConnect={handleConnect}
+            onProviderChange={handleProviderChange}
             onRetry={handleRetryConnection}
           />
-        ) : null}
         {runtimeErrorReason ? (
           <View accessibilityRole="alert" style={{ borderWidth: 1, borderColor: colors.danger, borderRadius: 8, padding: 10 }}>
             <Text style={{ color: colors.danger, fontSize: 12 }}>
@@ -999,13 +1024,11 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
             if (attachment.assetId || attachment.kind !== 'image') return;
             const stored = await chatAttachmentRepository.get(attachment.id);
             if (!stored) return;
-            const url = URL.createObjectURL(stored.blob);
-            try {
-              const asset = await addAssetToLibrary(url, attachment.name, 'image');
-              useAppStore.getState().addImageAssetToStory(storyId, asset.id);
-              await chatAttachmentRepository.put({ ...stored, assetId: asset.id });
-              markAttachmentImported(storyId, attachment.id, asset.id);
-            } finally { URL.revokeObjectURL(url); }
+            const dataUri = `data:${stored.mimeType};base64,${await blobToBase64(stored.blob)}`;
+            const asset = await addAssetToLibrary(dataUri, attachment.name, 'image');
+            useAppStore.getState().addImageAssetToStory(storyId, asset.id);
+            await chatAttachmentRepository.put({ ...stored, assetId: asset.id });
+            markAttachmentImported(storyId, attachment.id, asset.id);
           }} />
         ))}
 
@@ -1016,6 +1039,8 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
             storyId={storyId}
             colorScheme={colorScheme}
             onImported={async (assetId) => {
+              const placement = await applyImportedImagePlacement(storyId, result.requestId, assetId, result.placement);
+              if (!placement.ok) throw new Error(placement.error);
               await pendingImageRepository.delete(result.requestId);
               setImageResults((current) => current.map((item) =>
                 item.requestId === result.requestId ? { ...item, assetId } : item));
@@ -1211,6 +1236,18 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
           {attachmentHelp}
         </Text>
       </View>
+      <ConfirmDialog
+        visible={!!pendingProviderSwitch}
+        title={t('aiChat.switchProvider.title')}
+        message={t('aiChat.switchProvider.message')}
+        confirmLabel={t('aiChat.switchProvider.confirm')}
+        onCancel={() => setPendingProviderSwitch(undefined)}
+        onConfirm={() => {
+          const nextProvider = pendingProviderSwitch;
+          setPendingProviderSwitch(undefined);
+          if (nextProvider) applyProviderSwitch(nextProvider);
+        }}
+      />
     </View>
   );
 }

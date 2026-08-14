@@ -4,6 +4,9 @@ export interface PendingAiImage {
   purpose: string;
   prompt: string;
   mimeType: string;
+  provider?: 'openai' | 'gemini';
+  model?: string;
+  placement?: import('@/lib/bridge-protocol').BridgeImagePlacement;
   blob: Blob;
   width?: number;
   height?: number;

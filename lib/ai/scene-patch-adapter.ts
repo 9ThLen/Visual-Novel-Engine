@@ -1,12 +1,11 @@
-import { getStoryImageAssets } from '@/lib/story-image-library';
 import { useAppStore } from '@/stores/use-app-store';
 import {
   applyAiScenePatch,
   describeAiScenePatch,
   validateAiScenePatch,
-  type PatchProjectContext,
   type ScenePatchDescription,
 } from './scene-patch';
+import { buildPatchProjectContext } from './project-context';
 import type { AiScenePatch } from './scene-patch-types';
 import { capturePostRevisions } from './applied-change-journal';
 import { useAiChatStore } from '@/stores/ai-chat-store';
@@ -20,13 +19,7 @@ export async function applyAiScenePatchToStore(patch: AiScenePatch): Promise<App
   const scene = state.sceneRecordsByStory[patch.storyId]?.[patch.sceneId];
   if (!scene) return { ok: false, code: 'SCENE_NOT_FOUND', errors: [`Scene '${patch.sceneId}' not found`] };
 
-  const storyScenes = Object.values(state.sceneRecordsByStory[patch.storyId] ?? {});
-  const context: PatchProjectContext = {
-    sceneIds: storyScenes.map((item) => item.id),
-    characterIds: (state.characterLibraries[patch.storyId] ?? []).map((character) => character.id),
-    variableNames: Array.from(new Set(storyScenes.flatMap((item) => Object.keys(item.sceneState.variables)))),
-    assetIds: getStoryImageAssets(patch.storyId, state.imageAssetIdsByStory, state.mediaLibrary).map((asset) => asset.id),
-  };
+  const context = buildPatchProjectContext(patch.storyId, state);
   const validation = validateAiScenePatch(scene, patch, context);
   if (!validation.ok) return validation;
 
