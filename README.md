@@ -31,8 +31,6 @@ then paste the printed pairing token into the visible provider setup panel.
 See [`tools/ai-bridge/README.md`](tools/ai-bridge/README.md) for provider-specific
 setup and switching details.
 
-For the exact Build Week contribution boundary, commit evidence, validation results, and remaining submission evidence, see [`BUILD_WEEK_CHANGES.md`](BUILD_WEEK_CHANGES.md).
-
 ## Architecture
 
 - `app/` contains Expo Router screens.

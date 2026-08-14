@@ -91,3 +91,18 @@ graphify-scope/
 
 # TokenSave code-graph index
 .tokensave/
+
+# Local IDE and Obsidian workspace state
+.run/
+wiki/.obsidian/app.json
+wiki/.obsidian/appearance.json
+wiki/.obsidian/graph.json
+wiki/.obsidian/workspace.json
+
+# Archived planning and AI-agent working notes (kept locally, not versioned)
+/plan.md
+wiki/ai-chat-*-plan.md
+wiki/ai-chat*-delegation-prompts.md
+wiki/ai-openai-*-plan.md
+wiki/consumer-showcase-plan.md
+wiki/final-migration-audit.md
