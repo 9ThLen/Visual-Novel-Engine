@@ -1,6 +1,11 @@
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import { createEmptySceneState } from '@/lib/engine/conditionUtils';
-import { toReaderScene, toSaveSlotMeta } from '@/lib/reader-scene';
+import {
+  getReaderSceneFromAccess,
+  toReaderScene,
+  toSaveSlotMeta,
+  toStableReaderScene,
+} from '@/lib/reader-scene';
 
 function makeScene(overrides: Partial<SceneRecord> = {}): SceneRecord {
   return {
@@ -64,5 +69,28 @@ describe('reader-scene projections', () => {
       thumbnailUri: 'asset-bg',
       sceneText: 'First line',
     });
+  });
+
+  // Zustand selectors compare snapshots by identity: a fresh projection per
+  // call makes useSyncExternalStore report a change on every render, and the
+  // reader dies with "Maximum update depth exceeded".
+  it('returns the same projection instance for the same stored record', () => {
+    const record = makeScene();
+
+    expect(toStableReaderScene(record)).toBe(toStableReaderScene(record));
+    expect(toStableReaderScene(makeScene())).not.toBe(toStableReaderScene(record));
+  });
+
+  it('projects a stored record into a reader scene without exposing the record', () => {
+    const record = makeScene({ timeline: [] });
+    const snapshot = { sceneRecordsByStory: { 'story-1': { 'scene-1': record } } };
+
+    const scene = getReaderSceneFromAccess(snapshot, 'story-1', 'scene-1');
+
+    expect(scene).toEqual(toReaderScene(record));
+    expect(scene).not.toHaveProperty('sceneState');
+    expect(scene).not.toHaveProperty('description');
+    expect(getReaderSceneFromAccess(snapshot, 'story-1', 'scene-1')).toBe(scene);
+    expect(getReaderSceneFromAccess(snapshot, 'story-1', 'missing')).toBeUndefined();
   });
 });

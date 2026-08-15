@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { hasReaderAudioBoundaryViolation } from './lib/reader-audio-boundary-patterns.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const files = [
@@ -22,7 +23,7 @@ for (const file of files) {
 
   const lines = readFileSync(path, 'utf8').split(/\r?\n/);
   lines.forEach((line, index) => {
-    if (line.includes('SceneRecord')) {
+    if (hasReaderAudioBoundaryViolation(line)) {
       console.log(`${file}:${index + 1}: ${line.trim()}`);
       hasViolations = true;
     }

@@ -2,12 +2,11 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { selectReaderStartSceneId, useAppStore } from '@/stores/use-app-store';
 import type { Story } from '@/lib/scene-operations';
 import type { PlaybackState } from '@/lib/engine/runtime-types';
-import type { TimelineStep, SceneRecord } from '@/lib/engine/types';
+import type { TimelineStep } from '@/lib/engine/types';
 import demoStory from '@/assets/demo-story.json';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 import { shouldReusePlaybackState } from '@/lib/reader-launch';
-import { getSceneRecordFromAccess } from '@/lib/scene-access';
-import { toReaderScene } from '@/lib/reader-scene';
+import { getReaderSceneFromAccess, type ReaderScene } from '@/lib/reader-scene';
 
 export function useReaderInitialization(
   storyIdParam?: string | string[],
@@ -16,15 +15,14 @@ export function useReaderInitialization(
   const storiesMetadata = useAppStore((s) => s.storiesMetadata);
   const currentStoryId = useAppStore((s) => s.currentStoryId);
   const playbackState = useAppStore((s) => s.playbackState);
-  // Select the raw (stable-by-reference) scene record and derive the
-  // ReaderScene via useMemo below — toReaderScene() builds a new object on
-  // every call, and returning a fresh object straight from a Zustand
-  // selector makes useSyncExternalStore think the snapshot changes on every
-  // render, which causes an infinite render loop ("Maximum update depth
-  // exceeded") even though nothing in the store actually changed.
-  const currentSceneRecord = useAppStore((s) =>
+  // The projection is reference-stable per stored scene (see
+  // getReaderSceneFromAccess) — a selector that returned a fresh object here
+  // would make useSyncExternalStore think the snapshot changes on every
+  // render, causing an infinite render loop ("Maximum update depth exceeded")
+  // even though nothing in the store actually changed.
+  const selectedReaderScene = useAppStore((s) =>
     playbackState
-      ? getSceneRecordFromAccess(s, playbackState.storyId, playbackState.currentSceneId)
+      ? getReaderSceneFromAccess(s, playbackState.storyId, playbackState.currentSceneId)
       : undefined,
   );
   // navigateToScene() hydrates the target scene's window *before* committing
@@ -36,19 +34,15 @@ export function useReaderInitialization(
   // report itself complete, and fire a bogus "no next connection" transition
   // that races the real navigation. Keep serving the last known-good record
   // for the same scene id until playbackState actually moves on.
-  const lastGoodSceneRef = useRef<{ sceneId: string; record: SceneRecord } | null>(null);
-  if (currentSceneRecord && playbackState) {
-    lastGoodSceneRef.current = { sceneId: playbackState.currentSceneId, record: currentSceneRecord };
+  const lastGoodSceneRef = useRef<{ sceneId: string; scene: ReaderScene } | null>(null);
+  if (selectedReaderScene && playbackState) {
+    lastGoodSceneRef.current = { sceneId: playbackState.currentSceneId, scene: selectedReaderScene };
   }
-  const effectiveSceneRecord =
-    currentSceneRecord ??
+  const currentReaderScene: ReaderScene | null =
+    selectedReaderScene ??
     (playbackState && lastGoodSceneRef.current?.sceneId === playbackState.currentSceneId
-      ? lastGoodSceneRef.current.record
-      : undefined);
-  const currentReaderScene = useMemo(
-    () => (effectiveSceneRecord ? toReaderScene(effectiveSceneRecord) : null),
-    [effectiveSceneRecord],
-  );
+      ? lastGoodSceneRef.current.scene
+      : null);
   const setCurrentStory = useAppStore((s) => s.loadCurrentStory);
   const updatePlaybackState = useAppStore((s) => s.updatePlaybackState);
   const hydrateReaderSceneWindow = useAppStore((s) => s.hydrateReaderSceneWindow);
