@@ -327,4 +327,79 @@ describe('importStoryArchive', () => {
     expect(staging.rolledBack).toHaveBeenCalledOnce();
     expect(staging.discarded).toHaveBeenCalledOnce();
   });
+
+  it('restores a video asset as video rather than collapsing it to other', async () => {
+    (persistAppStoreStateNow as unknown as { mockImplementation: (implementation: () => Promise<void>) => void })
+      .mockImplementation(async () => undefined);
+
+    const archivedStory: StoryMetadata = {
+      id: 'archived-video-story',
+      title: 'Video story',
+      startSceneId: 'scene-1',
+      createdAt: 2,
+      updatedAt: 2,
+      sceneCount: 1,
+    };
+    const scene = makeScene(archivedStory.id);
+    scene.timeline = [{
+      id: 'video-step',
+      blockType: 'video',
+      collapsed: false,
+      enabled: true,
+      data: { mode: 'play', layer: 'background', assetId: 'old-clip' },
+    }];
+    const objectBytes = new Uint8Array([9, 8, 7, 6]);
+    const digest = await sha256Chunks(sourceFromBytes(objectBytes).open());
+    const archiveSink = new MemoryArchiveSink();
+    await writeStoryArchive({
+      story: archivedStory,
+      payload: {
+        scenes: { 'scene-1': scene },
+        characters: [],
+        audioLibrary: [],
+        mediaMembershipIds: ['old-clip'],
+      },
+      appVersion: '1.0.0',
+      assets: [{
+        metadata: {
+          assetId: 'old-clip',
+          sourceReferences: ['old-clip'],
+          sha256: digest.sha256,
+          size: digest.size,
+          kind: 'video',
+          mimeType: 'video/mp4',
+          originalName: 'intro.mp4',
+          originalExtension: '.mp4',
+          archivePath: `objects/${digest.sha256}`,
+        },
+        source: sourceFromBytes(objectBytes),
+      }],
+    }, archiveSink);
+
+    const storage: SceneRecordStorageLike = {
+      getItem: async () => null,
+      setItem: async () => undefined,
+      removeItem: async () => undefined,
+    };
+    useAppStore.setState({
+      storiesMetadata: [],
+      sceneRecordsByStory: {},
+      sceneRecordHydration: {},
+      characterLibraries: {},
+      audioLibraries: {},
+      imageAssetIdsByStory: {},
+      mediaAssetIdsByStory: {},
+      mediaLibrary: [],
+      currentStoryId: null,
+      playbackState: null,
+    });
+
+    await importStoryArchive(sourceFromBytes(archiveSink.bytes(), 9), storage, importDependencies);
+
+    const restored = useAppStore.getState().mediaLibrary.find((asset) => asset.name === 'intro.mp4');
+    // Collapsing the kind to 'other' would drop the clip out of the editor's
+    // video list and make Story Doctor call every video reference broken.
+    expect(restored?.type).toBe('video');
+    expect(restored?.mimeType).toBe('video/mp4');
+  });
 });

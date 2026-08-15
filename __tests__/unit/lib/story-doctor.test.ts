@@ -84,6 +84,64 @@ function makeMetadata(theme?: StoryReaderTheme): StoryMetadata {
   };
 }
 
+describe('runStoryDoctor video findings', () => {
+  it('reports a video block with no clip selected', () => {
+    const report = runStoryDoctor({
+      scenes: [makeScene({
+        id: 'start',
+        isStart: true,
+        timeline: [makeStep({ id: 'video-1', blockType: 'video' }), endStep()],
+      })],
+    });
+
+    expect(report.findings.map((finding) => finding.code)).toContain('video.noAsset');
+  });
+
+  it('warns when an authored end time is at or before the start time', () => {
+    const report = runStoryDoctor({
+      scenes: [makeScene({
+        id: 'start',
+        isStart: true,
+        timeline: [
+          makeStep({
+            id: 'video-1',
+            blockType: 'video',
+            data: { mode: 'play', layer: 'background', assetId: 'clip-1', startAt: 5, endAt: 2 },
+          }),
+          endStep(),
+        ],
+      })],
+      mediaAssets: [
+        { id: 'clip-1', type: 'video', uri: 'idb://media/clip', name: 'Clip.mp4', addedAt: 0 },
+      ],
+    });
+
+    const timing = report.findings.find((finding) => finding.code === 'video.invalidTiming');
+    expect(timing).toBeDefined();
+    expect(timing?.severity).toBe('warning');
+    expect(report.findings.map((finding) => finding.code)).not.toContain('asset.missingVideo');
+  });
+
+  it('reports a video reference that no library asset satisfies', () => {
+    const report = runStoryDoctor({
+      scenes: [makeScene({
+        id: 'start',
+        isStart: true,
+        timeline: [
+          makeStep({
+            id: 'video-1',
+            blockType: 'video',
+            data: { mode: 'play', layer: 'background', assetId: 'gone' },
+          }),
+          endStep(),
+        ],
+      })],
+    });
+
+    expect(report.findings.map((finding) => finding.code)).toContain('asset.missingVideo');
+  });
+});
+
 describe('runStoryDoctor', () => {
   it('returns no findings for a clean story', () => {
     const scenes = [

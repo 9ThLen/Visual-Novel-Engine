@@ -68,6 +68,56 @@ function makeScene(overrides: Partial<SceneRecord> & { id: string }): SceneRecor
   };
 }
 
+describe('video asset usage', () => {
+  it('collects the clip and its poster from a video step', () => {
+    const scenes = [
+      makeScene({
+        id: 'scene-1',
+        timeline: [
+          makeStep({
+            id: 'video-step',
+            blockType: 'video',
+            data: {
+              mode: 'play',
+              layer: 'background',
+              assetId: 'clip-1',
+              posterAssetId: 'poster-1',
+            },
+          }),
+          makeStep({
+            id: 'video-stop',
+            blockType: 'video',
+            data: { mode: 'stop', layer: 'background' },
+          }),
+        ],
+      }),
+    ];
+
+    const references = collectAssetReferences(scenes);
+
+    expect(references).toEqual([
+      { assetId: 'clip-1', kind: 'video', sceneId: 'scene-1', stepId: 'video-step', enabled: true },
+      // The poster is a still frame and lives in the image library, so it has
+      // to count as a used background or it reads as orphaned.
+      { assetId: 'poster-1', kind: 'background', sceneId: 'scene-1', stepId: 'video-step', enabled: true },
+    ]);
+  });
+
+  it('does not let an image satisfy a video reference', () => {
+    const available: AvailableAsset[] = [
+      { id: 'clip-1', kind: 'background', name: 'Looks like a clip' },
+    ];
+    const references = [
+      { assetId: 'clip-1', kind: 'video' as const, sceneId: 'scene-1', stepId: 'video-step', enabled: true },
+    ];
+
+    const report = buildAssetUsageReport(references, available);
+
+    expect(report.brokenReferences).toHaveLength(1);
+    expect(report.unusedAssets.map((asset) => asset.id)).toEqual(['clip-1']);
+  });
+});
+
 describe('asset usage', () => {
   it('collects every supported asset reference and flags disabled steps', () => {
     const scenes = [

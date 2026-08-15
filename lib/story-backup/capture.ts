@@ -17,7 +17,7 @@ import {
 } from '@/lib/story-backup/types';
 import { useAppStore } from '@/stores/use-app-store';
 
-type AssetKind = 'image' | 'audio' | 'other';
+type AssetKind = 'image' | 'audio' | 'video' | 'other';
 
 interface PendingAsset {
   asset?: LibraryAsset;
@@ -34,7 +34,9 @@ export interface CapturedStoryBackup {
 }
 
 function usageKindToAssetKind(kind: AssetUsageKind): AssetKind {
-  return kind === 'music' || kind === 'sound' ? 'audio' : 'image';
+  if (kind === 'music' || kind === 'sound') return 'audio';
+  if (kind === 'video') return 'video';
+  return 'image';
 }
 
 function extensionFromName(name: string): string | undefined {
@@ -178,7 +180,9 @@ export async function captureStoryBackup(
         ? 'image'
         : mimeType.startsWith('audio/')
           ? 'audio'
-          : item.kind;
+          : mimeType.startsWith('video/')
+            ? 'video'
+            : item.kind;
       preparedAssets.push({
         metadata: {
           assetId: item.assetId,

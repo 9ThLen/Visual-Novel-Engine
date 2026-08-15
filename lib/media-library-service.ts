@@ -1,6 +1,6 @@
 /**
  * Media Library Service
- * Manages media assets (images, audio) for stories.
+ * Manages media assets (images, audio, video) for stories.
  *
  * NOTE: This file contains only pure functions. Store access is in
  * stores/media-library-actions.ts. This resolves the layer boundary
@@ -15,8 +15,24 @@ import {
   putMediaBlob,
 } from './idb-storage';
 import { generateAssetId } from './id-utils';
+import { STORY_BACKUP_LIMITS } from './story-backup/types';
 
-export type AssetType = 'image' | 'audio' | 'other';
+export type AssetType = 'image' | 'audio' | 'video' | 'other';
+
+/**
+ * Upper bound for an imported video, shared with the backup object limit so a
+ * story that imports a clip can always export it to `.vnebackup`.
+ */
+export const MAX_VIDEO_ASSET_BYTES = STORY_BACKUP_LIMITS.maxObjectBytes;
+
+/** The container the MVP promises; anything else has to prove itself first. */
+export const SUPPORTED_VIDEO_MIME_TYPES = ['video/mp4'] as const;
+
+export function isSupportedVideoMimeType(mimeType: string | null | undefined): boolean {
+  if (!mimeType) return false;
+  const normalized = mimeType.toLowerCase().split(';')[0].trim();
+  return (SUPPORTED_VIDEO_MIME_TYPES as readonly string[]).includes(normalized);
+}
 
 export interface LibraryAsset {
   id: string;
@@ -45,7 +61,18 @@ function getDataUriExtension(mimeType: string, type: AssetType): string {
   if (normalized === 'audio/mpeg') return 'mp3';
   if (normalized === 'audio/wav') return 'wav';
   if (normalized === 'audio/ogg') return 'ogg';
-  return type === 'image' ? 'png' : type === 'audio' ? 'mp3' : 'bin';
+  if (normalized === 'video/mp4') return 'mp4';
+  if (type === 'image') return 'png';
+  if (type === 'audio') return 'mp3';
+  if (type === 'video') return 'mp4';
+  return 'bin';
+}
+
+function defaultExtensionForType(type: AssetType): string {
+  if (type === 'image') return '.png';
+  if (type === 'audio') return '.mp3';
+  if (type === 'video') return '.mp4';
+  return '.bin';
 }
 
 function stableContentHash(value: string): string {
@@ -61,6 +88,11 @@ function stableContentHash(value: string): string {
 }
 
 function parseBase64DataUri(uri: string, type: AssetType): ParsedDataUri | null {
+  // A clip is tens of megabytes: decoding it into a base64 string would blow
+  // the JS heap on mobile. Video is imported from a File/Blob or copied on
+  // disk, never through a data URI.
+  if (type === 'video') return null;
+
   const match = uri.match(/^data:([^;,]+)(?:;[^,]*)?;base64,([\s\S]+)$/i);
   if (!match) return null;
 
@@ -99,8 +131,13 @@ function validateMediaBlob(blob: Blob, type: AssetType): void {
     ? mimeType.startsWith('image/') && mimeType !== 'image/svg+xml'
     : type === 'audio'
       ? mimeType.startsWith('audio/')
-      : mimeType.length > 0 && mimeType !== 'image/svg+xml';
+      : type === 'video'
+        ? isSupportedVideoMimeType(mimeType)
+        : mimeType.length > 0 && mimeType !== 'image/svg+xml';
   if (!valid || blob.size <= 0) throw new Error(`Invalid ${type} upload`);
+  if (type === 'video' && blob.size > MAX_VIDEO_ASSET_BYTES) {
+    throw new Error(`Video exceeds ${MAX_VIDEO_ASSET_BYTES} bytes`);
+  }
 }
 
 async function persistWebMediaBlob(
@@ -178,17 +215,45 @@ export async function addAssetToLibraryPure(
   name: string,
   type: AssetType,
   assets: LibraryAsset[],
+  metadata?: { mimeType?: string; size?: number },
 ): Promise<{ asset: LibraryAsset; assets: LibraryAsset[] }> {
   const filename = name || uri.split('/').pop() || `asset-${Date.now()}`;
-  const ext = filename.includes('.') ? '' : (type === 'image' ? '.png' : type === 'audio' ? '.mp3' : '.bin');
+  const ext = filename.includes('.') ? '' : defaultExtensionForType(type);
   const fullFilename = filename.includes('.') ? filename : `${filename}${ext}`;
+  // Two different clips can share a filename. The on-disk name therefore
+  // carries the asset id, or the second import would silently alias the first
+  // one's bytes (the name-based merge is deliberately off for video).
+  const reservedVideoAssetId = type === 'video' ? generateAssetId() : null;
+  const newAsset = (targetUri: string, assetId = reservedVideoAssetId ?? generateAssetId()): LibraryAsset => ({
+    id: assetId,
+    type,
+    uri: targetUri,
+    name: name || filename,
+    addedAt: Date.now(),
+    ...(metadata?.mimeType ? { mimeType: metadata.mimeType } : {}),
+    ...(typeof metadata?.size === 'number' ? { size: metadata.size } : {}),
+  });
+
+  if (type === 'video') {
+    if (uri.startsWith('data:')) {
+      throw new Error('Video assets cannot be imported from a data URI');
+    }
+    if (typeof metadata?.size === 'number' && metadata.size > MAX_VIDEO_ASSET_BYTES) {
+      throw new Error(`Video exceeds ${MAX_VIDEO_ASSET_BYTES} bytes`);
+    }
+  }
 
   const existingByUri = assets.find((a) => a.uri === uri);
   if (existingByUri) {
     return { asset: existingByUri, assets };
   }
 
-  const existingByName = assets.find((a) => a.name === name || a.name === filename);
+  // Matching on name alone is only safe for assets we already copied into the
+  // library directory. A freshly picked video keeps its own identity: same
+  // name and size is a duplicate hint for the UI, not proof of sameness.
+  const existingByName = type === 'video'
+    ? undefined
+    : assets.find((a) => a.name === name || a.name === filename);
   if (existingByName && existingByName.uri.includes('media-library')) {
     try {
       const info = await FileSystem.getInfoAsync(existingByName.uri);
@@ -200,13 +265,7 @@ export async function addAssetToLibraryPure(
   }
 
   if (uri.startsWith('assets/') || uri.startsWith('bundle://')) {
-    const asset: LibraryAsset = {
-      id: generateAssetId(),
-      type,
-      uri,
-      name: name || filename,
-      addedAt: Date.now(),
-    };
+    const asset = newAsset(uri);
     return { asset, assets: [...assets, asset] };
   }
 
@@ -217,13 +276,7 @@ export async function addAssetToLibraryPure(
       const targetUri = await persistWebDataUri(uri, type);
       const existingByTargetUri = assets.find((asset) => asset.uri === targetUri);
       if (existingByTargetUri) return { asset: existingByTargetUri, assets };
-      const asset: LibraryAsset = {
-        id: generatedAssetId,
-        type,
-        uri: targetUri,
-        name: name || filename,
-        addedAt: Date.now(),
-      };
+      const asset = newAsset(targetUri, generatedAssetId);
       return { asset, assets: [...assets, asset] };
     }
 
@@ -240,25 +293,13 @@ export async function addAssetToLibraryPure(
     if (!await hasMediaBlob(persisted.storageKey)) {
       await putMediaBlob(persisted.storageKey, persisted.blob);
     }
-    const asset: LibraryAsset = {
-      id: generatedAssetId,
-      type,
-      uri: targetUri,
-      name: name || filename,
-      addedAt: Date.now(),
-    };
+    const asset = newAsset(targetUri, generatedAssetId);
     return { asset, assets: [...assets, asset] };
   }
 
   if (parsedDataUri) {
     if (!FileSystem.documentDirectory) {
-      const asset: LibraryAsset = {
-        id: generateAssetId(),
-        type,
-        uri,
-        name: name || filename,
-        addedAt: Date.now(),
-      };
+      const asset = newAsset(uri);
       return { asset, assets: [...assets, asset] };
     }
 
@@ -277,13 +318,7 @@ export async function addAssetToLibraryPure(
     try {
       const checkTarget = await FileSystem.getInfoAsync(targetPath);
       if (checkTarget.exists) {
-        const asset: LibraryAsset = {
-          id: generateAssetId(),
-          type,
-          uri: targetPath,
-          name: name || filename,
-          addedAt: Date.now(),
-        };
+        const asset = newAsset(targetPath);
         return { asset, assets: [...assets, asset] };
       }
 
@@ -292,13 +327,7 @@ export async function addAssetToLibraryPure(
       });
       const verifyInfo = await FileSystem.getInfoAsync(targetPath);
       if (verifyInfo.exists && verifyInfo.size > 0) {
-        const asset: LibraryAsset = {
-          id: generateAssetId(),
-          type,
-          uri: targetPath,
-          name: name || filename,
-          addedAt: Date.now(),
-        };
+        const asset = newAsset(targetPath);
         return { asset, assets: [...assets, asset] };
       }
     } catch {
@@ -306,28 +335,17 @@ export async function addAssetToLibraryPure(
   }
 
   if (uri.startsWith('data:')) {
-    const asset: LibraryAsset = {
-      id: generateAssetId(),
-      type,
-      uri,
-      name: name || filename,
-      addedAt: Date.now(),
-    };
+    const asset = newAsset(uri);
     return { asset, assets: [...assets, asset] };
   }
 
   if (!FileSystem.documentDirectory) {
-    const asset: LibraryAsset = {
-      id: generateAssetId(),
-      type,
-      uri,
-      name: name || filename,
-      addedAt: Date.now(),
-    };
+    const asset = newAsset(uri);
     return { asset, assets: [...assets, asset] };
   }
 
-  const targetPath = `${FileSystem.documentDirectory}media-library/${type}s/${fullFilename}`;
+  const targetFilename = reservedVideoAssetId ? `${reservedVideoAssetId}-${fullFilename}` : fullFilename;
+  const targetPath = `${FileSystem.documentDirectory}media-library/${type}s/${targetFilename}`;
   const dirPath = `${FileSystem.documentDirectory}media-library/${type}s/`;
 
   try {
@@ -337,24 +355,38 @@ export async function addAssetToLibraryPure(
 
   const checkTarget = await FileSystem.getInfoAsync(targetPath);
   if (checkTarget.exists) {
-    const asset: LibraryAsset = {
-      id: generateAssetId(),
-      type,
-      uri: targetPath,
-      name: name || filename,
-      addedAt: Date.now(),
-    };
+    const asset = newAsset(targetPath);
     return { asset, assets: [...assets, asset] };
   }
 
   let copySucceeded = false;
+  let copiedSize: number | undefined;
   try {
     await FileSystem.copyAsync({ from: uri, to: targetPath });
     const verifyInfo = await FileSystem.getInfoAsync(targetPath);
     if (verifyInfo.exists && verifyInfo.size > 0) {
+      // The picker's metadata can be missing or wrong, so the copied bytes are
+      // the only trustworthy measure of how big this clip really is.
+      if (type === 'video' && verifyInfo.size > MAX_VIDEO_ASSET_BYTES) {
+        try {
+          await FileSystem.deleteAsync(targetPath, { idempotent: true });
+        } catch {
+        }
+        throw new Error(`Video exceeds ${MAX_VIDEO_ASSET_BYTES} bytes`);
+      }
+      copiedSize = verifyInfo.size;
       copySucceeded = true;
     }
-  } catch {
+  } catch (copyError) {
+    // Reading a clip back as base64 would defeat the whole point of copying it
+    // on disk, so a failed video copy is reported instead of worked around.
+    if (type === 'video') {
+      try {
+        await FileSystem.deleteAsync(targetPath, { idempotent: true });
+      } catch {
+      }
+      throw copyError instanceof Error ? copyError : new Error('Could not copy video into the media library');
+    }
     try {
       const base64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
@@ -371,22 +403,19 @@ export async function addAssetToLibraryPure(
   }
 
   if (copySucceeded) {
-    const asset: LibraryAsset = {
-      id: generateAssetId(),
-      type,
-      uri: targetPath,
-      name: name || filename,
-      addedAt: Date.now(),
-    };
-    return { asset, assets: [...assets, asset] };
+    const asset = newAsset(targetPath);
+    const sized = typeof copiedSize === 'number' ? { ...asset, size: copiedSize } : asset;
+    return { asset: sized, assets: [...assets, sized] };
   }
 
-  const asset: LibraryAsset = {
-    id: generateAssetId(),
-    type,
-    uri,
-    name: name || filename,
-    addedAt: Date.now(),
-  };
+  if (type === 'video') {
+    try {
+      await FileSystem.deleteAsync(targetPath, { idempotent: true });
+    } catch {
+    }
+    throw new Error('Could not copy video into the media library');
+  }
+
+  const asset = newAsset(uri);
   return { asset, assets: [...assets, asset] };
 }

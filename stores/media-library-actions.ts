@@ -36,9 +36,10 @@ export async function addAssetToLibrary(
   uri: string,
   name: string,
   type: LibraryAsset['type'],
+  metadata?: { mimeType?: string; size?: number },
 ): Promise<LibraryAsset> {
   const assets = useAppStore.getState().mediaLibrary;
-  const result = await addAssetToLibraryPure(uri, name, type, assets);
+  const result = await addAssetToLibraryPure(uri, name, type, assets, metadata);
   useAppStore.getState().setMediaLibrary(result.assets);
   return result.asset;
 }
