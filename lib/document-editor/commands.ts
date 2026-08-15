@@ -10,6 +10,14 @@ export const DOCUMENT_COMMANDS: DocumentCommand[] = [
     scope: 'scene',
   },
   {
+    id: 'video',
+    blockType: 'video',
+    title: 'Video',
+    aliases: ['відео', 'ролик', 'video', 'movie', 'clip'],
+    description: 'Play or stop a scene video',
+    scope: 'scene',
+  },
+  {
     id: 'character',
     blockType: 'character',
     title: 'Character',

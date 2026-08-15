@@ -8,6 +8,8 @@ export default defineConfig({
     alias: {
       // Mock native/external packages for jsdom (must come before @ alias)
       'react-native': path.resolve(__dirname, '__mocks__/react-native.ts'),
+      'expo': path.resolve(__dirname, '__mocks__/expo.ts'),
+      'expo-video': path.resolve(__dirname, '__mocks__/expo-video.ts'),
       '@react-navigation/native': path.resolve(__dirname, '__mocks__/react-navigation-native.ts'),
       'expo-audio': path.resolve(__dirname, '__mocks__/expo-audio.ts'),
       'expo-image': path.resolve(__dirname, '__mocks__/expo-image.ts'),

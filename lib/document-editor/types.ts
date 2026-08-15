@@ -6,6 +6,7 @@ export type DocumentBlockKind = 'text' | 'dialogue' | 'choice' | 'technical';
 
 export type DocumentCommandId =
   | 'background'
+  | 'video'
   | 'character'
   | 'newScene'
   | 'music'

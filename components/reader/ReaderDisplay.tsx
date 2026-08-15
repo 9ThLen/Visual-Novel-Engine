@@ -14,11 +14,12 @@ import { PARALLAX_LAYERS, useParallaxLayer } from '@/components/reader/useParall
 import { useShakeOffset } from '@/components/reader/useShakeOffset';
 import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
-import type { ActiveEffect, CameraRuntimeState } from '@/lib/engine/runtime-types';
+import type { ActiveEffect, CameraRuntimeState, RuntimeVideoState } from '@/lib/engine/runtime-types';
 import type { InteractiveObject } from '@/lib/interactive-types';
 import { richTextAlignment, richTextLength, stripRichText } from '@/lib/rich-text';
 import { useTypewriter } from '@/hooks/useTypewriter';
 import type { StoryReaderLayoutPreset } from '@/lib/story-theme';
+import { SceneVideoLayer } from '@/components/reader/SceneVideoLayer';
 
 const DIALOGUE_LINE_HEIGHT_MULTIPLIER = 1.65;
 const DEFAULT_READER_LINE_HEIGHT_SCALE = 1.2;
@@ -48,6 +49,7 @@ function handleBackgroundError(err: unknown) {
 interface ReaderDisplayProps {
   backgroundAnimatedStyle: StyleProp<ViewStyle>;
   bgSource: ImageSource | null;
+  activeVideo?: RuntimeVideoState | null;
   characterAnimatedStyle: StyleProp<ViewStyle>;
   choices: ReaderChoice[];
   colors: ReturnType<typeof useColors>;
@@ -120,11 +122,13 @@ function TypewriterDialoguePanel({ fullText, textSpeed, typewriterEnabled,
 
 function ReaderBackground({
   bgSource,
+  activeVideo,
   animatedStyle,
   fallbackColor,
   parallaxEnabled,
 }: {
   bgSource: ImageSource | null;
+  activeVideo?: RuntimeVideoState | null;
   animatedStyle: StyleProp<ViewStyle>;
   fallbackColor: string;
   parallaxEnabled: boolean;
@@ -151,6 +155,7 @@ function ReaderBackground({
         ) : (
           <View style={fallbackStyle} />
         )}
+        {activeVideo ? <SceneVideoLayer key={activeVideo.stepId} video={activeVideo} /> : null}
       </Animated.View>
     </Animated.View>
   );
@@ -226,6 +231,7 @@ function ReaderCharacters({
 export const ReaderDisplay = React.memo(function ReaderDisplay({
   backgroundAnimatedStyle,
   bgSource,
+  activeVideo,
   characterAnimatedStyle,
   choices,
   colors,
@@ -310,6 +316,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
     <>
       <ReaderBackground
         bgSource={bgSource}
+        activeVideo={activeVideo}
         animatedStyle={[backgroundAnimatedStyle, cameraTransformStyle]}
         fallbackColor={fallbackColor}
         parallaxEnabled={parallaxEnabled}

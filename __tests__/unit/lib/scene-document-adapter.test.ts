@@ -13,6 +13,7 @@ import {
   createTextStep,
   createTransitionStep,
   createVariableStep,
+  createVideoStep,
 } from '@/lib/engine/event-factory';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import {
@@ -55,6 +56,7 @@ describe('scene document adapter', () => {
   it('roundtrips all engine block types without converting them to text', () => {
     const steps = [
       createBackgroundStep({ assetId: 'bg', transition: 'fade', duration: 500 }),
+      createVideoStep({ assetId: 'video', posterAssetId: 'poster', startAt: 1, endAt: 4 }),
       createCharacterStep({ characterId: 'char', spriteId: 'smile' }),
       createTextStep({ content: 'Narration' }),
       createDialogueStep(),
@@ -83,6 +85,14 @@ describe('scene document adapter', () => {
       targetLabel: 'checkpoint',
       condition: { variableName: 'flag', operator: '==', value: true },
       elseTargetLabel: 'fallback',
+    });
+    expect(saved.timeline.find((step) => step.blockType === 'video')?.data).toMatchObject({
+      mode: 'play',
+      layer: 'background',
+      assetId: 'video',
+      posterAssetId: 'poster',
+      startAt: 1,
+      endAt: 4,
     });
     expect(saved.timeline).not.toContainEqual(expect.objectContaining({ blockType: 'text', data: expect.objectContaining({ content: '[character]' }) }));
   });

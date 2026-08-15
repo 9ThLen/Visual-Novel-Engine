@@ -12,6 +12,7 @@ import {
   createTextStep,
   createTransitionStep,
   createVariableStep,
+  createVideoStep,
 } from '@/lib/engine/event-factory';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import { normalizePlateDocumentScene } from '@/lib/vn-plate-editor/scene-normalizer';
@@ -1011,5 +1012,77 @@ describe('Plate scene serializer roundtrip', () => {
     expect(html).toContain('var withoutBadge = stripLeadingSpeakerLabel(raw, speaker);');
     expect(html).toContain('return stripLeadingSpeakerLabel(withoutBadge, speaker);');
     expect(html).not.toContain("raw.replace(/^.*?:\\\\s*/, '')");
+  });
+
+  it('preserves a video step payload through the Plate bridge', () => {
+    const videoStep = withStepMeta(
+      createVideoStep({
+        assetId: 'video_intro',
+        posterAssetId: 'poster_intro',
+        startAt: 2,
+        endAt: 8,
+        fit: 'contain',
+        playbackRate: 1.5,
+      }),
+      'step_video',
+    );
+
+    const saved = roundtrip(sceneWithTimeline([videoStep]));
+    const savedStep = saved.timeline[0];
+
+    expect(savedStep.id).toBe('step_video');
+    expect(savedStep.blockType).toBe('video');
+    expect(savedStep.data).toMatchObject({
+      mode: 'play',
+      layer: 'background',
+      assetId: 'video_intro',
+      posterAssetId: 'poster_intro',
+      fit: 'contain',
+      playbackRate: 1.5,
+      startAt: 2,
+      endAt: 8,
+      muted: true,
+      loop: true,
+    });
+    expect(savedStep.conditions).toEqual(videoStep.conditions);
+    expect(savedStep.enabled).toBe(false);
+  });
+
+  it('renders the video block with its full payload instead of a generic void block', () => {
+    const scene = sceneRecordToPlateDocument(sceneWithTimeline([
+      withId(createVideoStep({ assetId: 'video_intro', startAt: 2, endAt: 8 }), 'step_video'),
+    ]), []);
+
+    const html = createVNPlateEditorHtml({
+      editorId: 'editor_video_block',
+      scene,
+      characters: [],
+      backgroundAssets: [],
+      isPhone: false,
+    });
+
+    expect(html).toContain('data-command="video"');
+    expect(html).toContain('class="void-block video-block"');
+    expect(html).not.toContain('<div class="void-title">/video</div><div class="void-summary">New block</div>');
+
+    // The in-frame serializer reads the block back out of this attribute, so
+    // the whole normalized payload has to survive the host -> iframe hop.
+    const payloadMatch = /data-video="([^"]*)"/.exec(html);
+    expect(payloadMatch).not.toBeNull();
+    const payload = JSON.parse(payloadMatch![1].replace(/&quot;/g, '"'));
+    expect(payload).toMatchObject({
+      mode: 'play',
+      layer: 'background',
+      assetId: 'video_intro',
+      startAt: 2,
+      endAt: 8,
+      muted: true,
+      loop: true,
+    });
+
+    // ...and the in-frame code that reads and writes it has to be there.
+    expect(html).toContain("if (commandId === 'video')");
+    expect(html).toContain('function videoDataFromNode(node)');
+    expect(html).toContain('applyVideoData(block, defaultVideoData());');
   });
 });

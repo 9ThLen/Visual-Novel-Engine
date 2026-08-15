@@ -14,10 +14,12 @@ import type {
 } from '@/lib/document-editor/types';
 import { generateId } from '@/lib/id-utils';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
+import { normalizeVideoData } from '@/lib/engine/video-utils';
 import type { BlockType, CharacterBlockData, TimelineStep } from '@/lib/engine/types';
 
 const technicalCommandIds = new Set<DocumentCommandId>([
   'background',
+  'video',
   'character',
   'newScene',
   'music',
@@ -34,6 +36,7 @@ const technicalCommandIds = new Set<DocumentCommandId>([
 
 const commandIdByBlockType: Record<BlockType, DocumentCommandId> = {
   background: 'background',
+  video: 'video',
   character: 'character',
   text: 'effect',
   dialogue: 'effect',
@@ -103,7 +106,9 @@ function normalizeTechnicalBlock(block: DocumentTechnicalBlock, characters: Char
       : commandIdByBlockType[blockType] || 'effect';
     const normalizedStep = blockType === 'transition'
       ? { ...step, data: normalizeTransitionData(step.data) }
-      : step;
+      : blockType === 'video'
+        ? { ...step, data: normalizeVideoData(step.data) }
+        : step;
     return {
       ...block,
       commandId,

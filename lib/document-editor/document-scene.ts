@@ -32,7 +32,9 @@ import type {
   StopEffectBlockData,
   TextBlockData,
   TimelineStep,
+  VideoBlockData,
 } from '@/lib/engine/types';
+import { normalizeVideoData } from '@/lib/engine/video-utils';
 import { findDocumentCommand, searchDocumentCommands } from './commands';
 import type {
   DocumentBlock,
@@ -67,6 +69,7 @@ function isDialogueShorthandFalsePositive(speakerName: string, text: string): bo
 
 function commandIdForStep(step: TimelineStep): DocumentCommandId {
   if (step.blockType === 'background') return 'background';
+  if (step.blockType === 'video') return 'video';
   if (step.blockType === 'character') return 'character';
   if (step.blockType === 'music') return 'music';
   if (step.blockType === 'sound') return 'sound';
@@ -87,6 +90,17 @@ function technicalSummary(step: TimelineStep, characters: Character[]): { label:
       label: 'Фон',
       summary: data.assetId ? `${data.assetId} · ${data.transition}` : 'не вибрано',
       warning: data.assetId ? undefined : 'Потрібно вибрати фон',
+    };
+  }
+
+  if (step.blockType === 'video') {
+    const data = normalizeVideoData(step.data as VideoBlockData);
+    return {
+      label: data.mode === 'stop' ? 'Зупинити відео' : 'Відео',
+      summary: data.mode === 'stop'
+        ? data.layer
+        : `${data.assetId || 'не вибрано'} · ${data.layer} · ${data.fit}`,
+      warning: data.mode === 'play' && !data.assetId ? 'Потрібно вибрати відео' : undefined,
     };
   }
 

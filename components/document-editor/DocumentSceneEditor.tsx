@@ -42,7 +42,7 @@ import {
   computeMountDelta,
   seedMountedSceneIds,
 } from '@/lib/document-editor/scene-mount-range';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatCommand, VNPlateFormatState } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatCommand, VNPlateFormatState, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { DocumentScene } from '@/lib/document-editor/types';
@@ -79,6 +79,7 @@ interface DocumentSceneEditorProps {
   characters: Character[];
   backgroundAssets: VNPlateBackgroundAsset[];
   audioAssets: VNPlateAudioAsset[];
+  videoAssets?: VNPlateVideoAsset[];
   protectedCharacterIds?: string[];
   onSave: (documentScenes: DocumentScene[], characters: Character[]) => void;
   onCreateNextScene: (sourceSceneId: string, documentScenes: DocumentScene[], characters: Character[]) => void;
@@ -86,6 +87,7 @@ interface DocumentSceneEditorProps {
   onDeleteScene?: (sceneId: string) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
+  onPickVideoAsset?: () => Promise<{ asset: VNPlateVideoAsset | null; error?: 'tooLarge' | 'unsupportedType' | 'failed' }>;
   onBack?: () => void;
   onPreview?: (sceneId: string) => void;
   onGallery?: () => void;
@@ -143,12 +145,14 @@ export function DocumentSceneEditor({
   characters,
   backgroundAssets,
   audioAssets,
+  videoAssets,
   onSave,
   onCreateNextScene,
   onDuplicateScene,
   onDeleteScene,
   onUploadBackgroundAsset,
   onUploadAudioAsset,
+  onPickVideoAsset,
   onBack,
   onPreview,
   onGallery,
@@ -817,6 +821,7 @@ export function DocumentSceneEditor({
               characters={localCharacters}
               backgroundAssets={backgroundAssets}
               audioAssets={audioAssets}
+              videoAssets={videoAssets}
               storyScenes={storySceneRefs}
               branchInfo={branchInfo}
               onSelectChoiceOption={stableSelectChoiceOption}
@@ -833,6 +838,7 @@ export function DocumentSceneEditor({
               onRequestDeleteScene={getOnRequestDeleteScene(documentScene.sceneId)}
               onUploadBackgroundAsset={onUploadBackgroundAsset}
               onUploadAudioAsset={onUploadAudioAsset}
+              onPickVideoAsset={onPickVideoAsset}
               registerEditorRef={getRegisterEditorRef(documentScene.sceneId)}
               onHistoryStateChange={getOnHistoryStateChange(documentScene.sceneId)}
               onFormatStateChange={getOnFormatStateChange(documentScene.sceneId)}

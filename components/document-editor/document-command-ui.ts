@@ -3,6 +3,7 @@ import type { DocumentCommand } from '@/lib/document-editor/types';
 
 export const documentCommandIcons: Record<DocumentCommand['id'], IconSymbolName> = {
   background: 'image',
+  video: 'movie',
   character: 'character',
   newScene: 'document',
   music: 'music',

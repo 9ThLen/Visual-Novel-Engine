@@ -1,10 +1,11 @@
 import type { Character } from '@/lib/character-types';
 import { branchColorForOptionIndex, branchShadowColor } from '@/lib/document-editor/branch-colors';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
-import type { BackgroundBlockData, CharacterBlockData, GotoBlockData, InteractiveObjectBlockData, LabelBlockData, StopEffectBlockData } from '@/lib/engine/types';
+import type { BackgroundBlockData, CharacterBlockData, GotoBlockData, InteractiveObjectBlockData, LabelBlockData, NormalizedVideoBlockData, StopEffectBlockData } from '@/lib/engine/types';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
+import { normalizeVideoData } from '@/lib/engine/video-utils';
 import type { Language } from '@/lib/translations';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateSceneRef } from './types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateSceneRef, VNPlateVideoAsset } from './types';
 import { escapeHtml } from './embedded-utils';
 import { parseRichText, richTextAlignment } from '@/lib/rich-text';
 
@@ -338,6 +339,44 @@ function stopEffectBlockToHtml(block: Extract<DocumentBlock, { kind: 'technical'
   ].join('');
 }
 
+const VIDEO_LAYER_LABELS: Record<string, string> = {
+  background: 'Фон',
+  cutscene: 'Катсцена',
+};
+
+function formatVideoSeconds(value: number): string {
+  return `${Number(value.toFixed(2))}`;
+}
+
+export function videoSummaryText(
+  data: NormalizedVideoBlockData,
+  videoAssets: VNPlateVideoAsset[] = [],
+): string {
+  const layer = VIDEO_LAYER_LABELS[data.layer] || data.layer;
+  if (data.mode === 'stop') return `Зупинити · ${layer}`;
+  const known = data.assetId ? videoAssets.find((item) => item.id === data.assetId) : undefined;
+  const asset = known?.name || data.assetId || 'не вибрано';
+  const timing = data.startAt > 0 || data.endAt !== null
+    ? ` · ${formatVideoSeconds(data.startAt)}–${data.endAt === null ? 'кінець' : formatVideoSeconds(data.endAt)}s`
+    : '';
+  return `${layer} · ${asset} · ${data.fit}${timing}`;
+}
+
+function videoBlockToHtml(
+  block: Extract<DocumentBlock, { kind: 'technical' }>,
+  videoAssets: VNPlateVideoAsset[],
+): string {
+  // The whole normalized payload rides on the node so the in-frame serializer
+  // can hand it back without losing fields it has no control for yet.
+  const data = normalizeVideoData(block.step?.data);
+  return [
+    `<div class="void-block video-block" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="video" data-video="${escapeHtml(JSON.stringify(data))}">`,
+    '<span class="void-title">/video</span>',
+    `<span class="background-asset">${escapeHtml(videoSummaryText(data, videoAssets))}</span>`,
+    '</div>',
+  ].join('');
+}
+
 function interactiveObjectBlockToHtml(block: Extract<DocumentBlock, { kind: 'technical' }>): string {
   const data = block.step.data as InteractiveObjectBlockData;
   const position = data.position || { x: 50, y: 50, width: 10, height: 10 };
@@ -365,6 +404,7 @@ export function blockToHtml(
   audioAssets: VNPlateAudioAsset[] = [],
   scenes: VNPlateSceneRef[] = [],
   language: Language = 'en',
+  videoAssets: VNPlateVideoAsset[] = [],
 ): string {
   if (block.kind === 'text') {
     return `<p data-kind="text" data-id="${escapeHtml(block.id)}"${blockAlignmentStyle(block.parts, block.content)}>${inlinePartsToHtml(block.parts, block.content, audioAssets)}</p>`;
@@ -442,6 +482,10 @@ export function blockToHtml(
     return stopEffectBlockToHtml(block);
   }
 
+  if (block.blockType === 'video') {
+    return videoBlockToHtml(block, videoAssets);
+  }
+
   if (block.blockType === 'interactive_object') {
     return interactiveObjectBlockToHtml(block);
   }
@@ -476,6 +520,7 @@ export function sceneToEditorHtml(
   characters: Character[] = [],
   scenes: VNPlateSceneRef[] = [],
   language: Language = 'en',
+  videoAssets: VNPlateVideoAsset[] = [],
 ): string {
   const blocks = scene.blocks.length
     ? scene.blocks
@@ -483,8 +528,8 @@ export function sceneToEditorHtml(
   const colorById = new Map(characters.map((character) => [character.id, character.color]));
   return blocks.map((block) => {
     if (block.kind === 'dialogue' && block.characterId && !block.tokenColor) {
-      return blockToHtml({ ...block, tokenColor: colorById.get(block.characterId) }, backgroundAssets, audioAssets, scenes, language);
+      return blockToHtml({ ...block, tokenColor: colorById.get(block.characterId) }, backgroundAssets, audioAssets, scenes, language, videoAssets);
     }
-    return blockToHtml(block, backgroundAssets, audioAssets, scenes, language);
+    return blockToHtml(block, backgroundAssets, audioAssets, scenes, language, videoAssets);
   }).join('');
 }

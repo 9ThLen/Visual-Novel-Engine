@@ -237,6 +237,27 @@ export function createEmbeddedStyles(): string {
     .stop-effect-block:hover { background: #fee2e2; }
     .stop-effect-block .void-title,
     .stop-effect-block .background-asset { font-size: 13px; }
+    .video-block {
+      display: inline-flex;
+      min-height: 0;
+      margin: 4px 2px;
+      padding: 3px 8px;
+      gap: 6px;
+      border-color: #99f6e4;
+      border-radius: 6px;
+      background: #f0fdfa;
+      vertical-align: baseline;
+    }
+    .video-block .void-title,
+    .video-block .background-asset { font-size: 13px; }
+    .video-block { cursor: pointer; }
+    .video-block:hover { background: #ccfbf1; }
+    .video-popover-error:empty { display: none; }
+    .video-popover-error {
+      margin: 0;
+      font-size: 12px;
+      color: #dc2626;
+    }
     .interactive-object-block {
       display: flex;
       width: 100%;

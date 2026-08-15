@@ -274,6 +274,18 @@ function pressKey(key: string) {
   document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
 }
 
+/**
+ * Every evaluated harness script keeps its own document-level listeners, and
+ * the harness cannot remove them. A click therefore reaches earlier instances
+ * too, so the newest request — the one owned by the script under test — is the
+ * last one posted.
+ */
+function lastPickVideoMessage(messages: unknown[]) {
+  return messages.filter((message): message is { type: string; requestId: string } => {
+    return Boolean(message && typeof message === 'object' && (message as { type?: string }).type === 'pickVideoAsset');
+  }).at(-1);
+}
+
 function saveMessages(messages: unknown[]) {
   return messages.filter((message): message is { type: string; scene: { blocks: { id: string }[] } } => {
     return Boolean(message && typeof message === 'object' && (message as { type?: string }).type === 'save');
@@ -794,6 +806,199 @@ describe('createEmbeddedScript', () => {
       expect(transitionBlock.classList.contains('transition-block')).toBe(true);
       expect(transitionBlock.dataset.command).toBe('transition');
       expect(transitionBlock.dataset.mode).toBe('end');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('inserts a /video block that serializes back into a real video step', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('video');
+
+      const videoBlock = anchorParagraph.nextElementSibling as HTMLElement;
+      expect(videoBlock.classList.contains('video-block')).toBe(true);
+      expect(videoBlock.dataset.command).toBe('video');
+      expect(videoBlock.textContent).not.toContain('New block');
+
+      api.saveNow();
+      const lastSave = saveMessages(harness.messages).at(-1);
+      const saved = lastSave?.scene.blocks.find((item) => item.id === videoBlock.dataset.id) as unknown as {
+        blockType: string;
+        step: { blockType: string; data: Record<string, unknown> } | null;
+      };
+
+      // Without a serializer branch the frame used to hand back step: null, so
+      // the block was rebuilt from defaults on every normalization pass.
+      expect(saved.blockType).toBe('video');
+      expect(saved.step).not.toBeNull();
+      expect(saved.step?.blockType).toBe('video');
+      expect(saved.step?.data).toMatchObject({
+        mode: 'play',
+        layer: 'background',
+        assetId: null,
+        fit: 'cover',
+        muted: true,
+        loop: true,
+      });
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('asks the host to pick a video without sending any bytes', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      placeCaretInNewParagraph();
+      api.insertCommand('video');
+
+      // Inserting the block opens its popover so the author can choose a clip.
+      const popover = document.querySelector('.video-popover') as HTMLElement;
+      expect(popover).not.toBeNull();
+
+      (popover.querySelector('[data-action="import-video"]') as HTMLButtonElement).click();
+
+      const pickMessage = lastPickVideoMessage(harness.messages);
+      expect(pickMessage).toBeDefined();
+      // The whole point of the host-side picker: an intent, never bytes.
+      expect(Object.keys(pickMessage as object).sort()).toEqual(['editorId', 'requestId', 'source', 'type']);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('writes the picked asset id into the block when the host replies', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('video');
+      const videoBlock = anchorParagraph.nextElementSibling as HTMLElement;
+
+      const popover = document.querySelector('.video-popover') as HTMLElement;
+      (popover.querySelector('[data-action="import-video"]') as HTMLButtonElement).click();
+      const pickMessage = lastPickVideoMessage(harness.messages);
+
+      window.dispatchEvent(new MessageEvent('message', {
+        data: {
+          source: 'vn-plate-host',
+          editorId: 'editor_void_blocks',
+          type: 'videoAssetPicked',
+          requestId: pickMessage?.requestId,
+          asset: { id: 'asset_clip', name: 'Intro.mp4' },
+        },
+      }));
+
+      expect(JSON.parse(videoBlock.dataset.video || '{}').assetId).toBe('asset_clip');
+      expect(videoBlock.textContent).toContain('Intro.mp4');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('surfaces a rejected import instead of silently doing nothing', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      placeCaretInNewParagraph();
+      api.insertCommand('video');
+
+      const popover = document.querySelector('.video-popover') as HTMLElement;
+      (popover.querySelector('[data-action="import-video"]') as HTMLButtonElement).click();
+      const pickMessage = lastPickVideoMessage(harness.messages);
+
+      window.dispatchEvent(new MessageEvent('message', {
+        data: {
+          source: 'vn-plate-host',
+          editorId: 'editor_void_blocks',
+          type: 'videoAssetPicked',
+          requestId: pickMessage?.requestId,
+          asset: null,
+          error: 'tooLarge',
+        },
+      }));
+
+      expect(popover.querySelector('.video-popover-error')?.textContent).toContain('64');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('lets the author turn a video block into a stop step', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('video');
+      const videoBlock = anchorParagraph.nextElementSibling as HTMLElement;
+
+      const popover = document.querySelector('.video-popover') as HTMLElement;
+      const modeSelect = popover.querySelector('#videoMode') as HTMLSelectElement;
+      expect(modeSelect).not.toBeNull();
+
+      modeSelect.value = 'stop';
+      modeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      // Playback options mean nothing for a stop step and step aside.
+      expect((popover.querySelector('#videoAsset') as HTMLElement).hidden).toBe(true);
+
+      (popover.querySelector('[data-action="save-video"]') as HTMLButtonElement).click();
+
+      const data = JSON.parse(videoBlock.dataset.video || '{}');
+      expect(data.mode).toBe('stop');
+      expect(data.layer).toBe('background');
+      expect(videoBlock.textContent).toContain('Зупинити');
+
+      api.saveNow();
+      const lastSave = saveMessages(harness.messages).at(-1);
+      const saved = lastSave?.scene.blocks.find((item) => item.id === videoBlock.dataset.id) as unknown as {
+        step: { data: { mode: string } } | null;
+      };
+      expect(saved.step?.data.mode).toBe('stop');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('keeps an authored video payload when the block round-trips through the frame', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('video');
+
+      const videoBlock = anchorParagraph.nextElementSibling as HTMLElement;
+      videoBlock.dataset.video = JSON.stringify({
+        mode: 'play',
+        layer: 'background',
+        assetId: 'video_intro',
+        posterAssetId: 'poster_intro',
+        fit: 'contain',
+        playbackRate: 1.5,
+        startAt: 2,
+        endAt: 8,
+        muted: true,
+        volume: 0,
+        loop: true,
+        skippableAfterMs: null,
+      });
+
+      api.saveNow();
+      const lastSave = saveMessages(harness.messages).at(-1);
+      const saved = lastSave?.scene.blocks.find((item) => item.id === videoBlock.dataset.id) as unknown as {
+        step: { data: Record<string, unknown> } | null;
+      };
+
+      expect(saved.step?.data).toMatchObject({
+        assetId: 'video_intro',
+        posterAssetId: 'poster_intro',
+        fit: 'contain',
+        playbackRate: 1.5,
+        startAt: 2,
+        endAt: 8,
+      });
     } finally {
       harness.cleanup();
     }

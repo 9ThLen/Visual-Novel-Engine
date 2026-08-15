@@ -41,6 +41,9 @@ const EMBEDDED_SCRIPT_BODY = `
     var activeStopEffectBlock = null;
     var stopEffectPopover = null;
     var stopEffectDraft = null;
+    var videoPopover = null;
+    var activeVideoBlock = null;
+    var pendingVideoPicks = {};
     var activeInteractiveObjectBlock = null;
     var interactiveObjectPopover = null;
     var interactiveObjectDraft = null;
@@ -56,6 +59,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
     var backgroundAssets = Array.isArray(payload.backgroundAssets) ? payload.backgroundAssets : [];
     var audioAssets = Array.isArray(payload.audioAssets) ? payload.audioAssets : [];
+    var videoAssets = Array.isArray(payload.videoAssets) ? payload.videoAssets : [];
     var storyScenes = Array.isArray(payload.scenes) ? payload.scenes : [];
     var characters = Array.isArray(payload.characters) ? payload.characters.slice() : [];
     var characterPopover = null;
@@ -2642,6 +2646,222 @@ const EMBEDDED_SCRIPT_BODY = `
       renderStopEffectBlockContent(node);
     }
 
+    var VIDEO_LAYER_LABELS = { background: 'Фон', cutscene: 'Катсцена' };
+    var VIDEO_PICK_ERRORS = {
+      tooLarge: 'Файл більший за 64 МіБ.',
+      unsupportedType: 'Підтримується лише MP4 (H.264 + AAC).',
+      failed: 'Не вдалося імпортувати відео.'
+    };
+
+    function renderAllVideoBlocks() {
+      Array.prototype.slice.call(editor.querySelectorAll('.video-block')).forEach(function(node) {
+        renderVideoBlockContent(node);
+      });
+    }
+
+    function defaultVideoData() {
+      return {
+        mode: 'play',
+        layer: 'background',
+        assetId: null,
+        posterAssetId: null,
+        fit: 'cover',
+        playbackRate: 1,
+        startAt: 0,
+        endAt: null,
+        muted: true,
+        volume: 0,
+        loop: true,
+        skippableAfterMs: null
+      };
+    }
+
+    // The host normalizes video data on the way in and out (normalizeVideoData),
+    // so the frame only has to carry the payload without dropping fields.
+    function videoDataFromNode(node) {
+      var raw = node.dataset.video;
+      if (!raw) return defaultVideoData();
+      try {
+        var parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return defaultVideoData();
+        var data = defaultVideoData();
+        Object.keys(parsed).forEach(function(key) { data[key] = parsed[key]; });
+        return data;
+      } catch (err) {
+        return defaultVideoData();
+      }
+    }
+
+    function formatVideoSeconds(value) {
+      return String(Number(Number(value).toFixed(2)));
+    }
+
+    function videoSummaryText(data) {
+      var layer = VIDEO_LAYER_LABELS[data.layer] || data.layer;
+      if (data.mode === 'stop') return 'Зупинити · ' + layer;
+      var known = findVideoAsset(data.assetId);
+      var asset = (known && known.name) || data.assetId || 'не вибрано';
+      var timing = '';
+      if (data.startAt > 0 || (data.endAt !== null && data.endAt !== undefined)) {
+        var end = (data.endAt === null || data.endAt === undefined) ? 'кінець' : formatVideoSeconds(data.endAt);
+        timing = ' · ' + formatVideoSeconds(data.startAt) + '–' + end + 's';
+      }
+      return layer + ' · ' + asset + ' · ' + data.fit + timing;
+    }
+
+    function renderVideoBlockContent(node) {
+      var data = videoDataFromNode(node);
+      node.innerHTML =
+        '<span class="void-title">/video</span>' +
+        '<span class="background-asset"></span>';
+      node.querySelector('.background-asset').textContent = videoSummaryText(data);
+    }
+
+    function applyVideoData(node, data) {
+      node.dataset.video = JSON.stringify(data);
+      renderVideoBlockContent(node);
+    }
+
+    function findVideoAsset(assetId) {
+      if (!assetId) return null;
+      for (var i = 0; i < videoAssets.length; i += 1) {
+        if (videoAssets[i].id === assetId) return videoAssets[i];
+      }
+      return null;
+    }
+
+    function renderVideoAssetOptions() {
+      var data = activeVideoBlock ? videoDataFromNode(activeVideoBlock) : defaultVideoData();
+      var options = option('', 'Не вибрано', data.assetId || '');
+      videoAssets.forEach(function(asset) {
+        options += option(asset.id, asset.name || asset.id, data.assetId || '');
+      });
+      return options;
+    }
+
+    function closeVideoPopover() {
+      unmountEditorPopover(videoPopover);
+      videoPopover = null;
+      if (activeVideoBlock) activeVideoBlock.classList.remove('is-editing', 'is-selected');
+      activeVideoBlock = null;
+      scheduleResize();
+    }
+
+    function collectVideoForm() {
+      var base = activeVideoBlock ? videoDataFromNode(activeVideoBlock) : defaultVideoData();
+      if (!videoPopover) return base;
+      var mode = selectedValue(videoPopover.querySelector('#videoMode'), 'play');
+      if (mode === 'stop') {
+        // Stop only has to name the layer; the host normalizer clears the rest.
+        return Object.assign({}, defaultVideoData(), { mode: 'stop', layer: base.layer });
+      }
+      var assetId = selectedValue(videoPopover.querySelector('#videoAsset'), '');
+      var startInput = videoPopover.querySelector('#videoStart');
+      var endInput = videoPopover.querySelector('#videoEnd');
+      var startAt = Number(startInput && startInput.value);
+      var endAt = Number(endInput && endInput.value);
+      return Object.assign({}, base, {
+        mode: 'play',
+        assetId: assetId || null,
+        fit: selectedValue(videoPopover.querySelector('#videoFit'), 'cover'),
+        startAt: Number.isFinite(startAt) && startAt > 0 ? startAt : 0,
+        endAt: Number.isFinite(endAt) && endAt > 0 ? endAt : null
+      });
+    }
+
+    function saveVideoForm() {
+      if (!activeVideoBlock) return;
+      applyVideoData(activeVideoBlock, collectVideoForm());
+      saveNow();
+    }
+
+    function setVideoPickerBusy(busy) {
+      if (!videoPopover) return;
+      var button = videoPopover.querySelector('[data-action=\"import-video\"]');
+      if (button) {
+        button.disabled = !!busy;
+        button.textContent = busy ? 'Імпортуємо…' : 'З пристрою';
+      }
+    }
+
+    function setVideoPickerError(message) {
+      if (!videoPopover) return;
+      var slot = videoPopover.querySelector('.video-popover-error');
+      if (slot) slot.textContent = message || '';
+    }
+
+    function requestVideoImport() {
+      var requestId = uid('video-pick');
+      setVideoPickerBusy(true);
+      setVideoPickerError('');
+      pendingVideoPicks[requestId] = true;
+      post({ type: 'pickVideoAsset', requestId: requestId });
+    }
+
+    function openVideoPopover(block, anchor) {
+      if (!block) return;
+      closeSlashMenu();
+      if (activeVideoBlock === block && videoPopover) {
+        closeVideoPopover();
+        return;
+      }
+      closeVideoPopover();
+      activeVideoBlock = block;
+      block.classList.add('is-editing');
+      var data = videoDataFromNode(block);
+
+      var fitOptions = option('cover', 'Заповнити (cover)', data.fit)
+        + option('contain', 'Вмістити (contain)', data.fit);
+      var modeOptions = option('play', 'Відтворити', data.mode)
+        + option('stop', 'Зупинити й повернути фон', data.mode);
+
+      var popover = document.createElement('div');
+      popover.className = 'background-popover video-popover';
+      popover.innerHTML =
+        '<label class=\"popover-label\" for=\"videoMode\">Дія</label>' +
+        '<select id=\"videoMode\" class=\"popover-control\">' + modeOptions + '</select>' +
+        '<label class=\"popover-label\" for=\"videoAsset\">Ролик</label>' +
+        '<select id=\"videoAsset\" class=\"popover-control\">' + renderVideoAssetOptions() + '</select>' +
+        '<div class=\"popover-footer\">' +
+          '<button type=\"button\" class=\"popover-button\" data-action=\"import-video\">З пристрою</button>' +
+        '</div>' +
+        '<p class=\"popover-help\">MP4 до 64 МіБ — приблизно 1–2 хвилини 1080p.</p>' +
+        '<p class=\"video-popover-error\"></p>' +
+        '<label class=\"popover-label\" for=\"videoFit\">Кадрування</label>' +
+        '<select id=\"videoFit\" class=\"popover-control\">' + fitOptions + '</select>' +
+        '<label class=\"popover-label\" for=\"videoStart\">Початок, с</label>' +
+        '<input id=\"videoStart\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.1\" value=\"' + (data.startAt || 0) + '\" />' +
+        '<label class=\"popover-label\" for=\"videoEnd\">Кінець, с</label>' +
+        '<input id=\"videoEnd\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.1\" value=\"' + (data.endAt === null || data.endAt === undefined ? '' : data.endAt) + '\" />' +
+        '<p class=\"popover-help\">Фон завжди без звуку й зациклений.</p>' +
+        '<div class=\"popover-footer\">' +
+          '<button type=\"button\" class=\"popover-button primary\" data-action=\"save-video\">Зберегти</button>' +
+        '</div>';
+
+      mountEditorPopover(popover, false);
+      videoPopover = popover;
+      var modeSelect = popover.querySelector('#videoMode');
+      if (modeSelect) {
+        modeSelect.addEventListener('change', function() { syncVideoPopoverMode(); });
+      }
+      syncVideoPopoverMode();
+      afterLayout(function() { positionBranchPopover(videoPopover, anchor || block); });
+    }
+
+    /** Playback controls are meaningless for a stop step, so they step aside. */
+    function syncVideoPopoverMode() {
+      if (!videoPopover) return;
+      var isStop = selectedValue(videoPopover.querySelector('#videoMode'), 'play') === 'stop';
+      ['videoAsset', 'videoFit', 'videoStart', 'videoEnd'].forEach(function(id) {
+        var control = videoPopover.querySelector('#' + id);
+        if (control) control.hidden = isStop;
+        var label = videoPopover.querySelector('label[for=\"' + id + '\"]');
+        if (label) label.hidden = isStop;
+      });
+      var importButton = videoPopover.querySelector('[data-action=\"import-video\"]');
+      if (importButton) importButton.hidden = isStop;
+    }
+
     function closeStopEffectPopover() {
       unmountEditorPopover(stopEffectPopover);
       stopEffectPopover = null;
@@ -2695,6 +2915,19 @@ const EMBEDDED_SCRIPT_BODY = `
       mountEditorPopover(popover, false);
       stopEffectPopover = popover;
       afterLayout(function() { positionBranchPopover(stopEffectPopover, anchor || block); });
+    }
+
+    function handleVideoPopoverAction(action) {
+      if (action === 'import-video') {
+        requestVideoImport();
+        return true;
+      }
+      if (action === 'save-video') {
+        saveVideoForm();
+        closeVideoPopover();
+        return true;
+      }
+      return false;
     }
 
     function collectStopEffectForm() {
@@ -3405,6 +3638,30 @@ const EMBEDDED_SCRIPT_BODY = `
             label: 'Стоп-ефект',
             summary: stopEffectSummaryText(stopEffectData),
             step: stopEffectStep
+          };
+        }
+        if (commandId === 'video') {
+          var videoData = videoDataFromNode(node);
+          var originalVideoStep = originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step
+            ? originalTechnical.step
+            : null;
+          var videoStep = originalVideoStep
+            ? Object.assign({}, originalVideoStep, { blockType: 'video', data: videoData })
+            : {
+                id: node.dataset.id || uid('step'),
+                blockType: 'video',
+                data: videoData,
+                collapsed: false,
+                enabled: true
+              };
+          return {
+            id: node.dataset.id || uid('doc_block'),
+            kind: 'technical',
+            commandId: 'video',
+            blockType: 'video',
+            label: 'Відео',
+            summary: videoSummaryText(videoData),
+            step: videoStep
           };
         }
         if (commandId === 'interactive_object') {
@@ -4170,6 +4427,7 @@ const EMBEDDED_SCRIPT_BODY = `
         : commandId === 'label' ? 'void-block label-block'
         : commandId === 'goto' ? 'void-block goto-block'
         : commandId === 'stopEffect' ? 'void-block stop-effect-block'
+        : commandId === 'video' ? 'void-block video-block'
         : commandId === 'interactive_object' ? 'void-block interactive-object-block'
         : 'void-block';
       block.contentEditable = 'false';
@@ -4198,6 +4456,8 @@ const EMBEDDED_SCRIPT_BODY = `
         applyGotoData(block, { targetLabel: '', condition: null, elseTargetLabel: null });
       } else if (commandId === 'stopEffect') {
         applyStopEffectData(block, { effectType: 'all', target: 'all' });
+      } else if (commandId === 'video') {
+        applyVideoData(block, defaultVideoData());
       } else if (commandId === 'interactive_object') {
         applyInteractiveObjectData(block, defaultInteractiveObjectData());
         block.dataset.interactiveNew = 'true';
@@ -4215,6 +4475,7 @@ const EMBEDDED_SCRIPT_BODY = `
       scheduleResize();
       if (commandId !== 'interactive_object') saveNow();
       if (commandId === 'interactive_object') openInteractiveObjectPopover(block);
+      if (commandId === 'video') openVideoPopover(block, block);
     }
 
     editor.addEventListener('mousedown', function(event) {
@@ -4308,6 +4569,11 @@ const EMBEDDED_SCRIPT_BODY = `
       if (block.classList.contains('stop-effect-block')) {
         event.preventDefault();
         openStopEffectPopover(block, block);
+        return;
+      }
+      if (block.classList.contains('video-block')) {
+        event.preventDefault();
+        openVideoPopover(block, block);
         return;
       }
       if (!button && !block.classList.contains('interactive-object-block')) return;
@@ -4629,6 +4895,20 @@ const EMBEDDED_SCRIPT_BODY = `
         }
         if (!(stopEffectTarget && stopEffectTarget.closest && stopEffectTarget.closest('.stop-effect-block'))) {
           closeStopEffectPopover();
+        }
+      }
+      if (videoPopover) {
+        var videoTarget = event.target;
+        if (videoTarget && videoTarget.closest && videoTarget.closest('.video-popover')) {
+          var videoActionButton = videoTarget.closest('[data-action]');
+          if (videoActionButton) handleVideoPopoverAction(videoActionButton.dataset.action);
+          return;
+        }
+        if (!(videoTarget && videoTarget.closest && videoTarget.closest('.video-block'))) {
+          // Closing by clicking away keeps whatever the author typed, matching
+          // the other block popovers.
+          saveVideoForm();
+          closeVideoPopover();
         }
       }
       if (choicePopover) {
@@ -5077,6 +5357,34 @@ const EMBEDDED_SCRIPT_BODY = `
               assetId: message.asset.id
             }));
             saveNow();
+          }
+        }
+      }
+      if (message.type === 'videoAssetsUpdated' && Array.isArray(message.assets)) {
+        videoAssets = message.assets;
+        renderAllVideoBlocks();
+        if (videoPopover) {
+          var videoSelect = videoPopover.querySelector('#videoAsset');
+          if (videoSelect) videoSelect.innerHTML = renderVideoAssetOptions();
+        }
+      }
+      if (message.type === 'videoAssetPicked' && message.requestId) {
+        if (pendingVideoPicks[message.requestId]) {
+          delete pendingVideoPicks[message.requestId];
+          setVideoPickerBusy(false);
+          if (message.asset) {
+            var knownVideo = findVideoAsset(message.asset.id);
+            if (!knownVideo) videoAssets = videoAssets.concat([message.asset]);
+            if (videoPopover) {
+              var pickedSelect = videoPopover.querySelector('#videoAsset');
+              if (pickedSelect) {
+                pickedSelect.innerHTML = renderVideoAssetOptions();
+                pickedSelect.value = message.asset.id;
+              }
+              saveVideoForm();
+            }
+          } else if (message.error) {
+            setVideoPickerError(VIDEO_PICK_ERRORS[message.error] || VIDEO_PICK_ERRORS.failed);
           }
         }
       }

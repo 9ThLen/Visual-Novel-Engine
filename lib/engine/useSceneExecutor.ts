@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import type {
   TimelineStep,
   BackgroundBlockData,
+  VideoBlockData,
   CharacterBlockData,
   DialogueBlockData,
   ChoiceBlockData,
@@ -19,6 +20,7 @@ import type {
 import type { RuntimeVariables, SceneState } from './runtime-types';
 import { createEmptySceneState, conditionsMet } from './conditionUtils';
 import { normalizeTransitionData } from './transition-utils';
+import { normalizeVideoData } from './video-utils';
 import {
   isBlockingEffectType,
   normalizeEffectDuration,
@@ -204,6 +206,37 @@ export function useSceneExecutor(
           const d = step.data as BackgroundBlockData;
           nextState.backgroundAssetId = d.assetId ?? null;
           nextState.backgroundTransition = d.transition;
+          break;
+        }
+        case 'video': {
+          const data = normalizeVideoData(step.data as VideoBlockData);
+          // Cutscene playback is the next vertical slice — it needs its own
+          // halt/completion protocol. Until then the step is a no-op, so say so
+          // instead of silently looking like it played.
+          if (data.layer !== 'background') {
+            if (__DEV__) {
+              console.warn('[useSceneExecutor] cutscene video is not implemented yet; step skipped:', step.id);
+            }
+            break;
+          }
+          if (data.mode === 'stop' || !data.assetId) {
+            nextState.activeVideo = null;
+            break;
+          }
+          nextState.activeVideo = {
+            stepId: step.id,
+            assetId: data.assetId,
+            posterAssetId: data.posterAssetId,
+            layer: data.layer,
+            fit: data.fit,
+            playbackRate: data.playbackRate,
+            startAt: data.startAt,
+            endAt: data.endAt ?? undefined,
+            muted: data.muted,
+            volume: data.volume,
+            loop: data.loop,
+            skippableAfterMs: data.skippableAfterMs,
+          };
           break;
         }
         case 'character': {

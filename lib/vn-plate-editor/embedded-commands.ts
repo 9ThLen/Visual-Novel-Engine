@@ -19,6 +19,7 @@ export interface EmbeddedCommand {
 
 const EMBEDDED_COMMANDS: (EmbeddedCommand & { id: DocumentCommandId })[] = [
   { id: 'background', blockType: 'background', title: 'Background', description: 'Change the scene background' },
+  { id: 'video', blockType: 'video', title: 'Video', description: 'Play or stop a scene video' },
   { id: 'character', blockType: 'dialogue', title: 'Character', description: 'Add a character line' },
   { id: 'newScene', blockType: 'transition', title: 'New Scene', description: 'Create the next scene' },
   { id: 'music', blockType: 'music', title: 'Music', description: 'Play background music' },
@@ -40,6 +41,7 @@ const EMBEDDED_SNIPPET_COMMANDS: (EmbeddedCommand & { id: EmbeddedSnippetCommand
 
 const COMMAND_TRANSLATION_KEYS: Record<DocumentCommandId, { title: string; description: string }> = {
   background: { title: 'document.command.background', description: 'document.command.background.description' },
+  video: { title: 'document.command.video', description: 'document.command.video.description' },
   character: { title: 'document.command.character', description: 'document.command.character.description' },
   newScene: { title: 'document.command.newScene', description: 'document.command.newScene.description' },
   music: { title: 'document.command.music', description: 'document.command.music.description' },

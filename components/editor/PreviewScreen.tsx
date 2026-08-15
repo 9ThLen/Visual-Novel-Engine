@@ -20,6 +20,7 @@ import { EffectsLayerStack, effectsForCharacter, effectsForTarget } from '@/comp
 import { useShakeOffset } from '@/components/reader/useShakeOffset';
 import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import { useEffectAmbience } from '@/hooks/useEffectAmbience';
+import { SceneVideoLayer } from '@/components/reader/SceneVideoLayer';
 
 function secondsToMs(value: number | null | undefined, fallbackMs = 0): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallbackMs;
@@ -271,6 +272,14 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
         ) : (
           <Text style={{ fontSize: 14, color: withAlpha(colors.muted, 0.6) }}>{t('editor.noBackground')}</Text>
         )}
+
+        {sceneState.activeVideo ? (
+          <SceneVideoLayer
+            key={sceneState.activeVideo.stepId}
+            video={sceneState.activeVideo}
+            style={cameraTransform}
+          />
+        ) : null}
 
         {backgroundEffects.length > 0 ? (
           <EffectsLayerStack effects={backgroundEffects} colors={colors} target="background" />

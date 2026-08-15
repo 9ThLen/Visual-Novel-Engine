@@ -14,6 +14,7 @@ export type SceneNode =
   | NarrationNode
   | DialogueNode
   | BackgroundNode
+  | VideoNode
   | CharacterNode
   | MusicNode
   | SoundNode
@@ -48,6 +49,23 @@ export type BackgroundNode = {
   assetId: string;
   transition?: 'cut' | 'fade' | 'slide';
   durationMs?: number;
+};
+
+export type VideoNode = {
+  id: string;
+  type: 'video';
+  mode: 'play' | 'stop';
+  layer: 'background' | 'cutscene';
+  assetId: string | null;
+  posterAssetId: string | null;
+  fit: 'cover' | 'contain';
+  playbackRate: number;
+  startAt: number;
+  endAt: number | null;
+  muted: boolean;
+  volume: number;
+  loop: boolean;
+  skippableAfterMs: number | null;
 };
 
 export type CharacterNode = {
