@@ -27,6 +27,19 @@ describe('mergeLegacyUserSettings', () => {
   });
 });
 
+describe('backgroundVideoEnabled', () => {
+  it('defaults to on and survives normalization', () => {
+    expect(normalizeUserSettings({}).backgroundVideoEnabled).toBe(true);
+    expect(normalizeUserSettings({ backgroundVideoEnabled: false }).backgroundVideoEnabled).toBe(false);
+  });
+
+  it('ignores a non-boolean value from a legacy record', () => {
+    expect(
+      normalizeUserSettings({ backgroundVideoEnabled: 'yes' } as never).backgroundVideoEnabled,
+    ).toBe(true);
+  });
+});
+
 describe('pointerToParallaxOffset', () => {
   it('maps the viewport center to 0 and edges to ±1', () => {
     expect(pointerToParallaxOffset(500, 1000)).toBe(0);

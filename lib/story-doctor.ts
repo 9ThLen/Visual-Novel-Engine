@@ -410,6 +410,20 @@ function addVideoFindings(scene: SceneRecord, findings: StoryDoctorFinding[]): v
     const data = normalizeVideoData(raw);
     if (data.mode !== 'play') continue;
 
+    // The blocking cutscene protocol is a later slice. A cutscene step is a
+    // no-op at runtime, so the author has to be told rather than left to
+    // wonder why nothing played.
+    if (data.layer === 'cutscene') {
+      findings.push({
+        severity: 'warning',
+        sceneId: scene.id,
+        stepId: step.id,
+        code: 'video.cutsceneUnsupported',
+        messageKey: 'storyDoctor.issue.videoCutsceneUnsupported',
+      });
+      continue;
+    }
+
     if (!data.assetId) {
       findings.push({
         severity: 'error',

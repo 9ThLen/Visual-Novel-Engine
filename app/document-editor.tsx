@@ -135,7 +135,12 @@ export default function DocumentEditorRoute() {
     const storyAssetIds = new Set(storyId ? mediaAssetIdsByStory[storyId] ?? [] : []);
     return mediaLibrary
       .filter((asset) => asset.type === 'video' && storyAssetIds.has(asset.id))
-      .map((asset) => ({ id: asset.id, name: asset.name }));
+      .map((asset) => ({
+        id: asset.id,
+        name: asset.name,
+        sizeBytes: asset.size,
+        durationSeconds: asset.durationSeconds,
+      }));
   }, [mediaAssetIdsByStory, mediaLibrary, storyId]);
   const sceneIndex = Math.max(0, orderedScenes.findIndex((scene) => scene.id === sceneId));
   const protectedCharacterIds = useMemo(() => {
@@ -296,11 +301,22 @@ export default function DocumentEditorRoute() {
         picked.video.name,
         'video',
         mediaLibrary,
-        { mimeType: picked.video.mimeType, size: picked.video.size },
+        {
+          mimeType: picked.video.mimeType,
+          size: picked.video.size,
+          durationSeconds: picked.video.durationSeconds,
+        },
       );
       setMediaLibrary(result.assets);
       addMediaAssetToStory(storyId, result.asset.id);
-      return { asset: { id: result.asset.id, name: result.asset.name } };
+      return {
+        asset: {
+          id: result.asset.id,
+          name: result.asset.name,
+          sizeBytes: result.asset.size,
+          durationSeconds: result.asset.durationSeconds,
+        },
+      };
     } catch (error) {
       if (__DEV__) console.warn('[document-editor] video import failed', error);
       return { asset: null, error: 'failed' };

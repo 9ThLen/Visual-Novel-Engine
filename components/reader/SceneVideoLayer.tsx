@@ -2,22 +2,32 @@ import { useEvent, useEventListener } from 'expo';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView, type VideoSource } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { AppState, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 import type { RuntimeVideoState } from '@/lib/engine/runtime-types';
 import type { ImageSource } from '@/hooks/useSceneImages';
 
+/**
+ * How long playback may stay stalled after play() before we call it blocked.
+ * expo-video's web player swallows the promise from HTMLVideoElement.play(),
+ * so a rejected autoplay is only observable as "asked to play, never started".
+ */
+const PLAYBACK_START_GRACE_MS = 1200;
+
 interface SceneVideoLayerProps {
   video: RuntimeVideoState;
   style?: StyleProp<ViewStyle>;
+  /** When false the clip is not decoded at all; the poster stands in for it. */
+  enabled?: boolean;
   onPlaybackError?: (message: string) => void;
 }
 
-export function SceneVideoLayer({ video, style, onPlaybackError }: SceneVideoLayerProps) {
+export function SceneVideoLayer({ video, style, enabled = true, onPlaybackError }: SceneVideoLayerProps) {
   const [source, setSource] = useState<VideoSource>(null);
   const [posterSource, setPosterSource] = useState<ImageSource | null>(null);
   const [hasFirstFrame, setHasFirstFrame] = useState(false);
   const [resolutionFailed, setResolutionFailed] = useState(false);
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
 
   const startAt = video.startAt ?? 0;
   const endAt = video.endAt ?? null;
@@ -36,6 +46,8 @@ export function SceneVideoLayer({ video, style, onPlaybackError }: SceneVideoLay
     setSource(null);
     setHasFirstFrame(false);
     setResolutionFailed(false);
+    setPlaybackBlocked(false);
+    if (!enabled) return () => { active = false; };
     void resolveAssetUri(video.assetId)
       .then((resolved) => {
         if (!active) return;
@@ -50,7 +62,7 @@ export function SceneVideoLayer({ video, style, onPlaybackError }: SceneVideoLay
         reportError(error instanceof Error ? error.message : String(error));
       });
     return () => { active = false; };
-  }, [reportError, video.assetId]);
+  }, [enabled, reportError, video.assetId]);
 
   useEffect(() => {
     let active = true;
@@ -79,6 +91,7 @@ export function SceneVideoLayer({ video, style, onPlaybackError }: SceneVideoLay
   // only correct for a plain full-file loop. Every other case is driven from
   // the playToEnd/timeUpdate listeners below.
   const platformLoop = video.loop && startAt === 0 && endAt === null;
+  const backgrounded = useRef(false);
 
   useEffect(() => {
     if (!source) return;
@@ -111,6 +124,23 @@ export function SceneVideoLayer({ video, style, onPlaybackError }: SceneVideoLay
     player.currentTime = startAt;
   }, [player, playerState.status, seekKey, source, startAt]);
 
+  // A clip that keeps decoding behind a backgrounded app burns battery for a
+  // picture nobody can see.
+  useEffect(() => {
+    if (!source) return;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        if (!backgrounded.current) return;
+        backgrounded.current = false;
+        player.play();
+        return;
+      }
+      backgrounded.current = true;
+      player.pause();
+    });
+    return () => subscription.remove();
+  }, [player, source]);
+
   useEventListener(player, 'playToEnd', () => {
     if (!video.loop) return;
     player.currentTime = startAt;
@@ -131,11 +161,28 @@ export function SceneVideoLayer({ video, style, onPlaybackError }: SceneVideoLay
     if (__DEV__) console.warn('[SceneVideoLayer]', message);
   }, [playerState.error, playerState.status, reportError, video.assetId]);
 
-  const failed = resolutionFailed || playerState.status === 'error';
+  // player.play() returns void and the web implementation does not surface a
+  // rejected autoplay, so a clip that is ready but never starts is the only
+  // signal we get. Without this the reader just shows black.
+  useEffect(() => {
+    if (!source || playerState.status !== 'readyToPlay') return;
+    const timer = setTimeout(() => {
+      if (backgrounded.current || player.playing) return;
+      setPlaybackBlocked(true);
+      const message = `Playback did not start for video asset ${video.assetId}`;
+      reportError(message);
+      if (__DEV__) console.warn('[SceneVideoLayer]', message);
+    }, PLAYBACK_START_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [player, playerState.status, reportError, source, video.assetId]);
+
+  const failed = resolutionFailed || playerState.status === 'error' || playbackBlocked;
+  const showPlayer = enabled && !!source && !failed;
+  const showPoster = !!posterSource && (!showPlayer || !hasFirstFrame);
 
   return (
-    <View pointerEvents="none" style={[styles.layer, failed ? null : styles.backdrop, style]}>
-      {source && !failed ? (
+    <View pointerEvents="none" style={[styles.layer, failed || !enabled ? null : styles.backdrop, style]}>
+      {showPlayer ? (
         <VideoView
           player={player}
           style={styles.layer}
@@ -145,7 +192,7 @@ export function SceneVideoLayer({ video, style, onPlaybackError }: SceneVideoLay
           onFirstFrameRender={() => setHasFirstFrame(true)}
         />
       ) : null}
-      {posterSource && (!hasFirstFrame || failed) ? (
+      {showPoster ? (
         <Image
           source={posterSource}
           style={styles.layer}

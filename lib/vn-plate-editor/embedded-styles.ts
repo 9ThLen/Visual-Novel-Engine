@@ -252,7 +252,59 @@ export function createEmbeddedStyles(): string {
     .video-block .background-asset { font-size: 13px; }
     .video-block { cursor: pointer; }
     .video-block:hover { background: #ccfbf1; }
-    .video-popover-error:empty { display: none; }
+    .preset-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin: 4px 0 8px;
+    }
+    .preset-row-title {
+      color: var(--plate-foreground-secondary, #655D56);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .preset-chip {
+      padding: 3px 9px;
+      border: 1px solid var(--plate-border, #A59B90);
+      border-radius: 999px;
+      background: var(--plate-surface, #FEFAF6);
+      color: var(--plate-foreground, #3A281F);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    .preset-chip:hover {
+      border-color: var(--plate-primary, #67683F);
+      background: var(--plate-primary-soft, #EDEEE0);
+    }
+    .video-popover-error:empty,
+    .video-popover-status:empty,
+    .video-popover-timing:empty { display: none; }
+    .video-popover-status,
+    .video-popover-timing {
+      margin: 0;
+      font-size: 12px;
+      color: var(--plate-foreground-secondary, #655D56);
+    }
+    .video-popover-timing.is-invalid { color: #b45309; }
+    .video-poster-preview {
+      height: 74px;
+      margin: 6px 0 2px;
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 8px;
+      background-position: center;
+      background-size: cover;
+    }
+    .video-poster-preview.placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--plate-foreground-secondary, #655D56);
+      font-size: 12px;
+    }
     .video-popover-error {
       margin: 0;
       font-size: 12px;

@@ -12,6 +12,7 @@ describe('normalizeUserSettings', () => {
       readerLineHeightScale: 1.2,
       autoPlay: false,
       parallaxEnabled: true,
+      backgroundVideoEnabled: true,
       aiPermissions: {
         scene_edit: 'confirm', appearance: 'confirm', changeset: 'confirm', image_generate: 'confirm',
       },
@@ -40,6 +41,7 @@ describe('normalizeUserSettings', () => {
       readerLineHeightScale: 1.2,
       autoPlay: false,
       parallaxEnabled: true,
+      backgroundVideoEnabled: true,
       aiPermissions: {
         scene_edit: 'confirm', appearance: 'confirm', changeset: 'confirm', image_generate: 'confirm',
       },

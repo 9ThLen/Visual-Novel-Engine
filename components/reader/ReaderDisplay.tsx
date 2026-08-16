@@ -50,6 +50,7 @@ interface ReaderDisplayProps {
   backgroundAnimatedStyle: StyleProp<ViewStyle>;
   bgSource: ImageSource | null;
   activeVideo?: RuntimeVideoState | null;
+  backgroundVideoEnabled?: boolean;
   characterAnimatedStyle: StyleProp<ViewStyle>;
   choices: ReaderChoice[];
   colors: ReturnType<typeof useColors>;
@@ -123,12 +124,14 @@ function TypewriterDialoguePanel({ fullText, textSpeed, typewriterEnabled,
 function ReaderBackground({
   bgSource,
   activeVideo,
+  backgroundVideoEnabled,
   animatedStyle,
   fallbackColor,
   parallaxEnabled,
 }: {
   bgSource: ImageSource | null;
   activeVideo?: RuntimeVideoState | null;
+  backgroundVideoEnabled: boolean;
   animatedStyle: StyleProp<ViewStyle>;
   fallbackColor: string;
   parallaxEnabled: boolean;
@@ -155,7 +158,13 @@ function ReaderBackground({
         ) : (
           <View style={fallbackStyle} />
         )}
-        {activeVideo ? <SceneVideoLayer key={activeVideo.stepId} video={activeVideo} /> : null}
+        {activeVideo ? (
+          <SceneVideoLayer
+            key={activeVideo.stepId}
+            video={activeVideo}
+            enabled={backgroundVideoEnabled}
+          />
+        ) : null}
       </Animated.View>
     </Animated.View>
   );
@@ -232,6 +241,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   backgroundAnimatedStyle,
   bgSource,
   activeVideo,
+  backgroundVideoEnabled = true,
   characterAnimatedStyle,
   choices,
   colors,
@@ -317,6 +327,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
       <ReaderBackground
         bgSource={bgSource}
         activeVideo={activeVideo}
+        backgroundVideoEnabled={backgroundVideoEnabled}
         animatedStyle={[backgroundAnimatedStyle, cameraTransformStyle]}
         fallbackColor={fallbackColor}
         parallaxEnabled={parallaxEnabled}

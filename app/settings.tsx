@@ -284,6 +284,14 @@ export default function SettingsScreen() {
             onValueChange={(v) => updateSettings({ parallaxEnabled: v })}
             description={t('settings.parallaxDescription')}
           />
+          <Divider />
+          <ToggleRow
+            label={t('settings.backgroundVideo')}
+            icon="movie"
+            value={settings.backgroundVideoEnabled}
+            onValueChange={(v) => updateSettings({ backgroundVideoEnabled: v })}
+            description={t('settings.backgroundVideoDescription')}
+          />
         </Section>
 
         {/* Cloud */}

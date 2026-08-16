@@ -12,6 +12,8 @@ export interface PickedVideo {
   /** Absent when the platform picker did not report one — see pickVideoNative. */
   size?: number;
   mimeType: string;
+  /** Read from metadata on web; native pickers do not report it. */
+  durationSeconds?: number;
   /** Web only: release the object URL once the asset has been persisted. */
   release?: () => void;
 }
@@ -42,6 +44,32 @@ function checkFile(size: number | undefined, mimeType: string): PickVideoResult 
   return null;
 }
 
+/**
+ * Duration comes from the metadata header, so the browser only fetches the
+ * start of the file — it never decodes the clip.
+ */
+function readDurationSeconds(objectUrl: string): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    if (typeof document === 'undefined') {
+      resolve(undefined);
+      return;
+    }
+    const probe = document.createElement('video');
+    let settled = false;
+    const finish = (value: number | undefined) => {
+      if (settled) return;
+      settled = true;
+      probe.removeAttribute('src');
+      resolve(value);
+    };
+    probe.preload = 'metadata';
+    probe.onloadedmetadata = () => finish(Number.isFinite(probe.duration) ? probe.duration : undefined);
+    probe.onerror = () => finish(undefined);
+    setTimeout(() => finish(undefined), 3000);
+    probe.src = objectUrl;
+  });
+}
+
 async function pickVideoWeb(): Promise<PickVideoResult> {
   const file = await openWebFileDialog('video/mp4,.mp4');
   if (!file) return { status: 'cancelled' };
@@ -60,6 +88,7 @@ async function pickVideoWeb(): Promise<PickVideoResult> {
       name: file.name || 'video.mp4',
       size: file.size,
       mimeType,
+      durationSeconds: await readDurationSeconds(uri),
       release: () => URL.revokeObjectURL(uri),
     },
   };

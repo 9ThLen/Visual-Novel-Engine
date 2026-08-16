@@ -1,6 +1,7 @@
 import type { VNPlateEditorPayload } from './types';
 import type { EmbeddedCommand } from './embedded-commands';
 import { jsonForScript } from './embedded-utils';
+import { CHARACTER_PRESETS, EFFECT_PRESETS } from '@/lib/engine/animation-presets';
 
 /**
  * The static body of the embedded editor script. It only reads `payload` and
@@ -10,6 +11,8 @@ import { jsonForScript } from './embedded-utils';
  * scene iframe (see createEmbeddedBootScript).
  */
 const EMBEDDED_SCRIPT_BODY = `
+    var EFFECT_PRESETS = ${jsonForScript(EFFECT_PRESETS)};
+    var CHARACTER_PRESETS = ${jsonForScript(CHARACTER_PRESETS)};
     var editor = document.getElementById('editor');
     var title = document.getElementById('title');
     var lastHistoryTarget = editor;
@@ -1099,7 +1102,14 @@ const EMBEDDED_SCRIPT_BODY = `
       }
       var rainVariantCurrent = rain.variant || (rain.lightning ? 'storm' : 'rain');
       var sceneBoundChecked = isSceneBoundEffectType(data.effectType) && data.durationMode !== 'timed';
+      var presetChipsHtml = EFFECT_PRESETS.map(function(preset) {
+        var title = preset.hint ? ' title="' + escapeHtml(preset.hint) + '"' : '';
+        return '<button type="button" class="preset-chip" data-effect-preset="' + escapeHtml(preset.id) + '"' + title + '>' +
+          escapeHtml(preset.label) +
+        '</button>';
+      }).join('');
       popover.innerHTML =
+        '<div class="preset-row"><span class="preset-row-title">Пресети</span>' + presetChipsHtml + '</div>' +
         '<div class="effect-type-grid">' + typeChipsHtml + '</div>' +
         '<div class="effect-popover-grid">' +
           '<label class="popover-label">Ціль</label>' +
@@ -1820,6 +1830,15 @@ const EMBEDDED_SCRIPT_BODY = `
           option('show', labels.appearance, selectedAction) +
           option('hide', labels.disappearance, selectedAction) +
         '</select>' +
+        '<label class="popover-label">Пресет</label>' +
+        '<div class="preset-row">' + CHARACTER_PRESETS.filter(function(preset) {
+          // Shake/Pulse write a character effect, which this popover has no
+          // control for yet; showing them would promise something it cannot do.
+          return !!preset.patch.transition;
+        }).map(function(preset) {
+          var presetTitle = preset.hint ? ' title="' + escapeHtml(preset.hint) + '"' : '';
+          return '<button type="button" class="preset-chip" data-character-preset="' + escapeHtml(preset.id) + '"' + presetTitle + '>' + escapeHtml(preset.label) + '</button>';
+        }).join('') + '</div>' +
         '<label class="popover-label">' + labels.animation + '</label>' +
         '<select class="popover-control" data-field="character-transition">' +
           characterTransitionOptions(selectedAction, selectedTransition, labels) +
@@ -2696,6 +2715,25 @@ const EMBEDDED_SCRIPT_BODY = `
       return String(Number(Number(value).toFixed(2)));
     }
 
+    function formatClock(seconds) {
+      var total = Math.max(0, Math.round(Number(seconds) || 0));
+      var minutes = Math.floor(total / 60);
+      var rest = total % 60;
+      return minutes + ':' + (rest < 10 ? '0' : '') + rest;
+    }
+
+    function formatBytes(bytes) {
+      var value = Number(bytes);
+      if (!Number.isFinite(value) || value <= 0) return '';
+      if (value < 1024 * 1024) return (value / 1024).toFixed(0) + ' КіБ';
+      return (value / (1024 * 1024)).toFixed(1) + ' МіБ';
+    }
+
+    function videoAssetDuration(assetId) {
+      var asset = findVideoAsset(assetId);
+      return asset && Number.isFinite(Number(asset.durationSeconds)) ? Number(asset.durationSeconds) : null;
+    }
+
     function videoSummaryText(data) {
       var layer = VIDEO_LAYER_LABELS[data.layer] || data.layer;
       if (data.mode === 'stop') return 'Зупинити · ' + layer;
@@ -2739,6 +2777,15 @@ const EMBEDDED_SCRIPT_BODY = `
       return options;
     }
 
+    function renderVideoPosterOptions() {
+      var data = activeVideoBlock ? videoDataFromNode(activeVideoBlock) : defaultVideoData();
+      var options = option('', 'Без постера', data.posterAssetId || '');
+      backgroundAssets.forEach(function(asset) {
+        options += option(asset.id, assetLabel(asset) || asset.name || asset.id, data.posterAssetId || '');
+      });
+      return options;
+    }
+
     function closeVideoPopover() {
       unmountEditorPopover(videoPopover);
       videoPopover = null;
@@ -2763,6 +2810,7 @@ const EMBEDDED_SCRIPT_BODY = `
       return Object.assign({}, base, {
         mode: 'play',
         assetId: assetId || null,
+        posterAssetId: selectedValue(videoPopover.querySelector('#videoPoster'), '') || null,
         fit: selectedValue(videoPopover.querySelector('#videoFit'), 'cover'),
         startAt: Number.isFinite(startAt) && startAt > 0 ? startAt : 0,
         endAt: Number.isFinite(endAt) && endAt > 0 ? endAt : null
@@ -2826,13 +2874,18 @@ const EMBEDDED_SCRIPT_BODY = `
           '<button type=\"button\" class=\"popover-button\" data-action=\"import-video\">З пристрою</button>' +
         '</div>' +
         '<p class=\"popover-help\">MP4 до 64 МіБ — приблизно 1–2 хвилини 1080p.</p>' +
+        '<p class=\"video-popover-status\"></p>' +
         '<p class=\"video-popover-error\"></p>' +
+        '<label class=\"popover-label\" for=\"videoPoster\">Постер</label>' +
+        '<select id=\"videoPoster\" class=\"popover-control\">' + renderVideoPosterOptions() + '</select>' +
+        '<div class=\"video-poster-preview\"></div>' +
         '<label class=\"popover-label\" for=\"videoFit\">Кадрування</label>' +
         '<select id=\"videoFit\" class=\"popover-control\">' + fitOptions + '</select>' +
         '<label class=\"popover-label\" for=\"videoStart\">Початок, с</label>' +
         '<input id=\"videoStart\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.1\" value=\"' + (data.startAt || 0) + '\" />' +
         '<label class=\"popover-label\" for=\"videoEnd\">Кінець, с</label>' +
         '<input id=\"videoEnd\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.1\" value=\"' + (data.endAt === null || data.endAt === undefined ? '' : data.endAt) + '\" />' +
+        '<p class=\"video-popover-timing\"></p>' +
         '<p class=\"popover-help\">Фон завжди без звуку й зациклений.</p>' +
         '<div class=\"popover-footer\">' +
           '<button type=\"button\" class=\"popover-button primary\" data-action=\"save-video\">Зберегти</button>' +
@@ -2844,15 +2897,72 @@ const EMBEDDED_SCRIPT_BODY = `
       if (modeSelect) {
         modeSelect.addEventListener('change', function() { syncVideoPopoverMode(); });
       }
+      ['videoAsset', 'videoPoster', 'videoStart', 'videoEnd'].forEach(function(id) {
+        var control = popover.querySelector('#' + id);
+        if (!control) return;
+        control.addEventListener('input', function() { syncVideoPopoverFeedback(); });
+        control.addEventListener('change', function() { syncVideoPopoverFeedback(); });
+      });
       syncVideoPopoverMode();
+      syncVideoPopoverFeedback();
       afterLayout(function() { positionBranchPopover(videoPopover, anchor || block); });
+    }
+
+    /**
+     * Trim values are seconds against a clip the author cannot see, so the
+     * popover states the duration and says immediately when the window is
+     * impossible instead of leaving it to Story Doctor.
+     */
+    function syncVideoPopoverFeedback() {
+      if (!videoPopover) return;
+      var assetId = selectedValue(videoPopover.querySelector('#videoAsset'), '');
+      var duration = videoAssetDuration(assetId);
+      var startInput = videoPopover.querySelector('#videoStart');
+      var endInput = videoPopover.querySelector('#videoEnd');
+      var startAt = Number(startInput && startInput.value) || 0;
+      var endRaw = endInput && endInput.value !== '' ? Number(endInput.value) : null;
+      var hasEnd = endRaw !== null && Number.isFinite(endRaw);
+
+      var timing = videoPopover.querySelector('.video-popover-timing');
+      if (timing) {
+        var facts = [];
+        var problem = '';
+        if (duration !== null) facts.push('Тривалість ' + formatClock(duration));
+        if (hasEnd && endRaw <= startAt) {
+          problem = 'кінець має бути пізніше за початок — значення буде проігноровано';
+        } else if (duration !== null && startAt >= duration) {
+          problem = 'початок за межами ролика';
+        } else if (duration !== null && hasEnd && endRaw > duration) {
+          problem = 'кінець за межами ролика';
+        } else if (hasEnd) {
+          facts.push('грає ' + formatClock(startAt) + '–' + formatClock(endRaw));
+        }
+        if (problem) facts.push(problem);
+        timing.textContent = facts.join(' · ');
+        timing.classList.toggle('is-invalid', !!problem);
+      }
+
+      var preview = videoPopover.querySelector('.video-poster-preview');
+      if (preview) {
+        var posterId = selectedValue(videoPopover.querySelector('#videoPoster'), '');
+        var poster = posterId ? findBackgroundAsset(posterId) : null;
+        if (poster && poster.uri) {
+          preview.style.backgroundImage = 'url("' + String(poster.uri).replace(/"/g, '\\"') + '")';
+          preview.classList.remove('placeholder');
+          preview.textContent = '';
+        } else {
+          preview.style.backgroundImage = '';
+          preview.classList.add('placeholder');
+          preview.textContent = 'Постер не вибрано';
+        }
+      }
     }
 
     /** Playback controls are meaningless for a stop step, so they step aside. */
     function syncVideoPopoverMode() {
       if (!videoPopover) return;
       var isStop = selectedValue(videoPopover.querySelector('#videoMode'), 'play') === 'stop';
-      ['videoAsset', 'videoFit', 'videoStart', 'videoEnd'].forEach(function(id) {
+      ['videoAsset', 'videoPoster', 'videoFit', 'videoStart', 'videoEnd'].forEach(function(id) {
         var control = videoPopover.querySelector('#' + id);
         if (control) control.hidden = isStop;
         var label = videoPopover.querySelector('label[for=\"' + id + '\"]');
@@ -2860,6 +2970,10 @@ const EMBEDDED_SCRIPT_BODY = `
       });
       var importButton = videoPopover.querySelector('[data-action=\"import-video\"]');
       if (importButton) importButton.hidden = isStop;
+      ['.video-poster-preview', '.video-popover-timing', '.video-popover-status'].forEach(function(selector) {
+        var node = videoPopover.querySelector(selector);
+        if (node) node.hidden = isStop;
+      });
     }
 
     function closeStopEffectPopover() {
@@ -4636,6 +4750,22 @@ const EMBEDDED_SCRIPT_BODY = `
       if (effectPopover) {
         var effectTarget = event.target;
         if (effectTarget && effectTarget.closest && effectTarget.closest('.effect-popover')) {
+          var effectPresetButton = effectTarget.closest('[data-effect-preset]');
+          if (effectPresetButton && activeEffectChip) {
+            // A preset only fills canonical fields; the popover is rebuilt from
+            // the block so every control shows what was actually written.
+            var presetId = effectPresetButton.dataset.effectPreset;
+            var presetEntry = null;
+            EFFECT_PRESETS.forEach(function(item) { if (item.id === presetId) presetEntry = item; });
+            if (presetEntry) {
+              var presetChip = activeEffectChip;
+              applyEffectData(presetChip, Object.assign({}, collectEffectForm(), presetEntry.patch));
+              closeEffectPopover();
+              saveNow();
+              openEffectPopover(presetChip);
+            }
+            return;
+          }
           var effectTypeButton = effectTarget.closest('.effect-type-chip');
           if (effectTypeButton) {
             selectEffectTypeChip(effectTypeButton);
@@ -4760,6 +4890,24 @@ const EMBEDDED_SCRIPT_BODY = `
       if (characterPopover) {
         var characterTarget = event.target;
         if (characterTarget && characterTarget.closest && characterTarget.closest('.character-popover')) {
+          var characterPresetButton = characterTarget.closest('[data-character-preset]');
+          if (characterPresetButton) {
+            var characterPresetId = characterPresetButton.dataset.characterPreset;
+            var characterPreset = null;
+            CHARACTER_PRESETS.forEach(function(item) { if (item.id === characterPresetId) characterPreset = item; });
+            if (characterPreset) {
+              var presetActionInput = characterPopover.querySelector('[data-field="character-action"]');
+              var presetTransitionInput = characterPopover.querySelector('[data-field="character-transition"]');
+              if (presetActionInput && characterPreset.patch.action) {
+                presetActionInput.value = characterPreset.patch.action;
+                presetActionInput.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+              if (presetTransitionInput && characterPreset.patch.transition) {
+                presetTransitionInput.value = characterPreset.patch.transition;
+              }
+            }
+            return;
+          }
           var characterActionButton = characterTarget.closest('[data-action]');
           if (!characterActionButton) return;
           var characterAction = characterActionButton.dataset.action;
@@ -5381,7 +5529,18 @@ const EMBEDDED_SCRIPT_BODY = `
                 pickedSelect.innerHTML = renderVideoAssetOptions();
                 pickedSelect.value = message.asset.id;
               }
+              var status = videoPopover.querySelector('.video-popover-status');
+              if (status) {
+                var details = [message.asset.name];
+                var sizeText = formatBytes(message.asset.sizeBytes);
+                if (sizeText) details.push(sizeText);
+                if (Number.isFinite(Number(message.asset.durationSeconds))) {
+                  details.push(formatClock(message.asset.durationSeconds));
+                }
+                status.textContent = 'Імпортовано: ' + details.join(' · ');
+              }
               saveVideoForm();
+              syncVideoPopoverFeedback();
             }
           } else if (message.error) {
             setVideoPickerError(VIDEO_PICK_ERRORS[message.error] || VIDEO_PICK_ERRORS.failed);

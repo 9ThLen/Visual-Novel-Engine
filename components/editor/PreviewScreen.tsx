@@ -21,6 +21,7 @@ import { useShakeOffset } from '@/components/reader/useShakeOffset';
 import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import { useEffectAmbience } from '@/hooks/useEffectAmbience';
 import { SceneVideoLayer } from '@/components/reader/SceneVideoLayer';
+import { showToast } from '@/lib/toast-store';
 
 function secondsToMs(value: number | null | undefined, fallbackMs = 0): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallbackMs;
@@ -219,6 +220,13 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
     selectChoice(optionId);
   }, [selectChoice]);
 
+  // A failed clip leaves a black frame with no explanation; in the editor the
+  // author is the one who can fix it, so say what happened.
+  const activeVideoAssetId = sceneState.activeVideo?.assetId;
+  const handleVideoPlaybackError = useCallback(() => {
+    showToast(t('editor.videoPlaybackFailed').replace('{name}', activeVideoAssetId ?? ''), 'error');
+  }, [activeVideoAssetId, t]);
+
   const handleBack = useCallback(() => {
     void audioService.cleanup();
     router.back();
@@ -278,6 +286,7 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
             key={sceneState.activeVideo.stepId}
             video={sceneState.activeVideo}
             style={cameraTransform}
+            onPlaybackError={handleVideoPlaybackError}
           />
         ) : null}
 

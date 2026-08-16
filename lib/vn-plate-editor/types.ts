@@ -25,6 +25,10 @@ export interface VNPlateAudioAsset {
 export interface VNPlateVideoAsset {
   id: string;
   name: string;
+  /** Bytes on disk, so the author sees what a successful import actually cost. */
+  sizeBytes?: number;
+  /** Known only when the platform reported it at import time. */
+  durationSeconds?: number;
 }
 
 /** Lightweight reference to another scene in the story (for transition target pickers). */

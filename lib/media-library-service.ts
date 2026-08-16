@@ -41,6 +41,8 @@ export interface LibraryAsset {
   name: string;
   mimeType?: string;
   size?: number;
+  /** Video only, when the platform could read it without decoding the file. */
+  durationSeconds?: number;
   contentHash?: string;
   addedAt: number;
 }
@@ -215,7 +217,7 @@ export async function addAssetToLibraryPure(
   name: string,
   type: AssetType,
   assets: LibraryAsset[],
-  metadata?: { mimeType?: string; size?: number },
+  metadata?: { mimeType?: string; size?: number; durationSeconds?: number },
 ): Promise<{ asset: LibraryAsset; assets: LibraryAsset[] }> {
   const filename = name || uri.split('/').pop() || `asset-${Date.now()}`;
   const ext = filename.includes('.') ? '' : defaultExtensionForType(type);
@@ -232,6 +234,7 @@ export async function addAssetToLibraryPure(
     addedAt: Date.now(),
     ...(metadata?.mimeType ? { mimeType: metadata.mimeType } : {}),
     ...(typeof metadata?.size === 'number' ? { size: metadata.size } : {}),
+    ...(typeof metadata?.durationSeconds === 'number' ? { durationSeconds: metadata.durationSeconds } : {}),
   });
 
   if (type === 'video') {

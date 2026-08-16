@@ -306,6 +306,12 @@ function openCharacterPopover(api: EmbeddedHarnessApi) {
 // The embedded editor script is assembled as a template string, so tsc never
 // parses its contents. Compiling it with the Function constructor (without
 // executing) catches syntax errors introduced by edits to the template.
+const sceneWithEffect = {
+  sceneId: 'scene_1',
+  sceneName: 'Scene 1',
+  blocks: [{ id: 'text_1', kind: 'text' as const, content: 'Hello' }],
+};
+
 describe('createEmbeddedScript', () => {
   it('creates, edits, validates, and serializes an interactive object without browser prompts', () => {
     const harness = createVoidBlockHarness([{
@@ -925,6 +931,24 @@ describe('createEmbeddedScript', () => {
     } finally {
       harness.cleanup();
     }
+  });
+
+  it('offers effect presets that write canonical fields', () => {
+    const html = createVNPlateEditorHtml({
+      editorId: 'editor_presets',
+      scene: sceneWithEffect,
+      characters: [],
+      backgroundAssets: [],
+      isPhone: false,
+    });
+
+    // The definitions are inlined from lib/engine/animation-presets, so the
+    // frame and the rest of the app cannot drift apart.
+    expect(html).toContain('var EFFECT_PRESETS =');
+    expect(html).toContain('var CHARACTER_PRESETS =');
+    expect(html).toContain('data-effect-preset=');
+    expect(html).toContain('Гроза');
+    expect(html).toContain("EFFECT_PRESETS.forEach(function(item) { if (item.id === presetId) presetEntry = item; });");
   });
 
   it('lets the author turn a video block into a stop step', () => {

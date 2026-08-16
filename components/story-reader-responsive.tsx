@@ -423,6 +423,7 @@ export function StoryReaderResponsive({
         backgroundAnimatedStyle={bgAnimatedStyle}
         bgSource={bgSource}
         activeVideo={executor.sceneState.activeVideo}
+        backgroundVideoEnabled={settings.backgroundVideoEnabled}
         characterAnimatedStyle={charactersAnimatedStyle}
         choices={displayChoices}
         colors={colors}
