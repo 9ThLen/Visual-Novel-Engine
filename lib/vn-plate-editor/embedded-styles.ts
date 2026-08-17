@@ -252,6 +252,21 @@ export function createEmbeddedStyles(): string {
     .video-block .background-asset { font-size: 13px; }
     .video-block { cursor: pointer; }
     .video-block:hover { background: #ccfbf1; }
+    .camera-block {
+      display: inline-flex;
+      min-height: 0;
+      margin: 4px 2px;
+      padding: 3px 8px;
+      gap: 6px;
+      border-color: #bfdbfe;
+      border-radius: 6px;
+      background: #eff6ff;
+      cursor: pointer;
+      vertical-align: baseline;
+    }
+    .camera-block:hover { background: #dbeafe; }
+    .camera-block .void-title,
+    .camera-block .background-asset { font-size: 13px; }
     .preset-row {
       display: flex;
       flex-wrap: wrap;

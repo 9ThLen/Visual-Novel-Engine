@@ -16,6 +16,7 @@ import {
   createSoundStep,
   createTextStep,
 } from '@/lib/engine/event-factory';
+import { CAMERA_ACTION_LABELS, normalizeCameraData } from '@/lib/engine/camera-utils';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
 import type {
   BackgroundBlockData,
@@ -156,7 +157,21 @@ function technicalSummary(step: TimelineStep, characters: Character[]): { label:
     const targetLabel = !data.target || data.target === 'all' ? '' : ` · ${data.target}`;
     return { label: 'Стоп-ефект', summary: `${typeLabel}${targetLabel}` };
   }
-  if (step.blockType === 'camera') return { label: 'Камера', summary: 'camera movement' };
+  if (step.blockType === 'camera') {
+    const data = normalizeCameraData(step.data);
+    const action = CAMERA_ACTION_LABELS[data.action] || data.action;
+    const focus = data.action === 'focus'
+      ? ` · ${data.target ? characterNameForId(characters, data.target) : 'персонажа не вибрано'}`
+      : '';
+    const zoom = data.action !== 'reset' && typeof data.zoomLevel === 'number'
+      ? ` · ${Number(data.zoomLevel.toFixed(2))}×`
+      : '';
+    return {
+      label: 'Камера',
+      summary: `${action}${focus}${zoom} · ${Number(data.duration.toFixed(2))}s`,
+      warning: data.action === 'focus' && !data.target ? 'Потрібно вибрати персонажа' : undefined,
+    };
+  }
   if (step.blockType === 'interactive_object') return { label: "Об'єкт", summary: 'interactive hotspot' };
 
   return { label: step.blockType, summary: 'technical marker' };

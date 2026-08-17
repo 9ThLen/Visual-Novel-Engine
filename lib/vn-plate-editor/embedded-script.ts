@@ -1,7 +1,7 @@
 import type { VNPlateEditorPayload } from './types';
 import type { EmbeddedCommand } from './embedded-commands';
 import { jsonForScript } from './embedded-utils';
-import { CHARACTER_PRESETS, EFFECT_PRESETS } from '@/lib/engine/animation-presets';
+import { CAMERA_PRESETS, CHARACTER_PRESETS, EFFECT_PRESETS } from '@/lib/engine/animation-presets';
 
 /**
  * The static body of the embedded editor script. It only reads `payload` and
@@ -13,6 +13,7 @@ import { CHARACTER_PRESETS, EFFECT_PRESETS } from '@/lib/engine/animation-preset
 const EMBEDDED_SCRIPT_BODY = `
     var EFFECT_PRESETS = ${jsonForScript(EFFECT_PRESETS)};
     var CHARACTER_PRESETS = ${jsonForScript(CHARACTER_PRESETS)};
+    var CAMERA_PRESETS = ${jsonForScript(CAMERA_PRESETS)};
     var editor = document.getElementById('editor');
     var title = document.getElementById('title');
     var lastHistoryTarget = editor;
@@ -47,6 +48,8 @@ const EMBEDDED_SCRIPT_BODY = `
     var videoPopover = null;
     var activeVideoBlock = null;
     var pendingVideoPicks = {};
+    var cameraPopover = null;
+    var activeCameraBlock = null;
     var activeInteractiveObjectBlock = null;
     var interactiveObjectPopover = null;
     var interactiveObjectDraft = null;
@@ -3001,6 +3004,246 @@ const EMBEDDED_SCRIPT_BODY = `
       });
     }
 
+    // ── Camera block ────────────────────────────────────────────────────
+    var CAMERA_ACTION_LABELS = { zoom: 'Зум', pan: 'Панорама', focus: 'Фокус', reset: 'Скидання' };
+    var CAMERA_EASINGS = ['linear', 'ease-in', 'ease-out', 'ease-in-out'];
+    var CAMERA_EASING_LABELS = {
+      linear: 'Рівномірно',
+      'ease-in': 'З розгоном',
+      'ease-out': 'Із гальмуванням',
+      'ease-in-out': 'Плавно з обох боків'
+    };
+
+    function defaultCameraData() {
+      return { action: 'zoom', zoomLevel: 1.5, duration: 1, easing: 'ease-in-out' };
+    }
+
+    // The host normalizes camera data on the way in and out
+    // (normalizeCameraData), so the frame only carries the payload. Absent
+    // fields are meaningful — no zoomLevel means "hold the current zoom" — so
+    // nothing is filled in here.
+    function cameraDataFromNode(node) {
+      var raw = node.dataset.camera;
+      if (!raw) return defaultCameraData();
+      try {
+        var parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return defaultCameraData();
+        return parsed;
+      } catch (err) {
+        return defaultCameraData();
+      }
+    }
+
+    function cameraNumberText(value) {
+      return String(Number(Number(value).toFixed(2)));
+    }
+
+    function cameraSummaryText(data) {
+      var parts = [CAMERA_ACTION_LABELS[data.action] || data.action];
+      if (data.action === 'focus') {
+        var character = findCharacterById(data.target);
+        parts.push((character && character.name) || data.target || 'персонажа не вибрано');
+      }
+      if (data.action !== 'reset' && typeof data.zoomLevel === 'number') {
+        parts.push(cameraNumberText(data.zoomLevel) + '×');
+      }
+      if (data.action === 'pan') {
+        parts.push(cameraNumberText(data.panX || 0) + ', ' + cameraNumberText(data.panY || 0));
+      }
+      parts.push(cameraNumberText(data.duration) + 's');
+      return parts.join(' · ');
+    }
+
+    function renderCameraBlockContent(node) {
+      var data = cameraDataFromNode(node);
+      node.innerHTML =
+        '<span class="void-title">/camera</span>' +
+        '<span class="background-asset"></span>';
+      node.querySelector('.background-asset').textContent = cameraSummaryText(data);
+    }
+
+    function applyCameraData(node, data) {
+      node.dataset.camera = JSON.stringify(data);
+      renderCameraBlockContent(node);
+    }
+
+    // Renaming a character changes what a focus block reads as.
+    function renderAllCameraBlocks() {
+      Array.prototype.slice.call(editor.querySelectorAll('.camera-block')).forEach(function(node) {
+        renderCameraBlockContent(node);
+      });
+    }
+
+    function closeCameraPopover() {
+      unmountEditorPopover(cameraPopover);
+      cameraPopover = null;
+      if (activeCameraBlock) activeCameraBlock.classList.remove('is-editing', 'is-selected');
+      activeCameraBlock = null;
+      scheduleResize();
+    }
+
+    /**
+     * Only the fields that belong to the chosen action are written back. A pan
+     * that kept a zoom from an earlier action would move the zoom too, without
+     * anything on screen saying so.
+     */
+    function collectCameraForm() {
+      if (!cameraPopover) return activeCameraBlock ? cameraDataFromNode(activeCameraBlock) : defaultCameraData();
+      var action = selectedValue(cameraPopover.querySelector('#camAction'), 'zoom');
+      var durationInput = cameraPopover.querySelector('#camDuration');
+      var duration = Number(durationInput && durationInput.value);
+      var data = {
+        action: action,
+        duration: Number.isFinite(duration) && duration >= 0 ? duration : 1,
+        easing: selectedValue(cameraPopover.querySelector('#camEasing'), 'ease-in-out')
+      };
+      if (action === 'reset') return data;
+      if (action === 'zoom' || action === 'focus') {
+        var zoomInput = cameraPopover.querySelector('#camZoom');
+        var zoom = Number(zoomInput && zoomInput.value);
+        if (Number.isFinite(zoom) && zoom > 0) data.zoomLevel = zoom;
+      }
+      if (action === 'pan') {
+        var panXInput = cameraPopover.querySelector('#camPanX');
+        var panYInput = cameraPopover.querySelector('#camPanY');
+        var panX = Number(panXInput && panXInput.value);
+        var panY = Number(panYInput && panYInput.value);
+        data.panX = Number.isFinite(panX) ? panX : 0;
+        data.panY = Number.isFinite(panY) ? panY : 0;
+      }
+      if (action === 'focus') {
+        var target = selectedValue(cameraPopover.querySelector('#camTarget'), '');
+        if (target) data.target = target;
+      }
+      return data;
+    }
+
+    function saveCameraForm() {
+      if (!activeCameraBlock) return;
+      applyCameraData(activeCameraBlock, collectCameraForm());
+      saveNow();
+    }
+
+    /** Controls the chosen action ignores step aside instead of lying. */
+    function syncCameraPopoverAction() {
+      if (!cameraPopover) return;
+      var action = selectedValue(cameraPopover.querySelector('#camAction'), 'zoom');
+      var visibleRows = action === 'zoom' ? ['zoom']
+        : action === 'pan' ? ['pan']
+        : action === 'focus' ? ['zoom', 'focus']
+        : [];
+      Array.prototype.slice.call(cameraPopover.querySelectorAll('[data-camera-row]')).forEach(function(node) {
+        node.hidden = visibleRows.indexOf(node.dataset.cameraRow) === -1;
+      });
+      var help = cameraPopover.querySelector('.camera-popover-help');
+      if (help) {
+        help.textContent = action === 'focus'
+          ? 'Камера наводиться на позицію персонажа. Якщо його немає на екрані — залишиться лише зум.'
+          : action === 'reset'
+            ? 'Повертає зум і зсув до вихідного кадру.'
+            : action === 'pan'
+              ? 'Зсув у відсотках від центру; зум лишається таким, як зараз.'
+              : 'Зум лишається до наступного блока камери.';
+      }
+    }
+
+    function applyCameraPresetToForm(presetId) {
+      if (!cameraPopover) return false;
+      var preset = null;
+      CAMERA_PRESETS.forEach(function(item) { if (item.id === presetId) preset = item; });
+      if (!preset) return false;
+      var patch = preset.patch || {};
+      var fieldIds = {
+        action: '#camAction',
+        zoomLevel: '#camZoom',
+        panX: '#camPanX',
+        panY: '#camPanY',
+        duration: '#camDuration',
+        easing: '#camEasing',
+        target: '#camTarget'
+      };
+      Object.keys(fieldIds).forEach(function(key) {
+        if (patch[key] === undefined) return;
+        var control = cameraPopover.querySelector(fieldIds[key]);
+        if (control) control.value = String(patch[key]);
+      });
+      syncCameraPopoverAction();
+      saveCameraForm();
+      return true;
+    }
+
+    function handleCameraPopoverAction(action) {
+      if (action === 'save-camera') {
+        saveCameraForm();
+        closeCameraPopover();
+        return true;
+      }
+      return false;
+    }
+
+    function openCameraPopover(block, anchor) {
+      if (!block) return;
+      closeSlashMenu();
+      if (activeCameraBlock === block && cameraPopover) {
+        closeCameraPopover();
+        return;
+      }
+      closeCameraPopover();
+      activeCameraBlock = block;
+      block.classList.add('is-editing');
+      var data = cameraDataFromNode(block);
+
+      var actionOptions = Object.keys(CAMERA_ACTION_LABELS).map(function(key) {
+        return option(key, CAMERA_ACTION_LABELS[key], data.action);
+      }).join('');
+      var easingOptions = CAMERA_EASINGS.map(function(easing) {
+        return option(easing, CAMERA_EASING_LABELS[easing] || easing, data.easing || 'ease-in-out');
+      }).join('');
+      var targetOptions = option('', 'Персонажа не вибрано', data.target || '');
+      characters.forEach(function(character) {
+        targetOptions += option(character.id, character.name || character.id, data.target || '');
+      });
+      if (data.target && !findCharacterById(data.target)) {
+        targetOptions += option(data.target, data.target, data.target);
+      }
+      var presetChips = CAMERA_PRESETS.map(function(preset) {
+        var title = preset.hint ? ' title="' + escapeHtml(preset.hint) + '"' : '';
+        return '<button type="button" class="preset-chip" data-camera-preset="' + escapeHtml(preset.id) + '"' + title + '>' +
+          escapeHtml(preset.label) +
+        '</button>';
+      }).join('');
+
+      var popover = document.createElement('div');
+      popover.className = 'background-popover camera-popover';
+      popover.innerHTML =
+        '<div class="preset-row"><span class="preset-row-title">Пресети</span>' + presetChips + '</div>' +
+        '<label class="popover-label" for="camAction">Рух</label>' +
+        '<select id="camAction" class="popover-control">' + actionOptions + '</select>' +
+        '<label class="popover-label" for="camTarget" data-camera-row="focus">Персонаж</label>' +
+        '<select id="camTarget" class="popover-control" data-camera-row="focus">' + targetOptions + '</select>' +
+        '<label class="popover-label" for="camZoom" data-camera-row="zoom">Зум</label>' +
+        '<input id="camZoom" class="popover-control" data-camera-row="zoom" type="number" min="0.5" max="3" step="0.05" value="' + escapeHtml(String(typeof data.zoomLevel === 'number' ? data.zoomLevel : 1.5)) + '" />' +
+        '<label class="popover-label" for="camPanX" data-camera-row="pan">Зсув X, %</label>' +
+        '<input id="camPanX" class="popover-control" data-camera-row="pan" type="number" min="-100" max="100" step="1" value="' + escapeHtml(String(typeof data.panX === 'number' ? data.panX : 0)) + '" />' +
+        '<label class="popover-label" for="camPanY" data-camera-row="pan">Зсув Y, %</label>' +
+        '<input id="camPanY" class="popover-control" data-camera-row="pan" type="number" min="-100" max="100" step="1" value="' + escapeHtml(String(typeof data.panY === 'number' ? data.panY : 0)) + '" />' +
+        '<label class="popover-label" for="camDuration">Тривалість, с</label>' +
+        '<input id="camDuration" class="popover-control" type="number" min="0" step="0.1" value="' + escapeHtml(String(typeof data.duration === 'number' ? data.duration : 1)) + '" />' +
+        '<label class="popover-label" for="camEasing">Плавність</label>' +
+        '<select id="camEasing" class="popover-control">' + easingOptions + '</select>' +
+        '<p class="popover-help camera-popover-help"></p>' +
+        '<div class="popover-footer">' +
+          '<button type="button" class="popover-button primary" data-action="save-camera">Зберегти</button>' +
+        '</div>';
+
+      mountEditorPopover(popover, false);
+      cameraPopover = popover;
+      var actionSelect = popover.querySelector('#camAction');
+      if (actionSelect) actionSelect.addEventListener('change', function() { syncCameraPopoverAction(); });
+      syncCameraPopoverAction();
+      afterLayout(function() { positionBranchPopover(cameraPopover, anchor || block); });
+    }
+
     function closeStopEffectPopover() {
       unmountEditorPopover(stopEffectPopover);
       stopEffectPopover = null;
@@ -3803,6 +4046,30 @@ const EMBEDDED_SCRIPT_BODY = `
             step: videoStep
           };
         }
+        if (commandId === 'camera') {
+          var cameraData = cameraDataFromNode(node);
+          var originalCameraStep = originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step
+            ? originalTechnical.step
+            : null;
+          var cameraStep = originalCameraStep
+            ? Object.assign({}, originalCameraStep, { blockType: 'camera', data: cameraData })
+            : {
+                id: node.dataset.id || uid('step'),
+                blockType: 'camera',
+                data: cameraData,
+                collapsed: false,
+                enabled: true
+              };
+          return {
+            id: node.dataset.id || uid('doc_block'),
+            kind: 'technical',
+            commandId: 'camera',
+            blockType: 'camera',
+            label: 'Камера',
+            summary: cameraSummaryText(cameraData),
+            step: cameraStep
+          };
+        }
         if (commandId === 'interactive_object') {
           var interactiveId = node.dataset.id || uid('doc_block');
           var interactiveData = interactiveObjectDataFromNode(node);
@@ -4567,6 +4834,7 @@ const EMBEDDED_SCRIPT_BODY = `
         : commandId === 'goto' ? 'void-block goto-block'
         : commandId === 'stopEffect' ? 'void-block stop-effect-block'
         : commandId === 'video' ? 'void-block video-block'
+        : commandId === 'camera' ? 'void-block camera-block'
         : commandId === 'interactive_object' ? 'void-block interactive-object-block'
         : 'void-block';
       block.contentEditable = 'false';
@@ -4597,6 +4865,8 @@ const EMBEDDED_SCRIPT_BODY = `
         applyStopEffectData(block, { effectType: 'all', target: 'all' });
       } else if (commandId === 'video') {
         applyVideoData(block, defaultVideoData());
+      } else if (commandId === 'camera') {
+        applyCameraData(block, defaultCameraData());
       } else if (commandId === 'interactive_object') {
         applyInteractiveObjectData(block, defaultInteractiveObjectData());
         block.dataset.interactiveNew = 'true';
@@ -4615,6 +4885,7 @@ const EMBEDDED_SCRIPT_BODY = `
       if (commandId !== 'interactive_object') saveNow();
       if (commandId === 'interactive_object') openInteractiveObjectPopover(block);
       if (commandId === 'video') openVideoPopover(block, block);
+      if (commandId === 'camera') openCameraPopover(block, block);
     }
 
     editor.addEventListener('mousedown', function(event) {
@@ -4713,6 +4984,11 @@ const EMBEDDED_SCRIPT_BODY = `
       if (block.classList.contains('video-block')) {
         event.preventDefault();
         openVideoPopover(block, block);
+        return;
+      }
+      if (block.classList.contains('camera-block')) {
+        event.preventDefault();
+        openCameraPopover(block, block);
         return;
       }
       if (!button && !block.classList.contains('interactive-object-block')) return;
@@ -5082,6 +5358,23 @@ const EMBEDDED_SCRIPT_BODY = `
           // the other block popovers.
           saveVideoForm();
           closeVideoPopover();
+        }
+      }
+      if (cameraPopover) {
+        var cameraTarget = event.target;
+        if (cameraTarget && cameraTarget.closest && cameraTarget.closest('.camera-popover')) {
+          var cameraPresetButton = cameraTarget.closest('[data-camera-preset]');
+          if (cameraPresetButton) {
+            applyCameraPresetToForm(cameraPresetButton.dataset.cameraPreset);
+            return;
+          }
+          var cameraActionButton = cameraTarget.closest('[data-action]');
+          if (cameraActionButton) handleCameraPopoverAction(cameraActionButton.dataset.action);
+          return;
+        }
+        if (!(cameraTarget && cameraTarget.closest && cameraTarget.closest('.camera-block'))) {
+          saveCameraForm();
+          closeCameraPopover();
         }
       }
       if (choicePopover) {
@@ -5464,6 +5757,8 @@ const EMBEDDED_SCRIPT_BODY = `
       if (message.type === 'formatText') applyFormatCommand(message.command, message.value);
       if (message.type === 'charactersUpdated' && Array.isArray(message.characters)) {
         characters = message.characters.map(migrateCharacter);
+        // A focus block names a character, so a rename has to reach its summary.
+        renderAllCameraBlocks();
       }
       if (message.type === 'backgroundAssetsUpdated' && Array.isArray(message.assets)) {
         backgroundAssets = message.assets;

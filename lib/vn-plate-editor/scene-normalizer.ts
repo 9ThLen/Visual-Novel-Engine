@@ -13,6 +13,7 @@ import type {
   DocumentTechnicalBlock,
 } from '@/lib/document-editor/types';
 import { generateId } from '@/lib/id-utils';
+import { normalizeCameraData } from '@/lib/engine/camera-utils';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
 import { normalizeVideoData } from '@/lib/engine/video-utils';
 import type { BlockType, CharacterBlockData, TimelineStep } from '@/lib/engine/types';
@@ -108,7 +109,9 @@ function normalizeTechnicalBlock(block: DocumentTechnicalBlock, characters: Char
       ? { ...step, data: normalizeTransitionData(step.data) }
       : blockType === 'video'
         ? { ...step, data: normalizeVideoData(step.data) }
-        : step;
+        : blockType === 'camera'
+          ? { ...step, data: normalizeCameraData(step.data) }
+          : step;
     return {
       ...block,
       commandId,

@@ -1076,6 +1076,129 @@ describe('createEmbeddedScript', () => {
     }
   });
 
+  it('inserts a /camera block that serializes back into a real camera step', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('camera');
+
+      const cameraBlock = anchorParagraph.nextElementSibling as HTMLElement;
+      expect(cameraBlock.classList.contains('camera-block')).toBe(true);
+      expect(cameraBlock.dataset.command).toBe('camera');
+      // /camera used to fall through to the placeholder branch: a dead block
+      // that serialized with step: null.
+      expect(cameraBlock.textContent).not.toContain('New block');
+
+      api.saveNow();
+      const lastSave = saveMessages(harness.messages).at(-1);
+      const saved = lastSave?.scene.blocks.find((item) => item.id === cameraBlock.dataset.id) as unknown as {
+        blockType: string;
+        step: { blockType: string; data: Record<string, unknown> } | null;
+      };
+
+      expect(saved.blockType).toBe('camera');
+      expect(saved.step).not.toBeNull();
+      expect(saved.step?.blockType).toBe('camera');
+      expect(saved.step?.data).toMatchObject({ action: 'zoom', zoomLevel: 1.5, duration: 1, easing: 'ease-in-out' });
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('writes only the fields that belong to the chosen camera action', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('camera');
+      const cameraBlock = anchorParagraph.nextElementSibling as HTMLElement;
+
+      const popover = document.querySelector('.camera-popover') as HTMLElement;
+      const actionSelect = popover.querySelector('#camAction') as HTMLSelectElement;
+      actionSelect.value = 'pan';
+      actionSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+      expect((popover.querySelector('#camPanX') as HTMLElement).hidden).toBe(false);
+      expect((popover.querySelector('#camZoom') as HTMLElement).hidden).toBe(true);
+
+      (popover.querySelector('#camPanX') as HTMLInputElement).value = '18';
+      (popover.querySelector('#camDuration') as HTMLInputElement).value = '2.5';
+      (popover.querySelector('[data-action="save-camera"]') as HTMLButtonElement).click();
+
+      const data = JSON.parse(cameraBlock.dataset.camera || '{}');
+      expect(data).toMatchObject({ action: 'pan', panX: 18, panY: 0, duration: 2.5 });
+      // An absent zoom means "hold the zoom we already have"; carrying the old
+      // 1.5 over would silently zoom on a pan step.
+      expect(data.zoomLevel).toBeUndefined();
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('names the focused character in the camera summary and follows a rename', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      window.dispatchEvent(new MessageEvent('message', {
+        data: {
+          source: 'vn-plate-host',
+          editorId: 'editor_void_blocks',
+          type: 'charactersUpdated',
+          characters: [{ id: 'char_1', name: 'Мія', sprites: [] }],
+        },
+      }));
+
+      api.insertCommand('camera');
+      const cameraBlock = anchorParagraph.nextElementSibling as HTMLElement;
+      const popover = document.querySelector('.camera-popover') as HTMLElement;
+      const actionSelect = popover.querySelector('#camAction') as HTMLSelectElement;
+      actionSelect.value = 'focus';
+      actionSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      expect((popover.querySelector('#camTarget') as HTMLElement).hidden).toBe(false);
+
+      (popover.querySelector('#camTarget') as HTMLSelectElement).value = 'char_1';
+      (popover.querySelector('[data-action="save-camera"]') as HTMLButtonElement).click();
+
+      expect(JSON.parse(cameraBlock.dataset.camera || '{}').target).toBe('char_1');
+      expect(cameraBlock.textContent).toContain('Мія');
+
+      window.dispatchEvent(new MessageEvent('message', {
+        data: {
+          source: 'vn-plate-host',
+          editorId: 'editor_void_blocks',
+          type: 'charactersUpdated',
+          characters: [{ id: 'char_1', name: 'Мія Соколова', sprites: [] }],
+        },
+      }));
+      expect(cameraBlock.textContent).toContain('Мія Соколова');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('applies a camera preset into the canonical fields', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('camera');
+      const cameraBlock = anchorParagraph.nextElementSibling as HTMLElement;
+
+      const popover = document.querySelector('.camera-popover') as HTMLElement;
+      (popover.querySelector('[data-camera-preset="slowPan"]') as HTMLButtonElement).click();
+
+      // A preset is authoring sugar: what lands on the block is plain canonical
+      // data, with no trace of the preset it came from.
+      const data = JSON.parse(cameraBlock.dataset.camera || '{}');
+      expect(data).toMatchObject({ action: 'pan', panX: 12, panY: 0, duration: 3, easing: 'ease-in-out' });
+      expect(data.id).toBeUndefined();
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it('deletes a transition block with a double Backspace from the following paragraph', () => {
     const harness = createVoidBlockHarness();
     try {

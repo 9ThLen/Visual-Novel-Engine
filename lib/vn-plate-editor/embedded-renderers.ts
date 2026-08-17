@@ -1,7 +1,8 @@
 import type { Character } from '@/lib/character-types';
 import { branchColorForOptionIndex, branchShadowColor } from '@/lib/document-editor/branch-colors';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
-import type { BackgroundBlockData, CharacterBlockData, GotoBlockData, InteractiveObjectBlockData, LabelBlockData, NormalizedVideoBlockData, StopEffectBlockData } from '@/lib/engine/types';
+import type { BackgroundBlockData, CameraBlockData, CharacterBlockData, GotoBlockData, InteractiveObjectBlockData, LabelBlockData, NormalizedVideoBlockData, StopEffectBlockData } from '@/lib/engine/types';
+import { CAMERA_ACTION_LABELS, normalizeCameraData } from '@/lib/engine/camera-utils';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
 import { normalizeVideoData } from '@/lib/engine/video-utils';
 import type { Language } from '@/lib/translations';
@@ -377,6 +378,37 @@ function videoBlockToHtml(
   ].join('');
 }
 
+export function cameraSummaryText(data: CameraBlockData, characters: Character[] = []): string {
+  const parts: string[] = [CAMERA_ACTION_LABELS[data.action] || data.action];
+  if (data.action === 'focus') {
+    const name = characters.find((character) => character.id === data.target)?.name;
+    parts.push(name || data.target || 'персонажа не вибрано');
+  }
+  if (data.action !== 'reset' && typeof data.zoomLevel === 'number') {
+    parts.push(`${Number(data.zoomLevel.toFixed(2))}×`);
+  }
+  if (data.action === 'pan') {
+    parts.push(`${Number((data.panX ?? 0).toFixed(1))}, ${Number((data.panY ?? 0).toFixed(1))}`);
+  }
+  parts.push(`${Number(data.duration.toFixed(2))}s`);
+  return parts.join(' · ');
+}
+
+function cameraBlockToHtml(
+  block: Extract<DocumentBlock, { kind: 'technical' }>,
+  characters: Character[],
+): string {
+  // The whole normalized payload rides on the node, like /video, so the frame
+  // serializer hands back fields the popover has no control for.
+  const data = normalizeCameraData(block.step?.data);
+  return [
+    `<div class="void-block camera-block" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="camera" data-camera="${escapeHtml(JSON.stringify(data))}">`,
+    '<span class="void-title">/camera</span>',
+    `<span class="background-asset">${escapeHtml(cameraSummaryText(data, characters))}</span>`,
+    '</div>',
+  ].join('');
+}
+
 function interactiveObjectBlockToHtml(block: Extract<DocumentBlock, { kind: 'technical' }>): string {
   const data = block.step.data as InteractiveObjectBlockData;
   const position = data.position || { x: 50, y: 50, width: 10, height: 10 };
@@ -405,6 +437,7 @@ export function blockToHtml(
   scenes: VNPlateSceneRef[] = [],
   language: Language = 'en',
   videoAssets: VNPlateVideoAsset[] = [],
+  characters: Character[] = [],
 ): string {
   if (block.kind === 'text') {
     return `<p data-kind="text" data-id="${escapeHtml(block.id)}"${blockAlignmentStyle(block.parts, block.content)}>${inlinePartsToHtml(block.parts, block.content, audioAssets)}</p>`;
@@ -486,6 +519,10 @@ export function blockToHtml(
     return videoBlockToHtml(block, videoAssets);
   }
 
+  if (block.blockType === 'camera') {
+    return cameraBlockToHtml(block, characters);
+  }
+
   if (block.blockType === 'interactive_object') {
     return interactiveObjectBlockToHtml(block);
   }
@@ -528,8 +565,8 @@ export function sceneToEditorHtml(
   const colorById = new Map(characters.map((character) => [character.id, character.color]));
   return blocks.map((block) => {
     if (block.kind === 'dialogue' && block.characterId && !block.tokenColor) {
-      return blockToHtml({ ...block, tokenColor: colorById.get(block.characterId) }, backgroundAssets, audioAssets, scenes, language, videoAssets);
+      return blockToHtml({ ...block, tokenColor: colorById.get(block.characterId) }, backgroundAssets, audioAssets, scenes, language, videoAssets, characters);
     }
-    return blockToHtml(block, backgroundAssets, audioAssets, scenes, language, videoAssets);
+    return blockToHtml(block, backgroundAssets, audioAssets, scenes, language, videoAssets, characters);
   }).join('');
 }
