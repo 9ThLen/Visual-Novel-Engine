@@ -1,6 +1,6 @@
 # План інтеграції відео та анімацій
 
-**Статус:** запропоновано, перевірено проти коду 2026-08-15
+**Статус:** етапи 1, 2, 4 (частково) і 5 (автоматична частина) виконані; етап 0 заблокований на native, етап 3 не починався. Оновлено 2026-08-16 — див. «Стан виконання» нижче.
 
 **Обсяг MVP:** локальні MP4, фонове відео, блокуюча катсцена, текстовий `/video`-блок у Plate, пресети наявних анімацій
 
@@ -151,18 +151,38 @@ export interface RuntimeVideoState {
 
 Не починати schema/editor зміни, поки один і той самий тестовий MP4 не програється на web, Android та iOS. Закласти на native rebuild і виправлення link/config проблем до двох робочих днів, а не оцінювати spike як 0.5 дня. Якщо rebuild заблокований інфраструктурою, не імітувати native gate: зафіксувати blocker і перейти до незалежних анімаційних пресетів з етапу 4. Spike-код або перетворюється на `SceneVideoLayer`, або видаляється; окремий dead debug screen не мерджиться.
 
-### Статус виконання — 2026-08-15
+### Стан виконання — 2026-08-16
 
-- Dev-only spike реалізований у `app/video-spike.tsx`; typecheck і production web export проходять, web bundle включає `expo-video`. Runtime перевірено в Codex Chromium на CC0 MP4 від MDN: URL і `idb://media/video-spike-current` резолвляться відповідно у мережевий та session `blob:` URI, `readyToPlay`, muted autoplay і `first frame rendered` спрацьовують. Probe `startAt=2s` / `endAt=5s` зупиняє player на `5.05s`. Poster overlay реалізований до першого кадру та для error state; природний rejected-autoplay/tap-to-play сценарій у цьому браузері не відтворився, бо muted autoplay дозволений.
-- Локальний Android autolinking знаходить `expo-video@3.0.16`, але повний rebuild двічі зупинився до створення APK у native C++ залежностях `expo-modules-core`, `react-native-screens` і `react-native-worklets`: pnpm-шляхи перевищують безпечний `CMAKE_OBJECT_PATH_MAX`, після чого Ninja завершується з `manifest 'build.ninja' still dirty after 100 tries`. `subst` не допомагає, бо autolinking повертає фізичні `D:\\...\\node_modules\\.pnpm` шляхи.
-- Порядок unblock: EAS development builds для Android та iOS Simulator; якщо локальний Android build усе ж потрібен — `node-linker=hoisted` з повним reinstall; одноразово можна перенаправити native `buildDir`, але постійне рішення потребує config plugin. Короткий фізичний checkout сам по собі не вважається достатнім.
-- Для наявного `developmentClient: true` додано відсутній `expo-dev-client@~6.0.21`. Android EAS development build `03a49dd1-1790-465f-bb97-a3149ec194a0` успішно створив APK. Перша iOS Simulator build `098c799b-1e02-425b-b2a1-2e04210f0b10` виявила несумісність `expo-file-system@55` з Expo SDK 54; залежність вирівняно до `~19.0.23`, після чого retry `1eb4910c-ad55-4b8d-a436-5e7b4945162a` успішно створив Simulator archive. Отже native compile/link gate закритий для Android та iOS.
-- Native playback gate лишається відкритим: Android APK не встановлюється поверх наявного emulator package з іншим підписом (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`), а iOS Simulator artifact потребує macOS для запуску. Видаляти дані наявного Android-застосунку без окремого дозволу не можна; physical-device iOS profile окремо потребує одноразового interactive credentials/device provisioning.
-- Platform playback gate загалом лишається відкритим, бо той самий MP4 ще не програно на Android та iOS. Після окремого підтвердження початку реалізації розпочато безпечну неблокуючу частину schema/runtime зрізу A; native playback досі є обов'язковою перевіркою перед завершенням зрізу. Незалежні анімаційні пресети з етапу 4 можна виконувати паралельно.
-- Реалізовано канонічний `video`-step, нормалізацію, синхронну проєкцію background play/stop у `SceneState.activeVideo`, спільний `SceneVideoLayer` для Preview/Reader, `/video` у slash menu та SceneDocument round-trip. Окремий spike route видалено після перенесення потрібної логіки у production-компонент.
-- Поточна перевірка production-коду: TypeScript проходить; 99 цільових unit/integration тестів проходять; web export успішно збирає 1821 модуль. Медіа-імпорт, `AssetType: 'video'`, backup/restore, Pick/Edit modal і blocking cutscene ще не реалізовані, тому acceptance gate зрізу A не закритий.
+Gate лишається **закритим**: тестовий MP4 жодного разу не програвався на Android або iOS.
+
+- Web: працює. `idb://` → blob URL → `VideoView`, muted-autoplay, poster, `startAt`/`endAt`.
+- Android: повний rebuild двічі впав до створення APK у native C++ залежностях
+  (`expo-modules-core`, `react-native-screens`, `react-native-worklets`) — pnpm-шляхи
+  перевищують безпечний `CMAKE_OBJECT_PATH_MAX`, далі Ninja завершується з
+  `manifest 'build.ninja' still dirty after 100 tries`. `subst` не допомагає: autolinking
+  повертає фізичні `node_modules/.pnpm` шляхи.
+- iOS: не запускався, потрібен macOS або cloud build.
+
+Варіанти розблокування, за спаданням дешевизни:
+
+1. **EAS development build** — профіль `development` уже є в `eas.json`, збірка йде на
+   інфраструктурі без ліміту шляхів Windows і закриває обидві платформи одразу.
+   Проєкт живе в CNG-режимі (`android/` та `ios/` у `.gitignore`), тож локальна нативна
+   збірка тут ніколи й не була джерелом істини.
+2. **`.npmrc` з `node-linker=hoisted`** — прибирає сегмент `.pnpm/<pkg>@<ver>_<hash>/`,
+   який і з'їдає бюджет шляху. Ціна: повний реінсталл.
+3. Фізичний checkout у короткий шлях — сам по собі, найімовірніше, не допоможе:
+   виграш ~25 символів проти 100+ на один peer-хеш.
+
+**Наслідок для решти плану.** Усе, що написано для native, перевірене лише моками:
+унікальне ім'я файла на диску, вимірювання розміру після копіювання, seek після
+`readyToPlay`, пауза на app background. Тривалість ролика на native не читається взагалі —
+`expo-document-picker` її не повідомляє, тому поповер там не показує ні тривалості, ні
+повної валідації вікна обрізки.
 
 ## Етап 1. Медіа-фундамент
+
+> **Виконано.** Пункти нижче лишені як опис контракту, а не як список справ.
 
 ### Asset contract
 
@@ -212,6 +232,8 @@ export interface RuntimeVideoState {
 
 ## Етап 2. Вертикальний зріз A: фонове відео
 
+> **Виконано**, включно з JSON-імпортом (спершу пропущеним: валідатор канонічного кроку викидав відеоблоки).
+
 Цей зріз змінює `executeStep()` лише як звичайну синхронну мутацію state. Він **не** змінює halt, `advance()`, rollback або save/load.
 
 ### Canonical round-trip
@@ -260,6 +282,8 @@ export interface RuntimeVideoState {
 
 ## Етап 3. Вертикальний зріз B: блокуюча катсцена
 
+> **Не починався.** Єдина велика частина MVP, що лишилася.
+
 ### Новий executor protocol
 
 - Cutscene `play` встановлює `activeVideo`, `pendingVideoStepId`, `canAdvance: false` і halt.
@@ -307,6 +331,8 @@ Cutscene зі звуком стартує після дозволеного gest
 
 ## Етап 4. Анімаційні пресети
 
+> **Виконано частково:** пресети ефектів і появи персонажа доступні авторові; камера та character-effects визначені, але недосяжні — для цих блоків немає редакторів у фреймі.
+
 Це незалежна робота; її можна виконувати після стабілізації моделі або паралельно з cutscene runtime, якщо файли не перетинаються.
 
 - Не додавати `AnimationBlockData`.
@@ -319,6 +345,8 @@ Cutscene зі звуком стартує після дозволеного gest
 Reduced motion не включати сюди приховано. Для нього потрібен окремий план: реальний `UserSettings` contract, system preference через `AccessibilityInfo`, пріоритет user override та таблиця поведінки для кожного effect/camera/character transition. Поточні translation keys і `ReduceMotion.Never` не вважаються завершеною функцією.
 
 ## Етап 5. Hardening і реліз
+
+> **Автоматична частина виконана**, ручна platform matrix — ні.
 
 ### Автоматизовані перевірки
 
@@ -428,29 +456,52 @@ graphify update .
 
 ## Definition of Done
 
-- Автор може імпортувати та повторно використати MP4 без base64 і без ffmpeg.
-- `/video background` і `/video stop` працюють однаково в preview та reader.
-- Катсцена має окремий executor completion protocol і не пропускається звичайним tap.
-- Double completion, rollback, load, unmount і web autoplay не залишають executor у завислому стані.
-- Backward `goto` через cutscene не дозволяє stale player completion завершити нову pending-сесію.
-- Після complete/Skip/recoverable error катсцени попередній відеофон автоматично повертається.
-- Video audio не порушує reader audio boundary та BGM повертає попередню гучність.
-- Save/autosave не створюються посеред blocking cutscene.
-- Plate save/load, text serialization, JSON і `.vnebackup` зберігають video step та asset.
-- Poster має image reference, story membership, backup coverage і використовується для save-slot thumbnail активного відеофону.
-- 100+ MiB файл відхиляється до читання bytes; допустимий файл не копіюється через base64.
-- Автор бачить ліміт 64 MiB до picker і фактичний size одразу після вибору.
-- Story Doctor розрізняє missing video, background, audio, poster і неправильні timing options.
-- Старі історії та всі image/audio сценарії залишаються сумісними.
-- Усі автоматизовані команди й ручна platform matrix пройдені.
+Позначки відповідають стану на 2026-08-16.
+
+| # | Критерій | Стан |
+|---|---|---|
+| 1 | Автор може імпортувати та повторно використати MP4 без base64 і без ffmpeg | ✅ web; native лише під моками |
+| 2 | `/video background` і `/video stop` працюють однаково в preview та reader | ✅ |
+| 3 | Катсцена має окремий executor completion protocol і не пропускається звичайним tap | ❌ етап 3 |
+| 4 | Double completion, rollback, load, unmount і web autoplay не залишають executor у завислому стані | ❌ етап 3 |
+| 5 | Backward `goto` через cutscene не дає stale completion завершити нову сесію | ❌ етап 3 |
+| 6 | Після complete/Skip/error катсцени попередній відеофон повертається | ❌ етап 3 |
+| 7 | Video audio не порушує reader audio boundary, BGM повертає гучність | ❌ етап 3 (фон завжди muted, тому поки не застосовно) |
+| 8 | Save/autosave не створюються посеред blocking cutscene | ❌ етап 3 |
+| 9 | Plate save/load, текстова серіалізація, JSON і `.vnebackup` зберігають video step | ✅ |
+| 10 | Poster має image reference, membership, backup coverage і save-slot thumbnail | ✅ |
+| 11 | Завеликий файл відхиляється до читання bytes; допустимий не копіюється через base64 | ✅ |
+| 12 | Автор бачить ліміт до picker і фактичний size одразу після вибору | ✅ |
+| 13 | Story Doctor розрізняє missing video, background, audio, poster і неправильні timing | ✅ |
+| 14 | Старі історії та всі image/audio сценарії сумісні | ✅ |
+| 15 | Усі автоматизовані команди пройдені | ✅ `tsc`, 1420 тестів, обидва boundary guards, web export |
+| 16 | Ручна platform matrix пройдена | ❌ жоден рядок |
+
+Додано поза початковим планом, як наслідок рев'ю авторського та читацького досвіду:
+
+- перемикач «Відеофон» у налаштуваннях читача (економія трафіку й батареї, фолбек на постер);
+- виявлення заблокованого autoplay через `playingChange` — `player.play()` повертає `void`,
+  а web-реалізація `expo-video` ковтає проміс, тому `.catch()` там неможливий;
+- пауза відео на app background;
+- постер-пікер із превʼю, тривалість `м:сс` і миттєва валідація вікна обрізки в поповері;
+- попередження Story Doctor про cutscene-крок, який ще не відтворюється;
+- пресети анімацій як чисті канонічні патчі, інлайнені у фрейм з одного визначення.
+
+Свідомо не зроблено:
+
+- `animationsEnabled` — це reduced motion, якому потрібна власна таблиця поведінки;
+- превʼю постера в самому блоці — суперечить зафіксованому тестами рішенню «без мініатюр у блоках»;
+- пресети камери та character-effects — визначені, але недосяжні: для цих блоків немає редакторів у фреймі.
 
 ## Порядок виконання
 
-1. Spike, повний native rebuild і platform gate.
-2. Media foundation та backup.
-3. Повний фоновий video slice, включно з мінімальним `/video` UX.
-4. Окремий cutscene slice з executor/save/audio hardening.
-5. Анімаційні пресети; якщо native rebuild блокує етап 0, виконати їх раніше як незалежний видимий результат.
-6. Загальна regression matrix і реліз.
+1. ~~Spike, повний native rebuild і platform gate~~ — spike зроблено, gate закритий (див. «Стан виконання»).
+2. ~~Media foundation та backup~~ — зроблено.
+3. ~~Повний фоновий video slice, включно з мінімальним `/video` UX~~ — зроблено.
+4. ~~Анімаційні пресети~~ — зроблено в доступній частині.
+5. **Наступне:** розблокувати native gate (EAS development build) — усе native-специфічне
+   зараз тримається на моках.
+6. **Далі:** окремий cutscene slice з executor/save/audio hardening.
+7. Загальна regression matrix і реліз.
 
-Після етапу 3 можна випустити корисну фонову video-функцію, не чекаючи складнішого cutscene protocol.
+Фонова video-функція вже придатна до релізу окремо від cutscene protocol.
