@@ -1,6 +1,6 @@
 # План інтеграції відео та анімацій
 
-**Статус:** етапи 1, 2, 3 і 4 (частково) виконані, 5 — в автоматичній частині; етап 0 заблокований на native. Оновлено 2026-08-16 — див. «Стан виконання» нижче.
+**Статус:** етапи 1–4 виконані, 5 — в автоматичній частині; етап 0 заблокований на native. Оновлено 2026-08-18 — див. «Стан виконання» нижче.
 
 **Обсяг MVP:** локальні MP4, фонове відео, блокуюча катсцена, текстовий `/video`-блок у Plate, пресети наявних анімацій
 
@@ -331,16 +331,26 @@ Cutscene зі звуком стартує після дозволеного gest
 
 ## Етап 4. Анімаційні пресети
 
-> **Виконано частково:** пресети ефектів і появи персонажа доступні авторові; камера та character-effects визначені, але недосяжні — для цих блоків немає редакторів у фреймі.
+> **Виконано.** Пресети ефектів, появи персонажа й камери доступні авторові. Camera-блок отримав повний редактор у фреймі; character-effect пресети лишаються всередині наявного редактора персонажа.
 
 Це незалежна робота; її можна виконувати після стабілізації моделі або паралельно з cutscene runtime, якщо файли не перетинаються.
 
 - Не додавати `AnimationBlockData`.
 - У character editor згрупувати наявні show/hide/move/shake/scale та entrance transitions у пресети Fade, Slide, Zoom, Shake, Pulse.
 - У effect editor додати пресети атмосфери Rain, Snow, Fog, Glitch з поточними intensity/duration options.
-- У camera editor додати Pan, Zoom, Focus presets з наявним easing.
+- У camera editor додати Pan, Zoom, Focus presets з наявним easing. ✅ `/camera` став
+  повноцінним блоком (рендер, поповер, серіалізація, `normalizeCameraData`), а не
+  плейсхолдером зі `step: null`.
 - Preset лише заповнює вже наявний canonical data; після save/read round-trip він не залежить від назви preset.
-- Перевірити Preview/Reader parity для кожного preset.
+- Перевірити Preview/Reader parity для кожного preset. ✅ структурно: reader і preview
+  тепер ділять один `useCameraTransform`.
+
+**Що довелося зробити понад план.** `duration` і `easing` камери ніхто не читав — обидві
+поверхні застосовували transform миттєво, тож «Повільна панорама, 3 с» стрибала за кадр і
+кожен camera-пресет обіцяв те, чого не робив. Додано tween від поточної картинки до цілі.
+`focus` теж був просто зумом: `cameraState.target` не мав жодного споживача. Тепер він
+наводиться на позицію персонажа, а нерозв'язана ціль чесно вироджується в зум і потрапляє
+в Story Doctor (`camera.missingFocusTarget` / `camera.focusWithoutTarget`).
 
 Reduced motion не включати сюди приховано. Для нього потрібен окремий план: реальний `UserSettings` contract, system preference через `AccessibilityInfo`, пріоритет user override та таблиця поведінки для кожного effect/camera/character transition. Поточні translation keys і `ReduceMotion.Never` не вважаються завершеною функцією.
 
@@ -474,7 +484,7 @@ graphify update .
 | 12 | Автор бачить ліміт до picker і фактичний size одразу після вибору | ✅ |
 | 13 | Story Doctor розрізняє missing video, background, audio, poster і неправильні timing | ✅ |
 | 14 | Старі історії та всі image/audio сценарії сумісні | ✅ |
-| 15 | Усі автоматизовані команди пройдені | ✅ `tsc`, 1420 тестів, обидва boundary guards, web export |
+| 15 | Усі автоматизовані команди пройдені | ✅ `tsc`, 1463 тести, обидва boundary guards, web export |
 | 16 | Ручна platform matrix пройдена | ❌ жоден рядок |
 
 Додано поза початковим планом, як наслідок рев'ю авторського та читацького досвіду:
@@ -498,7 +508,7 @@ graphify update .
 1. ~~Spike, повний native rebuild і platform gate~~ — spike зроблено, gate закритий (див. «Стан виконання»).
 2. ~~Media foundation та backup~~ — зроблено.
 3. ~~Повний фоновий video slice, включно з мінімальним `/video` UX~~ — зроблено.
-4. ~~Анімаційні пресети~~ — зроблено в доступній частині.
+4. ~~Анімаційні пресети~~ — зроблено, разом із camera-редактором і рухом камери.
 5. ~~Окремий cutscene slice з executor/save/audio hardening~~ — зроблено.
 6. **Наступне і єдине блокуюче:** розблокувати native gate (EAS development build) —
    усе native-специфічне зараз тримається на моках.
