@@ -2798,10 +2798,13 @@ const EMBEDDED_SCRIPT_BODY = `
       var base = activeVideoBlock ? videoDataFromNode(activeVideoBlock) : defaultVideoData();
       if (!videoPopover) return base;
       var mode = selectedValue(videoPopover.querySelector('#videoMode'), 'play');
+      var layer = selectedValue(videoPopover.querySelector('#videoLayer'), 'background');
       if (mode === 'stop') {
         // Stop only has to name the layer; the host normalizer clears the rest.
-        return Object.assign({}, defaultVideoData(), { mode: 'stop', layer: base.layer });
+        return Object.assign({}, defaultVideoData(), { mode: 'stop', layer: layer });
       }
+      var skipInput = videoPopover.querySelector('#videoSkipAfter');
+      var skipSeconds = skipInput && skipInput.value !== '' ? Number(skipInput.value) : null;
       var assetId = selectedValue(videoPopover.querySelector('#videoAsset'), '');
       var startInput = videoPopover.querySelector('#videoStart');
       var endInput = videoPopover.querySelector('#videoEnd');
@@ -2809,6 +2812,15 @@ const EMBEDDED_SCRIPT_BODY = `
       var endAt = Number(endInput && endInput.value);
       return Object.assign({}, base, {
         mode: 'play',
+        layer: layer,
+        // Background policy is enforced by normalizeVideoData, so the form only
+        // has to state the intent.
+        muted: layer === 'background',
+        volume: layer === 'background' ? 0 : 1,
+        loop: layer === 'background',
+        skippableAfterMs: layer === 'cutscene' && skipSeconds !== null && Number.isFinite(skipSeconds) && skipSeconds >= 0
+          ? Math.round(skipSeconds * 1000)
+          : null,
         assetId: assetId || null,
         posterAssetId: selectedValue(videoPopover.querySelector('#videoPoster'), '') || null,
         fit: selectedValue(videoPopover.querySelector('#videoFit'), 'cover'),
@@ -2862,12 +2874,16 @@ const EMBEDDED_SCRIPT_BODY = `
         + option('contain', 'Вмістити (contain)', data.fit);
       var modeOptions = option('play', 'Відтворити', data.mode)
         + option('stop', 'Зупинити й повернути фон', data.mode);
+      var layerOptions = option('background', 'Фон', data.layer)
+        + option('cutscene', 'Катсцена', data.layer);
 
       var popover = document.createElement('div');
       popover.className = 'background-popover video-popover';
       popover.innerHTML =
         '<label class=\"popover-label\" for=\"videoMode\">Дія</label>' +
         '<select id=\"videoMode\" class=\"popover-control\">' + modeOptions + '</select>' +
+        '<label class=\"popover-label\" for=\"videoLayer\">Шар</label>' +
+        '<select id=\"videoLayer\" class=\"popover-control\">' + layerOptions + '</select>' +
         '<label class=\"popover-label\" for=\"videoAsset\">Ролик</label>' +
         '<select id=\"videoAsset\" class=\"popover-control\">' + renderVideoAssetOptions() + '</select>' +
         '<div class=\"popover-footer\">' +
@@ -2886,7 +2902,9 @@ const EMBEDDED_SCRIPT_BODY = `
         '<label class=\"popover-label\" for=\"videoEnd\">Кінець, с</label>' +
         '<input id=\"videoEnd\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.1\" value=\"' + (data.endAt === null || data.endAt === undefined ? '' : data.endAt) + '\" />' +
         '<p class=\"video-popover-timing\"></p>' +
-        '<p class=\"popover-help\">Фон завжди без звуку й зациклений.</p>' +
+        '<label class=\"popover-label\" for=\"videoSkipAfter\" data-video-row=\"cutscene\">Пропуск дозволено через, с</label>' +
+        '<input id=\"videoSkipAfter\" class=\"popover-control\" data-video-row=\"cutscene\" type=\"number\" min=\"0\" step=\"0.5\" placeholder=\"без пропуску\" value=\"' + (data.skippableAfterMs === null || data.skippableAfterMs === undefined ? '' : (data.skippableAfterMs / 1000)) + '\" />' +
+        '<p class=\"popover-help\">Фон завжди без звуку й зациклений; катсцена зі звуком зупиняє історію до кінця.</p>' +
         '<div class=\"popover-footer\">' +
           '<button type=\"button\" class=\"popover-button primary\" data-action=\"save-video\">Зберегти</button>' +
         '</div>';
@@ -2897,11 +2915,14 @@ const EMBEDDED_SCRIPT_BODY = `
       if (modeSelect) {
         modeSelect.addEventListener('change', function() { syncVideoPopoverMode(); });
       }
-      ['videoAsset', 'videoPoster', 'videoStart', 'videoEnd'].forEach(function(id) {
+      ['videoLayer', 'videoAsset', 'videoPoster', 'videoStart', 'videoEnd'].forEach(function(id) {
         var control = popover.querySelector('#' + id);
         if (!control) return;
         control.addEventListener('input', function() { syncVideoPopoverFeedback(); });
-        control.addEventListener('change', function() { syncVideoPopoverFeedback(); });
+        control.addEventListener('change', function() {
+          syncVideoPopoverMode();
+          syncVideoPopoverFeedback();
+        });
       });
       syncVideoPopoverMode();
       syncVideoPopoverFeedback();
@@ -2970,6 +2991,10 @@ const EMBEDDED_SCRIPT_BODY = `
       });
       var importButton = videoPopover.querySelector('[data-action=\"import-video\"]');
       if (importButton) importButton.hidden = isStop;
+      var isCutscene = selectedValue(videoPopover.querySelector('#videoLayer'), 'background') === 'cutscene';
+      Array.prototype.slice.call(videoPopover.querySelectorAll('[data-video-row=\"cutscene\"]')).forEach(function(node) {
+        node.hidden = isStop || !isCutscene;
+      });
       ['.video-poster-preview', '.video-popover-timing', '.video-popover-status'].forEach(function(selector) {
         var node = videoPopover.querySelector(selector);
         if (node) node.hidden = isStop;

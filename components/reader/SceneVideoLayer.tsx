@@ -20,9 +20,26 @@ interface SceneVideoLayerProps {
   /** When false the clip is not decoded at all; the poster stands in for it. */
   enabled?: boolean;
   onPlaybackError?: (message: string) => void;
+  /** Reached its natural end (or `endAt`) and is not looping. */
+  onEnded?: () => void;
+  /** Whether the clip is actually rolling — drives a cutscene's Skip timer. */
+  onPlayingChange?: (playing: boolean) => void;
+  /**
+   * Bump to ask the player to try again after a blocked autoplay: the retry has
+   * to originate from the viewer's tap to satisfy the browser.
+   */
+  playRequest?: number;
 }
 
-export function SceneVideoLayer({ video, style, enabled = true, onPlaybackError }: SceneVideoLayerProps) {
+export function SceneVideoLayer({
+  video,
+  style,
+  enabled = true,
+  onPlaybackError,
+  onEnded,
+  onPlayingChange,
+  playRequest = 0,
+}: SceneVideoLayerProps) {
   const [source, setSource] = useState<VideoSource>(null);
   const [posterSource, setPosterSource] = useState<ImageSource | null>(null);
   const [hasFirstFrame, setHasFirstFrame] = useState(false);
@@ -40,6 +57,10 @@ export function SceneVideoLayer({ video, style, enabled = true, onPlaybackError 
   const reportError = useCallback((message: string) => {
     errorHandlerRef.current?.(message);
   }, []);
+  const endedHandlerRef = useRef(onEnded);
+  endedHandlerRef.current = onEnded;
+  const playingHandlerRef = useRef(onPlayingChange);
+  playingHandlerRef.current = onPlayingChange;
 
   useEffect(() => {
     let active = true;
@@ -142,7 +163,10 @@ export function SceneVideoLayer({ video, style, enabled = true, onPlaybackError 
   }, [player, source]);
 
   useEventListener(player, 'playToEnd', () => {
-    if (!video.loop) return;
+    if (!video.loop) {
+      endedHandlerRef.current?.();
+      return;
+    }
     player.currentTime = startAt;
     player.play();
   });
@@ -150,9 +174,26 @@ export function SceneVideoLayer({ video, style, enabled = true, onPlaybackError 
   useEventListener(player, 'timeUpdate', ({ currentTime }) => {
     if (endAt === null || currentTime < endAt) return;
     player.currentTime = startAt;
-    if (video.loop) player.play();
-    else player.pause();
+    if (video.loop) {
+      player.play();
+      return;
+    }
+    player.pause();
+    // `endAt` is a natural end as far as the timeline is concerned.
+    endedHandlerRef.current?.();
   });
+
+  useEventListener(player, 'playingChange', ({ isPlaying }) => {
+    playingHandlerRef.current?.(isPlaying);
+  });
+
+  // A blocked autoplay can only be retried from a real user gesture, which the
+  // caller turns into a bumped playRequest.
+  useEffect(() => {
+    if (playRequest <= 0 || !source) return;
+    setPlaybackBlocked(false);
+    player.play();
+  }, [playRequest, player, source]);
 
   useEffect(() => {
     if (playerState.status !== 'error') return;

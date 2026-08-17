@@ -20,6 +20,7 @@ import { richTextAlignment, richTextLength, stripRichText } from '@/lib/rich-tex
 import { useTypewriter } from '@/hooks/useTypewriter';
 import type { StoryReaderLayoutPreset } from '@/lib/story-theme';
 import { SceneVideoLayer } from '@/components/reader/SceneVideoLayer';
+import { SceneCutsceneLayer } from '@/components/reader/SceneCutsceneLayer';
 
 const DIALOGUE_LINE_HEIGHT_MULTIPLIER = 1.65;
 const DEFAULT_READER_LINE_HEIGHT_SCALE = 1.2;
@@ -51,6 +52,9 @@ interface ReaderDisplayProps {
   bgSource: ImageSource | null;
   activeVideo?: RuntimeVideoState | null;
   backgroundVideoEnabled?: boolean;
+  /** Set while the timeline is blocked on a cutscene. */
+  pendingVideo?: { stepId: string; session: number } | null;
+  onCutsceneResolved?: (reason: 'ended' | 'skipped' | 'recovered') => void;
   characterAnimatedStyle: StyleProp<ViewStyle>;
   choices: ReaderChoice[];
   colors: ReturnType<typeof useColors>;
@@ -158,7 +162,7 @@ function ReaderBackground({
         ) : (
           <View style={fallbackStyle} />
         )}
-        {activeVideo ? (
+        {activeVideo && activeVideo.layer === 'background' ? (
           <SceneVideoLayer
             key={activeVideo.stepId}
             video={activeVideo}
@@ -242,6 +246,8 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   bgSource,
   activeVideo,
   backgroundVideoEnabled = true,
+  pendingVideo,
+  onCutsceneResolved,
   characterAnimatedStyle,
   choices,
   colors,
@@ -364,7 +370,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
       <Pressable
         style={TAPPABLE_AREA_STYLE}
         onPress={onTap}
-        disabled={isLoading}
+        disabled={isLoading || !!pendingVideo}
         accessible={true}
         accessibilityRole="button"
         accessibilityLabel={continueAccessibilityLabel}
@@ -376,6 +382,15 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         <View style={[styles.screenEffectsLayer, getPointerEventsStyle('none')]}>
           <EffectsLayerStack effects={screenEffects} colors={colors} target="screen" />
         </View>
+      ) : null}
+
+      {pendingVideo && activeVideo && activeVideo.layer === 'cutscene' ? (
+        <SceneCutsceneLayer
+          key={pendingVideo.stepId + ':' + pendingVideo.session}
+          video={activeVideo}
+          colors={colors}
+          onResolve={(reason) => onCutsceneResolved?.(reason)}
+        />
       ) : null}
 
       <Animated.View

@@ -122,29 +122,6 @@ describe('runStoryDoctor video findings', () => {
     expect(report.findings.map((finding) => finding.code)).not.toContain('asset.missingVideo');
   });
 
-  it('warns that a cutscene step will not play yet', () => {
-    const report = runStoryDoctor({
-      scenes: [makeScene({
-        id: 'start',
-        isStart: true,
-        timeline: [
-          makeStep({
-            id: 'video-1',
-            blockType: 'video',
-            data: { mode: 'play', layer: 'cutscene', assetId: 'clip-1' },
-          }),
-          endStep(),
-        ],
-      })],
-      mediaAssets: [
-        { id: 'clip-1', type: 'video', uri: 'idb://media/clip', name: 'Clip.mp4', addedAt: 0 },
-      ],
-    });
-
-    const finding = report.findings.find((item) => item.code === 'video.cutsceneUnsupported');
-    expect(finding?.severity).toBe('warning');
-  });
-
   it('reports a video reference that no library asset satisfies', () => {
     const report = runStoryDoctor({
       scenes: [makeScene({

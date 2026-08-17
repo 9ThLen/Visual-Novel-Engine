@@ -416,6 +416,16 @@ export function StoryReaderResponsive({
     />
   );
 
+  // A cutscene ends, is skipped, or is abandoned after a playback failure. All
+  // three release the timeline the same way — the executor's session guard is
+  // what keeps a stale player from resolving the wrong one.
+  const pendingVideo = executor.pendingVideo;
+  const handleCutsceneResolved = useCallback((reason: 'ended' | 'skipped' | 'recovered') => {
+    if (!pendingVideo) return;
+    if (reason === 'skipped') executor.skipVideo(pendingVideo.stepId, pendingVideo.session);
+    else executor.completeVideo(pendingVideo.stepId, pendingVideo.session);
+  }, [executor, pendingVideo]);
+
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <View className="flex-1" style={getStoryReaderContainerStyle(colors)}>
@@ -424,6 +434,8 @@ export function StoryReaderResponsive({
         bgSource={bgSource}
         activeVideo={executor.sceneState.activeVideo}
         backgroundVideoEnabled={settings.backgroundVideoEnabled}
+        pendingVideo={executor.pendingVideo}
+        onCutsceneResolved={handleCutsceneResolved}
         characterAnimatedStyle={charactersAnimatedStyle}
         choices={displayChoices}
         colors={colors}

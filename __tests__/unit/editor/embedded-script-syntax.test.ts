@@ -986,6 +986,54 @@ describe('createEmbeddedScript', () => {
     }
   });
 
+  it('lets the author make a skippable cutscene', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('video');
+      const videoBlock = anchorParagraph.nextElementSibling as HTMLElement;
+
+      const popover = document.querySelector('.video-popover') as HTMLElement;
+      const layerSelect = popover.querySelector('#videoLayer') as HTMLSelectElement;
+      layerSelect.value = 'cutscene';
+      layerSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // The skip delay only makes sense for a cutscene, so it appears with it.
+      const skipInput = popover.querySelector('#videoSkipAfter') as HTMLInputElement;
+      expect(skipInput.hidden).toBe(false);
+      skipInput.value = '2.5';
+
+      (popover.querySelector('[data-action="save-video"]') as HTMLButtonElement).click();
+
+      const data = JSON.parse(videoBlock.dataset.video || '{}');
+      expect(data).toMatchObject({
+        mode: 'play',
+        layer: 'cutscene',
+        skippableAfterMs: 2500,
+        // A cutscene carries its own sound and never loops.
+        muted: false,
+        loop: false,
+      });
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('hides the skip delay for a background clip', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      placeCaretInNewParagraph();
+      api.insertCommand('video');
+
+      const popover = document.querySelector('.video-popover') as HTMLElement;
+      expect((popover.querySelector('#videoSkipAfter') as HTMLElement).hidden).toBe(true);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it('keeps an authored video payload when the block round-trips through the frame', () => {
     const harness = createVoidBlockHarness();
     try {
