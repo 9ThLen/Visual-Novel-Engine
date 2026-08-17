@@ -84,6 +84,50 @@ function makeMetadata(theme?: StoryReaderTheme): StoryMetadata {
   };
 }
 
+describe('runStoryDoctor camera findings', () => {
+  const focusStep = (target?: string) => makeStep({
+    id: 'camera-1',
+    blockType: 'camera',
+    data: { action: 'focus', duration: 1, easing: 'ease-in-out', ...(target ? { target } : {}) },
+  });
+
+  it('reports a focus that names a character the story does not have', () => {
+    const report = runStoryDoctor({
+      scenes: [makeScene({ id: 'start', isStart: true, timeline: [focusStep('char_ghost'), endStep()] })],
+      characters: [{ id: 'char_1', name: 'Мія', sprites: [] } as never],
+    });
+
+    const finding = report.findings.find((item) => item.code === 'camera.missingFocusTarget');
+    expect(finding?.severity).toBe('error');
+  });
+
+  it('warns about a focus with no character at all', () => {
+    const report = runStoryDoctor({
+      scenes: [makeScene({ id: 'start', isStart: true, timeline: [focusStep(), endStep()] })],
+      characters: [{ id: 'char_1', name: 'Мія', sprites: [] } as never],
+    });
+
+    expect(report.findings.find((item) => item.code === 'camera.focusWithoutTarget')?.severity).toBe('warning');
+  });
+
+  it('stays quiet for a resolvable focus and for other camera actions', () => {
+    const report = runStoryDoctor({
+      scenes: [makeScene({
+        id: 'start',
+        isStart: true,
+        timeline: [
+          focusStep('char_1'),
+          makeStep({ id: 'camera-2', blockType: 'camera', data: { action: 'pan', panX: 10, duration: 2, easing: 'linear' } }),
+          endStep(),
+        ],
+      })],
+      characters: [{ id: 'char_1', name: 'Мія', sprites: [] } as never],
+    });
+
+    expect(report.findings.map((finding) => finding.code).filter((code) => code.startsWith('camera.'))).toEqual([]);
+  });
+});
+
 describe('runStoryDoctor video findings', () => {
   it('reports a video block with no clip selected', () => {
     const report = runStoryDoctor({

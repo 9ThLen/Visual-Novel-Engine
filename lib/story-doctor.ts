@@ -25,6 +25,7 @@ import type {
   VariableBlockData,
   VideoBlockData,
 } from '@/lib/engine/types';
+import { normalizeCameraData } from '@/lib/engine/camera-utils';
 import { normalizeVideoData } from '@/lib/engine/video-utils';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { StoryMetadata } from '@/lib/story-domain';
@@ -433,6 +434,44 @@ function addVideoFindings(scene: SceneRecord, findings: StoryDoctorFinding[]): v
   }
 }
 
+/**
+ * A focus step whose character cannot be resolved silently degrades to a plain
+ * zoom on screen — nothing errors, the shot is just wrong, so it is only
+ * catchable here.
+ */
+function addCameraFindings(
+  scene: SceneRecord,
+  characters: Character[],
+  findings: StoryDoctorFinding[],
+): void {
+  for (const step of scene.timeline ?? []) {
+    if (!isEnabled(step) || step.blockType !== 'camera') continue;
+    const data = normalizeCameraData(step.data);
+    if (data.action !== 'focus') continue;
+
+    if (!data.target) {
+      findings.push({
+        severity: 'warning',
+        sceneId: scene.id,
+        stepId: step.id,
+        code: 'camera.focusWithoutTarget',
+        messageKey: 'storyDoctor.issue.cameraFocusWithoutTarget',
+      });
+      continue;
+    }
+
+    if (!characters.some((character) => character.id === data.target)) {
+      findings.push({
+        severity: 'error',
+        sceneId: scene.id,
+        stepId: step.id,
+        code: 'camera.missingFocusTarget',
+        messageKey: 'storyDoctor.issue.cameraMissingFocusTarget',
+      });
+    }
+  }
+}
+
 function addLabelFindings(scene: SceneRecord, findings: StoryDoctorFinding[]): void {
   const labelNames = new Set<string>();
   const duplicates = new Set<string>();
@@ -508,6 +547,7 @@ export function runStoryDoctor(input: StoryDoctorInput): StoryDoctorReport {
     addEmptyContentFindings(scene, findings);
     addLabelFindings(scene, findings);
     addVideoFindings(scene, findings);
+    addCameraFindings(scene, input.characters ?? [], findings);
   }
   addMissingAssetFindings(input, findings);
   addVariableFindings(scenes, findings);
