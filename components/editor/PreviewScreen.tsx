@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
+import { StyleSheet, useWindowDimensions, View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +17,7 @@ import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { useReaderAssets } from '@/hooks/useReaderAssets';
 import { EffectsLayerStack, effectsForCharacter, effectsForTarget } from '@/components/reader/EffectsLayerStack';
+import { useCameraTransform } from '@/components/reader/useCameraTransform';
 import { useShakeOffset } from '@/components/reader/useShakeOffset';
 import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import { useEffectAmbience } from '@/hooks/useEffectAmbience';
@@ -241,11 +242,15 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
   const characterEffects = effectsForTarget(activeEffects, 'character');
   const genericCharacterEffects = characterEffects.filter((effect) => !effect.characterId);
   const shakeOffset = useShakeOffset(screenEffects);
+  // Preview and reader share the camera hook so a preset previewed here moves
+  // exactly the way it will for the reader.
+  const { width: previewWidth } = useWindowDimensions();
+  const cameraValues = useCameraTransform(camera, sceneState.characters, previewWidth);
   const cameraTransform = {
     transform: [
-      { translateX: -2 * (camera?.panX ?? 0) + shakeOffset.x },
-      { translateY: -2 * (camera?.panY ?? 0) + shakeOffset.y },
-      { scale: camera?.zoomLevel ?? 1 },
+      { translateX: cameraValues.translateX + shakeOffset.x },
+      { translateY: cameraValues.translateY + shakeOffset.y },
+      { scale: cameraValues.scale },
     ],
   };
   const { resolvedCharUris, characterInstances } = useReaderAssets(

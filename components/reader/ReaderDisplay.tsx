@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Pressable, StyleSheet, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, useWindowDimensions, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import type { useColors } from '@/hooks/use-colors';
@@ -11,9 +11,11 @@ import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { ReaderDialoguePanel } from '@/components/reader/ReaderDialoguePanel';
 import { EffectsLayerStack, effectsForCharacter, effectsForTarget } from '@/components/reader/EffectsLayerStack';
 import { PARALLAX_LAYERS, useParallaxLayer } from '@/components/reader/useParallaxLayer';
+import { useCameraTransform } from '@/components/reader/useCameraTransform';
 import { useShakeOffset } from '@/components/reader/useShakeOffset';
 import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
+import type { CameraFocusCharacter } from '@/lib/engine/camera-transform';
 import type { ActiveEffect, CameraRuntimeState, RuntimeVideoState } from '@/lib/engine/runtime-types';
 import type { InteractiveObject } from '@/lib/interactive-types';
 import { richTextAlignment, richTextLength, stripRichText } from '@/lib/rich-text';
@@ -299,19 +301,22 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   const hudParallaxStyle = useParallaxLayer(parallaxEnabled, PARALLAX_LAYERS.hud);
   const scaledDialogueFontSize = dialogueFontSize * readerFontScale;
 
-  const cameraTransformStyle = useMemo(() => {
-    const camera = cameraState ?? { zoomLevel: 1, panX: 0, panY: 0 };
-    const zoom = camera.zoomLevel || 1;
-    const translateX = (camera.panX || 0) * -2 + shakeOffset.x;
-    const translateY = (camera.panY || 0) * -2 + shakeOffset.y;
-    return {
-      transform: [
-        { translateX },
-        { translateY },
-        { scale: zoom },
-      ],
-    };
-  }, [cameraState, shakeOffset.x, shakeOffset.y]);
+  // Sprites are placed against the window, so the camera frames them by the
+  // same width.
+  const { width: windowWidth } = useWindowDimensions();
+  const focusCharacters = useMemo<CameraFocusCharacter[]>(
+    () => instances.map((instance) => ({ characterId: instance.characterId, position: instance.position })),
+    [instances],
+  );
+  const camera = useCameraTransform(cameraState, focusCharacters, windowWidth);
+
+  const cameraTransformStyle = useMemo(() => ({
+    transform: [
+      { translateX: camera.translateX + shakeOffset.x },
+      { translateY: camera.translateY + shakeOffset.y },
+      { scale: camera.scale },
+    ],
+  }), [camera, shakeOffset.x, shakeOffset.y]);
 
   const dialogueTextStyle = useMemo(() => ({
     fontSize: scaledDialogueFontSize,
