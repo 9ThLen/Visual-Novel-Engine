@@ -194,6 +194,14 @@ function validateBlockData(blockType: BlockType, data: unknown): boolean {
       return isString(d.effectType) && isString(d.target) && isNumber(d.intensity) && isNumber(d.duration);
     case 'stop_effect':
       return isString(d.effectType) && (d.target === undefined || isString(d.target));
+    case 'video':
+      // Only the discriminators are required; normalizeVideoData repairs and
+      // fills in everything else, so an older or hand-written step still
+      // imports instead of being silently dropped.
+      return (d.mode === 'play' || d.mode === 'stop')
+        && (d.layer === undefined || d.layer === 'background' || d.layer === 'cutscene')
+        && isSafeAssetReference(d.assetId)
+        && isSafeAssetReference(d.posterAssetId);
     case 'music':
       return validateMusicData(d);
     case 'sound':

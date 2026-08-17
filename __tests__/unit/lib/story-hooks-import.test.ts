@@ -23,6 +23,104 @@ describe('importStory', () => {
     setMediaBlobStorageAdapterForTests(null);
   });
 
+  it('keeps a video step through export and import', async () => {
+    useAppStore.setState({
+      storiesMetadata: [{
+        id: 'story-video', title: 'Video Story', startSceneId: 'scene-1',
+        createdAt: 1, updatedAt: 1, sceneCount: 1,
+      }],
+      sceneRecordsByStory: {
+        'story-video': {
+          'scene-1': {
+            id: 'scene-1', storyId: 'story-video', name: 'Scene 1', description: '', tags: [],
+            timeline: [
+              {
+                id: 'video-1',
+                blockType: 'video',
+                collapsed: false,
+                enabled: true,
+                data: {
+                  mode: 'play',
+                  layer: 'background',
+                  assetId: 'asset_clip',
+                  posterAssetId: 'asset_poster',
+                  fit: 'contain',
+                  playbackRate: 1.5,
+                  startAt: 2,
+                  endAt: 8,
+                  muted: true,
+                  volume: 0,
+                  loop: true,
+                  skippableAfterMs: null,
+                },
+              },
+              {
+                id: 'video-2',
+                blockType: 'video',
+                collapsed: false,
+                enabled: true,
+                data: { mode: 'stop', layer: 'background' },
+              },
+            ],
+            flowX: 0, flowY: 0, connections: [], isStart: true,
+            sceneState: {
+              backgroundAssetId: null, backgroundTransition: 'fade', characters: [], activeEffects: [],
+              musicTrackId: null, musicPlaying: false, musicVolume: 1, variables: {}, dialogueHistory: [],
+              currentChoices: null, isTransitioning: false, transitionTarget: null,
+            },
+            createdAt: 1, updatedAt: 1,
+          },
+        },
+      },
+    });
+
+    const imported = await importStory(await exportStory('story-video', useAppStore.getState()));
+    const timeline = imported.scenes['scene-1'].timeline;
+    const videoSteps = timeline.filter((step) => step.blockType === 'video');
+
+    // The canonical validator drops any step it does not recognise, so a
+    // missing branch here silently deletes every video the author authored.
+    expect(videoSteps.map((step) => step.id)).toEqual(['video-1', 'video-2']);
+    expect(videoSteps[0].data).toMatchObject({
+      mode: 'play',
+      assetId: 'asset_clip',
+      posterAssetId: 'asset_poster',
+      fit: 'contain',
+      playbackRate: 1.5,
+      startAt: 2,
+      endAt: 8,
+    });
+    expect(videoSteps[1].data).toMatchObject({ mode: 'stop' });
+  });
+
+  it('rejects a video step whose asset reference is unsafe', async () => {
+    const story = {
+      id: 'story-unsafe',
+      title: 'Unsafe',
+      startSceneId: 'scene-1',
+      createdAt: 1,
+      updatedAt: 1,
+      scenes: {
+        'scene-1': {
+          id: 'scene-1', storyId: 'story-unsafe', name: 'Scene 1', description: '', tags: [],
+          timeline: [{
+            id: 'video-1',
+            blockType: 'video',
+            collapsed: false,
+            enabled: true,
+            data: { mode: 'play', layer: 'background', assetId: 'javascript:alert(1)' },
+          }],
+          flowX: 0, flowY: 0, connections: [], isStart: true,
+          createdAt: 1, updatedAt: 1,
+        },
+      },
+    };
+
+    // Dropping the only step leaves nothing to play, so the import is refused
+    // rather than quietly producing an empty scene.
+    await expect(importStory(JSON.stringify(story))).rejects.toThrow(/no valid timeline steps/i);
+  });
+
   it('preserves the audio library through export and import', async () => {
     useAppStore.setState({
       storiesMetadata: [{
