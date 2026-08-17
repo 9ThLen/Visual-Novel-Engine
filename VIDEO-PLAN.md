@@ -1,6 +1,6 @@
 # План інтеграції відео та анімацій
 
-**Статус:** етапи 1, 2, 4 (частково) і 5 (автоматична частина) виконані; етап 0 заблокований на native, етап 3 не починався. Оновлено 2026-08-16 — див. «Стан виконання» нижче.
+**Статус:** етапи 1, 2, 3 і 4 (частково) виконані, 5 — в автоматичній частині; етап 0 заблокований на native. Оновлено 2026-08-16 — див. «Стан виконання» нижче.
 
 **Обсяг MVP:** локальні MP4, фонове відео, блокуюча катсцена, текстовий `/video`-блок у Plate, пресети наявних анімацій
 
@@ -282,7 +282,7 @@ Gate лишається **закритим**: тестовий MP4 жодног�
 
 ## Етап 3. Вертикальний зріз B: блокуюча катсцена
 
-> **Не починався.** Єдина велика частина MVP, що лишилася.
+> **Виконано.** Executor-протокол із сесійним guard'ом, блокуючий шар у reader, захист збереження й аудіо.
 
 ### Новий executor protocol
 
@@ -462,12 +462,12 @@ graphify update .
 |---|---|---|
 | 1 | Автор може імпортувати та повторно використати MP4 без base64 і без ffmpeg | ✅ web; native лише під моками |
 | 2 | `/video background` і `/video stop` працюють однаково в preview та reader | ✅ |
-| 3 | Катсцена має окремий executor completion protocol і не пропускається звичайним tap | ❌ етап 3 |
-| 4 | Double completion, rollback, load, unmount і web autoplay не залишають executor у завислому стані | ❌ етап 3 |
-| 5 | Backward `goto` через cutscene не дає stale completion завершити нову сесію | ❌ етап 3 |
-| 6 | Після complete/Skip/error катсцени попередній відеофон повертається | ❌ етап 3 |
-| 7 | Video audio не порушує reader audio boundary, BGM повертає гучність | ❌ етап 3 (фон завжди muted, тому поки не застосовно) |
-| 8 | Save/autosave не створюються посеред blocking cutscene | ❌ етап 3 |
+| 3 | Катсцена має окремий executor completion protocol і не пропускається звичайним tap | ✅ |
+| 4 | Double completion, rollback, unmount і web autoplay не залишають executor у завислому стані | ✅ |
+| 5 | Backward `goto` через cutscene не дає stale completion завершити нову сесію | ✅ монотонний номер сесії |
+| 6 | Після complete/Skip/error катсцени попередній відеофон повертається | ✅ |
+| 7 | Video audio не порушує reader audio boundary, BGM повертає гучність | ✅ через наявний `blockedByOverlay`; катсцена зі звуком зупиняє BGM, muted — ні |
+| 8 | Save/autosave не створюються посеред blocking cutscene | ✅ ephemeral `readerBlockingMedia` |
 | 9 | Plate save/load, текстова серіалізація, JSON і `.vnebackup` зберігають video step | ✅ |
 | 10 | Poster має image reference, membership, backup coverage і save-slot thumbnail | ✅ |
 | 11 | Завеликий файл відхиляється до читання bytes; допустимий не копіюється через base64 | ✅ |
@@ -499,9 +499,9 @@ graphify update .
 2. ~~Media foundation та backup~~ — зроблено.
 3. ~~Повний фоновий video slice, включно з мінімальним `/video` UX~~ — зроблено.
 4. ~~Анімаційні пресети~~ — зроблено в доступній частині.
-5. **Наступне:** розблокувати native gate (EAS development build) — усе native-специфічне
-   зараз тримається на моках.
-6. **Далі:** окремий cutscene slice з executor/save/audio hardening.
+5. ~~Окремий cutscene slice з executor/save/audio hardening~~ — зроблено.
+6. **Наступне і єдине блокуюче:** розблокувати native gate (EAS development build) —
+   усе native-специфічне зараз тримається на моках.
 7. Загальна regression matrix і реліз.
 
-Фонова video-функція вже придатна до релізу окремо від cutscene protocol.
+MVP функціонально повний. Лишається native-перевірка й ручна platform matrix.
