@@ -1,7 +1,7 @@
 import { useEvent, useEventListener } from 'expo';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView, type VideoSource } from 'expo-video';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 import type { RuntimeVideoState } from '@/lib/engine/runtime-types';
@@ -226,7 +226,7 @@ export function SceneVideoLayer({
       {showPlayer ? (
         <VideoView
           player={player}
-          style={styles.layer}
+          style={styles.player}
           contentFit={video.fit}
           nativeControls={false}
           playsInline
@@ -247,6 +247,18 @@ export function SceneVideoLayer({
 
 const styles = StyleSheet.create({
   layer: StyleSheet.absoluteFillObject,
+  /*
+   * On web expo-video spreads this style straight onto a bare <video>. CSS
+   * gives an absolutely positioned replaced element its intrinsic size when
+   * width is auto — right/bottom are simply ignored — so inset alone leaves the
+   * clip at its own resolution in the top-left corner, with contentFit having
+   * nothing to crop. The explicit size is what makes it fill.
+   */
+  player: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
   backdrop: {
     backgroundColor: '#000000',
   },
