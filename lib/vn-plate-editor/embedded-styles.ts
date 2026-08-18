@@ -705,6 +705,13 @@ export function createEmbeddedStyles(): string {
       position: absolute;
       z-index: 30;
       width: min(420px, calc(100vw - 32px));
+      /*
+       * positionBranchPopover caps the height so a popover cannot outgrow the
+       * window. Without a scroller that cap only stopped the card: the fields
+       * below it kept rendering outside the border, unstyled and unreachable.
+       */
+      overflow: auto;
+      overscroll-behavior: contain;
       padding: 16px;
       border: 1px solid var(--plate-border-subtle, #E5DDD3);
       border-radius: 14px;
@@ -713,7 +720,9 @@ export function createEmbeddedStyles(): string {
       font-family: Inter, ui-sans-serif, system-ui, sans-serif;
       color: var(--plate-foreground, #3A281F);
     }
+    /* A scroll container clips it, and the pointer is decoration either way. */
     .background-popover::before {
+      display: none;
       content: "";
       position: absolute;
       top: -8px;
@@ -1085,6 +1094,26 @@ export function createEmbeddedStyles(): string {
       grid-template-columns: 1fr 1fr;
       gap: 12px;
     }
+    /*
+     * Sized against the popover, not the frame. The scene iframe is narrower
+     * than the editor's breakpoint, so a media query here would collapse every
+     * row to one column on any screen; auto-fit asks the only question that
+     * matters — do two fields still fit in a 420px popover.
+     */
+    .popover-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    /* The import button sits beside the picker, not under it. */
+    .popover-row-asset {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+    }
+    .popover-field { min-width: 0; }
+    .popover-field .popover-label { margin-bottom: 4px; }
+    .popover-field .popover-control { margin-bottom: 0; }
     .slash-menu {
       position: absolute;
       z-index: 60;

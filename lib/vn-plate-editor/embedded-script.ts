@@ -2071,13 +2071,12 @@ const EMBEDDED_SCRIPT_BODY = `
       var asset = findBackgroundAsset(assetId);
       var uri = asset ? asset.uri : normalizeAssetName(assetId);
       if (!uri) {
-        preview.classList.add('placeholder');
+        preview.hidden = true;
         preview.textContent = 'Фон не вибрано';
         preview.style.backgroundImage = '';
         return;
       }
-      preview.classList.remove('placeholder');
-      preview.textContent = '';
+      preview.hidden = false;
       preview.style.backgroundImage = 'linear-gradient(180deg, rgba(6, 16, 32, 0.04), rgba(6, 16, 32, 0.18)), url("' + String(uri).replace(/"/g, '\\"') + '")';
       preview.style.backgroundSize = 'cover';
       preview.style.backgroundPosition = 'center';
@@ -2882,31 +2881,56 @@ const EMBEDDED_SCRIPT_BODY = `
 
       var popover = document.createElement('div');
       popover.className = 'background-popover video-popover';
+      // Paired fields share a row so the whole form fits without scrolling, and
+      // every field states which mode owns it: a stop step keeps only the two
+      // selects that actually describe it.
       popover.innerHTML =
-        '<label class=\"popover-label\" for=\"videoMode\">Дія</label>' +
-        '<select id=\"videoMode\" class=\"popover-control\">' + modeOptions + '</select>' +
-        '<label class=\"popover-label\" for=\"videoLayer\">Шар</label>' +
-        '<select id=\"videoLayer\" class=\"popover-control\">' + layerOptions + '</select>' +
-        '<label class=\"popover-label\" for=\"videoAsset\">Ролик</label>' +
-        '<select id=\"videoAsset\" class=\"popover-control\">' + renderVideoAssetOptions() + '</select>' +
-        '<div class=\"popover-footer\">' +
+        '<div class=\"popover-row\">' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoMode\">Дія</label>' +
+            '<select id=\"videoMode\" class=\"popover-control\">' + modeOptions + '</select>' +
+          '</div>' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoLayer\">Шар</label>' +
+            '<select id=\"videoLayer\" class=\"popover-control\">' + layerOptions + '</select>' +
+          '</div>' +
+        '</div>' +
+        '<div class=\"popover-row popover-row-asset\" data-video-row=\"play\">' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoAsset\">Ролик</label>' +
+            '<select id=\"videoAsset\" class=\"popover-control\">' + renderVideoAssetOptions() + '</select>' +
+          '</div>' +
           '<button type=\"button\" class=\"popover-button\" data-action=\"import-video\">З пристрою</button>' +
         '</div>' +
-        '<p class=\"popover-help\">MP4 до 64 МіБ — приблизно 1–2 хвилини 1080p.</p>' +
+        '<p class=\"popover-help\" data-video-row=\"play\">MP4 до 64 МіБ — приблизно 1–2 хвилини 1080p.</p>' +
         '<p class=\"video-popover-status\"></p>' +
         '<p class=\"video-popover-error\"></p>' +
-        '<label class=\"popover-label\" for=\"videoPoster\">Постер</label>' +
-        '<select id=\"videoPoster\" class=\"popover-control\">' + renderVideoPosterOptions() + '</select>' +
-        '<div class=\"video-poster-preview\"></div>' +
-        '<label class=\"popover-label\" for=\"videoFit\">Кадрування</label>' +
-        '<select id=\"videoFit\" class=\"popover-control\">' + fitOptions + '</select>' +
-        '<label class=\"popover-label\" for=\"videoStart\">Початок, с</label>' +
-        '<input id=\"videoStart\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.1\" value=\"' + (data.startAt || 0) + '\" />' +
-        '<label class=\"popover-label\" for=\"videoEnd\">Кінець, с</label>' +
-        '<input id=\"videoEnd\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.1\" value=\"' + (data.endAt === null || data.endAt === undefined ? '' : data.endAt) + '\" />' +
+        '<div class=\"popover-row\" data-video-row=\"play\">' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoFit\">Кадрування</label>' +
+            '<select id=\"videoFit\" class=\"popover-control\">' + fitOptions + '</select>' +
+          '</div>' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoPoster\">Постер</label>' +
+            '<select id=\"videoPoster\" class=\"popover-control\">' + renderVideoPosterOptions() + '</select>' +
+          '</div>' +
+        '</div>' +
+        '<div class=\"video-poster-preview\" hidden></div>' +
+        '<div class=\"popover-row\" data-video-row=\"play\">' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoStart\">Початок, с</label>' +
+            '<input id=\"videoStart\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.1\" value=\"' + (data.startAt || 0) + '\" />' +
+          '</div>' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoEnd\">Кінець, с</label>' +
+            '<input id=\"videoEnd\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.1\" placeholder=\"до кінця\" value=\"' + (data.endAt === null || data.endAt === undefined ? '' : data.endAt) + '\" />' +
+          '</div>' +
+        '</div>' +
         '<p class=\"video-popover-timing\"></p>' +
-        '<label class=\"popover-label\" for=\"videoSkipAfter\" data-video-row=\"cutscene\">Пропуск дозволено через, с</label>' +
-        '<input id=\"videoSkipAfter\" class=\"popover-control\" data-video-row=\"cutscene\" type=\"number\" min=\"0\" step=\"0.5\" placeholder=\"без пропуску\" value=\"' + (data.skippableAfterMs === null || data.skippableAfterMs === undefined ? '' : (data.skippableAfterMs / 1000)) + '\" />' +
+        '<div class=\"popover-field\" data-video-row=\"cutscene\">' +
+          '<label class=\"popover-label\" for=\"videoSkipAfter\">Пропуск дозволено через, с</label>' +
+          '<input id=\"videoSkipAfter\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.5\" placeholder=\"без пропуску\" value=\"' + (data.skippableAfterMs === null || data.skippableAfterMs === undefined ? '' : (data.skippableAfterMs / 1000)) + '\" />' +
+        '</div>' +
         '<p class=\"popover-help\">Фон завжди без звуку й зациклений; катсцена зі звуком зупиняє історію до кінця.</p>' +
         '<div class=\"popover-footer\">' +
           '<button type=\"button\" class=\"popover-button primary\" data-action=\"save-video\">Зберегти</button>' +
@@ -2972,12 +2996,10 @@ const EMBEDDED_SCRIPT_BODY = `
         var poster = posterId ? findBackgroundAsset(posterId) : null;
         if (poster && poster.uri) {
           preview.style.backgroundImage = 'url("' + String(poster.uri).replace(/"/g, '\\"') + '")';
-          preview.classList.remove('placeholder');
-          preview.textContent = '';
+          preview.hidden = false;
         } else {
           preview.style.backgroundImage = '';
-          preview.classList.add('placeholder');
-          preview.textContent = 'Постер не вибрано';
+          preview.hidden = true;
         }
       }
     }
@@ -2986,22 +3008,18 @@ const EMBEDDED_SCRIPT_BODY = `
     function syncVideoPopoverMode() {
       if (!videoPopover) return;
       var isStop = selectedValue(videoPopover.querySelector('#videoMode'), 'play') === 'stop';
-      ['videoAsset', 'videoPoster', 'videoFit', 'videoStart', 'videoEnd'].forEach(function(id) {
-        var control = videoPopover.querySelector('#' + id);
-        if (control) control.hidden = isStop;
-        var label = videoPopover.querySelector('label[for=\"' + id + '\"]');
-        if (label) label.hidden = isStop;
-      });
-      var importButton = videoPopover.querySelector('[data-action=\"import-video\"]');
-      if (importButton) importButton.hidden = isStop;
       var isCutscene = selectedValue(videoPopover.querySelector('#videoLayer'), 'background') === 'cutscene';
-      Array.prototype.slice.call(videoPopover.querySelectorAll('[data-video-row=\"cutscene\"]')).forEach(function(node) {
-        node.hidden = isStop || !isCutscene;
+      Array.prototype.slice.call(videoPopover.querySelectorAll('[data-video-row]')).forEach(function(node) {
+        node.hidden = node.dataset.videoRow === 'play' ? isStop : (isStop || !isCutscene);
       });
-      ['.video-poster-preview', '.video-popover-timing', '.video-popover-status'].forEach(function(selector) {
+      ['.video-popover-timing', '.video-popover-status'].forEach(function(selector) {
         var node = videoPopover.querySelector(selector);
         if (node) node.hidden = isStop;
       });
+      if (isStop) {
+        var stopPreview = videoPopover.querySelector('.video-poster-preview');
+        if (stopPreview) stopPreview.hidden = true;
+      }
     }
 
     // ── Camera block ────────────────────────────────────────────────────

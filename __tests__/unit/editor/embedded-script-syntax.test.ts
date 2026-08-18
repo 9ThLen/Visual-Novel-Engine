@@ -975,8 +975,10 @@ describe('createEmbeddedScript', () => {
 
       modeSelect.value = 'stop';
       modeSelect.dispatchEvent(new Event('change', { bubbles: true }));
-      // Playback options mean nothing for a stop step and step aside.
-      expect((popover.querySelector('#videoAsset') as HTMLElement).hidden).toBe(true);
+      // Playback options mean nothing for a stop step and step aside — the
+      // whole field goes, so no label is left captioning nothing.
+      expect(popover.querySelector('#videoAsset')?.closest('[data-video-row]')).toHaveProperty('hidden', true);
+      expect(popover.querySelector('#videoStart')?.closest('[data-video-row]')).toHaveProperty('hidden', true);
 
       (popover.querySelector('[data-action="save-video"]') as HTMLButtonElement).click();
 
@@ -1011,7 +1013,7 @@ describe('createEmbeddedScript', () => {
 
       // The skip delay only makes sense for a cutscene, so it appears with it.
       const skipInput = popover.querySelector('#videoSkipAfter') as HTMLInputElement;
-      expect(skipInput.hidden).toBe(false);
+      expect(skipInput.closest('[data-video-row]')).toHaveProperty('hidden', false);
       skipInput.value = '2.5';
 
       (popover.querySelector('[data-action="save-video"]') as HTMLButtonElement).click();
@@ -1038,7 +1040,7 @@ describe('createEmbeddedScript', () => {
       api.insertCommand('video');
 
       const popover = document.querySelector('.video-popover') as HTMLElement;
-      expect((popover.querySelector('#videoSkipAfter') as HTMLElement).hidden).toBe(true);
+      expect(popover.querySelector('#videoSkipAfter')?.closest('[data-video-row]')).toHaveProperty('hidden', true);
     } finally {
       harness.cleanup();
     }
