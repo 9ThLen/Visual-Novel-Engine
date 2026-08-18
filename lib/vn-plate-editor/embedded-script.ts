@@ -103,6 +103,12 @@ const EMBEDDED_SCRIPT_BODY = `
       closeLabelPopover();
       closeGotoPopover();
       closeStopEffectPopover();
+      // Both keep what the author typed on the way out, matching what clicking
+      // away from them already did before the backdrop got involved.
+      saveVideoForm();
+      closeVideoPopover();
+      saveCameraForm();
+      closeCameraPopover();
       if (removeNewInteractiveObject && activeInteractiveObjectBlock) activeInteractiveObjectBlock.remove();
       closeInteractiveObjectPopover();
     }
@@ -2238,7 +2244,9 @@ const EMBEDDED_SCRIPT_BODY = `
       var margin = 16;
       var gap = 8;
       var width = Math.min(440, window.innerWidth - margin * 2);
-      var maxHeight = Math.min(520, Math.max(220, window.innerHeight - margin * 2));
+      // Room for the tallest form the editor has (a cutscene, at 520px) plus
+      // headroom, so the footer is not sliced off the bottom of the card.
+      var maxHeight = Math.min(640, Math.max(220, window.innerHeight - margin * 2));
       transitionPopover.style.width = width + 'px';
       transitionPopover.style.maxHeight = maxHeight + 'px';
       var popoverHeight = Math.min(transitionPopover.offsetHeight || maxHeight, maxHeight);

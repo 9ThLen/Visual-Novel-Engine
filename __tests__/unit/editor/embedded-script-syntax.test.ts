@@ -559,13 +559,28 @@ describe('createEmbeddedScript', () => {
     const styles = createEmbeddedStyles();
 
     expect(styles).toContain('.editor-popover-backdrop');
-    expect(styles).toContain('backdrop-filter: blur(2px)');
+    // The backdrop only catches the dismissing click. Dimming and blurring it
+    // reached one scene iframe out of several, so the page being edited went
+    // soft while the rest of the workspace stayed sharp.
+    expect(styles).not.toContain('backdrop-filter');
+    expect(styles).toMatch(/\.editor-popover-backdrop \{[^}]*\}/);
+    expect(/\.editor-popover-backdrop \{[^}]*background:/.test(styles)).toBe(false);
     expect(styles).toContain('background: var(--plate-surface, #FEFAF6)');
     expect(styles).toContain('background: var(--plate-secondary, #985A3E)');
     expect(styles).toContain('border-color: var(--plate-primary, #67683F)');
     expect(styles).not.toContain('background: #ef4444');
     expect(styles).not.toContain('border-color: #60a5fa');
     expect(styles).not.toContain('border-color: #7c3aed');
+  });
+
+  it('gives every block popover the same entrance', () => {
+    const styles = createEmbeddedStyles();
+
+    // mountEditorPopover stamps data-editor-popover on all of them, so one
+    // rule covers every block instead of each popover growing its own.
+    expect(styles).toContain('@keyframes editor-popover-in');
+    expect(styles).toMatch(/\[data-editor-popover\] \{\s*animation: editor-popover-in/);
+    expect(styles).toMatch(/prefers-reduced-motion: reduce[\s\S]*\[data-editor-popover\] \{ animation: none/);
   });
 
   it('makes the hidden attribute win over the popover display rules', () => {

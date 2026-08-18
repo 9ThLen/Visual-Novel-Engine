@@ -30,14 +30,34 @@ export function createEmbeddedStyles(): string {
       box-shadow: 0 18px 48px var(--page-branch-shadow, rgba(31, 41, 55, 0.16)), 0 2px 8px rgba(31, 41, 55, 0.08);
       transition: box-shadow 0.35s ease;
     }
+    /*
+     * Catches the click that dismisses a popover, and nothing else. It used to
+     * dim and blur, but each scene is its own iframe, so only the page under
+     * the popover ever changed while the rest of the workspace stayed sharp —
+     * and blurring the document you are editing costs readability the editor
+     * cannot spare.
+     */
     .editor-popover-backdrop {
       position: fixed;
       z-index: 25;
       inset: 0;
-      background: rgba(58, 40, 31, 0.12);
-      backdrop-filter: blur(2px);
-      -webkit-backdrop-filter: blur(2px);
       cursor: default;
+    }
+    /*
+     * One entrance for every block popover. mountEditorPopover stamps
+     * data-editor-popover on all of them, so this is the single definition —
+     * short enough to read as the panel arriving rather than as an effect.
+     */
+    @keyframes editor-popover-in {
+      from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+      to { opacity: 1; transform: none; }
+    }
+    [data-editor-popover] {
+      animation: editor-popover-in 120ms ease-out;
+      transform-origin: top center;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      [data-editor-popover] { animation: none; }
     }
     .eyebrow {
       margin: 0 0 8px;
