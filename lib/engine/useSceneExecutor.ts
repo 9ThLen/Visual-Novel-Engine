@@ -415,7 +415,15 @@ export function useSceneExecutor(
                 zoomLevel: d.zoomLevel ?? nextState.cameraState?.zoomLevel ?? 1,
                 panX: d.panX ?? nextState.cameraState?.panX ?? 0,
                 panY: d.panY ?? nextState.cameraState?.panY ?? 0,
-                target: d.target,
+                // The framed character is state, like the zoom and the pan: a
+                // zoom after a focus holds the shot on them instead of
+                // snapping back to whatever pan was current before it. An
+                // explicit pan is the author aiming somewhere else, so it
+                // gives the character up; reset drops it with everything else.
+                target: d.target
+                  ?? (d.panX === undefined && d.panY === undefined
+                    ? nextState.cameraState?.target
+                    : undefined),
                 duration: d.duration,
                 easing: d.easing,
               };

@@ -70,12 +70,15 @@ describe('cameraTargetTransform', () => {
     expect(hidden.translateX).toBe(0);
   });
 
-  it('ignores a focus target for every other action', () => {
+  it('keeps framing a character the runtime still carries', () => {
+    // The executor carries `target` past the focus step that set it, so a zoom
+    // that follows a focus holds the shot on the same character instead of
+    // snapping back to the pan that was current before the focus.
     const result = cameraTargetTransform(
       camera({ action: 'zoom', zoomLevel: 2, panX: 10, target: 'char_1' }),
       { width: WIDTH, characters: [{ characterId: 'char_1', position: 'far-right' }] },
     );
-    expect(result.translateX).toBe(-20);
+    expect(result.translateX).toBeCloseTo(-800, 5);
   });
 
   it('survives a zero width and a broken zoom', () => {

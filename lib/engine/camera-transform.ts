@@ -93,9 +93,9 @@ export function cameraTargetTransform(
   const panX = Number.isFinite(camera.panX) ? camera.panX : 0;
   const panY = Number.isFinite(camera.panY) ? camera.panY : 0;
 
-  const focusPosition = camera.action === 'focus'
-    ? visibleCharacterPosition(options.characters ?? [], camera.target)
-    : null;
+  // A target outlives the focus step that set it (see the executor), so a zoom
+  // that follows a focus keeps framing the same character.
+  const focusPosition = visibleCharacterPosition(options.characters ?? [], camera.target);
 
   // A resolved focus replaces the pan rather than adding to it: the author
   // named a character, so a pan left over from an earlier step must not drag
