@@ -369,7 +369,14 @@ Reduced motion не включати сюди приховано. Для ньо�
 - Cutscene natural end, absolute endAt, delayed Skip за active playback time, stale/double completion, tap guard і відновлення попереднього відеофону.
 - Backward `goto` через той самий cutscene-step: старий completion відкидається, нова pending-сесія не зависає.
 - Rollback до/після cutscene не переграє video.
-- Save/auto-save блокуються під час cutscene; load очищає pending video.
+- Save/auto-save блокуються під час cutscene ✅ (`StoryAutoSave` має тест: autosave мовчить,
+  доки стоїть `readerBlockingMedia`, і відновлюється, коли той знімається).
+- Load під час cutscene: у **іншу** сцену — `timelineKey` змінюється, executor скидається,
+  pending video зникає сам. У **ту саму** сцену load нічого не робить — але це наявна
+  поведінка reader'а, не пов'язана з відео: `SaveSlot` не зберігає позицію в таймлайні
+  (лише `sceneId`, змінні й вибори), тобто load означає «перезапустити сцену», а executor
+  перезапускається лише при зміні `timelineKey`. Катсцена робить цю ваду помітною, але не
+  створює її. Виправляти — окремо від цього релізу.
 - Web autoplay rejection не завершує executor.
 - Audio ducking завжди відновлюється на complete/skip/error/unmount.
 - Backup/restore і missing video/poster.

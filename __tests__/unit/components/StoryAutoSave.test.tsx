@@ -31,6 +31,7 @@ describe('StoryAutoSave', () => {
       sceneRecordsByStory: {},
       currentStoryId: null,
       playbackState: null,
+      readerBlockingMedia: null,
       saveSlots: [],
       syncAutoSave: vi.fn(),
     });
@@ -81,5 +82,49 @@ describe('StoryAutoSave', () => {
       sceneName: 'scene-1',
       variables: { flag: true },
     }));
+  });
+
+  it('stands down while a cutscene owns the screen and resumes when it ends', () => {
+    const syncAutoSave = vi.fn();
+    useAppStore.setState({
+      storiesMetadata: [
+        { id: 'story-1', title: 'Active story', sceneCount: 1, startSceneId: 'scene-1', createdAt: 0, updatedAt: 0 },
+      ],
+      sceneRecordsByStory: {
+        'story-1': { 'scene-1': makeScene('scene-1', 'story-1') },
+      },
+      playbackState: {
+        storyId: 'story-1',
+        currentSceneId: 'scene-1',
+        isPlaying: true,
+        currentDialogueIndex: 0,
+        choicesMade: [],
+        variables: {},
+      },
+      readerBlockingMedia: { stepId: 'video-1', kind: 'cutscene' },
+      syncAutoSave,
+    });
+
+    const { rerender } = render(<StoryAutoSave />);
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    // A slot written mid-clip records the scene but not the clip, so resuming
+    // it would either replay or skip the cutscene with no way to tell which
+    // the author meant.
+    expect(syncAutoSave).not.toHaveBeenCalled();
+
+    act(() => {
+      useAppStore.setState({ readerBlockingMedia: null });
+    });
+    rerender(<StoryAutoSave />);
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(syncAutoSave).toHaveBeenCalled();
   });
 });
