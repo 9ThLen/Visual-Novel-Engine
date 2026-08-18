@@ -568,6 +568,16 @@ describe('createEmbeddedScript', () => {
     expect(styles).not.toContain('border-color: #7c3aed');
   });
 
+  it('makes the hidden attribute win over the popover display rules', () => {
+    const styles = createEmbeddedStyles();
+
+    // Popovers hide the controls an action ignores by setting `hidden`, and
+    // .popover-label sets display: block, which beats the UA rule on its own.
+    // Without this the label for a hidden control stays on screen captioning
+    // nothing — invisible to jsdom, which applies no cascade.
+    expect(styles).toMatch(/\[hidden\]\s*\{\s*display:\s*none\s*!important/);
+  });
+
   it('uses the sage palette for editor text selection', () => {
     const styles = createEmbeddedStyles();
 

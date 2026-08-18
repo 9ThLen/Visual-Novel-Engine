@@ -857,6 +857,15 @@ export function createEmbeddedStyles(): string {
       font-size: 13px;
       font-weight: 650;
     }
+    /*
+     * Popovers hide the controls an action ignores with the hidden attribute, and
+     * every class rule below sets an explicit display that would otherwise beat
+     * the UA rule for [hidden]. Without this a hidden label keeps its slot and
+     * captions a control that is not there.
+     */
+    [hidden] {
+      display: none !important;
+    }
     .popover-label {
       display: block;
       margin: 0 0 6px;
