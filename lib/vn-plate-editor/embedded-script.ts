@@ -2154,9 +2154,13 @@ const EMBEDDED_SCRIPT_BODY = `
       return 'Наступна сцена';
     }
 
+    function transitionIsDangling(data) {
+      return data.mode === 'scene' && (!data.targetSceneId || (storyScenes.length > 0 && !findStoryScene(data.targetSceneId)));
+    }
+
     function transitionSummary(data) {
       var summary = (TRANSITION_TYPE_LABELS[data.transitionType] || data.transitionType) + ' · ' + formatSeconds(data.duration);
-      if (data.mode === 'scene' && (!data.targetSceneId || (storyScenes.length > 0 && !findStoryScene(data.targetSceneId)))) {
+      if (transitionIsDangling(data)) {
         summary += ' · ⚠ сцена не знайдена';
       }
       return summary;
@@ -2171,18 +2175,16 @@ const EMBEDDED_SCRIPT_BODY = `
     function renderTransitionBlockContent(node) {
       var data = transitionDataFromNode(node);
       node.innerHTML =
-        '<div class="background-copy">' +
-          '<div class="background-command-line">' +
-            '<span class="void-title">/transition</span>' +
-            '<span class="background-asset"></span>' +
-          '</div>' +
-          '<div class="void-summary"></div>' +
-        '</div>' +
-        '<div class="block-actions">' +
-          '<button type="button" class="block-button" data-action="edit-transition">Edit</button>' +
-        '</div>';
-      node.querySelector('.background-asset').textContent = transitionTargetLabel(data);
+        '<span class="void-title">/transition</span>' +
+        '<span class="background-asset"></span>' +
+        '<span class="void-summary"></span>';
+      var targetLabel = transitionTargetLabel(data);
+      node.querySelector('.background-asset').textContent = targetLabel;
       node.querySelector('.void-summary').textContent = transitionSummary(data);
+      node.setAttribute('tabindex', '0');
+      node.setAttribute('role', 'button');
+      node.setAttribute('aria-label', 'Редагувати перехід: ' + targetLabel);
+      node.classList.toggle('has-warning', transitionIsDangling(data));
     }
 
     function applyTransitionData(node, data) {
@@ -2724,10 +2726,20 @@ const EMBEDDED_SCRIPT_BODY = `
       });
     }
 
+    // Ukrainian plural for "дія": 1 дія, 2-4 дії, 5+ дій (11-14 take the "дій" form).
+    function actionCountLabel(count) {
+      var lastDigit = count % 10;
+      var lastTwoDigits = count % 100;
+      if (lastDigit === 1 && lastTwoDigits !== 11) return count + ' дія';
+      if (lastDigit >= 2 && lastDigit <= 4 && (lastTwoDigits < 12 || lastTwoDigits > 14)) return count + ' дії';
+      return count + ' дій';
+    }
+
     function interactiveObjectMeta(data) {
       var p = data.position;
       var count = data.actions.length;
-      return p.x + '%, ' + p.y + '% · ' + p.width + '×' + p.height + '% · ' + count + (count === 1 ? ' дія' : ' дій')
+      var actionLabel = count === 0 ? '⚠ немає дій' : actionCountLabel(count);
+      return p.x + '%, ' + p.y + '% · ' + p.width + '×' + p.height + '% · ' + actionLabel
         + (data.oneTimeOnly ? ' · одноразовий' : '') + (data.pulseAnimation ? ' · пульсація' : '');
     }
 
@@ -2736,9 +2748,9 @@ const EMBEDDED_SCRIPT_BODY = `
       node.classList.toggle('has-warning', data.actions.length === 0);
       node.setAttribute('aria-label', 'Редагувати інтерактивний об’єкт ' + data.name);
       node.innerHTML = '<span class="interactive-object-icon" aria-hidden="true">◎</span>' +
-        '<span class="interactive-object-copy"><span class="interactive-object-kicker">Інтерактивний об’єкт</span><span class="interactive-object-name"></span><span class="interactive-object-meta"></span></span>' +
-        (data.actions.length ? '' : '<span class="interactive-object-warning">Немає дій</span>') +
-        '<button type="button" class="block-button" data-action="edit-interactive-object">Редагувати</button>';
+        '<span class="void-title">/object</span>' +
+        '<span class="interactive-object-name"></span>' +
+        '<span class="interactive-object-meta"></span>';
       node.querySelector('.interactive-object-name').textContent = data.name || 'Новий об’єкт';
       node.querySelector('.interactive-object-meta').textContent = interactiveObjectMeta(data);
     }
@@ -4310,6 +4322,11 @@ const EMBEDDED_SCRIPT_BODY = `
         openStopEffectPopover(block, block);
         return;
       }
+      if (block.classList.contains('transition-block')) {
+        event.preventDefault();
+        openTransitionPopover(block, block);
+        return;
+      }
       if (!button && !block.classList.contains('interactive-object-block')) return;
       var action = button ? button.dataset.action : 'edit-interactive-object';
       if (action === 'edit-background') {
@@ -4323,10 +4340,6 @@ const EMBEDDED_SCRIPT_BODY = `
         var backgroundFileInput = backgroundPopover && backgroundPopover.querySelector('.asset-file-input');
         if (backgroundFileInput) backgroundFileInput.click();
         return;
-      }
-      if (action === 'edit-transition') {
-        event.preventDefault();
-        openTransitionPopover(block, button);
       }
       if (action === 'edit-choice') {
         event.preventDefault();
@@ -4981,6 +4994,16 @@ const EMBEDDED_SCRIPT_BODY = `
       if (target && target.classList && target.classList.contains('speaker-token') && (event.key === 'Enter' || event.key === ' ')) {
         event.preventDefault();
         renderCharacterPopover(target);
+      }
+      if (target && target.classList && target.classList.contains('transition-block') && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        selectVoidBlock(target);
+        openTransitionPopover(target, target);
+      }
+      if (target && target.classList && target.classList.contains('interactive-object-block') && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        selectVoidBlock(target);
+        openInteractiveObjectPopover(target);
       }
     });
 
