@@ -5,9 +5,10 @@
  */
 
 import React from 'react';
-import { View, Text, Pressable, Modal } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
+import { AppModal } from './AppModal';
 
 interface ConfirmDialogProps {
   visible: boolean;
@@ -36,7 +37,7 @@ export function ConfirmDialog({
   const resolvedCancelLabel = cancelLabel ?? t('common.cancel');
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
+    <AppModal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
       <View style={{
         flex: 1,
         backgroundColor: colors.backdrop,
@@ -89,6 +90,6 @@ export function ConfirmDialog({
           </View>
         </View>
       </View>
-    </Modal>
+    </AppModal>
   );
 }

@@ -9,7 +9,7 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import {
-  View, Text, Pressable, ScrollView, TextInput, Modal, FlatList,
+  View, Text, Pressable, ScrollView, TextInput, FlatList,
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
@@ -18,6 +18,7 @@ import { type BlockType } from '@/lib/engine/types';
 import { withAlpha } from '@/lib/_core/theme';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
+import { AppModal } from '@/components/ui/AppModal';
 
 // ── Template scene definitions ──────────────────────────────────────
 interface TemplateScene {
@@ -347,7 +348,7 @@ export function SceneSelector({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <AppModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         {/* Header */}
         <View style={{
@@ -658,6 +659,6 @@ export function SceneSelector({
           </View>
         )}
       </View>
-    </Modal>
+    </AppModal>
   );
 }
