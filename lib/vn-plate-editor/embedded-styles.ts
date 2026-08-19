@@ -238,26 +238,30 @@ export function createEmbeddedStyles(): string {
     .stop-effect-block .void-title,
     .stop-effect-block .background-asset { font-size: 13px; }
     .interactive-object-block {
-      display: flex;
-      width: 100%;
-      min-height: 60px;
-      margin: 10px 0 14px;
-      padding: 10px 12px;
-      gap: 12px;
-      border-color: var(--plate-border-subtle, #E5DDD3);
-      border-radius: 14px;
-      background: var(--plate-surface, #FEFAF6);
+      display: inline-flex;
+      align-items: baseline;
+      justify-content: flex-start;
+      max-width: 100%;
+      min-height: 0;
+      margin: 6px 2px 10px;
+      padding: 3px 10px;
+      gap: 8px;
+      border-color: var(--plate-border, #A59B90);
+      border-radius: 8px;
+      background: var(--plate-surface-muted, #F1EEE6);
       cursor: pointer;
-      align-items: center;
+      vertical-align: baseline;
     }
-    .interactive-object-block:hover { background: var(--plate-surface-muted, #F6F0E9); }
-    .interactive-object-block.has-warning { border-color: #D8B56A; }
-    .interactive-object-icon { color: var(--plate-primary, #67683F); font-size: 22px; line-height: 1; }
-    .interactive-object-copy { display: grid; min-width: 0; flex: 1; gap: 2px; }
-    .interactive-object-kicker { color: var(--plate-foreground-secondary, #74665C); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-    .interactive-object-name { color: var(--plate-foreground, #3A281F); font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .interactive-object-meta { color: var(--plate-foreground-secondary, #74665C); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .interactive-object-warning { padding: 3px 7px; color: #7C4A03; background: #FEF3C7; border-radius: 999px; font-size: 11px; white-space: nowrap; }
+    .interactive-object-block:hover { background: var(--plate-surface, #FEFAF6); }
+    .interactive-object-block:focus-visible {
+      outline: 2px solid var(--plate-primary, #67683F);
+      outline-offset: 2px;
+    }
+    .interactive-object-block.has-warning { border-color: #D8B56A; background: #FEF6E4; }
+    .interactive-object-block .void-title { flex: 0 0 auto; color: var(--plate-primary, #67683F); font-size: 13px; }
+    .interactive-object-icon { flex: 0 0 auto; color: var(--plate-primary, #67683F); font-size: 14px; line-height: 1; }
+    .interactive-object-name { min-width: 0; color: var(--plate-foreground, #3A281F); font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .interactive-object-meta { flex: 0 0 auto; color: var(--plate-foreground-secondary, #74665C); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .interactive-object-popover {
       position: fixed;
       z-index: 120;
@@ -313,24 +317,45 @@ export function createEmbeddedStyles(): string {
       .interactive-popover-footer > span { display: none; }
     }
     .transition-block {
-      min-height: 40px;
-      margin: 8px 0 12px;
-      padding: 8px 12px;
-      background: transparent;
-      border-left: 3px solid var(--plate-border-strong, #8D8277);
+      display: inline-flex;
+      align-items: baseline;
+      justify-content: flex-start;
+      min-height: 0;
+      max-width: 100%;
+      margin: 6px 2px 10px;
+      padding: 3px 10px;
+      gap: 8px;
+      border-color: var(--plate-primary, #67683F);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--plate-primary, #67683F) 10%, var(--plate-surface, #FEFAF6));
+      cursor: pointer;
+      vertical-align: baseline;
     }
-    .transition-block .background-command-line {
-      gap: 12px;
+    .transition-block:hover {
+      background: color-mix(in srgb, var(--plate-primary, #67683F) 16%, var(--plate-surface, #FEFAF6));
+    }
+    .transition-block:focus-visible {
+      outline: 2px solid var(--plate-primary, #67683F);
+      outline-offset: 2px;
+    }
+    .transition-block.has-warning {
+      border-color: #D8B56A;
+      background: #FEF6E4;
     }
     .transition-block .void-title {
+      color: var(--plate-primary, #67683F);
       font-size: 13px;
     }
-    .transition-block .void-summary {
-      font-size: 12px;
+    .transition-block .background-asset {
+      min-width: 0;
+      color: var(--plate-foreground, #3A281F);
+      font-size: 13px;
     }
-    .transition-block .block-button {
-      height: 30px;
-      padding: 0 12px;
+    .transition-block .void-title,
+    .transition-block .void-summary {
+      flex: 0 0 auto;
+    }
+    .transition-block .void-summary {
       font-size: 12px;
     }
     .transition-scene-picker {
@@ -1064,8 +1089,7 @@ export function createEmbeddedStyles(): string {
         border-radius: 16px 16px 0 0;
         padding: 14px;
       }
-      .background-block,
-      .transition-block {
+      .background-block {
         align-items: stretch;
         flex-direction: column;
       }
