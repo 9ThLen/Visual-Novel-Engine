@@ -284,6 +284,12 @@ export function createEmbeddedStyles(): string {
     .interactive-stage-hotspot:focus-visible { outline: 3px solid color-mix(in srgb, var(--plate-primary, #67683F) 45%, transparent); outline-offset: 2px; }
     .interactive-stage-hotspot.is-manipulating { cursor: grabbing; }
     .interactive-resize-handle { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; background: var(--plate-primary, #67683F); border: 2px solid var(--plate-surface, #FEFAF6); border-radius: 50%; cursor: nwse-resize; }
+    .interactive-asset-field { display: grid; gap: 6px; margin: 0; }
+    .interactive-asset-row { display: flex; align-items: center; gap: 8px; }
+    .interactive-asset-row .popover-control { flex: 1; min-width: 0; }
+    .interactive-asset-row .popover-button { flex: 0 0 auto; }
+    .interactive-asset-row .popover-button[disabled] { opacity: .6; cursor: progress; }
+    .interactive-asset-status { min-height: 14px; color: var(--plate-foreground-secondary, #74665C); font-size: 11px; font-weight: 400; }
     .interactive-geometry { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
     .interactive-presets, .interactive-toggles, .interactive-actions-heading, .interactive-action-header { display: flex; align-items: center; gap: 8px; }
     .interactive-toggles { justify-content: space-between; padding: 10px 12px; background: var(--plate-surface-muted, #F6F0E9); border-radius: 10px; }
