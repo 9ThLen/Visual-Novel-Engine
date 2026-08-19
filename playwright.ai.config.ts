@@ -39,6 +39,11 @@ export default defineConfig({
       url: appOrigin,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
+      // Metro reports bundling failures on stdout, which Playwright discards by
+      // default. Without this a broken bundle is invisible: the dev server keeps
+      // answering, the browser gets a 500 for the bundle, and every test just
+      // sees a blank page.
+      stdout: 'pipe',
       env: {
         ...process.env,
         CI: '1',
