@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { View, Text, Pressable, Modal } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { useAppStore } from '@/stores/use-app-store';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
+import { AppModal } from '@/components/ui/AppModal';
 
 export function MigrationErrorBanner() {
   const colors = useColors();
@@ -24,7 +25,7 @@ export function MigrationErrorBanner() {
   if (!visible || !migrationError) return null;
 
   return (
-    <Modal
+    <AppModal
       transparent
       animationType="fade"
       visible={visible}
@@ -107,6 +108,6 @@ export function MigrationErrorBanner() {
           </Pressable>
         </View>
       </View>
-    </Modal>
+    </AppModal>
   );
 }
