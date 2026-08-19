@@ -20,8 +20,9 @@ import { richTextAlignment, richTextLength, stripRichText } from '@/lib/rich-tex
 import { useTypewriter } from '@/hooks/useTypewriter';
 import type { StoryReaderLayoutPreset } from '@/lib/story-theme';
 
-const DIALOGUE_LINE_HEIGHT_MULTIPLIER = 1.65;
-const DEFAULT_READER_LINE_HEIGHT_SCALE = 1.2;
+/** Shared with the editor's scene preview so both compute line height alike. */
+export const DIALOGUE_LINE_HEIGHT_MULTIPLIER = 1.65;
+export const DEFAULT_READER_LINE_HEIGHT_SCALE = 1.2;
 const TAPPABLE_AREA_STYLE = { flex: 1 };
 const CURSOR_STYLE = { opacity: 0.8 };
 const BACKGROUND_PLACEHOLDER = { blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' };
