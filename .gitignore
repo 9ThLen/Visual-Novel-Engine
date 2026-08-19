@@ -82,6 +82,7 @@ _backup_graphify-out-before-plate-final-*/
 .hermes/
 .impeccable/
 test-results/
+playwright-report/
 
 # Local analysis/tool caches
 .kluster/
