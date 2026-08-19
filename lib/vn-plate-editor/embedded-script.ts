@@ -133,8 +133,21 @@ const EMBEDDED_SCRIPT_BODY = `
 
     function mountEditorPopover(popover, nested) {
       popover.dataset.editorPopover = nested ? 'nested' : 'top-level';
+      // Callers place the popover on the next frame, so it spends its first
+      // frame at the body's default corner. Held invisible until then, the
+      // entrance plays from where the popover actually lands instead of
+      // starting across the page — and the animation only begins once this
+      // mark is gone, so none of it is spent while hidden. Two frames deep:
+      // the caller's positioning callback is queued after this one and runs
+      // in the first.
+      popover.dataset.popoverEnter = 'pending';
       document.body.appendChild(popover);
       syncEditorPopoverBackdrop();
+      afterLayout(function() {
+        afterLayout(function() {
+          delete popover.dataset.popoverEnter;
+        });
+      });
     }
 
     function unmountEditorPopover(popover) {

@@ -579,8 +579,11 @@ describe('createEmbeddedScript', () => {
     // mountEditorPopover stamps data-editor-popover on all of them, so one
     // rule covers every block instead of each popover growing its own.
     expect(styles).toContain('@keyframes editor-popover-in');
-    expect(styles).toMatch(/\[data-editor-popover\] \{\s*animation: editor-popover-in/);
-    expect(styles).toMatch(/prefers-reduced-motion: reduce[\s\S]*\[data-editor-popover\] \{ animation: none/);
+    expect(styles).toMatch(/\[data-editor-popover\]:not\(\[data-popover-enter\]\) \{\s*animation: editor-popover-in/);
+    expect(styles).toMatch(/prefers-reduced-motion: reduce[\s\S]*animation: none/);
+    // Hidden for the frame in which the caller is still positioning it, so the
+    // entrance starts where the popover lands rather than at the body corner.
+    expect(styles).toMatch(/\[data-editor-popover\]\[data-popover-enter\] \{\s*visibility: hidden/);
   });
 
   it('makes the hidden attribute win over the popover display rules', () => {

@@ -49,15 +49,18 @@ export function createEmbeddedStyles(): string {
      * short enough to read as the panel arriving rather than as an effect.
      */
     @keyframes editor-popover-in {
-      from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+      from { opacity: 0; transform: translateY(-8px) scale(0.97); }
       to { opacity: 1; transform: none; }
     }
-    [data-editor-popover] {
-      animation: editor-popover-in 120ms ease-out;
+    [data-editor-popover][data-popover-enter] {
+      visibility: hidden;
+    }
+    [data-editor-popover]:not([data-popover-enter]) {
+      animation: editor-popover-in 160ms cubic-bezier(0.2, 0, 0, 1);
       transform-origin: top center;
     }
     @media (prefers-reduced-motion: reduce) {
-      [data-editor-popover] { animation: none; }
+      [data-editor-popover]:not([data-popover-enter]) { animation: none; }
     }
     .eyebrow {
       margin: 0 0 8px;
