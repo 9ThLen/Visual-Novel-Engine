@@ -6,6 +6,7 @@ import type { StoryReaderTheme } from '@/lib/story-theme';
 function makeStep(overrides: Partial<TimelineStep> & { id: string; blockType: TimelineStep['blockType'] }): TimelineStep {
   const defaults: Record<TimelineStep['blockType'], TimelineStep['data']> = {
     background: { assetId: null, transition: 'instant', duration: 0 },
+    video: { mode: 'play', layer: 'background', assetId: null },
     character: {
       action: 'show',
       characterId: 'hero',
@@ -82,6 +83,108 @@ function makeMetadata(theme?: StoryReaderTheme): StoryMetadata {
     ...(theme === undefined ? {} : { theme }),
   };
 }
+
+describe('runStoryDoctor camera findings', () => {
+  const focusStep = (target?: string) => makeStep({
+    id: 'camera-1',
+    blockType: 'camera',
+    data: { action: 'focus', duration: 1, easing: 'ease-in-out', ...(target ? { target } : {}) },
+  });
+
+  it('reports a focus that names a character the story does not have', () => {
+    const report = runStoryDoctor({
+      scenes: [makeScene({ id: 'start', isStart: true, timeline: [focusStep('char_ghost'), endStep()] })],
+      characters: [{ id: 'char_1', name: 'Мія', sprites: [] } as never],
+    });
+
+    const finding = report.findings.find((item) => item.code === 'camera.missingFocusTarget');
+    expect(finding?.severity).toBe('error');
+  });
+
+  it('warns about a focus with no character at all', () => {
+    const report = runStoryDoctor({
+      scenes: [makeScene({ id: 'start', isStart: true, timeline: [focusStep(), endStep()] })],
+      characters: [{ id: 'char_1', name: 'Мія', sprites: [] } as never],
+    });
+
+    expect(report.findings.find((item) => item.code === 'camera.focusWithoutTarget')?.severity).toBe('warning');
+  });
+
+  it('stays quiet for a resolvable focus and for other camera actions', () => {
+    const report = runStoryDoctor({
+      scenes: [makeScene({
+        id: 'start',
+        isStart: true,
+        timeline: [
+          focusStep('char_1'),
+          makeStep({ id: 'camera-2', blockType: 'camera', data: { action: 'pan', panX: 10, duration: 2, easing: 'linear' } }),
+          endStep(),
+        ],
+      })],
+      characters: [{ id: 'char_1', name: 'Мія', sprites: [] } as never],
+    });
+
+    expect(report.findings.map((finding) => finding.code).filter((code) => code.startsWith('camera.'))).toEqual([]);
+  });
+});
+
+describe('runStoryDoctor video findings', () => {
+  it('reports a video block with no clip selected', () => {
+    const report = runStoryDoctor({
+      scenes: [makeScene({
+        id: 'start',
+        isStart: true,
+        timeline: [makeStep({ id: 'video-1', blockType: 'video' }), endStep()],
+      })],
+    });
+
+    expect(report.findings.map((finding) => finding.code)).toContain('video.noAsset');
+  });
+
+  it('warns when an authored end time is at or before the start time', () => {
+    const report = runStoryDoctor({
+      scenes: [makeScene({
+        id: 'start',
+        isStart: true,
+        timeline: [
+          makeStep({
+            id: 'video-1',
+            blockType: 'video',
+            data: { mode: 'play', layer: 'background', assetId: 'clip-1', startAt: 5, endAt: 2 },
+          }),
+          endStep(),
+        ],
+      })],
+      mediaAssets: [
+        { id: 'clip-1', type: 'video', uri: 'idb://media/clip', name: 'Clip.mp4', addedAt: 0 },
+      ],
+    });
+
+    const timing = report.findings.find((finding) => finding.code === 'video.invalidTiming');
+    expect(timing).toBeDefined();
+    expect(timing?.severity).toBe('warning');
+    expect(report.findings.map((finding) => finding.code)).not.toContain('asset.missingVideo');
+  });
+
+  it('reports a video reference that no library asset satisfies', () => {
+    const report = runStoryDoctor({
+      scenes: [makeScene({
+        id: 'start',
+        isStart: true,
+        timeline: [
+          makeStep({
+            id: 'video-1',
+            blockType: 'video',
+            data: { mode: 'play', layer: 'background', assetId: 'gone' },
+          }),
+          endStep(),
+        ],
+      })],
+    });
+
+    expect(report.findings.map((finding) => finding.code)).toContain('asset.missingVideo');
+  });
+});
 
 describe('runStoryDoctor', () => {
   it('returns no findings for a clean story', () => {

@@ -10,7 +10,7 @@ import { getEmbeddedCommands } from '@/lib/vn-plate-editor/embedded-commands';
 import { createVNPlateEditorHtml } from '@/lib/vn-plate-editor/embedded-html';
 import { getSharedEditorAssets } from '@/lib/vn-plate-editor/shared-assets';
 import { normalizePlateDocumentScene } from '@/lib/vn-plate-editor/scene-normalizer';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateEditorMessage, VNPlateFormatCommand, VNPlateFormatState, VNPlateSceneRef } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateEditorMessage, VNPlateFormatCommand, VNPlateFormatState, VNPlateSceneRef, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { DocumentScene } from '@/lib/document-editor/types';
 
@@ -74,6 +74,8 @@ interface PlateWebViewEditorProps {
   characters: Character[];
   backgroundAssets: VNPlateBackgroundAsset[];
   audioAssets: VNPlateAudioAsset[];
+  /** Videos the story can play; only id + name cross into the frame. */
+  videoAssets?: VNPlateVideoAsset[];
   /** All scenes of the story (id + name) for transition target pickers. */
   scenes?: VNPlateSceneRef[];
   /** Branch info for choice blocks on the active path (branch switcher). */
@@ -88,6 +90,11 @@ interface PlateWebViewEditorProps {
   onCreateNextScene?: (scene: DocumentScene, characters: Character[]) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
+  /**
+   * Opens the platform video picker on the host side. The frame only asks —
+   * bytes never travel through postMessage.
+   */
+  onPickVideoAsset?: () => Promise<{ asset: VNPlateVideoAsset | null; error?: 'tooLarge' | 'unsupportedType' | 'failed' }>;
   onOverlayActiveChange?: (active: boolean) => void;
   onInteraction?: () => void;
   onHistoryStateChange?: (canUndo: boolean, canRedo: boolean) => void;
@@ -104,6 +111,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   characters,
   backgroundAssets,
   audioAssets,
+  videoAssets,
   scenes,
   branchInfo,
   branchColor,
@@ -114,6 +122,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   onCreateNextScene,
   onUploadBackgroundAsset,
   onUploadAudioAsset,
+  onPickVideoAsset,
   onOverlayActiveChange,
   onInteraction,
   onHistoryStateChange,
@@ -158,6 +167,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
           characters: currentCharacters,
           backgroundAssets,
           audioAssets,
+          videoAssets,
           scenes,
           isPhone,
           language,
@@ -281,6 +291,15 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     }, '*');
   }, [editorId, resolvedAudioAssets]);
 
+  const postVideoAssets = useCallback(() => {
+    iframeRef.current?.contentWindow?.postMessage({
+      source: 'vn-plate-host',
+      editorId,
+      type: 'videoAssetsUpdated',
+      assets: videoAssets ?? [],
+    }, '*');
+  }, [editorId, videoAssets]);
+
   const postScenes = useCallback(() => {
     if (!scenes) return;
     iframeRef.current?.contentWindow?.postMessage({
@@ -352,7 +371,8 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
 
   useEffect(() => {
     postAudioAssets();
-  }, [postAudioAssets]);
+    postVideoAssets();
+  }, [postAudioAssets, postVideoAssets]);
 
   useEffect(() => {
     postCharacters();
@@ -408,6 +428,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         readyRef.current = true;
         postBackgroundAssets();
         postAudioAssets();
+        postVideoAssets();
         postCommands();
         postScenes();
         postBranchInfo();
@@ -498,6 +519,30 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
           });
         return;
       }
+      if (message.type === 'pickVideoAsset') {
+        const requestId = message.requestId;
+        const reply = (asset: VNPlateVideoAsset | null, error?: 'tooLarge' | 'unsupportedType' | 'failed') => {
+          iframeRef.current?.contentWindow?.postMessage({
+            source: 'vn-plate-host',
+            editorId,
+            type: 'videoAssetPicked',
+            requestId,
+            asset,
+            error,
+          }, '*');
+        };
+        if (!onPickVideoAsset) {
+          reply(null, 'failed');
+          return;
+        }
+        void onPickVideoAsset()
+          .then((result) => reply(result.asset, result.error))
+          .catch((error) => {
+            console.error('[pick-video]', error);
+            reply(null, 'failed');
+          });
+        return;
+      }
       if (message.type === 'uploadAudioAsset') {
         void onUploadAudioAsset?.(message.name, message.dataUri).then(async (asset) => {
           if (!asset) return;
@@ -557,14 +602,15 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [editorId, minimumFrameHeight, onChange, onCreateNextScene, onFormatStateChange, onHistoryStateChange, onSelectChoiceOption, onStartBranchOption, onUploadAudioAsset, onUploadBackgroundAsset, postAudioAssets, postBackgroundAssets, postBranchColor, postBranchInfo, postCommands, postScenes]);
+  }, [editorId, minimumFrameHeight, onChange, onCreateNextScene, onFormatStateChange, onHistoryStateChange, onSelectChoiceOption, onStartBranchOption, onPickVideoAsset, onUploadAudioAsset, onUploadBackgroundAsset, postAudioAssets, postBackgroundAssets, postVideoAssets, postBranchColor, postBranchInfo, postCommands, postScenes]);
 
   const postAssets = useCallback(() => {
     postBackgroundAssets();
     postAudioAssets();
+    postVideoAssets();
     postCommands();
     postScenes();
-  }, [postAudioAssets, postBackgroundAssets, postCommands, postScenes]);
+  }, [postAudioAssets, postBackgroundAssets, postCommands, postScenes, postVideoAssets]);
   const handleIframeLoad = useCallback(() => {
     postAssets();
     const editorDocument = iframeRef.current?.contentDocument;

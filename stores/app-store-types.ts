@@ -30,6 +30,15 @@ export interface AppState {
   mediaAssetIdsByStory: StoryMediaAssetIds;
   /** storyId → ids of terminal scenes the reader has reached. */
   endingsReachedByStory: Record<string, string[]>;
+  /**
+   * Set while the reader is blocked on media that owns the screen — currently a
+   * cutscene. Saving mid-clip would produce a slot nobody can resume from
+   * unambiguously, so saves stand down while it is set.
+   *
+   * Ephemeral on purpose: it is absent from buildPersistedAppState(), so a
+   * crash mid-cutscene cannot leave saving disabled on the next launch.
+   */
+  readerBlockingMedia: { stepId: string; kind: 'cutscene' } | null;
   isLoaded: boolean;
   migrationError: string | null;
 }
@@ -39,6 +48,7 @@ export interface AppActions {
   clearMigrationError: () => void;
   loadCurrentStory: (storyId: string | null) => Promise<void>;
   updatePlaybackState: (state: PlaybackState | null) => void;
+  setReaderBlockingMedia: (media: AppState['readerBlockingMedia']) => void;
   saveGame: (slotId: string) => boolean;
   loadGame: (slotId: string) => { storyId: string; playbackState: PlaybackState } | null;
   deleteSaveSlot: (slotId: string) => void;

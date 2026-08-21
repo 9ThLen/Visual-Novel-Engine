@@ -16,6 +16,7 @@ import {
   createSoundStep,
   createTextStep,
 } from '@/lib/engine/event-factory';
+import { CAMERA_ACTION_LABELS, normalizeCameraData } from '@/lib/engine/camera-utils';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
 import type {
   BackgroundBlockData,
@@ -32,7 +33,9 @@ import type {
   StopEffectBlockData,
   TextBlockData,
   TimelineStep,
+  VideoBlockData,
 } from '@/lib/engine/types';
+import { normalizeVideoData } from '@/lib/engine/video-utils';
 import { findDocumentCommand, searchDocumentCommands } from './commands';
 import type {
   DocumentBlock,
@@ -67,6 +70,7 @@ function isDialogueShorthandFalsePositive(speakerName: string, text: string): bo
 
 function commandIdForStep(step: TimelineStep): DocumentCommandId {
   if (step.blockType === 'background') return 'background';
+  if (step.blockType === 'video') return 'video';
   if (step.blockType === 'character') return 'character';
   if (step.blockType === 'music') return 'music';
   if (step.blockType === 'sound') return 'sound';
@@ -87,6 +91,17 @@ function technicalSummary(step: TimelineStep, characters: Character[]): { label:
       label: 'Фон',
       summary: data.assetId ? `${data.assetId} · ${data.transition}` : 'не вибрано',
       warning: data.assetId ? undefined : 'Потрібно вибрати фон',
+    };
+  }
+
+  if (step.blockType === 'video') {
+    const data = normalizeVideoData(step.data as VideoBlockData);
+    return {
+      label: data.mode === 'stop' ? 'Зупинити відео' : 'Відео',
+      summary: data.mode === 'stop'
+        ? data.layer
+        : `${data.assetId || 'не вибрано'} · ${data.layer} · ${data.fit}`,
+      warning: data.mode === 'play' && !data.assetId ? 'Потрібно вибрати відео' : undefined,
     };
   }
 
@@ -142,7 +157,21 @@ function technicalSummary(step: TimelineStep, characters: Character[]): { label:
     const targetLabel = !data.target || data.target === 'all' ? '' : ` · ${data.target}`;
     return { label: 'Стоп-ефект', summary: `${typeLabel}${targetLabel}` };
   }
-  if (step.blockType === 'camera') return { label: 'Камера', summary: 'camera movement' };
+  if (step.blockType === 'camera') {
+    const data = normalizeCameraData(step.data);
+    const action = CAMERA_ACTION_LABELS[data.action] || data.action;
+    const focus = data.action === 'focus'
+      ? ` · ${data.target ? characterNameForId(characters, data.target) : 'персонажа не вибрано'}`
+      : '';
+    const zoom = data.action !== 'reset' && typeof data.zoomLevel === 'number'
+      ? ` · ${Number(data.zoomLevel.toFixed(2))}×`
+      : '';
+    return {
+      label: 'Камера',
+      summary: `${action}${focus}${zoom} · ${Number(data.duration.toFixed(2))}s`,
+      warning: data.action === 'focus' && !data.target ? 'Потрібно вибрати персонажа' : undefined,
+    };
+  }
   if (step.blockType === 'interactive_object') return { label: "Об'єкт", summary: 'interactive hotspot' };
 
   return { label: step.blockType, summary: 'technical marker' };

@@ -37,6 +37,7 @@ export type RuntimeCameraEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-o
 export interface SceneState {
   backgroundAssetId: string | null;
   backgroundTransition: string;
+  activeVideo?: RuntimeVideoState | null;
   characters: CharacterRuntimeState[];
   activeEffects: ActiveEffect[];
   soundEvents?: SoundRuntimeEvent[];
@@ -65,6 +66,21 @@ export interface SceneState {
   activeSpeakerCharacterId?: string | null;
   activeSpeakerFocusScale?: number;
   dimNonSpeakerCharacters?: boolean;
+}
+
+export interface RuntimeVideoState {
+  stepId: string;
+  assetId: string;
+  posterAssetId?: string | null;
+  layer: 'background' | 'cutscene';
+  fit: 'cover' | 'contain';
+  playbackRate: number;
+  startAt?: number;
+  endAt?: number;
+  muted: boolean;
+  volume: number;
+  loop: boolean;
+  skippableAfterMs: number | null;
 }
 
 export interface CharacterRuntimeState {

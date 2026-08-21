@@ -17,6 +17,8 @@ export interface UserSettings {
   autoPlay: boolean;
   /** Subtle background parallax in the reader (pointer-driven on web, ambient drift on native). */
   parallaxEnabled: boolean;
+  /** Play scene background video. Off falls back to the poster or static background. */
+  backgroundVideoEnabled: boolean;
   aiPermissions: AiPermissions;
 }
 
@@ -30,6 +32,7 @@ export const defaultUserSettings: UserSettings = {
   readerLineHeightScale: 1.2,
   autoPlay: false,
   parallaxEnabled: true,
+  backgroundVideoEnabled: true,
   aiPermissions: defaultAiPermissions,
 };
 
@@ -79,6 +82,10 @@ export function normalizeUserSettings(
       typeof settings?.parallaxEnabled === 'boolean'
         ? settings.parallaxEnabled
         : defaultUserSettings.parallaxEnabled,
+    backgroundVideoEnabled:
+      typeof settings?.backgroundVideoEnabled === 'boolean'
+        ? settings.backgroundVideoEnabled
+        : defaultUserSettings.backgroundVideoEnabled,
     aiPermissions: normalizeAiPermissions(settings?.aiPermissions),
   };
 }

@@ -20,6 +20,7 @@ export type {
   CharacterRuntimeState,
   DialogueHistoryEntry,
   PlaybackState,
+  RuntimeVideoState,
   SceneState,
   SoundRuntimeEvent,
 } from './runtime-types';
@@ -38,6 +39,7 @@ export const BLOCK_CATEGORIES: { key: BlockCategory; label: string; icon: string
 
 export const BLOCK_CATEGORY_MAP: Record<BlockType, BlockCategory> = {
   background: 'scene',
+  video: 'media',
   character: 'scene',
   interactive_object: 'scene',
   text: 'dialogue',
@@ -58,6 +60,7 @@ export const BLOCK_CATEGORY_MAP: Record<BlockType, BlockCategory> = {
 
 export type BlockType =
   | 'background'
+  | 'video'
   | 'character'
   | 'text'
   | 'dialogue'
@@ -86,6 +89,7 @@ export interface BlockTypeInfo {
 
 export const BLOCK_TYPE_INFO: Record<BlockType, BlockTypeInfo> = {
   background:        { type: 'background',        label: 'Background',        description: 'Change scene background',     icon: 'image', color: '#50c878', bgColor: '#50c87820' },
+  video:             { type: 'video',             label: 'Video',             description: 'Play or stop scene video',     icon: 'movie', color: '#26a69a', bgColor: '#26a69a20' },
   character:         { type: 'character',         label: 'Character',         description: 'Show/hide character sprite',  icon: 'character', color: '#f5a623', bgColor: '#f5a62320' },
   text:              { type: 'text',              label: 'Text / Narration',   description: 'Display narration text',       icon: 'text', color: '#7c5bf5', bgColor: '#7c5bf520' },
   dialogue:          { type: 'dialogue',          label: 'Dialogue',          description: 'Runtime character dialogue; author via Character lines',  icon: 'voice', color: '#9b59b6', bgColor: '#9b59b620', disabled: true },
@@ -118,6 +122,7 @@ export interface TimelineStep {
 
 export type BlockData =
   | BackgroundBlockData
+  | VideoBlockData
   | CharacterBlockData
   | TextBlockData
   | DialogueBlockData
@@ -138,6 +143,36 @@ export interface BackgroundBlockData {
   transition: 'fade' | 'dissolve' | 'instant' | 'wipe';
   duration: number;         // ms, default 500
   delay?: number;           // seconds before transition starts
+}
+
+export interface VideoBlockData {
+  mode: 'play' | 'stop';
+  layer: 'background' | 'cutscene';
+  assetId?: string | null;
+  posterAssetId?: string | null;
+  fit?: 'cover' | 'contain';
+  playbackRate?: number;
+  startAt?: number | null;
+  endAt?: number | null;
+  muted?: boolean;
+  volume?: number;
+  loop?: boolean;
+  skippableAfterMs?: number | null;
+}
+
+export interface NormalizedVideoBlockData {
+  mode: 'play' | 'stop';
+  layer: 'background' | 'cutscene';
+  assetId: string | null;
+  posterAssetId: string | null;
+  fit: 'cover' | 'contain';
+  playbackRate: number;
+  startAt: number;
+  endAt: number | null;
+  muted: boolean;
+  volume: number;
+  loop: boolean;
+  skippableAfterMs: number | null;
 }
 
 export interface CharacterBlockData {

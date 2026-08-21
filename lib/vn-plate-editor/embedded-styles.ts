@@ -30,14 +30,37 @@ export function createEmbeddedStyles(): string {
       box-shadow: 0 18px 48px var(--page-branch-shadow, rgba(31, 41, 55, 0.16)), 0 2px 8px rgba(31, 41, 55, 0.08);
       transition: box-shadow 0.35s ease;
     }
+    /*
+     * Catches the click that dismisses a popover, and nothing else. It used to
+     * dim and blur, but each scene is its own iframe, so only the page under
+     * the popover ever changed while the rest of the workspace stayed sharp —
+     * and blurring the document you are editing costs readability the editor
+     * cannot spare.
+     */
     .editor-popover-backdrop {
       position: fixed;
       z-index: 25;
       inset: 0;
-      background: rgba(58, 40, 31, 0.12);
-      backdrop-filter: blur(2px);
-      -webkit-backdrop-filter: blur(2px);
       cursor: default;
+    }
+    /*
+     * One entrance for every block popover. mountEditorPopover stamps
+     * data-editor-popover on all of them, so this is the single definition —
+     * short enough to read as the panel arriving rather than as an effect.
+     */
+    @keyframes editor-popover-in {
+      from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+      to { opacity: 1; transform: none; }
+    }
+    [data-editor-popover][data-popover-enter] {
+      visibility: hidden;
+    }
+    [data-editor-popover]:not([data-popover-enter]) {
+      animation: editor-popover-in 160ms cubic-bezier(0.2, 0, 0, 1);
+      transform-origin: top center;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      [data-editor-popover]:not([data-popover-enter]) { animation: none; }
     }
     .eyebrow {
       margin: 0 0 8px;
@@ -237,6 +260,94 @@ export function createEmbeddedStyles(): string {
     .stop-effect-block:hover { background: #fee2e2; }
     .stop-effect-block .void-title,
     .stop-effect-block .background-asset { font-size: 13px; }
+    .video-block {
+      display: inline-flex;
+      min-height: 0;
+      margin: 4px 2px;
+      padding: 3px 8px;
+      gap: 6px;
+      border-color: #99f6e4;
+      border-radius: 6px;
+      background: #f0fdfa;
+      vertical-align: baseline;
+    }
+    .video-block .void-title,
+    .video-block .background-asset { font-size: 13px; }
+    .video-block { cursor: pointer; }
+    .video-block:hover { background: #ccfbf1; }
+    .camera-block {
+      display: inline-flex;
+      min-height: 0;
+      margin: 4px 2px;
+      padding: 3px 8px;
+      gap: 6px;
+      border-color: #bfdbfe;
+      border-radius: 6px;
+      background: #eff6ff;
+      cursor: pointer;
+      vertical-align: baseline;
+    }
+    .camera-block:hover { background: #dbeafe; }
+    .camera-block .void-title,
+    .camera-block .background-asset { font-size: 13px; }
+    .preset-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin: 4px 0 8px;
+    }
+    .preset-row-title {
+      color: var(--plate-foreground-secondary, #655D56);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .preset-chip {
+      padding: 3px 9px;
+      border: 1px solid var(--plate-border, #A59B90);
+      border-radius: 999px;
+      background: var(--plate-surface, #FEFAF6);
+      color: var(--plate-foreground, #3A281F);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    .preset-chip:hover {
+      border-color: var(--plate-primary, #67683F);
+      background: var(--plate-primary-soft, #EDEEE0);
+    }
+    .video-popover-error:empty,
+    .video-popover-status:empty,
+    .video-popover-timing:empty { display: none; }
+    .video-popover-status,
+    .video-popover-timing {
+      margin: 0;
+      font-size: 12px;
+      color: var(--plate-foreground-secondary, #655D56);
+    }
+    .video-popover-timing.is-invalid { color: #b45309; }
+    .video-poster-preview {
+      height: 74px;
+      margin: 6px 0 2px;
+      border: 1px solid var(--plate-border-subtle, #E5DDD3);
+      border-radius: 8px;
+      background-position: center;
+      background-size: cover;
+    }
+    .video-poster-preview.placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--plate-foreground-secondary, #655D56);
+      font-size: 12px;
+    }
+    .video-popover-error {
+      margin: 0;
+      font-size: 12px;
+      color: #dc2626;
+    }
     .interactive-object-block {
       display: inline-flex;
       align-items: baseline;
@@ -648,6 +759,13 @@ export function createEmbeddedStyles(): string {
       position: absolute;
       z-index: 30;
       width: min(420px, calc(100vw - 32px));
+      /*
+       * positionBranchPopover caps the height so a popover cannot outgrow the
+       * window. Without a scroller that cap only stopped the card: the fields
+       * below it kept rendering outside the border, unstyled and unreachable.
+       */
+      overflow: auto;
+      overscroll-behavior: contain;
       padding: 16px;
       border: 1px solid var(--plate-border-subtle, #E5DDD3);
       border-radius: 14px;
@@ -656,7 +774,9 @@ export function createEmbeddedStyles(): string {
       font-family: Inter, ui-sans-serif, system-ui, sans-serif;
       color: var(--plate-foreground, #3A281F);
     }
+    /* A scroll container clips it, and the pointer is decoration either way. */
     .background-popover::before {
+      display: none;
       content: "";
       position: absolute;
       top: -8px;
@@ -799,6 +919,15 @@ export function createEmbeddedStyles(): string {
       color: #374151;
       font-size: 13px;
       font-weight: 650;
+    }
+    /*
+     * Popovers hide the controls an action ignores with the hidden attribute, and
+     * every class rule below sets an explicit display that would otherwise beat
+     * the UA rule for [hidden]. Without this a hidden label keeps its slot and
+     * captions a control that is not there.
+     */
+    [hidden] {
+      display: none !important;
     }
     .popover-label {
       display: block;
@@ -1019,6 +1148,26 @@ export function createEmbeddedStyles(): string {
       grid-template-columns: 1fr 1fr;
       gap: 12px;
     }
+    /*
+     * Sized against the popover, not the frame. The scene iframe is narrower
+     * than the editor's breakpoint, so a media query here would collapse every
+     * row to one column on any screen; auto-fit asks the only question that
+     * matters — do two fields still fit in a 420px popover.
+     */
+    .popover-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    /* The import button sits beside the picker, not under it. */
+    .popover-row-asset {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+    }
+    .popover-field { min-width: 0; }
+    .popover-field .popover-label { margin-bottom: 4px; }
+    .popover-field .popover-control { margin-bottom: 0; }
     .slash-menu {
       position: absolute;
       z-index: 60;

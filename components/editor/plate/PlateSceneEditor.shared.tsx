@@ -10,7 +10,7 @@ import type { BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcru
 import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { Character } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
 import type { PlateDocumentScene } from './types';
 import { sceneRecordToPlateDocument } from './serializers/scene-to-plate';
 import { plateDocumentToSceneRecord } from './serializers/plate-to-scene';
@@ -40,6 +40,7 @@ interface PlateSceneEditorProps {
   sceneCount: number;
   characters: Character[];
   backgroundAssets: VNPlateBackgroundAsset[];
+  videoAssets?: VNPlateVideoAsset[];
   audioAssets: VNPlateAudioAsset[];
   protectedCharacterIds?: string[];
   onSave: (sceneRecords: SceneRecord[], characters: Character[]) => void;
@@ -48,6 +49,7 @@ interface PlateSceneEditorProps {
   onDeleteScene?: (sceneId: string) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
+  onPickVideoAsset?: () => Promise<{ asset: VNPlateVideoAsset | null; error?: 'tooLarge' | 'unsupportedType' | 'failed' }>;
   onGallery?: () => void;
 }
 
@@ -69,6 +71,7 @@ export function PlateSceneEditor({
   sceneCount,
   characters,
   backgroundAssets,
+  videoAssets,
   audioAssets,
   protectedCharacterIds,
   onSave,
@@ -77,6 +80,7 @@ export function PlateSceneEditor({
   onDeleteScene,
   onUploadBackgroundAsset,
   onUploadAudioAsset,
+  onPickVideoAsset,
   onGallery,
 }: PlateSceneEditorProps) {
   const router = useRouter();
@@ -135,6 +139,7 @@ export function PlateSceneEditor({
       documentsResetKey={documentsResetKey}
       characters={characters}
       backgroundAssets={backgroundAssets}
+      videoAssets={videoAssets}
       audioAssets={audioAssets}
       protectedCharacterIds={protectedCharacterIds}
       onSave={saveDocuments}
@@ -143,6 +148,7 @@ export function PlateSceneEditor({
       onDeleteScene={onDeleteScene}
       onUploadBackgroundAsset={onUploadBackgroundAsset}
       onUploadAudioAsset={onUploadAudioAsset}
+      onPickVideoAsset={onPickVideoAsset}
       onBack={() => router.back()}
       onPreview={(sceneId) => router.push({ pathname: '/preview', params: { storyId, sceneId } })}
       onSaveAndPlay={(sceneId) => router.push({ pathname: '/preview', params: { storyId, sceneId } })}

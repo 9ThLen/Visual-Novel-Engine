@@ -7,6 +7,7 @@ import type {
   TimelineStep,
 } from '@/lib/engine/types';
 import type { AudioTrigger } from '@/lib/audio-types';
+import { getSceneRecordFromAccess, type SceneAccessSnapshot } from '@/lib/scene-access';
 
 export interface ReaderScene {
   id: string;
@@ -49,6 +50,36 @@ export function toReaderSceneMap(
       ),
     ]),
   );
+}
+
+const readerSceneCache = new WeakMap<SceneRecord, ReaderScene>();
+
+/**
+ * Reference-stable projection. toReaderScene() builds a new object on every
+ * call, and a Zustand selector that returns a fresh object makes
+ * useSyncExternalStore believe the snapshot changed on every render — which
+ * ends in an infinite render loop. Caching per record identity keeps the
+ * projection at the boundary without paying that cost.
+ */
+export function toStableReaderScene(record: SceneRecord): ReaderScene {
+  const cached = readerSceneCache.get(record);
+  if (cached) return cached;
+  const scene = toReaderScene(record);
+  readerSceneCache.set(record, scene);
+  return scene;
+}
+
+/**
+ * Canonical reader entry point into stored scenes: callers receive a
+ * ReaderScene and never handle the storage shape themselves.
+ */
+export function getReaderSceneFromAccess(
+  snapshot: Pick<SceneAccessSnapshot, 'sceneRecordsByStory'>,
+  storyId: string,
+  sceneId: string,
+): ReaderScene | undefined {
+  const record = getSceneRecordFromAccess(snapshot, storyId, sceneId);
+  return record ? toStableReaderScene(record) : undefined;
 }
 
 export function getReaderScenePreviewText(scene: ReaderScene): string {

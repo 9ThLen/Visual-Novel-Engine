@@ -3,6 +3,7 @@ export const mockMakeDirectoryAsync = vi.fn();
 export const mockCopyAsync = vi.fn();
 export const mockReadAsStringAsync = vi.fn();
 export const mockWriteAsStringAsync = vi.fn();
+export const mockDeleteAsync = vi.fn();
 export const mockSetDocumentDirectory = vi.fn((value: string | null) => {
   documentDirectory = value;
 });
@@ -14,4 +15,5 @@ export const makeDirectoryAsync = mockMakeDirectoryAsync;
 export const copyAsync = mockCopyAsync;
 export const readAsStringAsync = mockReadAsStringAsync;
 export const writeAsStringAsync = mockWriteAsStringAsync;
+export const deleteAsync = mockDeleteAsync;
 export const EncodingType = { Base64: 'base64' };

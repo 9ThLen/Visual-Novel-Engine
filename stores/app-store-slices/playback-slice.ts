@@ -3,7 +3,7 @@ import type { AppStoreSet } from '@/stores/app-store-slices/types';
 
 export type PlaybackSliceActions = Pick<
   AppActions,
-  'loadCurrentStory' | 'updatePlaybackState' | 'recordEndingReached'
+  'loadCurrentStory' | 'updatePlaybackState' | 'recordEndingReached' | 'setReaderBlockingMedia'
 >;
 
 export function createPlaybackSlice(set: AppStoreSet): PlaybackSliceActions {
@@ -17,6 +17,8 @@ export function createPlaybackSlice(set: AppStoreSet): PlaybackSliceActions {
     },
 
     updatePlaybackState: (state) => set({ playbackState: state }),
+
+    setReaderBlockingMedia: (media) => set({ readerBlockingMedia: media }),
 
     // Idempotent: reaching the same ending twice is a re-read, not new progress.
     recordEndingReached: (storyId, sceneId) =>

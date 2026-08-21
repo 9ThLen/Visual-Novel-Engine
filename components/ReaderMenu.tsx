@@ -37,6 +37,7 @@ export function ReaderMenu({ visible, onClose, onPlaybackReplaced }: ReaderMenuP
   const playbackState = useAppStore((state) => state.playbackState);
   const saveSlots = useAppStore((state) => state.saveSlots);
   const saveGame = useAppStore((state) => state.saveGame);
+  const readerBlockingMedia = useAppStore((state) => state.readerBlockingMedia);
   const loadGame = useAppStore((state) => state.loadGame);
   const hydrateSceneRecordsForStory = useAppStore((state) => state.hydrateSceneRecordsForStory);
   const rawSettings = useAppStore((state) => state.settings);
@@ -60,6 +61,10 @@ export function ReaderMenu({ visible, onClose, onPlaybackReplaced }: ReaderMenuP
   };
 
   const handleQuickSave = async () => {
+    if (readerBlockingMedia) {
+      showToast(t('save.blockedByCutscene'), 'info');
+      return;
+    }
     if (!activeStoryId || !playbackState) {
       showToast(t('save.noActiveStory'), 'error');
       return;

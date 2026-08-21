@@ -89,6 +89,7 @@ function makeState(): AppStorePersistenceState {
       readerLineHeightScale: 1.2,
       autoPlay: false,
       parallaxEnabled: true,
+    backgroundVideoEnabled: true,
       aiPermissions: {
         scene_edit: 'confirm', appearance: 'confirm', changeset: 'confirm', image_generate: 'confirm',
       },
@@ -135,6 +136,17 @@ describe('app store persistence helpers', () => {
       ...state.aiBridgeSettings,
       profiles: { openai: { url: 'ws://localhost:9999', token: 'local-secret' } },
     });
+  });
+
+  it('keeps the cutscene blocking flag out of persisted state', () => {
+    const state = makeState() as unknown as Record<string, unknown>;
+    state.readerBlockingMedia = { stepId: 'video-1', kind: 'cutscene' };
+
+    const persisted = buildPersistedAppState(state as never) as unknown as Record<string, unknown>;
+
+    // Persisting it would leave saving disabled after a crash mid-cutscene,
+    // with nothing on screen to explain why.
+    expect('readerBlockingMedia' in persisted).toBe(false);
   });
 
   it('hydrates legacy bridge settings without the disabled flag using the current safe default', () => {

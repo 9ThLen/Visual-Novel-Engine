@@ -20,6 +20,22 @@ const baseDataSchemas = {
   sound: z.object({ mode: z.enum(['track', 'silence']), assetId: z.string().nullable(), volume: z.number(), loop: z.boolean(), fadeIn: z.number(), fadeOut: z.number(), pitchVariation: z.number() }),
   interactive_object: z.object({ objectId: z.string(), name: z.string(), assetId: z.string().nullable(), position: z.object({}).passthrough(), actions: z.array(z.unknown()), oneTimeOnly: z.boolean(), pulseAnimation: z.boolean() }),
   camera: z.object({ action: z.enum(['zoom', 'pan', 'focus', 'reset']), target: z.string().optional(), duration: z.number(), easing: z.enum(['linear', 'ease-in', 'ease-out', 'ease-in-out']) }),
+  // Only the discriminators are required — normalizeVideoData fills and clamps
+  // the rest, so the assistant does not have to restate playback policy.
+  video: z.object({
+    mode: z.enum(['play', 'stop']),
+    layer: z.enum(['background', 'cutscene']),
+    assetId: z.string().nullish(),
+    posterAssetId: z.string().nullish(),
+    fit: z.enum(['cover', 'contain']).optional(),
+    playbackRate: z.number().optional(),
+    startAt: z.number().nullish(),
+    endAt: z.number().nullish(),
+    muted: z.boolean().optional(),
+    volume: z.number().optional(),
+    loop: z.boolean().optional(),
+    skippableAfterMs: z.number().nullish(),
+  }),
   variable: z.object({ variableName: z.string().min(1), operation: z.enum(['set', 'add', 'subtract', 'multiply', 'toggle']), value: z.union([z.string(), z.number(), z.boolean()]) }),
   transition: z.object({ mode: z.enum(['next', 'scene', 'end']), targetSceneId: z.string().nullable(), transitionType: z.enum(['fade', 'slide', 'instant']), duration: z.number() }),
   label: z.object({ name: z.string().min(1) }),

@@ -114,9 +114,14 @@ export default function ReaderScreen() {
     [timeline],
   );
 
+  const activeVideo = readerSceneState?.activeVideo ?? null;
+  const cutsceneOwnsAudio = activeVideo?.layer === 'cutscene' && !activeVideo.muted;
+
   useReaderAudio(story?.id ?? storyId ?? undefined, sceneRecord, settings, {
     sceneState: readerSceneState,
-    blockedByOverlay: showMenu || historyOpen,
+    // A cutscene with its own soundtrack owns the audio: two soundtracks at
+    // once is worse than a gap. A muted cutscene leaves the BGM alone.
+    blockedByOverlay: showMenu || historyOpen || cutsceneOwnsAudio,
   });
 
   useEffect(() => {

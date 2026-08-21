@@ -416,12 +416,38 @@ export function StoryReaderResponsive({
     />
   );
 
+  // Saving mid-cutscene would produce a slot that cannot be resumed
+  // unambiguously, so the blocking state is published for save paths to see.
+  // Clearing it on unmount matters: leaving the app during a clip must not
+  // leave saving disabled.
+  const setReaderBlockingMedia = useAppStore((state) => state.setReaderBlockingMedia);
+  useEffect(() => {
+    setReaderBlockingMedia(
+      executor.pendingVideo ? { stepId: executor.pendingVideo.stepId, kind: 'cutscene' } : null,
+    );
+  }, [executor.pendingVideo, setReaderBlockingMedia]);
+  useEffect(() => () => setReaderBlockingMedia(null), [setReaderBlockingMedia]);
+
+  // A cutscene ends, is skipped, or is abandoned after a playback failure. All
+  // three release the timeline the same way — the executor's session guard is
+  // what keeps a stale player from resolving the wrong one.
+  const pendingVideo = executor.pendingVideo;
+  const handleCutsceneResolved = useCallback((reason: 'ended' | 'skipped' | 'recovered') => {
+    if (!pendingVideo) return;
+    if (reason === 'skipped') executor.skipVideo(pendingVideo.stepId, pendingVideo.session);
+    else executor.completeVideo(pendingVideo.stepId, pendingVideo.session);
+  }, [executor, pendingVideo]);
+
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <View className="flex-1" style={getStoryReaderContainerStyle(colors)}>
       <ReaderDisplay
         backgroundAnimatedStyle={bgAnimatedStyle}
         bgSource={bgSource}
+        activeVideo={executor.sceneState.activeVideo}
+        backgroundVideoEnabled={settings.backgroundVideoEnabled}
+        pendingVideo={executor.pendingVideo}
+        onCutsceneResolved={handleCutsceneResolved}
         characterAnimatedStyle={charactersAnimatedStyle}
         choices={displayChoices}
         colors={colors}

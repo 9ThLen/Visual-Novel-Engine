@@ -14,6 +14,7 @@ import {
 function makeStep(overrides: Partial<TimelineStep> & { id: string; blockType: TimelineStep['blockType'] }): TimelineStep {
   const defaults: Record<TimelineStep['blockType'], TimelineStep['data']> = {
     background: { assetId: null, transition: 'instant', duration: 0 },
+    video: { mode: 'play', layer: 'background', assetId: null },
     character: {
       action: 'show',
       characterId: 'hero',

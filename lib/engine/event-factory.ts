@@ -12,10 +12,12 @@ import {
   DEFAULT_TRANSITION_TYPE,
   normalizeTransitionData,
 } from './transition-utils';
+import { normalizeVideoData } from './video-utils';
 import type {
   TimelineStep,
   BlockType,
   BackgroundBlockData,
+  VideoBlockData,
   CharacterBlockData,
   TextBlockData,
   DialogueBlockData,
@@ -56,6 +58,14 @@ export function createBackgroundStep(overrides?: Partial<BackgroundBlockData>): 
     duration: 500,
     ...overrides,
   });
+}
+
+export function createVideoStep(overrides?: Partial<VideoBlockData>): TimelineStep {
+  return createStep('video', normalizeVideoData({
+    mode: 'play',
+    layer: 'background',
+    ...overrides,
+  }));
 }
 
 export function createCharacterStep(overrides?: Partial<CharacterBlockData>): TimelineStep {
@@ -230,6 +240,7 @@ type BlockFactory = () => TimelineStep;
 
 const BLOCK_FACTORY_MAP: Record<BlockType, BlockFactory> = {
   background:         () => createBackgroundStep(),
+  video:              () => createVideoStep(),
   character:          () => createCharacterStep(),
   text:               () => createTextStep(),
   dialogue:           () => createDialogueStep(),

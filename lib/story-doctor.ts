@@ -23,7 +23,10 @@ import type {
   TimelineStep,
   TransitionBlockData,
   VariableBlockData,
+  VideoBlockData,
 } from '@/lib/engine/types';
+import { normalizeCameraData } from '@/lib/engine/camera-utils';
+import { normalizeVideoData } from '@/lib/engine/video-utils';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { StoryMetadata } from '@/lib/story-domain';
 import { evaluateThemeContrast } from '@/lib/theme-contrast';
@@ -311,7 +314,7 @@ function audioKind(type: AudioLibraryItem['type']): AssetUsageKind {
 function buildAvailableAssetsForDoctor(input: StoryDoctorInput): AvailableAsset[] {
   const mediaAssets: AvailableAsset[] = (input.mediaAssets ?? []).map((asset) => ({
     id: asset.id,
-    kind: asset.type === 'image' ? 'background' : 'sound',
+    kind: asset.type === 'image' ? 'background' : asset.type === 'video' ? 'video' : 'sound',
     name: asset.name,
     aliases: [asset.uri],
   }));
@@ -385,6 +388,87 @@ function findingForBrokenReference(reference: AssetReference): StoryDoctorFindin
         messageKey: 'storyDoctor.issue.missingObjectAsset',
         messageParams: { assetId: reference.assetId },
       };
+    case 'video':
+      return {
+        severity: 'error',
+        sceneId: reference.sceneId,
+        stepId: reference.stepId,
+        code: 'asset.missingVideo',
+        messageKey: 'storyDoctor.issue.missingVideoAsset',
+        messageParams: { assetId: reference.assetId },
+      };
+  }
+}
+
+/**
+ * Options the video block cannot express as invalid data — normalizeVideoData
+ * silently repairs them at runtime, so the author only learns about them here.
+ */
+function addVideoFindings(scene: SceneRecord, findings: StoryDoctorFinding[]): void {
+  for (const step of scene.timeline ?? []) {
+    if (!isEnabled(step) || step.blockType !== 'video') continue;
+    const raw = (step.data ?? {}) as VideoBlockData;
+    const data = normalizeVideoData(raw);
+    if (data.mode !== 'play') continue;
+
+    if (!data.assetId) {
+      findings.push({
+        severity: 'error',
+        sceneId: scene.id,
+        stepId: step.id,
+        code: 'video.noAsset',
+        messageKey: 'storyDoctor.issue.videoWithoutAsset',
+      });
+    }
+
+    const rawEndAt = typeof raw.endAt === 'number' && Number.isFinite(raw.endAt) ? raw.endAt : null;
+    if (rawEndAt !== null && data.endAt === null) {
+      findings.push({
+        severity: 'warning',
+        sceneId: scene.id,
+        stepId: step.id,
+        code: 'video.invalidTiming',
+        messageKey: 'storyDoctor.issue.videoInvalidTiming',
+      });
+    }
+  }
+}
+
+/**
+ * A focus step whose character cannot be resolved silently degrades to a plain
+ * zoom on screen — nothing errors, the shot is just wrong, so it is only
+ * catchable here.
+ */
+function addCameraFindings(
+  scene: SceneRecord,
+  characters: Character[],
+  findings: StoryDoctorFinding[],
+): void {
+  for (const step of scene.timeline ?? []) {
+    if (!isEnabled(step) || step.blockType !== 'camera') continue;
+    const data = normalizeCameraData(step.data);
+    if (data.action !== 'focus') continue;
+
+    if (!data.target) {
+      findings.push({
+        severity: 'warning',
+        sceneId: scene.id,
+        stepId: step.id,
+        code: 'camera.focusWithoutTarget',
+        messageKey: 'storyDoctor.issue.cameraFocusWithoutTarget',
+      });
+      continue;
+    }
+
+    if (!characters.some((character) => character.id === data.target)) {
+      findings.push({
+        severity: 'error',
+        sceneId: scene.id,
+        stepId: step.id,
+        code: 'camera.missingFocusTarget',
+        messageKey: 'storyDoctor.issue.cameraMissingFocusTarget',
+      });
+    }
   }
 }
 
@@ -462,6 +546,8 @@ export function runStoryDoctor(input: StoryDoctorInput): StoryDoctorReport {
   for (const scene of scenes) {
     addEmptyContentFindings(scene, findings);
     addLabelFindings(scene, findings);
+    addVideoFindings(scene, findings);
+    addCameraFindings(scene, input.characters ?? [], findings);
   }
   addMissingAssetFindings(input, findings);
   addVariableFindings(scenes, findings);

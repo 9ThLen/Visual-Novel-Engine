@@ -274,6 +274,18 @@ function pressKey(key: string) {
   document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
 }
 
+/**
+ * Every evaluated harness script keeps its own document-level listeners, and
+ * the harness cannot remove them. A click therefore reaches earlier instances
+ * too, so the newest request — the one owned by the script under test — is the
+ * last one posted.
+ */
+function lastPickVideoMessage(messages: unknown[]) {
+  return messages.filter((message): message is { type: string; requestId: string } => {
+    return Boolean(message && typeof message === 'object' && (message as { type?: string }).type === 'pickVideoAsset');
+  }).at(-1);
+}
+
 function saveMessages(messages: unknown[]) {
   return messages.filter((message): message is { type: string; scene: { blocks: { id: string }[] } } => {
     return Boolean(message && typeof message === 'object' && (message as { type?: string }).type === 'save');
@@ -294,6 +306,12 @@ function openCharacterPopover(api: EmbeddedHarnessApi) {
 // The embedded editor script is assembled as a template string, so tsc never
 // parses its contents. Compiling it with the Function constructor (without
 // executing) catches syntax errors introduced by edits to the template.
+const sceneWithEffect = {
+  sceneId: 'scene_1',
+  sceneName: 'Scene 1',
+  blocks: [{ id: 'text_1', kind: 'text' as const, content: 'Hello' }],
+};
+
 describe('createEmbeddedScript', () => {
   it('creates, edits, validates, and serializes an interactive object without browser prompts', () => {
     const harness = createVoidBlockHarness([{
@@ -541,13 +559,41 @@ describe('createEmbeddedScript', () => {
     const styles = createEmbeddedStyles();
 
     expect(styles).toContain('.editor-popover-backdrop');
-    expect(styles).toContain('backdrop-filter: blur(2px)');
+    // The backdrop only catches the dismissing click. Dimming and blurring it
+    // reached one scene iframe out of several, so the page being edited went
+    // soft while the rest of the workspace stayed sharp.
+    expect(styles).not.toContain('backdrop-filter');
+    expect(styles).toMatch(/\.editor-popover-backdrop \{[^}]*\}/);
+    expect(/\.editor-popover-backdrop \{[^}]*background:/.test(styles)).toBe(false);
     expect(styles).toContain('background: var(--plate-surface, #FEFAF6)');
     expect(styles).toContain('background: var(--plate-secondary, #985A3E)');
     expect(styles).toContain('border-color: var(--plate-primary, #67683F)');
     expect(styles).not.toContain('background: #ef4444');
     expect(styles).not.toContain('border-color: #60a5fa');
     expect(styles).not.toContain('border-color: #7c3aed');
+  });
+
+  it('gives every block popover the same entrance', () => {
+    const styles = createEmbeddedStyles();
+
+    // mountEditorPopover stamps data-editor-popover on all of them, so one
+    // rule covers every block instead of each popover growing its own.
+    expect(styles).toContain('@keyframes editor-popover-in');
+    expect(styles).toMatch(/\[data-editor-popover\]:not\(\[data-popover-enter\]\) \{\s*animation: editor-popover-in/);
+    expect(styles).toMatch(/prefers-reduced-motion: reduce[\s\S]*animation: none/);
+    // Hidden for the frame in which the caller is still positioning it, so the
+    // entrance starts where the popover lands rather than at the body corner.
+    expect(styles).toMatch(/\[data-editor-popover\]\[data-popover-enter\] \{\s*visibility: hidden/);
+  });
+
+  it('makes the hidden attribute win over the popover display rules', () => {
+    const styles = createEmbeddedStyles();
+
+    // Popovers hide the controls an action ignores by setting `hidden`, and
+    // .popover-label sets display: block, which beats the UA rule on its own.
+    // Without this the label for a hidden control stays on screen captioning
+    // nothing — invisible to jsdom, which applies no cascade.
+    expect(styles).toMatch(/\[hidden\]\s*\{\s*display:\s*none\s*!important/);
   });
 
   it('uses the sage palette for editor text selection', () => {
@@ -794,6 +840,390 @@ describe('createEmbeddedScript', () => {
       expect(transitionBlock.classList.contains('transition-block')).toBe(true);
       expect(transitionBlock.dataset.command).toBe('transition');
       expect(transitionBlock.dataset.mode).toBe('end');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('inserts a /video block that serializes back into a real video step', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('video');
+
+      const videoBlock = anchorParagraph.nextElementSibling as HTMLElement;
+      expect(videoBlock.classList.contains('video-block')).toBe(true);
+      expect(videoBlock.dataset.command).toBe('video');
+      expect(videoBlock.textContent).not.toContain('New block');
+
+      api.saveNow();
+      const lastSave = saveMessages(harness.messages).at(-1);
+      const saved = lastSave?.scene.blocks.find((item) => item.id === videoBlock.dataset.id) as unknown as {
+        blockType: string;
+        step: { blockType: string; data: Record<string, unknown> } | null;
+      };
+
+      // Without a serializer branch the frame used to hand back step: null, so
+      // the block was rebuilt from defaults on every normalization pass.
+      expect(saved.blockType).toBe('video');
+      expect(saved.step).not.toBeNull();
+      expect(saved.step?.blockType).toBe('video');
+      expect(saved.step?.data).toMatchObject({
+        mode: 'play',
+        layer: 'background',
+        assetId: null,
+        fit: 'cover',
+        muted: true,
+        loop: true,
+      });
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('asks the host to pick a video without sending any bytes', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      placeCaretInNewParagraph();
+      api.insertCommand('video');
+
+      // Inserting the block opens its popover so the author can choose a clip.
+      const popover = document.querySelector('.video-popover') as HTMLElement;
+      expect(popover).not.toBeNull();
+
+      (popover.querySelector('[data-action="import-video"]') as HTMLButtonElement).click();
+
+      const pickMessage = lastPickVideoMessage(harness.messages);
+      expect(pickMessage).toBeDefined();
+      // The whole point of the host-side picker: an intent, never bytes.
+      expect(Object.keys(pickMessage as object).sort()).toEqual(['editorId', 'requestId', 'source', 'type']);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('writes the picked asset id into the block when the host replies', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('video');
+      const videoBlock = anchorParagraph.nextElementSibling as HTMLElement;
+
+      const popover = document.querySelector('.video-popover') as HTMLElement;
+      (popover.querySelector('[data-action="import-video"]') as HTMLButtonElement).click();
+      const pickMessage = lastPickVideoMessage(harness.messages);
+
+      window.dispatchEvent(new MessageEvent('message', {
+        data: {
+          source: 'vn-plate-host',
+          editorId: 'editor_void_blocks',
+          type: 'videoAssetPicked',
+          requestId: pickMessage?.requestId,
+          asset: { id: 'asset_clip', name: 'Intro.mp4' },
+        },
+      }));
+
+      expect(JSON.parse(videoBlock.dataset.video || '{}').assetId).toBe('asset_clip');
+      expect(videoBlock.textContent).toContain('Intro.mp4');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('surfaces a rejected import instead of silently doing nothing', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      placeCaretInNewParagraph();
+      api.insertCommand('video');
+
+      const popover = document.querySelector('.video-popover') as HTMLElement;
+      (popover.querySelector('[data-action="import-video"]') as HTMLButtonElement).click();
+      const pickMessage = lastPickVideoMessage(harness.messages);
+
+      window.dispatchEvent(new MessageEvent('message', {
+        data: {
+          source: 'vn-plate-host',
+          editorId: 'editor_void_blocks',
+          type: 'videoAssetPicked',
+          requestId: pickMessage?.requestId,
+          asset: null,
+          error: 'tooLarge',
+        },
+      }));
+
+      expect(popover.querySelector('.video-popover-error')?.textContent).toContain('64');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('offers effect presets that write canonical fields', () => {
+    const html = createVNPlateEditorHtml({
+      editorId: 'editor_presets',
+      scene: sceneWithEffect,
+      characters: [],
+      backgroundAssets: [],
+      isPhone: false,
+    });
+
+    // The definitions are inlined from lib/engine/animation-presets, so the
+    // frame and the rest of the app cannot drift apart.
+    expect(html).toContain('var EFFECT_PRESETS =');
+    expect(html).toContain('var CHARACTER_PRESETS =');
+    expect(html).toContain('data-effect-preset=');
+    expect(html).toContain('Гроза');
+    expect(html).toContain("EFFECT_PRESETS.forEach(function(item) { if (item.id === presetId) presetEntry = item; });");
+  });
+
+  it('lets the author turn a video block into a stop step', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('video');
+      const videoBlock = anchorParagraph.nextElementSibling as HTMLElement;
+
+      const popover = document.querySelector('.video-popover') as HTMLElement;
+      const modeSelect = popover.querySelector('#videoMode') as HTMLSelectElement;
+      expect(modeSelect).not.toBeNull();
+
+      modeSelect.value = 'stop';
+      modeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      // Playback options mean nothing for a stop step and step aside — the
+      // whole field goes, so no label is left captioning nothing.
+      expect(popover.querySelector('#videoAsset')?.closest('[data-video-row]')).toHaveProperty('hidden', true);
+      expect(popover.querySelector('#videoStart')?.closest('[data-video-row]')).toHaveProperty('hidden', true);
+
+      (popover.querySelector('[data-action="save-video"]') as HTMLButtonElement).click();
+
+      const data = JSON.parse(videoBlock.dataset.video || '{}');
+      expect(data.mode).toBe('stop');
+      expect(data.layer).toBe('background');
+      expect(videoBlock.textContent).toContain('Зупинити');
+
+      api.saveNow();
+      const lastSave = saveMessages(harness.messages).at(-1);
+      const saved = lastSave?.scene.blocks.find((item) => item.id === videoBlock.dataset.id) as unknown as {
+        step: { data: { mode: string } } | null;
+      };
+      expect(saved.step?.data.mode).toBe('stop');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('lets the author make a skippable cutscene', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('video');
+      const videoBlock = anchorParagraph.nextElementSibling as HTMLElement;
+
+      const popover = document.querySelector('.video-popover') as HTMLElement;
+      const layerSelect = popover.querySelector('#videoLayer') as HTMLSelectElement;
+      layerSelect.value = 'cutscene';
+      layerSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // The skip delay only makes sense for a cutscene, so it appears with it.
+      const skipInput = popover.querySelector('#videoSkipAfter') as HTMLInputElement;
+      expect(skipInput.closest('[data-video-row]')).toHaveProperty('hidden', false);
+      skipInput.value = '2.5';
+
+      (popover.querySelector('[data-action="save-video"]') as HTMLButtonElement).click();
+
+      const data = JSON.parse(videoBlock.dataset.video || '{}');
+      expect(data).toMatchObject({
+        mode: 'play',
+        layer: 'cutscene',
+        skippableAfterMs: 2500,
+        // A cutscene carries its own sound and never loops.
+        muted: false,
+        loop: false,
+      });
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('hides the skip delay for a background clip', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      placeCaretInNewParagraph();
+      api.insertCommand('video');
+
+      const popover = document.querySelector('.video-popover') as HTMLElement;
+      expect(popover.querySelector('#videoSkipAfter')?.closest('[data-video-row]')).toHaveProperty('hidden', true);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('keeps an authored video payload when the block round-trips through the frame', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('video');
+
+      const videoBlock = anchorParagraph.nextElementSibling as HTMLElement;
+      videoBlock.dataset.video = JSON.stringify({
+        mode: 'play',
+        layer: 'background',
+        assetId: 'video_intro',
+        posterAssetId: 'poster_intro',
+        fit: 'contain',
+        playbackRate: 1.5,
+        startAt: 2,
+        endAt: 8,
+        muted: true,
+        volume: 0,
+        loop: true,
+        skippableAfterMs: null,
+      });
+
+      api.saveNow();
+      const lastSave = saveMessages(harness.messages).at(-1);
+      const saved = lastSave?.scene.blocks.find((item) => item.id === videoBlock.dataset.id) as unknown as {
+        step: { data: Record<string, unknown> } | null;
+      };
+
+      expect(saved.step?.data).toMatchObject({
+        assetId: 'video_intro',
+        posterAssetId: 'poster_intro',
+        fit: 'contain',
+        playbackRate: 1.5,
+        startAt: 2,
+        endAt: 8,
+      });
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('inserts a /camera block that serializes back into a real camera step', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('camera');
+
+      const cameraBlock = anchorParagraph.nextElementSibling as HTMLElement;
+      expect(cameraBlock.classList.contains('camera-block')).toBe(true);
+      expect(cameraBlock.dataset.command).toBe('camera');
+      // /camera used to fall through to the placeholder branch: a dead block
+      // that serialized with step: null.
+      expect(cameraBlock.textContent).not.toContain('New block');
+
+      api.saveNow();
+      const lastSave = saveMessages(harness.messages).at(-1);
+      const saved = lastSave?.scene.blocks.find((item) => item.id === cameraBlock.dataset.id) as unknown as {
+        blockType: string;
+        step: { blockType: string; data: Record<string, unknown> } | null;
+      };
+
+      expect(saved.blockType).toBe('camera');
+      expect(saved.step).not.toBeNull();
+      expect(saved.step?.blockType).toBe('camera');
+      expect(saved.step?.data).toMatchObject({ action: 'zoom', zoomLevel: 1.5, duration: 1, easing: 'ease-in-out' });
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('writes only the fields that belong to the chosen camera action', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('camera');
+      const cameraBlock = anchorParagraph.nextElementSibling as HTMLElement;
+
+      const popover = document.querySelector('.camera-popover') as HTMLElement;
+      const actionSelect = popover.querySelector('#camAction') as HTMLSelectElement;
+      actionSelect.value = 'pan';
+      actionSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+      expect((popover.querySelector('#camPanX') as HTMLElement).hidden).toBe(false);
+      expect((popover.querySelector('#camZoom') as HTMLElement).hidden).toBe(true);
+
+      (popover.querySelector('#camPanX') as HTMLInputElement).value = '18';
+      (popover.querySelector('#camDuration') as HTMLInputElement).value = '2.5';
+      (popover.querySelector('[data-action="save-camera"]') as HTMLButtonElement).click();
+
+      const data = JSON.parse(cameraBlock.dataset.camera || '{}');
+      expect(data).toMatchObject({ action: 'pan', panX: 18, panY: 0, duration: 2.5 });
+      // An absent zoom means "hold the zoom we already have"; carrying the old
+      // 1.5 over would silently zoom on a pan step.
+      expect(data.zoomLevel).toBeUndefined();
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('names the focused character in the camera summary and follows a rename', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      window.dispatchEvent(new MessageEvent('message', {
+        data: {
+          source: 'vn-plate-host',
+          editorId: 'editor_void_blocks',
+          type: 'charactersUpdated',
+          characters: [{ id: 'char_1', name: 'Мія', sprites: [] }],
+        },
+      }));
+
+      api.insertCommand('camera');
+      const cameraBlock = anchorParagraph.nextElementSibling as HTMLElement;
+      const popover = document.querySelector('.camera-popover') as HTMLElement;
+      const actionSelect = popover.querySelector('#camAction') as HTMLSelectElement;
+      actionSelect.value = 'focus';
+      actionSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      expect((popover.querySelector('#camTarget') as HTMLElement).hidden).toBe(false);
+
+      (popover.querySelector('#camTarget') as HTMLSelectElement).value = 'char_1';
+      (popover.querySelector('[data-action="save-camera"]') as HTMLButtonElement).click();
+
+      expect(JSON.parse(cameraBlock.dataset.camera || '{}').target).toBe('char_1');
+      expect(cameraBlock.textContent).toContain('Мія');
+
+      window.dispatchEvent(new MessageEvent('message', {
+        data: {
+          source: 'vn-plate-host',
+          editorId: 'editor_void_blocks',
+          type: 'charactersUpdated',
+          characters: [{ id: 'char_1', name: 'Мія Соколова', sprites: [] }],
+        },
+      }));
+      expect(cameraBlock.textContent).toContain('Мія Соколова');
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('applies a camera preset into the canonical fields', () => {
+    const harness = createVoidBlockHarness();
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const anchorParagraph = placeCaretInNewParagraph();
+      api.insertCommand('camera');
+      const cameraBlock = anchorParagraph.nextElementSibling as HTMLElement;
+
+      const popover = document.querySelector('.camera-popover') as HTMLElement;
+      (popover.querySelector('[data-camera-preset="slowPan"]') as HTMLButtonElement).click();
+
+      // A preset is authoring sugar: what lands on the block is plain canonical
+      // data, with no trace of the preset it came from.
+      const data = JSON.parse(cameraBlock.dataset.camera || '{}');
+      expect(data).toMatchObject({ action: 'pan', panX: 12, panY: 0, duration: 3, easing: 'ease-in-out' });
+      expect(data.id).toBeUndefined();
     } finally {
       harness.cleanup();
     }

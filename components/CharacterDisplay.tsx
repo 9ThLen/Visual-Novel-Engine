@@ -1,5 +1,6 @@
 import React from 'react';
 import { Image, Animated, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { characterPositionCenterFraction } from '@/lib/character-position';
 import type { AnimatedCharacterInstance } from '@/lib/character-animator';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 
@@ -14,19 +15,7 @@ interface Props {
 }
 
 function positionPercent(position: Props['position']): `${number}%` {
-  switch (position) {
-    case 'far-left':
-      return '10%';
-    case 'left':
-      return '25%';
-    case 'right':
-      return '75%';
-    case 'far-right':
-      return '90%';
-    case 'center':
-    default:
-      return '50%';
-  }
+  return `${characterPositionCenterFraction(position) * 100}%`;
 }
 
 export const CharacterDisplay = React.memo(function CharacterDisplay({

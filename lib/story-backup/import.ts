@@ -253,7 +253,9 @@ export async function importStoryArchive(
 
       const importedAssets: LibraryAsset[] = manifest.assets.map((asset) => ({
         id: newIdByArchiveId.get(asset.assetId)!,
-        type: asset.kind === 'image' || asset.kind === 'audio' ? asset.kind : 'other',
+        type: asset.kind === 'image' || asset.kind === 'audio' || asset.kind === 'video'
+          ? asset.kind
+          : 'other',
         uri: promoted.get(asset.sha256)!.uri,
         name: asset.originalName,
         mimeType: asset.mimeType,

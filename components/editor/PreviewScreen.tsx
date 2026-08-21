@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
+import { StyleSheet, useWindowDimensions, View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,9 +17,12 @@ import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { useReaderAssets } from '@/hooks/useReaderAssets';
 import { EffectsLayerStack, effectsForCharacter, effectsForTarget } from '@/components/reader/EffectsLayerStack';
+import { useCameraTransform } from '@/components/reader/useCameraTransform';
 import { useShakeOffset } from '@/components/reader/useShakeOffset';
 import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import { useEffectAmbience } from '@/hooks/useEffectAmbience';
+import { SceneVideoLayer } from '@/components/reader/SceneVideoLayer';
+import { showToast } from '@/lib/toast-store';
 
 function secondsToMs(value: number | null | undefined, fallbackMs = 0): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallbackMs;
@@ -218,6 +221,13 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
     selectChoice(optionId);
   }, [selectChoice]);
 
+  // A failed clip leaves a black frame with no explanation; in the editor the
+  // author is the one who can fix it, so say what happened.
+  const activeVideoAssetId = sceneState.activeVideo?.assetId;
+  const handleVideoPlaybackError = useCallback(() => {
+    showToast(t('editor.videoPlaybackFailed').replace('{name}', activeVideoAssetId ?? ''), 'error');
+  }, [activeVideoAssetId, t]);
+
   const handleBack = useCallback(() => {
     void audioService.cleanup();
     router.back();
@@ -232,11 +242,15 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
   const characterEffects = effectsForTarget(activeEffects, 'character');
   const genericCharacterEffects = characterEffects.filter((effect) => !effect.characterId);
   const shakeOffset = useShakeOffset(screenEffects);
+  // Preview and reader share the camera hook so a preset previewed here moves
+  // exactly the way it will for the reader.
+  const { width: previewWidth } = useWindowDimensions();
+  const cameraValues = useCameraTransform(camera, sceneState.characters, previewWidth);
   const cameraTransform = {
     transform: [
-      { translateX: -2 * (camera?.panX ?? 0) + shakeOffset.x },
-      { translateY: -2 * (camera?.panY ?? 0) + shakeOffset.y },
-      { scale: camera?.zoomLevel ?? 1 },
+      { translateX: cameraValues.translateX + shakeOffset.x },
+      { translateY: cameraValues.translateY + shakeOffset.y },
+      { scale: cameraValues.scale },
     ],
   };
   const { resolvedCharUris, characterInstances } = useReaderAssets(
@@ -271,6 +285,15 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
         ) : (
           <Text style={{ fontSize: 14, color: withAlpha(colors.muted, 0.6) }}>{t('editor.noBackground')}</Text>
         )}
+
+        {sceneState.activeVideo ? (
+          <SceneVideoLayer
+            key={sceneState.activeVideo.stepId}
+            video={sceneState.activeVideo}
+            style={cameraTransform}
+            onPlaybackError={handleVideoPlaybackError}
+          />
+        ) : null}
 
         {backgroundEffects.length > 0 ? (
           <EffectsLayerStack effects={backgroundEffects} colors={colors} target="background" />

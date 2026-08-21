@@ -18,6 +18,19 @@ export interface VNPlateAudioAsset {
   duration?: number;
 }
 
+/**
+ * A video the story can play. Only identity travels into the frame — the block
+ * shows a name, never a thumbnail, so no bytes cross the bridge.
+ */
+export interface VNPlateVideoAsset {
+  id: string;
+  name: string;
+  /** Bytes on disk, so the author sees what a successful import actually cost. */
+  sizeBytes?: number;
+  /** Known only when the platform reported it at import time. */
+  durationSeconds?: number;
+}
+
 /** Lightweight reference to another scene in the story (for transition target pickers). */
 export interface VNPlateSceneRef {
   id: string;
@@ -73,6 +86,7 @@ export interface VNPlateEditorPayload {
   language?: Language;
   backgroundAssets?: VNPlateBackgroundAsset[];
   audioAssets?: VNPlateAudioAsset[];
+  videoAssets?: VNPlateVideoAsset[];
   scenes?: VNPlateSceneRef[];
   theme?: VNPlateTheme;
 }
@@ -199,6 +213,16 @@ export type VNPlateEditorMessage =
       type: 'removeBackground';
       requestId: string;
       dataUri: string;
+    }
+  | {
+      /**
+       * Asks the host to open the video picker. Carries no payload by design:
+       * a clip is tens of megabytes and must never cross as a data URI.
+       */
+      source: 'vn-plate-editor';
+      editorId: string;
+      type: 'pickVideoAsset';
+      requestId: string;
     };
 
 export type VNPlateHostMessage =
@@ -282,4 +306,19 @@ export type VNPlateHostMessage =
       requestId: string;
       /** Transparent PNG data: URI; null when removal failed or is unsupported. */
       dataUri: string | null;
+    }
+  | {
+      source: 'vn-plate-host';
+      editorId: string;
+      type: 'videoAssetsUpdated';
+      assets: VNPlateVideoAsset[];
+    }
+  | {
+      source: 'vn-plate-host';
+      editorId: string;
+      type: 'videoAssetPicked';
+      requestId: string;
+      /** null when the author cancelled or the import was rejected. */
+      asset: VNPlateVideoAsset | null;
+      error?: 'tooLarge' | 'unsupportedType' | 'failed';
     };

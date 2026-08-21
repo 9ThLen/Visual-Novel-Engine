@@ -1,6 +1,7 @@
 import type { VNPlateEditorPayload } from './types';
 import type { EmbeddedCommand } from './embedded-commands';
 import { jsonForScript } from './embedded-utils';
+import { CAMERA_PRESETS, CHARACTER_PRESETS, EFFECT_PRESETS } from '@/lib/engine/animation-presets';
 
 /**
  * The static body of the embedded editor script. It only reads `payload` and
@@ -10,6 +11,9 @@ import { jsonForScript } from './embedded-utils';
  * scene iframe (see createEmbeddedBootScript).
  */
 const EMBEDDED_SCRIPT_BODY = `
+    var EFFECT_PRESETS = ${jsonForScript(EFFECT_PRESETS)};
+    var CHARACTER_PRESETS = ${jsonForScript(CHARACTER_PRESETS)};
+    var CAMERA_PRESETS = ${jsonForScript(CAMERA_PRESETS)};
     var editor = document.getElementById('editor');
     var title = document.getElementById('title');
     var lastHistoryTarget = editor;
@@ -41,6 +45,11 @@ const EMBEDDED_SCRIPT_BODY = `
     var activeStopEffectBlock = null;
     var stopEffectPopover = null;
     var stopEffectDraft = null;
+    var videoPopover = null;
+    var activeVideoBlock = null;
+    var pendingVideoPicks = {};
+    var cameraPopover = null;
+    var activeCameraBlock = null;
     var activeInteractiveObjectBlock = null;
     var interactiveObjectPopover = null;
     var interactiveObjectDraft = null;
@@ -57,6 +66,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
     var backgroundAssets = Array.isArray(payload.backgroundAssets) ? payload.backgroundAssets : [];
     var audioAssets = Array.isArray(payload.audioAssets) ? payload.audioAssets : [];
+    var videoAssets = Array.isArray(payload.videoAssets) ? payload.videoAssets : [];
     var storyScenes = Array.isArray(payload.scenes) ? payload.scenes : [];
     var characters = Array.isArray(payload.characters) ? payload.characters.slice() : [];
     var characterPopover = null;
@@ -94,6 +104,12 @@ const EMBEDDED_SCRIPT_BODY = `
       closeLabelPopover();
       closeGotoPopover();
       closeStopEffectPopover();
+      // Both keep what the author typed on the way out, matching what clicking
+      // away from them already did before the backdrop got involved.
+      saveVideoForm();
+      closeVideoPopover();
+      saveCameraForm();
+      closeCameraPopover();
       if (removeNewInteractiveObject && activeInteractiveObjectBlock) activeInteractiveObjectBlock.remove();
       closeInteractiveObjectPopover();
     }
@@ -118,8 +134,21 @@ const EMBEDDED_SCRIPT_BODY = `
 
     function mountEditorPopover(popover, nested) {
       popover.dataset.editorPopover = nested ? 'nested' : 'top-level';
+      // Callers place the popover on the next frame, so it spends its first
+      // frame at the body's default corner. Held invisible until then, the
+      // entrance plays from where the popover actually lands instead of
+      // starting across the page — and the animation only begins once this
+      // mark is gone, so none of it is spent while hidden. Two frames deep:
+      // the caller's positioning callback is queued after this one and runs
+      // in the first.
+      popover.dataset.popoverEnter = 'pending';
       document.body.appendChild(popover);
       syncEditorPopoverBackdrop();
+      afterLayout(function() {
+        afterLayout(function() {
+          delete popover.dataset.popoverEnter;
+        });
+      });
     }
 
     function unmountEditorPopover(popover) {
@@ -1096,7 +1125,14 @@ const EMBEDDED_SCRIPT_BODY = `
       }
       var rainVariantCurrent = rain.variant || (rain.lightning ? 'storm' : 'rain');
       var sceneBoundChecked = isSceneBoundEffectType(data.effectType) && data.durationMode !== 'timed';
+      var presetChipsHtml = EFFECT_PRESETS.map(function(preset) {
+        var title = preset.hint ? ' title="' + escapeHtml(preset.hint) + '"' : '';
+        return '<button type="button" class="preset-chip" data-effect-preset="' + escapeHtml(preset.id) + '"' + title + '>' +
+          escapeHtml(preset.label) +
+        '</button>';
+      }).join('');
       popover.innerHTML =
+        '<div class="preset-row"><span class="preset-row-title">Пресети</span>' + presetChipsHtml + '</div>' +
         '<div class="effect-type-grid">' + typeChipsHtml + '</div>' +
         '<div class="effect-popover-grid">' +
           '<label class="popover-label">Ціль</label>' +
@@ -1817,6 +1853,15 @@ const EMBEDDED_SCRIPT_BODY = `
           option('show', labels.appearance, selectedAction) +
           option('hide', labels.disappearance, selectedAction) +
         '</select>' +
+        '<label class="popover-label">Пресет</label>' +
+        '<div class="preset-row">' + CHARACTER_PRESETS.filter(function(preset) {
+          // Shake/Pulse write a character effect, which this popover has no
+          // control for yet; showing them would promise something it cannot do.
+          return !!preset.patch.transition;
+        }).map(function(preset) {
+          var presetTitle = preset.hint ? ' title="' + escapeHtml(preset.hint) + '"' : '';
+          return '<button type="button" class="preset-chip" data-character-preset="' + escapeHtml(preset.id) + '"' + presetTitle + '>' + escapeHtml(preset.label) + '</button>';
+        }).join('') + '</div>' +
         '<label class="popover-label">' + labels.animation + '</label>' +
         '<select class="popover-control" data-field="character-transition">' +
           characterTransitionOptions(selectedAction, selectedTransition, labels) +
@@ -2046,13 +2091,12 @@ const EMBEDDED_SCRIPT_BODY = `
       var asset = findBackgroundAsset(assetId);
       var uri = asset ? asset.uri : normalizeAssetName(assetId);
       if (!uri) {
-        preview.classList.add('placeholder');
+        preview.hidden = true;
         preview.textContent = 'Фон не вибрано';
         preview.style.backgroundImage = '';
         return;
       }
-      preview.classList.remove('placeholder');
-      preview.textContent = '';
+      preview.hidden = false;
       preview.style.backgroundImage = 'linear-gradient(180deg, rgba(6, 16, 32, 0.04), rgba(6, 16, 32, 0.18)), url("' + String(uri).replace(/"/g, '\\"') + '")';
       preview.style.backgroundSize = 'cover';
       preview.style.backgroundPosition = 'center';
@@ -2216,7 +2260,9 @@ const EMBEDDED_SCRIPT_BODY = `
       var margin = 16;
       var gap = 8;
       var width = Math.min(440, window.innerWidth - margin * 2);
-      var maxHeight = Math.min(520, Math.max(220, window.innerHeight - margin * 2));
+      // Room for the tallest form the editor has (a cutscene, at 520px) plus
+      // headroom, so the footer is not sliced off the bottom of the card.
+      var maxHeight = Math.min(640, Math.max(220, window.innerHeight - margin * 2));
       transitionPopover.style.width = width + 'px';
       transitionPopover.style.maxHeight = maxHeight + 'px';
       var popoverHeight = Math.min(transitionPopover.offsetHeight || maxHeight, maxHeight);
@@ -2645,6 +2691,601 @@ const EMBEDDED_SCRIPT_BODY = `
       renderStopEffectBlockContent(node);
     }
 
+    var VIDEO_LAYER_LABELS = { background: 'Фон', cutscene: 'Катсцена' };
+    var VIDEO_PICK_ERRORS = {
+      tooLarge: 'Файл більший за 64 МіБ.',
+      unsupportedType: 'Підтримується лише MP4 (H.264 + AAC).',
+      failed: 'Не вдалося імпортувати відео.'
+    };
+
+    function renderAllVideoBlocks() {
+      Array.prototype.slice.call(editor.querySelectorAll('.video-block')).forEach(function(node) {
+        renderVideoBlockContent(node);
+      });
+    }
+
+    function defaultVideoData() {
+      return {
+        mode: 'play',
+        layer: 'background',
+        assetId: null,
+        posterAssetId: null,
+        fit: 'cover',
+        playbackRate: 1,
+        startAt: 0,
+        endAt: null,
+        muted: true,
+        volume: 0,
+        loop: true,
+        skippableAfterMs: null
+      };
+    }
+
+    // The host normalizes video data on the way in and out (normalizeVideoData),
+    // so the frame only has to carry the payload without dropping fields.
+    function videoDataFromNode(node) {
+      var raw = node.dataset.video;
+      if (!raw) return defaultVideoData();
+      try {
+        var parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return defaultVideoData();
+        var data = defaultVideoData();
+        Object.keys(parsed).forEach(function(key) { data[key] = parsed[key]; });
+        return data;
+      } catch (err) {
+        return defaultVideoData();
+      }
+    }
+
+    function formatVideoSeconds(value) {
+      return String(Number(Number(value).toFixed(2)));
+    }
+
+    function formatClock(seconds) {
+      var total = Math.max(0, Math.round(Number(seconds) || 0));
+      var minutes = Math.floor(total / 60);
+      var rest = total % 60;
+      return minutes + ':' + (rest < 10 ? '0' : '') + rest;
+    }
+
+    function formatBytes(bytes) {
+      var value = Number(bytes);
+      if (!Number.isFinite(value) || value <= 0) return '';
+      if (value < 1024 * 1024) return (value / 1024).toFixed(0) + ' КіБ';
+      return (value / (1024 * 1024)).toFixed(1) + ' МіБ';
+    }
+
+    function videoAssetDuration(assetId) {
+      var asset = findVideoAsset(assetId);
+      return asset && Number.isFinite(Number(asset.durationSeconds)) ? Number(asset.durationSeconds) : null;
+    }
+
+    function videoSummaryText(data) {
+      var layer = VIDEO_LAYER_LABELS[data.layer] || data.layer;
+      if (data.mode === 'stop') return 'Зупинити · ' + layer;
+      var known = findVideoAsset(data.assetId);
+      var asset = (known && known.name) || data.assetId || 'не вибрано';
+      var timing = '';
+      if (data.startAt > 0 || (data.endAt !== null && data.endAt !== undefined)) {
+        var end = (data.endAt === null || data.endAt === undefined) ? 'кінець' : formatVideoSeconds(data.endAt);
+        timing = ' · ' + formatVideoSeconds(data.startAt) + '–' + end + 's';
+      }
+      return layer + ' · ' + asset + ' · ' + data.fit + timing;
+    }
+
+    function renderVideoBlockContent(node) {
+      var data = videoDataFromNode(node);
+      node.innerHTML =
+        '<span class="void-title">/video</span>' +
+        '<span class="background-asset"></span>';
+      node.querySelector('.background-asset').textContent = videoSummaryText(data);
+    }
+
+    function applyVideoData(node, data) {
+      node.dataset.video = JSON.stringify(data);
+      renderVideoBlockContent(node);
+    }
+
+    function findVideoAsset(assetId) {
+      if (!assetId) return null;
+      for (var i = 0; i < videoAssets.length; i += 1) {
+        if (videoAssets[i].id === assetId) return videoAssets[i];
+      }
+      return null;
+    }
+
+    function renderVideoAssetOptions() {
+      var data = activeVideoBlock ? videoDataFromNode(activeVideoBlock) : defaultVideoData();
+      var options = option('', 'Не вибрано', data.assetId || '');
+      videoAssets.forEach(function(asset) {
+        options += option(asset.id, asset.name || asset.id, data.assetId || '');
+      });
+      return options;
+    }
+
+    function renderVideoPosterOptions() {
+      var data = activeVideoBlock ? videoDataFromNode(activeVideoBlock) : defaultVideoData();
+      var options = option('', 'Без постера', data.posterAssetId || '');
+      backgroundAssets.forEach(function(asset) {
+        options += option(asset.id, assetLabel(asset) || asset.name || asset.id, data.posterAssetId || '');
+      });
+      return options;
+    }
+
+    function closeVideoPopover() {
+      unmountEditorPopover(videoPopover);
+      videoPopover = null;
+      if (activeVideoBlock) activeVideoBlock.classList.remove('is-editing', 'is-selected');
+      activeVideoBlock = null;
+      scheduleResize();
+    }
+
+    function collectVideoForm() {
+      var base = activeVideoBlock ? videoDataFromNode(activeVideoBlock) : defaultVideoData();
+      if (!videoPopover) return base;
+      var mode = selectedValue(videoPopover.querySelector('#videoMode'), 'play');
+      var layer = selectedValue(videoPopover.querySelector('#videoLayer'), 'background');
+      if (mode === 'stop') {
+        // Stop only has to name the layer; the host normalizer clears the rest.
+        return Object.assign({}, defaultVideoData(), { mode: 'stop', layer: layer });
+      }
+      var skipInput = videoPopover.querySelector('#videoSkipAfter');
+      var skipSeconds = skipInput && skipInput.value !== '' ? Number(skipInput.value) : null;
+      var assetId = selectedValue(videoPopover.querySelector('#videoAsset'), '');
+      var startInput = videoPopover.querySelector('#videoStart');
+      var endInput = videoPopover.querySelector('#videoEnd');
+      var startAt = Number(startInput && startInput.value);
+      var endAt = Number(endInput && endInput.value);
+      return Object.assign({}, base, {
+        mode: 'play',
+        layer: layer,
+        // Background policy is enforced by normalizeVideoData, so the form only
+        // has to state the intent.
+        muted: layer === 'background',
+        volume: layer === 'background' ? 0 : 1,
+        loop: layer === 'background',
+        skippableAfterMs: layer === 'cutscene' && skipSeconds !== null && Number.isFinite(skipSeconds) && skipSeconds >= 0
+          ? Math.round(skipSeconds * 1000)
+          : null,
+        assetId: assetId || null,
+        posterAssetId: selectedValue(videoPopover.querySelector('#videoPoster'), '') || null,
+        fit: selectedValue(videoPopover.querySelector('#videoFit'), 'cover'),
+        startAt: Number.isFinite(startAt) && startAt > 0 ? startAt : 0,
+        endAt: Number.isFinite(endAt) && endAt > 0 ? endAt : null
+      });
+    }
+
+    function saveVideoForm() {
+      if (!activeVideoBlock) return;
+      applyVideoData(activeVideoBlock, collectVideoForm());
+      saveNow();
+    }
+
+    function setVideoPickerBusy(busy) {
+      if (!videoPopover) return;
+      var button = videoPopover.querySelector('[data-action=\"import-video\"]');
+      if (button) {
+        button.disabled = !!busy;
+        button.textContent = busy ? 'Імпортуємо…' : 'З пристрою';
+      }
+    }
+
+    function setVideoPickerError(message) {
+      if (!videoPopover) return;
+      var slot = videoPopover.querySelector('.video-popover-error');
+      if (slot) slot.textContent = message || '';
+    }
+
+    function requestVideoImport() {
+      var requestId = uid('video-pick');
+      setVideoPickerBusy(true);
+      setVideoPickerError('');
+      pendingVideoPicks[requestId] = true;
+      post({ type: 'pickVideoAsset', requestId: requestId });
+    }
+
+    function openVideoPopover(block, anchor) {
+      if (!block) return;
+      closeSlashMenu();
+      if (activeVideoBlock === block && videoPopover) {
+        closeVideoPopover();
+        return;
+      }
+      closeVideoPopover();
+      activeVideoBlock = block;
+      block.classList.add('is-editing');
+      var data = videoDataFromNode(block);
+
+      var fitOptions = option('cover', 'Заповнити (cover)', data.fit)
+        + option('contain', 'Вмістити (contain)', data.fit);
+      var modeOptions = option('play', 'Відтворити', data.mode)
+        + option('stop', 'Зупинити й повернути фон', data.mode);
+      var layerOptions = option('background', 'Фон', data.layer)
+        + option('cutscene', 'Катсцена', data.layer);
+
+      var popover = document.createElement('div');
+      popover.className = 'background-popover video-popover';
+      // Paired fields share a row so the whole form fits without scrolling, and
+      // every field states which mode owns it: a stop step keeps only the two
+      // selects that actually describe it.
+      popover.innerHTML =
+        '<div class=\"popover-row\">' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoMode\">Дія</label>' +
+            '<select id=\"videoMode\" class=\"popover-control\">' + modeOptions + '</select>' +
+          '</div>' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoLayer\">Шар</label>' +
+            '<select id=\"videoLayer\" class=\"popover-control\">' + layerOptions + '</select>' +
+          '</div>' +
+        '</div>' +
+        '<div class=\"popover-row popover-row-asset\" data-video-row=\"play\">' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoAsset\">Ролик</label>' +
+            '<select id=\"videoAsset\" class=\"popover-control\">' + renderVideoAssetOptions() + '</select>' +
+          '</div>' +
+          '<button type=\"button\" class=\"popover-button\" data-action=\"import-video\">З пристрою</button>' +
+        '</div>' +
+        '<p class=\"popover-help\" data-video-row=\"play\">MP4 до 64 МіБ — приблизно 1–2 хвилини 1080p.</p>' +
+        '<p class=\"video-popover-status\"></p>' +
+        '<p class=\"video-popover-error\"></p>' +
+        '<div class=\"popover-row\" data-video-row=\"play\">' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoFit\">Кадрування</label>' +
+            '<select id=\"videoFit\" class=\"popover-control\">' + fitOptions + '</select>' +
+          '</div>' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoPoster\">Постер</label>' +
+            '<select id=\"videoPoster\" class=\"popover-control\">' + renderVideoPosterOptions() + '</select>' +
+          '</div>' +
+        '</div>' +
+        '<div class=\"video-poster-preview\" hidden></div>' +
+        '<div class=\"popover-row\" data-video-row=\"play\">' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoStart\">Початок, с</label>' +
+            '<input id=\"videoStart\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.1\" value=\"' + (data.startAt || 0) + '\" />' +
+          '</div>' +
+          '<div class=\"popover-field\">' +
+            '<label class=\"popover-label\" for=\"videoEnd\">Кінець, с</label>' +
+            '<input id=\"videoEnd\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.1\" placeholder=\"до кінця\" value=\"' + (data.endAt === null || data.endAt === undefined ? '' : data.endAt) + '\" />' +
+          '</div>' +
+        '</div>' +
+        '<p class=\"video-popover-timing\"></p>' +
+        '<div class=\"popover-field\" data-video-row=\"cutscene\">' +
+          '<label class=\"popover-label\" for=\"videoSkipAfter\">Пропуск дозволено через, с</label>' +
+          '<input id=\"videoSkipAfter\" class=\"popover-control\" type=\"number\" min=\"0\" step=\"0.5\" placeholder=\"без пропуску\" value=\"' + (data.skippableAfterMs === null || data.skippableAfterMs === undefined ? '' : (data.skippableAfterMs / 1000)) + '\" />' +
+        '</div>' +
+        '<p class=\"popover-help\">Фон завжди без звуку й зациклений; катсцена зі звуком зупиняє історію до кінця.</p>' +
+        '<div class=\"popover-footer\">' +
+          '<button type=\"button\" class=\"popover-button primary\" data-action=\"save-video\">Зберегти</button>' +
+        '</div>';
+
+      mountEditorPopover(popover, false);
+      videoPopover = popover;
+      var modeSelect = popover.querySelector('#videoMode');
+      if (modeSelect) {
+        modeSelect.addEventListener('change', function() { syncVideoPopoverMode(); });
+      }
+      ['videoLayer', 'videoAsset', 'videoPoster', 'videoStart', 'videoEnd'].forEach(function(id) {
+        var control = popover.querySelector('#' + id);
+        if (!control) return;
+        control.addEventListener('input', function() { syncVideoPopoverFeedback(); });
+        control.addEventListener('change', function() {
+          syncVideoPopoverMode();
+          syncVideoPopoverFeedback();
+        });
+      });
+      syncVideoPopoverMode();
+      syncVideoPopoverFeedback();
+      afterLayout(function() { positionBranchPopover(videoPopover, anchor || block); });
+    }
+
+    /**
+     * Trim values are seconds against a clip the author cannot see, so the
+     * popover states the duration and says immediately when the window is
+     * impossible instead of leaving it to Story Doctor.
+     */
+    function syncVideoPopoverFeedback() {
+      if (!videoPopover) return;
+      var assetId = selectedValue(videoPopover.querySelector('#videoAsset'), '');
+      var duration = videoAssetDuration(assetId);
+      var startInput = videoPopover.querySelector('#videoStart');
+      var endInput = videoPopover.querySelector('#videoEnd');
+      var startAt = Number(startInput && startInput.value) || 0;
+      var endRaw = endInput && endInput.value !== '' ? Number(endInput.value) : null;
+      var hasEnd = endRaw !== null && Number.isFinite(endRaw);
+
+      var timing = videoPopover.querySelector('.video-popover-timing');
+      if (timing) {
+        var facts = [];
+        var problem = '';
+        if (duration !== null) facts.push('Тривалість ' + formatClock(duration));
+        if (hasEnd && endRaw <= startAt) {
+          problem = 'кінець має бути пізніше за початок — значення буде проігноровано';
+        } else if (duration !== null && startAt >= duration) {
+          problem = 'початок за межами ролика';
+        } else if (duration !== null && hasEnd && endRaw > duration) {
+          problem = 'кінець за межами ролика';
+        } else if (hasEnd) {
+          facts.push('грає ' + formatClock(startAt) + '–' + formatClock(endRaw));
+        }
+        if (problem) facts.push(problem);
+        timing.textContent = facts.join(' · ');
+        timing.classList.toggle('is-invalid', !!problem);
+      }
+
+      var preview = videoPopover.querySelector('.video-poster-preview');
+      if (preview) {
+        var posterId = selectedValue(videoPopover.querySelector('#videoPoster'), '');
+        var poster = posterId ? findBackgroundAsset(posterId) : null;
+        if (poster && poster.uri) {
+          preview.style.backgroundImage = 'url("' + String(poster.uri).replace(/"/g, '\\"') + '")';
+          preview.hidden = false;
+        } else {
+          preview.style.backgroundImage = '';
+          preview.hidden = true;
+        }
+      }
+    }
+
+    /** Playback controls are meaningless for a stop step, so they step aside. */
+    function syncVideoPopoverMode() {
+      if (!videoPopover) return;
+      var isStop = selectedValue(videoPopover.querySelector('#videoMode'), 'play') === 'stop';
+      var isCutscene = selectedValue(videoPopover.querySelector('#videoLayer'), 'background') === 'cutscene';
+      Array.prototype.slice.call(videoPopover.querySelectorAll('[data-video-row]')).forEach(function(node) {
+        node.hidden = node.dataset.videoRow === 'play' ? isStop : (isStop || !isCutscene);
+      });
+      ['.video-popover-timing', '.video-popover-status'].forEach(function(selector) {
+        var node = videoPopover.querySelector(selector);
+        if (node) node.hidden = isStop;
+      });
+      if (isStop) {
+        var stopPreview = videoPopover.querySelector('.video-poster-preview');
+        if (stopPreview) stopPreview.hidden = true;
+      }
+    }
+
+    // ── Camera block ────────────────────────────────────────────────────
+    var CAMERA_ACTION_LABELS = { zoom: 'Зум', pan: 'Панорама', focus: 'Фокус', reset: 'Скидання' };
+    var CAMERA_EASINGS = ['linear', 'ease-in', 'ease-out', 'ease-in-out'];
+    var CAMERA_EASING_LABELS = {
+      linear: 'Рівномірно',
+      'ease-in': 'З розгоном',
+      'ease-out': 'Із гальмуванням',
+      'ease-in-out': 'Плавно з обох боків'
+    };
+
+    function defaultCameraData() {
+      return { action: 'zoom', zoomLevel: 1.5, duration: 1, easing: 'ease-in-out' };
+    }
+
+    // The host normalizes camera data on the way in and out
+    // (normalizeCameraData), so the frame only carries the payload. Absent
+    // fields are meaningful — no zoomLevel means "hold the current zoom" — so
+    // nothing is filled in here.
+    function cameraDataFromNode(node) {
+      var raw = node.dataset.camera;
+      if (!raw) return defaultCameraData();
+      try {
+        var parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return defaultCameraData();
+        return parsed;
+      } catch (err) {
+        return defaultCameraData();
+      }
+    }
+
+    function cameraNumberText(value) {
+      return String(Number(Number(value).toFixed(2)));
+    }
+
+    function cameraSummaryText(data) {
+      var parts = [CAMERA_ACTION_LABELS[data.action] || data.action];
+      if (data.action === 'focus') {
+        var character = findCharacterById(data.target);
+        parts.push((character && character.name) || data.target || 'персонажа не вибрано');
+      }
+      if (data.action !== 'reset' && typeof data.zoomLevel === 'number') {
+        parts.push(cameraNumberText(data.zoomLevel) + '×');
+      }
+      if (data.action === 'pan') {
+        parts.push(cameraNumberText(data.panX || 0) + ', ' + cameraNumberText(data.panY || 0));
+      }
+      parts.push(cameraNumberText(data.duration) + 's');
+      return parts.join(' · ');
+    }
+
+    function renderCameraBlockContent(node) {
+      var data = cameraDataFromNode(node);
+      node.innerHTML =
+        '<span class="void-title">/camera</span>' +
+        '<span class="background-asset"></span>';
+      node.querySelector('.background-asset').textContent = cameraSummaryText(data);
+    }
+
+    function applyCameraData(node, data) {
+      node.dataset.camera = JSON.stringify(data);
+      renderCameraBlockContent(node);
+    }
+
+    // Renaming a character changes what a focus block reads as.
+    function renderAllCameraBlocks() {
+      Array.prototype.slice.call(editor.querySelectorAll('.camera-block')).forEach(function(node) {
+        renderCameraBlockContent(node);
+      });
+    }
+
+    function closeCameraPopover() {
+      unmountEditorPopover(cameraPopover);
+      cameraPopover = null;
+      if (activeCameraBlock) activeCameraBlock.classList.remove('is-editing', 'is-selected');
+      activeCameraBlock = null;
+      scheduleResize();
+    }
+
+    /**
+     * Only the fields that belong to the chosen action are written back. A pan
+     * that kept a zoom from an earlier action would move the zoom too, without
+     * anything on screen saying so.
+     */
+    function collectCameraForm() {
+      if (!cameraPopover) return activeCameraBlock ? cameraDataFromNode(activeCameraBlock) : defaultCameraData();
+      var action = selectedValue(cameraPopover.querySelector('#camAction'), 'zoom');
+      var durationInput = cameraPopover.querySelector('#camDuration');
+      var duration = Number(durationInput && durationInput.value);
+      var data = {
+        action: action,
+        duration: Number.isFinite(duration) && duration >= 0 ? duration : 1,
+        easing: selectedValue(cameraPopover.querySelector('#camEasing'), 'ease-in-out')
+      };
+      if (action === 'reset') return data;
+      if (action === 'zoom' || action === 'focus') {
+        var zoomInput = cameraPopover.querySelector('#camZoom');
+        var zoom = Number(zoomInput && zoomInput.value);
+        if (Number.isFinite(zoom) && zoom > 0) data.zoomLevel = zoom;
+      }
+      if (action === 'pan') {
+        var panXInput = cameraPopover.querySelector('#camPanX');
+        var panYInput = cameraPopover.querySelector('#camPanY');
+        var panX = Number(panXInput && panXInput.value);
+        var panY = Number(panYInput && panYInput.value);
+        data.panX = Number.isFinite(panX) ? panX : 0;
+        data.panY = Number.isFinite(panY) ? panY : 0;
+      }
+      if (action === 'focus') {
+        var target = selectedValue(cameraPopover.querySelector('#camTarget'), '');
+        if (target) data.target = target;
+      }
+      return data;
+    }
+
+    function saveCameraForm() {
+      if (!activeCameraBlock) return;
+      applyCameraData(activeCameraBlock, collectCameraForm());
+      saveNow();
+    }
+
+    /** Controls the chosen action ignores step aside instead of lying. */
+    function syncCameraPopoverAction() {
+      if (!cameraPopover) return;
+      var action = selectedValue(cameraPopover.querySelector('#camAction'), 'zoom');
+      var visibleRows = action === 'zoom' ? ['zoom']
+        : action === 'pan' ? ['pan']
+        : action === 'focus' ? ['zoom', 'focus']
+        : [];
+      Array.prototype.slice.call(cameraPopover.querySelectorAll('[data-camera-row]')).forEach(function(node) {
+        node.hidden = visibleRows.indexOf(node.dataset.cameraRow) === -1;
+      });
+      var help = cameraPopover.querySelector('.camera-popover-help');
+      if (help) {
+        help.textContent = action === 'focus'
+          ? 'Камера наводиться на позицію персонажа. Якщо його немає на екрані — залишиться лише зум.'
+          : action === 'reset'
+            ? 'Повертає зум і зсув до вихідного кадру.'
+            : action === 'pan'
+              ? 'Зсув у відсотках від центру; зум лишається таким, як зараз. Скасовує попередній фокус.'
+              : 'Зум лишається до наступного блока камери. Якщо перед цим був фокус, камера й далі тримає того персонажа.';
+      }
+    }
+
+    function applyCameraPresetToForm(presetId) {
+      if (!cameraPopover) return false;
+      var preset = null;
+      CAMERA_PRESETS.forEach(function(item) { if (item.id === presetId) preset = item; });
+      if (!preset) return false;
+      var patch = preset.patch || {};
+      var fieldIds = {
+        action: '#camAction',
+        zoomLevel: '#camZoom',
+        panX: '#camPanX',
+        panY: '#camPanY',
+        duration: '#camDuration',
+        easing: '#camEasing',
+        target: '#camTarget'
+      };
+      Object.keys(fieldIds).forEach(function(key) {
+        if (patch[key] === undefined) return;
+        var control = cameraPopover.querySelector(fieldIds[key]);
+        if (control) control.value = String(patch[key]);
+      });
+      syncCameraPopoverAction();
+      saveCameraForm();
+      return true;
+    }
+
+    function handleCameraPopoverAction(action) {
+      if (action === 'save-camera') {
+        saveCameraForm();
+        closeCameraPopover();
+        return true;
+      }
+      return false;
+    }
+
+    function openCameraPopover(block, anchor) {
+      if (!block) return;
+      closeSlashMenu();
+      if (activeCameraBlock === block && cameraPopover) {
+        closeCameraPopover();
+        return;
+      }
+      closeCameraPopover();
+      activeCameraBlock = block;
+      block.classList.add('is-editing');
+      var data = cameraDataFromNode(block);
+
+      var actionOptions = Object.keys(CAMERA_ACTION_LABELS).map(function(key) {
+        return option(key, CAMERA_ACTION_LABELS[key], data.action);
+      }).join('');
+      var easingOptions = CAMERA_EASINGS.map(function(easing) {
+        return option(easing, CAMERA_EASING_LABELS[easing] || easing, data.easing || 'ease-in-out');
+      }).join('');
+      var targetOptions = option('', 'Персонажа не вибрано', data.target || '');
+      characters.forEach(function(character) {
+        targetOptions += option(character.id, character.name || character.id, data.target || '');
+      });
+      if (data.target && !findCharacterById(data.target)) {
+        targetOptions += option(data.target, data.target, data.target);
+      }
+      var presetChips = CAMERA_PRESETS.map(function(preset) {
+        var title = preset.hint ? ' title="' + escapeHtml(preset.hint) + '"' : '';
+        return '<button type="button" class="preset-chip" data-camera-preset="' + escapeHtml(preset.id) + '"' + title + '>' +
+          escapeHtml(preset.label) +
+        '</button>';
+      }).join('');
+
+      var popover = document.createElement('div');
+      popover.className = 'background-popover camera-popover';
+      popover.innerHTML =
+        '<div class="preset-row"><span class="preset-row-title">Пресети</span>' + presetChips + '</div>' +
+        '<label class="popover-label" for="camAction">Рух</label>' +
+        '<select id="camAction" class="popover-control">' + actionOptions + '</select>' +
+        '<label class="popover-label" for="camTarget" data-camera-row="focus">Персонаж</label>' +
+        '<select id="camTarget" class="popover-control" data-camera-row="focus">' + targetOptions + '</select>' +
+        '<label class="popover-label" for="camZoom" data-camera-row="zoom">Зум</label>' +
+        '<input id="camZoom" class="popover-control" data-camera-row="zoom" type="number" min="0.5" max="3" step="0.05" value="' + escapeHtml(String(typeof data.zoomLevel === 'number' ? data.zoomLevel : 1.5)) + '" />' +
+        '<label class="popover-label" for="camPanX" data-camera-row="pan">Зсув X, %</label>' +
+        '<input id="camPanX" class="popover-control" data-camera-row="pan" type="number" min="-100" max="100" step="1" value="' + escapeHtml(String(typeof data.panX === 'number' ? data.panX : 0)) + '" />' +
+        '<label class="popover-label" for="camPanY" data-camera-row="pan">Зсув Y, %</label>' +
+        '<input id="camPanY" class="popover-control" data-camera-row="pan" type="number" min="-100" max="100" step="1" value="' + escapeHtml(String(typeof data.panY === 'number' ? data.panY : 0)) + '" />' +
+        '<label class="popover-label" for="camDuration">Тривалість, с</label>' +
+        '<input id="camDuration" class="popover-control" type="number" min="0" step="0.1" value="' + escapeHtml(String(typeof data.duration === 'number' ? data.duration : 1)) + '" />' +
+        '<label class="popover-label" for="camEasing">Плавність</label>' +
+        '<select id="camEasing" class="popover-control">' + easingOptions + '</select>' +
+        '<p class="popover-help camera-popover-help"></p>' +
+        '<div class="popover-footer">' +
+          '<button type="button" class="popover-button primary" data-action="save-camera">Зберегти</button>' +
+        '</div>';
+
+      mountEditorPopover(popover, false);
+      cameraPopover = popover;
+      var actionSelect = popover.querySelector('#camAction');
+      if (actionSelect) actionSelect.addEventListener('change', function() { syncCameraPopoverAction(); });
+      syncCameraPopoverAction();
+      afterLayout(function() { positionBranchPopover(cameraPopover, anchor || block); });
+    }
+
     function closeStopEffectPopover() {
       unmountEditorPopover(stopEffectPopover);
       stopEffectPopover = null;
@@ -2698,6 +3339,19 @@ const EMBEDDED_SCRIPT_BODY = `
       mountEditorPopover(popover, false);
       stopEffectPopover = popover;
       afterLayout(function() { positionBranchPopover(stopEffectPopover, anchor || block); });
+    }
+
+    function handleVideoPopoverAction(action) {
+      if (action === 'import-video') {
+        requestVideoImport();
+        return true;
+      }
+      if (action === 'save-video') {
+        saveVideoForm();
+        closeVideoPopover();
+        return true;
+      }
+      return false;
     }
 
     function collectStopEffectForm() {
@@ -3477,6 +4131,54 @@ const EMBEDDED_SCRIPT_BODY = `
             step: stopEffectStep
           };
         }
+        if (commandId === 'video') {
+          var videoData = videoDataFromNode(node);
+          var originalVideoStep = originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step
+            ? originalTechnical.step
+            : null;
+          var videoStep = originalVideoStep
+            ? Object.assign({}, originalVideoStep, { blockType: 'video', data: videoData })
+            : {
+                id: node.dataset.id || uid('step'),
+                blockType: 'video',
+                data: videoData,
+                collapsed: false,
+                enabled: true
+              };
+          return {
+            id: node.dataset.id || uid('doc_block'),
+            kind: 'technical',
+            commandId: 'video',
+            blockType: 'video',
+            label: 'Відео',
+            summary: videoSummaryText(videoData),
+            step: videoStep
+          };
+        }
+        if (commandId === 'camera') {
+          var cameraData = cameraDataFromNode(node);
+          var originalCameraStep = originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step
+            ? originalTechnical.step
+            : null;
+          var cameraStep = originalCameraStep
+            ? Object.assign({}, originalCameraStep, { blockType: 'camera', data: cameraData })
+            : {
+                id: node.dataset.id || uid('step'),
+                blockType: 'camera',
+                data: cameraData,
+                collapsed: false,
+                enabled: true
+              };
+          return {
+            id: node.dataset.id || uid('doc_block'),
+            kind: 'technical',
+            commandId: 'camera',
+            blockType: 'camera',
+            label: 'Камера',
+            summary: cameraSummaryText(cameraData),
+            step: cameraStep
+          };
+        }
         if (commandId === 'interactive_object') {
           var interactiveId = node.dataset.id || uid('doc_block');
           var interactiveData = interactiveObjectDataFromNode(node);
@@ -4240,6 +4942,8 @@ const EMBEDDED_SCRIPT_BODY = `
         : commandId === 'label' ? 'void-block label-block'
         : commandId === 'goto' ? 'void-block goto-block'
         : commandId === 'stopEffect' ? 'void-block stop-effect-block'
+        : commandId === 'video' ? 'void-block video-block'
+        : commandId === 'camera' ? 'void-block camera-block'
         : commandId === 'interactive_object' ? 'void-block interactive-object-block'
         : 'void-block';
       block.contentEditable = 'false';
@@ -4268,6 +4972,10 @@ const EMBEDDED_SCRIPT_BODY = `
         applyGotoData(block, { targetLabel: '', condition: null, elseTargetLabel: null });
       } else if (commandId === 'stopEffect') {
         applyStopEffectData(block, { effectType: 'all', target: 'all' });
+      } else if (commandId === 'video') {
+        applyVideoData(block, defaultVideoData());
+      } else if (commandId === 'camera') {
+        applyCameraData(block, defaultCameraData());
       } else if (commandId === 'interactive_object') {
         applyInteractiveObjectData(block, defaultInteractiveObjectData());
         block.dataset.interactiveNew = 'true';
@@ -4285,6 +4993,8 @@ const EMBEDDED_SCRIPT_BODY = `
       scheduleResize();
       if (commandId !== 'interactive_object') saveNow();
       if (commandId === 'interactive_object') openInteractiveObjectPopover(block);
+      if (commandId === 'video') openVideoPopover(block, block);
+      if (commandId === 'camera') openCameraPopover(block, block);
     }
 
     editor.addEventListener('mousedown', function(event) {
@@ -4380,6 +5090,16 @@ const EMBEDDED_SCRIPT_BODY = `
         openStopEffectPopover(block, block);
         return;
       }
+      if (block.classList.contains('video-block')) {
+        event.preventDefault();
+        openVideoPopover(block, block);
+        return;
+      }
+      if (block.classList.contains('camera-block')) {
+        event.preventDefault();
+        openCameraPopover(block, block);
+        return;
+      }
       if (block.classList.contains('transition-block')) {
         event.preventDefault();
         openTransitionPopover(block, block);
@@ -4441,6 +5161,22 @@ const EMBEDDED_SCRIPT_BODY = `
       if (effectPopover) {
         var effectTarget = event.target;
         if (effectTarget && effectTarget.closest && effectTarget.closest('.effect-popover')) {
+          var effectPresetButton = effectTarget.closest('[data-effect-preset]');
+          if (effectPresetButton && activeEffectChip) {
+            // A preset only fills canonical fields; the popover is rebuilt from
+            // the block so every control shows what was actually written.
+            var presetId = effectPresetButton.dataset.effectPreset;
+            var presetEntry = null;
+            EFFECT_PRESETS.forEach(function(item) { if (item.id === presetId) presetEntry = item; });
+            if (presetEntry) {
+              var presetChip = activeEffectChip;
+              applyEffectData(presetChip, Object.assign({}, collectEffectForm(), presetEntry.patch));
+              closeEffectPopover();
+              saveNow();
+              openEffectPopover(presetChip);
+            }
+            return;
+          }
           var effectTypeButton = effectTarget.closest('.effect-type-chip');
           if (effectTypeButton) {
             selectEffectTypeChip(effectTypeButton);
@@ -4565,6 +5301,24 @@ const EMBEDDED_SCRIPT_BODY = `
       if (characterPopover) {
         var characterTarget = event.target;
         if (characterTarget && characterTarget.closest && characterTarget.closest('.character-popover')) {
+          var characterPresetButton = characterTarget.closest('[data-character-preset]');
+          if (characterPresetButton) {
+            var characterPresetId = characterPresetButton.dataset.characterPreset;
+            var characterPreset = null;
+            CHARACTER_PRESETS.forEach(function(item) { if (item.id === characterPresetId) characterPreset = item; });
+            if (characterPreset) {
+              var presetActionInput = characterPopover.querySelector('[data-field="character-action"]');
+              var presetTransitionInput = characterPopover.querySelector('[data-field="character-transition"]');
+              if (presetActionInput && characterPreset.patch.action) {
+                presetActionInput.value = characterPreset.patch.action;
+                presetActionInput.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+              if (presetTransitionInput && characterPreset.patch.transition) {
+                presetTransitionInput.value = characterPreset.patch.transition;
+              }
+            }
+            return;
+          }
           var characterActionButton = characterTarget.closest('[data-action]');
           if (!characterActionButton) return;
           var characterAction = characterActionButton.dataset.action;
@@ -4700,6 +5454,37 @@ const EMBEDDED_SCRIPT_BODY = `
         }
         if (!(stopEffectTarget && stopEffectTarget.closest && stopEffectTarget.closest('.stop-effect-block'))) {
           closeStopEffectPopover();
+        }
+      }
+      if (videoPopover) {
+        var videoTarget = event.target;
+        if (videoTarget && videoTarget.closest && videoTarget.closest('.video-popover')) {
+          var videoActionButton = videoTarget.closest('[data-action]');
+          if (videoActionButton) handleVideoPopoverAction(videoActionButton.dataset.action);
+          return;
+        }
+        if (!(videoTarget && videoTarget.closest && videoTarget.closest('.video-block'))) {
+          // Closing by clicking away keeps whatever the author typed, matching
+          // the other block popovers.
+          saveVideoForm();
+          closeVideoPopover();
+        }
+      }
+      if (cameraPopover) {
+        var cameraTarget = event.target;
+        if (cameraTarget && cameraTarget.closest && cameraTarget.closest('.camera-popover')) {
+          var cameraPresetButton = cameraTarget.closest('[data-camera-preset]');
+          if (cameraPresetButton) {
+            applyCameraPresetToForm(cameraPresetButton.dataset.cameraPreset);
+            return;
+          }
+          var cameraActionButton = cameraTarget.closest('[data-action]');
+          if (cameraActionButton) handleCameraPopoverAction(cameraActionButton.dataset.action);
+          return;
+        }
+        if (!(cameraTarget && cameraTarget.closest && cameraTarget.closest('.camera-block'))) {
+          saveCameraForm();
+          closeCameraPopover();
         }
       }
       if (choicePopover) {
@@ -5092,6 +5877,8 @@ const EMBEDDED_SCRIPT_BODY = `
       if (message.type === 'formatText') applyFormatCommand(message.command, message.value);
       if (message.type === 'charactersUpdated' && Array.isArray(message.characters)) {
         characters = message.characters.map(migrateCharacter);
+        // A focus block names a character, so a rename has to reach its summary.
+        renderAllCameraBlocks();
       }
       if (message.type === 'backgroundAssetsUpdated' && Array.isArray(message.assets)) {
         backgroundAssets = message.assets;
@@ -5158,6 +5945,45 @@ const EMBEDDED_SCRIPT_BODY = `
               assetId: message.asset.id
             }));
             saveNow();
+          }
+        }
+      }
+      if (message.type === 'videoAssetsUpdated' && Array.isArray(message.assets)) {
+        videoAssets = message.assets;
+        renderAllVideoBlocks();
+        if (videoPopover) {
+          var videoSelect = videoPopover.querySelector('#videoAsset');
+          if (videoSelect) videoSelect.innerHTML = renderVideoAssetOptions();
+        }
+      }
+      if (message.type === 'videoAssetPicked' && message.requestId) {
+        if (pendingVideoPicks[message.requestId]) {
+          delete pendingVideoPicks[message.requestId];
+          setVideoPickerBusy(false);
+          if (message.asset) {
+            var knownVideo = findVideoAsset(message.asset.id);
+            if (!knownVideo) videoAssets = videoAssets.concat([message.asset]);
+            if (videoPopover) {
+              var pickedSelect = videoPopover.querySelector('#videoAsset');
+              if (pickedSelect) {
+                pickedSelect.innerHTML = renderVideoAssetOptions();
+                pickedSelect.value = message.asset.id;
+              }
+              var status = videoPopover.querySelector('.video-popover-status');
+              if (status) {
+                var details = [message.asset.name];
+                var sizeText = formatBytes(message.asset.sizeBytes);
+                if (sizeText) details.push(sizeText);
+                if (Number.isFinite(Number(message.asset.durationSeconds))) {
+                  details.push(formatClock(message.asset.durationSeconds));
+                }
+                status.textContent = 'Імпортовано: ' + details.join(' · ');
+              }
+              saveVideoForm();
+              syncVideoPopoverFeedback();
+            }
+          } else if (message.error) {
+            setVideoPickerError(VIDEO_PICK_ERRORS[message.error] || VIDEO_PICK_ERRORS.failed);
           }
         }
       }

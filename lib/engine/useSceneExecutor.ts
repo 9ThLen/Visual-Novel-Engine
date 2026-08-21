@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import type {
   TimelineStep,
   BackgroundBlockData,
+  VideoBlockData,
   CharacterBlockData,
   DialogueBlockData,
   ChoiceBlockData,
@@ -16,9 +17,10 @@ import type {
   LabelBlockData,
   GotoBlockData,
 } from './types';
-import type { RuntimeVariables, SceneState } from './runtime-types';
+import type { RuntimeVariables, RuntimeVideoState, SceneState } from './runtime-types';
 import { createEmptySceneState, conditionsMet } from './conditionUtils';
 import { normalizeTransitionData } from './transition-utils';
+import { normalizeVideoData } from './video-utils';
 import {
   isBlockingEffectType,
   normalizeEffectDuration,
@@ -55,6 +57,17 @@ interface ExecutorState {
   canAdvance: boolean;
   /** Transition reached but not yet confirmed by the player — see advance(). */
   pendingTransition: TransitionBlockData | null;
+  /**
+   * The blocking cutscene the timeline is waiting on. `session` is bumped every
+   * time a cutscene starts, so a completion callback from a player that has
+   * since been replaced — a backward `goto` onto the same step, for instance —
+   * can be told apart from the one we are actually waiting for.
+   */
+  pendingVideo: { stepId: string; session: number } | null;
+  /** Monotonic across the scene: every cutscene start gets its own number. */
+  videoSession: number;
+  /** Background video paused for the duration of a cutscene, restored after. */
+  previousBackgroundVideo: RuntimeVideoState | null;
 }
 
 interface ExecutorStepResult {
@@ -92,6 +105,12 @@ export interface UseSceneExecutorReturn {
   /** Restore the most recent yield point the player advanced past. */
   rollback: () => void;
   selectChoice: (optionId: string) => void;
+  /** The cutscene the timeline is blocked on, or null. */
+  pendingVideo: { stepId: string; session: number } | null;
+  /** Resume after a cutscene reached its natural end (or its `endAt`). */
+  completeVideo: (stepId: string, session: number) => void;
+  /** Resume because the player pressed Skip on a skippable cutscene. */
+  skipVideo: (stepId: string, session: number) => void;
 }
 
 const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -108,6 +127,9 @@ function createInitialExecutorState(
     isTyping: false,
     canAdvance: false,
     pendingTransition: null,
+    pendingVideo: null,
+    videoSession: 0,
+    previousBackgroundVideo: null,
   };
 }
 
@@ -204,6 +226,31 @@ export function useSceneExecutor(
           const d = step.data as BackgroundBlockData;
           nextState.backgroundAssetId = d.assetId ?? null;
           nextState.backgroundTransition = d.transition;
+          break;
+        }
+        case 'video': {
+          const data = normalizeVideoData(step.data as VideoBlockData);
+          if (data.mode === 'stop' || !data.assetId) {
+            // A stop only clears its own layer. Clearing a cutscene here would
+            // be meaningless: the timeline is halted while one plays, so no
+            // later step can run until it finishes.
+            if (data.layer === 'background') nextState.activeVideo = null;
+            break;
+          }
+          nextState.activeVideo = {
+            stepId: step.id,
+            assetId: data.assetId,
+            posterAssetId: data.posterAssetId,
+            layer: data.layer,
+            fit: data.fit,
+            playbackRate: data.playbackRate,
+            startAt: data.startAt,
+            endAt: data.endAt ?? undefined,
+            muted: data.muted,
+            volume: data.volume,
+            loop: data.loop,
+            skippableAfterMs: data.skippableAfterMs,
+          };
           break;
         }
         case 'character': {
@@ -368,7 +415,15 @@ export function useSceneExecutor(
                 zoomLevel: d.zoomLevel ?? nextState.cameraState?.zoomLevel ?? 1,
                 panX: d.panX ?? nextState.cameraState?.panX ?? 0,
                 panY: d.panY ?? nextState.cameraState?.panY ?? 0,
-                target: d.target,
+                // The framed character is state, like the zoom and the pan: a
+                // zoom after a focus holds the shot on them instead of
+                // snapping back to whatever pan was current before it. An
+                // explicit pan is the author aiming somewhere else, so it
+                // gives the character up; reset drops it with everything else.
+                target: d.target
+                  ?? (d.panX === undefined && d.panY === undefined
+                    ? nextState.cameraState?.target
+                    : undefined),
                 duration: d.duration,
                 easing: d.easing,
               };
@@ -420,6 +475,9 @@ export function useSceneExecutor(
       return { nextState: currentState, result: 'continue' };
     }
 
+    if (step.blockType === 'video' && nextState.activeVideo?.layer === 'cutscene') {
+      return { nextState, result: 'halt' };
+    }
     const yielding = YIELDING_BLOCK_TYPES.has(step.blockType);
     return { nextState, result: yielding ? 'halt' : 'continue' };
   }, []);
@@ -461,6 +519,7 @@ export function useSceneExecutor(
         continue;
       }
 
+      const activeVideoBeforeStep = currentState.activeVideo ?? null;
       const { nextState, result } = executeStep(step, currentState);
       currentState = nextState;
 
@@ -486,6 +545,9 @@ export function useSceneExecutor(
         // A transition block yields for player confirmation (tap/auto-play/turbo
         // via advance()) before it actually navigates — don't commit
         // isTransitioning until then, or the reader jumps scenes on arrival.
+        const isCutsceneStep = step.blockType === 'video'
+          && currentState.activeVideo?.layer === 'cutscene';
+
         return {
           nextIndex: resumeIndex,
           isHalted: true,
@@ -496,9 +558,22 @@ export function useSceneExecutor(
               : currentState,
             currentStepIndex: idx,
             isTyping: typing,
-            canAdvance: step.blockType !== 'choice',
+            // A cutscene is not dismissed by tapping: only completeVideo() or an
+            // explicit skipVideo() may resume the timeline.
+            canAdvance: step.blockType !== 'choice' && !isCutsceneStep,
             pendingTransition: isTransitionStep
               ? normalizeTransitionData(step.data as TransitionBlockData)
+              : null,
+            pendingVideo: isCutsceneStep
+              ? { stepId: step.id, session: prev.videoSession + 1 }
+              : null,
+            videoSession: isCutsceneStep ? prev.videoSession + 1 : prev.videoSession,
+            previousBackgroundVideo: isCutsceneStep
+              // The background clip is put aside rather than decoded alongside
+              // the cutscene, and comes back when the cutscene resolves.
+              ? activeVideoBeforeStep?.layer === 'background'
+                ? activeVideoBeforeStep
+                : prev.previousBackgroundVideo
               : null,
           },
         };
@@ -516,6 +591,8 @@ export function useSceneExecutor(
         isTyping: false,
         canAdvance: false,
         pendingTransition: null,
+        pendingVideo: null,
+        previousBackgroundVideo: null,
       },
     };
   }, [executeStep]);
@@ -582,6 +659,13 @@ export function useSceneExecutor(
         return;
       }
 
+      // Tap, auto-play and turbo all land here. A blocking cutscene is resolved
+      // only by completeVideo()/skipVideo(), so this has to be a no-op — not a
+      // fallthrough that would advance past the still-playing clip.
+      if (execStateRef.current.pendingVideo) {
+        return;
+      }
+
       const pending = execStateRef.current.pendingTransition;
       if (pending) {
         // Consuming the pending transition resolves the halt for good — clear
@@ -631,6 +715,42 @@ export function useSceneExecutor(
       advanceGuardRef.current = false;
     }
   }, [isTyping, sceneState.currentChoices, processNext, updateExecutorState]);
+
+  /**
+   * Single exit from a cutscene halt. Both completion and Skip land here: they
+   * differ only in who called them, never in what the timeline does next.
+   *
+   * The stale-session guard is what makes a re-entered cutscene safe. A
+   * backward `goto` onto the same step starts a new session with the same
+   * stepId, and the old player may still fire its completion — matching on the
+   * session number rejects it instead of skipping the new playthrough.
+   */
+  const resolvePendingVideo = useCallback((stepId: string, session: number) => {
+    const pending = execStateRef.current.pendingVideo;
+    if (!pending || pending.stepId !== stepId || pending.session !== session) return;
+
+    // Clear the halt before moving the cursor, so a duplicate call from a
+    // double-fired player event finds nothing pending and does nothing.
+    const restored = execStateRef.current.previousBackgroundVideo;
+    isHaltedRef.current = false;
+    execStateRef.current = {
+      ...execStateRef.current,
+      sceneState: { ...execStateRef.current.sceneState, activeVideo: restored },
+      pendingVideo: null,
+      previousBackgroundVideo: null,
+      canAdvance: false,
+    };
+    internalIndexRef.current = internalIndexRef.current + 1;
+    processNext();
+  }, [processNext]);
+
+  const completeVideo = useCallback((stepId: string, session: number) => {
+    resolvePendingVideo(stepId, session);
+  }, [resolvePendingVideo]);
+
+  const skipVideo = useCallback((stepId: string, session: number) => {
+    resolvePendingVideo(stepId, session);
+  }, [resolvePendingVideo]);
 
   const rollback = useCallback(() => {
     const snapshot = rollbackStackRef.current.pop();
@@ -685,5 +805,8 @@ export function useSceneExecutor(
     advance,
     rollback,
     selectChoice,
+    pendingVideo: execState.pendingVideo,
+    completeVideo,
+    skipVideo,
   };
 }

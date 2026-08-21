@@ -16,6 +16,7 @@ import {
   createTextStep,
   createTransitionStep,
   createVariableStep,
+  createVideoStep,
 } from '@/lib/engine/event-factory';
 import type {
   BackgroundBlockData,
@@ -36,9 +37,11 @@ import type {
   TimelineStep,
   TransitionBlockData,
   VariableBlockData,
+  VideoBlockData,
 } from '@/lib/engine/types';
 import type { Character } from '@/lib/character-types';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
+import { normalizeVideoData } from '@/lib/engine/video-utils';
 import type { SceneDocument, SceneNode } from './sceneTypes';
 
 function characterNameForId(characters: Character[], characterId: string): string {
@@ -73,6 +76,15 @@ function timelineStepToSceneNode(step: TimelineStep, characters: Character[]): S
       assetId: data.assetId ?? '',
       transition: data.transition === 'instant' ? 'cut' : data.transition === 'wipe' ? 'slide' : 'fade',
       durationMs: data.duration,
+    };
+  }
+
+  if (step.blockType === 'video') {
+    const data = normalizeVideoData(step.data as VideoBlockData);
+    return {
+      id: step.id,
+      type: 'video',
+      ...data,
     };
   }
 
@@ -280,6 +292,10 @@ function sceneNodeToTimelineStep(node: SceneNode, characters: Character[]): Time
       transition: node.transition === 'cut' ? 'instant' : node.transition === 'slide' ? 'wipe' : 'fade',
       duration: node.durationMs ?? 500,
     })];
+  }
+
+  if (node.type === 'video') {
+    return [createVideoStep(node)];
   }
 
   if (node.type === 'character') {

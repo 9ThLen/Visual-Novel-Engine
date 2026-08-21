@@ -19,7 +19,7 @@ import { withAlpha } from '@/lib/_core/theme';
 import type { Character } from '@/lib/character-types';
 import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { DocumentScene } from '@/lib/document-editor/types';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatState, VNPlateSceneRef } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatState, VNPlateSceneRef, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
 
 interface DocumentSceneFrameProps {
   scene: DocumentScene;
@@ -27,6 +27,7 @@ interface DocumentSceneFrameProps {
   characters: Character[];
   backgroundAssets: VNPlateBackgroundAsset[];
   audioAssets: VNPlateAudioAsset[];
+  videoAssets?: VNPlateVideoAsset[];
   storyScenes: VNPlateSceneRef[];
   branchInfo?: VNPlateBranchInfo[];
   onSelectChoiceOption?: (choiceStepId: string, optionId: string) => void;
@@ -47,6 +48,7 @@ interface DocumentSceneFrameProps {
   onRequestDeleteScene: () => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
+  onPickVideoAsset?: () => Promise<{ asset: VNPlateVideoAsset | null; error?: 'tooLarge' | 'unsupportedType' | 'failed' }>;
   registerEditorRef: (handle: PlateWebViewEditorHandle | null) => void;
   onHistoryStateChange: (canUndo: boolean, canRedo: boolean) => void;
   onFormatStateChange: (state: VNPlateFormatState) => void;
@@ -65,6 +67,7 @@ function DocumentSceneFrameImpl({
   characters,
   backgroundAssets,
   audioAssets,
+  videoAssets,
   storyScenes,
   branchInfo,
   onSelectChoiceOption,
@@ -81,6 +84,7 @@ function DocumentSceneFrameImpl({
   onRequestDeleteScene,
   onUploadBackgroundAsset,
   onUploadAudioAsset,
+  onPickVideoAsset,
   registerEditorRef,
   onHistoryStateChange,
   onFormatStateChange,
@@ -303,6 +307,7 @@ function DocumentSceneFrameImpl({
           characters={characters}
           backgroundAssets={backgroundAssets}
           audioAssets={audioAssets}
+          videoAssets={videoAssets}
           scenes={storyScenes}
           branchInfo={branchInfo}
           branchColor={branchColor}
@@ -315,6 +320,7 @@ function DocumentSceneFrameImpl({
           onCreateNextScene={onCreateNextScene}
           onUploadBackgroundAsset={onUploadBackgroundAsset}
           onUploadAudioAsset={onUploadAudioAsset}
+          onPickVideoAsset={onPickVideoAsset}
           onOverlayActiveChange={setIsOverlayActive}
           onInteraction={closeSceneMenu}
           onHistoryStateChange={onHistoryStateChange}

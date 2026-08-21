@@ -1,4 +1,5 @@
 import { applyAiScenePatchToStore, rollbackAiPatch } from '@/lib/ai/scene-patch-adapter';
+import { timelineStepSchema } from '@/lib/ai/scene-patch-types';
 import { computeSceneRevision } from '@/lib/ai/scene-revision';
 import type { AiScenePatch } from '@/lib/ai/scene-patch-types';
 import type { SceneRecord } from '@/lib/engine/types';
@@ -11,6 +12,34 @@ function scene(): SceneRecord {
 function patch(record: SceneRecord): AiScenePatch {
   return { storyId: record.storyId, sceneId: record.id, expectedRevision: computeSceneRevision(record), explanation: 'Rename the scene', operations: [{ op: 'update_scene_metadata', updates: { name: 'After' } }] };
 }
+
+describe('video steps in an AI patch', () => {
+  it('accepts a minimal background video step', () => {
+    const result = timelineStepSchema.safeParse({
+      id: 'video-1',
+      blockType: 'video',
+      collapsed: false,
+      enabled: true,
+      // Everything else is normalizeVideoData's job, so the assistant does not
+      // have to restate playback policy to produce a valid step.
+      data: { mode: 'play', layer: 'background', assetId: 'asset_clip' },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a video step with no mode', () => {
+    const result = timelineStepSchema.safeParse({
+      id: 'video-1',
+      blockType: 'video',
+      collapsed: false,
+      enabled: true,
+      data: { layer: 'background', assetId: 'asset_clip' },
+    });
+
+    expect(result.success).toBe(false);
+  });
+});
 
 describe('scene patch store adapter', () => {
   beforeEach(() => useAppStore.setState({ storiesMetadata: [], sceneRecordsByStory: {}, characterLibraries: {}, imageAssetIdsByStory: {}, mediaLibrary: [] }));

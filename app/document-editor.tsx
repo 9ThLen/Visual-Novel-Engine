@@ -19,6 +19,7 @@ import {
 import { useI18n } from '@/hooks/use-i18n';
 import { getPlaybackAudioLibraryPure } from '@/lib/audio-library';
 import { addAssetToLibraryPure } from '@/lib/media-library-service';
+import { pickVideoFromDevice } from '@/lib/pick-video';
 import { getStoryGalleryImageAssets } from '@/lib/story-image-library';
 import { showToast } from '@/lib/toast-store';
 import {
@@ -34,7 +35,7 @@ import {
 } from '@/stores/use-branch-selections';
 import type { Character } from '@/lib/character-types';
 import type { DialogueBlockData, SceneRecord } from '@/lib/engine/types';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
 
 export default function DocumentEditorRoute() {
   const { t } = useI18n();
@@ -63,6 +64,7 @@ export default function DocumentEditorRoute() {
   const audioLibraries = useAppStore((state) => state.audioLibraries);
   const mediaLibrary = useAppStore((state) => state.mediaLibrary);
   const imageAssetIdsByStory = useAppStore((state) => state.imageAssetIdsByStory);
+  const mediaAssetIdsByStory = useAppStore((state) => state.mediaAssetIdsByStory);
   const saveSceneRecord = useAppStore((state) => state.saveSceneRecord);
   const setCharacterLibrary = useAppStore((state) => state.setCharacterLibrary);
   const setMediaLibrary = useAppStore((state) => state.setMediaLibrary);
@@ -128,6 +130,18 @@ export default function DocumentEditorRoute() {
       : [],
     [audioLibraries, mediaLibrary, storyId],
   );
+  // Only videos this story owns; the picker adds membership on import.
+  const videoAssets = useMemo<VNPlateVideoAsset[]>(() => {
+    const storyAssetIds = new Set(storyId ? mediaAssetIdsByStory[storyId] ?? [] : []);
+    return mediaLibrary
+      .filter((asset) => asset.type === 'video' && storyAssetIds.has(asset.id))
+      .map((asset) => ({
+        id: asset.id,
+        name: asset.name,
+        sizeBytes: asset.size,
+        durationSeconds: asset.durationSeconds,
+      }));
+  }, [mediaAssetIdsByStory, mediaLibrary, storyId]);
   const sceneIndex = Math.max(0, orderedScenes.findIndex((scene) => scene.id === sceneId));
   const protectedCharacterIds = useMemo(() => {
     return scenes
@@ -272,6 +286,46 @@ export default function DocumentEditorRoute() {
     };
   };
 
+  const handlePickVideoAsset = async (): Promise<{
+    asset: VNPlateVideoAsset | null;
+    error?: 'tooLarge' | 'unsupportedType' | 'failed';
+  }> => {
+    const picked = await pickVideoFromDevice();
+    if (picked.status === 'cancelled') return { asset: null };
+    if (picked.status === 'tooLarge') return { asset: null, error: 'tooLarge' };
+    if (picked.status === 'unsupportedType') return { asset: null, error: 'unsupportedType' };
+
+    try {
+      const result = await addAssetToLibraryPure(
+        picked.video.uri,
+        picked.video.name,
+        'video',
+        mediaLibrary,
+        {
+          mimeType: picked.video.mimeType,
+          size: picked.video.size,
+          durationSeconds: picked.video.durationSeconds,
+        },
+      );
+      setMediaLibrary(result.assets);
+      addMediaAssetToStory(storyId, result.asset.id);
+      return {
+        asset: {
+          id: result.asset.id,
+          name: result.asset.name,
+          sizeBytes: result.asset.size,
+          durationSeconds: result.asset.durationSeconds,
+        },
+      };
+    } catch (error) {
+      if (__DEV__) console.warn('[document-editor] video import failed', error);
+      return { asset: null, error: 'failed' };
+    } finally {
+      // The object URL only had to survive the copy into storage.
+      picked.video.release?.();
+    }
+  };
+
   const handleCreateNextScene = (
     sourceSceneId: string,
     editedRecords: SceneRecord[],
@@ -357,7 +411,9 @@ export default function DocumentEditorRoute() {
       onCreateNextScene={handleCreateNextScene}
       onDuplicateScene={handleDuplicateScene}
       onDeleteScene={handleDeleteScene}
+      videoAssets={videoAssets}
       onUploadBackgroundAsset={handleUploadBackgroundAsset}
+      onPickVideoAsset={handlePickVideoAsset}
       onUploadAudioAsset={handleUploadAudioAsset}
       onGallery={() => router.push({ pathname: '/story-gallery', params: { storyId } })}
     />

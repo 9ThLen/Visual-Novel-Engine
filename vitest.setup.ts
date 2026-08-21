@@ -10,6 +10,8 @@ const rootDir = path.resolve(__dirname);
 // Map Vite aliases for CJS require() — maps import specifier → mock file path
 const aliases = {
   'react-native': path.join(rootDir, '__mocks__/react-native.ts'),
+  'expo': path.join(rootDir, '__mocks__/expo.ts'),
+  'expo-video': path.join(rootDir, '__mocks__/expo-video.ts'),
   '@react-navigation/native': path.join(rootDir, '__mocks__/react-navigation-native.ts'),
   'expo-audio': path.join(rootDir, '__mocks__/expo-audio.ts'),
   'expo-image': path.join(rootDir, '__mocks__/expo-image.ts'),
