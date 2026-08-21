@@ -2385,20 +2385,58 @@ const EMBEDDED_SCRIPT_BODY = `
       return names;
     }
 
+    // The /variable block had no renderer of its own: it fell through to the
+    // generic block, which showed "New block" and could not round-trip its data.
+    var VARIABLE_OPERATION_SIGNS = { set: '=', add: '+=', subtract: '−=', multiply: '×=' };
+
+    function normalizeVariableOperation(operation) {
+      if (operation === 'toggle') return 'toggle';
+      return VARIABLE_OPERATION_SIGNS[operation] ? operation : 'set';
+    }
+
+    function variableDataFromNode(node) {
+      var parsed = jsonFromDataset(node && node.dataset ? node.dataset.variable : '') || {};
+      return {
+        variableName: (parsed.variableName || '').trim(),
+        operation: normalizeVariableOperation(parsed.operation),
+        value: parsed.value === undefined ? '' : parsed.value
+      };
+    }
+
+    function variableSummary(data) {
+      if (data.operation === 'toggle') return 'перемкнути';
+      var sign = VARIABLE_OPERATION_SIGNS[data.operation] || '=';
+      var value = data.value === undefined || data.value === null || data.value === '' ? '?' : String(data.value);
+      return sign + ' ' + value;
+    }
+
+    function renderVariableBlockContent(node) {
+      var data = variableDataFromNode(node);
+      node.innerHTML =
+        '<span class="void-title">/variable</span>' +
+        '<span class="background-asset"></span>' +
+        '<span class="void-summary"></span>';
+      node.querySelector('.background-asset').textContent = data.variableName || 'Змінну не вибрано';
+      node.querySelector('.void-summary').textContent = variableSummary(data);
+      node.classList.toggle('has-warning', !data.variableName);
+    }
+
+    function applyVariableData(node, data) {
+      node.dataset.variable = JSON.stringify(data);
+      renderVariableBlockContent(node);
+    }
+
     function renderLabelBlockContent(node) {
       var data = labelDataFromNode(node);
       node.innerHTML =
-        '<div class="background-copy">' +
-          '<div class="background-command-line">' +
-            '<span class="void-title">/label</span>' +
-            '<span class="background-asset"></span>' +
-          '</div>' +
-          '<div class="void-summary">Точка переходу всередині сцени</div>' +
-        '</div>' +
-        '<div class="block-actions">' +
-          '<button type="button" class="block-button" data-action="edit-label">Edit</button>' +
-        '</div>';
-      node.querySelector('.background-asset').textContent = data.name || 'Без назви';
+        '<span class="void-title">/label</span>' +
+        '<span class="background-asset"></span>';
+      var labelName = data.name || 'Без назви';
+      node.querySelector('.background-asset').textContent = labelName;
+      node.setAttribute('tabindex', '0');
+      node.setAttribute('role', 'button');
+      node.setAttribute('aria-label', 'Редагувати мітку ' + labelName);
+      node.classList.toggle('has-warning', !data.name);
     }
 
     function applyLabelData(node, data) {
@@ -2434,18 +2472,16 @@ const EMBEDDED_SCRIPT_BODY = `
     function renderGotoBlockContent(node) {
       var data = gotoDataFromNode(node);
       node.innerHTML =
-        '<div class="background-copy">' +
-          '<div class="background-command-line">' +
-            '<span class="void-title">/goto</span>' +
-            '<span class="background-asset"></span>' +
-          '</div>' +
-          '<div class="void-summary"></div>' +
-        '</div>' +
-        '<div class="block-actions">' +
-          '<button type="button" class="block-button" data-action="edit-goto">Edit</button>' +
-        '</div>';
-      node.querySelector('.background-asset').textContent = data.targetLabel ? '→ ' + data.targetLabel : 'Мітку не вибрано';
+        '<span class="void-title">/goto</span>' +
+        '<span class="background-asset"></span>' +
+        '<span class="void-summary"></span>';
+      var gotoTargetLabel = data.targetLabel ? '→ ' + data.targetLabel : 'Мітку не вибрано';
+      node.querySelector('.background-asset').textContent = gotoTargetLabel;
       node.querySelector('.void-summary').textContent = gotoSummary(data);
+      node.setAttribute('tabindex', '0');
+      node.setAttribute('role', 'button');
+      node.setAttribute('aria-label', 'Редагувати перехід до мітки ' + gotoTargetLabel);
+      node.classList.toggle('has-warning', !data.targetLabel);
     }
 
     function renderAllGotoBlocks() {
@@ -4027,6 +4063,30 @@ const EMBEDDED_SCRIPT_BODY = `
             step: transitionStep
           };
         }
+        if (commandId === 'variable') {
+          var variableData = variableDataFromNode(node);
+          var originalVariableStep = originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step
+            ? originalTechnical.step
+            : null;
+          var variableStep = originalVariableStep
+            ? Object.assign({}, originalVariableStep, { blockType: 'variable', data: variableData })
+            : {
+                id: node.dataset.id || uid('step'),
+                blockType: 'variable',
+                data: variableData,
+                collapsed: false,
+                enabled: true
+              };
+          return {
+            id: node.dataset.id || uid('doc_block'),
+            kind: 'technical',
+            commandId: 'variable',
+            blockType: 'variable',
+            label: variableData.variableName || 'Змінна',
+            summary: variableSummary(variableData),
+            step: variableStep
+          };
+        }
         if (commandId === 'background') {
           var backgroundData = backgroundDataFromNode(node);
           var originalStep = originalTechnical && originalTechnical.kind === 'technical' && originalTechnical.step
@@ -4941,6 +5001,7 @@ const EMBEDDED_SCRIPT_BODY = `
         : commandId === 'transition' ? 'void-block transition-block'
         : commandId === 'label' ? 'void-block label-block'
         : commandId === 'goto' ? 'void-block goto-block'
+        : commandId === 'variable' ? 'void-block variable-block'
         : commandId === 'stopEffect' ? 'void-block stop-effect-block'
         : commandId === 'video' ? 'void-block video-block'
         : commandId === 'camera' ? 'void-block camera-block'
@@ -4970,6 +5031,8 @@ const EMBEDDED_SCRIPT_BODY = `
         applyLabelData(block, { name: '' });
       } else if (commandId === 'goto') {
         applyGotoData(block, { targetLabel: '', condition: null, elseTargetLabel: null });
+      } else if (commandId === 'variable') {
+        applyVariableData(block, { variableName: '', operation: 'set', value: '' });
       } else if (commandId === 'stopEffect') {
         applyStopEffectData(block, { effectType: 'all', target: 'all' });
       } else if (commandId === 'video') {
@@ -5105,6 +5168,16 @@ const EMBEDDED_SCRIPT_BODY = `
         openTransitionPopover(block, block);
         return;
       }
+      if (block.classList.contains('label-block')) {
+        event.preventDefault();
+        openLabelPopover(block, block);
+        return;
+      }
+      if (block.classList.contains('goto-block')) {
+        event.preventDefault();
+        openGotoPopover(block, block);
+        return;
+      }
       if (!button && !block.classList.contains('interactive-object-block')) return;
       var action = button ? button.dataset.action : 'edit-interactive-object';
       if (action === 'edit-background') {
@@ -5122,14 +5195,6 @@ const EMBEDDED_SCRIPT_BODY = `
       if (action === 'edit-choice') {
         event.preventDefault();
         openChoicePopover(block, button);
-      }
-      if (action === 'edit-label') {
-        event.preventDefault();
-        openLabelPopover(block, button);
-      }
-      if (action === 'edit-goto') {
-        event.preventDefault();
-        openGotoPopover(block, button);
       }
       if (action === 'edit-interactive-object') {
         event.preventDefault();
@@ -5847,6 +5912,16 @@ const EMBEDDED_SCRIPT_BODY = `
         event.preventDefault();
         selectVoidBlock(target);
         openInteractiveObjectPopover(target);
+      }
+      if (target && target.classList && target.classList.contains('label-block') && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        selectVoidBlock(target);
+        openLabelPopover(target, target);
+      }
+      if (target && target.classList && target.classList.contains('goto-block') && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        selectVoidBlock(target);
+        openGotoPopover(target, target);
       }
     });
 

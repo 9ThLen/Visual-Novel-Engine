@@ -225,6 +225,8 @@ export function createEmbeddedStyles(): string {
     .void-block.is-selected,
     .background-block.is-editing,
     .transition-block.is-editing,
+    .goto-block.is-editing,
+    .label-block.is-editing,
     .choice-block.is-editing {
       border-color: var(--plate-primary, #67683F);
       box-shadow: 0 0 0 1px var(--plate-primary, #67683F);
@@ -427,7 +429,12 @@ export function createEmbeddedStyles(): string {
       .interactive-popover-footer { grid-template-columns: 1fr 1fr; }
       .interactive-popover-footer > span { display: none; }
     }
-    .transition-block {
+    /* Flow-control chips: /transition, /goto, /label all answer "where does the
+       story go next", so they share one shape and the primary accent. */
+    .transition-block,
+    .goto-block,
+    .label-block,
+    .variable-block {
       display: inline-flex;
       align-items: baseline;
       justify-content: flex-start;
@@ -436,37 +443,61 @@ export function createEmbeddedStyles(): string {
       margin: 6px 2px 10px;
       padding: 3px 10px;
       gap: 8px;
-      border-color: var(--plate-primary, #67683F);
       border-radius: 8px;
-      background: color-mix(in srgb, var(--plate-primary, #67683F) 10%, var(--plate-surface, #FEFAF6));
-      cursor: pointer;
       vertical-align: baseline;
     }
-    .transition-block:hover {
+    .transition-block,
+    .goto-block,
+    .label-block {
+      border-color: var(--plate-primary, #67683F);
+      background: color-mix(in srgb, var(--plate-primary, #67683F) 10%, var(--plate-surface, #FEFAF6));
+      cursor: pointer;
+    }
+    .transition-block:hover,
+    .goto-block:hover,
+    .label-block:hover {
       background: color-mix(in srgb, var(--plate-primary, #67683F) 16%, var(--plate-surface, #FEFAF6));
     }
-    .transition-block:focus-visible {
+    .transition-block:focus-visible,
+    .goto-block:focus-visible,
+    .label-block:focus-visible {
       outline: 2px solid var(--plate-primary, #67683F);
       outline-offset: 2px;
     }
-    .transition-block.has-warning {
+    /* /variable carries data rather than flow, and has no popover to open yet,
+       so it stays neutral and does not advertise itself as clickable. */
+    .variable-block {
+      border-color: var(--plate-border, #A59B90);
+      background: var(--plate-surface-muted, #F1EEE6);
+    }
+    .transition-block.has-warning,
+    .goto-block.has-warning,
+    .label-block.has-warning,
+    .variable-block.has-warning {
       border-color: #D8B56A;
       background: #FEF6E4;
     }
-    .transition-block .void-title {
+    .transition-block .void-title,
+    .goto-block .void-title,
+    .label-block .void-title,
+    .variable-block .void-title {
+      flex: 0 0 auto;
       color: var(--plate-primary, #67683F);
       font-size: 13px;
     }
-    .transition-block .background-asset {
+    .transition-block .background-asset,
+    .goto-block .background-asset,
+    .label-block .background-asset,
+    .variable-block .background-asset {
       min-width: 0;
       color: var(--plate-foreground, #3A281F);
       font-size: 13px;
     }
-    .transition-block .void-title,
-    .transition-block .void-summary {
+    .transition-block .void-summary,
+    .goto-block .void-summary,
+    .label-block .void-summary,
+    .variable-block .void-summary {
       flex: 0 0 auto;
-    }
-    .transition-block .void-summary {
       font-size: 12px;
     }
     .transition-scene-picker {
