@@ -12,7 +12,9 @@ permissions:
 jobs:
   ai-browser-e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # A cold Metro build plus dev-bundle boot on a two-core runner makes each
+    # navigation several times slower than locally; 20 minutes was cutting it close.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

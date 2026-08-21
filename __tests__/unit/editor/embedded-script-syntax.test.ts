@@ -332,7 +332,7 @@ describe('createEmbeddedScript', () => {
     const block = document.querySelector('.interactive-object-block') as HTMLElement;
     const popover = document.querySelector('.interactive-object-popover') as HTMLElement;
     expect(block).not.toBeNull();
-    expect(block.textContent).toContain('Немає дій');
+    expect(block.textContent).toContain('⚠ немає дій');
     expect(popover).not.toBeNull();
     expect(document.querySelectorAll('.editor-popover-backdrop')).toHaveLength(1);
     expect(popover.querySelector('.interactive-popover-header [data-object-action="cancel"]')).toBeNull();
@@ -756,7 +756,7 @@ describe('createEmbeddedScript', () => {
     expect(script).toContain('openInteractiveObjectPopover(block)');
     expect(script).toContain("if (commandId === 'interactive_object')");
     expect(script).toContain('Інтерактивний об’єкт');
-    expect(script).toContain('Немає дій');
+    expect(script).toContain('⚠ немає дій');
     expect(script).not.toContain("window.prompt('Object name'");
 
     const html = createVNPlateEditorHtml({

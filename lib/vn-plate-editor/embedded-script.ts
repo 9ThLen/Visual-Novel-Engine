@@ -53,6 +53,7 @@ const EMBEDDED_SCRIPT_BODY = `
     var activeInteractiveObjectBlock = null;
     var interactiveObjectPopover = null;
     var interactiveObjectDraft = null;
+    var interactiveAssetUploadTimer = null;
     var branchInfo = [];
     // Must stay in sync with BRANCH_COLOR_PALETTE in lib/document-editor/branch-colors.ts
     var branchPalette = ['#d97706', '#67683F', '#7c3aed', '#0d9488', '#db2777', '#65a30d'];
@@ -2198,9 +2199,13 @@ const EMBEDDED_SCRIPT_BODY = `
       return 'Наступна сцена';
     }
 
+    function transitionIsDangling(data) {
+      return data.mode === 'scene' && (!data.targetSceneId || (storyScenes.length > 0 && !findStoryScene(data.targetSceneId)));
+    }
+
     function transitionSummary(data) {
       var summary = (TRANSITION_TYPE_LABELS[data.transitionType] || data.transitionType) + ' · ' + formatSeconds(data.duration);
-      if (data.mode === 'scene' && (!data.targetSceneId || (storyScenes.length > 0 && !findStoryScene(data.targetSceneId)))) {
+      if (transitionIsDangling(data)) {
         summary += ' · ⚠ сцена не знайдена';
       }
       return summary;
@@ -2215,18 +2220,16 @@ const EMBEDDED_SCRIPT_BODY = `
     function renderTransitionBlockContent(node) {
       var data = transitionDataFromNode(node);
       node.innerHTML =
-        '<div class="background-copy">' +
-          '<div class="background-command-line">' +
-            '<span class="void-title">/transition</span>' +
-            '<span class="background-asset"></span>' +
-          '</div>' +
-          '<div class="void-summary"></div>' +
-        '</div>' +
-        '<div class="block-actions">' +
-          '<button type="button" class="block-button" data-action="edit-transition">Edit</button>' +
-        '</div>';
-      node.querySelector('.background-asset').textContent = transitionTargetLabel(data);
+        '<span class="void-title">/transition</span>' +
+        '<span class="background-asset"></span>' +
+        '<span class="void-summary"></span>';
+      var targetLabel = transitionTargetLabel(data);
+      node.querySelector('.background-asset').textContent = targetLabel;
       node.querySelector('.void-summary').textContent = transitionSummary(data);
+      node.setAttribute('tabindex', '0');
+      node.setAttribute('role', 'button');
+      node.setAttribute('aria-label', 'Редагувати перехід: ' + targetLabel);
+      node.classList.toggle('has-warning', transitionIsDangling(data));
     }
 
     function applyTransitionData(node, data) {
@@ -3378,10 +3381,20 @@ const EMBEDDED_SCRIPT_BODY = `
       });
     }
 
+    // Ukrainian plural for "дія": 1 дія, 2-4 дії, 5+ дій (11-14 take the "дій" form).
+    function actionCountLabel(count) {
+      var lastDigit = count % 10;
+      var lastTwoDigits = count % 100;
+      if (lastDigit === 1 && lastTwoDigits !== 11) return count + ' дія';
+      if (lastDigit >= 2 && lastDigit <= 4 && (lastTwoDigits < 12 || lastTwoDigits > 14)) return count + ' дії';
+      return count + ' дій';
+    }
+
     function interactiveObjectMeta(data) {
       var p = data.position;
       var count = data.actions.length;
-      return p.x + '%, ' + p.y + '% · ' + p.width + '×' + p.height + '% · ' + count + (count === 1 ? ' дія' : ' дій')
+      var actionLabel = count === 0 ? '⚠ немає дій' : actionCountLabel(count);
+      return p.x + '%, ' + p.y + '% · ' + p.width + '×' + p.height + '% · ' + actionLabel
         + (data.oneTimeOnly ? ' · одноразовий' : '') + (data.pulseAnimation ? ' · пульсація' : '');
     }
 
@@ -3390,9 +3403,9 @@ const EMBEDDED_SCRIPT_BODY = `
       node.classList.toggle('has-warning', data.actions.length === 0);
       node.setAttribute('aria-label', 'Редагувати інтерактивний об’єкт ' + data.name);
       node.innerHTML = '<span class="interactive-object-icon" aria-hidden="true">◎</span>' +
-        '<span class="interactive-object-copy"><span class="interactive-object-kicker">Інтерактивний об’єкт</span><span class="interactive-object-name"></span><span class="interactive-object-meta"></span></span>' +
-        (data.actions.length ? '' : '<span class="interactive-object-warning">Немає дій</span>') +
-        '<button type="button" class="block-button" data-action="edit-interactive-object">Редагувати</button>';
+        '<span class="void-title">/object</span>' +
+        '<span class="interactive-object-name"></span>' +
+        '<span class="interactive-object-meta"></span>';
       node.querySelector('.interactive-object-name').textContent = data.name || 'Новий об’єкт';
       node.querySelector('.interactive-object-meta').textContent = interactiveObjectMeta(data);
     }
@@ -3403,6 +3416,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function closeInteractiveObjectPopover() {
+      if (interactiveAssetUploadTimer) { clearTimeout(interactiveAssetUploadTimer); interactiveAssetUploadTimer = null; }
       unmountEditorPopover(interactiveObjectPopover);
       interactiveObjectPopover = null;
       interactiveObjectDraft = null;
@@ -3518,6 +3532,57 @@ const EMBEDDED_SCRIPT_BODY = `
       return null;
     }
 
+    function interactiveAssetOptionsHtml(selectedId) {
+      return '<option value="">Без зображення</option>' + backgroundAssets.map(function(asset) {
+        return '<option value="' + escapeHtml(asset.id) + '"' + (asset.id === selectedId ? ' selected' : '') + '>' + escapeHtml(asset.name || asset.id) + '</option>';
+      }).join('');
+    }
+
+    function renderInteractiveAssetOptions(selectedId) {
+      if (!interactiveObjectPopover) return;
+      var select = interactiveObjectPopover.querySelector('#ioAsset');
+      if (!select) return;
+      var nextId = typeof selectedId === 'string' ? selectedId : selectedValue(select, '');
+      if (!findBackgroundAsset(nextId)) nextId = '';
+      select.innerHTML = interactiveAssetOptionsHtml(nextId);
+      select.value = nextId;
+      if (interactiveObjectDraft) interactiveObjectDraft.assetId = nextId || null;
+      updateInteractiveStage();
+    }
+
+    function setInteractiveAssetUploadState(isUploading, message) {
+      if (!interactiveObjectPopover) return;
+      if (interactiveAssetUploadTimer) { clearTimeout(interactiveAssetUploadTimer); interactiveAssetUploadTimer = null; }
+      var button = interactiveObjectPopover.querySelector('[data-object-action="upload-asset"]');
+      if (button) button.disabled = Boolean(isUploading);
+      var status = interactiveObjectPopover.querySelector('.interactive-asset-status');
+      if (status) status.textContent = message || '';
+      if (!isUploading) return;
+      interactiveAssetUploadTimer = setTimeout(function() {
+        interactiveAssetUploadTimer = null;
+        setInteractiveAssetUploadState(false, 'Не вдалося завантажити зображення. Спробуйте ще раз.');
+      }, 20000);
+    }
+
+    function handleInteractiveAssetFile(input) {
+      var file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+      if (!String(file.type || '').startsWith('image/')) {
+        setInteractiveAssetUploadState(false, 'Підтримуються лише зображення.');
+        return;
+      }
+      setInteractiveAssetUploadState(true, 'Завантаження…');
+      var assetReader = new FileReader();
+      assetReader.onload = function() {
+        var dataUri = String(assetReader.result || '');
+        if (!dataUri) { setInteractiveAssetUploadState(false, 'Не вдалося прочитати файл.'); return; }
+        post({ type: 'uploadBackgroundAsset', name: file.name || 'object.png', dataUri: dataUri });
+      };
+      assetReader.onerror = function() { setInteractiveAssetUploadState(false, 'Не вдалося прочитати файл.'); };
+      assetReader.readAsDataURL(file);
+    }
+
     function updateInteractiveStage() {
       if (!interactiveObjectPopover) return;
       var stage = interactiveObjectPopover.querySelector('.interactive-stage');
@@ -3596,11 +3661,11 @@ const EMBEDDED_SCRIPT_BODY = `
       activeInteractiveObjectBlock = block;
       interactiveObjectDraft = interactiveObjectDataFromNode(block);
       block.classList.add('is-editing', 'is-selected');
-      var assets = '<option value="">Без зображення</option>' + backgroundAssets.map(function(asset) { return option(asset.id, asset.name, interactiveObjectDraft.assetId || ''); }).join('');
+      var assets = interactiveAssetOptionsHtml(interactiveObjectDraft.assetId || '');
       var popover = document.createElement('div');
       popover.className = 'interactive-object-popover';
       popover.innerHTML = '<div class="interactive-popover-header"><div><strong>Інтерактивний об’єкт</strong><p>Клікабельна область поверх сцени</p></div></div><div class="interactive-popover-body">' +
-        '<label class="popover-label">Назва<input id="ioName" class="popover-control" value="' + escapeHtml(interactiveObjectDraft.name) + '"></label><label class="popover-label">Зображення об’єкта<select id="ioAsset" class="popover-control">' + assets + '</select></label>' +
+        '<label class="popover-label">Назва<input id="ioName" class="popover-control" value="' + escapeHtml(interactiveObjectDraft.name) + '"></label><div class="popover-label interactive-asset-field">Зображення об’єкта<div class="interactive-asset-row"><select id="ioAsset" class="popover-control">' + assets + '</select><button type="button" class="popover-button" data-object-action="upload-asset">З комп’ютера</button></div><input class="interactive-asset-file-input" type="file" accept="image/*" hidden><span class="interactive-asset-status" role="status"></span></div>' +
         '<div class="interactive-stage" aria-label="Попередній перегляд області"><div class="interactive-stage-hotspot" tabindex="0" role="application" aria-label="Область об’єкта. Стрілки переміщують, Shift і стрілки змінюють розмір"><span class="interactive-resize-handle" aria-hidden="true"></span></div></div><div class="interactive-geometry">' + ['x', 'y', 'width', 'height'].map(function(field) { var label = field === 'width' ? 'Ширина' : field === 'height' ? 'Висота' : field.toUpperCase(); return '<label class="popover-label">' + label + ', %<input type="number" min="0" max="100" class="popover-control" data-position="' + field + '" value="' + interactiveObjectDraft.position[field] + '"></label>'; }).join('') + '</div>' +
         '<div class="interactive-presets"><button type="button" class="popover-button" data-object-action="center">По центру</button><button type="button" class="popover-button" data-object-action="full">На всю сцену</button><button type="button" class="popover-button" data-object-action="clear-asset">Прибрати зображення</button></div>' +
         '<div class="interactive-toggles"><label class="toggle-row"><input id="ioOnce" type="checkbox"' + (interactiveObjectDraft.oneTimeOnly ? ' checked' : '') + '> Спрацьовує один раз</label><label class="toggle-row"><input id="ioPulse" type="checkbox"' + (interactiveObjectDraft.pulseAnimation ? ' checked' : '') + '> Пульсація</label></div>' +
@@ -3618,6 +3683,10 @@ const EMBEDDED_SCRIPT_BODY = `
       popover.querySelector('.interactive-stage').addEventListener('pointerdown', startInteractiveStageGesture);
       popover.querySelector('.interactive-stage-hotspot').addEventListener('keydown', handleInteractiveStageKey);
       popover.addEventListener('change', function(event) {
+        if (event.target && event.target.classList && event.target.classList.contains('interactive-asset-file-input')) {
+          handleInteractiveAssetFile(event.target);
+          return;
+        }
         if (!event.target || !event.target.hasAttribute('data-action-type')) return;
         syncInteractiveDraftFromDom();
         var index = Number(event.target.closest('.interactive-action-card').dataset.actionIndex);
@@ -3645,7 +3714,8 @@ const EMBEDDED_SCRIPT_BODY = `
         closeInteractiveObjectPopover(); return;
       }
       if (action === 'delete') { var next = activeInteractiveObjectBlock.nextElementSibling; activeInteractiveObjectBlock.remove(); closeInteractiveObjectPopover(); if (next && isEditableLineElement(next)) moveCaretToEnd(next); saveNow(); return; }
-      if (action === 'clear-asset') { interactiveObjectPopover.querySelector('#ioAsset').value = ''; updateInteractiveStage(); return; }
+      if (action === 'clear-asset') { renderInteractiveAssetOptions(''); setInteractiveAssetUploadState(false, ''); return; }
+      if (action === 'upload-asset') { var assetFileInput = interactiveObjectPopover.querySelector('.interactive-asset-file-input'); if (assetFileInput) assetFileInput.click(); return; }
       if (action === 'center' || action === 'full') {
         var values = action === 'full' ? { x: 0, y: 0, width: 100, height: 100 } : { x: 44, y: 44, width: 12, height: 12 };
         Object.keys(values).forEach(function(field) { interactiveObjectPopover.querySelector('[data-position="' + field + '"]').value = values[field]; }); updateInteractiveStage(); return;
@@ -5030,6 +5100,11 @@ const EMBEDDED_SCRIPT_BODY = `
         openCameraPopover(block, block);
         return;
       }
+      if (block.classList.contains('transition-block')) {
+        event.preventDefault();
+        openTransitionPopover(block, block);
+        return;
+      }
       if (!button && !block.classList.contains('interactive-object-block')) return;
       var action = button ? button.dataset.action : 'edit-interactive-object';
       if (action === 'edit-background') {
@@ -5043,10 +5118,6 @@ const EMBEDDED_SCRIPT_BODY = `
         var backgroundFileInput = backgroundPopover && backgroundPopover.querySelector('.asset-file-input');
         if (backgroundFileInput) backgroundFileInput.click();
         return;
-      }
-      if (action === 'edit-transition') {
-        event.preventDefault();
-        openTransitionPopover(block, button);
       }
       if (action === 'edit-choice') {
         event.preventDefault();
@@ -5767,6 +5838,16 @@ const EMBEDDED_SCRIPT_BODY = `
         event.preventDefault();
         renderCharacterPopover(target);
       }
+      if (target && target.classList && target.classList.contains('transition-block') && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        selectVoidBlock(target);
+        openTransitionPopover(target, target);
+      }
+      if (target && target.classList && target.classList.contains('interactive-object-block') && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        selectVoidBlock(target);
+        openInteractiveObjectPopover(target);
+      }
     });
 
     window.addEventListener('resize', function() {
@@ -5813,7 +5894,7 @@ const EMBEDDED_SCRIPT_BODY = `
           }
           updatePreview(backgroundPopover, currentAssetId);
         }
-        if (interactiveObjectPopover) updateInteractiveStage();
+        if (interactiveObjectPopover) renderInteractiveAssetOptions();
       }
       if (message.type === 'scenesUpdated' && Array.isArray(message.scenes)) {
         storyScenes = message.scenes;
@@ -5905,6 +5986,10 @@ const EMBEDDED_SCRIPT_BODY = `
             setVideoPickerError(VIDEO_PICK_ERRORS[message.error] || VIDEO_PICK_ERRORS.failed);
           }
         }
+      }
+      if (message.type === 'backgroundAssetUploaded' && message.asset && interactiveObjectPopover) {
+        renderInteractiveAssetOptions(message.asset.id);
+        setInteractiveAssetUploadState(false, 'Додано: ' + (message.asset.name || message.asset.id));
       }
       if (message.type === 'audioAssetUploaded' && message.asset) {
         var existingAudio = audioAssets.find(function(asset) { return asset.id === message.asset.id; });

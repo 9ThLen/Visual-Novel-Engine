@@ -983,6 +983,27 @@ describe('Plate scene serializer roundtrip', () => {
     expect(html).toContain('saveNow();');
   });
 
+  it('lets the interactive object popover upload a new image asset', () => {
+    const html = createVNPlateEditorHtml({
+      editorId: 'editor_upload_interactive_object',
+      scene: sceneRecordToPlateDocument(sceneWithTimeline([createInteractiveObjectStep({
+        objectId: 'obj_book',
+        name: 'Book',
+        assetId: null,
+        position: { x: 12, y: 20, width: 16, height: 18 },
+      })]), []),
+      characters: [],
+      backgroundAssets: [],
+      isPhone: false,
+    });
+
+    expect(html).toContain('data-object-action="upload-asset"');
+    expect(html).toContain('interactive-asset-file-input');
+    expect(html).toContain("type: 'uploadBackgroundAsset', name: file.name || 'object.png'");
+    expect(html).toContain("message.type === 'backgroundAssetUploaded' && message.asset && interactiveObjectPopover");
+    expect(html).toContain('renderInteractiveAssetOptions(message.asset.id)');
+  });
+
   it('supports explicit flush and character update messages without rebuilding the frame', () => {
     const html = createVNPlateEditorHtml({
       editorId: 'editor_flush_contract',

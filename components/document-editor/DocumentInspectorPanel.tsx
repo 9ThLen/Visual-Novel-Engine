@@ -1,76 +1,89 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { Image } from 'expo-image';
 
+import { ScenePreviewCard } from '@/components/document-editor/inspector/ScenePreviewCard';
+import { ScenePreviewOverlay } from '@/components/document-editor/inspector/ScenePreviewOverlay';
+import { SceneFactsCard, type SceneRef } from '@/components/document-editor/inspector/SceneFactsCard';
+import { INSPECTOR_RAIL_PADDING, INSPECTOR_RAIL_WIDTH } from '@/components/document-editor/inspector/rail-metrics';
 import { useColors } from '@/hooks/use-colors';
-import { resolveAssetUri } from '@/lib/asset-resolver';
 import { withAlpha } from '@/lib/_core/theme';
+import { buildPreviewFrames } from '@/lib/document-editor/preview-frames';
+import { sanitizeReaderLayoutPreset } from '@/lib/story-theme';
+import { useAppStore } from '@/stores/use-app-store';
+import { useEditorPreviewDevice } from '@/components/document-editor/inspector/useEditorPreviewDevice';
 import type { ColorScheme } from '@/constants/theme';
-import type { BackgroundBlockData } from '@/lib/engine/types';
-import type { DocumentBlock, DocumentScene, DocumentTechnicalBlock } from '@/lib/document-editor/types';
+import type { Character } from '@/lib/character-types';
+import type { DocumentBlock, DocumentScene } from '@/lib/document-editor/types';
 
 type InspectorTab = 'block' | 'scene' | 'issues';
 
 interface DocumentInspectorPanelProps {
   colorScheme?: ColorScheme;
   scene: DocumentScene | null;
+  storyId: string;
+  characters: Character[];
+  storyScenes: SceneRef[];
+  onOpenScene?: (sceneId: string) => void;
 }
 
-export function DocumentInspectorPanel({ colorScheme, scene }: DocumentInspectorPanelProps) {
+export function DocumentInspectorPanel({
+  colorScheme,
+  scene,
+  storyId,
+  characters,
+  storyScenes,
+  onOpenScene,
+}: DocumentInspectorPanelProps) {
   const colors = useColors(colorScheme);
   const [tab, setTab] = useState<InspectorTab>('scene');
-  const backgroundBlock = useMemo(() => {
-    return scene?.blocks.find(
-      (block): block is DocumentTechnicalBlock =>
-        block.kind === 'technical' && block.blockType === 'background',
-    ) ?? null;
-  }, [scene]);
-  const backgroundData = backgroundBlock?.step.data as BackgroundBlockData | undefined;
+  const [device, setDevice] = useEditorPreviewDevice();
+  const [frameIndex, setFrameIndex] = useState(0);
+  const [expanded, setExpanded] = useState(false);
+
+  const layoutPreset = useAppStore((state) =>
+    sanitizeReaderLayoutPreset(state.storiesMetadata.find((story) => story.id === storyId)?.readerLayoutPreset),
+  );
+  const textSize = useAppStore((state) => state.settings.textSize);
+  const readerFontScale = useAppStore((state) => state.settings.readerFontScale);
+  const readerLineHeightScale = useAppStore((state) => state.settings.readerLineHeightScale);
+  const readerSettings = useMemo(
+    () => ({ textSize, readerFontScale, readerLineHeightScale }),
+    [textSize, readerFontScale, readerLineHeightScale],
+  );
+
+  // Rebuilt on every keystroke in the editor, so it stays keyed to the scene
+  // object identity the editor already replaces per edit.
+  const frames = useMemo(() => buildPreviewFrames(scene, characters), [scene, characters]);
   const issues = useMemo(() => collectIssues(scene), [scene]);
+
+  // Typing can shorten the scene under the stepper; clamp instead of resetting
+  // so the author keeps their place.
+  useEffect(() => {
+    setFrameIndex((current) => Math.min(current, Math.max(0, frames.length - 1)));
+  }, [frames.length]);
 
   return (
     <View
       style={{
-        width: 360,
+        width: INSPECTOR_RAIL_WIDTH,
         borderLeftWidth: 1,
         borderLeftColor: colors.border,
         backgroundColor: colors['surface-1'],
       }}
     >
-      <ScrollView contentContainerStyle={{ padding: 18, gap: 16 }}>
-        <View>
-          <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '800', marginBottom: 10 }}>
-            Preview
-          </Text>
-          <View
-            style={{
-              height: 134,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.border,
-              overflow: 'hidden',
-              backgroundColor: colors.surface,
-            }}
-          >
-            <ResolvedBackgroundPreview assetId={backgroundData?.assetId ?? null} colorScheme={colorScheme} />
-            <View
-              style={{
-                position: 'absolute',
-                left: 10,
-                right: 10,
-                bottom: 10,
-                paddingHorizontal: 10,
-                paddingVertical: 8,
-                borderRadius: 7,
-                backgroundColor: withAlpha('#ffffff', 0.82),
-              }}
-            >
-              <Text numberOfLines={2} style={{ color: '#111827', fontSize: 12, lineHeight: 16, fontWeight: '600' }}>
-                {firstReadableText(scene) || 'No preview text yet.'}
-              </Text>
-            </View>
-          </View>
-        </View>
+      <ScrollView contentContainerStyle={{ padding: INSPECTOR_RAIL_PADDING, gap: 16 }}>
+        <ScenePreviewCard
+          colorScheme={colorScheme}
+          frames={frames}
+          storyId={storyId}
+          device={device}
+          onSelectDevice={setDevice}
+          layoutPreset={layoutPreset}
+          settings={readerSettings}
+          frameIndex={frameIndex}
+          onFrameIndexChange={setFrameIndex}
+          onExpand={frames.length ? () => setExpanded(true) : undefined}
+        />
 
         <View>
           <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: '800', marginBottom: 10 }}>
@@ -101,7 +114,13 @@ export function DocumentInspectorPanel({ colorScheme, scene }: DocumentInspector
         </View>
 
         {tab === 'scene' ? (
-          <SceneInfo scene={scene} backgroundData={backgroundData} colors={colors} />
+          <SceneFactsCard
+            scene={scene}
+            frames={frames}
+            storyScenes={storyScenes}
+            onOpenScene={onOpenScene}
+            colors={colors}
+          />
         ) : null}
         {tab === 'block' ? (
           <BlockList scene={scene} colors={colors} />
@@ -110,48 +129,21 @@ export function DocumentInspectorPanel({ colorScheme, scene }: DocumentInspector
           <IssuesList issues={issues} colors={colors} />
         ) : null}
       </ScrollView>
-    </View>
-  );
-}
 
-function SceneInfo({
-  scene,
-  backgroundData,
-  colors,
-}: {
-  scene: DocumentScene | null;
-  backgroundData?: BackgroundBlockData;
-  colors: ReturnType<typeof useColors>;
-}) {
-  const structure = sceneStructure(scene);
-  return (
-    <View style={{ gap: 14 }}>
-      <View>
-          <Text style={{ color: colors.foreground, fontSize: 17, fontWeight: '800' }}>
-          {scene?.sceneName || 'Untitled scene'}
-        </Text>
-        <Text style={{ color: colors.muted, fontSize: 12, marginTop: 3 }}>
-          {scene ? `${scene.blocks.length} blocks` : 'No scene loaded'}
-        </Text>
-      </View>
-
-      <View>
-        <Text style={labelStyle(colors)}>Scene structure</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 8 }}>
-          {structure.map((item) => (
-            <Badge key={item} text={item} colors={colors} />
-          ))}
-        </View>
-      </View>
-
-      <View>
-        <Text style={labelStyle(colors)}>Background</Text>
-        <InfoCard
-          title={backgroundData?.assetId ? backgroundData.assetId : 'No background selected'}
-          subtitle={backgroundData ? `${backgroundData.transition} · ${backgroundData.duration}ms` : 'Add /background to the scene.'}
-          colors={colors}
+      {expanded ? (
+        <ScenePreviewOverlay
+          onClose={() => setExpanded(false)}
+          frames={frames}
+          storyId={storyId}
+          device={device}
+          onSelectDevice={setDevice}
+          layoutPreset={layoutPreset}
+          settings={readerSettings}
+          colorScheme={colorScheme}
+          frameIndex={frameIndex}
+          onFrameIndexChange={setFrameIndex}
         />
-      </View>
+      ) : null}
     </View>
   );
 }
@@ -187,52 +179,6 @@ function IssuesList({ issues, colors }: { issues: string[]; colors: ReturnType<t
   );
 }
 
-function ResolvedBackgroundPreview({ assetId, colorScheme }: { assetId: string | null; colorScheme?: ColorScheme }) {
-  const colors = useColors(colorScheme);
-  const [source, setSource] = useState<number | { uri: string } | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    if (!assetId) {
-      setSource(null);
-      return () => {
-        active = false;
-      };
-    }
-
-    resolveAssetUri(assetId)
-      .then((resolved) => {
-        if (!active) return;
-        setSource(resolved ? (typeof resolved === 'number' ? resolved : { uri: resolved }) : null);
-      })
-      .catch(() => {
-        if (active) setSource(null);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [assetId]);
-
-  if (!source) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
-        <Text style={{ color: colors.muted, fontSize: 12 }}>{assetId ? 'Loading background...' : 'No background'}</Text>
-      </View>
-    );
-  }
-
-  return <Image source={source} style={{ flex: 1 }} contentFit="cover" cachePolicy="memory-disk" />;
-}
-
-function Badge({ text, colors }: { text: string; colors: ReturnType<typeof useColors> }) {
-  return (
-    <View style={{ paddingHorizontal: 9, paddingVertical: 6, borderRadius: 7, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
-      <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: '700' }}>{text}</Text>
-    </View>
-  );
-}
-
 function InfoCard({
   title,
   subtitle,
@@ -252,30 +198,6 @@ function InfoCard({
       <Text numberOfLines={2} style={{ color: colors.muted, fontSize: 12, lineHeight: 16, marginTop: 3 }}>{subtitle}</Text>
     </View>
   );
-}
-
-function labelStyle(colors: ReturnType<typeof useColors>) {
-  return { color: colors.foreground, fontSize: 13, fontWeight: '800' as const };
-}
-
-function sceneStructure(scene: DocumentScene | null): string[] {
-  if (!scene) return [];
-  const counts = new Map<string, number>();
-  for (const block of scene.blocks) {
-    const label = block.kind === 'technical' ? block.blockType : block.kind;
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  return Array.from(counts.entries()).map(([label, count]) => `${label}${count > 1 ? ` x${count}` : ''}`);
-}
-
-function firstReadableText(scene: DocumentScene | null): string {
-  if (!scene) return '';
-  for (const block of scene.blocks) {
-    if (block.kind === 'text' && block.content.trim()) return block.content.trim();
-    if (block.kind === 'dialogue' && block.text.trim()) return `${block.speakerName}: ${block.text}`.trim();
-    if (block.kind === 'choice' && block.question.trim()) return block.question.trim();
-  }
-  return '';
 }
 
 function blockLabel(block: DocumentBlock): string {

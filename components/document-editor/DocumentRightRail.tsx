@@ -8,6 +8,8 @@ import { useI18n } from '@/hooks/use-i18n';
 import { withAlpha } from '@/lib/_core/theme';
 import { getAiPlatformSupport } from '@/lib/ai/platform-support';
 import type { ColorScheme } from '@/constants/theme';
+import type { Character } from '@/lib/character-types';
+import type { SceneRef } from '@/components/document-editor/inspector/SceneFactsCard';
 import type { DocumentScene } from '@/lib/document-editor/types';
 
 type RightRailTab = 'inspector' | 'ai';
@@ -17,9 +19,22 @@ interface DocumentRightRailProps {
   scene: DocumentScene | null;
   storyId: string;
   activeSceneId: string | null;
+  /** Character library the preview resolves sprites from. */
+  characters: Character[];
+  /** Scene id/name pairs so the inspector can name this scene's destinations. */
+  storyScenes: SceneRef[];
+  onOpenScene?: (sceneId: string) => void;
 }
 
-export function DocumentRightRail({ colorScheme, scene, storyId, activeSceneId }: DocumentRightRailProps) {
+export function DocumentRightRail({
+  colorScheme,
+  scene,
+  storyId,
+  activeSceneId,
+  characters,
+  storyScenes,
+  onOpenScene,
+}: DocumentRightRailProps) {
   const colors = useColors(colorScheme);
   const { t } = useI18n();
   const [tab, setTab] = useState<RightRailTab>('inspector');
@@ -84,7 +99,14 @@ export function DocumentRightRail({ colorScheme, scene, storyId, activeSceneId }
 
       <View style={{ flex: 1 }}>
         {tab === 'inspector' ? (
-          <DocumentInspectorPanel colorScheme={colorScheme} scene={scene} />
+          <DocumentInspectorPanel
+            colorScheme={colorScheme}
+            scene={scene}
+            storyId={storyId}
+            characters={characters}
+            storyScenes={storyScenes}
+            onOpenScene={onOpenScene}
+          />
         ) : (
           <AiChatPanel storyId={storyId} activeSceneId={activeSceneId} colorScheme={colorScheme} />
         )}

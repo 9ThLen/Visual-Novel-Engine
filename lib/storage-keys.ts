@@ -41,6 +41,9 @@ export const STORAGE_KEYS = {
   CANONICAL_SCENE_RECORD: (storyId: string, sceneId: string) =>
     `${PREFIX}scene_record_${encodeURIComponent(storyId)}_${encodeURIComponent(sceneId)}`,
 
+  // Editor chrome: which device the inspector preview emulates
+  EDITOR_PREVIEW_DEVICE: `${PREFIX}editor_preview_device`,
+
   // Author-local playtest coverage (per story)
   STORY_COVERAGE: (storyId: string) => `${PREFIX}story_coverage_${encodeURIComponent(storyId)}`,
 

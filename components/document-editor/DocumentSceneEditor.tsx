@@ -516,12 +516,26 @@ export function DocumentSceneEditor({
     void setViewModeImplRef.current(mode);
   }, []);
 
+  // handleScenePress is declared further down; the ref lets earlier callbacks
+  // reach it without reordering the file.
+  const handleScenePressRef = useRef<((sceneId: string) => void) | null>(null);
+
   const handleOffPathScenePress = useCallback(async (nextSceneId: string) => {
     // Off-path scenes are not rendered in the current document — reopen the
     // route on that scene so it gets appended and becomes editable.
     await handleSave();
     router.push({ pathname: '/document-editor', params: { storyId, sceneId: nextSceneId } });
   }, [handleSave, router, storyId]);
+
+  // The inspector lists this scene's destinations; a target already rendered in
+  // the document scrolls to it, anything off-path reopens the route on it.
+  const handleInspectorScenePress = useCallback((nextSceneId: string) => {
+    if (documentScenesRef.current.some((documentScene) => documentScene.sceneId === nextSceneId)) {
+      handleScenePressRef.current?.(nextSceneId);
+      return;
+    }
+    void handleOffPathScenePress(nextSceneId);
+  }, [handleOffPathScenePress]);
 
   const handlePlateChangeImpl = useCallback((_sceneId: string, nextScene: DocumentScene, nextCharacters: Character[]) => {
     applyDraftSnapshot({ scene: nextScene, characters: nextCharacters });
@@ -700,6 +714,8 @@ export function DocumentSceneEditor({
     }
   }, []);
 
+  handleScenePressRef.current = handleScenePress;
+
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = event.nativeEvent.contentOffset.y;
     // A scroll that doesn't match the last programmatic position is the user
@@ -856,6 +872,9 @@ export function DocumentSceneEditor({
             scene={activeDocument ?? null}
             storyId={storyId}
             activeSceneId={activeSceneId}
+            characters={localCharacters}
+            storyScenes={storySceneRefs}
+            onOpenScene={handleInspectorScenePress}
           />
         ) : null}
       </View>

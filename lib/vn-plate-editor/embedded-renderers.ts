@@ -266,17 +266,10 @@ function transitionBlockToHtml(
     + (dangling ? ' · ⚠ сцена не знайдена' : '');
 
   return [
-    `<div class="void-block transition-block" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="transition" data-mode="${escapeHtml(data.mode)}" data-target-scene-id="${escapeHtml(data.targetSceneId || '')}" data-transition-type="${escapeHtml(data.transitionType)}" data-duration="${escapeHtml(String(data.duration))}">`,
-    '<div class="background-copy">',
-    '<div class="background-command-line">',
+    `<div class="void-block transition-block${dangling ? ' has-warning' : ''}" contenteditable="false" tabindex="0" role="button" aria-label="Редагувати перехід: ${escapeHtml(targetLabel)}" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="transition" data-mode="${escapeHtml(data.mode)}" data-target-scene-id="${escapeHtml(data.targetSceneId || '')}" data-transition-type="${escapeHtml(data.transitionType)}" data-duration="${escapeHtml(String(data.duration))}">`,
     '<span class="void-title">/transition</span>',
     `<span class="background-asset">${escapeHtml(targetLabel)}</span>`,
-    '</div>',
-    `<div class="void-summary">${escapeHtml(summary)}</div>`,
-    '</div>',
-    '<div class="block-actions">',
-    '<button type="button" class="block-button" data-action="edit-transition">Edit</button>',
-    '</div>',
+    `<span class="void-summary">${escapeHtml(summary)}</span>`,
     '</div>',
   ].join('');
 }
@@ -409,23 +402,29 @@ function cameraBlockToHtml(
   ].join('');
 }
 
+/** Ukrainian plural for "дія": 1 дія, 2-4 дії, 5+ дій (11-14 take the "дій" form). */
+function actionCountLabel(count: number): string {
+  const lastDigit = count % 10;
+  const lastTwoDigits = count % 100;
+  if (lastDigit === 1 && lastTwoDigits !== 11) return `${count} дія`;
+  if (lastDigit >= 2 && lastDigit <= 4 && (lastTwoDigits < 12 || lastTwoDigits > 14)) return `${count} дії`;
+  return `${count} дій`;
+}
+
 function interactiveObjectBlockToHtml(block: Extract<DocumentBlock, { kind: 'technical' }>): string {
   const data = block.step.data as InteractiveObjectBlockData;
   const position = data.position || { x: 50, y: 50, width: 10, height: 10 };
   const actionCount = Array.isArray(data.actions) ? data.actions.length : 0;
   const flags = [data.oneTimeOnly ? 'одноразовий' : '', data.pulseAnimation ? 'пульсація' : ''].filter(Boolean).join(' · ');
-  const actionLabel = actionCount === 1 ? '1 дія' : `${actionCount} дій`;
-  const warning = actionCount === 0 ? '<span class="interactive-object-warning">Немає дій</span>' : '';
+  const actionLabel = actionCount === 0 ? '⚠ немає дій' : actionCountLabel(actionCount);
+  const name = data.name || 'Новий об’єкт';
+  const meta = `${position.x}%, ${position.y}% · ${position.width}×${position.height}% · ${actionLabel}${flags ? ` · ${flags}` : ''}`;
   return [
-    `<div class="void-block interactive-object-block${actionCount === 0 ? ' has-warning' : ''}" contenteditable="false" tabindex="0" role="button" aria-label="Редагувати інтерактивний об’єкт ${escapeHtml(data.name || 'Новий об’єкт')}" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="interactive_object" data-object="${escapeHtml(JSON.stringify(data))}">`,
+    `<div class="void-block interactive-object-block${actionCount === 0 ? ' has-warning' : ''}" contenteditable="false" tabindex="0" role="button" aria-label="Редагувати інтерактивний об’єкт ${escapeHtml(name)}" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="interactive_object" data-object="${escapeHtml(JSON.stringify(data))}">`,
     '<span class="interactive-object-icon" aria-hidden="true">◎</span>',
-    '<span class="interactive-object-copy">',
-    '<span class="interactive-object-kicker">Інтерактивний об’єкт</span>',
-    `<span class="interactive-object-name">${escapeHtml(data.name || 'Новий об’єкт')}</span>`,
-    `<span class="interactive-object-meta">${escapeHtml(`${position.x}%, ${position.y}% · ${position.width}×${position.height}% · ${actionLabel}${flags ? ` · ${flags}` : ''}`)}</span>`,
-    '</span>',
-    warning,
-    '<button type="button" class="block-button" data-action="edit-interactive-object">Редагувати</button>',
+    '<span class="void-title">/object</span>',
+    `<span class="interactive-object-name">${escapeHtml(name)}</span>`,
+    `<span class="interactive-object-meta">${escapeHtml(meta)}</span>`,
     '</div>',
   ].join('');
 }

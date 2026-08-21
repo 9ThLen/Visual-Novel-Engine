@@ -1,11 +1,9 @@
 const { getDefaultConfig } = require("expo/metro-config");
 const { withNativeWind } = require("nativewind/metro");
+const { createBlockList } = require("./metro-blocklist");
 const config = getDefaultConfig(__dirname);
 
-config.resolver.blockList = [
-  /node_modules\/mysql2\/.*/,
-  /server\/.*/,
-];
+config.resolver.blockList = createBlockList(__dirname);
 
 const finalConfig = withNativeWind(config, { input: "./global.css" });
 
