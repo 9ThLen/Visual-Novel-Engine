@@ -1,7 +1,7 @@
 import type { Character } from '@/lib/character-types';
 import { branchColorForOptionIndex, branchShadowColor } from '@/lib/document-editor/branch-colors';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
-import type { BackgroundBlockData, CameraBlockData, CharacterBlockData, GotoBlockData, InteractiveObjectBlockData, LabelBlockData, NormalizedVideoBlockData, StopEffectBlockData } from '@/lib/engine/types';
+import type { BackgroundBlockData, CameraBlockData, CharacterBlockData, GotoBlockData, InteractiveObjectBlockData, LabelBlockData, NormalizedVideoBlockData, StopEffectBlockData, VariableBlockData } from '@/lib/engine/types';
 import { CAMERA_ACTION_LABELS, normalizeCameraData } from '@/lib/engine/camera-utils';
 import { normalizeTransitionData } from '@/lib/engine/transition-utils';
 import { normalizeVideoData } from '@/lib/engine/video-utils';
@@ -278,17 +278,9 @@ function labelBlockToHtml(block: Extract<DocumentBlock, { kind: 'technical' }>):
   const data = (block.step?.data ?? {}) as Partial<LabelBlockData>;
   const name = data.name || '';
   return [
-    `<div class="void-block label-block" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="label" data-label-name="${escapeHtml(name)}">`,
-    '<div class="background-copy">',
-    '<div class="background-command-line">',
+    `<div class="void-block label-block${name ? '' : ' has-warning'}" contenteditable="false" tabindex="0" role="button" aria-label="Редагувати мітку ${escapeHtml(name || 'Без назви')}" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="label" data-label-name="${escapeHtml(name)}">`,
     '<span class="void-title">/label</span>',
     `<span class="background-asset">${escapeHtml(name || 'Без назви')}</span>`,
-    '</div>',
-    '<div class="void-summary">Точка переходу всередині сцени</div>',
-    '</div>',
-    '<div class="block-actions">',
-    '<button type="button" class="block-button" data-action="edit-label">Edit</button>',
-    '</div>',
     '</div>',
   ].join('');
 }
@@ -304,17 +296,38 @@ function gotoBlockToHtml(block: Extract<DocumentBlock, { kind: 'technical' }>): 
     : 'завжди';
   const summary = conditionSummary + (elseTargetLabel ? ` · інакше → ${elseTargetLabel}` : '');
   return [
-    `<div class="void-block goto-block" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="goto" data-target-label="${escapeHtml(targetLabel)}" data-else-target-label="${escapeHtml(elseTargetLabel)}"${conditionAttr}>`,
-    '<div class="background-copy">',
-    '<div class="background-command-line">',
+    `<div class="void-block goto-block${targetLabel ? '' : ' has-warning'}" contenteditable="false" tabindex="0" role="button" aria-label="Редагувати перехід до мітки ${escapeHtml(targetLabel || 'Мітку не вибрано')}" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="goto" data-target-label="${escapeHtml(targetLabel)}" data-else-target-label="${escapeHtml(elseTargetLabel)}"${conditionAttr}>`,
     '<span class="void-title">/goto</span>',
     `<span class="background-asset">${escapeHtml(targetLabel ? `→ ${targetLabel}` : 'Мітку не вибрано')}</span>`,
+    `<span class="void-summary">${escapeHtml(summary)}</span>`,
     '</div>',
-    `<div class="void-summary">${escapeHtml(summary)}</div>`,
-    '</div>',
-    '<div class="block-actions">',
-    '<button type="button" class="block-button" data-action="edit-goto">Edit</button>',
-    '</div>',
+  ].join('');
+}
+
+/** `/variable` had no renderer of its own and fell through to the generic
+ *  block, which showed the raw block type instead of the assignment. */
+const VARIABLE_OPERATION_SIGNS: Record<string, string> = {
+  set: '=',
+  add: '+=',
+  subtract: '−=',
+  multiply: '×=',
+};
+
+export function variableSummaryText(data: Partial<VariableBlockData>): string {
+  if (data.operation === 'toggle') return 'перемкнути';
+  const sign = VARIABLE_OPERATION_SIGNS[data.operation || 'set'] || '=';
+  const value = data.value === undefined || data.value === null || data.value === '' ? '?' : String(data.value);
+  return `${sign} ${value}`;
+}
+
+function variableBlockToHtml(block: Extract<DocumentBlock, { kind: 'technical' }>): string {
+  const data = (block.step?.data ?? {}) as Partial<VariableBlockData>;
+  const name = (data.variableName || '').trim();
+  return [
+    `<div class="void-block variable-block${name ? '' : ' has-warning'}" contenteditable="false" data-kind="technical" data-id="${escapeHtml(block.id)}" data-command="variable" data-variable="${escapeHtml(JSON.stringify(data))}">`,
+    '<span class="void-title">/variable</span>',
+    `<span class="background-asset">${escapeHtml(name || 'Змінну не вибрано')}</span>`,
+    `<span class="void-summary">${escapeHtml(variableSummaryText(data))}</span>`,
     '</div>',
   ].join('');
 }
@@ -508,6 +521,10 @@ export function blockToHtml(
 
   if (block.blockType === 'goto') {
     return gotoBlockToHtml(block);
+  }
+
+  if (block.blockType === 'variable') {
+    return variableBlockToHtml(block);
   }
 
   if (block.blockType === 'stop_effect') {
