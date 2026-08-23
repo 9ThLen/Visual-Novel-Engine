@@ -181,6 +181,21 @@ describe('app store slices', () => {
     expect(loaded?.playbackState.variables).toEqual({ flag: true });
     expect(harness.state.currentStoryId).toBe('story-1');
     expect(harness.state.playbackState?.currentSceneId).toBe('scene-1');
+    // The slot points at the scene already on screen, so playbackState is
+    // unchanged — the generation is the only thing telling the reader to
+    // restart it. See useSceneExecutor's resetKey.
+    expect(harness.state.playbackGeneration).toBe(1);
+
+    slice.loadGame('slot-1');
+    expect(harness.state.playbackGeneration).toBe(2);
+  });
+
+  it('does not bump the playback generation when the slot is missing', () => {
+    const harness = createSliceHarness();
+    const slice = createSavesSlice(harness.set, harness.get);
+
+    expect(slice.loadGame('nope')).toBeNull();
+    expect(harness.state.playbackGeneration).toBe(0);
   });
 
   it('does not report a manual save when the active scene is unavailable', () => {

@@ -56,10 +56,14 @@ export function createSavesSlice(set: AppStoreSet, get: AppStoreGet): SavesSlice
       );
       if (!loaded) return null;
 
-      set({
+      // The slot may point at the scene already on screen. Nothing in
+      // playbackState changes in that case, so bump the generation to tell the
+      // reader this is a replacement and the scene must restart from step 0.
+      set((current) => ({
         currentStoryId: loaded.storyId,
         playbackState: loaded.playbackState,
-      });
+        playbackGeneration: current.playbackGeneration + 1,
+      }));
 
       return loaded;
     },
