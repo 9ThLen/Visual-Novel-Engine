@@ -97,6 +97,12 @@ interface Props {
   onHistoryVisibleChange?: (visible: boolean) => void;
   onSceneStateChange?: (sceneState: SceneState) => void;
   routeOnExecutorComplete?: boolean;
+  /**
+   * Bumped by the host whenever playback is replaced in place (loading a save
+   * for the scene already on screen). Restarts the executor — see
+   * useSceneExecutor's `resetKey`.
+   */
+  playbackGeneration?: number;
   /** True when the host can roll back to a previous scene (see onRollbackScene). */
   canRollbackScene?: boolean;
   /** Called when Back is pressed at the very start of the scene — the host may restore the previous scene. */
@@ -118,6 +124,7 @@ export function StoryReaderResponsive({
   onHistoryVisibleChange,
   onSceneStateChange,
   routeOnExecutorComplete = false,
+  playbackGeneration,
   canRollbackScene = false,
   onRollbackScene,
 }: Props) {
@@ -148,7 +155,10 @@ export function StoryReaderResponsive({
   } = settings;
 
   // ── Executor ──────────────────────────────────────────────────────────
-  const executor = useSceneExecutor(timeline ?? [], { initialVariables });
+  const executor = useSceneExecutor(timeline ?? [], {
+    initialVariables,
+    resetKey: playbackGeneration,
+  });
   const usingExecutor = !!timeline && timeline.length > 0;
 
   const displaySceneId = useMemo(

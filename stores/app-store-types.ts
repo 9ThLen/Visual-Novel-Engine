@@ -19,6 +19,17 @@ export interface AppState {
   sceneRecordHydration: Record<string, 'full' | 'window'>;
   currentStoryId: string | null;
   playbackState: PlaybackState | null;
+  /**
+   * Monotonic counter bumped whenever playback is replaced wholesale rather
+   * than advanced — loading a save, or re-entering the scene already on
+   * screen. `playbackState` alone cannot express that: loading a slot for the
+   * current scene leaves storyId/sceneId identical, so nothing downstream
+   * re-runs and the load is a silent no-op. Hosts key their scene restart on
+   * this (see useSceneExecutor's `resetKey`). Bumped by loadGame. Not
+   * persisted: it only ever matters relative to the previous value within a
+   * session.
+   */
+  playbackGeneration: number;
   settings: UserSettings;
   aiBridgeSettings: AiBridgeSettings;
   saveSlots: SaveSlot[];

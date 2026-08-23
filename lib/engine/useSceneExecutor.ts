@@ -78,6 +78,16 @@ type LookaheadAction = 'preload' | 'skip' | 'stop';
 
 export interface UseSceneExecutorOptions {
   initialVariables?: RuntimeVariables;
+  /**
+   * Restart token. The reset effect keys on this as well as the timeline, so a
+   * host that replaces playback with the *same* scene — loading a save for the
+   * scene already on screen — still restarts from step 0 with the new initial
+   * variables. Without it the timeline hash is unchanged, the effect never
+   * re-runs, and the load is a silent no-op that leaves the executor exactly
+   * where it was (mid-dialogue, mid-cutscene). Any value the host changes per
+   * replacement works; the reader passes its playbackGeneration.
+   */
+  resetKey?: string | number;
 }
 
 export interface UseSceneExecutorReturn {
@@ -169,6 +179,7 @@ export function useSceneExecutor(
   const timelineRef = useRef(timeline);
   const advanceGuardRef = useRef(false);
   const initialVariablesRef = useRef(options?.initialVariables);
+  const resetKey = options?.resetKey;
   const execStateRef = useRef(execState);
 
   timelineRef.current = timeline;
@@ -567,7 +578,7 @@ export function useSceneExecutor(
       }
     }
 
-  }, [timelineKey, resetAndProcess]);
+  }, [timelineKey, resetKey, resetAndProcess]);
 
   const advance = useCallback(() => {
     if (advanceGuardRef.current) return;

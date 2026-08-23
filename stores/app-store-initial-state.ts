@@ -7,6 +7,7 @@ export const initialAppState: AppState = {
   sceneRecordHydration: {},
   currentStoryId: null,
   playbackState: null,
+  playbackGeneration: 0,
   settings: defaultUserSettings,
   aiBridgeSettings: { url: '', token: '', disabled: false, preferredProvider: 'openai' },
   saveSlots: [],

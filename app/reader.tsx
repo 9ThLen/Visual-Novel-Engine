@@ -74,6 +74,10 @@ export default function ReaderScreen() {
   const rawSettings = useAppStore((s) => s.settings);
   const settings = useMemo(() => normalizeUserSettings(rawSettings), [rawSettings]);
   const hydrateReaderSceneWindow = useAppStore((s) => s.hydrateReaderSceneWindow);
+  // Bumped by loadGame. A slot can point at the scene already on screen, in
+  // which case playbackState looks unchanged — this is the only signal that
+  // playback was replaced and the scene has to start over.
+  const playbackGeneration = useAppStore((s) => s.playbackGeneration);
   const [showMenu, setShowMenu] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [readerSceneState, setReaderSceneState] = useState<SceneState | null>(null);
@@ -243,10 +247,13 @@ export default function ReaderScreen() {
     setReaderSceneState(sceneState);
   }, []);
 
+  // Per-scene reader state, dropped on every scene entry — including a load
+  // that re-enters the current scene, which is what keeps overlay state from
+  // outliving the playback it belonged to.
   useEffect(() => {
     setObjDialogue(null);
     setReaderSceneState(null);
-  }, [playbackState?.currentSceneId]);
+  }, [playbackState?.currentSceneId, playbackGeneration]);
 
   const finishStory = useCallback((choicesMade: { sceneId: string; choiceId: string }[]) => {
     if (!playbackState) return;
@@ -463,7 +470,12 @@ export default function ReaderScreen() {
       </Pressable>
 
       <StoryReaderResponsive
-        key={sceneRecord?.id ?? playbackState!.currentSceneId}
+        // The generation is part of the key so a load into the scene already on
+        // screen remounts the subtree, exactly as loading a different scene
+        // does. That is what rebuilds reader-local per-scene state — page
+        // index, dialogue log, any blocking media/cutscene overlay — instead of
+        // leaving it stranded from the playback that was just replaced.
+        key={`${sceneRecord?.id ?? playbackState!.currentSceneId}:${playbackGeneration}`}
         sceneId={sceneRecord?.id ?? playbackState!.currentSceneId}
         timeline={timeline}
         onTransition={handleTransition}
@@ -475,6 +487,7 @@ export default function ReaderScreen() {
         settings={settings}
         onHistoryVisibleChange={setHistoryOpen}
         routeOnExecutorComplete={true}
+        playbackGeneration={playbackGeneration}
         canRollbackScene={sceneHistoryDepth > 0}
         onRollbackScene={handleRollbackScene}
       />
