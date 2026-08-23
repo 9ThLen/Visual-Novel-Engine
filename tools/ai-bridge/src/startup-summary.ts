@@ -6,6 +6,7 @@ export interface BridgeStartupSummary {
   origins: readonly string[];
   port: number;
   provider: BridgeProvider;
+  fallbackProvider?: BridgeProvider;
   imageProvider?: BridgeImageProvider;
   imageProviderConfigured?: boolean;
   imageProviderAlternative?: BridgeImageProvider;
@@ -16,6 +17,7 @@ export function formatBridgeStartupBlock(options: BridgeStartupSummary): string 
   return [
     '================ AI BRIDGE PAIRING ================',
     `Provider: ${aiProviderLabel(options.provider)}`,
+    `Fallback: ${options.fallbackProvider ? `${aiProviderLabel(options.fallbackProvider)} (pre-output only; cross-provider consent enabled)` : 'Disabled'}`,
     `Image provider: ${options.imageProvider ? `${imageProviderLabel(options.imageProvider)}${options.imageProviderConfigured === false ? ' (missing API key)' : ''}` : 'Disabled'}`,
     ...(options.imageProviderConfigured === false && options.imageProviderAlternative
       ? [`Image hint: ${imageProviderLabel(options.imageProviderAlternative)} is configured; restart with --image-provider ${options.imageProviderAlternative} to use it.`]

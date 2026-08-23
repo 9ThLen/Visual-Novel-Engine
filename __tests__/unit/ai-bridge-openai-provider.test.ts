@@ -85,6 +85,16 @@ const asRecords = (input: unknown): Array<Record<string, unknown>> =>
 // --- Request contract ----------------------------------------------------
 
 describe('OpenAiProvider request contract', () => {
+  it('accepts only attachment formats supported by the bridge transport', () => {
+    const { provider } = makeProvider(vi.fn() as unknown as typeof fetch);
+    expect(provider.supportsAttachments([
+      { id: 'a', name: 'note.txt', kind: 'text', mimeType: 'text/plain', bytes: new Uint8Array([1]) },
+    ])).toBe(true);
+    expect(provider.supportsAttachments([
+      { id: 'a', name: 'animation.gif', kind: 'image', mimeType: 'image/gif', bytes: new Uint8Array([1]) },
+    ])).toBe(false);
+  });
+
   it('maps image and PDF attachments to low-detail Responses inputs', async () => {
     const { impl, bodies } = fakeFetch(() => sseResponse([delta('ok'), completed([message('ok')])]));
     const provider = makeProvider(impl).provider;
@@ -269,6 +279,21 @@ describe('OpenAiProvider tool loop', () => {
 // --- History -------------------------------------------------------------
 
 describe('OpenAiProvider history', () => {
+  it('imports a provider-neutral transcript including completed tools', async () => {
+    const { impl, bodies } = fakeFetch(() => sseResponse([completed([message('next')])]));
+    const provider = new OpenAiProvider(new FakeBridge(), undefined, { apiKey: 'k', fetch: impl });
+    provider.replaceConversation([
+      { type: 'user', input: { text: 'first', attachments: [] } },
+      { type: 'assistant_text', text: 'checking' },
+      { type: 'tool', id: 'portable_1', name: 'get_scene', input: { sceneId: 's1' }, result: { title: 'Intro' } },
+    ]);
+    await run(provider, 'next');
+    const items = asRecords(bodies[0].input);
+    expect(items.some(item => item.role === 'user' && item.content === 'first')).toBe(true);
+    expect(items).toContainEqual(expect.objectContaining({ type: 'function_call', call_id: 'portable_1', name: 'get_scene' }));
+    expect(items).toContainEqual(expect.objectContaining({ type: 'function_call_output', call_id: 'portable_1' }));
+  });
+
   it('carries committed history into the next turn', async () => {
     const { impl, bodies } = fakeFetch(() => sseResponse([completed([message('a')])]));
     const { provider } = makeProvider(impl);
@@ -341,26 +366,62 @@ describe('OpenAiProvider failure handling', () => {
     await expect(run(makeProvider(impl).provider)).rejects.toThrow('OPENAI_MODEL_UNAVAILABLE');
   });
 
-  it('retries once on 500 then succeeds', async () => {
+  it('retries a transient 500 before the stream starts', async () => {
     const { impl, bodies } = fakeFetch(
       () => errorResponse(500, { 'retry-after': '0.001' }),
       () => sseResponse([delta('ok'), completed([message('ok')])]),
     );
-    const events = await run(makeProvider(impl).provider);
+    expect(texts(await run(makeProvider(impl).provider))).toBe('ok');
     expect(bodies.length).toBe(2);
-    expect(texts(events)).toBe('ok');
   });
 
-  it('gives up after one retry on a persistent 503', async () => {
+  it('gives up after two retries on a persistent 503', async () => {
     const { impl, bodies } = fakeFetch(() => errorResponse(503, { 'retry-after': '0.001' }));
     await expect(run(makeProvider(impl).provider)).rejects.toThrow('OPENAI_API_FAILED');
-    expect(bodies.length).toBe(2);
+    expect(bodies.length).toBe(3);
   });
 
   it('maps a persistent 429 to a rate-limit reason', async () => {
     const { impl, bodies } = fakeFetch(() => errorResponse(429, { 'retry-after': '0.001' }));
     await expect(run(makeProvider(impl).provider)).rejects.toThrow('OPENAI_RATE_LIMITED');
-    expect(bodies.length).toBe(2);
+    expect(bodies.length).toBe(3);
+  });
+
+  it.each([502, 503, 504])('retries HTTP %s before the stream starts', async status => {
+    const { impl, bodies } = fakeFetch(
+      () => errorResponse(status, { 'retry-after': '0' }),
+      () => sseResponse([completed([message('ok')])]),
+    );
+    const provider = new OpenAiProvider(new FakeBridge(), undefined, {
+      apiKey: 'k', fetch: impl, retry: { baseDelayMs: 0 },
+    });
+    expect(texts(await run(provider))).toBe('ok');
+    expect(bodies).toHaveLength(2);
+  });
+
+  it('retries a network error before the stream starts', async () => {
+    const impl = vi.fn()
+      .mockRejectedValueOnce(new TypeError('network down'))
+      .mockResolvedValueOnce(sseResponse([completed([message('ok')])])) as unknown as typeof fetch;
+    const provider = new OpenAiProvider(new FakeBridge(), undefined, {
+      apiKey: 'k', fetch: impl, retry: { baseDelayMs: 0 },
+    });
+    expect(texts(await run(provider))).toBe('ok');
+    expect(impl).toHaveBeenCalledTimes(2);
+  });
+
+  it('never retries a later request after a tool call has started', async () => {
+    const bridge = new FakeBridge(async () => ({ ok: true }));
+    const { impl, bodies } = fakeFetch(
+      () => sseResponse([completed([functionCall('list_scenes', {})])]),
+      () => errorResponse(503, { 'retry-after': '0' }),
+    );
+    const provider = new OpenAiProvider(bridge, undefined, {
+      apiKey: 'k', fetch: impl, retry: { baseDelayMs: 0 },
+    });
+    await expect(run(provider)).rejects.toThrow('OPENAI_API_FAILED');
+    expect(bodies).toHaveLength(2);
+    expect(bridge.calls).toHaveLength(1);
   });
 
   it('throws on a stream failure event and never replays a partial stream', async () => {

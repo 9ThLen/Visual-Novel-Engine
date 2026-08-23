@@ -90,6 +90,27 @@ describe('AI bridge CLI options', () => {
     expect(bridgeCliHelp()).toContain('--image-provider <auto|openai|gemini|none>');
     expect(bridgeCliHelp()).toContain('--origin <origin>');
     expect(bridgeCliHelp()).toContain('--port <port>');
+    expect(bridgeCliHelp()).toContain('--fallback-provider <gemini>');
+    expect(bridgeCliHelp()).toContain('prior chat and attachments');
+  });
+
+  it('requires explicit CLI consent for the supported OpenAI to Gemini fallback', () => {
+    expect(resolveBridgeCliConfig(
+      parseBridgeCliArgs(['--provider', 'openai', '--fallback-provider', 'gemini']),
+      { AI_BRIDGE_FALLBACK_PROVIDER: 'ignored' },
+    )).toMatchObject({ provider: 'openai', fallbackProvider: 'gemini' });
+    expect(resolveBridgeCliConfig(parseBridgeCliArgs([]), {
+      AI_BRIDGE_PROVIDER: 'openai',
+      AI_BRIDGE_FALLBACK_PROVIDER: 'gemini',
+    }).fallbackProvider).toBeUndefined();
+    expect(() => resolveBridgeCliConfig(
+      parseBridgeCliArgs(['--provider', 'gemini', '--fallback-provider', 'gemini']),
+      {},
+    )).toThrow(/requires --provider openai/);
+    expect(() => resolveBridgeCliConfig(
+      parseBridgeCliArgs(['--provider', 'openai', '--fallback-provider', 'openai']),
+      {},
+    )).toThrow(/fallback provider/);
   });
 
   it('resolves image auto deterministically and preserves OpenAI priority for CLI providers', () => {

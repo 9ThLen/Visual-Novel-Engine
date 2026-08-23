@@ -3,14 +3,18 @@ import { MODEL_BRIDGE_TOOLS } from '../../../lib/ai/bridge-tools';
 import {
   buildSessionSystemPrompt,
   modelToolErrorValue,
+  supportsBridgeAttachments,
+  type AgentAttachment,
   type AgentEvent,
   type AgentProvider,
   type AgentSessionContext,
   type AgentUserInput,
   ProviderFailure,
   type ProviderDiagnostics,
+  type PortableTranscriptEntry,
   type ToolInvoker,
 } from './provider';
+import { fetchWithProviderRetry, type ProviderRetryOptions } from './provider-retry';
 
 export const DEFAULT_OPENAI_CHAT_MODEL = 'gpt-5.6';
 const RESPONSES_URL = 'https://api.openai.com/v1/responses';
@@ -41,6 +45,7 @@ export interface OpenAiProviderOptions {
   endpoint?: string;
   turnTimeoutMs?: number;
   sessionTokenBudget?: number;
+  retry?: ProviderRetryOptions;
 }
 
 export class OpenAiProvider implements AgentProvider {
@@ -63,6 +68,14 @@ export class OpenAiProvider implements AgentProvider {
 
   abort(): void { this.controller?.abort(); }
   resetConversation(): void { this.history = []; this.sessionTokens = 0; }
+  supportsAttachments(attachments: readonly AgentAttachment[]): boolean {
+    return supportsBridgeAttachments(attachments);
+  }
+  replaceConversation(transcript: readonly PortableTranscriptEntry[]): void {
+    this.history = [];
+    this.commitHistory(transcript.flatMap(openAiTranscriptItems));
+    this.sessionTokens = 0;
+  }
 
   async *send(input: AgentUserInput): AsyncIterable<AgentEvent> {
     if (this.options.sessionTokenBudget && this.sessionTokens >= this.options.sessionTokenBudget) {
@@ -73,13 +86,14 @@ export class OpenAiProvider implements AgentProvider {
     let timedOut = false;
     const timeout = setTimeout(() => { timedOut = true; this.controller?.abort(); }, this.options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS);
     const pending: ResponseItem[] = [openAiUserMessage(input)];
+    let safeToRetry = true;
     try {
     for (let round = 0; round < MAX_ROUNDS; round += 1) {
       if (signal.aborted) throw abortError();
 
       // Stream text deltas for live UX; the terminal `response.completed` event
       // carries the authoritative output items used for history and tool calls.
-      const stream = this.streamResponse([...this.history, ...pending], signal);
+      const stream = this.streamResponse([...this.history, ...pending], signal, () => safeToRetry);
       let output: ResponseItem[];
       let status: string;
       let diagnostics: ProviderDiagnostics;
@@ -90,7 +104,7 @@ export class OpenAiProvider implements AgentProvider {
       try {
         let step = await stream.next();
         while (!step.done) {
-          if (step.value.text) { emittedText = true; yield { type: 'text', text: step.value.text }; }
+          if (step.value.text) { safeToRetry = false; emittedText = true; yield { type: 'text', text: step.value.text }; }
           step = await stream.next();
         }
         ({ output, status, diagnostics } = step.value);
@@ -112,6 +126,8 @@ export class OpenAiProvider implements AgentProvider {
       }
 
       const call = calls[0];
+      safeToRetry = false;
+      yield { type: 'activity', kind: 'tool_call' };
       const callId = typeof call.call_id === 'string' ? call.call_id : '';
       const name = typeof call.name === 'string' ? call.name : '';
       if (!callId || !name || typeof call.arguments !== 'string' || byteLength(call.arguments) > MAX_FUNCTION_ARGS_BYTES) {
@@ -152,8 +168,8 @@ export class OpenAiProvider implements AgentProvider {
    * deltas; the terminal items feed history and tool detection, so the message
    * text is never double-counted.
    */
-  private async *streamResponse(input: ResponseItem[], signal: AbortSignal): AsyncGenerator<StreamText, StreamResult, void> {
-    const response = await this.fetchWithRetry(input, signal);
+  private async *streamResponse(input: ResponseItem[], signal: AbortSignal, canRetry: () => boolean): AsyncGenerator<StreamText, StreamResult, void> {
+    const response = await this.fetchWithRetry(input, signal, canRetry);
     const body = response.body;
     if (!body) throw new ProviderFailure('OPENAI_API_FAILED');
     const reader = body.getReader();
@@ -277,21 +293,15 @@ export class OpenAiProvider implements AgentProvider {
     } satisfies RequestInit;
   }
 
-  /**
-   * Retry at most once, only before any stream event is observed: honor a
-   * bounded `Retry-After` for 429 and back off for 5xx. 4xx and aborts never
-   * retry. A partial stream is never replayed.
-   */
-  private async fetchWithRetry(input: ResponseItem[], signal: AbortSignal): Promise<Response> {
+  private async fetchWithRetry(input: ResponseItem[], signal: AbortSignal, canRetry: () => boolean): Promise<Response> {
     const request = this.buildRequest(input, signal);
-    let response = await this.safeFetch(request, signal);
-    if (!signal.aborted && (response.status === 429 || [500, 502, 503, 504].includes(response.status))) {
-      const retryAfter = Number(response.headers.get('retry-after'));
-      const delay = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1_000, 5_000) : 500;
-      await cancelBody(response);
-      await abortableDelay(delay, signal);
-      response = await this.safeFetch(request, signal);
-    }
+    const response = await fetchWithProviderRetry({
+      ...this.options.retry,
+      signal,
+      canRetry,
+      attempt: () => this.safeFetch(request, signal),
+      isRetryableError: error => error instanceof ProviderFailure && error.reason === 'OPENAI_API_FAILED',
+    });
     if (!response.ok) {
       await cancelBody(response);
       const reason = response.status === 401 ? 'OPENAI_API_AUTH_FAILED'
@@ -356,6 +366,22 @@ function openAiUserMessage(input: AgentUserInput): ResponseItem {
     else content.push({ type: 'input_file', filename: attachment.name, file_data: `data:${attachment.mimeType};base64,${base64}`, ...(attachment.kind === 'pdf' ? { detail: 'low' } : {}) });
   }
   return { role: 'user', content, type: 'message', attachment_turn: input.attachments.length > 0 };
+}
+
+function openAiTranscriptItems(entry: PortableTranscriptEntry): ResponseItem[] {
+  if (entry.type === 'user') return [openAiUserMessage(entry.input)];
+  if (entry.type === 'assistant_text') {
+    return entry.text ? [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: entry.text }] }] : [];
+  }
+  return [
+    { type: 'function_call', call_id: entry.id, name: entry.name, arguments: safeJson(entry.input) },
+    { type: 'function_call_output', call_id: entry.id, output: safeJson(entry.result) },
+  ];
+}
+
+function safeJson(value: unknown): string {
+  try { return JSON.stringify(value) ?? 'null'; }
+  catch { return JSON.stringify({ errorCode: 'VALIDATION_FAILED', errorMessage: 'Portable transcript value is not serializable' }); }
 }
 
 function hasAttachmentContent(item: ResponseItem): boolean { return item.attachment_turn === true; }
@@ -424,15 +450,4 @@ function streamErrorCode(event: Record<string, unknown>): string {
 
 async function cancelBody(response: Response): Promise<void> {
   try { await response.body?.cancel(); } catch { /* already consumed */ }
-}
-
-function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.reject(abortError());
-  return new Promise((resolve, reject) => {
-    // Detach on the happy path: a turn can retry once per round, and leaving the
-    // listeners attached would trip Node's max-listeners warning on the signal.
-    const onAbort = (): void => { clearTimeout(timer); signal.removeEventListener('abort', onAbort); reject(abortError()); };
-    const timer = setTimeout(() => { signal.removeEventListener('abort', onAbort); resolve(); }, ms);
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
 }

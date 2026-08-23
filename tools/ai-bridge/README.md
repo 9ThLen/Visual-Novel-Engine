@@ -26,6 +26,27 @@ then restart the bridge after changing either value:
 pnpm ai-bridge --provider openai
 ```
 
+OpenAI and Gemini requests retry up to two times before streaming begins for
+HTTP 429, 500, 502, 503, 504, and network failures. Retries use exponential
+backoff with jitter and honor the full server-provided `Retry-After` delay until
+the turn is aborted. The bridge never retries after receiving text, observing a
+tool call, or reaching its provider-owned request timeout.
+
+An OpenAI-to-Gemini fallback is available as an explicit, CLI-only opt-in:
+
+```bash
+pnpm ai-bridge --provider openai --fallback-provider gemini
+```
+
+This flag is consent to send the portable conversation transcript and current
+attachments to Gemini if OpenAI fails before its first text fragment or tool
+call. Both `OPENAI_API_KEY` and `GEMINI_API_KEY` are required. The router stays
+on Gemini after switching. It never falls back after partial streaming, image
+generation/editing, or any other tool call, so paid requests and app effects
+cannot be duplicated automatically.
+Provider-owned request timeouts also do not permanently switch the session to
+Gemini; the user can retry the next turn on OpenAI.
+
 The browser never receives or persists this key. Chat requests use stateless
 Responses (`store:false`); OpenAI's API data-handling policy still applies.
 
@@ -94,6 +115,7 @@ Available CLI options:
 
 ```text
 --provider <claude|openai|codex|gemini>
+--fallback-provider <gemini>
 --image-provider <auto|openai|gemini|none>
 --enable-codex-beta       Required for Codex CLI Beta
 --origin <origin>          Repeat for each allowed browser origin

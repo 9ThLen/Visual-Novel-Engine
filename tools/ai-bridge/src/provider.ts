@@ -1,5 +1,6 @@
 export type AgentEvent =
   | { type: 'text'; text: string }
+  | { type: 'activity'; kind: 'tool_call' }
   | { type: 'done'; stopReason?: string; diagnostics?: ProviderDiagnostics };
 
 export type ProviderFailureReason =
@@ -53,6 +54,8 @@ export interface AgentProvider {
   send(input: AgentUserInput): AsyncIterable<AgentEvent>;
   abort(): void;
   resetConversation(): void | Promise<void>;
+  replaceConversation?(transcript: readonly PortableTranscriptEntry[]): void | Promise<void>;
+  supportsAttachments?(attachments: readonly AgentAttachment[]): boolean;
   close?(): void | Promise<void>;
 }
 
@@ -64,10 +67,28 @@ export interface AgentAttachment {
   bytes: Uint8Array;
 }
 
+const SUPPORTED_ATTACHMENT_MIMES: Readonly<Record<AgentAttachment['kind'], ReadonlySet<string>>> = {
+  image: new Set(['image/jpeg', 'image/png', 'image/webp']),
+  pdf: new Set(['application/pdf']),
+  text: new Set(['text/plain']),
+};
+
+export function supportsBridgeAttachments(attachments: readonly AgentAttachment[]): boolean {
+  return attachments.every(attachment =>
+    attachment.bytes.byteLength > 0
+    && SUPPORTED_ATTACHMENT_MIMES[attachment.kind].has(attachment.mimeType),
+  );
+}
+
 export interface AgentUserInput {
   text: string;
   attachments: AgentAttachment[];
 }
+
+export type PortableTranscriptEntry =
+  | { type: 'user'; input: AgentUserInput }
+  | { type: 'assistant_text'; text: string }
+  | { type: 'tool'; id: string; name: string; input: unknown; result: unknown };
 
 export interface AgentSessionContext { locale?: string; model?: string; sessionTokenBudget?: number }
 export type AgentProviderFactory = (tools: ToolInvoker, session?: AgentSessionContext) => AgentProvider;
