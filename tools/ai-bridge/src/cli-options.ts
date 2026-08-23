@@ -5,6 +5,7 @@ import { parseImageProviderSelection, type ImageProviderSelection } from './imag
 
 export interface BridgeCliArgs {
   provider?: string;
+  fallbackProvider?: string;
   imageProvider?: string;
   origins?: string[];
   port?: string;
@@ -15,6 +16,7 @@ export interface BridgeCliArgs {
 
 export interface BridgeCliConfig {
   provider: BridgeProvider;
+  fallbackProvider?: 'gemini';
   imageProvider: ImageProviderSelection;
   origins: string[];
   port: number;
@@ -28,6 +30,7 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
     strict: true,
     options: {
       provider: { type: 'string' },
+      'fallback-provider': { type: 'string' },
       'image-provider': { type: 'string' },
       origin: { type: 'string', multiple: true },
       port: { type: 'string' },
@@ -39,6 +42,7 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
 
   return {
     provider: parsed.values.provider,
+    ...(parsed.values['fallback-provider'] ? { fallbackProvider: parsed.values['fallback-provider'] } : {}),
     ...(parsed.values['image-provider'] ? { imageProvider: parsed.values['image-provider'] } : {}),
     origins: parsed.values.origin,
     port: parsed.values.port,
@@ -55,6 +59,13 @@ export function resolveBridgeCliConfig(
   const providerValue = (cli.provider ?? env.AI_BRIDGE_PROVIDER ?? 'claude').toLowerCase();
   if (providerValue !== 'claude' && providerValue !== 'openai' && providerValue !== 'codex' && providerValue !== 'gemini') {
     throw new Error('AI bridge provider must be "claude", "openai", "codex", or "gemini"');
+  }
+  const fallbackValue = cli.fallbackProvider?.toLowerCase();
+  if (fallbackValue !== undefined && fallbackValue !== 'gemini') {
+    throw new Error('AI bridge fallback provider must be "gemini"');
+  }
+  if (fallbackValue && providerValue !== 'openai') {
+    throw new Error('Cross-provider fallback currently requires --provider openai --fallback-provider gemini');
   }
 
   const portValue = cli.port ?? env.AI_BRIDGE_PORT ?? '8787';
@@ -79,7 +90,7 @@ export function resolveBridgeCliConfig(
     throw new Error('Codex CLI Beta requires --enable-codex-beta');
   }
   const imageProvider = parseImageProviderSelection(cli.imageProvider ?? env.AI_BRIDGE_IMAGE_PROVIDER);
-  return { provider: providerValue, imageProvider, origins, port, enableCodexBeta };
+  return { provider: providerValue, ...(fallbackValue ? { fallbackProvider: fallbackValue } : {}), imageProvider, origins, port, enableCodexBeta };
 }
 
 export function bridgeCliHelp(): string {
@@ -88,6 +99,7 @@ export function bridgeCliHelp(): string {
     '',
     'Options:',
     '  --provider <claude|openai|codex|gemini>  AI provider (default: claude)',
+    '  --fallback-provider <gemini>  Explicitly consent to pre-output OpenAI -> Gemini fallback',
     '  --image-provider <auto|openai|gemini|none>  Image backend (default: auto)',
     '  --enable-codex-beta        Explicitly enable experimental Codex CLI',
     '  --origin <origin>          Allowed loopback browser origin; repeatable',
@@ -95,6 +107,7 @@ export function bridgeCliHelp(): string {
     '  -h, --help                 Show this help',
     '  -v, --version              Show the bridge version',
     '',
+    'Fallback is CLI-only: using --fallback-provider explicitly allows prior chat and attachments to be sent to Gemini.',
     'CLI options override AI_BRIDGE_PROVIDER, AI_BRIDGE_IMAGE_PROVIDER, AI_BRIDGE_ALLOWED_ORIGINS, and AI_BRIDGE_PORT.',
   ].join('\n');
 }

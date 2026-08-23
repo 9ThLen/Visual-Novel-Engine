@@ -9,6 +9,8 @@ import { bridgeCliHelp, parseBridgeCliArgs, resolveBridgeCliConfig } from './cli
 import { checkProviderAuthentication } from './cli-launcher';
 import { formatBridgeStartupBlock } from './startup-summary';
 import { OpenAiProvider } from './openai-provider';
+import { RoutingProvider } from './routing-provider';
+import type { ToolInvoker } from './provider';
 import { imageProviderLabel, resolveImageProvider } from './image-provider-config';
 
 export const BRIDGE_CLI_VERSION = '0.1.0';
@@ -48,7 +50,10 @@ async function main(): Promise<void> {
   }
 
   loadDotEnv();
-  const { origins, port, provider, imageProvider: imageProviderSelection, enableCodexBeta } = resolveBridgeCliConfig(cli, process.env);
+  const { origins, port, provider, fallbackProvider, imageProvider: imageProviderSelection, enableCodexBeta } = resolveBridgeCliConfig(cli, process.env);
+  if (fallbackProvider === 'gemini' && !process.env.GEMINI_API_KEY?.trim()) {
+    throw new Error('--fallback-provider gemini requires GEMINI_API_KEY');
+  }
   const imageProvider = resolveImageProvider(imageProviderSelection, provider, process.env);
   const check = (provider === 'claude' || provider === 'codex') ? checkProviderAuthentication(provider) : null;
   if (check && (check.error || check.status !== 0)) {
@@ -96,12 +101,30 @@ async function main(): Promise<void> {
       switch (provider) {
         case 'claude': return new ClaudeAgentProvider(tools, session);
         case 'codex': return new CodexCliProvider(tools, session);
-        case 'openai': return new OpenAiProvider(tools, session, {
-          apiKey: process.env.OPENAI_API_KEY ?? '',
-          model: session?.model ?? process.env.OPENAI_CHAT_MODEL,
-          systemPrompt: OPENAI_SYSTEM_PROMPT,
-          sessionTokenBudget: session?.sessionTokenBudget ?? positiveNumber(process.env.OPENAI_SESSION_TOKEN_BUDGET),
-        });
+        case 'openai': {
+          const createOpenAi = (providerTools: ToolInvoker) => new OpenAiProvider(providerTools, session, {
+            apiKey: process.env.OPENAI_API_KEY ?? '',
+            model: session?.model ?? process.env.OPENAI_CHAT_MODEL,
+            systemPrompt: OPENAI_SYSTEM_PROMPT,
+            sessionTokenBudget: session?.sessionTokenBudget ?? positiveNumber(process.env.OPENAI_SESSION_TOKEN_BUDGET),
+          });
+          if (fallbackProvider !== 'gemini') return createOpenAi(tools);
+          const fallbackSession = {
+            locale: session?.locale,
+            model: process.env.GEMINI_CHAT_MODEL,
+            sessionTokenBudget: positiveNumber(process.env.GEMINI_SESSION_TOKEN_BUDGET),
+          };
+          return new RoutingProvider({
+            bridge: tools,
+            primary: createOpenAi,
+            fallback: providerTools => new GeminiProvider(providerTools, fallbackSession, {
+              apiKey: process.env.GEMINI_API_KEY ?? '',
+              model: process.env.GEMINI_CHAT_MODEL,
+              systemPrompt: OPENAI_SYSTEM_PROMPT,
+              sessionTokenBudget: fallbackSession.sessionTokenBudget,
+            }),
+          });
+        }
         case 'gemini': return new GeminiProvider(tools, session, {
           apiKey: process.env.GEMINI_API_KEY ?? '',
           model: session?.model ?? process.env.GEMINI_CHAT_MODEL,
@@ -116,6 +139,7 @@ async function main(): Promise<void> {
     token: server.token,
     port: listeningPort,
     provider,
+    fallbackProvider,
     imageProvider: imageProvider.provider,
     imageProviderConfigured: imageProvider.configured,
     imageProviderAlternative: imageProvider.alternativeProvider,

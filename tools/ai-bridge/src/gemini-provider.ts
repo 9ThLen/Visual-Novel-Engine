@@ -3,14 +3,18 @@ import { MODEL_BRIDGE_TOOLS } from '../../../lib/ai/bridge-tools';
 import {
   buildSessionSystemPrompt,
   modelToolErrorValue,
+  supportsBridgeAttachments,
+  type AgentAttachment,
   type AgentEvent,
   type AgentProvider,
   type AgentSessionContext,
   type AgentUserInput,
   ProviderFailure,
   type ProviderDiagnostics,
+  type PortableTranscriptEntry,
   type ToolInvoker,
 } from './provider';
+import { fetchWithProviderRetry, type ProviderRetryOptions } from './provider-retry';
 
 export const DEFAULT_GEMINI_CHAT_MODEL = 'gemini-2.5-flash';
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -52,6 +56,7 @@ export interface GeminiProviderOptions {
   apiBaseUrl?: string;
   turnTimeoutMs?: number;
   sessionTokenBudget?: number;
+  retry?: ProviderRetryOptions;
 }
 
 export class GeminiProvider implements AgentProvider {
@@ -85,34 +90,28 @@ export class GeminiProvider implements AgentProvider {
     this.sessionTokens = 0;
   }
 
+  supportsAttachments(attachments: readonly AgentAttachment[]): boolean {
+    return supportsBridgeAttachments(attachments);
+  }
+
+  replaceConversation(transcript: readonly PortableTranscriptEntry[]): void {
+    this.history = mergeGeminiContents(transcript.flatMap(geminiTranscriptContents));
+    this.pruneHistory();
+    this.sessionTokens = 0;
+  }
+
   async *send(input: AgentUserInput): AsyncIterable<AgentEvent> {
     this.abort();
     this.controller = new AbortController();
     const signal = this.controller.signal;
 
-    const userParts: GeminiPart[] = [];
-    if (input.text.trim()) {
-      userParts.push({ text: input.text });
-    }
-    for (const att of input.attachments) {
-      userParts.push({
-        inlineData: {
-          mimeType: att.mimeType,
-          data: Buffer.from(att.bytes).toString('base64'),
-        },
-      });
-    }
-
-    if (userParts.length === 0) {
-      userParts.push({ text: '' });
-    }
-
-    this.history.push({ role: 'user', parts: userParts });
-    this.pruneHistory();
+    const userParts = geminiUserParts(input);
+    const pending: GeminiContent[] = [{ role: 'user', parts: userParts }];
 
     const startTime = Date.now();
     let turnInputTokens = 0;
     let turnOutputTokens = 0;
+    let safeToRetry = true;
 
     try {
       for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -123,7 +122,7 @@ export class GeminiProvider implements AgentProvider {
           systemInstruction: {
             parts: [{ text: buildSessionSystemPrompt(this.options.systemPrompt ?? '', this.session) }],
           },
-          contents: this.history,
+          contents: [...this.history, ...pending],
           tools: [{
             functionDeclarations: MODEL_BRIDGE_TOOLS.map(tool => ({
               name: tool.name,
@@ -143,20 +142,27 @@ export class GeminiProvider implements AgentProvider {
         }
 
         const timeoutMs = this.options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS;
-        const response = await raceWithAbort(
-          fetchWithTimeout(this.fetchImpl, endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: reqBody,
-          }, timeoutMs, signal),
+        const response = await fetchWithProviderRetry({
+          ...this.options.retry,
           signal,
-        );
+          canRetry: () => safeToRetry,
+          attempt: () => raceWithAbort(
+            fetchWithTimeout(this.fetchImpl, endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: reqBody,
+            }, timeoutMs, signal),
+            signal,
+          ),
+          isRetryableError: error => !(error instanceof ProviderFailure),
+        });
 
         if (!response.ok) {
           await cancelBody(response);
-          if (response.status === 401 || response.status === 403) {
+          if (response.status === 401) {
             throw new ProviderFailure('GEMINI_API_AUTH_FAILED');
           }
+          if (response.status === 403) throw new ProviderFailure('GEMINI_API_FORBIDDEN');
           if (response.status === 429) {
             throw new ProviderFailure('GEMINI_RATE_LIMITED');
           }
@@ -168,6 +174,7 @@ export class GeminiProvider implements AgentProvider {
 
         let accumulatedText = '';
         const pendingCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+        let emittedToolActivity = false;
 
         const streamIter = readSseStream(response, signal);
         for await (const chunkData of streamIter) {
@@ -183,10 +190,16 @@ export class GeminiProvider implements AgentProvider {
             for (const part of parts) {
               if (isRecord(part)) {
                 if (typeof part.text === 'string' && part.text) {
+                  safeToRetry = false;
                   accumulatedText += part.text;
                   yield { type: 'text', text: part.text };
                 }
                 if (isRecord(part.functionCall) && typeof part.functionCall.name === 'string') {
+                  safeToRetry = false;
+                  if (!emittedToolActivity) {
+                    emittedToolActivity = true;
+                    yield { type: 'activity', kind: 'tool_call' };
+                  }
                   pendingCalls.push({
                     name: part.functionCall.name,
                     args: isRecord(part.functionCall.args) ? part.functionCall.args : {},
@@ -215,8 +228,10 @@ export class GeminiProvider implements AgentProvider {
           const modelParts: GeminiPart[] = [];
           if (accumulatedText) modelParts.push({ text: accumulatedText });
           if (modelParts.length > 0) {
-            this.history.push({ role: 'model', parts: modelParts });
+            pending.push({ role: 'model', parts: modelParts });
           }
+          this.history = [...this.history, ...pending];
+          this.pruneHistory();
           yield {
             type: 'done',
             stopReason: 'end_turn',
@@ -238,7 +253,7 @@ export class GeminiProvider implements AgentProvider {
         if (accumulatedText) {
           modelCallsParts.unshift({ text: accumulatedText });
         }
-        this.history.push({ role: 'model', parts: modelCallsParts });
+        pending.push({ role: 'model', parts: modelCallsParts });
 
         const responseParts: GeminiPart[] = [];
         for (const call of pendingCalls) {
@@ -262,8 +277,7 @@ export class GeminiProvider implements AgentProvider {
           });
         }
 
-        this.history.push({ role: 'user', parts: responseParts });
-        this.pruneHistory();
+        pending.push({ role: 'user', parts: responseParts });
       }
 
       throw new ProviderFailure('GEMINI_ROUND_LIMIT');
@@ -291,6 +305,34 @@ export class GeminiProvider implements AgentProvider {
 
 function hasMultimodal(parts: GeminiPart[]): boolean {
   return parts.some(p => 'inlineData' in p);
+}
+
+function geminiUserParts(input: AgentUserInput): GeminiPart[] {
+  const parts: GeminiPart[] = [];
+  if (input.text.trim()) parts.push({ text: input.text });
+  for (const attachment of input.attachments) {
+    parts.push({ inlineData: { mimeType: attachment.mimeType, data: Buffer.from(attachment.bytes).toString('base64') } });
+  }
+  return parts.length ? parts : [{ text: '' }];
+}
+
+function geminiTranscriptContents(entry: PortableTranscriptEntry): GeminiContent[] {
+  if (entry.type === 'user') return [{ role: 'user', parts: geminiUserParts(entry.input) }];
+  if (entry.type === 'assistant_text') return entry.text ? [{ role: 'model', parts: [{ text: entry.text }] }] : [];
+  return [
+    { role: 'model', parts: [{ functionCall: { name: entry.name, args: isRecord(entry.input) ? entry.input : { input: entry.input } } }] },
+    { role: 'user', parts: [{ functionResponse: { name: entry.name, response: isRecord(entry.result) ? entry.result : { output: entry.result } } }] },
+  ];
+}
+
+function mergeGeminiContents(contents: GeminiContent[]): GeminiContent[] {
+  const merged: GeminiContent[] = [];
+  for (const content of contents) {
+    const previous = merged.at(-1);
+    if (previous?.role === content.role) previous.parts.push(...content.parts);
+    else merged.push({ role: content.role, parts: [...content.parts] });
+  }
+  return merged;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
