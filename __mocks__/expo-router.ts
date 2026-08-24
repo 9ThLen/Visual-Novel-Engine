@@ -12,7 +12,14 @@ export const useRouter = () => ({
   back: vi.fn(),
 });
 
-export const useLocalSearchParams = () => ({});
+let localSearchParams: Record<string, string> = {};
+
+/** Route params are what a screen keys everything off; tests have to set them. */
+export const setLocalSearchParamsForTests = (params: Record<string, string> = {}) => {
+  localSearchParams = params;
+};
+
+export const useLocalSearchParams = () => localSearchParams;
 
 export const Redirect = () => null;
 export const Stack = {

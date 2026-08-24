@@ -21,9 +21,13 @@ export default defineConfig({
       'expo-router': path.resolve(__dirname, '__mocks__/expo-router.ts'),
       'expo-secure-store': path.resolve(__dirname, '__mocks__/expo-secure-store.ts'),
       'react-native-reanimated': path.resolve(__dirname, '__mocks__/react-native-reanimated.ts'),
+      'react-native-safe-area-context': path.resolve(__dirname, '__mocks__/react-native-safe-area-context.ts'),
+      '@expo/vector-icons/MaterialIcons': path.resolve(__dirname, '__mocks__/expo-vector-icons-material.tsx'),
+      'expo-symbols': path.resolve(__dirname, '__mocks__/expo-symbols.ts'),
       // Mock project modules that tests need to control
       '@/stores/use-app-store': path.resolve(__dirname, '__mocks__/stores/use-app-store.ts'),
       '@/lib/asset-resolver': path.resolve(__dirname, '__mocks__/lib/asset-resolver.ts'),
+      '@/components/vn-plate-editor/PlateWebViewEditor': path.resolve(__dirname, '__mocks__/components/vn-plate-editor/PlateWebViewEditor.tsx'),
       '@/lib/audio-manager-enhanced': path.resolve(__dirname, '__mocks__/lib/audio-manager-enhanced.ts'),
       // Must keep @ alias last as catch-all
       '@': rootDir,

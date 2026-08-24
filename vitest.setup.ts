@@ -23,8 +23,12 @@ const aliases = {
   'expo-router': path.join(rootDir, '__mocks__/expo-router.ts'),
   'expo-secure-store': path.join(rootDir, '__mocks__/expo-secure-store.ts'),
   'react-native-reanimated': path.join(rootDir, '__mocks__/react-native-reanimated.ts'),
+  'react-native-safe-area-context': path.join(rootDir, '__mocks__/react-native-safe-area-context.ts'),
+  '@expo/vector-icons/MaterialIcons': path.join(rootDir, '__mocks__/expo-vector-icons-material.tsx'),
+  'expo-symbols': path.join(rootDir, '__mocks__/expo-symbols.ts'),
   '@/stores/use-app-store': path.join(rootDir, '__mocks__/stores/use-app-store.ts'),
   '@/lib/asset-resolver': path.join(rootDir, '__mocks__/lib/asset-resolver.ts'),
+  '@/components/vn-plate-editor/PlateWebViewEditor': path.join(rootDir, '__mocks__/components/vn-plate-editor/PlateWebViewEditor.tsx'),
   '@/lib/audio-manager-enhanced': path.join(rootDir, '__mocks__/lib/audio-manager-enhanced.ts'),
   '@/lib/audio-library': path.join(rootDir, '__mocks__/lib/audio-library.ts'),
 };
@@ -66,7 +70,10 @@ Module._extensions['.ts'] = function (mod, filename) {
     compilerOptions: {
       module: getTs().ModuleKind.CommonJS,
       target: getTs().ScriptTarget.ES2020,
-      jsx: getTs().JsxEmit.React,
+      // Automatic runtime, matching esbuild in vitest.config.ts and the app
+      // build. With the classic runtime any component that does not import
+      // React itself throws "React is not defined" the moment it renders.
+      jsx: getTs().JsxEmit.ReactJSX,
       esModuleInterop: true,
       skipLibCheck: true,
     },
@@ -113,7 +120,11 @@ Module._resolveFilename = function (request, parent, isMain, options) {
 };
 
 function resolveWithTs(basePath, parent) {
-  if (fs.existsSync(basePath)) {
+  // A directory here means a package-style import like '@/components/ui';
+  // returning the directory itself makes require() fail with EISDIR, so fall
+  // through to its index file below.
+  const isDirectory = fs.existsSync(basePath) && fs.statSync(basePath).isDirectory();
+  if (fs.existsSync(basePath) && !isDirectory) {
     if (shouldExempt(parent)) return basePath;
     const normalized = basePath.replace(/\\/g, '/');
     for (const [realPath, mockPath] of Object.entries(resolvedAliasPaths)) {
@@ -123,7 +134,9 @@ function resolveWithTs(basePath, parent) {
     }
     return basePath;
   }
-  const tryPaths = [basePath + '.js', basePath + '.ts', basePath + '.tsx'];
+  const tryPaths = isDirectory
+    ? [path.join(basePath, 'index.ts'), path.join(basePath, 'index.tsx'), path.join(basePath, 'index.js')]
+    : [basePath + '.js', basePath + '.ts', basePath + '.tsx'];
   for (const p of tryPaths) {
     if (fs.existsSync(p)) {
       if (shouldExempt(parent)) return p;

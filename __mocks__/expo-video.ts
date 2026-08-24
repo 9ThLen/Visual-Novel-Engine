@@ -23,8 +23,11 @@ export function useVideoPlayer(
   const setupRef = React.useRef(setup);
   setupRef.current = setup;
   return React.useMemo(() => {
+    // A source marked as broken reports the status a real player would after a
+    // failed decode, so callers that watch `statusChange` can be tested.
+    const broken = typeof source === 'string' && source.includes('video-decode-error');
     const player: MockVideoPlayer = {
-      status: source ? 'readyToPlay' : 'idle',
+      status: broken ? 'error' : source ? 'readyToPlay' : 'idle',
       playing: false,
       loop: false,
       muted: false,

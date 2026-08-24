@@ -7,3 +7,12 @@ export function useEventListener(
   _eventName: string,
   _listener: (...args: unknown[]) => void,
 ): void {}
+
+/** Native modules never exist under jsdom; every caller handles a null module. */
+export function requireOptionalNativeModule(_name: string): null {
+  return null;
+}
+
+export function requireNativeModule(_name: string): null {
+  return null;
+}
