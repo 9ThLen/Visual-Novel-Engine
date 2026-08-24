@@ -250,3 +250,89 @@ describe('asset usage', () => {
     });
   });
 });
+
+describe('dialogue sprite pins', () => {
+  // Built as a raw SceneRecord on purpose: the document->record conversion emits
+  // a character step whenever the sprite changes, so this shape only appears in
+  // timelines written by an AI change set, a backup import, or a hand edit —
+  // which is exactly where the count used to be wrong.
+  function sceneWithDialogueOnly(entries: { characterId: string; spriteId: string }[]): SceneRecord {
+    return makeScene({
+      id: 'scene-1',
+      timeline: [makeStep({
+        id: 'step-dialogue',
+        blockType: 'dialogue',
+        data: {
+          currentEntryIndex: 0,
+          entries: entries.map((entry, index) => ({
+            id: `entry-${index}`,
+            text: 'Line',
+            ...entry,
+          })),
+        },
+      })],
+    });
+  }
+
+  const spriteAsset: AvailableAsset = {
+    id: toSpriteUsageAssetId('hero', 'happy'),
+    kind: 'sprite',
+    name: 'Hero / Happy',
+    aliases: ['happy'],
+  };
+
+  it('counts a sprite referenced only by a dialogue entry', () => {
+    const references = collectAssetReferences([sceneWithDialogueOnly([
+      { characterId: 'hero', spriteId: 'happy' },
+    ])]);
+
+    expect(references).toEqual([expect.objectContaining({
+      assetId: toSpriteUsageAssetId('hero', 'happy'),
+      kind: 'sprite',
+      sceneId: 'scene-1',
+      stepId: 'step-dialogue',
+      enabled: true,
+    })]);
+
+    const report = buildAssetUsageReport(references, [spriteAsset]);
+    expect(report.unusedAssets).toEqual([]);
+    expect(report.assets[0].references).toHaveLength(1);
+  });
+
+  it('counts one reference per sprite per step, not one per line', () => {
+    const references = collectAssetReferences([sceneWithDialogueOnly([
+      { characterId: 'hero', spriteId: 'happy' },
+      { characterId: 'hero', spriteId: 'happy' },
+      { characterId: 'hero', spriteId: 'sad' },
+    ])]);
+
+    expect(references.map((reference) => reference.assetId)).toEqual([
+      toSpriteUsageAssetId('hero', 'happy'),
+      toSpriteUsageAssetId('hero', 'sad'),
+    ]);
+  });
+
+  it('ignores entries with no character or no sprite', () => {
+    expect(collectAssetReferences([sceneWithDialogueOnly([
+      { characterId: 'hero', spriteId: '' },
+      { characterId: '', spriteId: 'happy' },
+    ])])).toEqual([]);
+  });
+
+  it('carries the step enabled flag', () => {
+    const scene = sceneWithDialogueOnly([{ characterId: 'hero', spriteId: 'happy' }]);
+    scene.timeline[0].enabled = false;
+
+    expect(collectAssetReferences([scene])[0].enabled).toBe(false);
+  });
+
+  it('reports a dialogue pin on a sprite that no longer exists as broken', () => {
+    const references = collectAssetReferences([sceneWithDialogueOnly([
+      { characterId: 'hero', spriteId: 'deleted' },
+    ])]);
+
+    const report = buildAssetUsageReport(references, [spriteAsset]);
+    expect(report.brokenReferences.map((reference) => reference.assetId))
+      .toEqual([toSpriteUsageAssetId('hero', 'deleted')]);
+  });
+});

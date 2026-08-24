@@ -1,6 +1,7 @@
 import type {
   BackgroundBlockData,
   CharacterBlockData,
+  DialogueBlockData,
   InteractiveObjectBlockData,
   MusicBlockData,
   SceneRecord,
@@ -69,7 +70,10 @@ export function buildAvailableAssets(
       id: toSpriteUsageAssetId(character.id, sprite.id),
       kind: 'sprite' as const,
       name: `${character.name} / ${sprite.name}`,
-      aliases: [sprite.id, sprite.uri],
+      // `assetUri` holds the persistent URI whenever `uri` carries a runtime
+      // blob; the membership migration already checks both, so usage has to
+      // use the same notion of identity or the two disagree.
+      aliases: sprite.assetUri ? [sprite.id, sprite.uri, sprite.assetUri] : [sprite.id, sprite.uri],
     }))),
   ];
 }
@@ -110,6 +114,27 @@ export function collectAssetReferences(scenes: SceneRecord[]): AssetReference[] 
           // and never reaches the backup.
           const poster = makeReference(data.posterAssetId, 'background', scene.id, step.id, enabled);
           if (poster) references.push(poster);
+        }
+        continue;
+      }
+
+      // Every dialogue entry pins a sprite of its own, and those pins are the
+      // only reference some sprites have: the document->record conversion emits
+      // a character step only when the sprite CHANGES, and timelines written by
+      // an AI change set or a backup import may carry no character step at all.
+      if (step.blockType === 'dialogue') {
+        const seen = new Set<string>();
+        for (const entry of (step.data as DialogueBlockData).entries ?? []) {
+          const characterId = cleanId(entry.characterId);
+          const spriteId = cleanId(entry.spriteId);
+          if (!characterId || !spriteId) continue;
+          const usageAssetId = toSpriteUsageAssetId(characterId, spriteId);
+          // One reference per step per sprite: a twenty-line block that never
+          // changes sprite uses it once, not twenty times.
+          if (seen.has(usageAssetId)) continue;
+          seen.add(usageAssetId);
+          const pin = makeReference(usageAssetId, 'sprite', scene.id, step.id, enabled);
+          if (pin) references.push(pin);
         }
         continue;
       }
