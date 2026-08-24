@@ -24,6 +24,31 @@ type TimedCacheEntry<T> = {
 const uriCache = new Map<string, TimedCacheEntry<string | number | null>>();
 const playableUriCache = new Map<string, TimedCacheEntry<string | null>>();
 const mediaObjectUrlCache = new Map<string, string>();
+/**
+ * Object-URL lifetime bookkeeping.
+ *
+ * `mediaObjectUrlCache` is keyed by storage key while `uriCache` is keyed by
+ * whatever the caller passed in — an asset id, an asset uri, an `idb-media://`
+ * uri — and one blob is commonly reached through all three. Revoking a URL
+ * therefore has to invalidate several unrelated-looking cache keys, which is
+ * what the alias index is for: without it a retry after a revoke hands back the
+ * dead URL until the entry's TTL expires.
+ *
+ * The lease counts exist because the media library is the first screen that
+ * resolves more media than the cache holds: evicting the oldest entry would
+ * revoke a URL an open player is still using.
+ */
+const mediaAliasKeys = new Map<string, Set<string>>();
+/**
+ * In-flight blob reads, keyed by storage key. One blob is reachable through
+ * several resolver inputs, each with its own `uriCache` entry, so concurrent
+ * resolves would otherwise both miss the object-URL cache and both create a
+ * URL — leaving the loser untracked and unrevokable.
+ */
+const mediaObjectUrlPromises = new Map<string, Promise<string | null>>();
+const storageKeyByAlias = new Map<string, string>();
+const mediaLeaseCounts = new Map<string, number>();
+let pinnedEvictionWarned = false;
 const MODULE_CACHE_MAX_SIZE = 50;
 
 function evictOldest(cache: Map<unknown, unknown>, maxSize: number): void {
@@ -87,36 +112,108 @@ function isSafeDataUri(uri: string): boolean {
   return SAFE_DATA_URI_PREFIXES.some((prefix) => lowerUri.startsWith(prefix));
 }
 
-async function resolveIndexedDbMediaUri(uri: string): Promise<string | null> {
+function rememberMediaAliases(storageKey: string, aliasKeys: readonly string[]): void {
+  const keys = mediaAliasKeys.get(storageKey) ?? new Set<string>();
+  for (const aliasKey of aliasKeys) {
+    keys.add(aliasKey);
+    storageKeyByAlias.set(aliasKey, storageKey);
+  }
+  mediaAliasKeys.set(storageKey, keys);
+}
+
+function revokeMediaObjectUrl(storageKey: string): void {
+  const objectUrl = mediaObjectUrlCache.get(storageKey);
+  if (objectUrl && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(objectUrl);
+  mediaObjectUrlCache.delete(storageKey);
+  // Drop every cached promise that resolved to the URL just revoked. These
+  // caches are keyed by resolver input, so only the alias index can find them.
+  for (const aliasKey of mediaAliasKeys.get(storageKey) ?? []) {
+    uriCache.delete(aliasKey);
+    playableUriCache.delete(aliasKey);
+    storageKeyByAlias.delete(aliasKey);
+  }
+  mediaAliasKeys.delete(storageKey);
+}
+
+/**
+ * Bring the object-URL cache back to its limit, never at the cost of a leased
+ * entry. Drains rather than dropping a single entry: once leases have pushed
+ * the cache past the limit, evicting one per insertion would hold it at its
+ * peak size forever.
+ */
+function evictUnleasedMediaObjectUrls(): void {
+  let evicted = false;
+
+  while (mediaObjectUrlCache.size >= URI_CACHE_MAX_SIZE) {
+    let candidate: string | undefined;
+    for (const storageKey of mediaObjectUrlCache.keys()) {
+      if ((mediaLeaseCounts.get(storageKey) ?? 0) > 0) continue;
+      candidate = storageKey;
+      break;
+    }
+    if (candidate === undefined) break;
+    revokeMediaObjectUrl(candidate);
+    evicted = true;
+  }
+
+  if (evicted) {
+    pinnedEvictionWarned = false;
+    return;
+  }
+  if (mediaObjectUrlCache.size < URI_CACHE_MAX_SIZE) return;
+
+  // Everything is leased. Growing past the limit is the lesser evil: revoking a
+  // URL that a mounted player is using breaks it with no way to recover, while
+  // an oversized cache only costs memory until the leases are released.
+  if (__DEV__ && !pinnedEvictionWarned) {
+    pinnedEvictionWarned = true;
+    console.warn(
+      `[AssetResolver] ${mediaObjectUrlCache.size} object URLs are all leased; the cache is over its ${URI_CACHE_MAX_SIZE} limit. A leaked lease is the usual cause.`,
+    );
+  }
+}
+
+async function resolveIndexedDbMediaUri(uri: string, aliasKeys: readonly string[]): Promise<string | null> {
   const storageKey = getMediaBlobStorageKey(uri);
   if (!storageKey) {
     ErrorHandler.handle('Blocked invalid IndexedDB media URI', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri });
     return null;
   }
 
+  rememberMediaAliases(storageKey, aliasKeys);
+
   const cached = mediaObjectUrlCache.get(storageKey);
   if (cached) return cached;
 
-  try {
-    const blob = await getMediaBlob(storageKey);
-    if (!blob) {
-      ErrorHandler.handle('IndexedDB media Blob not found', null, ErrorCategory.MEDIA, ErrorSeverity.LOW, { uri });
-      return null;
-    }
-    const objectUrl = URL.createObjectURL(blob);
-    if (mediaObjectUrlCache.size >= URI_CACHE_MAX_SIZE) {
-      const oldestStorageKey = mediaObjectUrlCache.keys().next().value;
-      if (oldestStorageKey !== undefined) {
-        URL.revokeObjectURL(mediaObjectUrlCache.get(oldestStorageKey)!);
-        mediaObjectUrlCache.delete(oldestStorageKey);
+  // Share one read per storage key so concurrent aliases cannot each mint a URL.
+  const inFlight = mediaObjectUrlPromises.get(storageKey);
+  if (inFlight) return inFlight;
+
+  const pending = (async () => {
+    try {
+      const blob = await getMediaBlob(storageKey);
+      if (!blob) {
+        ErrorHandler.handle('IndexedDB media Blob not found', null, ErrorCategory.MEDIA, ErrorSeverity.LOW, { uri });
+        return null;
       }
+      // Re-check: another caller may have finished while this read was awaited.
+      const settled = mediaObjectUrlCache.get(storageKey);
+      if (settled) return settled;
+
+      const objectUrl = URL.createObjectURL(blob);
+      evictUnleasedMediaObjectUrls();
+      mediaObjectUrlCache.set(storageKey, objectUrl);
+      return objectUrl;
+    } catch (error) {
+      ErrorHandler.handle('Could not read IndexedDB media Blob', error, ErrorCategory.MEDIA, ErrorSeverity.LOW, { uri });
+      return null;
+    } finally {
+      mediaObjectUrlPromises.delete(storageKey);
     }
-    mediaObjectUrlCache.set(storageKey, objectUrl);
-    return objectUrl;
-  } catch (error) {
-    ErrorHandler.handle('Could not read IndexedDB media Blob', error, ErrorCategory.MEDIA, ErrorSeverity.LOW, { uri });
-    return null;
-  }
+  })();
+
+  mediaObjectUrlPromises.set(storageKey, pending);
+  return pending;
 }
 
 // Bundled assets mapping - maps asset IDs to actual asset locations
@@ -212,7 +309,13 @@ export async function resolveAssetUri(uri: string | undefined): Promise<string |
   return promise;
 }
 
-async function resolveUri(uri: string): Promise<string | number | null> {
+/**
+ * @param aliasKeys every resolver input that led here. `resolveUri` recurses
+ * through `resolveLibraryAssetUri`, so an asset id and the uri it points at end
+ * up as separate `uriCache` keys backed by one object URL; a revoke has to
+ * invalidate all of them.
+ */
+async function resolveUri(uri: string, aliasKeys: readonly string[] = [uri]): Promise<string | number | null> {
   try {
     if (uri.startsWith('data:')) {
       if (!isSafeDataUri(uri)) {
@@ -223,12 +326,12 @@ async function resolveUri(uri: string): Promise<string | number | null> {
     }
 
     if (uri.startsWith(IDB_MEDIA_URI_PREFIX)) {
-      return resolveIndexedDbMediaUri(uri);
+      return resolveIndexedDbMediaUri(uri, aliasKeys);
     }
 
     const libraryUri = resolveLibraryAssetUri(uri);
     if (libraryUri && libraryUri !== uri) {
-      return resolveUri(libraryUri);
+      return resolveUri(libraryUri, [...aliasKeys, libraryUri]);
     }
 
     if (!isSafeUri(uri)) {
@@ -357,11 +460,61 @@ async function moduleIdToUri(moduleId: number): Promise<string | null> {
   }
 }
 
-export function clearUriCache(): void {
+/**
+ * A lease on a resolved asset. While one is held the resolver will not revoke
+ * the object URL behind `source`, even under cache pressure.
+ */
+export interface ResolvedAssetLease {
+  /** Ready to hand to a player or an image; `null` when resolution failed. */
+  source: string | number | null;
+  /** Idempotent. Drops the pin only — the URL stays cached until normal eviction. */
+  release: () => void;
+}
+
+/**
+ * Resolve an asset and pin it for as long as the caller needs it.
+ *
+ * Use this instead of `resolveAssetUri` whenever the resolved value is held
+ * across time — a mounted video player, a long-lived preview. Thumbnails and
+ * other resolve-and-forget callers do not need a lease.
+ *
+ * Only IndexedDB-backed media is ref-counted; for `http`, `file`, `data` and
+ * bundled modules the lease is a free wrapper with a no-op release.
+ */
+export async function acquireResolvedAssetUri(assetRef: string | undefined): Promise<ResolvedAssetLease> {
+  const source = await resolveAssetUri(assetRef);
+  const storageKey = assetRef ? storageKeyByAlias.get(assetRef) : undefined;
+  if (!storageKey) return { source, release: () => {} };
+
+  mediaLeaseCounts.set(storageKey, (mediaLeaseCounts.get(storageKey) ?? 0) + 1);
+  let released = false;
+  return {
+    source,
+    release: () => {
+      if (released) return;
+      released = true;
+      const remaining = (mediaLeaseCounts.get(storageKey) ?? 1) - 1;
+      if (remaining > 0) mediaLeaseCounts.set(storageKey, remaining);
+      else mediaLeaseCounts.delete(storageKey);
+    },
+  };
+}
+
+/**
+ * Test-only. Production code must never call this: it revokes every object URL
+ * regardless of leases, which would break any player holding one. A cache reset
+ * that honoured leases would not be a reset, so the two are kept apart by name.
+ */
+export function resetAssetResolverForTests(): void {
   if (typeof URL.revokeObjectURL === 'function') {
     mediaObjectUrlCache.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
   }
   mediaObjectUrlCache.clear();
+  mediaObjectUrlPromises.clear();
+  mediaAliasKeys.clear();
+  storageKeyByAlias.clear();
+  mediaLeaseCounts.clear();
+  pinnedEvictionWarned = false;
   uriCache.clear();
   playableUriCache.clear();
   moduleUriCache.clear();
