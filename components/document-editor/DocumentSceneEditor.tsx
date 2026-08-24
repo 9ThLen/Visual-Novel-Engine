@@ -196,6 +196,7 @@ export function DocumentSceneEditor({
   const mountedSceneIdsRef = useRef(mountedSceneIds);
   const documentScenesRef = useRef(documentScenes);
   const activeSceneIdRef = useRef(activeSceneId);
+  const dirtySceneIdsRef = useRef(dirtySceneIds);
   const focusedEditorSceneIdRef = useRef<string | null>(null);
   const localCharactersRef = useRef(localCharacters);
   // The last external character library this editor observed. It is the base of
@@ -234,6 +235,10 @@ export function DocumentSceneEditor({
   useEffect(() => {
     activeSceneIdRef.current = activeSceneId;
   }, [activeSceneId]);
+
+  useEffect(() => {
+    dirtySceneIdsRef.current = dirtySceneIds;
+  }, [dirtySceneIds]);
 
   useEffect(() => {
     return () => {
@@ -499,6 +504,20 @@ export function DocumentSceneEditor({
     savingPromiseRef.current = run;
     return run;
   }, [performSave]);
+
+  /**
+   * Save barrier for AI mutations.
+   *
+   * Saving when nothing is unsaved is not free: the document round-trips
+   * through `documentsToRecords` and the scene's revision changes, which makes
+   * a patch the assistant generated moments ago read as STALE_REVISION. With no
+   * unsaved work there is nothing for the barrier to protect, so it stands
+   * aside rather than invalidating the proposal it was meant to guard.
+   */
+  const handleStoryMutationBarrier = useCallback(async (): Promise<boolean> => {
+    if (!dirtySceneIdsRef.current.size) return true;
+    return handleSave();
+  }, [handleSave]);
 
   const handleSelectChoiceOption = useCallback(async (choiceStepId: string, optionId: string) => {
     if (!onSelectChoiceOption) return;
@@ -928,7 +947,7 @@ export function DocumentSceneEditor({
             characters={localCharacters}
             storyScenes={storySceneRefs}
             onOpenScene={handleInspectorScenePress}
-            beforeStoryMutation={handleSave}
+            beforeStoryMutation={handleStoryMutationBarrier}
           />
         ) : null}
       </View>
