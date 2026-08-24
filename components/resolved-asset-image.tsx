@@ -1,7 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Image, type ImageProps } from 'react-native';
 import { resolveAssetUri } from '@/lib/asset-resolver';
-import { IDB_MEDIA_URI_PREFIX } from '@/lib/idb-storage';
+
+/**
+ * A URI the browser can load as-is. Anything else — an `idb-media://` handle, a
+ * bundled `assets/...` path, a bare asset id — has to go through the resolver
+ * first, or the <img> requests a path the dev server does not serve and the
+ * tile renders empty.
+ */
+const DIRECTLY_LOADABLE = /^(?:https?:|file:|blob:|data:|\/)/i;
+
+function needsResolution(uri: string): boolean {
+  return !DIRECTLY_LOADABLE.test(uri);
+}
 
 type ResolvedAssetImageProps = Omit<ImageProps, 'source'> & {
   uri: string;
@@ -12,11 +23,11 @@ export const ResolvedAssetImage = React.memo(function ResolvedAssetImage({
   ...props
 }: ResolvedAssetImageProps) {
   const [resolved, setResolved] = useState<string | number | null>(
-    uri.startsWith(IDB_MEDIA_URI_PREFIX) ? null : uri,
+    needsResolution(uri) ? null : uri,
   );
 
   useEffect(() => {
-    if (!uri.startsWith(IDB_MEDIA_URI_PREFIX)) {
+    if (!needsResolution(uri)) {
       setResolved(uri);
       return;
     }

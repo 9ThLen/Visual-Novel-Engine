@@ -76,9 +76,46 @@ export const TextInput = React.forwardRef((props: any, ref: any) => {
   });
 });
 export const Image = createElement('img');
-export const ScrollView = createElement('div');
-export const FlatList = createElement('div');
+type MockProps = Record<string, unknown>;
+
+/** Exposes the imperative handle callers use; a bare div has no scrollTo. */
+export const ScrollView = React.forwardRef((props: MockProps, ref: unknown) => {
+  const { contentContainerStyle, style, onScroll: _onScroll, onContentSizeChange: _onSize, children, ...rest } = props;
+  React.useImperativeHandle(ref, () => ({
+    scrollTo: () => {},
+    scrollToEnd: () => {},
+    flashScrollIndicators: () => {},
+  }), []);
+  return React.createElement('div', { ...rest, style: flattenStyle([style, contentContainerStyle]) }, children as React.ReactNode);
+});
+/**
+ * Renders its rows eagerly. A stub that ignored `data`/`renderItem` silently
+ * produced an empty list, which makes any grid or list screen untestable.
+ */
+export const FlatList = React.forwardRef((props: MockProps, ref: unknown) => {
+  const { data, renderItem, keyExtractor, ListEmptyComponent, ListHeaderComponent,
+    contentContainerStyle, getItemLayout: _getItemLayout, style, ...rest } = props;
+  const items = Array.isArray(data) ? (data as unknown[]) : [];
+  const render = renderItem as ((info: { item: unknown; index: number }) => React.ReactNode) | undefined;
+  const key = keyExtractor as ((item: unknown, index: number) => string) | undefined;
+  const Empty = ListEmptyComponent as React.ComponentType | undefined;
+  const Header = ListHeaderComponent as React.ComponentType | undefined;
+  return React.createElement(
+    'div',
+    { ...rest, ref, style: flattenStyle([style, contentContainerStyle]) },
+    Header ? React.createElement(Header) : null,
+    items.length === 0 && Empty
+      ? React.createElement(Empty)
+      : items.map((item, index) => React.createElement(
+          React.Fragment,
+          { key: key ? key(item, index) : String(index) },
+          render?.({ item, index }),
+        )),
+  );
+});
 export const Modal = createElement('div');
+export const KeyboardAvoidingView = createElement('div');
+export const SafeAreaView = createElement('div');
 export const ActivityIndicator = createElement('div');
 export const Alert = { alert: () => {} };
 export const AppState = { currentState: 'active', addEventListener: () => ({ remove: () => {} }) };

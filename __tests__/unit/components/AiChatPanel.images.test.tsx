@@ -53,7 +53,7 @@ describe('AiChatPanel image delivery', () => {
   });
 
   it('dedupes redelivery, acknowledges every delivery, and persists no base64', async () => {
-    const view = render(<AiChatPanel storyId="story-1" activeSceneId={null} />);
+    const view = render(<AiChatPanel storyId="story-1" activeSceneId={null} beforeStoryMutation={async () => true} />);
     const socket = SocketMock.instances[0];
     act(() => socket.open());
     act(() => socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'openai' }, 'session-1')));

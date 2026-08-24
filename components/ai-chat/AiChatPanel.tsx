@@ -81,6 +81,13 @@ interface AiChatPanelProps {
   storyId: string;
   activeSceneId: string | null;
   colorScheme?: ColorScheme;
+  /**
+   * Save barrier: lands the document editor's draft in the store and reports
+   * whether it got there. Every AI mutation goes through it first — the
+   * revision guards below compare against the store, so an unsaved draft turns
+   * all of them into false negatives.
+   */
+  beforeStoryMutation: () => Promise<boolean>;
 }
 
 type BridgeRuntimeErrorReason =
@@ -212,7 +219,7 @@ export function executeAuthorizeCapability(
   return waitForDecision().then(result => ({ ok: true as const, result }));
 }
 
-export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanelProps) {
+export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMutation }: AiChatPanelProps) {
   const colors = useColors(colorScheme);
   const { t, language } = useI18n();
 
@@ -287,6 +294,23 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   const imageResultIdsRef = useRef(new Set<string>());
   const assistantTextRef = useRef('');
   const patchDecisionRef = useRef<((value: unknown) => void) | null>(null);
+  /** Set synchronously on click so a second click cannot enter while the save barrier is awaited. */
+  const mutationInFlightRef = useRef(false);
+  /**
+   * Serialises every story mutation, including the ones with no button behind
+   * them: the bridge dispatches tool calls without awaiting the previous one
+   * (`void this.handleToolCall(...)`), so two auto-applied patches can both
+   * clear their revision check and the second then overwrites the first.
+   */
+  const mutationQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  /**
+   * The bridge effect below owns the tool handlers and must not re-run when the
+   * editor's save callback changes identity — that would reconnect the bridge
+   * mid-conversation. Reading the barrier through a ref keeps it current
+   * without entering that effect's dependency list.
+   */
+  const passesSaveBarrierRef = useRef<() => Promise<boolean>>(async () => true);
+  const enqueueMutationRef = useRef<<T>(task: () => Promise<T>) => Promise<T>>((task) => task());
 
   useEffect(() => setActiveStory(storyId), [setActiveStory, storyId]);
   useEffect(() => { activeSceneIdRef.current = activeSceneId; }, [activeSceneId]);
@@ -455,7 +479,17 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
           const permission = resolveEffectiveCapability('scene_edit', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
           if (permission === 'blocked') return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Scene editing is blocked', details: { reason: 'USER_BLOCKED' } };
           if (permission === 'auto') {
-            const result = await applyAiScenePatchToStore(patch);
+            // No dialog is shown here, so nothing else would land the author's
+            // draft first — and `validateAiScenePatch` above compared the patch
+            // against the store, which is exactly what the draft has moved past.
+            // Queued, because concurrent tool calls would otherwise interleave.
+            const result = await enqueueMutationRef.current(async () => {
+              if (!(await passesSaveBarrierRef.current())) return null;
+              return applyAiScenePatchToStore(patch);
+            });
+            if (!result) {
+              return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Could not save the open document' };
+            }
             return result.ok
               ? { ok: true, result: { accepted: true, automatic: true } }
               : { ok: false, errorCode: result.code === 'STALE_REVISION' ? 'STALE_REVISION' : 'VALIDATION_FAILED', errorMessage: result.errors.join('; ') };
@@ -723,32 +757,79 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
     };
   }, [addDraftFiles, attachmentHelp, canAttach]);
 
-  const handleApply = useCallback(async () => {
-    if (!pendingPatch) return;
+  /**
+   * Runs before every mutation. On failure the caller must abort: mutating on
+   * top of an unsaved draft would compare revisions against a story state the
+   * author has already moved past, and the editor's next save would write the
+   * stale document back over the result.
+   */
+  const passesSaveBarrier = useCallback(async (): Promise<boolean> => {
+    const saved = await beforeStoryMutation();
+    if (!saved) addMessage('system', t('aiChat.saveBarrierFailed'));
+    return saved;
+  }, [addMessage, beforeStoryMutation, t]);
+
+  const enqueueMutation = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
+    const run = mutationQueueRef.current.then(task, task);
+    // The queue must survive a failed task, so its own chain swallows results.
+    mutationQueueRef.current = run.then(() => undefined, () => undefined);
+    return run;
+  }, []);
+
+  passesSaveBarrierRef.current = passesSaveBarrier;
+  enqueueMutationRef.current = enqueueMutation;
+
+  /**
+   * Serialises story mutations. The guard is a ref, not `applying` state,
+   * because the barrier is awaited before any state update lands: with a state
+   * flag the button stays live for the whole flush and a second click would run
+   * the same patch again.
+   */
+  const runStoryMutation = useCallback(async (mutate: () => Promise<void>): Promise<void> => {
+    if (mutationInFlightRef.current) return;
+    mutationInFlightRef.current = true;
+    // Disable the decision buttons before the first await: until this lands,
+    // Reject is still live and would resolve the decision while the barrier is
+    // running, after which the mutation would apply anyway.
     setApplying(true);
     try {
-      const result = await applyAiScenePatchToStore(pendingPatch.patch);
-      if (result.ok) {
-        addMessage('system', t('aiChat.applySuccess'));
-        patchDecisionRef.current?.({ accepted: true });
-      } else {
-        const message =
-          result.code === 'STALE_REVISION'
-            ? t('aiChat.applyFailedStale')
-            : result.code === 'VALIDATION_FAILED'
-              ? t('aiChat.applyFailedValidation', { errors: result.errors.join('; ') })
-              : t('aiChat.applyFailedGeneric');
-        addMessage('system', message);
-        patchDecisionRef.current?.({ accepted: false, reason: result.code });
-      }
+      await enqueueMutation(async () => {
+        if (!(await passesSaveBarrier())) return;
+        await mutate();
+      });
     } finally {
+      mutationInFlightRef.current = false;
       setApplying(false);
-      setPendingPatch(null);
-      patchDecisionRef.current = null;
     }
-  }, [pendingPatch, addMessage, setPendingPatch, t]);
+  }, [enqueueMutation, passesSaveBarrier]);
+
+  const handleApply = useCallback(async () => {
+    if (!pendingPatch) return;
+    await runStoryMutation(async () => {
+      try {
+        const result = await applyAiScenePatchToStore(pendingPatch.patch);
+        if (result.ok) {
+          addMessage('system', t('aiChat.applySuccess'));
+          patchDecisionRef.current?.({ accepted: true });
+        } else {
+          const message =
+            result.code === 'STALE_REVISION'
+              ? t('aiChat.applyFailedStale')
+              : result.code === 'VALIDATION_FAILED'
+                ? t('aiChat.applyFailedValidation', { errors: result.errors.join('; ') })
+                : t('aiChat.applyFailedGeneric');
+          addMessage('system', message);
+          patchDecisionRef.current?.({ accepted: false, reason: result.code });
+        }
+      } finally {
+        setPendingPatch(null);
+        patchDecisionRef.current = null;
+      }
+    });
+  }, [pendingPatch, addMessage, runStoryMutation, setPendingPatch, t]);
 
   const handleReject = useCallback(() => {
+    if (mutationInFlightRef.current) return;
     setPendingPatch(null);
     addMessage('system', t('aiChat.rejected'));
     patchDecisionRef.current?.({ accepted: false, reason: 'rejected' });
@@ -781,6 +862,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
   }, [pendingAppearance, addMessage, setPendingAppearance, t]);
 
   const handleRejectAppearance = useCallback(() => {
+    if (mutationInFlightRef.current) return;
     setPendingAppearance(null);
     addMessage('system', t('aiChat.rejected'));
     patchDecisionRef.current?.({ accepted: false, reason: 'rejected' });
@@ -789,24 +871,25 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
 
   const handleApplyChangeSet = useCallback(async () => {
     if (!pendingChangeSet) return;
-    setApplying(true);
-    try {
-      const result = await applyAiChangeSetToStore(pendingChangeSet.changeSet);
-      if (result.ok) {
-        addMessage('system', t('aiChat.applySuccess'));
-        patchDecisionRef.current?.({ accepted: true, summary: pendingChangeSet.description });
-      } else {
-        addMessage('system', result.code === 'STALE_REVISION' ? t('aiChat.applyFailedStale') : t('aiChat.applyFailedValidation', { errors: result.message }));
-        patchDecisionRef.current?.({ accepted: false, reason: result.code });
+    await runStoryMutation(async () => {
+      try {
+        const result = await applyAiChangeSetToStore(pendingChangeSet.changeSet);
+        if (result.ok) {
+          addMessage('system', t('aiChat.applySuccess'));
+          patchDecisionRef.current?.({ accepted: true, summary: pendingChangeSet.description });
+        } else {
+          addMessage('system', result.code === 'STALE_REVISION' ? t('aiChat.applyFailedStale') : t('aiChat.applyFailedValidation', { errors: result.message }));
+          patchDecisionRef.current?.({ accepted: false, reason: result.code });
+        }
+      } finally {
+        setPendingChangeSet(null);
+        patchDecisionRef.current = null;
       }
-    } finally {
-      setApplying(false);
-      setPendingChangeSet(null);
-      patchDecisionRef.current = null;
-    }
-  }, [pendingChangeSet, addMessage, setPendingChangeSet, t]);
+    });
+  }, [pendingChangeSet, addMessage, runStoryMutation, setPendingChangeSet, t]);
 
   const handleRejectChangeSet = useCallback(() => {
+    if (mutationInFlightRef.current) return;
     setPendingChangeSet(null);
     addMessage('system', t('aiChat.rejected'));
     patchDecisionRef.current?.({ accepted: false, reason: 'rejected' });
@@ -815,32 +898,39 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
 
   const handleRollback = useCallback(async () => {
     if (!lastAppliedChange) return;
-    const journalTop = useAiChatStore.getState().getTopAppliedChange(storyId);
-    const hasJournalEntry = !!journalTop
-      && journalTop.kind === lastAppliedChange.kind
-      && journalTop.storyId === lastAppliedChange.storyId;
-    const result = hasJournalEntry
-      ? await rollbackTopAppliedChange(storyId)
-      : { ok: lastAppliedChange.kind === 'scene' || lastAppliedChange.kind === 'changeset'
-          ? await rollbackAiPatch(lastAppliedChange.storyId, lastAppliedChange.snapshotId)
-          : rollbackAiAppearancePatch(
-              lastAppliedChange.storyId,
-              lastAppliedChange.previousTheme,
-              lastAppliedChange.previousLayoutPreset,
-            ) };
-    if (result.requiresConfirmation) {
-      setConfirmUndo(true);
-      return;
-    }
-    addMessage('system', result.ok ? t('aiChat.rollbackSuccess') : t('aiChat.rollbackFailed'));
-    if (result.ok && !hasJournalEntry) setLastAppliedChange(null);
-  }, [lastAppliedChange, addMessage, setLastAppliedChange, storyId, t]);
+    await runStoryMutation(async () => {
+      const journalTop = useAiChatStore.getState().getTopAppliedChange(storyId);
+      const hasJournalEntry = !!journalTop
+        && journalTop.kind === lastAppliedChange.kind
+        && journalTop.storyId === lastAppliedChange.storyId;
+      const result = hasJournalEntry
+        ? await rollbackTopAppliedChange(storyId)
+        : { ok: lastAppliedChange.kind === 'scene' || lastAppliedChange.kind === 'changeset'
+            ? await rollbackAiPatch(lastAppliedChange.storyId, lastAppliedChange.snapshotId)
+            : rollbackAiAppearancePatch(
+                lastAppliedChange.storyId,
+                lastAppliedChange.previousTheme,
+                lastAppliedChange.previousLayoutPreset,
+              ) };
+      if (result.requiresConfirmation) {
+        setConfirmUndo(true);
+        return;
+      }
+      addMessage('system', result.ok ? t('aiChat.rollbackSuccess') : t('aiChat.rollbackFailed'));
+      if (result.ok && !hasJournalEntry) setLastAppliedChange(null);
+    });
+  }, [lastAppliedChange, addMessage, runStoryMutation, setLastAppliedChange, storyId, t]);
 
   const handleForceRollback = useCallback(async () => {
-    const result = await rollbackTopAppliedChange(storyId, true);
-    setConfirmUndo(false);
-    addMessage('system', result.ok ? t('aiChat.rollbackSuccess') : t('aiChat.rollbackFailed'));
-  }, [addMessage, storyId, t]);
+    // The barrier runs again: the author could have typed between the first
+    // refusal and this confirmation, and that draft must land before the
+    // snapshot restore overwrites the story.
+    await runStoryMutation(async () => {
+        const result = await rollbackTopAppliedChange(storyId, true);
+        setConfirmUndo(false);
+        addMessage('system', result.ok ? t('aiChat.rollbackSuccess') : t('aiChat.rollbackFailed'));
+    });
+  }, [addMessage, runStoryMutation, storyId, t]);
 
   const canSend = status === 'idle'
     && (inputText.trim().length > 0 || draftAttachments.length > 0)
@@ -1113,7 +1203,10 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme }: AiChatPanel
           <View accessibilityRole="alert" style={{ borderWidth: 1, borderColor: colors.danger, borderRadius: 8, padding: 10, gap: 8 }}>
             <Text style={{ color: colors.foreground, fontSize: 12 }}>{t('aiChat.rollbackConfirm')}</Text>
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <Pressable accessibilityRole="button" onPress={() => setConfirmUndo(false)}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => { if (!mutationInFlightRef.current) setConfirmUndo(false); }}
+              >
                 <Text style={{ color: colors.muted, fontWeight: '700' }}>{t('common.cancel')}</Text>
               </Pressable>
               <Pressable accessibilityRole="button" onPress={handleForceRollback}>

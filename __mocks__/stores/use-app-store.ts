@@ -78,6 +78,8 @@ export const resetAppStoreState = () => {
   storeVal.migrateFromLegacyKeys = mockFn();
 };
 
+export const selectSceneRecordsForStory = (storyId: string) => (state: any) =>
+  Object.values(state.sceneRecordsByStory?.[storyId] ?? {});
 export const selectStoryMetadata = (storyId: string) => (state: any) =>
   state.storiesMetadata.find((story: any) => story.id === storyId);
 export const selectCanonicalSceneRecord = (storyId: string, sceneId: string) => (state: any) =>

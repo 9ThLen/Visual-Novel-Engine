@@ -101,7 +101,7 @@ describe('AiChatPanel', () => {
   it('keeps the attachment control visible and explains why it is unavailable', () => {
     useAppStore.setState({ aiBridgeSettings: { url: '', token: '', disabled: true } });
 
-    render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" />);
+    render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" beforeStoryMutation={async () => true} />);
 
     const attach = screen.getByRole('button', { name: 'Attach file' });
     expect(attach.hasAttribute('disabled')).toBe(false);
@@ -147,7 +147,7 @@ describe('AiChatPanel', () => {
     vi.stubGlobal('WebSocket', SocketMock);
     useAppStore.setState({ aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'token', disabled: false } });
 
-    const view = render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" />);
+    const view = render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" beforeStoryMutation={async () => true} />);
     await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
     act(() => SocketMock.instances[0].start());
 
@@ -185,14 +185,14 @@ describe('AiChatPanel', () => {
     }
     vi.stubGlobal('WebSocket', SocketMock);
     useAppStore.setState({ aiBridgeSettings: { url: 'ws://localhost:8787', token: 'first', disabled: false } });
-    const view = render(<AiChatPanel storyId="story-1" activeSceneId={null} />);
+    const view = render(<AiChatPanel storyId="story-1" activeSceneId={null} beforeStoryMutation={async () => true} />);
     await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
     expect(SocketMock.instances[0].url).toBe('ws://localhost:8787');
-    view.rerender(<AiChatPanel storyId="story-1" activeSceneId="scene-1" />);
+    view.rerender(<AiChatPanel storyId="story-1" activeSceneId="scene-1" beforeStoryMutation={async () => true} />);
     await act(async () => {});
     expect(SocketMock.instances).toHaveLength(1);
     act(() => useAppStore.setState({ aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'second', disabled: false } }));
-    view.rerender(<AiChatPanel storyId="story-1" activeSceneId={null} />);
+    view.rerender(<AiChatPanel storyId="story-1" activeSceneId={null} beforeStoryMutation={async () => true} />);
     await waitFor(() => expect(SocketMock.instances).toHaveLength(2));
     expect(SocketMock.instances[0].close).toHaveBeenCalled();
     expect(SocketMock.instances[1].url).toBe('ws://127.0.0.1:8787');
@@ -231,7 +231,7 @@ describe('AiChatPanel', () => {
     }
     vi.stubGlobal('WebSocket', SocketMock);
     useAppStore.setState({ aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'runtime-token', disabled: false, preferredProvider: 'codex' } });
-    const view = render(<AiChatPanel storyId="story-1" activeSceneId={null} />);
+    const view = render(<AiChatPanel storyId="story-1" activeSceneId={null} beforeStoryMutation={async () => true} />);
     await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
     act(() => SocketMock.instances[0].start('session-1'));
     await waitFor(() => expect(screen.getAllByText(/Connected.*Codex/)).toHaveLength(2));
@@ -281,7 +281,7 @@ describe('AiChatPanel', () => {
       pendingInteraction: { kind: 'scene_patch', storyId: record.storyId, value: { patch, description } },
     });
 
-    render(<AiChatPanel storyId={record.storyId} activeSceneId={record.id} />);
+    render(<AiChatPanel storyId={record.storyId} activeSceneId={record.id} beforeStoryMutation={async () => true} />);
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() => expect(saveSceneRecord).toHaveBeenCalledWith(expect.objectContaining({ name: 'After' })));
@@ -313,7 +313,7 @@ describe('AiChatPanel', () => {
       pendingInteraction: { kind: 'scene_patch', storyId: record.storyId, value: { patch, description } },
     });
 
-    render(<AiChatPanel storyId={record.storyId} activeSceneId={record.id} />);
+    render(<AiChatPanel storyId={record.storyId} activeSceneId={record.id} beforeStoryMutation={async () => true} />);
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() => expect(screen.getByText(/Ask the assistant again/)).toBeTruthy());
@@ -341,7 +341,7 @@ describe('AiChatPanel', () => {
       pendingInteraction: { kind: 'appearance', storyId: metadata.id, value: { patch, description } },
     });
 
-    render(<AiChatPanel storyId={metadata.id} activeSceneId={record.id} />);
+    render(<AiChatPanel storyId={metadata.id} activeSceneId={record.id} beforeStoryMutation={async () => true} />);
     expect(screen.getByText('Reader appearance')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -375,7 +375,7 @@ describe('AiChatPanel', () => {
       lastAppliedChange: { kind: 'appearance', storyId: 'story-1', previousTheme: { dialogueBg: '#ffffff' } },
     });
 
-    render(<AiChatPanel storyId={metadata.id} activeSceneId={record.id} />);
+    render(<AiChatPanel storyId={metadata.id} activeSceneId={record.id} beforeStoryMutation={async () => true} />);
     fireEvent.click(screen.getByRole('button', { name: 'Undo AI changes' }));
 
     await waitFor(() =>
@@ -402,7 +402,7 @@ describe('AiChatPanel', () => {
       pendingInteraction: { kind: 'scene_patch', storyId: record.storyId, value: { patch, description } },
     });
 
-    render(<AiChatPanel storyId={record.storyId} activeSceneId={record.id} />);
+    render(<AiChatPanel storyId={record.storyId} activeSceneId={record.id} beforeStoryMutation={async () => true} />);
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
 
     expect(useAiChatStore.getState().pendingInteraction).toBeNull();

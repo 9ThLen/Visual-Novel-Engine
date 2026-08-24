@@ -24,6 +24,13 @@ interface DocumentRightRailProps {
   /** Scene id/name pairs so the inspector can name this scene's destinations. */
   storyScenes: SceneRef[];
   onOpenScene?: (sceneId: string) => void;
+  /**
+   * Save barrier. AI mutations compare revisions against the store, so the
+   * editor's unsaved draft has to land there first or every staleness guard is
+   * a false negative. Required, not optional: a mount that forgets it would
+   * silently run mutations against a state the author has already moved past.
+   */
+  beforeStoryMutation: () => Promise<boolean>;
 }
 
 export function DocumentRightRail({
@@ -34,6 +41,7 @@ export function DocumentRightRail({
   characters,
   storyScenes,
   onOpenScene,
+  beforeStoryMutation,
 }: DocumentRightRailProps) {
   const colors = useColors(colorScheme);
   const { t } = useI18n();
@@ -108,7 +116,12 @@ export function DocumentRightRail({
             onOpenScene={onOpenScene}
           />
         ) : (
-          <AiChatPanel storyId={storyId} activeSceneId={activeSceneId} colorScheme={colorScheme} />
+          <AiChatPanel
+            storyId={storyId}
+            activeSceneId={activeSceneId}
+            colorScheme={colorScheme}
+            beforeStoryMutation={beforeStoryMutation}
+          />
         )}
       </View>
     </View>
