@@ -47,7 +47,7 @@ describe('AiChatPanel changeset tool', () => {
       kind: 'changeset',
       value: { changeSet: proposal },
     });
-    render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" />);
+    render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" beforeStoryMutation={async () => true} />);
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
     await expect(resultPromise).resolves.toMatchObject({ ok: true, result: { accepted: true } });

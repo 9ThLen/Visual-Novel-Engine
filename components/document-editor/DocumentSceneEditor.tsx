@@ -34,6 +34,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { useEditorShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
+import { charactersEquivalent, mergeExternalCharacters } from '@/lib/character-merge';
 import { crumbsForSceneIndex, type BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
 import { ensureDocumentCharactersInBlocks } from '@/lib/document-editor/document-scene';
 import { loadSceneHeights, persistSceneHeight } from '@/lib/document-editor/scene-height-cache';
@@ -197,6 +198,13 @@ export function DocumentSceneEditor({
   const activeSceneIdRef = useRef(activeSceneId);
   const focusedEditorSceneIdRef = useRef<string | null>(null);
   const localCharactersRef = useRef(localCharacters);
+  // The last external character library this editor observed. It is the base of
+  // the three-way merge below: without it there is no way to tell an unsaved
+  // author edit apart from a write that arrived from outside the editor.
+  const externalCharactersRef = useRef(characters);
+  // Shared in-flight save, so the save barrier and the header button join one
+  // run instead of racing two flushes over the same draft registry.
+  const savingPromiseRef = useRef<Promise<boolean> | null>(null);
   const scrollYRef = useRef(0);
   const viewportHeightRef = useRef(0);
   const pendingScrollSceneIdRef = useRef<string | null>(sceneRecord.id);
@@ -257,6 +265,7 @@ export function DocumentSceneEditor({
     setDocumentScenes(initialDocuments);
     setLocalCharacters(characters);
     localCharactersRef.current = characters;
+    externalCharactersRef.current = characters;
     setActiveSceneId(nextActiveSceneId);
     draftRegistryRef.current.clear();
     sceneLayoutRef.current.clear();
@@ -280,6 +289,20 @@ export function DocumentSceneEditor({
       useNativeDriver: Platform.OS !== 'web',
     }).start();
   }, [activeSceneId, branchSwitchAnim, characters, dirtySceneIds, documentsResetKey, initialDocuments, sceneRecord.id]);
+
+  // A store write that touches only characters — the media library, an AI
+  // rollback — leaves `scenes` alone, so `documentsResetKey` never changes and
+  // the reset effect above never re-seeds. Merging is what keeps the next save
+  // from writing this editor's stale copy back over that write.
+  useEffect(() => {
+    const base = externalCharactersRef.current;
+    if (charactersEquivalent(base, characters)) return;
+    const merged = mergeExternalCharacters(base, localCharactersRef.current, characters);
+    externalCharactersRef.current = characters;
+    if (charactersEquivalent(merged, localCharactersRef.current)) return;
+    localCharactersRef.current = merged;
+    setLocalCharacters(merged);
+  }, [characters]);
 
   // Live scene refs for transition/choice target pickers inside the webview
   // editors — names come from the in-session documents so renames show up
@@ -414,8 +437,14 @@ export function DocumentSceneEditor({
     );
   }, [applyDraftSnapshot, dirtySceneIds]);
 
-  const handleSave = useCallback(async () => {
-    await flushDirtyMountedEditors();
+  const performSave = useCallback(async (): Promise<boolean> => {
+    try {
+      await flushDirtyMountedEditors();
+    } catch {
+      // A frame that will not give up its content must not be silently dropped:
+      // reporting failure lets the save barrier hold back the caller's mutation.
+      return false;
+    }
     setIsSaving(true);
     const saveCharacters = localCharactersRef.current;
     const nextDocuments = documentsWithDrafts().map((ds) => ({ ...ds, blocks: [...ds.blocks] }));
@@ -433,6 +462,9 @@ export function DocumentSceneEditor({
 
     onSave(ensuredDocuments, ensured.characters);
     localCharactersRef.current = ensured.characters;
+    // Our own write is the new merge base, so the prop echo coming back from
+    // the store does not read as somebody else's change.
+    externalCharactersRef.current = ensured.characters;
     setLocalCharacters(ensured.characters);
     setDocumentScenes(ensuredDocuments);
     draftRegistryRef.current.clear();
@@ -445,14 +477,35 @@ export function DocumentSceneEditor({
       setIsSaving(false);
       savingTimerRef.current = null;
     }, 250);
+    return true;
   }, [documentsWithDrafts, flushDirtyMountedEditors, onSave]);
+
+  /**
+   * Persist the document. Returns whether the store now holds this editor's
+   * content; concurrent callers join the in-flight run rather than starting a
+   * second one.
+   *
+   * Every caller must bail on `false`. All of them either replace the document
+   * (branch switch, view mode, scene create/duplicate/delete) or leave the
+   * screen, and doing that on top of a failed save discards whatever the frames
+   * were still holding. Before this returned a boolean the same guarantee came
+   * from the promise rejecting.
+   */
+  const handleSave = useCallback((): Promise<boolean> => {
+    if (savingPromiseRef.current) return savingPromiseRef.current;
+    const run = performSave().finally(() => {
+      savingPromiseRef.current = null;
+    });
+    savingPromiseRef.current = run;
+    return run;
+  }, [performSave]);
 
   const handleSelectChoiceOption = useCallback(async (choiceStepId: string, optionId: string) => {
     if (!onSelectChoiceOption) return;
     // Flush unsaved edits and persist BEFORE switching the branch: the switch
     // replaces initialDocuments/documentsResetKey, and the reset effect both
     // skips while the active scene is dirty and drops draft snapshots.
-    await handleSave();
+    if (!(await handleSave())) return;
     onSelectChoiceOption(choiceStepId, optionId);
   }, [handleSave, onSelectChoiceOption]);
 
@@ -468,7 +521,7 @@ export function DocumentSceneEditor({
     if (!onStartBranchOption) return;
     // Same flush-then-mutate contract as branch switching: the host will
     // rewrite the choice scene's record and reset the document.
-    await handleSave();
+    if (!(await handleSave())) return;
     onStartBranchOption(choiceStepId, optionId);
   }, [handleSave, onStartBranchOption]);
 
@@ -479,13 +532,13 @@ export function DocumentSceneEditor({
   }, []);
 
   const handleAddScene = useCallback(async () => {
-    await handleSave();
+    if (!(await handleSave())) return;
     onCreateNextScene(activeSceneIdRef.current, [], localCharactersRef.current);
   }, [handleSave, onCreateNextScene]);
 
   const handleDuplicateScene = useCallback(async (sourceSceneId: string) => {
     if (!onDuplicateScene) return;
-    await handleSave();
+    if (!(await handleSave())) return;
     onDuplicateScene(sourceSceneId);
   }, [handleSave, onDuplicateScene]);
 
@@ -497,7 +550,7 @@ export function DocumentSceneEditor({
     const sceneId = pendingDeleteSceneId;
     if (!sceneId || !onDeleteScene) return;
     setPendingDeleteSceneId(null);
-    await handleSave();
+    if (!(await handleSave())) return;
     onDeleteScene(sceneId);
   }, [handleSave, onDeleteScene, pendingDeleteSceneId]);
 
@@ -506,7 +559,7 @@ export function DocumentSceneEditor({
     // Same flush-then-mutate contract as branch switching: the mode change
     // rebuilds initialDocuments, and the reset effect keeps the author on the
     // scene they were viewing (activeSceneId survives the rebuild).
-    await handleSave();
+    if (!(await handleSave())) return;
     onSetViewMode(mode);
   }, [handleSave, onSetViewMode, viewMode]);
 
@@ -523,7 +576,7 @@ export function DocumentSceneEditor({
   const handleOffPathScenePress = useCallback(async (nextSceneId: string) => {
     // Off-path scenes are not rendered in the current document — reopen the
     // route on that scene so it gets appended and becomes editable.
-    await handleSave();
+    if (!(await handleSave())) return;
     router.push({ pathname: '/document-editor', params: { storyId, sceneId: nextSceneId } });
   }, [handleSave, router, storyId]);
 
@@ -669,7 +722,7 @@ export function DocumentSceneEditor({
   }, []);
 
   const handleBack = useCallback(async () => {
-    await handleSave();
+    if (!(await handleSave())) return;
     if (onBack) {
       onBack();
       return;
@@ -678,7 +731,7 @@ export function DocumentSceneEditor({
   }, [handleSave, onBack, router]);
 
   const handlePreview = useCallback(async () => {
-    await handleSave();
+    if (!(await handleSave())) return;
     if (onPreview) {
       onPreview(activeSceneId);
       return;
@@ -687,7 +740,7 @@ export function DocumentSceneEditor({
   }, [activeSceneId, handleSave, onPreview, router, storyId]);
 
   const handleSaveAndPlay = useCallback(async () => {
-    await handleSave();
+    if (!(await handleSave())) return;
     if (onSaveAndPlay) {
       onSaveAndPlay(activeSceneId);
       return;
@@ -875,6 +928,7 @@ export function DocumentSceneEditor({
             characters={localCharacters}
             storyScenes={storySceneRefs}
             onOpenScene={handleInspectorScenePress}
+            beforeStoryMutation={handleSave}
           />
         ) : null}
       </View>
