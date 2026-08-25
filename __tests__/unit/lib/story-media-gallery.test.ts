@@ -1,5 +1,6 @@
 import {
   buildStoryMediaGallery,
+  canDetachOwner,
   canRemoveFromStory,
   filterMediaItems,
   groupMediaByDate,
@@ -352,5 +353,70 @@ describe('canRemoveFromStory', () => {
     }).images[0];
 
     expect(canRemoveFromStory(spare)).toBe(true);
+  });
+});
+
+describe('canDetachOwner', () => {
+  const shared = () => build({
+    mediaLibrary: [asset({ id: 'a1', uri: 'file://shared.png' })],
+    imageAssetIdsByStory: { 'story-1': ['a1'] },
+    characters: [
+      character('alice', [sprite('happy', { uri: 'file://shared.png' })]),
+      character('bob', [sprite('calm', { uri: 'file://shared.png' })]),
+    ],
+    scenes: [scene('s1', [
+      step('c1', 'character', {
+        characterId: 'alice',
+        spriteId: 'happy',
+        position: 'left',
+        transition: 'instant',
+        delay: 0,
+        duration: null,
+      }),
+      step('b1', 'background', { assetId: 'a1' }),
+    ])],
+  }).images[0];
+
+  // One file, one tile, two owners — and the reference names one of them. A
+  // per-file gate would either strand Bob's sprite or let Alice's dangle.
+  it('separates the owners of one file', () => {
+    const item = shared();
+    const alice = item.owners.find((owner) => owner.characterId === 'alice')!;
+    const bob = item.owners.find((owner) => owner.characterId === 'bob')!;
+
+    expect(alice.usage).toEqual({ enabled: 1, disabled: 0 });
+    expect(bob.usage).toEqual({ enabled: 0, disabled: 0 });
+    expect(canDetachOwner(alice)).toBe(false);
+    expect(canDetachOwner(bob)).toBe(true);
+  });
+
+  // The file is a background in the same scene. That reference survives the
+  // detach untouched, so it must not count against the sprite.
+  it('ignores references to the file that do not name the sprite', () => {
+    const item = shared();
+    expect(item.usage.enabled).toBe(2);
+    expect(canDetachOwner(item.owners.find((owner) => owner.characterId === 'bob')!)).toBe(true);
+  });
+
+  it('counts a disabled reference against the sprite', () => {
+    const item = build({
+      mediaLibrary: [asset({ id: 'a1', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['a1'] },
+      characters: [character('alice', [sprite('happy', { uri: 'file://alice.png' })])],
+      scenes: [scene('s1', [
+        step('c1', 'character', {
+          characterId: 'alice',
+          spriteId: 'happy',
+          position: 'left',
+          transition: 'instant',
+          delay: 0,
+          duration: null,
+        }, false),
+      ])],
+    }).images[0];
+
+    // Re-enabling the block brings the reference back; the sprite has to exist.
+    expect(item.owners[0].usage).toEqual({ enabled: 0, disabled: 1 });
+    expect(canDetachOwner(item.owners[0])).toBe(false);
   });
 });

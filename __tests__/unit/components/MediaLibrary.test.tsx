@@ -249,6 +249,8 @@ describe('media inspector', () => {
       onOpenScene: vi.fn(),
       onRemoveBackground: vi.fn(),
       onRemoveFromStory: vi.fn(),
+      onAttachToCharacter: vi.fn(),
+      onDetachFromCharacter: vi.fn(),
     };
     render(
       <MediaInspector
@@ -257,6 +259,7 @@ describe('media inspector', () => {
         asSheet={false}
         canRemoveBackground={false}
         removingBackground={false}
+        characters={[]}
         {...handlers}
         {...overrides}
       />,
@@ -277,7 +280,7 @@ describe('media inspector', () => {
 
     expect(screen.getByText(/Used in 1 scenes/)).toBeTruthy();
     expect(screen.getByText(/used in the scenes below/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Remove from story' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Open scene: Opening' }));
     expect(handlers.onOpenScene).toHaveBeenCalledWith('scene-1');
@@ -315,7 +318,7 @@ describe('media inspector', () => {
     renderInspector(item);
 
     // Re-enabling the block would break the reference, so it still counts.
-    expect(screen.queryByRole('button', { name: 'Remove from story' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
     expect(screen.getByText(/1/)).toBeTruthy();
   });
 
@@ -330,7 +333,9 @@ describe('media inspector', () => {
 
     expect(screen.getByText(/belongs to a character/)).toBeTruthy();
     expect(screen.getByText('Alice · Happy')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Remove from story' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
+    // And the way to detach it is right there, since nothing references it.
+    expect(screen.getByRole('button', { name: 'Remove from Alice' })).toBeTruthy();
   });
 
   it('explains that a sprite outside the library has no story membership', () => {
@@ -349,7 +354,7 @@ describe('media inspector', () => {
     const handlers = renderInspector(item);
 
     expect(screen.getByText('Not used in any scene')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove from story' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove imported file' }));
     expect(handlers.onRemoveFromStory).toHaveBeenCalledWith(expect.objectContaining({ assetId: 'spare' }));
   });
 
@@ -389,5 +394,99 @@ describe('media inspector', () => {
 
     renderInspector(item, { canRemoveBackground: true });
     expect(screen.getByRole('button', { name: 'Remove background' })).toBeTruthy();
+  });
+
+  const aliceFilter = { characterId: 'alice', name: 'Alice', color: '#ff0000', count: 0 };
+
+  it('attaches a file to the character the author picks', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'spare' })],
+      imageAssetIdsByStory: { 'story-1': ['spare'] },
+    }).images[0];
+    const handlers = renderInspector(item, { characters: [aliceFilter] });
+
+    // The picker is closed until asked for: its rows are one-tap writes.
+    expect(screen.queryByRole('button', { name: 'Add to Alice' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to character…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Alice' }));
+
+    expect(handlers.onAttachToCharacter).toHaveBeenCalledWith(
+      expect.objectContaining({ assetId: 'spare' }),
+      'alice',
+    );
+  });
+
+  // Attaching twice would give one character two sprites for one file, and the
+  // second is indistinguishable from the first everywhere but the timeline.
+  it('leaves out a character that already owns the file', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characters: [alice],
+    }).images[0];
+    renderInspector(item, { characters: [aliceFilter] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to character…' }));
+
+    expect(screen.getByText('Every character already has this image.')).toBeTruthy();
+  });
+
+  it('never offers to attach a video', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'clip', type: 'video', uri: 'file://clip.mp4', name: 'clip.mp4' })],
+      mediaAssetIdsByStory: { 'story-1': ['clip'] },
+    }).videos[0];
+
+    renderInspector(item, { characters: [aliceFilter] });
+
+    expect(screen.queryByRole('button', { name: 'Add to character…' })).toBeNull();
+  });
+
+  // A dangling `${characterId}:${spriteId}` is permanent: unlike story
+  // membership, nothing re-derives a sprite a scene still names.
+  it('refuses to detach a sprite a scene still shows', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characters: [alice],
+      scenes: [scene([
+        { id: 'step-1', blockType: 'character', enabled: true, data: { characterId: 'alice', spriteId: 'happy', position: 'left', transition: 'instant', delay: 0, duration: null } } as TimelineStep,
+      ])],
+    }).images[0];
+
+    const handlers = renderInspector(item, { characters: [aliceFilter] });
+
+    expect(screen.queryByRole('button', { name: 'Remove from Alice' })).toBeNull();
+    expect(screen.getByText(/Shown as Alice in 1 scenes/)).toBeTruthy();
+    expect(handlers.onDetachFromCharacter).not.toHaveBeenCalled();
+  });
+
+  // The file is a background in a scene, but no step names Alice's sprite:
+  // detaching it breaks nothing, and the file stays in the story regardless.
+  it('detaches a sprite whose own references are zero even when the file is used', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'bg', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['bg'] },
+      characters: [alice],
+      scenes: [scene([
+        { id: 'step-1', blockType: 'background', enabled: true, data: { assetId: 'bg' } } as TimelineStep,
+      ])],
+    }).images[0];
+
+    const handlers = renderInspector(item, { characters: [aliceFilter] });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from Alice' }));
+
+    expect(handlers.onDetachFromCharacter).toHaveBeenCalledWith(
+      expect.objectContaining({ assetId: 'bg' }),
+      expect.objectContaining({ characterId: 'alice', spriteId: 'happy' }),
+    );
+  });
+
+  it('names the scene the author came from as the current one', () => {
+    const handlers = renderInspector(usedImage(), { currentSceneId: 'scene-1' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open current scene: Opening' }));
+    expect(handlers.onOpenScene).toHaveBeenCalledWith('scene-1');
   });
 });

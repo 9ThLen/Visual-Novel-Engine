@@ -14,7 +14,7 @@ import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import { useAppStore } from '@/stores/use-app-store';
 // Test-only helpers come from the mock path: the alias applies at runtime, but
 // the real modules have no such export for tsc to find.
-import { setLocalSearchParamsForTests } from '../../../__mocks__/expo-router';
+import { getRouterForTests, setLocalSearchParamsForTests } from '../../../__mocks__/expo-router';
 
 function asset(overrides: Partial<LibraryAsset> & { id: string }): LibraryAsset {
   return {
@@ -58,6 +58,7 @@ function seedStore(overrides: StoreSeed = {}) {
     addImageAssetToStory: vi.fn(),
     removeImageAssetFromStory: vi.fn(),
     removeMediaAssetFromStory: vi.fn(),
+    setCharacterLibrary: vi.fn(),
     ...overrides,
   };
   (useAppStore as unknown as { setState: (value: StoreSeed) => void }).setState(seed);
@@ -75,6 +76,7 @@ const alice = {
 describe('media library route', () => {
   beforeEach(() => {
     setLocalSearchParamsForTests({ storyId: 'story-1' });
+    getRouterForTests().push.mockClear();
   });
 
   afterEach(() => {
@@ -165,6 +167,70 @@ describe('media library route', () => {
     expect(screen.getByText('Nothing here is used in a scene yet.')).toBeTruthy();
   });
 
+  // Ownership is additive: the character gets a sprite of its own pointing at
+  // the same file, and the scenes are not touched.
+  it('attaches an image to a character without touching the scenes', async () => {
+    const setCharacterLibrary = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'bg' })],
+      imageAssetIdsByStory: { 'story-1': ['bg'] },
+      characterLibraries: { 'story-1': [{ ...alice, sprites: [] }] },
+      setCharacterLibrary,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, bg.png' }));
+    await waitFor(() => expect(screen.getByText('Not used in any scene')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to character…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Alice' }));
+
+    expect(setCharacterLibrary).toHaveBeenCalledTimes(1);
+    const [storyId, characters] = setCharacterLibrary.mock.calls[0];
+    expect(storyId).toBe('story-1');
+    expect(characters[0].sprites).toEqual([
+      expect.objectContaining({ name: 'bg', uri: 'bg' }),
+    ]);
+    // The reference is the asset id, which outlives the URI.
+    expect(characters[0].sprites[0]).not.toHaveProperty('assetUri');
+  });
+
+  it('detaches a sprite through the store', async () => {
+    const setCharacterLibrary = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characterLibraries: { 'story-1': [alice] },
+      setCharacterLibrary,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
+    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from Alice' }));
+
+    expect(setCharacterLibrary).toHaveBeenCalledWith('story-1', [
+      expect.objectContaining({ id: 'alice', sprites: [] }),
+    ]);
+  });
+
+  // The library is opened from a scene and has to lead back to it. There is no
+  // fallback to "some scene of this story": landing the author in a scene they
+  // were not editing is worse than not offering the way back at all.
+  it('returns to the scene it was opened from', () => {
+    setLocalSearchParamsForTests({ storyId: 'story-1', sceneId: 'scene-7' });
+    seedStore({});
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+    expect(getRouterForTests().push).toHaveBeenCalledWith({
+      pathname: '/document-editor',
+      params: { storyId: 'story-1', sceneId: 'scene-7' },
+    });
+  });
+
   it('removes an unused file through the store and blocks a used one', async () => {
     const removeImageAssetFromStory = vi.fn();
     seedStore({
@@ -184,11 +250,11 @@ describe('media library route', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Image, bg.png' }));
     await waitFor(() => expect(screen.getByText(/used in the scenes below/)).toBeTruthy());
-    expect(screen.queryByRole('button', { name: 'Remove from story' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Image, spare.png' }));
     await waitFor(() => expect(screen.getByText('Not used in any scene')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Remove from story' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove imported file' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     expect(removeImageAssetFromStory).toHaveBeenCalledWith('story-1', 'spare');

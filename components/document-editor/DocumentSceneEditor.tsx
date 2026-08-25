@@ -91,7 +91,8 @@ interface DocumentSceneEditorProps {
   onPickVideoAsset?: () => Promise<{ asset: VNPlateVideoAsset | null; error?: 'tooLarge' | 'unsupportedType' | 'failed' }>;
   onBack?: () => void;
   onPreview?: (sceneId: string) => void;
-  onGallery?: () => void;
+  /** Receives the scene the author is on, so the library can offer the way back. */
+  onGallery?: (sceneId: string) => void;
   onSaveAndPlay?: (sceneId: string) => void;
 }
 
@@ -758,6 +759,23 @@ export function DocumentSceneEditor({
     router.push({ pathname: '/preview', params: { storyId, sceneId: activeSceneId } });
   }, [activeSceneId, handleSave, onPreview, router, storyId]);
 
+  /**
+   * The media library reads characters straight from the store, so anything the
+   * author added here and has not saved would simply be missing from it — and
+   * the sprite they then attach to a character would land next to a library the
+   * grid never showed. Saving first is also what every other exit from this
+   * screen does.
+   */
+  const handleGallery = useCallback(async () => {
+    if (!(await handleSave())) return;
+    const gallerySceneId = activeSceneIdRef.current;
+    if (onGallery) {
+      onGallery(gallerySceneId);
+      return;
+    }
+    router.push({ pathname: '/story-gallery', params: { storyId, sceneId: gallerySceneId } });
+  }, [handleSave, onGallery, router, storyId]);
+
   const handleSaveAndPlay = useCallback(async () => {
     if (!(await handleSave())) return;
     if (onSaveAndPlay) {
@@ -828,7 +846,7 @@ export function DocumentSceneEditor({
         sceneCount={sceneCount}
         onBack={handleBack}
         onPreview={handlePreview}
-        onGallery={onGallery ?? (() => router.push({ pathname: '/story-gallery', params: { storyId } }))}
+        onGallery={handleGallery}
         onSave={handleSave}
         onSaveAndPlay={handleSaveAndPlay}
         canUndo={activeHistoryState.canUndo}

@@ -19,6 +19,11 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { resolveAssetUri } from '@/lib/asset-resolver';
+import {
+  attachSpriteToCharacter,
+  detachSpriteFromCharacter,
+  spriteNameFromFileName,
+} from '@/lib/character-media';
 import { spacing, radius, typeScale } from '@/lib/design-tokens';
 import { pickImageFromDevice } from '@/lib/pick-image';
 import { isBackgroundRemovalSupported, removeImageBackground } from '@/lib/remove-background';
@@ -27,6 +32,7 @@ import {
   filterMediaItems,
   type ImageFilter,
   type MediaKind,
+  type MediaOwner,
   type StoryMediaItem,
 } from '@/lib/story-media-gallery';
 import { showToast } from '@/lib/toast-store';
@@ -53,6 +59,7 @@ export default function StoryGalleryRoute() {
   const addImage = useAppStore((state) => state.addImageAssetToStory);
   const removeImage = useAppStore((state) => state.removeImageAssetFromStory);
   const removeMedia = useAppStore((state) => state.removeMediaAssetFromStory);
+  const setCharacterLibrary = useAppStore((state) => state.setCharacterLibrary);
 
   const [kind, setKind] = useState<MediaKind>('image');
   const [filter, setFilter] = useState<ImageFilter>({ kind: 'all' });
@@ -143,6 +150,37 @@ export default function StoryGalleryRoute() {
     router.push({ pathname: '/document-editor', params: { storyId, sceneId: targetSceneId } });
   }, [router, storyId]);
 
+  /**
+   * Ownership is additive: the character gets its own sprite pointing at the
+   * same file, and no scene is touched. Nothing has to be added to the story's
+   * image membership either — the file is already in this grid, and hydration
+   * re-derives membership from sprite URIs anyway.
+   */
+  const handleAttachToCharacter = useCallback((item: StoryMediaItem, characterId: string) => {
+    if (!storyId) return;
+    const character = characters.find((candidate) => candidate.id === characterId);
+    if (!character) return;
+    const next = attachSpriteToCharacter({
+      characters,
+      characterId,
+      // The asset id outlives the URI, so it is the better reference of the two.
+      ref: item.assetId ?? item.uri,
+      name: spriteNameFromFileName(item.name),
+      now: Date.now(),
+    });
+    if (next === characters) return;
+    setCharacterLibrary(storyId, next);
+    showToast(t('mediaLibrary.attach.done', { name: character.name }), 'success');
+  }, [characters, setCharacterLibrary, storyId, t]);
+
+  const handleDetachFromCharacter = useCallback((item: StoryMediaItem, owner: MediaOwner) => {
+    if (!storyId) return;
+    const next = detachSpriteFromCharacter(characters, owner.characterId, owner.spriteId);
+    if (next === characters) return;
+    setCharacterLibrary(storyId, next);
+    showToast(t('mediaLibrary.detach.done', { name: owner.characterName }), 'success');
+  }, [characters, setCharacterLibrary, storyId, t]);
+
   const isPhone = width < PHONE_MAX_WIDTH;
   // Each empty state has to say why it is empty. Telling an author with six
   // images that the story has none, just because none are used yet, reads as a
@@ -226,10 +264,14 @@ export default function StoryGalleryRoute() {
             asSheet={isPhone}
             canRemoveBackground={isBackgroundRemovalSupported()}
             removingBackground={removingBackgroundKey === selected.key}
+            characters={gallery.characterFilters}
+            currentSceneId={sceneId}
             onClose={() => setSelectedKey(null)}
             onOpenScene={handleOpenScene}
             onRemoveBackground={handleRemoveBackground}
             onRemoveFromStory={setPendingRemoval}
+            onAttachToCharacter={handleAttachToCharacter}
+            onDetachFromCharacter={handleDetachFromCharacter}
           />
         ) : null}
       </View>

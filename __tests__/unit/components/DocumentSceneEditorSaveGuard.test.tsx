@@ -100,6 +100,31 @@ describe('DocumentSceneEditor save guard', () => {
     expect(onBack).not.toHaveBeenCalled();
   });
 
+  // The media library reads characters from the store, so an unsaved sprite is
+  // simply missing from it — and the file the author then attaches to a
+  // character lands next to a library the grid never showed them.
+  it('saves before opening the media library and says which scene it left', async () => {
+    const onGallery = vi.fn();
+    const { onSave } = renderEditor({ onGallery });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Media library' }));
+
+    await waitFor(() => expect(onGallery).toHaveBeenCalledWith('scene-1'));
+    expect(onSave).toHaveBeenCalled();
+  });
+
+  it('does not open the media library when the save failed', async () => {
+    const onGallery = vi.fn();
+    const onSave = vi.fn();
+    makeFlushFail();
+    renderEditor({ onGallery, onSave });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Media library' }));
+
+    await waitFor(() => expect(onSave).not.toHaveBeenCalled());
+    expect(onGallery).not.toHaveBeenCalled();
+  });
+
   it('does not open the preview when the save failed', async () => {
     const onPreview = vi.fn();
     const onSave = vi.fn();

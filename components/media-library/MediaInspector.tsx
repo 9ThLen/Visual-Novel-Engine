@@ -19,7 +19,13 @@ import { useI18n } from '@/hooks/use-i18n';
 import { acquireResolvedAssetUri } from '@/lib/asset-resolver';
 import type { ThemeColorPalette } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
-import { canRemoveFromStory, type StoryMediaItem } from '@/lib/story-media-gallery';
+import {
+  canDetachOwner,
+  canRemoveFromStory,
+  type CharacterMediaFilter,
+  type MediaOwner,
+  type StoryMediaItem,
+} from '@/lib/story-media-gallery';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -121,10 +127,16 @@ export interface MediaInspectorProps {
   asSheet: boolean;
   canRemoveBackground: boolean;
   removingBackground: boolean;
+  /** Every character in the story; the ones already owning the file are filtered out here. */
+  characters: CharacterMediaFilter[];
+  /** The scene the author came from, when the library was opened from one. */
+  currentSceneId?: string;
   onClose: () => void;
   onOpenScene: (sceneId: string) => void;
   onRemoveBackground: (item: StoryMediaItem) => void;
   onRemoveFromStory: (item: StoryMediaItem) => void;
+  onAttachToCharacter: (item: StoryMediaItem, characterId: string) => void;
+  onDetachFromCharacter: (item: StoryMediaItem, owner: MediaOwner) => void;
 }
 
 function InspectorBody({
@@ -132,23 +144,45 @@ function InspectorBody({
   colors,
   canRemoveBackground,
   removingBackground,
+  characters,
+  currentSceneId,
   onClose,
   onOpenScene,
   onRemoveBackground,
   onRemoveFromStory,
+  onAttachToCharacter,
+  onDetachFromCharacter,
 }: Omit<MediaInspectorProps, 'asSheet'>) {
   const { t } = useI18n();
+  const [pickingCharacter, setPickingCharacter] = useState(false);
+  // The panel stays mounted while the selection moves from tile to tile; an
+  // open picker would otherwise carry over to a file the author never asked
+  // about, and its first row is a one-tap write.
+  useEffect(() => setPickingCharacter(false), [item.key]);
   // One scene can reference the same file from several steps — a background and
   // a sprite, or the same sprite in two dialogue blocks. The author cares which
   // scenes to visit, so both the count and the list are per scene.
   const scenes = React.useMemo(() => {
     const seen = new Set<string>();
-    return item.references.filter((reference) => {
+    const unique = item.references.filter((reference) => {
       if (seen.has(reference.sceneId)) return false;
       seen.add(reference.sceneId);
       return true;
     });
-  }, [item.references]);
+    // The scene the author came from goes first and says so. Everything else
+    // keeps document order — the sort is stable, so this only lifts one row.
+    if (!currentSceneId) return unique;
+    return [...unique].sort((a, b) =>
+      Number(b.sceneId === currentSceneId) - Number(a.sceneId === currentSceneId));
+  }, [currentSceneId, item.references]);
+  const attachable = React.useMemo(
+    () => characters.filter((character) =>
+      !item.owners.some((owner) => owner.characterId === character.characterId)),
+    [characters, item.owners],
+  );
+  const sceneActionLabel = (sceneId: string) => t(sceneId === currentSceneId
+    ? 'mediaLibrary.action.openInCurrentScene'
+    : 'mediaLibrary.action.openInScene');
   const removable = canRemoveFromStory(item);
   const blockedReason = removable
     ? null
@@ -192,13 +226,75 @@ function InspectorBody({
         <View style={styles.ownerRow}>
           <Text style={[typeScale.caption, { color: colors.muted }]}>{t('mediaLibrary.inspector.characters')}</Text>
           {item.owners.map((owner) => (
-            <View key={owner.usageAssetId} style={styles.owner}>
-              <View style={[styles.dot, { backgroundColor: owner.color || colors.primary }]} />
-              <Text style={[typeScale.label, { color: colors.foreground }]}>
-                {owner.characterName} · {owner.spriteName}
-              </Text>
+            <View key={owner.usageAssetId} style={styles.ownerBlock}>
+              <View style={styles.owner}>
+                <View style={[styles.dot, { backgroundColor: owner.color || colors.primary }]} />
+                <Text style={[typeScale.label, { color: colors.foreground, flex: 1 }]}>
+                  {owner.characterName} · {owner.spriteName}
+                </Text>
+              </View>
+              {canDetachOwner(owner) ? (
+                <Pressable
+                  onPress={() => onDetachFromCharacter(item, owner)}
+                  accessibilityRole="button"
+                  style={[styles.action, { borderColor: colors.border }]}
+                >
+                  <Text style={[typeScale.label, { color: colors.danger }]}>
+                    {t('mediaLibrary.action.removeFromCharacter', { name: owner.characterName })}
+                  </Text>
+                </Pressable>
+              ) : (
+                // Detaching a sprite a scene still shows would dangle that
+                // reference for good, and nothing restores it the way story
+                // membership is restored.
+                <Text style={[typeScale.caption, { color: colors.muted }]}>
+                  {t('mediaLibrary.detach.blocked', {
+                    name: owner.characterName,
+                    count: owner.usage.enabled + owner.usage.disabled,
+                  })}
+                </Text>
+              )}
             </View>
           ))}
+        </View>
+      ) : null}
+
+      {item.kind === 'image' ? (
+        <View style={styles.ownerRow}>
+          <Pressable
+            onPress={() => setPickingCharacter((open) => !open)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: pickingCharacter }}
+            style={[styles.action, { borderColor: colors.border }]}
+          >
+            <IconSymbol name="character" size={17} color={colors.primary} />
+            <Text style={[typeScale.label, { color: colors.primary }]}>
+              {t('mediaLibrary.action.addToCharacter')}
+            </Text>
+          </Pressable>
+          {pickingCharacter ? (
+            attachable.length ? attachable.map((character) => (
+              <Pressable
+                key={character.characterId}
+                onPress={() => {
+                  onAttachToCharacter(item, character.characterId);
+                  setPickingCharacter(false);
+                }}
+                accessibilityRole="button"
+                // The bare name reads as a filter chip; what this row does is
+                // add the file to that character.
+                accessibilityLabel={t('mediaLibrary.attach.option', { name: character.name })}
+                style={[styles.sceneLink, { borderColor: colors.border }]}
+              >
+                <View style={[styles.dot, { backgroundColor: character.color || colors.primary }]} />
+                <Text style={[typeScale.label, { color: colors.foreground, flex: 1 }]}>{character.name}</Text>
+              </Pressable>
+            )) : (
+              <Text style={[typeScale.caption, { color: colors.muted }]}>
+                {t(characters.length ? 'mediaLibrary.attach.none' : 'mediaLibrary.attach.noCharacters')}
+              </Text>
+            )
+          ) : null}
         </View>
       ) : null}
 
@@ -229,11 +325,11 @@ function InspectorBody({
           key={reference.sceneId}
           onPress={() => onOpenScene(reference.sceneId)}
           accessibilityRole="button"
-          accessibilityLabel={`${t('mediaLibrary.action.openInScene')}: ${reference.sceneName}`}
+          accessibilityLabel={`${sceneActionLabel(reference.sceneId)}: ${reference.sceneName}`}
           style={[styles.sceneLink, { borderColor: colors.border }]}
         >
           <Text style={[typeScale.label, { color: colors.foreground, flex: 1 }]}>{reference.sceneName}</Text>
-          <Text style={[typeScale.caption, { color: colors.primary }]}>{t('mediaLibrary.action.openInScene')}</Text>
+          <Text style={[typeScale.caption, { color: colors.primary }]}>{sceneActionLabel(reference.sceneId)}</Text>
         </Pressable>
       ))}
 
@@ -258,7 +354,9 @@ function InspectorBody({
           style={[styles.action, { borderColor: colors.border }]}
         >
           <IconSymbol name="delete" size={17} color={colors.danger} />
-          <Text style={[typeScale.label, { color: colors.danger }]}>{t('mediaLibrary.action.removeFromStory')}</Text>
+          <Text style={[typeScale.label, { color: colors.danger }]}>
+            {t('mediaLibrary.action.removeImportedFile')}
+          </Text>
         </Pressable>
       )}
     </ScrollView>
@@ -306,6 +404,7 @@ const styles = StyleSheet.create({
   videoFallback: { width: '100%', height: 180, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   retry: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },
   ownerRow: { gap: spacing.xs },
+  ownerBlock: { gap: spacing.xs, paddingBottom: spacing.xs },
   owner: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   dot: { width: 10, height: 10, borderRadius: radius.full },
   metaRow: { flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap' },

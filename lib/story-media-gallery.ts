@@ -36,6 +36,13 @@ export interface MediaOwner {
   isDefaultSprite: boolean;
   /** Composite reference key used by the timeline: `${characterId}:${spriteId}`. */
   usageAssetId: string;
+  /**
+   * References to this sprite alone, not to the file.
+   *
+   * Detaching a sprite dangles only the references that name it, so the same
+   * file can be detachable from one character and pinned by another.
+   */
+  usage: MediaUsage;
 }
 
 export interface MediaReference {
@@ -127,6 +134,15 @@ function isDefaultSprite(character: Character, sprite: CharacterSprite): boolean
     : character.sprites[0]?.id === sprite.id;
 }
 
+function countUsage(references: MediaReference[] | undefined): MediaUsage {
+  const usage: MediaUsage = { enabled: 0, disabled: 0 };
+  for (const reference of references ?? []) {
+    if (reference.enabled) usage.enabled += 1;
+    else usage.disabled += 1;
+  }
+  return usage;
+}
+
 function referenceKey(reference: MediaReference): string {
   return `${reference.sceneId}:${reference.stepId}:${reference.kind}`;
 }
@@ -196,6 +212,7 @@ export function buildStoryMediaGallery(input: StoryMediaGalleryInput): StoryMedi
         spriteName: sprite.name,
         isDefaultSprite: isDefaultSprite(character, sprite),
         usageAssetId: toSpriteUsageAssetId(character.id, sprite.id),
+        usage: countUsage(referencesByUsageId.get(toSpriteUsageAssetId(character.id, sprite.id))),
       };
 
       let item = itemsByKey.get(key);
@@ -306,6 +323,19 @@ export function isMediaItemUsed(item: StoryMediaItem): boolean {
  */
 export function canRemoveFromStory(item: StoryMediaItem): boolean {
   return Boolean(item.assetId) && item.owners.length === 0 && !isMediaItemUsed(item);
+}
+
+/**
+ * Whether the sprite can be taken off its character.
+ *
+ * Only this sprite's own references matter: the file may well be a background
+ * in ten scenes, and none of those would break. What breaks is a timeline step
+ * naming `${characterId}:${spriteId}`, and unlike story membership there is no
+ * migration that quietly restores the sprite, so a dangling reference stays
+ * dangling.
+ */
+export function canDetachOwner(owner: MediaOwner): boolean {
+  return owner.usage.enabled + owner.usage.disabled === 0;
 }
 
 function matchesQuery(item: StoryMediaItem, query: string): boolean {
