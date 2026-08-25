@@ -5410,6 +5410,12 @@ const EMBEDDED_SCRIPT_BODY = `
               if (deleteCharacter.authoring && deleteCharacter.authoring.currentSpriteId === selected.value) {
                 deleteCharacter.authoring.currentSpriteId = deleteCharacter.sprites[0] && deleteCharacter.sprites[0].id || null;
               }
+              // The default is the other pointer at the sprite just deleted;
+              // left behind it names nothing, and the character reads as having
+              // no default at all.
+              if (deleteCharacter.defaultSpriteId === selected.value) {
+                deleteCharacter.defaultSpriteId = deleteCharacter.sprites[0] && deleteCharacter.sprites[0].id || undefined;
+              }
               renderCharacterPopover(activeCharacterToken);
               saveNow();
             }

@@ -42,10 +42,23 @@ function isCharacterEntranceTransition(value: unknown): value is CharacterEntran
     || value === 'zoom';
 }
 
+/**
+ * Both pointers into the sprite list must name a sprite the character actually
+ * has. The iframe editor repairs only `authoring.currentSpriteId` when it
+ * deletes a sprite and leaves `defaultSpriteId` on the one it just removed, so
+ * characters carrying a dangling default already exist in saved stories.
+ *
+ * Repairing here rather than only at the source fixes those too: every path
+ * that writes a character library runs this.
+ */
 export function migrateCharacter(character: Character): Character {
-  const currentSpriteId = character.authoring?.currentSpriteId
-    ?? character.defaultSpriteId
-    ?? character.sprites[0]?.id;
+  const names = (spriteId: string | undefined): spriteId is string =>
+    !!spriteId && character.sprites.some((sprite) => sprite.id === spriteId);
+
+  const defaultSpriteId = names(character.defaultSpriteId) ? character.defaultSpriteId : undefined;
+  const currentSpriteId = names(character.authoring?.currentSpriteId)
+    ? character.authoring?.currentSpriteId
+    : defaultSpriteId ?? character.sprites[0]?.id;
   const currentPosition = isCharacterPosition(character.authoring?.currentPosition)
     ? character.authoring?.currentPosition
     : 'center';
@@ -56,7 +69,7 @@ export function migrateCharacter(character: Character): Character {
     ? character.authoring.exitTransition
     : 'fade';
 
-  return {
+  const migrated: Character = {
     ...character,
     color: character.color || stableColorForCharacter(character),
     authoring: {
@@ -68,6 +81,14 @@ export function migrateCharacter(character: Character): Character {
     },
     characterAuthoringSchemaVersion: CHARACTER_AUTHORING_SCHEMA_VERSION,
   };
+
+  // Deleted rather than set to undefined: the three-way merge fingerprints a
+  // character by stringifying it, where a present-but-undefined key and an
+  // absent one are the same value but not the same text.
+  if (defaultSpriteId) migrated.defaultSpriteId = defaultSpriteId;
+  else delete migrated.defaultSpriteId;
+
+  return migrated;
 }
 
 export function migrateCharacterLibrary(characters: Character[] | undefined | null): Character[] {
