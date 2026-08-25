@@ -155,13 +155,17 @@ describe('media library route', () => {
 
   // Each empty state has to say why it is empty; claiming the story has no
   // images when six are simply unused reads as a broken library.
-  it('explains an empty usage filter without denying the images exist', () => {
+  it('explains an empty usage filter without denying the images exist', async () => {
     seedStore({
       mediaLibrary: [asset({ id: 'bg' })],
       imageAssetIdsByStory: { 'story-1': ['bg'] },
+      // The story's one scene, so the usage filters are answerable at all.
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
     });
 
     render(<StoryGalleryRoute />);
+    // The usage filters stay shut until the scene load resolves.
+    await act(async () => {});
     fireEvent.click(screen.getByRole('button', { name: 'Used' }));
 
     expect(screen.getByText('Nothing here is used in a scene yet.')).toBeTruthy();
@@ -295,7 +299,7 @@ describe('media library route', () => {
 
   // A load that finished but produced nothing is not the same as a story with
   // no scenes: broken storage looks exactly like an unused library.
-  it('trusts an empty load only when the story claims no scenes', async () => {
+  it('does not trust an empty load while the story claims scenes', async () => {
     seedStore({
       storiesMetadata: [{ id: 'story-1', title: 'My story', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 4 }],
       mediaLibrary: [asset({ id: 'spare' })],
@@ -305,8 +309,47 @@ describe('media library route', () => {
     render(<StoryGalleryRoute />);
     fireEvent.click(screen.getByRole('button', { name: 'Image, spare.png' }));
 
-    await waitFor(() => expect(screen.getAllByText('Checking where this file is used…').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText('Could not check where this file is used.').length).toBeGreaterThan(0));
     expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
+  });
+
+  // The reader loads a window of scenes and the full load marks the story
+  // hydrated even when storage returned nothing, so "some scenes are in memory"
+  // is not "all of them are". The other nine could each name this sprite.
+  it('does not mistake a partial load for a complete one', async () => {
+    const setCharacterLibrary = vi.fn();
+    seedStore({
+      storiesMetadata: [{ id: 'story-1', title: 'My story', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 4 }],
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characterLibraries: { 'story-1': [alice] },
+      // One scene of four, and not one that mentions the sprite.
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      setCharacterLibrary,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
+    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
+
+    expect(screen.queryByRole('button', { name: 'Remove from Alice' })).toBeNull();
+    expect(setCharacterLibrary).not.toHaveBeenCalled();
+  });
+
+  it('says nothing about usage while the story is only partly in memory', async () => {
+    seedStore({
+      storiesMetadata: [{ id: 'story-1', title: 'My story', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 4 }],
+      mediaLibrary: [asset({ id: 'spare' })],
+      imageAssetIdsByStory: { 'story-1': ['spare'] },
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+    });
+
+    render(<StoryGalleryRoute />);
+
+    // The usage filters would claim everything is unused; they are withheld.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Used' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Used' }));
+    expect(screen.getByRole('button', { name: 'Image, spare.png' })).toBeTruthy();
   });
 
   // The write is built from the store as it is at that moment, not from the
@@ -370,6 +413,107 @@ describe('media library route', () => {
 
     act(() => {
       arriveWithScenes([characterStep]);
+      detach.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(setCharacterLibrary).not.toHaveBeenCalled();
+  });
+
+  // Mirrors the detach case: these writes replace the whole library too, so a
+  // sprite that arrived after the render must survive them.
+  it('attaches from the library as it stands, not as it was rendered', async () => {
+    const setCharacterLibrary = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'bg' })],
+      imageAssetIdsByStory: { 'story-1': ['bg'] },
+      characterLibraries: { 'story-1': [{ ...alice, sprites: [] }] },
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      setCharacterLibrary,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, bg.png' }));
+    await waitFor(() => expect(screen.getByText('Not used in any scene')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Add to character…' }));
+
+    await act(async () => {
+      (useAppStore as unknown as { setState: (value: StoreSeed) => void }).setState({
+        characterLibraries: {
+          'story-1': [{ ...alice, sprites: [{ id: 'sad', name: 'Sad', uri: 'file://alice-sad.png', createdAt: 2 }] }],
+        },
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Alice' }));
+
+    const [, characters] = setCharacterLibrary.mock.calls[0];
+    expect(characters[0].sprites.map((sprite: { id: string }) => sprite.id)).toEqual(['sad', expect.any(String)]);
+  });
+
+  it('moves the default on the library as it stands, not as it was rendered', async () => {
+    const setCharacterLibrary = vi.fn();
+    const twoSprites = {
+      ...alice,
+      defaultSpriteId: 'happy',
+      sprites: [
+        { id: 'happy', name: 'Happy', uri: 'file://alice.png', createdAt: 1 },
+        { id: 'sad', name: 'Sad', uri: 'file://alice-sad.png', createdAt: 1 },
+      ],
+    };
+    seedStore({
+      mediaLibrary: [asset({ id: 'sad', uri: 'file://alice-sad.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sad'] },
+      characterLibraries: { 'story-1': [twoSprites] },
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      setCharacterLibrary,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, sad.png, Alice' }));
+    await waitFor(() => expect(screen.getByText('Alice · Sad')).toBeTruthy());
+
+    await act(async () => {
+      (useAppStore as unknown as { setState: (value: StoreSeed) => void }).setState({
+        characterLibraries: {
+          'story-1': [{
+            ...twoSprites,
+            sprites: [...twoSprites.sprites, { id: 'angry', name: 'Angry', uri: 'file://alice-angry.png', createdAt: 3 }],
+          }],
+        },
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Make default for Alice' }));
+
+    expect(setCharacterLibrary).toHaveBeenCalledWith('story-1', [
+      expect.objectContaining({
+        defaultSpriteId: 'sad',
+        sprites: expect.arrayContaining([expect.objectContaining({ id: 'angry' })]),
+      }),
+    ]);
+  });
+
+  // A scene added elsewhere while this screen was open is a scene the library
+  // never read — and it may be the one that shows this sprite. The write asks
+  // the completeness question again rather than trusting the gate that opened.
+  it('refuses the detach when the story grew a scene it has not read', async () => {
+    const setCharacterLibrary = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characterLibraries: { 'story-1': [alice] },
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      setCharacterLibrary,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
+    const detach = await screen.findByRole('button', { name: 'Remove from Alice' });
+
+    act(() => {
+      (useAppStore as unknown as { setState: (value: StoreSeed) => void }).setState({
+        storiesMetadata: [{ id: 'story-1', title: 'My story', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 2 }],
+      });
       detach.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 

@@ -339,6 +339,27 @@ export function canDetachOwner(owner: MediaOwner): boolean {
 }
 
 /**
+ * Whether the scenes in memory can answer "where is this used".
+ *
+ * Loading being over is not the same as the answer being complete. A reader
+ * window leaves a handful of scenes in memory and the full load marks the story
+ * hydrated even when storage returned nothing (see scene-slice), so a story of
+ * ten scenes can sit there with one — and every reference in the other nine
+ * silently reads as absent.
+ *
+ * The story's own scene count is the only independent check available, and it
+ * is maintained as an exact count on every path that writes scenes. Anything
+ * short of it means the picture is partial, whatever the loader reported.
+ */
+export function usageIsKnowable(
+  scenesLoaded: boolean,
+  scenes: SceneRecord[],
+  story: { sceneCount: number } | undefined,
+): boolean {
+  return scenesLoaded && !!story && scenes.length === story.sceneCount;
+}
+
+/**
  * Re-resolve one owner against a freshly supplied state.
  *
  * The grid is built from whatever scenes were in memory when it rendered, and

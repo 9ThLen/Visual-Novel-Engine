@@ -120,6 +120,16 @@ export function MediaInspectorVideo({ item, colors }: { item: StoryMediaItem; co
   return <VideoView player={player} style={styles.video} nativeControls contentFit="contain" />;
 }
 
+/**
+ * What the screen knows about where things are used.
+ *
+ * `pending` is the load still running; `unavailable` is a load that ended
+ * without an answer — rejected, or finished without producing the story's
+ * scenes. Both forbid the destructive actions, but they are different things to
+ * say to an author, and saying "checking…" forever would be the wrong one.
+ */
+export type UsageState = 'pending' | 'ready' | 'unavailable';
+
 export interface MediaInspectorProps {
   item: StoryMediaItem;
   colors: ThemeColorPalette;
@@ -136,7 +146,7 @@ export interface MediaInspectorProps {
    * is an artefact of the load rather than an answer, and nothing destructive
    * may be offered on the strength of it.
    */
-  usageReady: boolean;
+  usageState: UsageState;
   onClose: () => void;
   onOpenScene: (sceneId: string) => void;
   onRemoveBackground: (item: StoryMediaItem) => void;
@@ -153,7 +163,7 @@ function InspectorBody({
   removingBackground,
   characters,
   currentSceneId,
-  usageReady,
+  usageState,
   onClose,
   onOpenScene,
   onRemoveBackground,
@@ -189,6 +199,10 @@ function InspectorBody({
       !item.owners.some((owner) => owner.characterId === character.characterId)),
     [characters, item.owners],
   );
+  const usageReady = usageState === 'ready';
+  const usagePendingText = t(usageState === 'pending'
+    ? 'mediaLibrary.usagePending'
+    : 'mediaLibrary.usageUnavailable');
   const sceneActionLabel = (sceneId: string) => t(sceneId === currentSceneId
     ? 'mediaLibrary.action.openInCurrentScene'
     : 'mediaLibrary.action.openInScene');
@@ -266,7 +280,7 @@ function InspectorBody({
                 // now, and offering a permanent delete on that basis is how a
                 // sprite a scene still shows gets removed.
                 <Text style={[typeScale.caption, { color: colors.muted }]}>
-                  {t('mediaLibrary.usagePending')}
+                  {usagePendingText}
                 </Text>
               ) : canDetachOwner(owner) ? (
                 <Pressable
@@ -348,7 +362,7 @@ function InspectorBody({
 
       <Text style={[typeScale.label, { color: usageReady ? colors.foreground : colors.muted }]}>
         {!usageReady
-          ? t('mediaLibrary.usagePending')
+          ? usagePendingText
           : scenes.length
             ? t('mediaLibrary.inspector.usedIn', { count: scenes.length })
             : t('mediaLibrary.inspector.notUsed')}

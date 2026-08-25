@@ -12,7 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { MediaFilterRail, MediaTypeTabs } from '@/components/media-library/MediaFilters';
 import { MediaGrid } from '@/components/media-library/MediaGrid';
-import { MEDIA_INSPECTOR_WIDTH, MediaInspector } from '@/components/media-library/MediaInspector';
+import { MEDIA_INSPECTOR_WIDTH, MediaInspector, type UsageState } from '@/components/media-library/MediaInspector';
 import { ScreenContainer } from '@/components/screen-container';
 import { ConfirmDialog } from '@/components/ui';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -33,6 +33,7 @@ import {
   canDetachOwner,
   filterMediaItems,
   findOwnerInGallery,
+  usageIsKnowable,
   type ImageFilter,
   type MediaKind,
   type MediaOwner,
@@ -74,24 +75,32 @@ export default function StoryGalleryRoute() {
   /**
    * Scene records arrive asynchronously, and until they do every file looks
    * unused. That is a lie the destructive actions must not act on, so the
-   * screen tracks when the load actually finished.
+   * screen tracks how the load actually went — a rejection is not an answer,
+   * and calling it loaded would open the gate on no information at all.
    */
-  const [scenesLoaded, setScenesLoaded] = useState(false);
+  const [sceneLoad, setSceneLoad] = useState('pending');
   useEffect(() => {
     if (!storyId) return;
     let active = true;
-    setScenesLoaded(false);
-    void hydrate(storyId).finally(() => { if (active) setScenesLoaded(true); });
+    setSceneLoad('pending');
+    void hydrate(storyId).then(
+      () => { if (active) setSceneLoad('loaded'); },
+      () => { if (active) setSceneLoad('failed'); },
+    );
     return () => { active = false; };
   }, [hydrate, storyId]);
 
   /**
-   * A finished load is not the same as a trustworthy one: storage can hand back
-   * nothing for a story whose metadata counts scenes, and then the grid would
-   * report the whole library as unreferenced. Usage is only believed when what
-   * is in memory can account for the scenes the story claims to have.
+   * Three states, because "not yet" and "cannot" are different things to tell
+   * an author — and a load that finished without producing the story's scenes
+   * belongs to the second, not the first.
    */
-  const usageReady = scenesLoaded && (scenes.length > 0 || (story?.sceneCount ?? 0) === 0);
+  const usageState: UsageState = sceneLoad === 'pending'
+    ? 'pending'
+    : usageIsKnowable(sceneLoad === 'loaded', scenes, story)
+      ? 'ready'
+      : 'unavailable';
+  const usageReady = usageState === 'ready';
 
   const gallery = useMemo(
     () => buildStoryMediaGallery({
@@ -181,20 +190,24 @@ export default function StoryGalleryRoute() {
    */
   const handleAttachToCharacter = useCallback((item: StoryMediaItem, characterId: string) => {
     if (!storyId) return;
-    const character = characters.find((candidate) => candidate.id === characterId);
+    // Every write here replaces the whole library, so it has to start from the
+    // library as it is now: a sprite the editor or the assistant added since
+    // this screen rendered would otherwise be deleted by an unrelated action.
+    const latestCharacters = useAppStore.getState().characterLibraries[storyId] ?? [];
+    const character = latestCharacters.find((candidate) => candidate.id === characterId);
     if (!character) return;
     const next = attachSpriteToCharacter({
-      characters,
+      characters: latestCharacters,
       characterId,
       // The asset id outlives the URI, so it is the better reference of the two.
       ref: item.assetId ?? item.uri,
       name: spriteNameFromFileName(item.name),
       now: Date.now(),
     });
-    if (next === characters) return;
+    if (next === latestCharacters) return;
     setCharacterLibrary(storyId, next);
     showToast(t('mediaLibrary.attach.done', { name: character.name }), 'success');
-  }, [characters, setCharacterLibrary, storyId, t]);
+  }, [setCharacterLibrary, storyId, t]);
 
   /**
    * Detaching is the only irreversible action here: story membership comes back
@@ -210,6 +223,13 @@ export default function StoryGalleryRoute() {
     if (!storyId) return;
     const state = useAppStore.getState();
     const latestCharacters = state.characterLibraries[storyId] ?? [];
+    const latestScenes = selectSceneRecordsForStory(storyId)(state);
+    // The same completeness question, asked again of the store rather than of
+    // the render: scenes can still be missing at the moment of the write.
+    if (!usageIsKnowable(sceneLoad === 'loaded', latestScenes, selectStoryMetadata(storyId)(state))) {
+      showToast(t('mediaLibrary.detach.refused', { name: owner.characterName }), 'error');
+      return;
+    }
     const latestOwner = findOwnerInGallery(
       {
         storyId,
@@ -217,7 +237,7 @@ export default function StoryGalleryRoute() {
         imageAssetIdsByStory: state.imageAssetIdsByStory,
         mediaAssetIdsByStory: state.mediaAssetIdsByStory,
         characters: latestCharacters,
-        scenes: selectSceneRecordsForStory(storyId)(state),
+        scenes: latestScenes,
       },
       item.key,
       owner.usageAssetId,
@@ -231,15 +251,16 @@ export default function StoryGalleryRoute() {
     if (next === latestCharacters) return;
     setCharacterLibrary(storyId, next);
     showToast(t('mediaLibrary.detach.done', { name: owner.characterName }), 'success');
-  }, [setCharacterLibrary, storyId, t]);
+  }, [sceneLoad, setCharacterLibrary, storyId, t]);
 
   const handleMakeDefaultSprite = useCallback((item: StoryMediaItem, owner: MediaOwner) => {
     if (!storyId) return;
-    const next = setDefaultSprite(characters, owner.characterId, owner.spriteId);
-    if (next === characters) return;
+    const latestCharacters = useAppStore.getState().characterLibraries[storyId] ?? [];
+    const next = setDefaultSprite(latestCharacters, owner.characterId, owner.spriteId);
+    if (next === latestCharacters) return;
     setCharacterLibrary(storyId, next);
     showToast(t('mediaLibrary.makeDefault.done', { name: owner.characterName }), 'success');
-  }, [characters, setCharacterLibrary, storyId, t]);
+  }, [setCharacterLibrary, storyId, t]);
 
   const isPhone = width < PHONE_MAX_WIDTH;
   // Each empty state has to say why it is empty. Telling an author with six
@@ -299,6 +320,7 @@ export default function StoryGalleryRoute() {
             colors={colors}
             filter={filter}
             counts={counts}
+            usageReady={usageReady}
             characters={characterFilters}
             onChange={(next) => { setFilter(next); setSelectedKey(null); }}
           />
@@ -326,7 +348,7 @@ export default function StoryGalleryRoute() {
             removingBackground={removingBackgroundKey === selected.key}
             characters={gallery.characterFilters}
             currentSceneId={sceneId}
-            usageReady={usageReady}
+            usageState={usageState}
             onClose={() => setSelectedKey(null)}
             onOpenScene={handleOpenScene}
             onRemoveBackground={handleRemoveBackground}

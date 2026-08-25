@@ -68,34 +68,49 @@ interface FilterRailProps {
   counts: { all: number; used: number; unused: number };
   /** Empty for the video tab: the model does not tie clips to characters. */
   characters: CharacterMediaFilter[];
+  /**
+   * Whether usage is known yet. While it is not, "used" and "unused" are not
+   * two halves of the library — everything falls into "unused" because the
+   * scenes have not been read — so the two filters are not offered.
+   */
+  usageReady: boolean;
   onChange: (filter: ImageFilter) => void;
 }
 
-export function MediaFilterRail({ colors, filter, counts, characters, onChange }: FilterRailProps) {
+export function MediaFilterRail({ colors, filter, counts, characters, usageReady, onChange }: FilterRailProps) {
   const { t } = useI18n();
 
-  const chip = (value: ImageFilter, label: string, count: number, accent?: string, avatar?: React.ReactNode) => {
+  const chip = (
+    value: ImageFilter,
+    label: string,
+    count: number,
+    accent?: string,
+    avatar?: React.ReactNode,
+    disabled = false,
+  ) => {
     const active = sameFilter(filter, value);
     return (
       <Pressable
         key={`${value.kind}:${value.kind === 'character' ? value.characterId : ''}`}
         onPress={() => onChange(value)}
+        disabled={disabled}
         accessibilityRole="button"
         // Explicit, because the initials avatar contributes a stray letter to
         // the name a screen reader would otherwise compute from the children.
         accessibilityLabel={label}
-        accessibilityState={{ selected: active }}
+        accessibilityState={{ selected: active, disabled }}
         style={[
           styles.chip,
           {
             backgroundColor: active ? colors['surface-1'] : colors.background,
             borderColor: active ? accent ?? colors.primary : colors.border,
+            opacity: disabled ? 0.5 : 1,
           },
         ]}
       >
         {avatar}
         <Text style={[typeScale.label, { color: active ? colors.foreground : colors.muted }]}>{label}</Text>
-        <Text style={[typeScale.caption, { color: colors.muted }]}>{count}</Text>
+        {disabled ? null : <Text style={[typeScale.caption, { color: colors.muted }]}>{count}</Text>}
       </Pressable>
     );
   };
@@ -103,8 +118,8 @@ export function MediaFilterRail({ colors, filter, counts, characters, onChange }
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
       {chip({ kind: 'all' }, t('mediaLibrary.filter.all'), counts.all)}
-      {chip({ kind: 'used' }, t('mediaLibrary.filter.used'), counts.used)}
-      {chip({ kind: 'unused' }, t('mediaLibrary.filter.unused'), counts.unused)}
+      {chip({ kind: 'used' }, t('mediaLibrary.filter.used'), counts.used, undefined, undefined, !usageReady)}
+      {chip({ kind: 'unused' }, t('mediaLibrary.filter.unused'), counts.unused, undefined, undefined, !usageReady)}
       {characters.map((character) => chip(
         { kind: 'character', characterId: character.characterId },
         character.name,

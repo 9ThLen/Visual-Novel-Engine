@@ -221,6 +221,7 @@ describe('filter rail and tabs', () => {
         filter={{ kind: 'all' }}
         counts={{ all: 1, used: 0, unused: 1 }}
         characters={built.characterFilters}
+        usageReady
         onChange={onChange}
       />,
     );
@@ -231,6 +232,30 @@ describe('filter rail and tabs', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^Alice/ }));
     expect(onChange).toHaveBeenCalledWith({ kind: 'character', characterId: 'alice' });
+  });
+
+  // "Used" and "Unused" are not two halves of the library while the scenes are
+  // still being read — everything lands in "unused" — so neither is offered.
+  it('withholds the usage filters until usage is known', () => {
+    const onChange = vi.fn();
+    render(
+      <MediaFilterRail
+        colors={colors}
+        filter={{ kind: 'all' }}
+        counts={{ all: 6, used: 0, unused: 6 }}
+        characters={[]}
+        usageReady={false}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Used' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unused' }));
+
+    expect(onChange).not.toHaveBeenCalled();
+    // And the counts they would have shown are not asserted either.
+    expect(screen.queryByText('6')).toBeTruthy();
+    expect(screen.queryByText('0')).toBeNull();
   });
 
   it('switches between the image and video tabs', () => {
@@ -261,7 +286,7 @@ describe('media inspector', () => {
         canRemoveBackground={false}
         removingBackground={false}
         characters={[]}
-        usageReady
+        usageState="ready"
         {...handlers}
         {...overrides}
       />,
@@ -494,7 +519,7 @@ describe('media inspector', () => {
       characters: [alice],
     }).images[0];
 
-    renderInspector(item, { characters: [aliceFilter], usageReady: false });
+    renderInspector(item, { characters: [aliceFilter], usageState: 'pending' });
 
     expect(screen.queryByRole('button', { name: 'Remove from Alice' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
