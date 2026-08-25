@@ -315,7 +315,7 @@ export function DocumentEditorHeader({
 
       {isPhone ? (
         <>
-          <Pressable onPress={onGallery} accessibilityRole="button" accessibilityLabel={t('storyHome.gallery.title')} style={{ alignItems: 'center', justifyContent: 'center', minWidth: 52 }}><IconSymbol name="gallery" size={28} color={colors.foreground} /></Pressable>
+          <Pressable onPress={onGallery} accessibilityRole="button" accessibilityLabel={t('mediaLibrary.title')} style={{ alignItems: 'center', justifyContent: 'center', minWidth: 52 }}><IconSymbol name="gallery" size={28} color={colors.foreground} /></Pressable>
           <Pressable
             onPress={onPreview}
             accessibilityRole="button"
@@ -353,7 +353,7 @@ export function DocumentEditorHeader({
             textStyle={{ color: colors.secondary }}
             onPress={onGallery}
           >
-            {t('storyHome.gallery.title')}
+            {t('mediaLibrary.title')}
           </Button>
           <Pressable
             onPress={onToggleFocusMode}

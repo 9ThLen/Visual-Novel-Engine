@@ -50,7 +50,8 @@ interface PlateSceneEditorProps {
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onPickVideoAsset?: () => Promise<{ asset: VNPlateVideoAsset | null; error?: 'tooLarge' | 'unsupportedType' | 'failed' }>;
-  onGallery?: () => void;
+  /** Receives the scene the author is on, so the library can offer the way back. */
+  onGallery?: (sceneId: string) => void;
 }
 
 export function PlateSceneEditor({

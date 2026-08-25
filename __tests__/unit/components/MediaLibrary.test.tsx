@@ -221,6 +221,7 @@ describe('filter rail and tabs', () => {
         filter={{ kind: 'all' }}
         counts={{ all: 1, used: 0, unused: 1 }}
         characters={built.characterFilters}
+        usageReady
         onChange={onChange}
       />,
     );
@@ -231,6 +232,30 @@ describe('filter rail and tabs', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^Alice/ }));
     expect(onChange).toHaveBeenCalledWith({ kind: 'character', characterId: 'alice' });
+  });
+
+  // "Used" and "Unused" are not two halves of the library while the scenes are
+  // still being read — everything lands in "unused" — so neither is offered.
+  it('withholds the usage filters until usage is known', () => {
+    const onChange = vi.fn();
+    render(
+      <MediaFilterRail
+        colors={colors}
+        filter={{ kind: 'all' }}
+        counts={{ all: 6, used: 0, unused: 6 }}
+        characters={[]}
+        usageReady={false}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Used' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unused' }));
+
+    expect(onChange).not.toHaveBeenCalled();
+    // And the counts they would have shown are not asserted either.
+    expect(screen.queryByText('6')).toBeTruthy();
+    expect(screen.queryByText('0')).toBeNull();
   });
 
   it('switches between the image and video tabs', () => {
@@ -249,6 +274,9 @@ describe('media inspector', () => {
       onOpenScene: vi.fn(),
       onRemoveBackground: vi.fn(),
       onRemoveFromStory: vi.fn(),
+      onAttachToCharacter: vi.fn(),
+      onDetachFromCharacter: vi.fn(),
+      onMakeDefaultSprite: vi.fn(),
     };
     render(
       <MediaInspector
@@ -257,6 +285,8 @@ describe('media inspector', () => {
         asSheet={false}
         canRemoveBackground={false}
         removingBackground={false}
+        characters={[]}
+        usageState="ready"
         {...handlers}
         {...overrides}
       />,
@@ -277,7 +307,7 @@ describe('media inspector', () => {
 
     expect(screen.getByText(/Used in 1 scenes/)).toBeTruthy();
     expect(screen.getByText(/used in the scenes below/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Remove from story' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Open scene: Opening' }));
     expect(handlers.onOpenScene).toHaveBeenCalledWith('scene-1');
@@ -315,7 +345,7 @@ describe('media inspector', () => {
     renderInspector(item);
 
     // Re-enabling the block would break the reference, so it still counts.
-    expect(screen.queryByRole('button', { name: 'Remove from story' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
     expect(screen.getByText(/1/)).toBeTruthy();
   });
 
@@ -330,7 +360,9 @@ describe('media inspector', () => {
 
     expect(screen.getByText(/belongs to a character/)).toBeTruthy();
     expect(screen.getByText('Alice · Happy')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Remove from story' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
+    // And the way to detach it is right there, since nothing references it.
+    expect(screen.getByRole('button', { name: 'Remove from Alice' })).toBeTruthy();
   });
 
   it('explains that a sprite outside the library has no story membership', () => {
@@ -349,7 +381,7 @@ describe('media inspector', () => {
     const handlers = renderInspector(item);
 
     expect(screen.getByText('Not used in any scene')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove from story' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove imported file' }));
     expect(handlers.onRemoveFromStory).toHaveBeenCalledWith(expect.objectContaining({ assetId: 'spare' }));
   });
 
@@ -389,5 +421,155 @@ describe('media inspector', () => {
 
     renderInspector(item, { canRemoveBackground: true });
     expect(screen.getByRole('button', { name: 'Remove background' })).toBeTruthy();
+  });
+
+  const aliceFilter = { characterId: 'alice', name: 'Alice', color: '#ff0000', count: 0 };
+
+  it('attaches a file to the character the author picks', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'spare' })],
+      imageAssetIdsByStory: { 'story-1': ['spare'] },
+    }).images[0];
+    const handlers = renderInspector(item, { characters: [aliceFilter] });
+
+    // The picker is closed until asked for: its rows are one-tap writes.
+    expect(screen.queryByRole('button', { name: 'Add to Alice' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to character…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Alice' }));
+
+    expect(handlers.onAttachToCharacter).toHaveBeenCalledWith(
+      expect.objectContaining({ assetId: 'spare' }),
+      'alice',
+    );
+  });
+
+  // Attaching twice would give one character two sprites for one file, and the
+  // second is indistinguishable from the first everywhere but the timeline.
+  it('leaves out a character that already owns the file', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characters: [alice],
+    }).images[0];
+    renderInspector(item, { characters: [aliceFilter] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to character…' }));
+
+    expect(screen.getByText('Every character already has this image.')).toBeTruthy();
+  });
+
+  it('never offers to attach a video', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'clip', type: 'video', uri: 'file://clip.mp4', name: 'clip.mp4' })],
+      mediaAssetIdsByStory: { 'story-1': ['clip'] },
+    }).videos[0];
+
+    renderInspector(item, { characters: [aliceFilter] });
+
+    expect(screen.queryByRole('button', { name: 'Add to character…' })).toBeNull();
+  });
+
+  // A dangling `${characterId}:${spriteId}` is permanent: unlike story
+  // membership, nothing re-derives a sprite a scene still names.
+  it('refuses to detach a sprite a scene still shows', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characters: [alice],
+      scenes: [scene([
+        { id: 'step-1', blockType: 'character', enabled: true, data: { characterId: 'alice', spriteId: 'happy', position: 'left', transition: 'instant', delay: 0, duration: null } } as TimelineStep,
+      ])],
+    }).images[0];
+
+    const handlers = renderInspector(item, { characters: [aliceFilter] });
+
+    expect(screen.queryByRole('button', { name: 'Remove from Alice' })).toBeNull();
+    expect(screen.getByText(/Shown as Alice in 1 scenes/)).toBeTruthy();
+    expect(handlers.onDetachFromCharacter).not.toHaveBeenCalled();
+  });
+
+  // The file is a background in a scene, but no step names Alice's sprite:
+  // detaching it breaks nothing, and the file stays in the story regardless.
+  it('detaches a sprite whose own references are zero even when the file is used', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'bg', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['bg'] },
+      characters: [alice],
+      scenes: [scene([
+        { id: 'step-1', blockType: 'background', enabled: true, data: { assetId: 'bg' } } as TimelineStep,
+      ])],
+    }).images[0];
+
+    const handlers = renderInspector(item, { characters: [aliceFilter] });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from Alice' }));
+
+    expect(handlers.onDetachFromCharacter).toHaveBeenCalledWith(
+      expect.objectContaining({ assetId: 'bg' }),
+      expect.objectContaining({ characterId: 'alice', spriteId: 'happy' }),
+    );
+  });
+
+  // Everything looks unreferenced while the scenes are still loading, and a
+  // detach taken on that basis is permanent: no migration restores a sprite.
+  it('offers nothing destructive until the scenes have loaded', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characters: [alice],
+    }).images[0];
+
+    renderInspector(item, { characters: [aliceFilter], usageState: 'pending' });
+
+    expect(screen.queryByRole('button', { name: 'Remove from Alice' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
+    expect(screen.getAllByText('Checking where this file is used…').length).toBeGreaterThan(0);
+    // And it must not claim the file is unused while it does not know.
+    expect(screen.queryByText('Not used in any scene')).toBeNull();
+  });
+
+  const twoSpriteAlice = {
+    ...alice,
+    defaultSpriteId: 'happy',
+    sprites: [
+      { id: 'happy', name: 'Happy', uri: 'file://alice.png', createdAt: NOW },
+      { id: 'sad', name: 'Sad', uri: 'file://alice-sad.png', createdAt: NOW },
+    ],
+  };
+
+  it('offers to move the default onto a sprite that is not it', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'sad', uri: 'file://alice-sad.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sad'] },
+      characters: [twoSpriteAlice],
+    }).images[0];
+    const handlers = renderInspector(item, { characters: [aliceFilter] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Make default for Alice' }));
+
+    expect(handlers.onMakeDefaultSprite).toHaveBeenCalledWith(
+      expect.objectContaining({ assetId: 'sad' }),
+      expect.objectContaining({ spriteId: 'sad' }),
+    );
+  });
+
+  it('marks the sprite that already is the default instead', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'happy', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['happy'] },
+      characters: [twoSpriteAlice],
+    }).images[0];
+
+    renderInspector(item, { characters: [aliceFilter] });
+
+    expect(screen.getByText('Default')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Make default for Alice' })).toBeNull();
+  });
+
+  it('names the scene the author came from as the current one', () => {
+    const handlers = renderInspector(usedImage(), { currentSceneId: 'scene-1' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open current scene: Opening' }));
+    expect(handlers.onOpenScene).toHaveBeenCalledWith('scene-1');
   });
 });

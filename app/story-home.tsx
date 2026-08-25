@@ -672,7 +672,7 @@ export default function StoryHomeScreen() {
     </View>
   ) : null;
 
-  const imageLibraryCard = <View style={[styles.card, cardBase, shadowCard]}><SectionHeader colors={colors} iconName="gallery" title={t('storyHome.gallery.title')} /><Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.gallery.openHint')}</Text><ActionButton colors={colors} label={t('storyHome.gallery.open')} iconName="gallery" accent="secondary" onPress={() => router.push({ pathname: '/story-gallery', params: { storyId: story.id } })} /></View>;
+  const imageLibraryCard = <View style={[styles.card, cardBase, shadowCard]}><SectionHeader colors={colors} iconName="gallery" title={t('mediaLibrary.title')} /><Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.gallery.openHint')}</Text><ActionButton colors={colors} label={t('storyHome.gallery.open')} iconName="gallery" accent="secondary" onPress={() => router.push({ pathname: '/story-gallery', params: { storyId: story.id } })} /></View>;
 
   const backupCard = (
     <View style={[styles.card, cardBase, shadowCard]}>

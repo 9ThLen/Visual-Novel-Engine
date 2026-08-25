@@ -6,11 +6,20 @@ export const useFocusEffect = (effect: () => void | (() => void)) => {
   }, [effect]);
 };
 
-export const useRouter = () => ({
+const router = {
   push: vi.fn(),
   replace: vi.fn(),
   back: vi.fn(),
-});
+};
+
+/**
+ * One router for the whole suite, so a test can assert where a screen
+ * navigated. Its calls persist between tests — clear it in `beforeEach` when
+ * that matters.
+ */
+export const getRouterForTests = () => router;
+
+export const useRouter = () => router;
 
 let localSearchParams: Record<string, string> = {};
 

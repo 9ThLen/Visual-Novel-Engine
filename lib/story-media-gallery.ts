@@ -36,6 +36,13 @@ export interface MediaOwner {
   isDefaultSprite: boolean;
   /** Composite reference key used by the timeline: `${characterId}:${spriteId}`. */
   usageAssetId: string;
+  /**
+   * References to this sprite alone, not to the file.
+   *
+   * Detaching a sprite dangles only the references that name it, so the same
+   * file can be detachable from one character and pinned by another.
+   */
+  usage: MediaUsage;
 }
 
 export interface MediaReference {
@@ -127,6 +134,15 @@ function isDefaultSprite(character: Character, sprite: CharacterSprite): boolean
     : character.sprites[0]?.id === sprite.id;
 }
 
+function countUsage(references: MediaReference[] | undefined): MediaUsage {
+  const usage: MediaUsage = { enabled: 0, disabled: 0 };
+  for (const reference of references ?? []) {
+    if (reference.enabled) usage.enabled += 1;
+    else usage.disabled += 1;
+  }
+  return usage;
+}
+
 function referenceKey(reference: MediaReference): string {
   return `${reference.sceneId}:${reference.stepId}:${reference.kind}`;
 }
@@ -196,6 +212,7 @@ export function buildStoryMediaGallery(input: StoryMediaGalleryInput): StoryMedi
         spriteName: sprite.name,
         isDefaultSprite: isDefaultSprite(character, sprite),
         usageAssetId: toSpriteUsageAssetId(character.id, sprite.id),
+        usage: countUsage(referencesByUsageId.get(toSpriteUsageAssetId(character.id, sprite.id))),
       };
 
       let item = itemsByKey.get(key);
@@ -306,6 +323,62 @@ export function isMediaItemUsed(item: StoryMediaItem): boolean {
  */
 export function canRemoveFromStory(item: StoryMediaItem): boolean {
   return Boolean(item.assetId) && item.owners.length === 0 && !isMediaItemUsed(item);
+}
+
+/**
+ * Whether the sprite can be taken off its character.
+ *
+ * Only this sprite's own references matter: the file may well be a background
+ * in ten scenes, and none of those would break. What breaks is a timeline step
+ * naming `${characterId}:${spriteId}`, and unlike story membership there is no
+ * migration that quietly restores the sprite, so a dangling reference stays
+ * dangling.
+ */
+export function canDetachOwner(owner: MediaOwner): boolean {
+  return owner.usage.enabled + owner.usage.disabled === 0;
+}
+
+/**
+ * Whether the scenes in memory can answer "where is this used".
+ *
+ * Loading being over is not the same as the answer being complete. A reader
+ * window leaves a handful of scenes in memory and the full load marks the story
+ * hydrated even when storage returned nothing (see scene-slice), so a story of
+ * ten scenes can sit there with one — and every reference in the other nine
+ * silently reads as absent.
+ *
+ * The story's own scene count is the only independent check available, and it
+ * is maintained as an exact count on every path that writes scenes. Anything
+ * short of it means the picture is partial, whatever the loader reported.
+ */
+export function usageIsKnowable(
+  scenesLoaded: boolean,
+  scenes: SceneRecord[],
+  story: { sceneCount: number } | undefined,
+): boolean {
+  return scenesLoaded && !!story && scenes.length === story.sceneCount;
+}
+
+/**
+ * Re-resolve one owner against a freshly supplied state.
+ *
+ * The grid is built from whatever scenes were in memory when it rendered, and
+ * scene records arrive asynchronously: a sprite can look unreferenced simply
+ * because the scene that shows it has not loaded yet. Detaching is the one
+ * action with no way back — story membership is re-derived on every hydration,
+ * a deleted sprite is not — so the write re-reads the store and asks again
+ * rather than trusting the snapshot the button was rendered from.
+ *
+ * Returns undefined when the owner is gone entirely, which is also a refusal.
+ */
+export function findOwnerInGallery(
+  input: StoryMediaGalleryInput,
+  itemKey: string,
+  usageAssetId: string,
+): MediaOwner | undefined {
+  const gallery = buildStoryMediaGallery(input);
+  const item = [...gallery.images, ...gallery.videos].find((candidate) => candidate.key === itemKey);
+  return item?.owners.find((owner) => owner.usageAssetId === usageAssetId);
 }
 
 function matchesQuery(item: StoryMediaItem, query: string): boolean {

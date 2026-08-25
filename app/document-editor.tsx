@@ -415,7 +415,8 @@ export default function DocumentEditorRoute() {
       onUploadBackgroundAsset={handleUploadBackgroundAsset}
       onPickVideoAsset={handlePickVideoAsset}
       onUploadAudioAsset={handleUploadAudioAsset}
-      onGallery={() => router.push({ pathname: '/story-gallery', params: { storyId } })}
+      onGallery={(activeSceneId) =>
+        router.push({ pathname: '/story-gallery', params: { storyId, sceneId: activeSceneId } })}
     />
   );
 }

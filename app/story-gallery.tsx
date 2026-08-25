@@ -12,21 +12,31 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { MediaFilterRail, MediaTypeTabs } from '@/components/media-library/MediaFilters';
 import { MediaGrid } from '@/components/media-library/MediaGrid';
-import { MEDIA_INSPECTOR_WIDTH, MediaInspector } from '@/components/media-library/MediaInspector';
+import { MEDIA_INSPECTOR_WIDTH, MediaInspector, type UsageState } from '@/components/media-library/MediaInspector';
 import { ScreenContainer } from '@/components/screen-container';
 import { ConfirmDialog } from '@/components/ui';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { resolveAssetUri } from '@/lib/asset-resolver';
+import {
+  attachSpriteToCharacter,
+  detachSpriteFromCharacter,
+  setDefaultSprite,
+  spriteNameFromFileName,
+} from '@/lib/character-media';
 import { spacing, radius, typeScale } from '@/lib/design-tokens';
 import { pickImageFromDevice } from '@/lib/pick-image';
 import { isBackgroundRemovalSupported, removeImageBackground } from '@/lib/remove-background';
 import {
   buildStoryMediaGallery,
+  canDetachOwner,
   filterMediaItems,
+  findOwnerInGallery,
+  usageIsKnowable,
   type ImageFilter,
   type MediaKind,
+  type MediaOwner,
   type StoryMediaItem,
 } from '@/lib/story-media-gallery';
 import { showToast } from '@/lib/toast-store';
@@ -53,6 +63,7 @@ export default function StoryGalleryRoute() {
   const addImage = useAppStore((state) => state.addImageAssetToStory);
   const removeImage = useAppStore((state) => state.removeImageAssetFromStory);
   const removeMedia = useAppStore((state) => state.removeMediaAssetFromStory);
+  const setCharacterLibrary = useAppStore((state) => state.setCharacterLibrary);
 
   const [kind, setKind] = useState<MediaKind>('image');
   const [filter, setFilter] = useState<ImageFilter>({ kind: 'all' });
@@ -61,7 +72,48 @@ export default function StoryGalleryRoute() {
   const [pendingRemoval, setPendingRemoval] = useState<StoryMediaItem | null>(null);
   const [removingBackgroundKey, setRemovingBackgroundKey] = useState<string | null>(null);
 
-  useEffect(() => { if (storyId) void hydrate(storyId); }, [hydrate, storyId]);
+  /**
+   * Scene records arrive asynchronously, and until they do every file looks
+   * unused. That is a lie the destructive actions must not act on, so the
+   * screen tracks how the load actually went — a rejection is not an answer,
+   * and calling it loaded would open the gate on no information at all.
+   */
+  const [sceneLoad, setSceneLoad] = useState('pending');
+  useEffect(() => {
+    if (!storyId) return;
+    let active = true;
+    setSceneLoad('pending');
+    void hydrate(storyId).then(
+      () => { if (active) setSceneLoad('loaded'); },
+      () => { if (active) setSceneLoad('failed'); },
+    );
+    return () => { active = false; };
+  }, [hydrate, storyId]);
+
+  /**
+   * Three states, because "not yet" and "cannot" are different things to tell
+   * an author — and a load that finished without producing the story's scenes
+   * belongs to the second, not the first.
+   */
+  const usageState: UsageState = sceneLoad === 'pending'
+    ? 'pending'
+    : usageIsKnowable(sceneLoad === 'loaded', scenes, story)
+      ? 'ready'
+      : 'unavailable';
+  const usageReady = usageState === 'ready';
+
+  /**
+   * A usage filter the author picked while usage was known must not keep
+   * filtering once it stops being known. Disabling the chip is not enough — the
+   * grid would go on hiding files on the strength of scenes it no longer has,
+   * and an empty grid is a louder claim than a greyed-out chip.
+   */
+  useEffect(() => {
+    if (usageReady) return;
+    setFilter((current) => current.kind === 'used' || current.kind === 'unused'
+      ? { kind: 'all' }
+      : current);
+  }, [usageReady]);
 
   const gallery = useMemo(
     () => buildStoryMediaGallery({
@@ -143,6 +195,86 @@ export default function StoryGalleryRoute() {
     router.push({ pathname: '/document-editor', params: { storyId, sceneId: targetSceneId } });
   }, [router, storyId]);
 
+  /**
+   * Ownership is additive: the character gets its own sprite pointing at the
+   * same file, and no scene is touched. Nothing has to be added to the story's
+   * image membership either — the file is already in this grid, and hydration
+   * re-derives membership from sprite URIs anyway.
+   */
+  const handleAttachToCharacter = useCallback((item: StoryMediaItem, characterId: string) => {
+    if (!storyId) return;
+    // Every write here replaces the whole library, so it has to start from the
+    // library as it is now: a sprite the editor or the assistant added since
+    // this screen rendered would otherwise be deleted by an unrelated action.
+    const latestCharacters = useAppStore.getState().characterLibraries[storyId] ?? [];
+    const character = latestCharacters.find((candidate) => candidate.id === characterId);
+    if (!character) return;
+    const next = attachSpriteToCharacter({
+      characters: latestCharacters,
+      characterId,
+      // The asset id outlives the URI, so it is the better reference of the two.
+      ref: item.assetId ?? item.uri,
+      name: spriteNameFromFileName(item.name),
+      now: Date.now(),
+    });
+    if (next === latestCharacters) return;
+    setCharacterLibrary(storyId, next);
+    showToast(t('mediaLibrary.attach.done', { name: character.name }), 'success');
+  }, [setCharacterLibrary, storyId, t]);
+
+  /**
+   * Detaching is the only irreversible action here: story membership comes back
+   * on the next hydration, a sprite does not, and every timeline step naming
+   * `${characterId}:${spriteId}` would be left pointing at nothing.
+   *
+   * So the button being visible is not enough. The store is read again at the
+   * moment of the write, the gallery is rebuilt from it, and the owner has to
+   * still be unreferenced in that fresh view — which is what catches a scene
+   * that finished loading, or another screen's edit, after this one rendered.
+   */
+  const handleDetachFromCharacter = useCallback((item: StoryMediaItem, owner: MediaOwner) => {
+    if (!storyId) return;
+    const state = useAppStore.getState();
+    const latestCharacters = state.characterLibraries[storyId] ?? [];
+    const latestScenes = selectSceneRecordsForStory(storyId)(state);
+    // The same completeness question, asked again of the store rather than of
+    // the render: scenes can still be missing at the moment of the write.
+    if (!usageIsKnowable(sceneLoad === 'loaded', latestScenes, selectStoryMetadata(storyId)(state))) {
+      showToast(t('mediaLibrary.detach.refused', { name: owner.characterName }), 'error');
+      return;
+    }
+    const latestOwner = findOwnerInGallery(
+      {
+        storyId,
+        mediaLibrary: state.mediaLibrary,
+        imageAssetIdsByStory: state.imageAssetIdsByStory,
+        mediaAssetIdsByStory: state.mediaAssetIdsByStory,
+        characters: latestCharacters,
+        scenes: latestScenes,
+      },
+      item.key,
+      owner.usageAssetId,
+    );
+    if (!latestOwner || !canDetachOwner(latestOwner)) {
+      showToast(t('mediaLibrary.detach.refused', { name: owner.characterName }), 'error');
+      return;
+    }
+
+    const next = detachSpriteFromCharacter(latestCharacters, owner.characterId, owner.spriteId);
+    if (next === latestCharacters) return;
+    setCharacterLibrary(storyId, next);
+    showToast(t('mediaLibrary.detach.done', { name: owner.characterName }), 'success');
+  }, [sceneLoad, setCharacterLibrary, storyId, t]);
+
+  const handleMakeDefaultSprite = useCallback((item: StoryMediaItem, owner: MediaOwner) => {
+    if (!storyId) return;
+    const latestCharacters = useAppStore.getState().characterLibraries[storyId] ?? [];
+    const next = setDefaultSprite(latestCharacters, owner.characterId, owner.spriteId);
+    if (next === latestCharacters) return;
+    setCharacterLibrary(storyId, next);
+    showToast(t('mediaLibrary.makeDefault.done', { name: owner.characterName }), 'success');
+  }, [setCharacterLibrary, storyId, t]);
+
   const isPhone = width < PHONE_MAX_WIDTH;
   // Each empty state has to say why it is empty. Telling an author with six
   // images that the story has none, just because none are used yet, reads as a
@@ -201,6 +333,7 @@ export default function StoryGalleryRoute() {
             colors={colors}
             filter={filter}
             counts={counts}
+            usageReady={usageReady}
             characters={characterFilters}
             onChange={(next) => { setFilter(next); setSelectedKey(null); }}
           />
@@ -226,10 +359,16 @@ export default function StoryGalleryRoute() {
             asSheet={isPhone}
             canRemoveBackground={isBackgroundRemovalSupported()}
             removingBackground={removingBackgroundKey === selected.key}
+            characters={gallery.characterFilters}
+            currentSceneId={sceneId}
+            usageState={usageState}
             onClose={() => setSelectedKey(null)}
             onOpenScene={handleOpenScene}
             onRemoveBackground={handleRemoveBackground}
             onRemoveFromStory={setPendingRemoval}
+            onAttachToCharacter={handleAttachToCharacter}
+            onDetachFromCharacter={handleDetachFromCharacter}
+            onMakeDefaultSprite={handleMakeDefaultSprite}
           />
         ) : null}
       </View>

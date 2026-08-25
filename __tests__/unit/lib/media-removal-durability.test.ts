@@ -6,6 +6,7 @@
  * the media library refuses to remove a file that is still used — and why the
  * only removals it does offer must be provably stable across that cycle.
  */
+import { attachSpriteToCharacter } from '@/lib/character-media';
 import { canRemoveFromStory, buildStoryMediaGallery } from '@/lib/story-media-gallery';
 import { migrateStoryImageAssetIds, removeImageAssetFromStory } from '@/lib/story-image-library';
 import { migrateStoryMediaAssetIds, removeMediaAssetFromStory } from '@/lib/story-media-library';
@@ -178,6 +179,43 @@ describe('removal durability across hydration', () => {
     });
 
     expect(after.imageAssetIdsByStory[STORY]).toContain('bg');
+  });
+
+  // The library's own attach action produces exactly this state, and it has to
+  // hold up the same way: the sprite it writes references the asset by id, and
+  // the migration resolves ids as readily as URIs.
+  it('pins a file to the story the moment a character is given it', () => {
+    const spare = asset({ id: 'spare' });
+    const characters = attachSpriteToCharacter({
+      characters: [{ id: 'alice', name: 'Alice', createdAt: 1, sprites: [] }],
+      characterId: 'alice',
+      ref: spare.id,
+      name: 'spare',
+      now: 2,
+    });
+    const gallery = buildStoryMediaGallery({
+      storyId: STORY,
+      mediaLibrary: [spare],
+      imageAssetIdsByStory: { [STORY]: ['spare'] },
+      mediaAssetIdsByStory: { [STORY]: ['spare'] },
+      characters,
+      scenes: [],
+    });
+
+    // One tile, one owner: the sprite folds into the asset rather than doubling it.
+    expect(gallery.images).toHaveLength(1);
+    expect(gallery.images[0].owners).toHaveLength(1);
+    expect(canRemoveFromStory(gallery.images[0])).toBe(false);
+
+    const after = rehydrate({
+      imageAssetIdsByStory: removeImageAssetFromStory({ [STORY]: ['spare'] }, STORY, 'spare'),
+      mediaAssetIdsByStory: removeMediaAssetFromStory({ [STORY]: ['spare'] }, STORY, 'spare'),
+      mediaLibrary: [spare],
+      scenes: [],
+      characters,
+    });
+
+    expect(after.mediaAssetIdsByStory[STORY]).toContain('spare');
   });
 
   // Same reason for a character-owned file: the sprite's URI re-adds it.
