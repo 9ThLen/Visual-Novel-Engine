@@ -1,104 +1,114 @@
 # Visual Novel Engine
 
-Cross-platform visual novel editor and reader built with Expo, React Native, TypeScript, Zustand, NativeWind, and Vitest.
+Visual Novel Engine is a browser-based editor and player for creating interactive visual novels on a PC. Writers can build scenes, dialogue, choices, characters, backgrounds, audio, effects, and transitions, then play the result through the same runtime used by the reader.
 
-The current app uses a canonical scene model: `SceneRecord + TimelineStep`. Editor, preview, reader, story flow, autosave, and manual save/load should prefer this canonical data path. `Story` and `StoryScene` remain compatibility types for import/export and migration boundaries.
+The current testing workflow is **PC and web only**. Android tooling, emulators, and native builds are not required. Android is a future target for reading a finished novel, not part of the local setup described here.
 
-## What It Does
+## Main features
 
-- Create and edit visual novel stories.
-- Compose scenes with timeline blocks for background, character, text, dialogue, choices, effects, audio, variables, transitions, camera, and interactive objects.
-- Preview scenes through the same runtime executor used by reader flows.
-- Manage story flow with scene nodes, positions, start scene state, and scene connections.
-- Read stories with typewriter text, choices, backgrounds, character sprites, audio, save/load, and autosave.
-- Run on web, Android, and iOS through Expo.
+- Write a novel as an ordered set of scenes.
+- Add dialogue, narration, branching choices, variables, and conditions.
+- Manage characters, backgrounds, audio, effects, transitions, and camera actions.
+- Preview scenes while editing and play the novel as a reader.
+- Save work locally in the browser and export story data.
+- Optionally enable cloud backup or connect an AI editing provider.
 
-## Build Week AI Assistant Contribution
+## Quick start on Windows
 
-The Build Week contribution adds a controlled AI-assisted editing workflow for creators:
+### Requirements
 
-1. Open a story and its active scene in the Studio editor.
-2. Open the AI tab, choose Claude Code, OpenAI API, or Google Gemini, and pair the matching local bridge.
-3. Describe a scene or story change in natural language.
-4. Review the validated proposal, then apply or reject it.
-5. Preview the result and roll back the applied AI change when needed.
+- Windows 10 or 11.
+- [Git](https://git-scm.com/download/win).
+- A current [Node.js LTS](https://nodejs.org/en/download) release. Expo SDK 54 requires Node.js 20.19 or newer.
+- A current desktop browser such as Chrome, Edge, or Firefox.
 
-The assistant receives story and scene context, but mutations pass through validated patches or change sets, revision checks, permission boundaries, and recoverable snapshots. The bridge also supports attachment validation, provider settings, and fail-closed behavior for unsupported capabilities.
+Android Studio, an Android emulator, Java, and API keys are **not** required.
 
-For local development, configure provider credentials in the project-root
-`.env`, start an explicit provider with `pnpm ai-bridge --provider <provider>`,
-then paste the printed pairing token into the visible provider setup panel.
-See [`tools/ai-bridge/README.md`](tools/ai-bridge/README.md) for provider-specific
-setup and switching details.
+### Install and run
 
-## Architecture
+Open PowerShell and run:
 
-- `app/` contains Expo Router screens.
-- `components/editor/plate/` contains the active Plate scene editor. `components/editor/` also contains active preview, play, scene management, manuscript, and shared editor surfaces.
-- `components/editor-legacy/` contains legacy Lego editor UI for reference only. Active editor screens must not import it.
-- `lib/engine/` contains runtime execution: `useSceneExecutor`, timeline event types, factories, and condition evaluation.
-- `stores/use-app-store.ts` owns persisted app state through Zustand.
-- `stores/use-editor-store.ts` is legacy draft state for isolated compatibility/reference code only. Active scene editor screens use persisted `SceneRecord` data from `useAppStore()`.
-- `lib/persistent-storage.ts` is the storage abstraction. Do not use AsyncStorage directly in app code.
-- `lib/scene-record-adapter.ts` is the compatibility boundary between canonical scene records and legacy story scene shapes.
-
-## Commands
-
-Install dependencies:
-
-```bash
-pnpm install
+```powershell
+git clone https://github.com/9ThLen/Visual-Novel-Engine.git
+cd Visual-Novel-Engine
+corepack pnpm install
+corepack pnpm dev:web
 ```
 
-Start development:
+Open [http://localhost:8081](http://localhost:8081) if the browser does not open automatically. Keep PowerShell running while using the app. Press `Ctrl+C` in PowerShell to stop it.
 
-```bash
-pnpm dev
+For a fully guided setup, updates, and troubleshooting, see the [Windows tester quick start](docs/TESTER_QUICK_START.md).
+
+## Basic workflow
+
+1. Open the app and use **Studio** to enter the authoring area.
+2. Open a demo story or create a new story.
+3. Choose **Edit novel** to write and organize its scenes.
+4. Add interactive blocks such as dialogue, choices, images, audio, and effects.
+5. Preview the scene, then use **Play novel** to check the reader experience.
+6. Reload the page and confirm that the browser retained the story.
+
+The interface supports English and Ukrainian; button labels follow the language selected in Settings.
+
+## Manual testing
+
+Use [Manual testing](docs/MANUAL_TESTING.md) for the test scope, expected results, regression checklist, and bug-report template. It covers the PC web editor and web reader only.
+
+## Optional configuration
+
+The app runs local-first without a `.env` file. Story data is stored in the browser on the current PC.
+
+Copy `.env.example` to `.env` only when you intentionally want to configure an optional integration:
+
+- Supabase cloud backup;
+- the local AI bridge;
+- OpenAI, Claude, Codex, or Gemini provider access.
+
+Never commit API keys or a Supabase `service_role` key. AI bridge details are documented in [`tools/ai-bridge/README.md`](tools/ai-bridge/README.md).
+
+## Development commands
+
+```powershell
+# Start the web app
+corepack pnpm dev:web
+
+# Type-check, test, and lint
+corepack pnpm check
+corepack pnpm test
+corepack pnpm lint
+
+# Run the deterministic AI browser suite
+corepack pnpm test:ai-e2e
 ```
 
-Start web development:
+Native Android and iOS commands are intentionally outside the current tester workflow.
 
-```bash
-pnpm dev:web
-```
+## Project structure
 
-Run checks:
+- `app/` — Expo Router screens.
+- `components/editor/plate/` — the active scene editor.
+- `components/editor/` — active preview, play, scene-management, manuscript, and shared editor surfaces.
+- `lib/engine/` — runtime execution and timeline event logic.
+- `stores/use-app-store.ts` — persisted Zustand application state.
+- `lib/persistent-storage.ts` — storage abstraction with web support.
+- `wiki/` — architecture, engine, storage, testing, and publishing references.
 
-```bash
-pnpm check
-pnpm test
-pnpm lint
-```
-
-Run the AI bridge browser suite:
-
-```bash
-pnpm test:ai-e2e
-```
-
-The AI browser tests use the same path as a creator: `Studio → story → Edit novel → AI`. The deterministic local bridge makes pairing, proposals, rollback, attachment persistence, unauthorized access, and session isolation reproducible without provider credentials.
-
-Run native targets:
-
-```bash
-pnpm android
-pnpm ios
-```
+Canonical scene data uses `SceneRecord + TimelineStep`. Legacy `Story`, `StoryScene`, and `Choice` shapes remain only at import, export, and migration boundaries.
 
 ## Documentation
 
-- `wiki/` is the compact project knowledge base: `wiki/index.md` lists the active pages (`overview.md`, `architecture-reference.md`, `stores-reference.md`, `block-types-reference.md`, and more). Start there.
-- `wiki/final-migration-audit.md` tracks the current migration status and cleanup boundaries.
-- `PRODUCT.md` describes product purpose, brand, and design principles.
-- `DESIGN_SYSTEM.md` documents theme tokens and the color system.
-- `AGENTS.md` holds AI-agent rules and project-specific pitfalls.
+- [Tester quick start](docs/TESTER_QUICK_START.md) — first installation and web launch on Windows.
+- [Manual testing](docs/MANUAL_TESTING.md) — user-facing test scenarios and bug reports.
+- [Project knowledge base](wiki/index.md) — technical documentation index.
+- [Product principles](PRODUCT.md) — purpose, audience, and design direction.
+- [Publishing a playable web story](wiki/publish-web.md) — export a finished story as a static web bundle.
+- [Testing guide](wiki/testing-guide.md) — automated tests for developers.
 
-## Development Rules
+## Current scope
 
-- Use Plate as the only scene editing system. Legacy Lego components must not be imported by active editor screens.
-- Use `useAppStore()` directly for active app state. Do not introduce React Context as a state source of truth.
-- Keep new scene logic canonical-first: read and write `SceneRecord + TimelineStep`.
-- Route compatibility conversions through `lib/scene-record-adapter.ts`.
-- Use `createPersistentStorage()` for persistence so web can fall back to `localStorage`.
-- Avoid module-level splash-screen side effects on web; run splash setup inside effects with dynamic imports.
-- Keep NativeWind `active:` modifiers off `Pressable` unless remapped through `lib/_core/nativewind-pressable.ts`.
+The repository is under active development. For the current test cycle:
+
+- authoring and testing happen on a PC in the browser;
+- local browser storage is the default persistence layer;
+- cloud backup and AI providers are optional;
+- Android is considered a future reader platform for finished novels and is not part of setup or acceptance testing.
