@@ -137,6 +137,47 @@ describe('keeping an orphaned sprite image', () => {
     expect(run([character('alice', [sprite('happy', { uri: 'blob:runtime' })])], [])).toBeNull();
   });
 
+  // One file has up to four spellings on a sprite — `assetUri` or `uri`, each
+  // holding an asset id or its URI. A sprite rewritten from one to another is
+  // the same picture, and reading it as a lost one would duplicate the asset.
+  it('sees through a sprite rewritten from an asset id to its URI', () => {
+    const existing = asset({ id: 'a1', uri: 'file://happy.png' });
+    const result = run(
+      [character('alice', [sprite('happy', { uri: 'a1' })])],
+      [character('alice', [sprite('happy', { uri: 'file://happy.png' })])],
+      { mediaLibrary: [existing] },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('sees through a sprite that moved its reference into assetUri', () => {
+    const existing = asset({ id: 'a1', uri: 'file://happy.png' });
+    const result = run(
+      [character('alice', [sprite('happy', { uri: 'file://happy.png' })])],
+      [character('alice', [sprite('happy', { uri: 'blob:runtime', assetUri: 'a1' })])],
+      { mediaLibrary: [existing] },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  // The same picture on two sprites, spelled differently: removing one leaves
+  // the file reachable through the other.
+  it('counts two spellings of one file as one picture', () => {
+    const existing = asset({ id: 'a1', uri: 'file://happy.png' });
+    const result = run(
+      [
+        character('alice', [sprite('happy', { uri: 'a1' })]),
+        character('bob', [sprite('calm', { uri: 'file://happy.png' })]),
+      ],
+      [character('bob', [sprite('calm', { uri: 'file://happy.png' })])],
+      { mediaLibrary: [existing] },
+    );
+
+    expect(result).toBeNull();
+  });
+
   it('names the image after the sprite', () => {
     const result = run([character('alice', [sprite('happy', { name: 'Alice smiling' })])], []);
 

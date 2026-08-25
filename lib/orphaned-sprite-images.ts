@@ -45,10 +45,40 @@ function canonicalUri(sprite: CharacterSprite): string {
   return sprite.assetUri ?? sprite.uri;
 }
 
-function spritesByUri(characters: Character[]): Map<string, CharacterSprite> {
+/**
+ * What a sprite points at, named the same way every time.
+ *
+ * One file has up to four spellings on a sprite — `assetUri` or `uri`, each
+ * holding either a library asset's id or its URI — and the media library
+ * resolves all four to one asset. Comparing raw URIs instead would read a
+ * sprite rewritten from one spelling to another as a file that vanished, and
+ * "rescue" a duplicate of an image nothing lost.
+ *
+ * The order matches `findSpriteAsset` in story-media-gallery: the two views of
+ * the same data disagreeing about which asset a sprite means is its own bug.
+ */
+function spriteIdentity(
+  sprite: CharacterSprite,
+  assetById: Map<string, LibraryAsset>,
+  assetByUri: Map<string, LibraryAsset>,
+): string {
+  const { assetUri, uri } = sprite;
+  const asset = (assetUri ? assetById.get(assetUri) ?? assetByUri.get(assetUri) : undefined)
+    ?? assetById.get(uri)
+    ?? assetByUri.get(uri);
+  return asset ? asset.id : canonicalUri(sprite);
+}
+
+function spritesByIdentity(
+  characters: Character[],
+  assetById: Map<string, LibraryAsset>,
+  assetByUri: Map<string, LibraryAsset>,
+): Map<string, CharacterSprite> {
   const sprites = new Map<string, CharacterSprite>();
   for (const character of characters) {
-    for (const sprite of character.sprites) sprites.set(canonicalUri(sprite), sprite);
+    for (const sprite of character.sprites) {
+      sprites.set(spriteIdentity(sprite, assetById, assetByUri), sprite);
+    }
   }
   return sprites;
 }
@@ -80,30 +110,31 @@ export function keepOrphanedSpriteImages(
   const { storyId, previous, next, mediaLibrary, imageAssetIdsByStory, now } = input;
   if (!storyId || !previous.length) return null;
 
-  const survivors = spritesByUri(next);
-  const removed = [...spritesByUri(previous).entries()]
-    .filter(([uri]) => !survivors.has(uri) && isPersistentUri(uri));
-  if (!removed.length) return null;
-
   const assetById = new Map(mediaLibrary.map((asset) => [asset.id, asset]));
   const assetByUri = new Map(mediaLibrary.map((asset) => [asset.uri, asset]));
+
+  const survivors = spritesByIdentity(next, assetById, assetByUri);
+  const removed = [...spritesByIdentity(previous, assetById, assetByUri).entries()]
+    .filter(([identity, sprite]) =>
+      !survivors.has(identity) && (assetById.has(identity) || isPersistentUri(identity)));
+  if (!removed.length) return null;
 
   let nextMediaLibrary = mediaLibrary;
   let nextImageAssetIds = imageAssetIdsByStory;
   let changed = false;
 
-  for (const [uri, sprite] of removed) {
+  for (const [identity, sprite] of removed) {
     // The picture may already be a library asset — a sprite made from an
     // imported image, or by the media library's own "add to character". Then
     // there is nothing to create, only membership to make sure of.
-    const existing = assetById.get(uri) ?? assetByUri.get(uri);
+    const existing = assetById.get(identity);
     const assetId = existing?.id ?? (input.createAssetId?.() ?? generateAssetId());
 
     if (!existing) {
       nextMediaLibrary = [...nextMediaLibrary, {
         id: assetId,
         type: 'image',
-        uri,
+        uri: identity,
         name: imageName(sprite),
         addedAt: now,
       }];
