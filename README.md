@@ -1,104 +1,203 @@
 # Visual Novel Engine
 
-Cross-platform visual novel editor and reader built with Expo, React Native, TypeScript, Zustand, NativeWind, and Vitest.
+![Expo](https://img.shields.io/badge/Expo-54-000020?logo=expo&logoColor=white)
+![React Native](https://img.shields.io/badge/React_Native-0.81-61DAFB?logo=react&logoColor=111827)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)
+![pnpm](https://img.shields.io/badge/pnpm-10.23-F69220?logo=pnpm&logoColor=white)
+![Platform](https://img.shields.io/badge/current_platform-PC%20%7C%20Web-2563EB)
+![Status](https://img.shields.io/badge/status-active_development-F59E0B)
 
-The current app uses a canonical scene model: `SceneRecord + TimelineStep`. Editor, preview, reader, story flow, autosave, and manual save/load should prefer this canonical data path. `Story` and `StoryScene` remain compatibility types for import/export and migration boundaries.
+Visual Novel Engine is a browser-based editor and player for creating interactive visual novels on a PC. It gives writers a focused place to write scenes, build branching dialogue, add characters and media, preview changes, and play the result from a reader's perspective.
 
-## What It Does
+> **Current testing scope:** authoring and testing happen on a PC in a desktop browser. Android tooling, emulators, and native builds are not required. Android is planned as a way for readers to experience a finished novel, not as part of the current local setup.
 
-- Create and edit visual novel stories.
-- Compose scenes with timeline blocks for background, character, text, dialogue, choices, effects, audio, variables, transitions, camera, and interactive objects.
-- Preview scenes through the same runtime executor used by reader flows.
-- Manage story flow with scene nodes, positions, start scene state, and scene connections.
-- Read stories with typewriter text, choices, backgrounds, character sprites, audio, save/load, and autosave.
-- Run on web, Android, and iOS through Expo.
+## Features
 
-## Build Week AI Assistant Contribution
+- Create and organize visual novel projects.
+- Write scenes as readable document pages.
+- Add narration, dialogue, choices, variables, and conditions.
+- Use backgrounds, character sprites, audio, effects, transitions, camera actions, and interactive objects.
+- Preview the active scene without leaving the editor.
+- Play the complete story through the reader runtime.
+- Save work locally in the browser and export story data.
+- Optionally enable cloud backup and AI-assisted editing.
 
-The Build Week contribution adds a controlled AI-assisted editing workflow for creators:
+## Quick start on Windows
 
-1. Open a story and its active scene in the Studio editor.
-2. Open the AI tab, choose Claude Code, OpenAI API, or Google Gemini, and pair the matching local bridge.
-3. Describe a scene or story change in natural language.
-4. Review the validated proposal, then apply or reject it.
-5. Preview the result and roll back the applied AI change when needed.
+### Requirements
 
-The assistant receives story and scene context, but mutations pass through validated patches or change sets, revision checks, permission boundaries, and recoverable snapshots. The bridge also supports attachment validation, provider settings, and fail-closed behavior for unsupported capabilities.
+Install the following before continuing:
 
-For local development, configure provider credentials in the project-root
-`.env`, start an explicit provider with `pnpm ai-bridge --provider <provider>`,
-then paste the printed pairing token into the visible provider setup panel.
-See [`tools/ai-bridge/README.md`](tools/ai-bridge/README.md) for provider-specific
-setup and switching details.
+- [Git for Windows](https://git-scm.com/download/win)
+- [Node.js LTS](https://nodejs.org/en/download), version 20.19 or newer
+- Chrome, Edge, or Firefox
 
-## Architecture
+You do **not** need Android Studio, an Android emulator, Java, Supabase, a `.env` file, or any API keys for the standard local experience.
 
-- `app/` contains Expo Router screens.
-- `components/editor/plate/` contains the active Plate scene editor. `components/editor/` also contains active preview, play, scene management, manuscript, and shared editor surfaces.
-- `components/editor-legacy/` contains legacy Lego editor UI for reference only. Active editor screens must not import it.
-- `lib/engine/` contains runtime execution: `useSceneExecutor`, timeline event types, factories, and condition evaluation.
-- `stores/use-app-store.ts` owns persisted app state through Zustand.
-- `stores/use-editor-store.ts` is legacy draft state for isolated compatibility/reference code only. Active scene editor screens use persisted `SceneRecord` data from `useAppStore()`.
-- `lib/persistent-storage.ts` is the storage abstraction. Do not use AsyncStorage directly in app code.
-- `lib/scene-record-adapter.ts` is the compatibility boundary between canonical scene records and legacy story scene shapes.
+### 1. Download the project
 
-## Commands
+Open PowerShell and run:
 
-Install dependencies:
-
-```bash
-pnpm install
+```powershell
+git clone https://github.com/9ThLen/Visual-Novel-Engine.git
+cd Visual-Novel-Engine
 ```
 
-Start development:
+### 2. Install dependencies
 
-```bash
-pnpm dev
+```powershell
+corepack pnpm install
 ```
 
-Start web development:
+Corepack may ask for permission to download the pnpm version declared by the project. Confirm the prompt if it appears.
 
-```bash
-pnpm dev:web
+### 3. Start the web app
+
+```powershell
+corepack pnpm dev:web
 ```
 
-Run checks:
+Open [http://localhost:8081](http://localhost:8081) if the browser does not open automatically.
 
-```bash
-pnpm check
-pnpm test
-pnpm lint
+Keep the PowerShell window running while you use the app. Press `Ctrl+C` in that window to stop the development server.
+
+## Using the app
+
+1. Open the home page and select **Studio**.
+2. Open a bundled demo or create a new story.
+3. Select **Edit novel** to write and organize scenes.
+4. Add dialogue, choices, characters, media, and runtime actions.
+5. Preview the active scene while editing.
+6. Select **Play novel** to experience the story as a reader.
+7. Reload the browser and confirm that your work is still available.
+
+The interface supports English and Ukrainian. Visible button names follow the language selected in Settings.
+
+## Starting the app again
+
+After the first installation, you only need to open PowerShell in the project directory and start the server:
+
+```powershell
+cd C:\path\to\Visual-Novel-Engine
+corepack pnpm dev:web
 ```
 
-Run the AI bridge browser suite:
+Do not run `git clone` again for an existing copy of the project.
 
-```bash
-pnpm test:ai-e2e
+## Updating the project
+
+Stop the server with `Ctrl+C`, then run:
+
+```powershell
+git pull
+corepack pnpm install
+corepack pnpm dev:web
 ```
 
-The AI browser tests use the same path as a creator: `Studio → story → Edit novel → AI`. The deterministic local bridge makes pairing, proposals, rollback, attachment persistence, unauthorized access, and session isolation reproducible without provider credentials.
+Stories are stored in the current browser profile rather than in Git. Export important work before a major update. Incognito or InPrivate windows may remove local data when they are closed.
 
-Run native targets:
+## Troubleshooting
 
-```bash
-pnpm android
-pnpm ios
+### `git`, `node`, or `corepack` is not recognized
+
+Confirm that Git and Node.js LTS are installed. Close all PowerShell windows, open a new one, and check:
+
+```powershell
+git --version
+node --version
+corepack pnpm --version
 ```
+
+If a command is still unavailable, restart Windows and try again.
+
+### Port 8081 is already in use
+
+Check whether the app is already running in another PowerShell window. Stop the old process with `Ctrl+C`, then run `corepack pnpm dev:web` again.
+
+### The page does not open
+
+Keep the server window open, check it for errors, and visit [http://localhost:8081](http://localhost:8081) manually. Use `Ctrl+Shift+R` to perform a hard refresh.
+
+### The browser shows an old version
+
+Stop the server and restart Expo with a clean cache:
+
+```powershell
+git pull
+corepack pnpm install
+corepack pnpm exec expo start --web --port 8081 --clear
+```
+
+### `pnpm install` fails
+
+Save the first complete `ERR_PNPM` message, verify the Node.js version, and check the internet connection, VPN, proxy, or antivirus. Do not delete project files unless a developer asks you to.
+
+## Local data and optional services
+
+The default experience is local-first:
+
+- no account is required;
+- story data stays in the current browser profile;
+- different browsers use separate local storage;
+- clearing site data for `localhost` can remove locally stored stories.
+
+The `.env.example` file documents optional integrations. Copy it to `.env` only when you intentionally configure Supabase cloud backup or an AI provider. Never place a Supabase `service_role` key in the client configuration, and never commit credentials.
+
+For AI provider setup and local bridge pairing, see [`tools/ai-bridge/README.md`](tools/ai-bridge/README.md).
+
+## Development commands
+
+```powershell
+# Start the web development server
+corepack pnpm dev:web
+
+# Type-check the project
+corepack pnpm check
+
+# Run unit tests
+corepack pnpm test
+
+# Run lint checks
+corepack pnpm lint
+
+# Run the deterministic AI browser suite
+corepack pnpm test:ai-e2e
+```
+
+Native Android and iOS commands are intentionally outside the current testing workflow.
+
+## Technology
+
+- [Expo](https://expo.dev/) and Expo Router
+- React Native and React Native Web
+- TypeScript
+- Zustand
+- NativeWind
+- Plate
+- Vitest and Playwright
+
+## Architecture overview
+
+- `app/` — Expo Router screens.
+- `components/editor/plate/` — the active scene editor.
+- `components/editor/` — active preview, play, scene management, manuscript, and shared editor surfaces.
+- `lib/engine/` — timeline execution, events, and condition evaluation.
+- `stores/use-app-store.ts` — persisted Zustand application state.
+- `lib/persistent-storage.ts` — platform-aware storage abstraction.
+- `wiki/` — detailed project knowledge base.
+
+Canonical scene data uses `SceneRecord + TimelineStep`. Legacy `Story`, `StoryScene`, and `Choice` types remain only at import, export, and migration boundaries.
 
 ## Documentation
 
-- `wiki/` is the compact project knowledge base: `wiki/index.md` lists the active pages (`overview.md`, `architecture-reference.md`, `stores-reference.md`, `block-types-reference.md`, and more). Start there.
-- `wiki/final-migration-audit.md` tracks the current migration status and cleanup boundaries.
-- `PRODUCT.md` describes product purpose, brand, and design principles.
-- `DESIGN_SYSTEM.md` documents theme tokens and the color system.
-- `AGENTS.md` holds AI-agent rules and project-specific pitfalls.
+- [`wiki/index.md`](wiki/index.md) — documentation index.
+- [`wiki/overview.md`](wiki/overview.md) — product and system overview.
+- [`wiki/architecture-reference.md`](wiki/architecture-reference.md) — architecture reference.
+- [`wiki/testing-guide.md`](wiki/testing-guide.md) — automated testing guide.
+- [`wiki/publish-web.md`](wiki/publish-web.md) — export a finished story as a standalone web bundle.
+- [`PRODUCT.md`](PRODUCT.md) — product purpose and design principles.
+- [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) — visual language, tokens, and theme rules.
 
-## Development Rules
+## Project status
 
-- Use Plate as the only scene editing system. Legacy Lego components must not be imported by active editor screens.
-- Use `useAppStore()` directly for active app state. Do not introduce React Context as a state source of truth.
-- Keep new scene logic canonical-first: read and write `SceneRecord + TimelineStep`.
-- Route compatibility conversions through `lib/scene-record-adapter.ts`.
-- Use `createPersistentStorage()` for persistence so web can fall back to `localStorage`.
-- Avoid module-level splash-screen side effects on web; run splash setup inside effects with dynamic imports.
-- Keep NativeWind `active:` modifiers off `Pressable` unless remapped through `lib/_core/nativewind-pressable.ts`.
+Visual Novel Engine is under active development. The current acceptance workflow covers the PC web editor and web reader. Cloud integrations and AI providers are optional, while Android remains a future distribution target for finished novels.
