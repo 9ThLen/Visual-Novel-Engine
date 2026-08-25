@@ -102,6 +102,19 @@ export default function StoryGalleryRoute() {
       : 'unavailable';
   const usageReady = usageState === 'ready';
 
+  /**
+   * A usage filter the author picked while usage was known must not keep
+   * filtering once it stops being known. Disabling the chip is not enough — the
+   * grid would go on hiding files on the strength of scenes it no longer has,
+   * and an empty grid is a louder claim than a greyed-out chip.
+   */
+  useEffect(() => {
+    if (usageReady) return;
+    setFilter((current) => current.kind === 'used' || current.kind === 'unused'
+      ? { kind: 'all' }
+      : current);
+  }, [usageReady]);
+
   const gallery = useMemo(
     () => buildStoryMediaGallery({
       storyId: storyId ?? '',

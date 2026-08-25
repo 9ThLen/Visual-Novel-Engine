@@ -520,6 +520,59 @@ describe('media library route', () => {
     expect(setCharacterLibrary).not.toHaveBeenCalled();
   });
 
+  // A rejected load is not a finished one. Nothing about the story's usage is
+  // known, and the screen has to say so rather than sit on "checking…".
+  it('says usage cannot be checked when the load fails', async () => {
+    seedStore({
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characterLibraries: { 'story-1': [alice] },
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      hydrateSceneRecordsForStory: vi.fn(() => Promise.reject(new Error('storage unavailable'))),
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
+
+    // Even though a scene is in memory and would say the sprite is unused.
+    await waitFor(() => expect(screen.getAllByText('Could not check where this file is used.').length).toBeGreaterThan(0));
+    expect(screen.queryByRole('button', { name: 'Remove from Alice' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
+  });
+
+  // Disabling the chip leaves the grid filtered by the answer that just stopped
+  // being trustworthy, which reads as "these files vanished".
+  it('drops an active usage filter when usage stops being knowable', async () => {
+    seedStore({
+      mediaLibrary: [asset({ id: 'bg' }), asset({ id: 'spare' })],
+      imageAssetIdsByStory: { 'story-1': ['bg', 'spare'] },
+      sceneRecordsByStory: {
+        'story-1': {
+          'scene-1': scene([
+            { id: 'step-1', blockType: 'background', enabled: true, data: { assetId: 'bg' } } as TimelineStep,
+          ]),
+        },
+      },
+    });
+
+    render(<StoryGalleryRoute />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: 'Used' }));
+    expect(screen.queryByRole('button', { name: 'Image, spare.png' })).toBeNull();
+
+    // The story grows a scene this screen has not read.
+    (useAppStore as unknown as { setState: (value: StoreSeed) => void }).setState({
+      storiesMetadata: [{ id: 'story-1', title: 'My story', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 2 }],
+    });
+    // Harness detail, not product behaviour: the store double here has no
+    // subscription, so a write alone renders nothing. Any interaction is what
+    // makes the screen read it again — selecting a tile touches nothing else.
+    fireEvent.click(screen.getByRole('button', { name: 'Image, bg.png' }));
+
+    expect(screen.getByRole('button', { name: 'Image, spare.png' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Image, bg.png' })).toBeTruthy();
+  });
+
   it('makes a sprite the character default through the store', async () => {
     const setCharacterLibrary = vi.fn();
     seedStore({
