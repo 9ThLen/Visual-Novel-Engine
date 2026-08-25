@@ -119,6 +119,50 @@ describe('app store slices', () => {
     });
   });
 
+  // Deleting a character must not take its artwork out of the story: a sprite's
+  // picture is often reachable through nothing else.
+  it('keeps the picture of a sprite that a character write removed', () => {
+    const harness = createSliceHarness();
+    const slice = createLibrariesSlice(harness.set);
+    harness.set({
+      characterLibraries: {
+        'story-1': [{
+          id: 'alice',
+          name: 'Alice',
+          createdAt: 1,
+          sprites: [{ id: 'happy', name: 'Alice smiling', uri: 'file://happy.png', createdAt: 1 }],
+        }],
+      },
+    });
+
+    slice.setCharacterLibrary('story-1', []);
+
+    expect(harness.state.characterLibraries['story-1']).toEqual([]);
+    expect(harness.state.mediaLibrary).toEqual([
+      expect.objectContaining({ uri: 'file://happy.png', name: 'Alice smiling', type: 'image' }),
+    ]);
+    expect(harness.state.imageAssetIdsByStory['story-1']).toEqual([
+      harness.state.mediaLibrary[0].id,
+    ]);
+  });
+
+  it('leaves the libraries alone when a character write removes nothing', () => {
+    const harness = createSliceHarness();
+    const slice = createLibrariesSlice(harness.set);
+    const alice = {
+      id: 'alice',
+      name: 'Alice',
+      createdAt: 1,
+      sprites: [{ id: 'happy', name: 'Happy', uri: 'file://happy.png', createdAt: 1 }],
+    };
+    harness.set({ characterLibraries: { 'story-1': [alice] } });
+
+    slice.setCharacterLibrary('story-1', [{ ...alice, name: 'Alicia' }]);
+
+    expect(harness.state.mediaLibrary).toEqual([]);
+    expect(harness.state.imageAssetIdsByStory).toEqual({});
+  });
+
   it('stores media and audio libraries', () => {
     const harness = createSliceHarness();
     const slice = createLibrariesSlice(harness.set);
