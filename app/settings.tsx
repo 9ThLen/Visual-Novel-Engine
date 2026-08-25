@@ -19,6 +19,7 @@ import {
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { LanguageSelector } from '@/components/LanguageSelector';
+import { StorageDurabilityCard } from '@/components/settings/StorageDurabilityCard';
 import { Button } from '@/components/ui';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 
@@ -292,6 +293,11 @@ export default function SettingsScreen() {
             onValueChange={(v) => updateSettings({ backgroundVideoEnabled: v })}
             description={t('settings.backgroundVideoDescription')}
           />
+        </Section>
+
+        {/* Storage */}
+        <Section title={t('settings.storageSection')}>
+          <StorageDurabilityCard />
         </Section>
 
         {/* Cloud */}
