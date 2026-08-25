@@ -288,6 +288,20 @@ export function mergeSceneRecordStoragePayloads(
   );
 }
 
+/**
+ * Write the scenes of the stories in hand.
+ *
+ * This function writes; it never decides that a story has been deleted. It used
+ * to: any story in the stored index but missing from the arguments had its
+ * scenes removed. That reads a state which is merely *unknown* as one that is
+ * *empty*, and the store is legitimately empty for a moment on every launch —
+ * before rehydration finishes. A persist landing in that window (opening the
+ * app straight on a scene URL is enough) wiped the scenes of every story on the
+ * device.
+ *
+ * Absence is not deletion. A story that is actually deleted is deleted through
+ * `deleteSceneRecordsForStory`, which says so.
+ */
 export async function persistSceneRecordsByStory(
   storage: SceneRecordStorageLike,
   storiesMetadata: StoryMetadata[],
@@ -296,13 +310,20 @@ export async function persistSceneRecordsByStory(
   const previousIndex = parseSceneRecordStorageIndex(
     await storage.getItem(STORAGE_KEYS.CANONICAL_SCENE_RECORD_INDEX),
   );
-  const nextIndex = buildSceneRecordStorageIndex(storiesMetadata, sceneRecordsByStory);
-  const nextStoryIds = new Set(nextIndex.storyIds);
-  const staleStoryIds = previousIndex.storyIds.filter((storyId) => !nextStoryIds.has(storyId));
+  // Union, so a story is never dropped from the index by not being mentioned.
+  const nextIndex: SceneRecordStorageIndex = {
+    version: SCENE_RECORD_STORAGE_VERSION,
+    storyIds: [
+      ...new Set([
+        ...previousIndex.storyIds,
+        ...buildSceneRecordStorageIndex(storiesMetadata, sceneRecordsByStory).storyIds,
+      ]),
+    ],
+  };
   const updatedAt = Date.now();
-  const itemIndexStoryIds = [
-    ...new Set([...previousIndex.storyIds, ...Object.keys(sceneRecordsByStory)]),
-  ];
+  // Only the stories actually being written: for those we hold the full record
+  // map, so a scene missing from it really was removed from that story.
+  const itemIndexStoryIds = Object.keys(sceneRecordsByStory);
   const previousItemIndexes = await Promise.all(
     itemIndexStoryIds.map(async (storyId) => [
       storyId,
@@ -340,16 +361,45 @@ export async function persistSceneRecordsByStory(
     );
   }
 
+  await Promise.all(itemIndexStoryIds.flatMap((storyId) => {
+    const nextIds = new Set(Object.keys(sceneRecordsByStory[storyId] ?? {}));
+    return (previousItemIndexByStory[storyId]?.sceneIds ?? [])
+      .filter((sceneId) => !nextIds.has(sceneId))
+      .map((sceneId) => storage.removeItem(getSceneRecordItemStorageKey(storyId, sceneId)));
+  }));
+}
+
+/**
+ * Remove everything stored for one story, and say so in the index.
+ *
+ * The counterpart to the rule above: this is the only way a story's scenes
+ * leave storage, so a caller has to have decided the story is gone.
+ */
+export async function deleteSceneRecordsForStory(
+  storage: SceneRecordStorageLike,
+  storyId: string,
+): Promise<void> {
+  if (!storyId) return;
+
+  const itemIndex = parseSceneRecordItemIndex(
+    await storage.getItem(getSceneRecordIdIndexStorageKey(storyId)),
+    storyId,
+  );
+  const previousIndex = parseSceneRecordStorageIndex(
+    await storage.getItem(STORAGE_KEYS.CANONICAL_SCENE_RECORD_INDEX),
+  );
+
   await Promise.all([
-    ...staleStoryIds.map((storyId) => storage.removeItem(getSceneRecordStorageKey(storyId))),
-    ...staleStoryIds.map((storyId) => storage.removeItem(getSceneRecordIdIndexStorageKey(storyId))),
-    ...itemIndexStoryIds.flatMap((storyId) => {
-      const nextIds = new Set(Object.keys(sceneRecordsByStory[storyId] ?? {}));
-      return (previousItemIndexByStory[storyId]?.sceneIds ?? [])
-        .filter((sceneId) => !nextIds.has(sceneId))
-        .map((sceneId) => storage.removeItem(getSceneRecordItemStorageKey(storyId, sceneId)));
-    }),
+    storage.removeItem(getSceneRecordStorageKey(storyId)),
+    storage.removeItem(getSceneRecordIdIndexStorageKey(storyId)),
+    ...(itemIndex?.sceneIds ?? []).map((sceneId) =>
+      storage.removeItem(getSceneRecordItemStorageKey(storyId, sceneId))),
   ]);
+
+  await storage.setItem(STORAGE_KEYS.CANONICAL_SCENE_RECORD_INDEX, JSON.stringify({
+    version: SCENE_RECORD_STORAGE_VERSION,
+    storyIds: previousIndex.storyIds.filter((id) => id !== storyId),
+  } satisfies SceneRecordStorageIndex));
 }
 
 export async function loadSceneRecordsForStory(

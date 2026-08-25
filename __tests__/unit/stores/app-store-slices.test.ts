@@ -9,6 +9,7 @@ import {
   buildSceneRecordItemIndex,
   buildSceneRecordItemPayload,
   buildSceneRecordStoragePayload,
+  SCENE_RECORD_STORAGE_VERSION,
 } from '@/lib/scene-record-storage';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { SaveSlot } from '@/lib/story-domain';
@@ -332,6 +333,37 @@ describe('app store slices', () => {
 
     expect(harness.state.storiesMetadata).toEqual([]);
     expect(harness.state.sceneRecordsByStory).toEqual({});
+  });
+
+  // Storage no longer treats a story missing from a write as deleted, so this
+  // is the only thing that clears a deleted story's scenes off the device.
+  it('deletes a story\'s scenes from storage, not just from memory', async () => {
+    const harness = createSliceHarness();
+    const storageValues = new Map<string, string>([
+      ['vne_scene_record_index', JSON.stringify({
+        version: SCENE_RECORD_STORAGE_VERSION,
+        storyIds: ['story-1', 'story-2'],
+      })],
+      ['vne_scene_record_ids_story-1', JSON.stringify(
+        buildSceneRecordItemIndex('story-1', { 'scene-1': makeSceneRecord('scene-1') }, 1),
+      )],
+    ]);
+    const removed: string[] = [];
+    const storage = {
+      getItem: vi.fn(async (key: string) => storageValues.get(key) ?? null),
+      setItem: vi.fn(async (key: string, value: string) => { storageValues.set(key, value); }),
+      removeItem: vi.fn(async (key: string) => { removed.push(key); }),
+    };
+    const slice = createStorySlice(harness.set, storage);
+
+    slice.deleteStory('story-1');
+    // The state change does not wait on storage; the removal is in flight.
+    await vi.waitFor(() => expect(removed).toContain('vne_scene_records_story-1'));
+
+    expect(removed).toContain('vne_scene_record_ids_story-1');
+    expect(removed).toContain('vne_scene_record_story-1_scene-1');
+    expect(JSON.parse(storageValues.get('vne_scene_record_index') ?? '{}').storyIds)
+      .toEqual(['story-2']);
   });
 
   it('updates story metadata timestamps', () => {
