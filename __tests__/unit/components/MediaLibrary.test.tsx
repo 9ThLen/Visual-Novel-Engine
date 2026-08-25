@@ -251,6 +251,7 @@ describe('media inspector', () => {
       onRemoveFromStory: vi.fn(),
       onAttachToCharacter: vi.fn(),
       onDetachFromCharacter: vi.fn(),
+      onMakeDefaultSprite: vi.fn(),
     };
     render(
       <MediaInspector
@@ -260,6 +261,7 @@ describe('media inspector', () => {
         canRemoveBackground={false}
         removingBackground={false}
         characters={[]}
+        usageReady
         {...handlers}
         {...overrides}
       />,
@@ -481,6 +483,62 @@ describe('media inspector', () => {
       expect.objectContaining({ assetId: 'bg' }),
       expect.objectContaining({ characterId: 'alice', spriteId: 'happy' }),
     );
+  });
+
+  // Everything looks unreferenced while the scenes are still loading, and a
+  // detach taken on that basis is permanent: no migration restores a sprite.
+  it('offers nothing destructive until the scenes have loaded', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characters: [alice],
+    }).images[0];
+
+    renderInspector(item, { characters: [aliceFilter], usageReady: false });
+
+    expect(screen.queryByRole('button', { name: 'Remove from Alice' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
+    expect(screen.getAllByText('Checking where this file is used…').length).toBeGreaterThan(0);
+    // And it must not claim the file is unused while it does not know.
+    expect(screen.queryByText('Not used in any scene')).toBeNull();
+  });
+
+  const twoSpriteAlice = {
+    ...alice,
+    defaultSpriteId: 'happy',
+    sprites: [
+      { id: 'happy', name: 'Happy', uri: 'file://alice.png', createdAt: NOW },
+      { id: 'sad', name: 'Sad', uri: 'file://alice-sad.png', createdAt: NOW },
+    ],
+  };
+
+  it('offers to move the default onto a sprite that is not it', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'sad', uri: 'file://alice-sad.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sad'] },
+      characters: [twoSpriteAlice],
+    }).images[0];
+    const handlers = renderInspector(item, { characters: [aliceFilter] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Make default for Alice' }));
+
+    expect(handlers.onMakeDefaultSprite).toHaveBeenCalledWith(
+      expect.objectContaining({ assetId: 'sad' }),
+      expect.objectContaining({ spriteId: 'sad' }),
+    );
+  });
+
+  it('marks the sprite that already is the default instead', () => {
+    const item = gallery({
+      mediaLibrary: [asset({ id: 'happy', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['happy'] },
+      characters: [twoSpriteAlice],
+    }).images[0];
+
+    renderInspector(item, { characters: [aliceFilter] });
+
+    expect(screen.getByText('Default')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Make default for Alice' })).toBeNull();
   });
 
   it('names the scene the author came from as the current one', () => {

@@ -20,7 +20,7 @@ export interface AttachSpriteInput {
   /**
    * Persistent reference to the file: the library asset id when the file has
    * one, else its URI. Both forms resolve — a bare id is an asset reference
-   * everywhere in the app (see `resolveAssetReference`) — and the id is the
+   * everywhere in the app (see `resolveLibraryAssetUri`) — and the id is the
    * stabler of the two, so the caller should prefer it.
    */
   ref: string;
@@ -136,4 +136,33 @@ export function detachSpriteFromCharacter(
 /** The file name without its extension — the sprite name the author starts from. */
 export function spriteNameFromFileName(fileName: string): string {
   return fileName.replace(/\.[a-z0-9]{1,5}$/i, '').trim() || fileName;
+}
+
+/**
+ * Make one of a character's sprites its default.
+ *
+ * Purely a fallback pointer: every reference in a timeline names its sprite
+ * outright, and `defaultSpriteId` only decides what is shown when none was
+ * named. Nothing can dangle here, which is why this action is offered without
+ * the usage checks that guard detaching.
+ *
+ * `authoring.currentSpriteId` is deliberately left alone — that one is the
+ * editor's current selection for the next block it inserts, and moving it would
+ * change what the author's next keystroke produces.
+ */
+export function setDefaultSprite(
+  characters: Character[],
+  characterId: string,
+  spriteId: string,
+): Character[] {
+  const index = characters.findIndex((character) => character.id === characterId);
+  if (index < 0) return characters;
+
+  const character = characters[index];
+  if (character.defaultSpriteId === spriteId) return characters;
+  if (!character.sprites.some((sprite) => sprite.id === spriteId)) return characters;
+
+  const next = [...characters];
+  next[index] = { ...character, defaultSpriteId: spriteId };
+  return next;
 }

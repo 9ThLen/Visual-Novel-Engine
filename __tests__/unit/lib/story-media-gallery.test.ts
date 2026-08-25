@@ -1,6 +1,7 @@
 import {
   buildStoryMediaGallery,
   canDetachOwner,
+  findOwnerInGallery,
   canRemoveFromStory,
   filterMediaItems,
   groupMediaByDate,
@@ -418,5 +419,45 @@ describe('canDetachOwner', () => {
     // Re-enabling the block brings the reference back; the sprite has to exist.
     expect(item.owners[0].usage).toEqual({ enabled: 0, disabled: 1 });
     expect(canDetachOwner(item.owners[0])).toBe(false);
+  });
+});
+
+describe('findOwnerInGallery', () => {
+  const characterStep = step('c1', 'character', {
+    characterId: 'alice',
+    spriteId: 'happy',
+    position: 'left',
+    transition: 'instant',
+    delay: 0,
+    duration: null,
+  });
+
+  const input = (scenes: SceneRecord[]): StoryMediaGalleryInput => ({
+    storyId: 'story-1',
+    mediaLibrary: [asset({ id: 'a1', uri: 'file://alice.png' })],
+    imageAssetIdsByStory: { 'story-1': ['a1'] },
+    mediaAssetIdsByStory: {},
+    characters: [character('alice', [sprite('happy', { uri: 'file://alice.png' })])],
+    scenes,
+  });
+
+  // The point of the helper: the grid may have been built before the scene
+  // that shows this sprite finished loading, so the answer has to come from
+  // the state handed in now, not from the item the button was rendered with.
+  it('answers from the state it is given', () => {
+    const beforeScenesLoad = findOwnerInGallery(input([]), 'asset:a1', 'alice:happy');
+    const afterScenesLoad = findOwnerInGallery(
+      input([scene('s1', [characterStep])]),
+      'asset:a1',
+      'alice:happy',
+    );
+
+    expect(canDetachOwner(beforeScenesLoad!)).toBe(true);
+    expect(canDetachOwner(afterScenesLoad!)).toBe(false);
+  });
+
+  it('returns nothing when the owner is gone', () => {
+    expect(findOwnerInGallery(input([]), 'asset:a1', 'alice:missing')).toBeUndefined();
+    expect(findOwnerInGallery(input([]), 'asset:nothing', 'alice:happy')).toBeUndefined();
   });
 });

@@ -11,6 +11,7 @@
 import {
   attachSpriteToCharacter,
   detachSpriteFromCharacter,
+  setDefaultSprite,
   spriteNameFromFileName,
 } from '@/lib/character-media';
 import type { Character } from '@/lib/character-types';
@@ -178,6 +179,47 @@ describe('detaching a sprite from a character', () => {
     const characters = [twoSprites()];
     expect(detachSpriteFromCharacter(characters, 'alice', 'nobody')).toBe(characters);
     expect(detachSpriteFromCharacter(characters, 'nobody', 'happy')).toBe(characters);
+  });
+});
+
+describe('making a sprite the default', () => {
+  const twoSprites = () => character({
+    sprites: [
+      { id: 'happy', name: 'Happy', uri: 'asset-1', createdAt: 1 },
+      { id: 'sad', name: 'Sad', uri: 'asset-2', createdAt: 2 },
+    ],
+    defaultSpriteId: 'happy',
+    authoring: { currentSpriteId: 'happy', currentPosition: 'center' },
+  });
+
+  it('moves the default', () => {
+    const next = setDefaultSprite([twoSprites()], 'alice', 'sad');
+    expect(next[0].defaultSpriteId).toBe('sad');
+  });
+
+  // `authoring.currentSpriteId` is the editor's selection for the next block it
+  // inserts. Moving it here would change what the author's next keystroke
+  // produces, which is not what they asked for.
+  it('leaves the editor’s current selection alone', () => {
+    const next = setDefaultSprite([twoSprites()], 'alice', 'sad');
+    expect(next[0].authoring?.currentSpriteId).toBe('happy');
+  });
+
+  it('changes nothing for a sprite that is already the default', () => {
+    const characters = [twoSprites()];
+    expect(setDefaultSprite(characters, 'alice', 'happy')).toBe(characters);
+  });
+
+  it('refuses a sprite the character does not have', () => {
+    const characters = [twoSprites()];
+    expect(setDefaultSprite(characters, 'alice', 'nobody')).toBe(characters);
+    expect(setDefaultSprite(characters, 'nobody', 'sad')).toBe(characters);
+  });
+
+  it('leaves the rest of the library alone', () => {
+    const bob = character({ id: 'bob', name: 'Bob' });
+    const next = setDefaultSprite([twoSprites(), bob], 'alice', 'sad');
+    expect(next[1]).toBe(bob);
   });
 });
 

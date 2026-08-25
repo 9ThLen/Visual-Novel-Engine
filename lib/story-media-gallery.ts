@@ -338,6 +338,28 @@ export function canDetachOwner(owner: MediaOwner): boolean {
   return owner.usage.enabled + owner.usage.disabled === 0;
 }
 
+/**
+ * Re-resolve one owner against a freshly supplied state.
+ *
+ * The grid is built from whatever scenes were in memory when it rendered, and
+ * scene records arrive asynchronously: a sprite can look unreferenced simply
+ * because the scene that shows it has not loaded yet. Detaching is the one
+ * action with no way back — story membership is re-derived on every hydration,
+ * a deleted sprite is not — so the write re-reads the store and asks again
+ * rather than trusting the snapshot the button was rendered from.
+ *
+ * Returns undefined when the owner is gone entirely, which is also a refusal.
+ */
+export function findOwnerInGallery(
+  input: StoryMediaGalleryInput,
+  itemKey: string,
+  usageAssetId: string,
+): MediaOwner | undefined {
+  const gallery = buildStoryMediaGallery(input);
+  const item = [...gallery.images, ...gallery.videos].find((candidate) => candidate.key === itemKey);
+  return item?.owners.find((owner) => owner.usageAssetId === usageAssetId);
+}
+
 function matchesQuery(item: StoryMediaItem, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;

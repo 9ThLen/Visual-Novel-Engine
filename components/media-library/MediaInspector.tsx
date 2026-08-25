@@ -131,12 +131,19 @@ export interface MediaInspectorProps {
   characters: CharacterMediaFilter[];
   /** The scene the author came from, when the library was opened from one. */
   currentSceneId?: string;
+  /**
+   * Whether the story's scenes are loaded. Until they are, "used in no scene"
+   * is an artefact of the load rather than an answer, and nothing destructive
+   * may be offered on the strength of it.
+   */
+  usageReady: boolean;
   onClose: () => void;
   onOpenScene: (sceneId: string) => void;
   onRemoveBackground: (item: StoryMediaItem) => void;
   onRemoveFromStory: (item: StoryMediaItem) => void;
   onAttachToCharacter: (item: StoryMediaItem, characterId: string) => void;
   onDetachFromCharacter: (item: StoryMediaItem, owner: MediaOwner) => void;
+  onMakeDefaultSprite: (item: StoryMediaItem, owner: MediaOwner) => void;
 }
 
 function InspectorBody({
@@ -146,12 +153,14 @@ function InspectorBody({
   removingBackground,
   characters,
   currentSceneId,
+  usageReady,
   onClose,
   onOpenScene,
   onRemoveBackground,
   onRemoveFromStory,
   onAttachToCharacter,
   onDetachFromCharacter,
+  onMakeDefaultSprite,
 }: Omit<MediaInspectorProps, 'asSheet'>) {
   const { t } = useI18n();
   const [pickingCharacter, setPickingCharacter] = useState(false);
@@ -232,8 +241,34 @@ function InspectorBody({
                 <Text style={[typeScale.label, { color: colors.foreground, flex: 1 }]}>
                   {owner.characterName} · {owner.spriteName}
                 </Text>
+                {owner.isDefaultSprite ? (
+                  <Text style={[typeScale.caption, { color: colors.muted }]}>
+                    {t('mediaLibrary.inspector.defaultSprite')}
+                  </Text>
+                ) : null}
               </View>
-              {canDetachOwner(owner) ? (
+              {owner.isDefaultSprite ? null : (
+                // Safe at any time: the default is only a fallback for steps
+                // that named no sprite, so nothing can be left dangling.
+                <Pressable
+                  onPress={() => onMakeDefaultSprite(item, owner)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('mediaLibrary.action.makeDefault', { name: owner.characterName })}
+                  style={[styles.action, { borderColor: colors.border }]}
+                >
+                  <Text style={[typeScale.label, { color: colors.primary }]}>
+                    {t('mediaLibrary.action.makeDefault', { name: owner.characterName })}
+                  </Text>
+                </Pressable>
+              )}
+              {!usageReady ? (
+                // Scenes are still loading. Everything looks unreferenced right
+                // now, and offering a permanent delete on that basis is how a
+                // sprite a scene still shows gets removed.
+                <Text style={[typeScale.caption, { color: colors.muted }]}>
+                  {t('mediaLibrary.usagePending')}
+                </Text>
+              ) : canDetachOwner(owner) ? (
                 <Pressable
                   onPress={() => onDetachFromCharacter(item, owner)}
                   accessibilityRole="button"
@@ -311,11 +346,13 @@ function InspectorBody({
         )}
       </View>
 
-      <Text style={[typeScale.label, { color: colors.foreground }]}>
-        {scenes.length
-          ? t('mediaLibrary.inspector.usedIn', { count: scenes.length })
-          : t('mediaLibrary.inspector.notUsed')}
-        {item.usage.disabled
+      <Text style={[typeScale.label, { color: usageReady ? colors.foreground : colors.muted }]}>
+        {!usageReady
+          ? t('mediaLibrary.usagePending')
+          : scenes.length
+            ? t('mediaLibrary.inspector.usedIn', { count: scenes.length })
+            : t('mediaLibrary.inspector.notUsed')}
+        {usageReady && item.usage.disabled
           ? ` · ${t('mediaLibrary.inspector.disabled', { count: item.usage.disabled })}`
           : ''}
       </Text>
@@ -345,7 +382,7 @@ function InspectorBody({
         </Pressable>
       ) : null}
 
-      {blockedReason ? (
+      {!usageReady ? null : blockedReason ? (
         <Text style={[typeScale.caption, { color: colors.muted }]}>{blockedReason}</Text>
       ) : (
         <Pressable

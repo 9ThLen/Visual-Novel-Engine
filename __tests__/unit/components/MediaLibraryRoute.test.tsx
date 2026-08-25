@@ -7,7 +7,7 @@
  * Zustand store, which the harness replaces for every suite.
  */
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import StoryGalleryRoute from '@/app/story-gallery';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
@@ -175,6 +175,9 @@ describe('media library route', () => {
       mediaLibrary: [asset({ id: 'bg' })],
       imageAssetIdsByStory: { 'story-1': ['bg'] },
       characterLibraries: { 'story-1': [{ ...alice, sprites: [] }] },
+      // The story's one scene, loaded: usage is knowable, so the inspector is
+      // in its normal state rather than behind the loading gate.
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
       setCharacterLibrary,
     });
 
@@ -201,6 +204,7 @@ describe('media library route', () => {
       mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
       imageAssetIdsByStory: { 'story-1': ['sprite'] },
       characterLibraries: { 'story-1': [alice] },
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
       setCharacterLibrary,
     });
 
@@ -218,6 +222,189 @@ describe('media library route', () => {
   // The library is opened from a scene and has to lead back to it. There is no
   // fallback to "some scene of this story": landing the author in a scene they
   // were not editing is worse than not offering the way back at all.
+  const characterStep = {
+    id: 'step-1',
+    blockType: 'character',
+    enabled: true,
+    data: { characterId: 'alice', spriteId: 'happy', position: 'left', transition: 'instant', delay: 0, duration: null },
+  } as TimelineStep;
+
+  function seedDeferredHydration(setCharacterLibrary: ReturnType<typeof vi.fn>) {
+    let finish!: () => void;
+    const loading = new Promise<void>((resolve) => { finish = () => resolve(); });
+    seedStore({
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characterLibraries: { 'story-1': [alice] },
+      hydrateSceneRecordsForStory: vi.fn(() => loading),
+      setCharacterLibrary,
+    });
+    return { finish };
+  }
+
+  const arriveWithScenes = (timeline: TimelineStep[]) => {
+    (useAppStore as unknown as { setState: (value: StoreSeed) => void }).setState({
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene(timeline) } },
+    });
+  };
+
+  // Scene records arrive asynchronously. Until they do, every sprite looks
+  // unreferenced — and a detach taken on that basis cannot be undone, because
+  // no migration restores a sprite the way it restores story membership.
+  it('offers no detach until the scenes have loaded, and then refuses a used sprite', async () => {
+    const setCharacterLibrary = vi.fn();
+    const { finish } = seedDeferredHydration(setCharacterLibrary);
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
+    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
+
+    expect(screen.queryByRole('button', { name: 'Remove from Alice' })).toBeNull();
+    expect(screen.getAllByText('Checking where this file is used…').length).toBeGreaterThan(0);
+
+    // The scene that shows the sprite lands.
+    await act(async () => { arriveWithScenes([characterStep]); finish(); });
+
+    await waitFor(() => expect(screen.getByText(/Shown as Alice in 1 scenes/)).toBeTruthy());
+    expect(screen.queryByRole('button', { name: 'Remove from Alice' })).toBeNull();
+    expect(setCharacterLibrary).not.toHaveBeenCalled();
+  });
+
+  it('detaches once the loaded scenes turn out not to name the sprite', async () => {
+    const setCharacterLibrary = vi.fn();
+    const { finish } = seedDeferredHydration(setCharacterLibrary);
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
+    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
+
+    // A scene that uses the file as a background — which detaching cannot break.
+    await act(async () => {
+      arriveWithScenes([
+        { id: 'step-1', blockType: 'background', enabled: true, data: { assetId: 'sprite' } } as TimelineStep,
+      ]);
+      finish();
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove from Alice' }));
+
+    expect(setCharacterLibrary).toHaveBeenCalledWith('story-1', [
+      expect.objectContaining({ id: 'alice', sprites: [] }),
+    ]);
+  });
+
+  // A load that finished but produced nothing is not the same as a story with
+  // no scenes: broken storage looks exactly like an unused library.
+  it('trusts an empty load only when the story claims no scenes', async () => {
+    seedStore({
+      storiesMetadata: [{ id: 'story-1', title: 'My story', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 4 }],
+      mediaLibrary: [asset({ id: 'spare' })],
+      imageAssetIdsByStory: { 'story-1': ['spare'] },
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, spare.png' }));
+
+    await waitFor(() => expect(screen.getAllByText('Checking where this file is used…').length).toBeGreaterThan(0));
+    expect(screen.queryByRole('button', { name: 'Remove imported file' })).toBeNull();
+  });
+
+  // The write is built from the store as it is at that moment, not from the
+  // snapshot the button was rendered with. Anything that changed the library in
+  // between — the editor saving, an AI rollback — would otherwise be undone by
+  // this one action.
+  it('writes from the library as it stands, not as it was rendered', async () => {
+    const setCharacterLibrary = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characterLibraries: { 'story-1': [alice] },
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      setCharacterLibrary,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
+    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
+
+    // Somewhere else, Alice gains a second sprite.
+    await act(async () => {
+      (useAppStore as unknown as { setState: (value: StoreSeed) => void }).setState({
+        characterLibraries: {
+          'story-1': [{
+            ...alice,
+            sprites: [...alice.sprites, { id: 'sad', name: 'Sad', uri: 'file://alice-sad.png', createdAt: 2 }],
+          }],
+        },
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from Alice' }));
+
+    expect(setCharacterLibrary).toHaveBeenCalledWith('story-1', [
+      expect.objectContaining({
+        id: 'alice',
+        sprites: [expect.objectContaining({ id: 'sad' })],
+      }),
+    ]);
+  });
+
+  // The gate closes the wide window; this is the narrow one it cannot close —
+  // the store changing between the render that drew the button and the tap that
+  // uses it. Both updates happen inside one act(), so the handler runs against
+  // the new store while the UI is still the old one.
+  it('refuses the detach when the sprite became used after the button was drawn', async () => {
+    const setCharacterLibrary = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'sprite', uri: 'file://alice.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sprite'] },
+      characterLibraries: { 'story-1': [alice] },
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      setCharacterLibrary,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
+    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
+    const detach = screen.getByRole('button', { name: 'Remove from Alice' });
+
+    act(() => {
+      arriveWithScenes([characterStep]);
+      detach.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(setCharacterLibrary).not.toHaveBeenCalled();
+  });
+
+  it('makes a sprite the character default through the store', async () => {
+    const setCharacterLibrary = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'sad', uri: 'file://alice-sad.png' })],
+      imageAssetIdsByStory: { 'story-1': ['sad'] },
+      characterLibraries: {
+        'story-1': [{
+          ...alice,
+          defaultSpriteId: 'happy',
+          sprites: [
+            { id: 'happy', name: 'Happy', uri: 'file://alice.png', createdAt: 1 },
+            { id: 'sad', name: 'Sad', uri: 'file://alice-sad.png', createdAt: 1 },
+          ],
+        }],
+      },
+      setCharacterLibrary,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, sad.png, Alice' }));
+    await waitFor(() => expect(screen.getByText('Alice · Sad')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Make default for Alice' }));
+
+    expect(setCharacterLibrary).toHaveBeenCalledWith('story-1', [
+      expect.objectContaining({ defaultSpriteId: 'sad' }),
+    ]);
+  });
+
   it('returns to the scene it was opened from', () => {
     setLocalSearchParamsForTests({ storyId: 'story-1', sceneId: 'scene-7' });
     seedStore({});

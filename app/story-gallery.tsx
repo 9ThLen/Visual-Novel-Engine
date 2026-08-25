@@ -22,6 +22,7 @@ import { resolveAssetUri } from '@/lib/asset-resolver';
 import {
   attachSpriteToCharacter,
   detachSpriteFromCharacter,
+  setDefaultSprite,
   spriteNameFromFileName,
 } from '@/lib/character-media';
 import { spacing, radius, typeScale } from '@/lib/design-tokens';
@@ -29,7 +30,9 @@ import { pickImageFromDevice } from '@/lib/pick-image';
 import { isBackgroundRemovalSupported, removeImageBackground } from '@/lib/remove-background';
 import {
   buildStoryMediaGallery,
+  canDetachOwner,
   filterMediaItems,
+  findOwnerInGallery,
   type ImageFilter,
   type MediaKind,
   type MediaOwner,
@@ -68,7 +71,27 @@ export default function StoryGalleryRoute() {
   const [pendingRemoval, setPendingRemoval] = useState<StoryMediaItem | null>(null);
   const [removingBackgroundKey, setRemovingBackgroundKey] = useState<string | null>(null);
 
-  useEffect(() => { if (storyId) void hydrate(storyId); }, [hydrate, storyId]);
+  /**
+   * Scene records arrive asynchronously, and until they do every file looks
+   * unused. That is a lie the destructive actions must not act on, so the
+   * screen tracks when the load actually finished.
+   */
+  const [scenesLoaded, setScenesLoaded] = useState(false);
+  useEffect(() => {
+    if (!storyId) return;
+    let active = true;
+    setScenesLoaded(false);
+    void hydrate(storyId).finally(() => { if (active) setScenesLoaded(true); });
+    return () => { active = false; };
+  }, [hydrate, storyId]);
+
+  /**
+   * A finished load is not the same as a trustworthy one: storage can hand back
+   * nothing for a story whose metadata counts scenes, and then the grid would
+   * report the whole library as unreferenced. Usage is only believed when what
+   * is in memory can account for the scenes the story claims to have.
+   */
+  const usageReady = scenesLoaded && (scenes.length > 0 || (story?.sceneCount ?? 0) === 0);
 
   const gallery = useMemo(
     () => buildStoryMediaGallery({
@@ -173,12 +196,49 @@ export default function StoryGalleryRoute() {
     showToast(t('mediaLibrary.attach.done', { name: character.name }), 'success');
   }, [characters, setCharacterLibrary, storyId, t]);
 
+  /**
+   * Detaching is the only irreversible action here: story membership comes back
+   * on the next hydration, a sprite does not, and every timeline step naming
+   * `${characterId}:${spriteId}` would be left pointing at nothing.
+   *
+   * So the button being visible is not enough. The store is read again at the
+   * moment of the write, the gallery is rebuilt from it, and the owner has to
+   * still be unreferenced in that fresh view — which is what catches a scene
+   * that finished loading, or another screen's edit, after this one rendered.
+   */
   const handleDetachFromCharacter = useCallback((item: StoryMediaItem, owner: MediaOwner) => {
     if (!storyId) return;
-    const next = detachSpriteFromCharacter(characters, owner.characterId, owner.spriteId);
-    if (next === characters) return;
+    const state = useAppStore.getState();
+    const latestCharacters = state.characterLibraries[storyId] ?? [];
+    const latestOwner = findOwnerInGallery(
+      {
+        storyId,
+        mediaLibrary: state.mediaLibrary,
+        imageAssetIdsByStory: state.imageAssetIdsByStory,
+        mediaAssetIdsByStory: state.mediaAssetIdsByStory,
+        characters: latestCharacters,
+        scenes: selectSceneRecordsForStory(storyId)(state),
+      },
+      item.key,
+      owner.usageAssetId,
+    );
+    if (!latestOwner || !canDetachOwner(latestOwner)) {
+      showToast(t('mediaLibrary.detach.refused', { name: owner.characterName }), 'error');
+      return;
+    }
+
+    const next = detachSpriteFromCharacter(latestCharacters, owner.characterId, owner.spriteId);
+    if (next === latestCharacters) return;
     setCharacterLibrary(storyId, next);
     showToast(t('mediaLibrary.detach.done', { name: owner.characterName }), 'success');
+  }, [setCharacterLibrary, storyId, t]);
+
+  const handleMakeDefaultSprite = useCallback((item: StoryMediaItem, owner: MediaOwner) => {
+    if (!storyId) return;
+    const next = setDefaultSprite(characters, owner.characterId, owner.spriteId);
+    if (next === characters) return;
+    setCharacterLibrary(storyId, next);
+    showToast(t('mediaLibrary.makeDefault.done', { name: owner.characterName }), 'success');
   }, [characters, setCharacterLibrary, storyId, t]);
 
   const isPhone = width < PHONE_MAX_WIDTH;
@@ -266,12 +326,14 @@ export default function StoryGalleryRoute() {
             removingBackground={removingBackgroundKey === selected.key}
             characters={gallery.characterFilters}
             currentSceneId={sceneId}
+            usageReady={usageReady}
             onClose={() => setSelectedKey(null)}
             onOpenScene={handleOpenScene}
             onRemoveBackground={handleRemoveBackground}
             onRemoveFromStory={setPendingRemoval}
             onAttachToCharacter={handleAttachToCharacter}
             onDetachFromCharacter={handleDetachFromCharacter}
+            onMakeDefaultSprite={handleMakeDefaultSprite}
           />
         ) : null}
       </View>
