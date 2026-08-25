@@ -1,4 +1,5 @@
 import { migrateCharacterLibrary } from '@/lib/character-migration';
+import { keepOrphanedSpriteImages } from '@/lib/orphaned-sprite-images';
 import {
   addImageAssetToStory,
   removeImageAssetFromStory,
@@ -20,12 +21,29 @@ export type LibrariesSliceActions = Pick<
 export function createLibrariesSlice(set: AppStoreSet): LibrariesSliceActions {
   return {
     setCharacterLibrary: (storyId, characters) =>
-      set((state) => ({
-        characterLibraries: {
-          ...state.characterLibraries,
-          [storyId]: migrateCharacterLibrary(characters),
-        },
-      })),
+      set((state) => {
+        const migrated = migrateCharacterLibrary(characters);
+        // Every path that removes a sprite — deleting a character in the
+        // editor, detaching one in the media library, an AI change — arrives
+        // here as a whole new library. Comparing against the old one is what
+        // notices that a picture just lost the only thing pointing at it.
+        const kept = keepOrphanedSpriteImages({
+          storyId,
+          previous: state.characterLibraries[storyId] ?? [],
+          next: migrated,
+          mediaLibrary: state.mediaLibrary,
+          imageAssetIdsByStory: state.imageAssetIdsByStory,
+          now: Date.now(),
+        });
+
+        return {
+          characterLibraries: {
+            ...state.characterLibraries,
+            [storyId]: migrated,
+          },
+          ...(kept ?? {}),
+        };
+      }),
 
     setAudioLibrary: (storyId, items) =>
       set((state) => {
