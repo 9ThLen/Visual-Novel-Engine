@@ -55,6 +55,8 @@ app-example
 .codex/
 .codex-web-export/
 .codex-native-export/
+/.agents/
+/AGENTS.md
 
 # Claude Code
 .claude/
@@ -96,6 +98,7 @@ graphify-scope/
 
 # Local IDE and Obsidian workspace state
 .run/
+wiki/.obsidian/
 wiki/.obsidian/app.json
 wiki/.obsidian/appearance.json
 wiki/.obsidian/graph.json
@@ -103,6 +106,8 @@ wiki/.obsidian/workspace.json
 
 # Archived planning and AI-agent working notes (kept locally, not versioned)
 /plan.md
+/BRANCHING-REVIEW.md
+/VIDEO-PLAN.md
 wiki/ai-chat-*-plan.md
 wiki/ai-chat*-delegation-prompts.md
 wiki/ai-openai-*-plan.md

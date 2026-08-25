@@ -91,7 +91,6 @@ pnpm ios
 - `wiki/final-migration-audit.md` tracks the current migration status and cleanup boundaries.
 - `PRODUCT.md` describes product purpose, brand, and design principles.
 - `DESIGN_SYSTEM.md` documents theme tokens and the color system.
-- `AGENTS.md` holds AI-agent rules and project-specific pitfalls.
 
 ## Development Rules
 
