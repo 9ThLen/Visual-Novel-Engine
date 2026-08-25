@@ -61,6 +61,8 @@ Open [http://localhost:8081](http://localhost:8081) if the browser does not open
 
 Keep the PowerShell window running while you use the app. Press `Ctrl+C` in that window to stop the development server.
 
+For a step-by-step guided setup, see the [Windows tester quick start](docs/TESTER_QUICK_START.md).
+
 ## Using the app
 
 1. Open the home page and select **Studio**.
@@ -191,6 +193,8 @@ Canonical scene data uses `SceneRecord + TimelineStep`. Legacy `Story`, `StorySc
 
 ## Documentation
 
+- [`docs/TESTER_QUICK_START.md`](docs/TESTER_QUICK_START.md) — first installation and web launch on Windows.
+- [`docs/MANUAL_TESTING.md`](docs/MANUAL_TESTING.md) — manual test scope, regression checklist, and bug-report template.
 - [`wiki/index.md`](wiki/index.md) — documentation index.
 - [`wiki/overview.md`](wiki/overview.md) — product and system overview.
 - [`wiki/architecture-reference.md`](wiki/architecture-reference.md) — architecture reference.
