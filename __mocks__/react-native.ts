@@ -75,7 +75,23 @@ export const TextInput = React.forwardRef((props: any, ref: any) => {
     onKeyDown: (e: any) => { if (e.key === 'Enter') onSubmitEditing?.(); },
   });
 });
-export const Image = createElement('img');
+/**
+ * `source` is React Native's spelling of `src`. Mapping it lets a test assert
+ * which file an image actually requested, which is the only way to see that a
+ * thumbnail was used instead of the original.
+ */
+type ImageSource = string | number | { uri?: string } | null | undefined;
+
+export const Image = React.forwardRef(function Image(
+  props: Record<string, unknown> & { source?: ImageSource },
+  ref: React.Ref<HTMLImageElement>,
+) {
+  const { source, ...rest } = props;
+  const src = typeof source === 'string'
+    ? source
+    : source && typeof source === 'object' ? source.uri : undefined;
+  return React.createElement('img', { ...domProps(rest), ...(src ? { src } : {}), ref });
+});
 type MockProps = Record<string, unknown>;
 
 /** Exposes the imperative handle callers use; a bare div has no scrollTo. */

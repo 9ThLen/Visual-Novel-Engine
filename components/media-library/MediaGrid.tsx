@@ -115,6 +115,7 @@ export const MediaTile = React.memo(function MediaTile({ item, size, colors, sel
         </View>
       ) : (
         <ResolvedAssetImage
+          thumbnail
           uri={item.uri}
           style={styles.image}
           // Sprites are cut-outs whose shape carries the meaning; wide
