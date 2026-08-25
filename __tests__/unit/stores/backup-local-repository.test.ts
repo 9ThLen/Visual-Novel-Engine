@@ -9,8 +9,13 @@ import {
   type SceneRecordStorageLike,
 } from '@/lib/scene-record-storage';
 import type { StoryMetadata } from '@/lib/story-domain';
+import { createSnapshot } from '@/lib/story-snapshots';
 import { createAppLocalRepository } from '@/stores/backup-local-repository';
-import { resetAppStoreState, useAppStore } from '../../../__mocks__/stores/use-app-store';
+import {
+  persistAppStoreStateNow,
+  resetAppStoreState,
+  useAppStore,
+} from '../../../__mocks__/stores/use-app-store';
 
 const STORY: StoryMetadata = {
   id: 'story-1',
@@ -60,15 +65,36 @@ const STORED_SCENES = {
 };
 
 /** Seeds the canonical per-story keys the way persistSceneRecordsByStory writes them. */
-function createSceneStorage(): SceneRecordStorageLike {
+function createSceneStorage(): SceneRecordStorageLike & { values: Map<string, string> } {
   const values = new Map(
     buildSceneRecordStorageEntries({ 'story-1': STORED_SCENES }, 1)
       .map((entry) => [entry.key, JSON.stringify(entry.payload)] as const),
   );
   return {
+    values,
     getItem: (key: string) => Promise.resolve(values.get(key) ?? null),
     setItem: (key: string, value: string) => { values.set(key, value); return Promise.resolve(); },
     removeItem: (key: string) => { values.delete(key); return Promise.resolve(); },
+  };
+}
+
+/** A backup holding one story, which is not the one already on the device. */
+function manifestWithout(storyId: string): BackupManifest {
+  const replacement: StoryMetadata = { ...STORY, id: storyId, title: 'From the backup' };
+  return {
+    schemaVersion: BACKUP_SCHEMA_VERSION,
+    backupId: 'backup-1',
+    createdAt: '2026-08-25T00:00:00.000Z',
+    appVersion: 'test',
+    assets: [],
+    stories: [replacement],
+    scenes: { [storyId]: { 'scene-1': scene('scene-1', storyId) } },
+    libraries: {
+      characters: {},
+      audio: {},
+      imageAssetIdsByStory: {},
+      media: [],
+    },
   };
 }
 
@@ -122,6 +148,36 @@ describe('createAppLocalRepository', () => {
     // ...but the library entry itself must still survive the round trip.
     const data = await repository.captureBackupData();
     expect(data.libraries.media).toHaveLength(1);
+  });
+
+  // Restoring a backup that does not contain a story is the other way a story
+  // disappears. Storage no longer infers that from the write, so the restore has
+  // to say it — otherwise the old story's scenes and snapshots sit there for
+  // good, unreachable and un-removable.
+  it('forgets a story the restored backup does not contain', async () => {
+    const storage = createSceneStorage();
+    await createSnapshot(storage, 'story-1', 'before', [scene('scene-1')], { id: 'snap-a', now: 1 });
+    const repository = createAppLocalRepository(storage);
+
+    await repository.activateBackup(manifestWithout('story-2'), []);
+
+    expect([...storage.values.keys()].filter((key) => key.includes('story-1'))).toEqual([]);
+  });
+
+  // The rollback restores the previous state from memory, but it cannot restore
+  // scene bodies that were already deleted from storage. So nothing may be
+  // removed until the new state is safely written.
+  it('keeps the old story when the restore fails and rolls back', async () => {
+    const storage = createSceneStorage();
+    await createSnapshot(storage, 'story-1', 'before', [scene('scene-1')], { id: 'snap-a', now: 1 });
+    const repository = createAppLocalRepository(storage);
+    persistAppStoreStateNow.mockImplementation(() => Promise.reject(new Error('disk full')));
+
+    await expect(repository.activateBackup(manifestWithout('story-2'), [])).rejects.toThrow('disk full');
+
+    expect(storage.values.has('vne_scene_records_story-1')).toBe(true);
+    expect([...storage.values.keys()].some((key) => key.startsWith('vne_story_snapshot'))).toBe(true);
+    persistAppStoreStateNow.mockReset();
   });
 
   it('produces a manifest the validator accepts', async () => {

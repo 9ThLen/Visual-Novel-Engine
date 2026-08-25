@@ -3,6 +3,7 @@ import type { SceneRecordStorageLike } from '@/lib/scene-record-storage';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
 import {
   createSnapshot,
+  deleteAllSnapshotsForStory,
   deleteSnapshot,
   listSnapshots,
   restoreSnapshot,
@@ -235,5 +236,56 @@ describe('story snapshots', () => {
 
     expect((await listSnapshots(storage, 'story-a')).map((s) => s.id)).toEqual(['s1']);
     expect((await listSnapshots(storage, 'story-b')).map((s) => s.id)).toEqual(['s2']);
+  });
+});
+
+describe('deleteAllSnapshotsForStory', () => {
+  async function storyWithSnapshots(storyId: string, ids: string[]) {
+    const { storage, values } = createMemoryStorage();
+    for (const id of ids) {
+      await createSnapshot(storage, storyId, id, [scene('scene-1', storyId, 'text')], { id, now: 1 });
+    }
+    return { storage, values };
+  }
+
+  // The story is being deleted, so nothing is left that could ever show these:
+  // the snapshots screen is reached through the story.
+  it('removes every snapshot body, manifest and the index itself', async () => {
+    const { storage, values } = await storyWithSnapshots(STORY_ID, ['snap-a', 'snap-b']);
+    expect(values.size).toBeGreaterThan(0);
+
+    await deleteAllSnapshotsForStory(storage, STORY_ID);
+
+    expect([...values.keys()]).toEqual([]);
+  });
+
+  it('leaves another story’s snapshots alone', async () => {
+    const { storage, values } = await storyWithSnapshots(STORY_ID, ['snap-a']);
+    await createSnapshot(storage, 'story-2', 'snap-c', [scene('scene-1', 'story-2', 'text')], {
+      id: 'snap-c',
+      now: 1,
+    });
+
+    await deleteAllSnapshotsForStory(storage, STORY_ID);
+
+    const survivors = [...values.keys()];
+    expect(survivors.every((key) => key.includes('story-2'))).toBe(true);
+    expect(await listSnapshots(storage, 'story-2')).toHaveLength(1);
+  });
+
+  it('is harmless for a story that never had one', async () => {
+    const { storage, values } = createMemoryStorage();
+
+    await expect(deleteAllSnapshotsForStory(storage, 'story-none')).resolves.toBeUndefined();
+    expect(values.size).toBe(0);
+  });
+
+  it('does nothing without a story id', async () => {
+    const { storage, values } = await storyWithSnapshots(STORY_ID, ['snap-a']);
+    const before = values.size;
+
+    await deleteAllSnapshotsForStory(storage, '');
+
+    expect(values.size).toBe(before);
   });
 });

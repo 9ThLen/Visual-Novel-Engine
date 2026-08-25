@@ -3,10 +3,8 @@ import { createPersistentStorage } from '@/lib/persistent-storage';
 import {
   createCanonicalStorySeed,
 } from '@/lib/scene-operations';
-import {
-  deleteSceneRecordsForStory,
-  type SceneRecordStorageLike,
-} from '@/lib/scene-record-storage';
+import { type SceneRecordStorageLike } from '@/lib/scene-record-storage';
+import { forgetStoryStorage } from '@/lib/story-storage';
 import type { StoryMetadata } from '@/lib/story-domain';
 import type { AppStoreSet } from '@/stores/app-store-slices/types';
 
@@ -43,10 +41,10 @@ export function createStorySlice(
 
     deleteStory: (storyId) => {
       // Storage no longer infers a deletion from a story missing in a write, so
-      // this is what actually removes the scenes. Fire-and-forget: the state
-      // change must not wait on IndexedDB, and a failure here leaves orphaned
-      // keys, which is the harmless direction to fail in.
-      void deleteSceneRecordsForStory(storage, storyId).catch(() => {});
+      // this is what actually removes the scenes and every snapshot of them.
+      // Fire-and-forget: the state change must not wait on IndexedDB, and a
+      // failure here leaves orphaned keys, which is the harmless direction.
+      void forgetStoryStorage(storage, storyId).catch(() => {});
       set((s) => {
         const { [storyId]: __, ...recordRest } = s.sceneRecordsByStory;
         const { [storyId]: ___, ...hydrationRest } = s.sceneRecordHydration;
