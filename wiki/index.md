@@ -8,6 +8,8 @@ Last updated: 2026-07-02
 |---|---|
 | `project-map.md` | Project map: files, data flow, block types |
 | `overview.md` | Project summary: features, tech stack, current state |
+| `product.md` | Product purpose, users, and design principles |
+| `design-system.md` | Theme tokens, color system, maintenance rules |
 | `architecture-reference.md` | Architecture layers, flows, directory structure |
 | `block-types-reference.md` | Block types, data shapes, categories |
 | `components-reference.md` | Editor, reader, and shared UI component catalog |
@@ -30,5 +32,3 @@ Historical audit reports, fix plans, and intermediate reviews remain in git hist
 | File | Purpose |
 |---|---|
 | `README.md` | Project setup, architecture summary, commands |
-| `DESIGN_SYSTEM.md` | Theme tokens, color system, maintenance rules |
-| `AGENTS.md` | AI agent rules and project-specific pitfalls |

@@ -195,8 +195,8 @@ Canonical scene data uses `SceneRecord + TimelineStep`. Legacy `Story`, `StorySc
 - [`wiki/architecture-reference.md`](wiki/architecture-reference.md) — architecture reference.
 - [`wiki/testing-guide.md`](wiki/testing-guide.md) — automated testing guide.
 - [`wiki/publish-web.md`](wiki/publish-web.md) — export a finished story as a standalone web bundle.
-- [`PRODUCT.md`](PRODUCT.md) — product purpose and design principles.
-- [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) — visual language, tokens, and theme rules.
+- [`wiki/product.md`](wiki/product.md) — product purpose and design principles.
+- [`wiki/design-system.md`](wiki/design-system.md) — visual language, tokens, and theme rules.
 
 ## Project status
 

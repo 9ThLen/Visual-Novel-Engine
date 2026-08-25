@@ -52,7 +52,6 @@ Last updated: 2026-07-02
 | `components/ui/Button.tsx` | Theme-aware button |
 | `components/ui/ConfirmDialog.tsx` | Confirmation dialog |
 | `components/ui/Toast.tsx` | Toast viewport |
-| `components/ui/collapsible.tsx` | Collapsible section |
 | `components/ui/icon-symbol.tsx` | Icon wrapper |
 | `components/LanguageSelector.tsx` | Language switcher |
 | `components/themed-view.tsx` | Themed view wrapper used by OAuth callback |
