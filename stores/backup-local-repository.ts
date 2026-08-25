@@ -21,6 +21,7 @@ import {
 import type { LibraryAsset } from '@/lib/media-library-service';
 import { createPersistentStorage } from '@/lib/persistent-storage';
 import { migrateStoryMediaAssetIds } from '@/lib/story-media-library';
+import { forgetStoryStorage } from '@/lib/story-storage';
 import {
   loadSceneRecordsForStory,
   type SceneRecordStorageLike,
@@ -271,6 +272,16 @@ export function createAppLocalRepository(
         await persistAppStoreStateNow().catch(() => undefined);
         throw error;
       }
+
+      // Past the point of no return, and only here: a story the backup does not
+      // contain is gone for good, so its scenes and snapshots go with it. Doing
+      // this any earlier would take away what the rollback above restores from.
+      const restoredStoryIds = new Set(manifest.stories.map((story) => story.id));
+      for (const story of previous.storiesMetadata) {
+        if (restoredStoryIds.has(story.id)) continue;
+        await forgetStoryStorage(storage, story.id).catch(() => undefined);
+      }
+
       await discardStagedAssets(stagedAssets).catch(() => undefined);
     },
 

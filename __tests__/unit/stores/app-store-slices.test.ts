@@ -362,6 +362,9 @@ describe('app store slices', () => {
 
     expect(removed).toContain('vne_scene_record_ids_story-1');
     expect(removed).toContain('vne_scene_record_story-1_scene-1');
+    // Snapshots go with the story: the screen that could delete them is
+    // reached through the story, so nothing would ever offer them again.
+    expect(removed).toContain('vne_story_snapshot_index_story-1');
     expect(JSON.parse(storageValues.get('vne_scene_record_index') ?? '{}').storyIds)
       .toEqual(['story-2']);
   });

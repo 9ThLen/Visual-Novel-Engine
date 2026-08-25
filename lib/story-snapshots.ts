@@ -356,6 +356,29 @@ export async function restoreSnapshot(
   return (await readSnapshot(storage, storyId, snapshotId)).scenes;
 }
 
+/**
+ * Drop every snapshot a story has, index included.
+ *
+ * For a story that is being deleted, not for tidying one that stays: this
+ * leaves no index behind, so there is nothing left to say the story ever had
+ * snapshots. Reachable only through the story, they would otherwise sit in
+ * storage with no screen able to show or remove them.
+ */
+export async function deleteAllSnapshotsForStory(
+  storage: SceneRecordStorageLike,
+  storyId: string,
+): Promise<void> {
+  if (!storyId) return;
+
+  const index = parseStorySnapshotIndex(
+    await storage.getItem(STORAGE_KEYS.STORY_SNAPSHOT_INDEX(storyId)),
+    storyId,
+  );
+  await Promise.all(index.snapshots.map((snapshot) =>
+    deleteSnapshotBodies(storage, storyId, snapshot.id)));
+  await storage.removeItem(STORAGE_KEYS.STORY_SNAPSHOT_INDEX(storyId));
+}
+
 /** Delete a snapshot's bodies and remove it from the story's index. */
 export async function deleteSnapshot(
   storage: SceneRecordStorageLike,
