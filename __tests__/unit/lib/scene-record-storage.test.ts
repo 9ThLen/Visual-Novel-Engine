@@ -5,6 +5,7 @@ import {
   buildSceneRecordItemPayload,
   buildSceneRecordStorageIndex,
   buildSceneRecordStoragePayload,
+  deleteSceneRecordsForStory,
   getSceneRecordIdIndexStorageKey,
   getSceneRecordItemStorageKey,
   getSceneRecordStorageKey,
@@ -367,48 +368,143 @@ describe('scene record storage helpers', () => {
     });
   });
 
-  it('removes stale per-story scene records when the index shrinks', async () => {
+  /** A story already in storage, in all three of the shapes it is kept in. */
+  function storedStory(storyId: string, sceneId: string) {
+    return {
+      [`vne_scene_record_ids_${storyId}`]: JSON.stringify(
+        buildSceneRecordItemIndex(storyId, { [sceneId]: scene(sceneId, storyId) }, 1),
+      ),
+      [`vne_scene_record_${storyId}_${sceneId}`]: JSON.stringify(
+        buildSceneRecordItemPayload(storyId, sceneId, scene(sceneId, storyId), 1),
+      ),
+      [`vne_scene_records_${storyId}`]: JSON.stringify(
+        buildSceneRecordStoragePayload(storyId, { [sceneId]: scene(sceneId, storyId) }, 1),
+      ),
+    };
+  }
+
+  const story1 = {
+    id: 'story-1',
+    title: 'Story',
+    startSceneId: 'scene-1',
+    createdAt: 1,
+    updatedAt: 1,
+    sceneCount: 1,
+  };
+
+  // The bug this file exists to prevent a second time: the store is empty for a
+  // moment on every launch, and a write landing in that window used to mean
+  // "every story is gone".
+  it('keeps every story when asked to persist nothing at all', async () => {
     const { storage, values } = createMemoryStorage({
       vne_scene_record_index: JSON.stringify({
         version: SCENE_RECORD_STORAGE_VERSION,
         storyIds: ['story-1', 'story-2'],
       }),
-      'vne_scene_record_ids_story-2': JSON.stringify(
+      ...storedStory('story-1', 'scene-1'),
+      ...storedStory('story-2', 'scene-2'),
+    });
+
+    await persistSceneRecordsByStory(storage, [], {});
+
+    expect(values.has('vne_scene_records_story-1')).toBe(true);
+    expect(values.has('vne_scene_record_ids_story-1')).toBe(true);
+    expect(values.has('vne_scene_record_story-1_scene-1')).toBe(true);
+    expect(values.has('vne_scene_records_story-2')).toBe(true);
+    // And the index still knows about both, so the next load can find them.
+    expect(parseSceneRecordStorageIndex(values.get('vne_scene_record_index')).storyIds)
+      .toEqual(['story-1', 'story-2']);
+  });
+
+  it('leaves a story it was not given alone while writing the one it was', async () => {
+    const { storage, values } = createMemoryStorage({
+      vne_scene_record_index: JSON.stringify({
+        version: SCENE_RECORD_STORAGE_VERSION,
+        storyIds: ['story-1', 'story-2'],
+      }),
+      ...storedStory('story-2', 'scene-2'),
+    });
+
+    await persistSceneRecordsByStory(storage, [story1], { 'story-1': { 'scene-1': scene('scene-1') } });
+
+    expect(values.has('vne_scene_records_story-1')).toBe(true);
+    expect(values.has('vne_scene_records_story-2')).toBe(true);
+    expect(values.has('vne_scene_record_story-2_scene-2')).toBe(true);
+  });
+
+  // Within a story being written the record map is authoritative, so a scene
+  // missing from it really was removed.
+  it('drops a scene the story it is writing no longer has', async () => {
+    const { storage, values } = createMemoryStorage({
+      vne_scene_record_index: JSON.stringify({
+        version: SCENE_RECORD_STORAGE_VERSION,
+        storyIds: ['story-1'],
+      }),
+      'vne_scene_record_ids_story-1': JSON.stringify(
         buildSceneRecordItemIndex(
-          'story-2',
-          { 'scene-2': scene('scene-2', 'story-2') },
+          'story-1',
+          { 'scene-1': scene('scene-1'), 'scene-2': scene('scene-2') },
           1,
         ),
       ),
-      'vne_scene_record_story-2_scene-2': JSON.stringify(
-        buildSceneRecordItemPayload('story-2', 'scene-2', scene('scene-2', 'story-2'), 1),
-      ),
-      'vne_scene_records_story-2': JSON.stringify(
-        buildSceneRecordStoragePayload('story-2', { 'scene-2': scene('scene-2', 'story-2') }, 1),
+      'vne_scene_record_story-1_scene-2': JSON.stringify(
+        buildSceneRecordItemPayload('story-1', 'scene-2', scene('scene-2'), 1),
       ),
     });
 
-    await persistSceneRecordsByStory(
-      storage,
-      [
-        {
-          id: 'story-1',
-          title: 'Story',
-          startSceneId: 'scene-1',
-          createdAt: 1,
-          updatedAt: 1,
-          sceneCount: 1,
-        },
-      ],
-      {
-        'story-1': {
-          'scene-1': scene('scene-1'),
-        },
-      },
-    );
+    await persistSceneRecordsByStory(storage, [story1], { 'story-1': { 'scene-1': scene('scene-1') } });
 
-    expect(values.has('vne_scene_records_story-2')).toBe(false);
-    expect(values.has('vne_scene_record_ids_story-2')).toBe(false);
-    expect(values.has('vne_scene_record_story-2_scene-2')).toBe(false);
+    expect(values.has('vne_scene_record_story-1_scene-2')).toBe(false);
+  });
+
+  describe('deleteSceneRecordsForStory', () => {
+    it('removes every shape the story was stored in, and its index entry', async () => {
+      const { storage, values } = createMemoryStorage({
+        vne_scene_record_index: JSON.stringify({
+          version: SCENE_RECORD_STORAGE_VERSION,
+          storyIds: ['story-1', 'story-2'],
+        }),
+        ...storedStory('story-1', 'scene-1'),
+        ...storedStory('story-2', 'scene-2'),
+      });
+
+      await deleteSceneRecordsForStory(storage, 'story-2');
+
+      expect(values.has('vne_scene_records_story-2')).toBe(false);
+      expect(values.has('vne_scene_record_ids_story-2')).toBe(false);
+      expect(values.has('vne_scene_record_story-2_scene-2')).toBe(false);
+      expect(parseSceneRecordStorageIndex(values.get('vne_scene_record_index')).storyIds)
+        .toEqual(['story-1']);
+    });
+
+    it('leaves the other stories untouched', async () => {
+      const { storage, values } = createMemoryStorage({
+        vne_scene_record_index: JSON.stringify({
+          version: SCENE_RECORD_STORAGE_VERSION,
+          storyIds: ['story-1', 'story-2'],
+        }),
+        ...storedStory('story-1', 'scene-1'),
+        ...storedStory('story-2', 'scene-2'),
+      });
+
+      await deleteSceneRecordsForStory(storage, 'story-2');
+
+      expect(values.has('vne_scene_records_story-1')).toBe(true);
+      expect(values.has('vne_scene_record_story-1_scene-1')).toBe(true);
+    });
+
+    it('does nothing without a story id', async () => {
+      const { storage, values } = createMemoryStorage({
+        vne_scene_record_index: JSON.stringify({
+          version: SCENE_RECORD_STORAGE_VERSION,
+          storyIds: ['story-1'],
+        }),
+        ...storedStory('story-1', 'scene-1'),
+      });
+
+      await deleteSceneRecordsForStory(storage, '');
+
+      expect(values.has('vne_scene_records_story-1')).toBe(true);
+    });
   });
 });

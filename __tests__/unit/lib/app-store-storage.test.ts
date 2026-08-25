@@ -93,6 +93,17 @@ function metadataOnlyEnvelope() {
   });
 }
 
+/** What zustand writes before rehydration finishes: a state with nothing in it. */
+function emptyEnvelope() {
+  return JSON.stringify({
+    state: {
+      storiesMetadata: [],
+      sceneRecordsByStory: {},
+    },
+    version: 2,
+  });
+}
+
 function readerWindowEnvelope() {
   return JSON.stringify({
     state: {
@@ -159,7 +170,7 @@ describe('app store storage', () => {
     warnSpy.mockRestore();
   });
 
-  it('updates the scene index and removes stale story keys even when no scenes are loaded', async () => {
+  it('keeps the index and every story when a write carries no scenes', async () => {
     const storageMock = createMemoryStorage();
     storageMock.values.set('vne_scene_record_index', JSON.stringify({
       version: 1,
@@ -178,8 +189,47 @@ describe('app store storage', () => {
     await storage.setItem(STORAGE_KEYS.APP_STATE, metadataOnlyEnvelope());
 
     const index = JSON.parse(storageMock.values.get('vne_scene_record_index') ?? '{}');
+    expect(index.storyIds).toEqual(['story-1', 'story-2']);
+    expect(storageMock.values.has('vne_scene_records_story-2')).toBe(true);
+  });
+
+  // The regression that motivated all of this: opening the app straight on a
+  // scene URL let a persist land before rehydration, and every story on the
+  // device lost its scenes.
+  it('survives a write that lands before the store has rehydrated', async () => {
+    const storageMock = createMemoryStorage();
+    storageMock.values.set('vne_scene_record_index', JSON.stringify({
+      version: 1,
+      storyIds: ['story-1'],
+    }));
+    storageMock.values.set('vne_scene_records_story-1', JSON.stringify({
+      version: 1,
+      storyId: 'story-1',
+      records: { 'scene-1': scene('scene-1') },
+      updatedAt: 1,
+    }));
+    storageMock.values.set('vne_scene_record_ids_story-1', JSON.stringify({
+      version: 1,
+      storyId: 'story-1',
+      sceneIds: ['scene-1'],
+      updatedAt: 1,
+    }));
+    storageMock.values.set('vne_scene_record_story-1_scene-1', JSON.stringify({
+      version: 1,
+      storyId: 'story-1',
+      sceneId: 'scene-1',
+      record: scene('scene-1'),
+      updatedAt: 1,
+    }));
+    const storage = createAppStoreStorage(storageMock.memoryStorage);
+
+    await storage.setItem(STORAGE_KEYS.APP_STATE, emptyEnvelope());
+
+    expect(storageMock.values.has('vne_scene_records_story-1')).toBe(true);
+    expect(storageMock.values.has('vne_scene_record_ids_story-1')).toBe(true);
+    expect(storageMock.values.has('vne_scene_record_story-1_scene-1')).toBe(true);
+    const index = JSON.parse(storageMock.values.get('vne_scene_record_index') ?? '{}');
     expect(index.storyIds).toEqual(['story-1']);
-    expect(storageMock.values.has('vne_scene_records_story-2')).toBe(false);
   });
 
   it('does not overwrite full scene storage with a bounded reader window', async () => {
