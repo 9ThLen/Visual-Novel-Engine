@@ -14,6 +14,10 @@ import { MediaFilterRail, MediaTypeTabs, initialsOf, sameFilter } from '@/compon
 import { MediaGrid, buildGridRows, getGalleryColumns } from '@/components/media-library/MediaGrid';
 import { MediaInspector } from '@/components/media-library/MediaInspector';
 import { acquireResolvedAssetUri } from '@/lib/asset-resolver';
+import {
+  resetThumbnailsForTests,
+  setThumbnailGeneratorForTests,
+} from '@/lib/thumbnails';
 import { Colors } from '@/lib/_core/theme';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
@@ -264,6 +268,47 @@ describe('filter rail and tabs', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /Videos/ }));
     expect(onChange).toHaveBeenCalledWith('video');
+  });
+});
+
+// A tile is ~150px; the bundled backgrounds are 4000px wide. What an image
+// costs on screen is its decoded bitmap, so the grid has to ask for a small one.
+describe('grid thumbnails', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    resetThumbnailsForTests();
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:thumbnail');
+    globalThis.URL.revokeObjectURL = vi.fn();
+    globalThis.fetch = vi.fn(async () => new Response(new Blob(['x']))) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    resetThumbnailsForTests();
+    globalThis.fetch = originalFetch;
+  });
+
+  const tile = () => gallery({
+    mediaLibrary: [asset({ id: 'bg', uri: 'file://bg.png' })],
+    imageAssetIdsByStory: { 'story-1': ['bg'] },
+  }).images[0];
+
+  it('renders the thumbnail rather than the original file', async () => {
+    setThumbnailGeneratorForTests(async () => new Blob(['small']));
+    renderGrid([tile()]);
+
+    await waitFor(() =>
+      expect(document.querySelector('img')?.getAttribute('src')).toBe('blob:thumbnail'));
+  });
+
+  it('falls back to the original when no thumbnail can be made', async () => {
+    // What happens on every platform without a canvas, and for images already
+    // small enough to be worth leaving alone.
+    setThumbnailGeneratorForTests(async () => null);
+    renderGrid([tile()]);
+
+    await waitFor(() =>
+      expect(document.querySelector('img')?.getAttribute('src')).toBe('file://bg.png'));
   });
 });
 
