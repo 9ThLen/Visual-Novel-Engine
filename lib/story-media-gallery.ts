@@ -19,7 +19,11 @@ import {
   toSpriteUsageAssetId,
   type AssetUsageKind,
 } from '@/lib/asset-usage';
-import { guessAudioCategoryFromName, type AudioCategory } from '@/lib/audio-category';
+import {
+  categoryOfAudioItem,
+  guessAudioCategoryFromName,
+  type AudioCategory,
+} from '@/lib/audio-category';
 import type { AudioLibraryItem } from '@/lib/audio-types';
 import type { Character, CharacterSprite } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
@@ -167,7 +171,7 @@ export function audioCategoryOf(
   const entry = audioLibrary?.find(
     (candidate) => candidate.id === item.assetId || candidate.uri === item.uri,
   );
-  if (entry) return entry.type === 'music' ? 'music' : 'sound';
+  if (entry) return categoryOfAudioItem(entry);
   if (item.references.some((reference) => reference.kind === 'music')) return 'music';
   if (item.references.some((reference) => reference.kind === 'sound')) return 'sound';
   return guessAudioCategoryFromName(item.name);

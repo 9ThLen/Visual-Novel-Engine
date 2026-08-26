@@ -26,6 +26,7 @@ import {
   setDefaultSprite,
   spriteNameFromFileName,
 } from '@/lib/character-media';
+import { setAudioCategoryInLibrary, type AudioCategory } from '@/lib/audio-category';
 import { spacing, radius, typeScale } from '@/lib/design-tokens';
 import { pickAudioFromDevice } from '@/lib/pick-audio';
 import { pickImageFromDevice } from '@/lib/pick-image';
@@ -287,6 +288,18 @@ export default function StoryGalleryRoute() {
     setPendingRemoval(null);
   }, [pendingRemoval, removeImage, removeMedia, setAudioLibrary, storyId]);
 
+  /**
+   * The author's answer outranks both the file name and the scenes, so it is
+   * stored rather than inferred — as an entry in the story's audio library,
+   * which is the source the gallery already trusts first.
+   */
+  const handleSetAudioCategory = useCallback((item: StoryMediaItem, category: AudioCategory) => {
+    if (!storyId) return;
+    const current = useAppStore.getState().audioLibraries[storyId] ?? [];
+    const next = setAudioCategoryInLibrary(current, item, category);
+    if (next !== current) setAudioLibrary(storyId, next);
+  }, [setAudioLibrary, storyId]);
+
   const handleOpenScene = useCallback((targetSceneId: string) => {
     if (!storyId) return;
     router.push({ pathname: '/document-editor', params: { storyId, sceneId: targetSceneId } });
@@ -476,6 +489,7 @@ export default function StoryGalleryRoute() {
             playing={preview.playingKey === selected.key}
             progress={preview.progress}
             playbackFailed={preview.failedKey === selected.key}
+            onSetAudioCategory={selected.kind === 'audio' ? handleSetAudioCategory : undefined}
           />
         ) : null}
       </View>

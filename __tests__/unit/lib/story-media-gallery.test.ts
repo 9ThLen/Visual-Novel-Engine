@@ -7,6 +7,7 @@ import {
   groupMediaByDate,
   type StoryMediaGalleryInput,
 } from '@/lib/story-media-gallery';
+import { setAudioCategoryInLibrary } from '@/lib/audio-category';
 import type { Character, CharacterSprite } from '@/lib/character-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
@@ -584,5 +585,65 @@ describe('audio in the gallery', () => {
       .map((item) => item.assetId)).toEqual(['one']);
     expect(filterMediaItems(gallery.audios, { kind: 'audioCategory', category: 'sound' })
       .map((item) => item.assetId)).toEqual(['two']);
+  });
+});
+
+describe('setAudioCategoryInLibrary', () => {
+  const file = { assetId: 'bgm', uri: 'file://bgm.mp3', name: 'bgm.mp3', addedAt: 5 };
+
+  it('records the answer for a file the library has never heard of', () => {
+    const next = setAudioCategoryInLibrary([], file, 'music');
+
+    expect(next).toEqual([expect.objectContaining({
+      id: 'bgm',
+      uri: 'file://bgm.mp3',
+      name: 'bgm.mp3',
+      type: 'music',
+      createdAt: 5,
+    })]);
+  });
+
+  it('rewrites an entry that says the other thing, and leaves the rest alone', () => {
+    const library = [
+      { id: 'bgm', name: 'bgm.mp3', uri: 'file://bgm.mp3', type: 'sfx' as const, createdAt: 1 },
+      { id: 'other', name: 'other.mp3', uri: 'file://other.mp3', type: 'music' as const, createdAt: 1 },
+    ];
+
+    const next = setAudioCategoryInLibrary(library, file, 'music');
+
+    expect(next[0]).toMatchObject({ id: 'bgm', type: 'music' });
+    expect(next[1]).toBe(library[1]);
+  });
+
+  // `voice` and `ambient` both mean "sound" here; flattening them to `sfx`
+  // would throw away a distinction the reader still uses.
+  it('leaves a voice entry alone when told it is a sound', () => {
+    const library = [{ id: 'bgm', name: 'bgm.mp3', uri: 'file://bgm.mp3', type: 'voice' as const, createdAt: 1 }];
+
+    expect(setAudioCategoryInLibrary(library, file, 'sound')).toBe(library);
+  });
+
+  it('matches an entry by URI when the file has no asset id', () => {
+    const library = [{ id: 'legacy', name: 'bgm.mp3', uri: 'file://bgm.mp3', type: 'sfx' as const, createdAt: 1 }];
+
+    const next = setAudioCategoryInLibrary(library, { ...file, assetId: undefined }, 'music');
+
+    expect(next).toHaveLength(1);
+    expect(next[0]).toMatchObject({ id: 'legacy', type: 'music' });
+  });
+
+  it('outranks both the scenes and the file name in the gallery', () => {
+    const built = build({
+      mediaLibrary: [asset({ id: 'bgm', name: 'main-theme.mp3', type: 'audio', uri: 'file://bgm.mp3' })],
+      mediaAssetIdsByStory: { 'story-1': ['bgm'] },
+      scenes: [scene('s1', [step('m', 'music', { mode: 'track', assetId: 'bgm' })])],
+      audioLibrary: setAudioCategoryInLibrary(
+        [],
+        { assetId: 'bgm', uri: 'file://bgm.mp3', name: 'main-theme.mp3', addedAt: 1 },
+        'sound',
+      ),
+    });
+
+    expect(built.audios[0].audioCategory).toBe('sound');
   });
 });

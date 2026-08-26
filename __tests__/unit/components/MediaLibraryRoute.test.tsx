@@ -54,11 +54,16 @@ function seedStore(overrides: StoreSeed = {}) {
     imageAssetIdsByStory: {},
     mediaAssetIdsByStory: {},
     characterLibraries: {},
+    // Seeded explicitly, or a story's audio library leaks into the next test:
+    // the harness store merges what it is given rather than replacing it.
+    audioLibraries: {},
     hydrateSceneRecordsForStory: vi.fn(async () => {}),
     addImageAssetToStory: vi.fn(),
+    addMediaAssetToStory: vi.fn(),
     removeImageAssetFromStory: vi.fn(),
     removeMediaAssetFromStory: vi.fn(),
     setCharacterLibrary: vi.fn(),
+    setAudioLibrary: vi.fn(),
     ...overrides,
   };
   (useAppStore as unknown as { setState: (value: StoreSeed) => void }).setState(seed);
@@ -702,6 +707,27 @@ describe('media library route', () => {
     // Only that file's entry: the rest of the audio library is untouched.
     expect(setAudioLibrary).toHaveBeenCalledWith('story-1', [
       expect.objectContaining({ id: 'other' }),
+    ]);
+  });
+
+  it('stores the category the author picks for a sound', async () => {
+    const setAudioLibrary = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'door', type: 'audio', uri: 'file://door.mp3', name: 'door.mp3' })],
+      mediaAssetIdsByStory: { 'story-1': ['door'] },
+      setAudioLibrary,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('tab', { name: /Sounds/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sound, door.mp3' }));
+
+    // The name guess made it a sound effect; the author says otherwise. The
+    // chip is named for what it does — "Music" alone is also a filter chip.
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as music' }));
+
+    expect(setAudioLibrary).toHaveBeenCalledWith('story-1', [
+      expect.objectContaining({ id: 'door', uri: 'file://door.mp3', type: 'music' }),
     ]);
   });
 

@@ -22,6 +22,7 @@ import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import {
   canDetachOwner,
   canRemoveFromStory,
+  type AudioCategory,
   type CharacterMediaFilter,
   type MediaOwner,
   type StoryMediaItem,
@@ -162,6 +163,8 @@ export interface MediaInspectorProps {
   playing?: boolean;
   progress?: number;
   playbackFailed?: boolean;
+  /** Audio only: the author's own answer about what this file is. */
+  onSetAudioCategory?: (item: StoryMediaItem, category: AudioCategory) => void;
 }
 
 function InspectorBody({
@@ -183,6 +186,7 @@ function InspectorBody({
   playing = false,
   progress = 0,
   playbackFailed = false,
+  onSetAudioCategory,
 }: Omit<MediaInspectorProps, 'asSheet'>) {
   const { t } = useI18n();
   const [pickingCharacter, setPickingCharacter] = useState(false);
@@ -401,12 +405,44 @@ function InspectorBody({
         </View>
       ) : null}
 
-      <View style={styles.metaRow}>
-        {item.audioCategory === undefined ? null : (
+      {item.audioCategory === undefined ? null : onSetAudioCategory ? (
+        // The name is a guess and the scenes only speak for files already in
+        // use, so the author gets the last word — and it is the answer the
+        // library trusts from then on.
+        <View style={styles.categoryRow}>
           <Text style={[typeScale.caption, { color: colors.muted }]}>
-            {t('mediaLibrary.inspector.category')}: {t(`mediaLibrary.audio.category.${item.audioCategory}`)}
+            {t('mediaLibrary.inspector.category')}
           </Text>
-        )}
+          {(['music', 'sound'] as AudioCategory[]).map((category) => {
+            const active = item.audioCategory === category;
+            return (
+              <Pressable
+                key={category}
+                onPress={() => onSetAudioCategory(item, category)}
+                accessibilityRole="button"
+                // The bare name is also a filter chip a rail away; what this
+                // one does is declare what the file is.
+                accessibilityLabel={t(`mediaLibrary.audio.setCategory.${category}`)}
+                accessibilityState={{ selected: active }}
+                style={[
+                  styles.categoryChip,
+                  { borderColor: active ? colors.primary : colors.border },
+                ]}
+              >
+                <Text style={[typeScale.label, { color: active ? colors.foreground : colors.muted }]}>
+                  {t(`mediaLibrary.audio.category.${category}`)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
+        <Text style={[typeScale.caption, { color: colors.muted }]}>
+          {t('mediaLibrary.inspector.category')}: {t(`mediaLibrary.audio.category.${item.audioCategory}`)}
+        </Text>
+      )}
+
+      <View style={styles.metaRow}>
         {item.sizeBytes === undefined ? null : (
           <Text style={[typeScale.caption, { color: colors.muted }]}>
             {t('mediaLibrary.inspector.size')}: {formatBytes(item.sizeBytes)}
@@ -517,6 +553,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
     paddingVertical: spacing.md,
+  },
+  categoryRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
+  categoryChip: {
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    borderWidth: 1,
   },
   progressTrack: { alignSelf: 'stretch', height: 2, marginHorizontal: spacing.md },
   progressFill: { height: 2 },

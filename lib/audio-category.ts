@@ -9,6 +9,8 @@
  * stub — a media-library rule that imported it from there would be untestable.
  */
 
+import type { AudioLibraryItem } from './audio-types';
+
 export type AudioCategory = 'music' | 'sound';
 
 const MUSIC_WORDS = ['music', 'theme', 'bgm'];
@@ -21,4 +23,44 @@ const MUSIC_WORDS = ['music', 'theme', 'bgm'];
 export function guessAudioCategoryFromName(name: string): AudioCategory {
   const normalized = name.toLowerCase();
   return MUSIC_WORDS.some((word) => normalized.includes(word)) ? 'music' : 'sound';
+}
+
+/** Which category an audio library entry stands for. */
+export function categoryOfAudioItem(item: AudioLibraryItem): AudioCategory {
+  return item.type === 'music' ? 'music' : 'sound';
+}
+
+/**
+ * Record the author's own answer about a file, as an entry in the story's
+ * audio library — the one source `audioCategoryOf` trusts above the scenes.
+ *
+ * An entry that already says the right thing is left exactly as it is: `voice`
+ * and `ambient` both mean "sound" here, and rewriting them to `sfx` would throw
+ * away a distinction the library keeps for the reader.
+ */
+export function setAudioCategoryInLibrary(
+  library: AudioLibraryItem[],
+  file: { assetId?: string; uri: string; name: string; addedAt: number },
+  category: AudioCategory,
+): AudioLibraryItem[] {
+  const matches = (entry: AudioLibraryItem) => entry.id === file.assetId || entry.uri === file.uri;
+  const existing = library.find(matches);
+
+  if (existing) {
+    if (categoryOfAudioItem(existing) === category) return library;
+    return library.map((entry) => (matches(entry)
+      ? { ...entry, type: category === 'music' ? 'music' as const : 'sfx' as const }
+      : entry));
+  }
+
+  return [...library, {
+    id: file.assetId ?? file.uri,
+    name: file.name,
+    uri: file.uri,
+    type: category === 'music' ? 'music' : 'sfx',
+    loop: category === 'music',
+    volume: 1,
+    tags: [],
+    createdAt: file.addedAt,
+  }];
 }
