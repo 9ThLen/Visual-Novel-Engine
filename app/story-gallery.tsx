@@ -16,6 +16,7 @@ import { MEDIA_INSPECTOR_WIDTH, MediaInspector, type UsageState } from '@/compon
 import { ScreenContainer } from '@/components/screen-container';
 import { ConfirmDialog } from '@/components/ui';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { useAudioPreview } from '@/hooks/useAudioPreview';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { resolveAssetUri } from '@/lib/asset-resolver';
@@ -72,6 +73,9 @@ export default function StoryGalleryRoute() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<StoryMediaItem | null>(null);
   const [removingBackgroundKey, setRemovingBackgroundKey] = useState<string | null>(null);
+  // One player for the screen: the grid tiles and the inspector drive the same
+  // controller, so two files can never sound at once.
+  const preview = useAudioPreview();
 
   /**
    * Scene records arrive asynchronously, and until they do every file looks
@@ -162,7 +166,15 @@ export default function StoryGalleryRoute() {
     setKind(next);
     setFilter({ kind: 'all' });
     setSelectedKey(null);
-  }, []);
+    // Leaving the audio tab has to silence it: the tile that was playing is
+    // about to be unmounted, and nothing else offers a way to stop it.
+    preview.stop();
+  }, [preview]);
+
+  const handleTogglePlayback = useCallback(
+    (item: StoryMediaItem) => preview.toggle({ key: item.key, assetId: item.assetId, uri: item.uri }),
+    [preview],
+  );
 
   const handleAdd = useCallback(async () => {
     if (!storyId) return;
@@ -369,6 +381,9 @@ export default function StoryGalleryRoute() {
             emptyLabel={emptyLabel}
             onSelect={(item) => setSelectedKey(item.key)}
             reservedWidth={!isPhone && selected ? MEDIA_INSPECTOR_WIDTH : 0}
+            onTogglePlayback={kind === 'audio' ? handleTogglePlayback : undefined}
+            playingKey={preview.playingKey}
+            progress={preview.progress}
           />
         </View>
 
@@ -389,6 +404,10 @@ export default function StoryGalleryRoute() {
             onAttachToCharacter={handleAttachToCharacter}
             onDetachFromCharacter={handleDetachFromCharacter}
             onMakeDefaultSprite={handleMakeDefaultSprite}
+            onTogglePlayback={selected.kind === 'audio' ? handleTogglePlayback : undefined}
+            playing={preview.playingKey === selected.key}
+            progress={preview.progress}
+            playbackFailed={preview.failedKey === selected.key}
           />
         ) : null}
       </View>

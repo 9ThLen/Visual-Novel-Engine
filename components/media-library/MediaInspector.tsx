@@ -154,6 +154,14 @@ export interface MediaInspectorProps {
   onAttachToCharacter: (item: StoryMediaItem, characterId: string) => void;
   onDetachFromCharacter: (item: StoryMediaItem, owner: MediaOwner) => void;
   onMakeDefaultSprite: (item: StoryMediaItem, owner: MediaOwner) => void;
+  /**
+   * Audio only, and the same controller the grid drives: one player for the
+   * screen, so the panel and the tile can never both be playing.
+   */
+  onTogglePlayback?: (item: StoryMediaItem) => void;
+  playing?: boolean;
+  progress?: number;
+  playbackFailed?: boolean;
 }
 
 function InspectorBody({
@@ -171,6 +179,10 @@ function InspectorBody({
   onAttachToCharacter,
   onDetachFromCharacter,
   onMakeDefaultSprite,
+  onTogglePlayback,
+  playing = false,
+  progress = 0,
+  playbackFailed = false,
 }: Omit<MediaInspectorProps, 'asSheet'>) {
   const { t } = useI18n();
   const [pickingCharacter, setPickingCharacter] = useState(false);
@@ -240,6 +252,40 @@ function InspectorBody({
             size={40}
             color={colors.muted}
           />
+          {onTogglePlayback ? (
+            <Pressable
+              onPress={() => onTogglePlayback(item)}
+              accessibilityRole="button"
+              accessibilityLabel={t(
+                playing ? 'mediaLibrary.audio.stop' : 'mediaLibrary.audio.play',
+                { name: item.name },
+              )}
+              style={[styles.action, { borderColor: colors.border }]}
+            >
+              <IconSymbol name={playing ? 'stop' : 'play'} size={17} color={colors.primary} />
+              <Text style={[typeScale.label, { color: colors.primary }]}>
+                {t(playing ? 'mediaLibrary.audio.stop' : 'mediaLibrary.audio.play', { name: item.name })}
+              </Text>
+            </Pressable>
+          ) : null}
+          {playbackFailed ? (
+            <Text style={[typeScale.caption, { color: colors.muted }]}>
+              {t('mediaLibrary.audio.unavailable')}
+            </Text>
+          ) : null}
+          {playing ? (
+            <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    backgroundColor: colors.primary,
+                    width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%`,
+                  },
+                ]}
+              />
+            </View>
+          ) : null}
         </View>
       ) : (
         <ResolvedAssetImage
@@ -466,11 +512,14 @@ const styles = StyleSheet.create({
   preview: { width: '100%', height: 180, borderRadius: radius.md },
   audioPreview: {
     width: '100%',
-    height: 120,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
   },
+  progressTrack: { alignSelf: 'stretch', height: 2, marginHorizontal: spacing.md },
+  progressFill: { height: 2 },
   video: { width: '100%', height: 180, borderRadius: radius.md },
   videoFallback: { width: '100%', height: 180, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   retry: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },
