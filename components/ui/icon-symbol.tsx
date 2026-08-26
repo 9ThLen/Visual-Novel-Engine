@@ -72,6 +72,10 @@ const MAPPING = {
   "plus.circle": "add-circle",
   minus: "remove",
   "square.and.arrow.up": "ios-share",
+  globe: "language",
+  cloud: "cloud",
+  storage: "data-usage",
+  lock: "lock",
 } satisfies Record<string, ComponentProps<typeof MaterialIcons>["name"]>;
 
 export type IconSymbolName = keyof typeof MAPPING;

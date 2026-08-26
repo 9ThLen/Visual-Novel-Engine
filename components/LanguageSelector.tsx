@@ -5,20 +5,41 @@
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, type ViewStyle } from 'react-native';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n, type Language } from '@/hooks/use-i18n';
 
 interface Props {
   style?: ViewStyle;
+  /** Renders the flags as a row-sized segmented control instead of buttons. */
+  compact?: boolean;
 }
 
-export function LanguageSelector({ style }: Props) {
+export function LanguageSelector({ style, compact = false }: Props) {
   const colors = useColors();
   const { language, setLanguage, languages, t } = useI18n();
 
   const handleLanguageChange = async (lang: Language) => {
     await setLanguage(lang);
   };
+
+  if (compact) {
+    return (
+      <SegmentedControl
+        accessibilityLabel={t('settings.language')}
+        value={language}
+        onChange={(code) => { void handleLanguageChange(code); }}
+        options={languages.map((lang) => ({
+          value: lang.code,
+          label: lang.flag,
+          accessibilityLabel: lang.nativeName,
+          fontSize: 15,
+        }))}
+        segmentMinWidth={34}
+        style={style}
+      />
+    );
+  }
 
   return (
     <View style={[styles.container, style]}>
