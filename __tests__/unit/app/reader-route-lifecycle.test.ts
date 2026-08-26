@@ -13,11 +13,19 @@ describe('ReaderScreen lifecycle contract', () => {
     // already on screen leaves the scene id identical, and without a remount
     // the reader keeps page index, dialogue log and overlay state from the
     // playback that was just replaced.
-    expect(reader).toContain(
-      'key={`${sceneRecord?.id ?? playbackState!.currentSceneId}:${playbackGeneration}`}',
-    );
-    expect(reader).toContain('sceneId={sceneRecord?.id ?? playbackState!.currentSceneId}');
+    expect(reader).toContain('key={`${activeSceneId}:${playbackGeneration}`}');
+    expect(reader).toContain('sceneId={activeSceneId}');
     expect(reader).toContain('playbackGeneration={playbackGeneration}');
+
+    // The scene id still comes from the record first and the playback second —
+    // but read once, above the guard, so neither has to be asserted non-null
+    // in the render. Asserting one there crashed the screen for a story with
+    // no playback to resume.
+    expect(source).toContain(
+      'const activeSceneId = sceneRecord?.id ?? playbackState?.currentSceneId;',
+    );
+    expect(source).toContain('|| !activeSceneId) {');
+    expect(source).not.toContain('playbackState!');
   });
 
   it('keeps cross-scene rollback availability in render state', () => {

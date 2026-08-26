@@ -85,13 +85,38 @@ App stays **local-first**: local write always commits first; backend runs async 
 
 **Verify:** no `data:` URIs remain in migrated media-library or character-sprite state; cap removal doesn't reintroduce quota pressure. A user-facing storage durability/quota surface using `navigator.storage.persist()` and `navigator.storage.estimate()` remains a Phase-4 product check rather than a migration prerequisite.
 
-### Phase 4 — Full regression pass
+### Phase 4 — Full regression pass · **run 2026-08-26 (web)**
 
 Exercise: import/export (still 10 MB JSON, media by reference — [lib/story-hooks.ts:38](../lib/story-hooks.ts)), reader window + prefetch, document editor, audio playback, background removal round-trip, hard reload, and native build (must be untouched — file paths, not `idb://`).
 
-### Phase 5 — Orphan cleanup release (separate)
+Run against a seeded three-scene story (background, music, character sprite) in a browser profile.
+
+**Verified**
+
+| Check | Evidence |
+|---|---|
+| Envelope → canonical storage | Scenes seeded into the persisted envelope were migrated out into `vne_scene_records_<story>`, its id index and three per-scene item keys; the envelope no longer carries them. |
+| Document editor | Opens, renders the background, music and text blocks with media resolved by reference, scene list intact (3/2/1 blocks). |
+| Save round-trip | After Save: all three scenes still stored, blocks intact, the music block still naming `p4-audio` by id rather than a URI. |
+| Hard reload / cold start | Bundle, id index, item keys, both stories and the media library all present afterwards — the path that emptied every story before the phase-4 fix in `persistSceneRecordsByStory`. |
+| No `data:` left | 64 persisted keys scanned: zero `data:` and zero `blob:` occurrences; media by path, sprite by asset id. |
+| Reader | Opens the story, renders scene 1 with its background asset, and persists playback progress. |
+| Durability surface | Settings → Storage reports what the browser promises and offers to ask for persistence (this release). |
+
+**Found and fixed during the pass:** the reader asserted `playbackState!` in its render while it also tolerates a missing one everywhere else, so opening `/reader` for a story with no playback to resume threw instead of rendering — and the error boundary then prevented the initialization that would have created the playback state. Guarded; the same URL now plays the story.
+
+**Not verified, and why**
+
+- **Native build** — needs a device; nothing here has ever run outside web. Static check only: no `idb://` reference exists on a native path.
+- **Audio playback** — an actual sound cannot be confirmed headlessly; the audio asset is stored and referenced correctly, which is the part this ADR is about.
+- **Background removal round-trip** — needs the ONNX model fetched from a CDN plus a real photo; out of reach in this environment.
+- **Reader window across scenes** — the seeded story's connections did not survive the editor's normalization, so only the first scene was reachable. `hydrateReaderSceneWindow` is unit-tested.
+
+### Phase 5 — Orphan cleanup release (separate) · **implemented**
 
 - **Not in the migration release** (safety correction #2). Ship a later pass that GCs `media` Blobs with **no reference** in the union of `mediaLibrary`, story metadata, character sprites, and canonical scenes, after a grace period. Prefer leaking a Blob over deleting a not-yet-loaded scene's asset.
+- Shipped as [lib/web-media-cleanup.ts](../lib/web-media-cleanup.ts), run from [hooks/useLibraryBootstrap.ts](../hooks/useLibraryBootstrap.ts) with a seven-day grace period (`WEB_MEDIA_GC_GRACE_MS`): a Blob has to be unreferenced across two separate runs a week apart before it is removed.
+- Related, and now also explicit rather than inferred: a deleted story's scenes and snapshots are removed by `forgetStoryStorage`, and an image that only a deleted sprite pointed at is kept as a story image instead of being left unreachable.
 
 ---
 
