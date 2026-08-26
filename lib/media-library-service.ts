@@ -28,10 +28,39 @@ export const MAX_VIDEO_ASSET_BYTES = STORY_BACKUP_LIMITS.maxObjectBytes;
 /** The container the MVP promises; anything else has to prove itself first. */
 export const SUPPORTED_VIDEO_MIME_TYPES = ['video/mp4'] as const;
 
-export function isSupportedVideoMimeType(mimeType: string | null | undefined): boolean {
+/**
+ * Same bound as video, and for the same reason: a story that imports a track
+ * has to be able to export it to `.vnebackup` again.
+ */
+export const MAX_AUDIO_ASSET_BYTES = STORY_BACKUP_LIMITS.maxObjectBytes;
+
+/**
+ * What `expo-audio` plays on both platforms. `audio/mp4` covers the .m4a a
+ * phone recorder produces; `audio/x-m4a` is Safari's spelling of the same file.
+ */
+export const SUPPORTED_AUDIO_MIME_TYPES = [
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/ogg',
+  'audio/mp4',
+  'audio/x-m4a',
+  'audio/aac',
+] as const;
+
+function isSupportedMimeType(mimeType: string | null | undefined, supported: readonly string[]): boolean {
   if (!mimeType) return false;
   const normalized = mimeType.toLowerCase().split(';')[0].trim();
-  return (SUPPORTED_VIDEO_MIME_TYPES as readonly string[]).includes(normalized);
+  return supported.includes(normalized);
+}
+
+export function isSupportedVideoMimeType(mimeType: string | null | undefined): boolean {
+  return isSupportedMimeType(mimeType, SUPPORTED_VIDEO_MIME_TYPES);
+}
+
+export function isSupportedAudioMimeType(mimeType: string | null | undefined): boolean {
+  return isSupportedMimeType(mimeType, SUPPORTED_AUDIO_MIME_TYPES);
 }
 
 export interface LibraryAsset {
@@ -244,6 +273,12 @@ export async function addAssetToLibraryPure(
     if (typeof metadata?.size === 'number' && metadata.size > MAX_VIDEO_ASSET_BYTES) {
       throw new Error(`Video exceeds ${MAX_VIDEO_ASSET_BYTES} bytes`);
     }
+  }
+
+  // Same bound as video: a track the story cannot back up is one the author
+  // would lose on the next export.
+  if (type === 'audio' && typeof metadata?.size === 'number' && metadata.size > MAX_AUDIO_ASSET_BYTES) {
+    throw new Error(`Audio exceeds ${MAX_AUDIO_ASSET_BYTES} bytes`);
   }
 
   const existingByUri = assets.find((a) => a.uri === uri);

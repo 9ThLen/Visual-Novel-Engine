@@ -13,10 +13,12 @@ import { MediaGrid } from '@/components/media-library/MediaGrid';
 import { MediaInspector } from '@/components/media-library/MediaInspector';
 import { useAudioPreview } from '@/hooks/useAudioPreview';
 import { acquireResolvedAssetUri } from '@/lib/asset-resolver';
-import { mockAudioPlayers, resetMockAudioPlayers } from 'expo-audio';
 import { Colors } from '@/lib/_core/theme';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import { buildStoryMediaGallery, type StoryMediaItem } from '@/lib/story-media-gallery';
+// Test-only helpers come from the mock path: the alias applies at runtime, but
+// the real module has no such export for tsc to find.
+import { mockAudioPlayers, resetMockAudioPlayers } from '../../../__mocks__/expo-audio';
 
 const colors = Colors.light;
 const NOW = new Date('2026-08-24T12:00:00Z').getTime();

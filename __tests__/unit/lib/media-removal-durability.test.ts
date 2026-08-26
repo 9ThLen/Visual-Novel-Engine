@@ -10,6 +10,7 @@ import { attachSpriteToCharacter } from '@/lib/character-media';
 import { canRemoveFromStory, buildStoryMediaGallery } from '@/lib/story-media-gallery';
 import { migrateStoryImageAssetIds, removeImageAssetFromStory } from '@/lib/story-image-library';
 import { migrateStoryMediaAssetIds, removeMediaAssetFromStory } from '@/lib/story-media-library';
+import type { AudioLibraryItem } from '@/lib/audio-types';
 import type { Character } from '@/lib/character-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
@@ -61,6 +62,7 @@ function rehydrate(input: {
   mediaLibrary: LibraryAsset[];
   scenes: SceneRecord[];
   characters: Character[];
+  audioLibrary?: AudioLibraryItem[];
 }) {
   const scenesByStory = { [STORY]: Object.fromEntries(input.scenes.map((record) => [record.id, record])) };
   const imageAssetIdsByStory = migrateStoryImageAssetIds(
@@ -74,7 +76,7 @@ function rehydrate(input: {
     stories: [story],
     scenesByStory,
     characterLibraries: { [STORY]: input.characters },
-    audioLibraries: {},
+    audioLibraries: input.audioLibrary ? { [STORY]: input.audioLibrary } : {},
     mediaLibrary: input.mediaLibrary,
   });
   return { imageAssetIdsByStory, mediaAssetIdsByStory };
@@ -104,6 +106,55 @@ describe('removal durability across hydration', () => {
 
     expect(after.imageAssetIdsByStory[STORY] ?? []).not.toContain('spare');
     expect(after.mediaAssetIdsByStory[STORY] ?? []).not.toContain('spare');
+  });
+
+  it('keeps an unused sound removed', () => {
+    const bgm = asset({ id: 'bgm', type: 'audio', uri: 'file://bgm.mp3', name: 'bgm.mp3' });
+    const after = rehydrate({
+      imageAssetIdsByStory: {},
+      mediaAssetIdsByStory: removeMediaAssetFromStory({ [STORY]: ['bgm'] }, STORY, 'bgm'),
+      mediaLibrary: [bgm],
+      scenes: [],
+      characters: [],
+    });
+
+    expect(after.mediaAssetIdsByStory[STORY] ?? []).not.toContain('bgm');
+  });
+
+  // The migration reads the story's audio library back into membership, so the
+  // entry has to go with the file — otherwise the sound reappears on the next
+  // launch and the removal reads as a bug.
+  it('brings a sound back when its audio library entry is left behind', () => {
+    const bgm = asset({ id: 'bgm', type: 'audio', uri: 'file://bgm.mp3', name: 'bgm.mp3' });
+    const entry: AudioLibraryItem = {
+      id: 'bgm',
+      name: 'bgm.mp3',
+      uri: 'file://bgm.mp3',
+      type: 'music',
+      createdAt: 1,
+    };
+    const mediaAssetIdsByStory = removeMediaAssetFromStory({ [STORY]: ['bgm'] }, STORY, 'bgm');
+
+    const stale = rehydrate({
+      imageAssetIdsByStory: {},
+      mediaAssetIdsByStory,
+      mediaLibrary: [bgm],
+      scenes: [],
+      characters: [],
+      audioLibrary: [entry],
+    });
+    expect(stale.mediaAssetIdsByStory[STORY] ?? []).toContain('bgm');
+
+    // Which is why removing the sound drops the entry too.
+    const after = rehydrate({
+      imageAssetIdsByStory: {},
+      mediaAssetIdsByStory,
+      mediaLibrary: [bgm],
+      scenes: [],
+      characters: [],
+      audioLibrary: [],
+    });
+    expect(after.mediaAssetIdsByStory[STORY] ?? []).not.toContain('bgm');
   });
 
   it('keeps an unused video removed', () => {
