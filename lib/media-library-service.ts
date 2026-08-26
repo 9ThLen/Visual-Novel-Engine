@@ -251,11 +251,22 @@ export async function addAssetToLibraryPure(
   const filename = name || uri.split('/').pop() || `asset-${Date.now()}`;
   const ext = filename.includes('.') ? '' : defaultExtensionForType(type);
   const fullFilename = filename.includes('.') ? filename : `${filename}${ext}`;
-  // Two different clips can share a filename. The on-disk name therefore
-  // carries the asset id, or the second import would silently alias the first
-  // one's bytes (the name-based merge is deliberately off for video).
-  const reservedVideoAssetId = type === 'video' ? generateAssetId() : null;
-  const newAsset = (targetUri: string, assetId = reservedVideoAssetId ?? generateAssetId()): LibraryAsset => ({
+  /**
+   * Whether this file has to keep an identity of its own.
+   *
+   * Two files picked out of two folders can share a name and a size, and that
+   * is a duplicate hint for the UI, never proof of sameness. A data URI is the
+   * exception: it is stored under the hash of its own bytes, so identical
+   * content genuinely is the same asset and merging it is correct.
+   *
+   * Both halves of the aliasing follow from this. The name-based merge is
+   * skipped, or the second import would return the first asset and drop the new
+   * file; and the on-disk name carries the asset id, or the copy would find a
+   * file of that name already in place and adopt the earlier one's bytes.
+   */
+  const keepsOwnIdentity = type === 'video' || (type === 'audio' && !uri.startsWith('data:'));
+  const reservedAssetId = keepsOwnIdentity ? generateAssetId() : null;
+  const newAsset = (targetUri: string, assetId = reservedAssetId ?? generateAssetId()): LibraryAsset => ({
     id: assetId,
     type,
     uri: targetUri,
@@ -287,9 +298,9 @@ export async function addAssetToLibraryPure(
   }
 
   // Matching on name alone is only safe for assets we already copied into the
-  // library directory. A freshly picked video keeps its own identity: same
-  // name and size is a duplicate hint for the UI, not proof of sameness.
-  const existingByName = type === 'video'
+  // library directory, and only for files whose identity is not their own —
+  // see `keepsOwnIdentity`.
+  const existingByName = keepsOwnIdentity
     ? undefined
     : assets.find((a) => a.name === name || a.name === filename);
   if (existingByName && existingByName.uri.includes('media-library')) {
@@ -382,7 +393,7 @@ export async function addAssetToLibraryPure(
     return { asset, assets: [...assets, asset] };
   }
 
-  const targetFilename = reservedVideoAssetId ? `${reservedVideoAssetId}-${fullFilename}` : fullFilename;
+  const targetFilename = reservedAssetId ? `${reservedAssetId}-${fullFilename}` : fullFilename;
   const targetPath = `${FileSystem.documentDirectory}media-library/${type}s/${targetFilename}`;
   const dirPath = `${FileSystem.documentDirectory}media-library/${type}s/`;
 
@@ -403,27 +414,34 @@ export async function addAssetToLibraryPure(
     await FileSystem.copyAsync({ from: uri, to: targetPath });
     const verifyInfo = await FileSystem.getInfoAsync(targetPath);
     if (verifyInfo.exists && verifyInfo.size > 0) {
-      // The picker's metadata can be missing or wrong, so the copied bytes are
-      // the only trustworthy measure of how big this clip really is.
-      if (type === 'video' && verifyInfo.size > MAX_VIDEO_ASSET_BYTES) {
+      // The picker's metadata can be missing or wrong — Android routinely
+      // reports no size at all — so the copied bytes are the only trustworthy
+      // measure of how big this file really is.
+      const copiedLimit = type === 'video'
+        ? MAX_VIDEO_ASSET_BYTES
+        : type === 'audio' ? MAX_AUDIO_ASSET_BYTES : null;
+      if (copiedLimit !== null && verifyInfo.size > copiedLimit) {
         try {
           await FileSystem.deleteAsync(targetPath, { idempotent: true });
         } catch {
         }
-        throw new Error(`Video exceeds ${MAX_VIDEO_ASSET_BYTES} bytes`);
+        throw new Error(`${type === 'video' ? 'Video' : 'Audio'} exceeds ${copiedLimit} bytes`);
       }
       copiedSize = verifyInfo.size;
       copySucceeded = true;
     }
   } catch (copyError) {
-    // Reading a clip back as base64 would defeat the whole point of copying it
-    // on disk, so a failed video copy is reported instead of worked around.
-    if (type === 'video') {
+    // Reading the file back as base64 would defeat the whole point of copying
+    // it on disk — and for media this large it is the very thing that blows the
+    // JS heap — so a failed copy is reported instead of worked around.
+    if (type === 'video' || type === 'audio') {
       try {
         await FileSystem.deleteAsync(targetPath, { idempotent: true });
       } catch {
       }
-      throw copyError instanceof Error ? copyError : new Error('Could not copy video into the media library');
+      throw copyError instanceof Error
+        ? copyError
+        : new Error(`Could not copy ${type} into the media library`);
     }
     try {
       const base64 = await FileSystem.readAsStringAsync(uri, {
@@ -446,12 +464,12 @@ export async function addAssetToLibraryPure(
     return { asset: sized, assets: [...assets, sized] };
   }
 
-  if (type === 'video') {
+  if (type === 'video' || type === 'audio') {
     try {
       await FileSystem.deleteAsync(targetPath, { idempotent: true });
     } catch {
     }
-    throw new Error('Could not copy video into the media library');
+    throw new Error(`Could not copy ${type} into the media library`);
   }
 
   const asset = newAsset(uri);

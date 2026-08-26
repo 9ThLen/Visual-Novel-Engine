@@ -272,6 +272,11 @@ export async function importStoryArchive(
       const remappedCharacters = remapCharacters(staged.payload.characters, uriByReference);
       const remappedAudio = staged.payload.audioLibrary.map((item) => ({
         ...structuredClone(item),
+        // The id has to move with the uri. An entry naming an asset keeps that
+        // asset's id, and the import gives every asset a new one — leave the
+        // old id in place and the playback library sees the entry and the asset
+        // it describes as two different sounds.
+        id: assetIdByReference.get(item.id) ?? item.id,
         uri: uriByReference.get(item.uri) ?? item.uri,
       }));
       const importedMembership = staged.payload.mediaMembershipIds.map((assetId) =>

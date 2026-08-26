@@ -47,6 +47,7 @@ const MAPPING = {
   voice: "record-voice-over",
   palette: "palette",
   play: "play-arrow",
+  pause: "pause",
   stop: "stop",
   location: "place",
   lightning: "bolt",

@@ -26,6 +26,7 @@ const aliases = {
   'react-native-safe-area-context': path.join(rootDir, '__mocks__/react-native-safe-area-context.ts'),
   '@expo/vector-icons/MaterialIcons': path.join(rootDir, '__mocks__/expo-vector-icons-material.tsx'),
   'expo-symbols': path.join(rootDir, '__mocks__/expo-symbols.ts'),
+  '@react-native-community/slider': path.join(rootDir, '__mocks__/react-native-community-slider.tsx'),
   '@/stores/use-app-store': path.join(rootDir, '__mocks__/stores/use-app-store.ts'),
   '@/lib/asset-resolver': path.join(rootDir, '__mocks__/lib/asset-resolver.ts'),
   '@/components/vn-plate-editor/PlateWebViewEditor': path.join(rootDir, '__mocks__/components/vn-plate-editor/PlateWebViewEditor.tsx'),

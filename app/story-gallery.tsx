@@ -167,6 +167,18 @@ export default function StoryGalleryRoute() {
     unused: source.filter((item) => item.usage.enabled + item.usage.disabled === 0).length,
   }), [source]);
 
+  /**
+   * A sound whose tile is gone has no controller left on screen: removing it,
+   * searching, or picking a filter it does not match would otherwise leave it
+   * playing with nothing anywhere to stop it.
+   */
+  const { activeKey: activePreviewKey, stop: stopPreview } = preview;
+  useEffect(() => {
+    if (!activePreviewKey) return;
+    if (visible.some((item) => item.key === activePreviewKey)) return;
+    stopPreview();
+  }, [activePreviewKey, stopPreview, visible]);
+
   const handleSwitchKind = useCallback((next: MediaKind) => {
     setKind(next);
     setFilter({ kind: 'all' });
@@ -463,7 +475,8 @@ export default function StoryGalleryRoute() {
             onSelect={(item) => setSelectedKey(item.key)}
             reservedWidth={!isPhone && selected ? MEDIA_INSPECTOR_WIDTH : 0}
             onTogglePlayback={kind === 'audio' ? handleTogglePlayback : undefined}
-            playingKey={preview.playingKey}
+            activeAudioKey={preview.activeKey}
+            previewState={preview.state}
             progress={preview.progress}
           />
         </View>
@@ -486,8 +499,10 @@ export default function StoryGalleryRoute() {
             onDetachFromCharacter={handleDetachFromCharacter}
             onMakeDefaultSprite={handleMakeDefaultSprite}
             onTogglePlayback={selected.kind === 'audio' ? handleTogglePlayback : undefined}
-            playing={preview.playingKey === selected.key}
-            progress={preview.progress}
+            onSeek={preview.activeKey === selected.key ? preview.seekTo : undefined}
+            previewState={preview.activeKey === selected.key ? preview.state : null}
+            positionSeconds={preview.positionSeconds}
+            durationSeconds={preview.durationSeconds}
             playbackFailed={preview.failedKey === selected.key}
             onSetAudioCategory={selected.kind === 'audio' ? handleSetAudioCategory : undefined}
           />

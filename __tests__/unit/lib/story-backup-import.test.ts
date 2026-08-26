@@ -159,7 +159,9 @@ describe('importStoryArchive', () => {
     const payload: StoryArchivePayloadV1 = {
       scenes: { 'scene-1': makeScene(archivedStory.id, 'old-asset', oldUri) },
       characters: [],
-      audioLibrary: [],
+      audioLibrary: [
+        { id: 'old-asset', name: 'background.flac', uri: oldUri, type: 'music', createdAt: 2 },
+      ],
       mediaMembershipIds: ['old-asset'],
     };
     const archiveSink = new MemoryArchiveSink();
@@ -241,6 +243,12 @@ describe('importStoryArchive', () => {
       },
     });
     expect(state.mediaAssetIdsByStory[result.storyId]).toEqual([importedAsset.id]);
+    // The audio library entry names the asset, so its id has to move with the
+    // uri: left behind, the entry and the asset it describes would read as two
+    // separate sounds in the playback library.
+    expect(state.audioLibraries[result.storyId]).toEqual([
+      expect.objectContaining({ id: importedAsset.id, uri: `idb://media/${digest.sha256}` }),
+    ]);
     expect(persistCalls).toBe(1);
     expect(staging.rolledBack).not.toHaveBeenCalled();
   });
