@@ -105,7 +105,19 @@ export const MediaTile = React.memo(function MediaTile({ item, size, colors, sel
         },
       ]}
     >
-      {item.kind === 'video' ? (
+      {item.kind === 'audio' ? (
+        // Same problem as a clip, and worse: two files named sfx_03 and sfx_04
+        // are indistinguishable until you hear them. The category icon at least
+        // says which of the two roles this one plays.
+        <View style={[styles.videoPlaceholder, { backgroundColor: colors.background }]}>
+          <IconSymbol
+            name={item.audioCategory === 'music' ? 'music' : 'sound'}
+            size={28}
+            color={colors.muted}
+          />
+          <Text numberOfLines={2} style={[styles.videoName, { color: colors.muted }]}>{item.name}</Text>
+        </View>
+      ) : item.kind === 'video' ? (
         // A clip has no still frame to show: the asset carries no poster, and
         // handing an .mp4 to <Image> just renders an empty square. The name is
         // the only thing that tells two clips apart in a grid.
@@ -123,7 +135,7 @@ export const MediaTile = React.memo(function MediaTile({ item, size, colors, sel
           resizeMode={item.owners.length ? 'contain' : 'cover'}
         />
       )}
-      {item.kind === 'video' && item.durationSeconds !== undefined ? (
+      {item.kind !== 'image' && item.durationSeconds !== undefined ? (
         <View style={styles.videoBadge}>
           <Text style={styles.duration}>{formatDuration(item.durationSeconds)}</Text>
         </View>

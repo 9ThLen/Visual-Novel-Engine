@@ -41,6 +41,15 @@ function asset(overrides: Partial<LibraryAsset> & { id: string }): LibraryAsset 
   };
 }
 
+function clip(overrides: Partial<LibraryAsset> & { id: string }): LibraryAsset {
+  return asset({
+    type: 'audio',
+    uri: `file://${overrides.id}.mp3`,
+    name: `${overrides.id}.mp3`,
+    ...overrides,
+  });
+}
+
 function scene(timeline: TimelineStep[]): SceneRecord {
   return {
     id: 'scene-1',
@@ -188,6 +197,26 @@ describe('media grid', () => {
     expect(screen.queryByText('0:00')).toBeNull();
   });
 
+  // Two files called sfx_03 and sfx_04 are indistinguishable in a grid, so the
+  // tile leans on the name and the category icon rather than a preview.
+  it('renders a named placeholder for a sound, with its duration', () => {
+    const built = gallery({
+      mediaLibrary: [
+        clip({ id: 'bgm', name: 'main-theme.mp3', durationSeconds: 135 }),
+        clip({ id: 'door', name: 'door.mp3' }),
+      ],
+      mediaAssetIdsByStory: { 'story-1': ['bgm', 'door'] },
+    });
+
+    renderGrid(built.audios);
+
+    expect(screen.getByRole('button', { name: 'Sound, main-theme.mp3' })).toBeTruthy();
+    expect(screen.getByText('main-theme.mp3')).toBeTruthy();
+    expect(screen.getByText('2:15')).toBeTruthy();
+    expect(screen.queryByText('0:00')).toBeNull();
+    expect(document.querySelectorAll('img')).toHaveLength(0);
+  });
+
   // The screen picks the label; the grid must show whatever it was handed, so a
   // usage filter can explain itself instead of claiming the story is empty.
   it('shows the empty label it was given', () => {
@@ -284,12 +313,52 @@ describe('filter rail and tabs', () => {
     expect(rail.style.alignItems).toBe('center');
   });
 
-  it('switches between the image and video tabs', () => {
+  it('switches between the image, video and sound tabs', () => {
     const onChange = vi.fn();
-    render(<MediaTypeTabs colors={colors} kind="image" counts={{ images: 2, videos: 1 }} onChange={onChange} />);
+    render(
+      <MediaTypeTabs colors={colors} kind="image" counts={{ images: 2, videos: 1, audios: 3 }} onChange={onChange} />,
+    );
 
     fireEvent.click(screen.getByRole('tab', { name: /Videos/ }));
     expect(onChange).toHaveBeenCalledWith('video');
+
+    fireEvent.click(screen.getByRole('tab', { name: /Sounds/ }));
+    expect(onChange).toHaveBeenCalledWith('audio');
+    expect(screen.getByRole('tab', { name: /Sounds\s+3/ })).toBeTruthy();
+  });
+
+  // Characters mean nothing to a sound file; music and sound are the two roles
+  // a timeline actually plays one in.
+  it('offers the two audio categories in place of characters', () => {
+    const onChange = vi.fn();
+    render(
+      <MediaFilterRail
+        colors={colors}
+        filter={{ kind: 'all' }}
+        counts={{ all: 4, used: 1, unused: 3 }}
+        characters={[]}
+        audioCategories={[{ category: 'music', count: 1 }, { category: 'sound', count: 3 }]}
+        usageReady
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Music' }));
+    expect(onChange).toHaveBeenCalledWith({ kind: 'audioCategory', category: 'music' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sounds' }));
+    expect(onChange).toHaveBeenCalledWith({ kind: 'audioCategory', category: 'sound' });
+  });
+
+  it('compares category filters by category', () => {
+    expect(sameFilter(
+      { kind: 'audioCategory', category: 'music' },
+      { kind: 'audioCategory', category: 'music' },
+    )).toBe(true);
+    expect(sameFilter(
+      { kind: 'audioCategory', category: 'music' },
+      { kind: 'audioCategory', category: 'sound' },
+    )).toBe(false);
   });
 });
 

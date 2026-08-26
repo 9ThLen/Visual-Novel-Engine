@@ -58,6 +58,7 @@ export default function StoryGalleryRoute() {
   const mediaLibrary = useAppStore((state) => state.mediaLibrary);
   const imageAssetIdsByStory = useAppStore((state) => state.imageAssetIdsByStory);
   const mediaAssetIdsByStory = useAppStore((state) => state.mediaAssetIdsByStory);
+  const audioLibraries = useAppStore((state) => state.audioLibraries);
   const characters = useAppStore((state) => storyId ? state.characterLibraries[storyId] ?? [] : []);
   const hydrate = useAppStore((state) => state.hydrateSceneRecordsForStory);
   const addImage = useAppStore((state) => state.addImageAssetToStory);
@@ -123,11 +124,14 @@ export default function StoryGalleryRoute() {
       mediaAssetIdsByStory,
       characters,
       scenes,
+      audioLibrary: storyId ? audioLibraries[storyId] : undefined,
     }),
-    [characters, imageAssetIdsByStory, mediaAssetIdsByStory, mediaLibrary, scenes, storyId],
+    [audioLibraries, characters, imageAssetIdsByStory, mediaAssetIdsByStory, mediaLibrary, scenes, storyId],
   );
 
-  const source = kind === 'image' ? gallery.images : gallery.videos;
+  const source = kind === 'image'
+    ? gallery.images
+    : kind === 'video' ? gallery.videos : gallery.audios;
   const visible = useMemo(() => filterMediaItems(source, filter, query), [filter, query, source]);
   const selected = useMemo(
     () => visible.find((item) => item.key === selectedKey) ?? null,
@@ -137,6 +141,17 @@ export default function StoryGalleryRoute() {
   // Character filters belong to images only: the store does not associate clips
   // with characters, and inventing that link would be a new data model.
   const characterFilters = kind === 'image' ? gallery.characterFilters : [];
+  // Music and sound are what the audio tab has instead: the two roles a
+  // timeline actually plays a file in.
+  const audioCategories = useMemo(
+    () => kind === 'audio'
+      ? ([
+        { category: 'music' as const, count: source.filter((item) => item.audioCategory === 'music').length },
+        { category: 'sound' as const, count: source.filter((item) => item.audioCategory === 'sound').length },
+      ])
+      : [],
+    [kind, source],
+  );
   const counts = useMemo(() => ({
     all: source.length,
     used: source.filter((item) => item.usage.enabled + item.usage.disabled > 0).length,
@@ -183,8 +198,10 @@ export default function StoryGalleryRoute() {
   const handleConfirmRemoval = useCallback(() => {
     const assetId = pendingRemoval?.assetId;
     if (storyId && assetId) {
-      if (pendingRemoval?.kind === 'video') removeMedia(storyId, assetId);
-      else removeImage(storyId, assetId);
+      // Images have their own membership list; video and audio share
+      // `mediaAssetIdsByStory`.
+      if (pendingRemoval?.kind === 'image') removeImage(storyId, assetId);
+      else removeMedia(storyId, assetId);
       setSelectedKey(null);
     }
     setPendingRemoval(null);
@@ -285,9 +302,11 @@ export default function StoryGalleryRoute() {
       ? t('mediaLibrary.empty.character', {
           name: characterFilters.find((item) => item.characterId === filter.characterId)?.name ?? '',
         })
-      : filter.kind === 'used' || filter.kind === 'unused'
-        ? t(`mediaLibrary.empty.${filter.kind}`)
-        : t(kind === 'image' ? 'mediaLibrary.empty.images' : 'mediaLibrary.empty.videos');
+      : filter.kind === 'audioCategory'
+        ? t(`mediaLibrary.empty.${filter.category}`)
+        : filter.kind === 'used' || filter.kind === 'unused'
+          ? t(`mediaLibrary.empty.${filter.kind}`)
+          : t(`mediaLibrary.empty.${kind === 'image' ? 'images' : kind === 'video' ? 'videos' : 'audio'}`);
 
   return (
     <ScreenContainer>
@@ -335,6 +354,7 @@ export default function StoryGalleryRoute() {
             counts={counts}
             usageReady={usageReady}
             characters={characterFilters}
+            audioCategories={audioCategories}
             onChange={(next) => { setFilter(next); setSelectedKey(null); }}
           />
 

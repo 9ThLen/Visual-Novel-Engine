@@ -19,13 +19,18 @@ import {
   toSpriteUsageAssetId,
   type AssetUsageKind,
 } from '@/lib/asset-usage';
+import { guessAudioCategoryFromName, type AudioCategory } from '@/lib/audio-category';
+import type { AudioLibraryItem } from '@/lib/audio-types';
 import type { Character, CharacterSprite } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import { getStoryGalleryImageAssets, type StoryImageAssetIds } from '@/lib/story-image-library';
 import type { StoryMediaAssetIds } from '@/lib/story-media-library';
 
-export type MediaKind = 'image' | 'video';
+export type MediaKind = 'image' | 'video' | 'audio';
+
+/** Re-exported: the library shows audio in these two categories. */
+export type { AudioCategory };
 
 export interface MediaOwner {
   characterId: string;
@@ -74,6 +79,8 @@ export interface StoryMediaItem {
   sizeBytes?: number;
   durationSeconds?: number;
   mimeType?: string;
+  /** Only for `kind === 'audio'`. See `audioCategoryOf`. */
+  audioCategory?: AudioCategory;
 }
 
 export interface CharacterMediaFilter {
@@ -88,8 +95,9 @@ export interface CharacterMediaFilter {
 export interface StoryMediaGallery {
   images: StoryMediaItem[];
   videos: StoryMediaItem[];
+  audios: StoryMediaItem[];
   characterFilters: CharacterMediaFilter[];
-  counts: { images: number; videos: number; used: number; unused: number };
+  counts: { images: number; videos: number; audios: number; used: number; unused: number };
 }
 
 export interface StoryMediaGalleryInput {
@@ -99,6 +107,13 @@ export interface StoryMediaGalleryInput {
   mediaAssetIdsByStory: StoryMediaAssetIds;
   characters: Character[];
   scenes: SceneRecord[];
+  /**
+   * This story's audio library, when it has one. Only a source of metadata:
+   * the list of audio files is `mediaAssetIdsByStory`, exactly as for video.
+   * `buildPlaybackAudioLibraryItems` cannot stand in for it — it walks the
+   * whole media library and so returns other stories' audio too.
+   */
+  audioLibrary?: AudioLibraryItem[];
 }
 
 /**
@@ -134,6 +149,30 @@ function isDefaultSprite(character: Character, sprite: CharacterSprite): boolean
     : character.sprites[0]?.id === sprite.id;
 }
 
+/**
+ * Which of the two categories an audio file belongs to, most reliable source
+ * first.
+ *
+ * The story's audio library is the author's own answer, so it wins. Failing
+ * that, the scenes say how the file is actually played: anything a `music`
+ * block names is music, whatever else it is also used for. The file name is
+ * consulted last and only for files nothing plays: the name heuristic reads a
+ * handful of words and calls everything else a sound effect, which is a guess,
+ * not a fact.
+ */
+export function audioCategoryOf(
+  item: StoryMediaItem,
+  audioLibrary: AudioLibraryItem[] | undefined,
+): AudioCategory {
+  const entry = audioLibrary?.find(
+    (candidate) => candidate.id === item.assetId || candidate.uri === item.uri,
+  );
+  if (entry) return entry.type === 'music' ? 'music' : 'sound';
+  if (item.references.some((reference) => reference.kind === 'music')) return 'music';
+  if (item.references.some((reference) => reference.kind === 'sound')) return 'sound';
+  return guessAudioCategoryFromName(item.name);
+}
+
 function countUsage(references: MediaReference[] | undefined): MediaUsage {
   const usage: MediaUsage = { enabled: 0, disabled: 0 };
   for (const reference of references ?? []) {
@@ -148,16 +187,39 @@ function referenceKey(reference: MediaReference): string {
 }
 
 export function buildStoryMediaGallery(input: StoryMediaGalleryInput): StoryMediaGallery {
-  const { storyId, mediaLibrary, imageAssetIdsByStory, mediaAssetIdsByStory, characters, scenes } = input;
+  const {
+    storyId,
+    mediaLibrary,
+    imageAssetIdsByStory,
+    mediaAssetIdsByStory,
+    characters,
+    scenes,
+    audioLibrary,
+  } = input;
 
   const imageAssets = getStoryGalleryImageAssets(storyId, imageAssetIdsByStory, mediaLibrary, scenes);
   const storyMediaIds = new Set(mediaAssetIdsByStory[storyId] ?? []);
   const videoAssets = mediaLibrary.filter((asset) => asset.type === 'video' && storyMediaIds.has(asset.id));
+  const audioAssets = mediaLibrary.filter((asset) => asset.type === 'audio' && storyMediaIds.has(asset.id));
 
   const sceneNameById = new Map(scenes.map((scene) => [scene.id, scene.name]));
   const report = buildAssetUsageReport(
     collectAssetReferences(scenes),
-    buildAvailableAssets([...imageAssets, ...videoAssets], [], characters),
+    // Handing the report this story's audio is what makes `music` and `sound`
+    // references resolve: without it every one of them counts as broken, and
+    // every track reads as unused.
+    buildAvailableAssets(
+      [...imageAssets, ...videoAssets],
+      audioAssets.map<AudioLibraryItem>((asset) => ({
+        id: asset.id,
+        name: asset.name,
+        uri: asset.uri,
+        type: audioLibrary?.find((entry) => entry.id === asset.id)?.type
+          ?? (guessAudioCategoryFromName(asset.name) === 'music' ? 'music' : 'sfx'),
+        createdAt: asset.addedAt,
+      })),
+      characters,
+    ),
   );
   const referencesByUsageId = new Map(report.assets.map(({ asset, references }) => [
     asset.id,
@@ -198,6 +260,7 @@ export function buildStoryMediaGallery(input: StoryMediaGalleryInput): StoryMedi
 
   for (const asset of imageAssets) startItem(fromAsset(asset, 'image'), asset.id);
   for (const asset of videoAssets) startItem(fromAsset(asset, 'video'), asset.id);
+  for (const asset of audioAssets) startItem(fromAsset(asset, 'audio'), asset.id);
 
   for (const character of characters) {
     for (const sprite of character.sprites) {
@@ -265,6 +328,10 @@ export function buildStoryMediaGallery(input: StoryMediaGalleryInput): StoryMedi
   const all = [...itemsByKey.values()];
   const images = all.filter((item) => item.kind === 'image').sort(byNewestFirst);
   const videos = all.filter((item) => item.kind === 'video').sort(byNewestFirst);
+  const audios = all.filter((item) => item.kind === 'audio').sort(byNewestFirst);
+
+  // After the references are attached: the category reads them.
+  for (const item of audios) item.audioCategory = audioCategoryOf(item, audioLibrary);
 
   const ownedCounts = new Map<string, number>();
   const avatarByCharacter = new Map<string, string>();
@@ -291,10 +358,12 @@ export function buildStoryMediaGallery(input: StoryMediaGalleryInput): StoryMedi
   return {
     images,
     videos,
+    audios,
     characterFilters,
     counts: {
       images: images.length,
       videos: videos.length,
+      audios: audios.length,
       used: all.filter(isUsed).length,
       unused: all.filter((item) => !isUsed(item)).length,
     },
@@ -305,7 +374,8 @@ export type ImageFilter =
   | { kind: 'all' }
   | { kind: 'used' }
   | { kind: 'unused' }
-  | { kind: 'character'; characterId: string };
+  | { kind: 'character'; characterId: string }
+  | { kind: 'audioCategory'; category: AudioCategory };
 
 export type VideoFilter = 'all' | 'used' | 'unused';
 
@@ -377,7 +447,8 @@ export function findOwnerInGallery(
   usageAssetId: string,
 ): MediaOwner | undefined {
   const gallery = buildStoryMediaGallery(input);
-  const item = [...gallery.images, ...gallery.videos].find((candidate) => candidate.key === itemKey);
+  const item = [...gallery.images, ...gallery.videos, ...gallery.audios]
+    .find((candidate) => candidate.key === itemKey);
   return item?.owners.find((owner) => owner.usageAssetId === usageAssetId);
 }
 
@@ -402,6 +473,7 @@ export function filterMediaItems(
       case 'used': return isMediaItemUsed(item);
       case 'unused': return !isMediaItemUsed(item);
       case 'character': return item.owners.some((owner) => owner.characterId === normalized.characterId);
+      case 'audioCategory': return item.audioCategory === normalized.category;
       default: return true;
     }
   });

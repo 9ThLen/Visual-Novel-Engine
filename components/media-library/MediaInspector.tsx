@@ -231,15 +231,23 @@ function InspectorBody({
         </Pressable>
       </View>
 
-      {item.kind === 'video'
-        ? <MediaInspectorVideo item={item} colors={colors} />
-        : (
-          <ResolvedAssetImage
-            uri={item.uri}
-            style={[styles.preview, { backgroundColor: colors.background }]}
-            resizeMode="contain"
+      {item.kind === 'video' ? (
+        <MediaInspectorVideo item={item} colors={colors} />
+      ) : item.kind === 'audio' ? (
+        <View style={[styles.audioPreview, { backgroundColor: colors.background }]}>
+          <IconSymbol
+            name={item.audioCategory === 'music' ? 'music' : 'sound'}
+            size={40}
+            color={colors.muted}
           />
-        )}
+        </View>
+      ) : (
+        <ResolvedAssetImage
+          uri={item.uri}
+          style={[styles.preview, { backgroundColor: colors.background }]}
+          resizeMode="contain"
+        />
+      )}
 
       <Text style={[typeScale.caption, { color: colors.muted }]}>
         {t('mediaLibrary.inspector.addedAt', { date: new Date(item.addedAt).toLocaleDateString() })}
@@ -348,6 +356,11 @@ function InspectorBody({
       ) : null}
 
       <View style={styles.metaRow}>
+        {item.audioCategory === undefined ? null : (
+          <Text style={[typeScale.caption, { color: colors.muted }]}>
+            {t('mediaLibrary.inspector.category')}: {t(`mediaLibrary.audio.category.${item.audioCategory}`)}
+          </Text>
+        )}
         {item.sizeBytes === undefined ? null : (
           <Text style={[typeScale.caption, { color: colors.muted }]}>
             {t('mediaLibrary.inspector.size')}: {formatBytes(item.sizeBytes)}
@@ -451,6 +464,13 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   iconButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   preview: { width: '100%', height: 180, borderRadius: radius.md },
+  audioPreview: {
+    width: '100%',
+    height: 120,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   video: { width: '100%', height: 180, borderRadius: radius.md },
   videoFallback: { width: '100%', height: 180, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   retry: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },
