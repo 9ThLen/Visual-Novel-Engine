@@ -262,6 +262,28 @@ describe('filter rail and tabs', () => {
     expect(screen.queryByText('0')).toBeNull();
   });
 
+  // A ScrollView grows by default, so left alone the rail would take half the
+  // column from the grid and stretch every chip down to the bottom with it.
+  it('keeps the rail one row tall instead of growing into the grid', () => {
+    render(
+      <MediaFilterRail
+        colors={colors}
+        filter={{ kind: 'all' }}
+        counts={{ all: 6, used: 2, unused: 4 }}
+        characters={[]}
+        usageReady
+        onChange={vi.fn()}
+      />,
+    );
+
+    // The ScrollView mock flattens the scroll style and the content container
+    // style onto the one element holding the chips.
+    const rail = screen.getByRole('button', { name: 'All' }).parentElement as HTMLElement;
+
+    expect(rail.style.flexGrow).toBe('0');
+    expect(rail.style.alignItems).toBe('center');
+  });
+
   it('switches between the image and video tabs', () => {
     const onChange = vi.fn();
     render(<MediaTypeTabs colors={colors} kind="image" counts={{ images: 2, videos: 1 }} onChange={onChange} />);

@@ -116,7 +116,12 @@ export function MediaFilterRail({ colors, filter, counts, characters, usageReady
   };
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.railScroll}
+      contentContainerStyle={styles.rail}
+    >
       {chip({ kind: 'all' }, t('mediaLibrary.filter.all'), counts.all)}
       {chip({ kind: 'used' }, t('mediaLibrary.filter.used'), counts.used, undefined, undefined, !usageReady)}
       {chip({ kind: 'unused' }, t('mediaLibrary.filter.unused'), counts.unused, undefined, undefined, !usageReady)}
@@ -142,7 +147,13 @@ export function MediaFilterRail({ colors, filter, counts, characters, usageReady
 const styles = StyleSheet.create({
   tabs: { flexDirection: 'row', padding: 3, borderRadius: radius.md, gap: 3 },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 44, borderRadius: radius.sm },
-  rail: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.xs },
+  // A ScrollView grows by default (flexGrow: 1), so in the library's column the
+  // rail would take half the screen from the grid and stretch every chip down
+  // with it. The rail is one row tall: it takes exactly the height it needs.
+  railScroll: { flexGrow: 0, flexShrink: 0 },
+  // Cross-axis centring keeps the chips at their own height even when the rail
+  // is given more room than a single row.
+  rail: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
