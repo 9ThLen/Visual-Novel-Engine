@@ -15,6 +15,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useI18n } from '@/hooks/use-i18n';
 import type { ThemeColorPalette } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
+import type { AudioPreviewState } from '@/hooks/useAudioPreview';
 import {
   groupMediaByDate,
   type DateGroupLabel,
@@ -81,8 +82,9 @@ interface TileProps {
   onPress: (item: StoryMediaItem) => void;
   /** Audio only. Absent means the tile has no transport at all. */
   onTogglePlayback?: (item: StoryMediaItem) => void;
-  playing?: boolean;
-  /** 0–1 through the track; only read while `playing`. */
+  /** What the one preview controller is doing, when it is on this item. */
+  previewState?: AudioPreviewState | null;
+  /** 0–1 through the track; only read while the controller is on this item. */
   progress?: number;
 }
 
@@ -93,7 +95,7 @@ export const MediaTile = React.memo(function MediaTile({
   selected,
   onPress,
   onTogglePlayback,
-  playing = false,
+  previewState = null,
   progress = 0,
 }: TileProps) {
   const { t } = useI18n();
@@ -101,6 +103,14 @@ export const MediaTile = React.memo(function MediaTile({
   const accent = owner?.color || colors.primary;
   const kindLabel = t(`mediaLibrary.kind.${item.kind}`);
   const audible = item.kind === 'audio' && !!onTogglePlayback;
+  /**
+   * Three things one button can mean, and the label has to say which: pause a
+   * sound that is playing, resume one that is paused, and — while the file is
+   * still being resolved — call the whole attempt off.
+   */
+  const transport = previewState === 'playing'
+    ? 'pause'
+    : previewState === 'loading' ? 'stop' : 'play';
 
   const tile = (
     <Pressable
@@ -173,12 +183,12 @@ export const MediaTile = React.memo(function MediaTile({
       <Pressable
         onPress={() => onTogglePlayback?.(item)}
         accessibilityRole="button"
-        accessibilityLabel={t(playing ? 'mediaLibrary.audio.stop' : 'mediaLibrary.audio.play', { name: item.name })}
+        accessibilityLabel={t(`mediaLibrary.audio.${transport}`, { name: item.name })}
         style={[styles.transport, { backgroundColor: colors['surface-1'], borderColor: colors.border }]}
       >
-        <IconSymbol name={playing ? 'stop' : 'play'} size={22} color={colors.primary} />
+        <IconSymbol name={transport} size={22} color={colors.primary} />
       </Pressable>
-      {playing ? (
+      {previewState ? (
         <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
           <View
             style={[
@@ -204,7 +214,9 @@ interface MediaGridProps {
   reservedWidth?: number;
   /** Audio only; absent leaves the tiles without a transport. */
   onTogglePlayback?: (item: StoryMediaItem) => void;
-  playingKey?: string | null;
+  /** The item the one preview controller is on, and what it is doing there. */
+  activeAudioKey?: string | null;
+  previewState?: AudioPreviewState;
   progress?: number;
 }
 
@@ -218,7 +230,8 @@ export function MediaGrid({
   onSelect,
   reservedWidth = 0,
   onTogglePlayback,
-  playingKey = null,
+  activeAudioKey = null,
+  previewState = 'loading',
   progress = 0,
 }: MediaGridProps) {
   const { t } = useI18n();
@@ -262,15 +275,26 @@ export function MediaGrid({
             selected={item.key === selectedKey}
             onPress={onSelect}
             onTogglePlayback={onTogglePlayback}
-            playing={item.key === playingKey}
-            // Only the playing tile draws a bar, so the rest stay memo-stable
+            previewState={item.key === activeAudioKey ? previewState : null}
+            // Only the active tile draws a bar, so the rest stay memo-stable
             // while it ticks.
-            progress={item.key === playingKey ? progress : 0}
+            progress={item.key === activeAudioKey ? progress : 0}
           />
         ))}
       </View>
     );
-  }, [colors, onSelect, onTogglePlayback, playingKey, progress, rowHeight, selectedKey, t, tileSize]);
+  }, [
+    activeAudioKey,
+    colors,
+    onSelect,
+    onTogglePlayback,
+    previewState,
+    progress,
+    rowHeight,
+    selectedKey,
+    t,
+    tileSize,
+  ]);
 
   if (!items.length) {
     return <Text style={[styles.empty, { color: colors.muted }]}>{emptyLabel}</Text>;

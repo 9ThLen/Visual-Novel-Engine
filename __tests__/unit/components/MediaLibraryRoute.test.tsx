@@ -15,6 +15,7 @@ import { useAppStore } from '@/stores/use-app-store';
 // Test-only helpers come from the mock path: the alias applies at runtime, but
 // the real modules have no such export for tsc to find.
 import { getRouterForTests, setLocalSearchParamsForTests } from '../../../__mocks__/expo-router';
+import { mockAudioPlayers, resetMockAudioPlayers } from '../../../__mocks__/expo-audio';
 
 function asset(overrides: Partial<LibraryAsset> & { id: string }): LibraryAsset {
   return {
@@ -83,6 +84,7 @@ describe('media library route', () => {
     setLocalSearchParamsForTests({ storyId: 'story-1' });
     getRouterForTests().push.mockClear();
     document.querySelectorAll('input[type="file"]').forEach((element) => element.remove());
+    resetMockAudioPlayers();
   });
 
   afterEach(() => {
@@ -729,6 +731,30 @@ describe('media library route', () => {
     expect(setAudioLibrary).toHaveBeenCalledWith('story-1', [
       expect.objectContaining({ id: 'door', uri: 'file://door.mp3', type: 'music' }),
     ]);
+  });
+
+  // A tile the author has filtered away takes the only stop button with it.
+  it('stops a sound whose tile leaves the grid', async () => {
+    seedStore({
+      mediaLibrary: [
+        asset({ id: 'bgm', type: 'audio', uri: 'file://bgm.mp3', name: 'bgm.mp3' }),
+        asset({ id: 'door', type: 'audio', uri: 'file://door.mp3', name: 'door.mp3' }),
+      ],
+      mediaAssetIdsByStory: { 'story-1': ['bgm', 'door'] },
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('tab', { name: /Sounds/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play bgm.mp3' }));
+    await waitFor(() => expect(mockAudioPlayers).toHaveLength(1));
+
+    // Searching for the other file hides the one that is playing.
+    fireEvent.change(screen.getByPlaceholderText('Search by file, character or sprite'), {
+      target: { value: 'door' },
+    });
+
+    await waitFor(() => expect(mockAudioPlayers[0].remove).toHaveBeenCalled());
+    expect(mockAudioPlayers[0].pause).toHaveBeenCalled();
   });
 
   // `+` used to pick an image whichever tab was open, so on the video tab it

@@ -24,6 +24,7 @@ export default defineConfig({
       'react-native-safe-area-context': path.resolve(__dirname, '__mocks__/react-native-safe-area-context.ts'),
       '@expo/vector-icons/MaterialIcons': path.resolve(__dirname, '__mocks__/expo-vector-icons-material.tsx'),
       'expo-symbols': path.resolve(__dirname, '__mocks__/expo-symbols.ts'),
+      '@react-native-community/slider': path.resolve(__dirname, '__mocks__/react-native-community-slider.tsx'),
       // Mock project modules that tests need to control
       '@/stores/use-app-store': path.resolve(__dirname, '__mocks__/stores/use-app-store.ts'),
       '@/lib/asset-resolver': path.resolve(__dirname, '__mocks__/lib/asset-resolver.ts'),

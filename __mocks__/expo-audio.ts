@@ -9,6 +9,14 @@
 
 type StatusListener = (status: Record<string, unknown>) => void;
 
+/** The fields the media library's preview controller actually reads. */
+interface MockAudioStatus {
+  currentTime: number;
+  duration: number;
+  playing: boolean;
+  didJustFinish: boolean;
+}
+
 export interface MockAudioPlayer {
   source: unknown;
   play: ReturnType<typeof vi.fn>;
@@ -17,7 +25,7 @@ export interface MockAudioPlayer {
   seekTo: ReturnType<typeof vi.fn>;
   addListener: ReturnType<typeof vi.fn>;
   /** Feed a playbackStatusUpdate to whatever subscribed. */
-  emitStatus: (status: Partial<{ currentTime: number; duration: number; didJustFinish: boolean }>) => void;
+  emitStatus: (status: Partial<MockAudioStatus>) => void;
 }
 
 export const mockAudioPlayers: MockAudioPlayer[] = [];
@@ -40,6 +48,7 @@ export const mockCreateAudioPlayer = vi.fn((source: unknown) => {
       listeners.forEach((listener) => listener({
         currentTime: 0,
         duration: 0,
+        playing: false,
         didJustFinish: false,
         ...status,
       }));

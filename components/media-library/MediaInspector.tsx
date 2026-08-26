@@ -10,11 +10,13 @@
 import { useEvent } from 'expo';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { useVideoPlayer, VideoView, type VideoSource } from 'expo-video';
 
 import { ResolvedAssetImage } from '@/components/resolved-asset-image';
 import { AppModal } from '@/components/ui/AppModal';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import type { AudioPreviewState } from '@/hooks/useAudioPreview';
 import { useI18n } from '@/hooks/use-i18n';
 import { acquireResolvedAssetUri } from '@/lib/asset-resolver';
 import type { ThemeColorPalette } from '@/lib/_core/theme';
@@ -131,7 +133,88 @@ export function MediaInspectorVideo({ item, colors }: { item: StoryMediaItem; co
  */
 export type UsageState = 'pending' | 'ready' | 'unavailable';
 
-export interface MediaInspectorProps {
+export /**
+ * The audio transport: one button, the position in the track, and a slider to
+ * move through it. It owns no player — the screen holds the single preview
+ * controller, so the panel and the tile can never both be sounding.
+ */
+function AudioTransport({
+  item,
+  colors,
+  state,
+  positionSeconds,
+  durationSeconds,
+  failed,
+  onToggle,
+  onSeek,
+}: {
+  item: StoryMediaItem;
+  colors: ThemeColorPalette;
+  state: AudioPreviewState | null;
+  positionSeconds: number;
+  durationSeconds: number;
+  failed: boolean;
+  onToggle?: (item: StoryMediaItem) => void;
+  onSeek?: (seconds: number) => void;
+}) {
+  const { t } = useI18n();
+  // Same three meanings the tile button carries: pause, resume, or call off a
+  // file that is still resolving.
+  const transport = state === 'playing' ? 'pause' : state === 'loading' ? 'stop' : 'play';
+  // The platform reports a duration only once the file is open; until then the
+  // asset's own is the honest number, and neither is guaranteed.
+  const total = durationSeconds > 0 ? durationSeconds : item.durationSeconds ?? 0;
+
+  return (
+    <View style={[styles.audioPreview, { backgroundColor: colors.background }]}>
+      <IconSymbol
+        name={item.audioCategory === 'music' ? 'music' : 'sound'}
+        size={40}
+        color={colors.muted}
+      />
+      {onToggle ? (
+        <Pressable
+          onPress={() => onToggle(item)}
+          accessibilityRole="button"
+          accessibilityLabel={t(`mediaLibrary.audio.${transport}`, { name: item.name })}
+          style={[styles.action, { borderColor: colors.border }]}
+        >
+          <IconSymbol name={transport} size={17} color={colors.primary} />
+          <Text style={[typeScale.label, { color: colors.primary }]}>
+            {t(`mediaLibrary.audio.${transport}`, { name: item.name })}
+          </Text>
+        </Pressable>
+      ) : null}
+      {failed ? (
+        <Text style={[typeScale.caption, { color: colors.muted }]}>
+          {t('mediaLibrary.audio.unavailable')}
+        </Text>
+      ) : null}
+      {state ? (
+        <View style={styles.transportRow}>
+          <Text style={[typeScale.caption, { color: colors.muted }]}>
+            {formatDuration(positionSeconds)} / {total > 0 ? formatDuration(total) : '--:--'}
+          </Text>
+          <Slider
+            style={styles.seek}
+            minimumValue={0}
+            // A zero-length range makes the thumb jump to the far end, which
+            // reads as a track that has already finished.
+            maximumValue={total > 0 ? total : 1}
+            value={Math.min(positionSeconds, total > 0 ? total : 1)}
+            disabled={!onSeek || total <= 0}
+            onSlidingComplete={(seconds: number) => onSeek?.(seconds)}
+            minimumTrackTintColor={colors.primary}
+            maximumTrackTintColor={colors.border}
+            accessibilityLabel={t('mediaLibrary.audio.seek', { name: item.name })}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+interface MediaInspectorProps {
   item: StoryMediaItem;
   colors: ThemeColorPalette;
   /** Phone renders a bottom sheet; wider layouts get a docked panel. */
@@ -160,8 +243,12 @@ export interface MediaInspectorProps {
    * screen, so the panel and the tile can never both be playing.
    */
   onTogglePlayback?: (item: StoryMediaItem) => void;
-  playing?: boolean;
-  progress?: number;
+  onSeek?: (seconds: number) => void;
+  /** Null when the controller is on some other item, or on nothing. */
+  previewState?: AudioPreviewState | null;
+  positionSeconds?: number;
+  /** 0 until the platform reports one — then the slider becomes seekable. */
+  durationSeconds?: number;
   playbackFailed?: boolean;
   /** Audio only: the author's own answer about what this file is. */
   onSetAudioCategory?: (item: StoryMediaItem, category: AudioCategory) => void;
@@ -183,8 +270,10 @@ function InspectorBody({
   onDetachFromCharacter,
   onMakeDefaultSprite,
   onTogglePlayback,
-  playing = false,
-  progress = 0,
+  onSeek,
+  previewState = null,
+  positionSeconds = 0,
+  durationSeconds = 0,
   playbackFailed = false,
   onSetAudioCategory,
 }: Omit<MediaInspectorProps, 'asSheet'>) {
@@ -250,47 +339,16 @@ function InspectorBody({
       {item.kind === 'video' ? (
         <MediaInspectorVideo item={item} colors={colors} />
       ) : item.kind === 'audio' ? (
-        <View style={[styles.audioPreview, { backgroundColor: colors.background }]}>
-          <IconSymbol
-            name={item.audioCategory === 'music' ? 'music' : 'sound'}
-            size={40}
-            color={colors.muted}
-          />
-          {onTogglePlayback ? (
-            <Pressable
-              onPress={() => onTogglePlayback(item)}
-              accessibilityRole="button"
-              accessibilityLabel={t(
-                playing ? 'mediaLibrary.audio.stop' : 'mediaLibrary.audio.play',
-                { name: item.name },
-              )}
-              style={[styles.action, { borderColor: colors.border }]}
-            >
-              <IconSymbol name={playing ? 'stop' : 'play'} size={17} color={colors.primary} />
-              <Text style={[typeScale.label, { color: colors.primary }]}>
-                {t(playing ? 'mediaLibrary.audio.stop' : 'mediaLibrary.audio.play', { name: item.name })}
-              </Text>
-            </Pressable>
-          ) : null}
-          {playbackFailed ? (
-            <Text style={[typeScale.caption, { color: colors.muted }]}>
-              {t('mediaLibrary.audio.unavailable')}
-            </Text>
-          ) : null}
-          {playing ? (
-            <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    backgroundColor: colors.primary,
-                    width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%`,
-                  },
-                ]}
-              />
-            </View>
-          ) : null}
-        </View>
+        <AudioTransport
+          item={item}
+          colors={colors}
+          state={previewState}
+          positionSeconds={positionSeconds}
+          durationSeconds={durationSeconds}
+          failed={playbackFailed}
+          onToggle={onTogglePlayback}
+          onSeek={onSeek}
+        />
       ) : (
         <ResolvedAssetImage
           uri={item.uri}
@@ -562,8 +620,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     borderWidth: 1,
   },
-  progressTrack: { alignSelf: 'stretch', height: 2, marginHorizontal: spacing.md },
-  progressFill: { height: 2 },
+  transportRow: { alignSelf: 'stretch', paddingHorizontal: spacing.md, gap: spacing.xs },
+  seek: { width: '100%', height: 32 },
   video: { width: '100%', height: 180, borderRadius: radius.md },
   videoFallback: { width: '100%', height: 180, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   retry: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },

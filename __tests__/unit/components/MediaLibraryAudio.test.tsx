@@ -18,7 +18,7 @@ import type { LibraryAsset } from '@/lib/media-library-service';
 import { buildStoryMediaGallery, type StoryMediaItem } from '@/lib/story-media-gallery';
 // Test-only helpers come from the mock path: the alias applies at runtime, but
 // the real module has no such export for tsc to find.
-import { mockAudioPlayers, resetMockAudioPlayers } from '../../../__mocks__/expo-audio';
+import { mockAudioPlayers, mockCreateAudioPlayer, resetMockAudioPlayers } from '../../../__mocks__/expo-audio';
 
 const colors = Colors.light;
 const NOW = new Date('2026-08-24T12:00:00Z').getTime();
@@ -59,7 +59,8 @@ function Screen({ items }: { items: StoryMediaItem[] }) {
       emptyLabel="No sounds in this story yet."
       onSelect={onSelect}
       onTogglePlayback={(item) => preview.toggle({ key: item.key, assetId: item.assetId, uri: item.uri })}
-      playingKey={preview.playingKey}
+      activeAudioKey={preview.activeKey}
+      previewState={preview.state}
       progress={preview.progress}
     />
   );
@@ -79,8 +80,13 @@ describe('audio preview', () => {
     await waitFor(() => expect(mockAudioPlayers).toHaveLength(1));
     expect(mockAudioPlayers[0].source).toBe('bgm');
     expect(mockAudioPlayers[0].play).toHaveBeenCalled();
-    // The button flips, which is also how the author stops it again.
+    // Still resolving and starting: the button offers to call it off.
     expect(screen.getByRole('button', { name: 'Stop bgm.mp3' })).toBeTruthy();
+
+    act(() => mockAudioPlayers[0].emitStatus({ playing: true, currentTime: 1, duration: 60 }));
+
+    // Once it is actually sounding the same button pauses it.
+    expect(screen.getByRole('button', { name: 'Pause bgm.mp3' })).toBeTruthy();
   });
 
   // The asset id survives a reload; the runtime blob: URI in `uri` does not.
@@ -109,17 +115,49 @@ describe('audio preview', () => {
     expect(screen.getByRole('button', { name: 'Stop two.mp3' })).toBeTruthy();
   });
 
-  it('stops the same tile on a second tap', async () => {
+  // The button says Stop the moment it is tapped, while the URI is still being
+  // resolved. Tapping it then has to call that attempt off — it used to start a
+  // second resolve, and the sound the author had just stopped began to play.
+  it('calls off a start that is still resolving', async () => {
+    let releaseLease: (() => void) | undefined;
+    let resolveLease: ((lease: { source: string; release: () => void }) => void) | undefined;
+    vi.mocked(acquireResolvedAssetUri).mockImplementationOnce(() => new Promise((resolve) => {
+      resolveLease = resolve;
+    }));
+
+    render(<Screen items={audios(['bgm'])} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Play bgm.mp3' }));
+
+    const stop = screen.getByRole('button', { name: 'Stop bgm.mp3' });
+    fireEvent.click(stop);
+    expect(screen.getByRole('button', { name: 'Play bgm.mp3' })).toBeTruthy();
+
+    // The resolve lands after the author has already given up on it.
+    releaseLease = vi.fn();
+    await act(async () => {
+      resolveLease?.({ source: 'bgm', release: releaseLease! });
+    });
+
+    expect(mockAudioPlayers).toHaveLength(0);
+    // And the pin it came back holding is handed straight back.
+    expect(releaseLease).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Play bgm.mp3' })).toBeTruthy();
+  });
+
+  it('pauses and resumes without rebuilding the player', async () => {
     render(<Screen items={audios(['bgm'])} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Play bgm.mp3' }));
     await waitFor(() => expect(mockAudioPlayers).toHaveLength(1));
+    act(() => mockAudioPlayers[0].emitStatus({ playing: true, currentTime: 2, duration: 60 }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Stop bgm.mp3' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause bgm.mp3' }));
+    expect(mockAudioPlayers[0].pause).toHaveBeenCalled();
+    // Paused, not torn down: resuming has to carry on from where it stopped.
+    expect(mockAudioPlayers[0].remove).not.toHaveBeenCalled();
 
-    expect(mockAudioPlayers[0].remove).toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Play bgm.mp3' })).toBeTruthy();
-    // And no second player was created for the same file.
+    fireEvent.click(screen.getByRole('button', { name: 'Play bgm.mp3' }));
+    expect(mockAudioPlayers[0].play).toHaveBeenCalledTimes(2);
     expect(mockAudioPlayers).toHaveLength(1);
   });
 
@@ -167,6 +205,49 @@ describe('audio preview', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sound, bgm.mp3' }));
 
     expect(mockAudioPlayers).toHaveLength(0);
+  });
+
+  /**
+   * expo-audio on web hands `play()` to an HTMLMediaElement, drops the promise
+   * it returns and wires no error handler, so a refused play and a file that
+   * cannot decode are both indistinguishable from one still loading. Silence
+   * for long enough is the only signal there is.
+   */
+  it('gives up on a file that never starts sounding', async () => {
+    vi.useFakeTimers();
+    try {
+      const release = vi.fn();
+      vi.mocked(acquireResolvedAssetUri).mockResolvedValueOnce({ source: 'bgm', release });
+      render(<Screen items={audios(['bgm'])} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Play bgm.mp3' }));
+      await act(async () => {});
+      expect(mockAudioPlayers).toHaveLength(1);
+
+      await act(async () => { vi.advanceTimersByTime(4000); });
+
+      expect(screen.getByRole('button', { name: 'Play bgm.mp3' })).toBeTruthy();
+      // The player and the pin it held are both let go, rather than sitting
+      // there until the author leaves the screen.
+      expect(mockAudioPlayers[0].remove).toHaveBeenCalled();
+      expect(release).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Same worry, the synchronous half: without the catch the lease and a
+  // half-built player would be held until the next tap.
+  it('lets go when building the player throws outright', async () => {
+    const release = vi.fn();
+    vi.mocked(acquireResolvedAssetUri).mockResolvedValueOnce({ source: 'bgm', release });
+    mockCreateAudioPlayer.mockImplementationOnce(() => { throw new Error('no codec'); });
+
+    render(<Screen items={audios(['bgm'])} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Play bgm.mp3' }));
+
+    await waitFor(() => expect(release).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'Play bgm.mp3' })).toBeTruthy();
   });
 
   it('follows the position through the track', async () => {
@@ -224,11 +305,42 @@ describe('audio in the inspector', () => {
     expect(screen.queryByRole('button', { name: 'Add to character…' })).toBeNull();
   });
 
-  it('shows the playing state and a failure it cannot recover from', () => {
-    renderInspector({ playing: true });
+  it('shows what the controller is doing and a failure it cannot recover from', () => {
+    renderInspector({ previewState: 'loading' });
     expect(screen.getByRole('button', { name: 'Stop door.mp3' })).toBeTruthy();
+
+    renderInspector({ previewState: 'playing' });
+    expect(screen.getByRole('button', { name: 'Pause door.mp3' })).toBeTruthy();
 
     renderInspector({ playbackFailed: true });
     expect(screen.getByText('This sound could not be opened.')).toBeTruthy();
+  });
+
+  // The plan promised a position and a way to move through the track, not just
+  // a play button and a decorative bar.
+  it('shows the position and seeks through the track', () => {
+    const onSeek = vi.fn();
+    renderInspector({
+      previewState: 'playing',
+      positionSeconds: 30,
+      durationSeconds: 120,
+      onSeek,
+    });
+
+    expect(screen.getByText('0:30 / 2:00')).toBeTruthy();
+
+    const seek = screen.getByRole('slider', { name: 'Position in door.mp3' }) as HTMLInputElement;
+    expect(seek.max).toBe('120');
+    fireEvent.change(seek, { target: { value: '75' } });
+    expect(onSeek).toHaveBeenCalledWith(75);
+  });
+
+  // A file whose length nothing has reported yet must not render a slider that
+  // claims the track has already finished.
+  it('says nothing about a length it does not know', () => {
+    renderInspector({ previewState: 'loading', positionSeconds: 0, durationSeconds: 0 });
+
+    expect(screen.getByText('0:00 / --:--')).toBeTruthy();
+    expect((screen.getByRole('slider') as HTMLInputElement).disabled).toBe(true);
   });
 });

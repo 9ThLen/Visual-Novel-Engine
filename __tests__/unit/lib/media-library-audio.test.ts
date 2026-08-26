@@ -16,6 +16,7 @@ import {
 import { setMediaBlobStorageAdapterForTests } from '@/lib/idb-storage';
 import {
   mockCopyAsync,
+  mockDeleteAsync,
   mockGetInfoAsync,
   mockMakeDirectoryAsync,
   mockReadAsStringAsync,
@@ -114,11 +115,13 @@ describe('audio asset import', () => {
     beforeEach(() => {
       (Platform as { OS: string }).OS = 'ios';
       mockCopyAsync.mockReset();
+      mockDeleteAsync.mockReset();
       mockGetInfoAsync.mockReset();
       mockMakeDirectoryAsync.mockReset();
       mockReadAsStringAsync.mockReset();
       mockMakeDirectoryAsync.mockResolvedValue(undefined);
       mockCopyAsync.mockResolvedValue(undefined);
+      mockDeleteAsync.mockResolvedValue(undefined);
     });
 
     afterEach(() => {
@@ -160,6 +163,45 @@ describe('audio asset import', () => {
       expect(second.asset.id).not.toBe(first.asset.id);
       expect(second.asset.uri).not.toBe(first.asset.uri);
       expect(second.assets).toHaveLength(2);
+    });
+
+    // Android routinely hands the picker no size at all, so the check before
+    // the copy has nothing to judge and the copied bytes are the only measure
+    // that cannot lie. Without this an oversized track is accepted and the
+    // story's next backup is what fails.
+    it('measures the copied file and rejects one over the limit', async () => {
+      stageCopy(MAX_AUDIO_ASSET_BYTES + 1);
+
+      await expect(
+        addAssetToLibraryPure('file:///cache/huge.mp3', 'huge.mp3', 'audio', [], {
+          mimeType: 'audio/mpeg',
+        }),
+      ).rejects.toThrow(/exceeds/i);
+      expect(mockDeleteAsync).toHaveBeenCalled();
+    });
+
+    it('records the measured size of an accepted track', async () => {
+      stageCopy(4096);
+
+      const result = await addAssetToLibraryPure('file:///cache/ok.mp3', 'ok.mp3', 'audio', [], {
+        mimeType: 'audio/mpeg',
+      });
+
+      expect(result.asset.size).toBe(4096);
+    });
+
+    // Reading tens of megabytes back as base64 is the very thing copying the
+    // file on disk avoids, so a failed copy is reported rather than worked
+    // around — exactly as it is for video.
+    it('never falls back to reading a failed copy as base64', async () => {
+      mockGetInfoAsync.mockResolvedValue({ exists: false, size: 0 });
+      mockCopyAsync.mockRejectedValue(new Error('disk full'));
+
+      await expect(
+        addAssetToLibraryPure('file:///cache/x.mp3', 'x.mp3', 'audio', [], { mimeType: 'audio/mpeg' }),
+      ).rejects.toThrow(/disk full/i);
+      expect(mockReadAsStringAsync).not.toHaveBeenCalled();
+      expect(mockDeleteAsync).toHaveBeenCalled();
     });
 
     // Not a regression guard for audio alone: the same name-based merge still

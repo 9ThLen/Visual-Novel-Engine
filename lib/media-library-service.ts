@@ -414,27 +414,34 @@ export async function addAssetToLibraryPure(
     await FileSystem.copyAsync({ from: uri, to: targetPath });
     const verifyInfo = await FileSystem.getInfoAsync(targetPath);
     if (verifyInfo.exists && verifyInfo.size > 0) {
-      // The picker's metadata can be missing or wrong, so the copied bytes are
-      // the only trustworthy measure of how big this clip really is.
-      if (type === 'video' && verifyInfo.size > MAX_VIDEO_ASSET_BYTES) {
+      // The picker's metadata can be missing or wrong — Android routinely
+      // reports no size at all — so the copied bytes are the only trustworthy
+      // measure of how big this file really is.
+      const copiedLimit = type === 'video'
+        ? MAX_VIDEO_ASSET_BYTES
+        : type === 'audio' ? MAX_AUDIO_ASSET_BYTES : null;
+      if (copiedLimit !== null && verifyInfo.size > copiedLimit) {
         try {
           await FileSystem.deleteAsync(targetPath, { idempotent: true });
         } catch {
         }
-        throw new Error(`Video exceeds ${MAX_VIDEO_ASSET_BYTES} bytes`);
+        throw new Error(`${type === 'video' ? 'Video' : 'Audio'} exceeds ${copiedLimit} bytes`);
       }
       copiedSize = verifyInfo.size;
       copySucceeded = true;
     }
   } catch (copyError) {
-    // Reading a clip back as base64 would defeat the whole point of copying it
-    // on disk, so a failed video copy is reported instead of worked around.
-    if (type === 'video') {
+    // Reading the file back as base64 would defeat the whole point of copying
+    // it on disk — and for media this large it is the very thing that blows the
+    // JS heap — so a failed copy is reported instead of worked around.
+    if (type === 'video' || type === 'audio') {
       try {
         await FileSystem.deleteAsync(targetPath, { idempotent: true });
       } catch {
       }
-      throw copyError instanceof Error ? copyError : new Error('Could not copy video into the media library');
+      throw copyError instanceof Error
+        ? copyError
+        : new Error(`Could not copy ${type} into the media library`);
     }
     try {
       const base64 = await FileSystem.readAsStringAsync(uri, {
@@ -457,12 +464,12 @@ export async function addAssetToLibraryPure(
     return { asset: sized, assets: [...assets, sized] };
   }
 
-  if (type === 'video') {
+  if (type === 'video' || type === 'audio') {
     try {
       await FileSystem.deleteAsync(targetPath, { idempotent: true });
     } catch {
     }
-    throw new Error('Could not copy video into the media library');
+    throw new Error(`Could not copy ${type} into the media library`);
   }
 
   const asset = newAsset(uri);
