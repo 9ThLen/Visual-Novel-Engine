@@ -34,6 +34,14 @@ export function isSupportedVideoMimeType(mimeType: string | null | undefined): b
   return (SUPPORTED_VIDEO_MIME_TYPES as readonly string[]).includes(normalized);
 }
 
+function hasSupportedVideoIdentity(
+  filename: string,
+  mimeType: string | null | undefined,
+): boolean {
+  if (mimeType) return isSupportedVideoMimeType(mimeType);
+  return filename.toLowerCase().endsWith('.mp4');
+}
+
 export interface LibraryAsset {
   id: string;
   type: AssetType;
@@ -240,6 +248,9 @@ export async function addAssetToLibraryPure(
   if (type === 'video') {
     if (uri.startsWith('data:')) {
       throw new Error('Video assets cannot be imported from a data URI');
+    }
+    if (!hasSupportedVideoIdentity(fullFilename, metadata?.mimeType)) {
+      throw new Error('Invalid video upload: only MP4 is supported');
     }
     if (typeof metadata?.size === 'number' && metadata.size > MAX_VIDEO_ASSET_BYTES) {
       throw new Error(`Video exceeds ${MAX_VIDEO_ASSET_BYTES} bytes`);

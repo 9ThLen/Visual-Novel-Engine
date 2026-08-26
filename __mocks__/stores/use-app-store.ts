@@ -24,8 +24,10 @@ const storeVal: any = {
   imageAssetIdsByStory: {},
   mediaAssetIdsByStory: {},
   language: 'en',
+  readerSceneThumbnailUri: undefined,
   syncAutoSave: mockFn(),
   setLanguage: mockFn(),
+  setReaderSceneThumbnailUri: mockFn(),
   setMediaLibrary: mockFn(),
   setAudioLibrary: mockFn(),
   addImageAssetToStory: mockFn(),
@@ -67,8 +69,10 @@ export const resetAppStoreState = () => {
   storeVal.audioLibraries = {};
   storeVal.characterLibraries = {};
   storeVal.language = 'en';
+  storeVal.readerSceneThumbnailUri = undefined;
   storeVal.syncAutoSave = mockFn();
   storeVal.setLanguage = mockFn();
+  storeVal.setReaderSceneThumbnailUri = mockFn();
   storeVal.setMediaLibrary = mockFn();
   storeVal.setAudioLibrary = mockFn();
   storeVal.addImageAssetToStory = mockFn();

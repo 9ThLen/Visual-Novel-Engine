@@ -27,7 +27,7 @@ export function createSavesSlice(set: AppStoreSet, get: AppStoreGet): SavesSlice
   return {
     saveGame: (slotId) => {
       const state = get();
-      if (!state.playbackState || !state.currentStoryId) return false;
+      if (!state.playbackState || !state.currentStoryId || state.readerBlockingMedia) return false;
       const newSlot = buildCanonicalSaveSlot(
         slotId,
         buildScopedReaderRuntimeSnapshot(
@@ -36,6 +36,7 @@ export function createSavesSlice(set: AppStoreSet, get: AppStoreGet): SavesSlice
           state.playbackState.currentSceneId,
         ),
         state.playbackState,
+        state.readerSceneThumbnailUri,
       );
       if (!newSlot) return false;
 
@@ -63,6 +64,7 @@ export function createSavesSlice(set: AppStoreSet, get: AppStoreGet): SavesSlice
         currentStoryId: loaded.storyId,
         playbackState: loaded.playbackState,
         playbackGeneration: current.playbackGeneration + 1,
+        readerSceneThumbnailUri: undefined,
       }));
 
       return loaded;

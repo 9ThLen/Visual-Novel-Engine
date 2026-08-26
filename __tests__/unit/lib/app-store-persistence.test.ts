@@ -138,15 +138,17 @@ describe('app store persistence helpers', () => {
     });
   });
 
-  it('keeps the cutscene blocking flag out of persisted state', () => {
+  it('keeps reader-only media state out of persisted state', () => {
     const state = makeState() as unknown as Record<string, unknown>;
     state.readerBlockingMedia = { stepId: 'video-1', kind: 'cutscene' };
+    state.readerSceneThumbnailUri = 'poster-active';
 
     const persisted = buildPersistedAppState(state as never) as unknown as Record<string, unknown>;
 
     // Persisting it would leave saving disabled after a crash mid-cutscene,
     // with nothing on screen to explain why.
     expect('readerBlockingMedia' in persisted).toBe(false);
+    expect('readerSceneThumbnailUri' in persisted).toBe(false);
   });
 
   it('hydrates legacy bridge settings without the disabled flag using the current safe default', () => {

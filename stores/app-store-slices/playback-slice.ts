@@ -3,22 +3,39 @@ import type { AppStoreSet } from '@/stores/app-store-slices/types';
 
 export type PlaybackSliceActions = Pick<
   AppActions,
-  'loadCurrentStory' | 'updatePlaybackState' | 'recordEndingReached' | 'setReaderBlockingMedia'
+  | 'loadCurrentStory'
+  | 'updatePlaybackState'
+  | 'recordEndingReached'
+  | 'setReaderBlockingMedia'
+  | 'setReaderSceneThumbnailUri'
 >;
 
 export function createPlaybackSlice(set: AppStoreSet): PlaybackSliceActions {
   return {
     loadCurrentStory: async (storyId) => {
       if (!storyId) {
-        set({ currentStoryId: null, playbackState: null });
+        set({ currentStoryId: null, playbackState: null, readerSceneThumbnailUri: undefined });
         return;
       }
-      set({ currentStoryId: storyId });
+      set((state) => ({
+        currentStoryId: storyId,
+        ...(state.currentStoryId === storyId ? {} : { readerSceneThumbnailUri: undefined }),
+      }));
     },
 
-    updatePlaybackState: (state) => set({ playbackState: state }),
+    updatePlaybackState: (nextPlaybackState) => set((state) => {
+      const sameScene = nextPlaybackState !== null
+        && state.playbackState?.storyId === nextPlaybackState.storyId
+        && state.playbackState?.currentSceneId === nextPlaybackState?.currentSceneId;
+      return {
+        playbackState: nextPlaybackState,
+        ...(sameScene ? {} : { readerSceneThumbnailUri: undefined }),
+      };
+    }),
 
     setReaderBlockingMedia: (media) => set({ readerBlockingMedia: media }),
+
+    setReaderSceneThumbnailUri: (uri) => set({ readerSceneThumbnailUri: uri }),
 
     // Idempotent: reaching the same ending twice is a re-read, not new progress.
     recordEndingReached: (storyId, sceneId) =>

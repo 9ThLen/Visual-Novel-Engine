@@ -8,6 +8,7 @@ export function StoryAutoSave() {
   const playbackState = useAppStore((s) => s.playbackState);
   const syncAutoSave = useAppStore((s) => s.syncAutoSave);
   const readerBlockingMedia = useAppStore((s) => s.readerBlockingMedia);
+  const readerSceneThumbnailUri = useAppStore((s) => s.readerSceneThumbnailUri);
   const storyId = playbackState?.storyId;
   const sceneId = playbackState?.currentSceneId;
   const runtimeSnapshot = useAppStore((state) =>
@@ -28,6 +29,7 @@ export function StoryAutoSave() {
     // A slot written halfway through a cutscene records the scene but not the
     // clip, so resuming it would either replay or skip the cutscene silently.
     enabled: !!playbackState?.isPlaying && !readerBlockingMedia,
+    activeThumbnailUri: readerSceneThumbnailUri,
   });
 
   return null;

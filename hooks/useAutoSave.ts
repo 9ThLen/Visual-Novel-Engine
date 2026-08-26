@@ -9,21 +9,25 @@ interface AutoSaveProps {
   runtimeSnapshot: ReaderRuntimeSnapshot;
   onAutoSave: (newSlot: SaveSlot) => Promise<void>;
   enabled: boolean;
+  activeThumbnailUri?: string | null;
 }
 
 export function useAutoSave({
   playbackState,
   runtimeSnapshot,
   onAutoSave,
-  enabled
+  enabled,
+  activeThumbnailUri,
 }: AutoSaveProps) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onAutoSaveRef = useRef(onAutoSave);
   const runtimeSnapshotRef = useRef(runtimeSnapshot);
   const playbackStateRef = useRef(playbackState);
+  const activeThumbnailUriRef = useRef(activeThumbnailUri);
   onAutoSaveRef.current = onAutoSave;
   runtimeSnapshotRef.current = runtimeSnapshot;
   playbackStateRef.current = playbackState;
+  activeThumbnailUriRef.current = activeThumbnailUri;
 
   useEffect(() => {
     if (!enabled || !playbackState || !playbackState.isPlaying) {
@@ -46,7 +50,8 @@ export function useAutoSave({
       const newSlot = buildCanonicalSaveSlot(
         'autosave',
         snapshot,
-        state
+        state,
+        activeThumbnailUriRef.current,
       );
       if (!newSlot) return;
 

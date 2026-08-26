@@ -107,10 +107,17 @@ export function ReaderMenu({ visible, onClose, onPlaybackReplaced }: ReaderMenuP
     }
   };
 
+  const openSaveLoad = () => {
+    leaveReader();
+    router.push(readerBlockingMedia
+      ? { pathname: '/save-load', params: { saveBlocked: 'cutscene' } }
+      : '/save-load');
+  };
+
   const menuItems: ReaderMenuItem[] = [
     { label: t('reader.quickSave'), icon: 'save', action: handleQuickSave },
     { label: t('reader.quickLoad'), icon: 'load', action: handleQuickLoad, disabled: !quickSaveSlot },
-    { label: t('reader.saveLoad'), icon: 'save' as IconSymbolName, action: () => { leaveReader(); router.push('../save-load'); } },
+    { label: t('reader.saveLoad'), icon: 'save' as IconSymbolName, action: openSaveLoad },
     { label: t('menu.settings'), icon: 'settings' as IconSymbolName, action: () => { leaveReader(); router.push('../settings'); } },
     {
       label: t('menu.home'),

@@ -50,6 +50,13 @@ export interface AppState {
    * crash mid-cutscene cannot leave saving disabled on the next launch.
    */
   readerBlockingMedia: { stepId: string; kind: 'cutscene' } | null;
+  /**
+   * Thumbnail reference for the scene state currently rendered by the reader.
+   * `undefined` means no reader is supplying runtime state; `null` means the
+   * rendered state intentionally has no visual thumbnail. Ephemeral like the
+   * blocking-media guard, so stale playback UI never survives a reload.
+   */
+  readerSceneThumbnailUri: string | null | undefined;
   isLoaded: boolean;
   migrationError: string | null;
 }
@@ -60,6 +67,7 @@ export interface AppActions {
   loadCurrentStory: (storyId: string | null) => Promise<void>;
   updatePlaybackState: (state: PlaybackState | null) => void;
   setReaderBlockingMedia: (media: AppState['readerBlockingMedia']) => void;
+  setReaderSceneThumbnailUri: (uri: AppState['readerSceneThumbnailUri']) => void;
   saveGame: (slotId: string) => boolean;
   loadGame: (slotId: string) => { storyId: string; playbackState: PlaybackState } | null;
   deleteSaveSlot: (slotId: string) => void;
