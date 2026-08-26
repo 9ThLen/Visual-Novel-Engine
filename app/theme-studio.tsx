@@ -1,4 +1,3 @@
-import Slider from '@react-native-community/slider';
 import { usePreventRemove } from '@react-navigation/native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -9,149 +8,68 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
-import { ReaderDialoguePanel } from '@/components/reader/ReaderDialoguePanel';
+
+import { ScenePreview } from '@/components/theme-studio/ScenePreview';
+import { ColorRow } from '@/components/theme-studio/ColorRow';
 import { ScreenContainer } from '@/components/screen-container';
+import { SettingsGroup, SettingsRow } from '@/components/settings/list';
 import { ConfirmDialog } from '@/components/ui';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
-import { withAlpha } from '@/lib/_core/theme';
-import { radius, spacing, typeScale } from '@/lib/design-tokens';
+import { parseColorToHex } from '@/lib/color-picker';
 import {
   mergeReaderColors,
+  sanitizeReaderLayoutPreset,
   sanitizeStoryTheme,
+  STORY_READER_LAYOUT_PRESETS,
   STORY_THEME_PRESETS,
+  type StoryReaderLayoutPreset,
   type StoryReaderTheme,
 } from '@/lib/story-theme';
+import { evaluateThemeContrast, type ThemeContrastPair } from '@/lib/theme-contrast';
 import { useAppStore } from '@/stores/use-app-store';
-
-const COLOR_SWATCHES = [
-  '#070d1a', '#111827', '#374151', '#ffffff', '#f9fafb', '#d1d5db',
-  '#2563eb', '#7c3aed', '#e8def8', '#f6dce1', '#ffbf4d', '#b8741a',
-];
 
 type ThemeColorKey = keyof StoryReaderTheme;
 
+/** Each group of the list, and the colours it owns. */
+const GROUPS: { titleKey: string; pair: ThemeContrastPair; keys: { key: ThemeColorKey; labelKey: string; alpha?: boolean }[] }[] = [
+  {
+    titleKey: 'themeStudio.dialogue',
+    pair: 'dialogue',
+    keys: [
+      { key: 'dialogueBg', labelKey: 'themeStudio.dialogueBg', alpha: true },
+      { key: 'dialogueText', labelKey: 'themeStudio.dialogueText' },
+      { key: 'dialogueBorder', labelKey: 'themeStudio.dialogueBorder' },
+    ],
+  },
+  {
+    titleKey: 'themeStudio.name',
+    pair: 'name',
+    keys: [
+      { key: 'nameBg', labelKey: 'themeStudio.nameBg' },
+      { key: 'nameText', labelKey: 'themeStudio.nameText' },
+    ],
+  },
+  {
+    titleKey: 'themeStudio.choices',
+    pair: 'choice',
+    keys: [
+      { key: 'choiceBg', labelKey: 'themeStudio.choiceBg', alpha: true },
+      { key: 'choiceBorder', labelKey: 'themeStudio.choiceBorder' },
+      { key: 'choiceText', labelKey: 'themeStudio.choiceText' },
+    ],
+  },
+];
+
+const ALL_KEYS = GROUPS.flatMap((group) => group.keys.map((entry) => entry.key));
+
 function serializeTheme(theme: StoryReaderTheme | undefined) {
   return JSON.stringify(sanitizeStoryTheme(theme) ?? {});
-}
-
-function getAlpha(color: string | undefined) {
-  const normalized = sanitizeStoryTheme({ dialogueBg: color })?.dialogueBg;
-  if (!normalized || normalized.length !== 9) return 1;
-  return parseInt(normalized.slice(7, 9), 16) / 255;
-}
-
-interface ColorControlProps {
-  label: string;
-  themeKey: ThemeColorKey;
-  value: string | undefined;
-  fallback: string;
-  onChange: (key: ThemeColorKey, value: string) => void;
-}
-
-function ColorControl({ label, themeKey, value, fallback, onChange }: ColorControlProps) {
-  const colors = useColors();
-  const { t } = useI18n();
-  const displayedValue = value ?? fallback;
-  const [input, setInput] = useState(displayedValue);
-
-  useEffect(() => setInput(displayedValue), [displayedValue]);
-
-  const commitInput = () => {
-    const sanitized = sanitizeStoryTheme({ [themeKey]: input })?.[themeKey];
-    if (sanitized) onChange(themeKey, sanitized);
-    else setInput(displayedValue);
-  };
-
-  return (
-    <View style={styles.colorControl}>
-      <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{label}</Text>
-      <View style={styles.swatchRow}>
-        {COLOR_SWATCHES.map((swatch) => (
-          <Pressable
-            key={swatch}
-            accessibilityRole="button"
-            accessibilityLabel={`${label}: ${swatch}`}
-            onPress={() => onChange(themeKey, swatch)}
-            style={[
-              styles.swatch,
-              { backgroundColor: swatch, borderColor: colors.border },
-              displayedValue.slice(0, 7).toLowerCase() === swatch && {
-                borderColor: colors.primary,
-                borderWidth: 3,
-              },
-            ]}
-          />
-        ))}
-      </View>
-      <View style={styles.hexRow}>
-        <View style={[styles.currentColor, { backgroundColor: displayedValue, borderColor: colors.border }]} />
-        <TextInput
-          value={input}
-          onChangeText={setInput}
-          onBlur={commitInput}
-          onSubmitEditing={commitInput}
-          autoCapitalize="none"
-          autoCorrect={false}
-          maxLength={9}
-          accessibilityLabel={t('themeStudio.hexValue', { label })}
-          style={[
-            styles.hexInput,
-            { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.surface },
-          ]}
-        />
-      </View>
-    </View>
-  );
-}
-
-function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
-  const colors = useColors();
-  return (
-    <View style={[styles.section, { backgroundColor: colors['surface-container'], borderColor: colors.border }]}>
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-function ActionButton({
-  label,
-  onPress,
-  primary = false,
-  danger = false,
-  disabled = false,
-}: {
-  label: string;
-  onPress: () => void;
-  primary?: boolean;
-  danger?: boolean;
-  disabled?: boolean;
-}) {
-  const colors = useColors();
-  const backgroundColor = primary ? colors.primary : danger ? withAlpha(colors.danger, 0.12) : colors.surface;
-  const textColor = primary ? colors['text-inverse'] : danger ? colors.danger : colors.foreground;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.actionButton,
-        { backgroundColor, borderColor: primary ? colors.primary : colors.border },
-        { opacity: disabled ? 0.45 : pressed ? 0.75 : 1 },
-      ]}
-    >
-      <Text style={[styles.actionButtonText, { color: textColor }]}>{label}</Text>
-    </Pressable>
-  );
 }
 
 export default function ThemeStudioScreen() {
@@ -165,20 +83,52 @@ export default function ThemeStudioScreen() {
 
   const story = useAppStore((state) => state.storiesMetadata.find((item) => item.id === storyId));
   const updateStoryMetadata = useAppStore((state) => state.updateStoryMetadata);
+
   const savedTheme = story?.theme;
   const savedThemeKey = serializeTheme(savedTheme);
+  const savedLayout = sanitizeReaderLayoutPreset(story?.readerLayoutPreset);
+
   const [draftTheme, setDraftTheme] = useState<StoryReaderTheme>(() => ({ ...savedTheme }));
+  const [draftLayout, setDraftLayout] = useState<StoryReaderLayoutPreset>(savedLayout);
+  const [expandedKey, setExpandedKey] = useState<ThemeColorKey | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   useEffect(() => {
     setDraftTheme({ ...savedTheme });
-  }, [story?.id, savedThemeKey]);
+    setDraftLayout(savedLayout);
+    setExpandedKey(null);
+  }, [story?.id, savedThemeKey, savedLayout]);
 
   const draftThemeKey = serializeTheme(draftTheme);
-  const isDirty = draftThemeKey !== savedThemeKey;
+  const isDirty = draftThemeKey !== savedThemeKey || draftLayout !== savedLayout;
+
   const previewColors = useMemo(
     () => mergeReaderColors(colors, sanitizeStoryTheme(draftTheme)),
     [colors, draftThemeKey],
+  );
+
+  /**
+   * What each colour actually is right now, always as hex — the draft already
+   * merged over the theme's defaults. Those defaults arrive as `rgba(...)`,
+   * which both the contrast checker and the picker need converted first.
+   */
+  const effective = useMemo(() => {
+    const resolved = {} as Record<ThemeColorKey, string>;
+    for (const key of ALL_KEYS) {
+      resolved[key] = parseColorToHex(previewColors[key]) ?? '#000000';
+    }
+    return resolved;
+  }, [previewColors]);
+
+  const failedPairs = useMemo(() => {
+    const issues = evaluateThemeContrast(effective);
+    return new Map(issues.map((issue) => [issue.pair, issue]));
+  }, [effective]);
+
+  /** Colours already in play, so the picker offers this theme rather than a fixed palette. */
+  const palette = useMemo(
+    () => Array.from(new Set(ALL_KEYS.map((key) => effective[key]))),
+    [effective],
   );
 
   const updateColor = useCallback((key: ThemeColorKey, value: string) => {
@@ -188,6 +138,7 @@ export default function ThemeStudioScreen() {
   const discardAndContinue = useCallback((action: () => void) => {
     const discard = () => {
       setDraftTheme({ ...savedTheme });
+      setDraftLayout(savedLayout);
       setTimeout(action, 0);
     };
     if (Platform.OS === 'web') {
@@ -198,7 +149,7 @@ export default function ThemeStudioScreen() {
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('themeStudio.discard'), style: 'destructive', onPress: discard },
     ]);
-  }, [savedTheme, t]);
+  }, [savedTheme, savedLayout, t]);
 
   usePreventRemove(isDirty, ({ data }) => {
     discardAndContinue(() => navigation.dispatch(data.action));
@@ -216,7 +167,10 @@ export default function ThemeStudioScreen() {
 
   const handleSave = () => {
     if (!story) return;
-    updateStoryMetadata(story.id, { theme: sanitizeStoryTheme(draftTheme) });
+    updateStoryMetadata(story.id, {
+      theme: sanitizeStoryTheme(draftTheme),
+      readerLayoutPreset: draftLayout,
+    });
   };
 
   const handleReset = () => {
@@ -228,141 +182,167 @@ export default function ThemeStudioScreen() {
 
   if (!story) {
     return (
-      <ScreenContainer className="p-4">
+      <ScreenContainer>
         <View style={styles.notFound}>
-          <Text style={[styles.pageTitle, { color: colors.foreground }]}>{t('themeStudio.notFound')}</Text>
-          <ActionButton label={t('menu.back')} onPress={() => router.back()} />
+          <Text style={[styles.notFoundText, { color: colors.foreground }]}>
+            {t('themeStudio.notFound')}
+          </Text>
+          <Pressable onPress={() => router.back()} accessibilityRole="button">
+            <Text style={{ color: colors.primary, fontSize: 17 }}>{t('menu.back')}</Text>
+          </Pressable>
         </View>
       </ScreenContainer>
     );
   }
 
-  const dialogueAlpha = getAlpha(draftTheme.dialogueBg);
-  const preview = (
-    <View style={[styles.previewCard, { borderColor: colors.border, backgroundColor: '#172033' }]}>
-      <View style={[styles.previewGlow, styles.previewGlowOne]} />
-      <View style={[styles.previewGlow, styles.previewGlowTwo]} />
-      <View style={styles.previewLabelWrap}>
-        <Text style={styles.previewLabel}>{t('themeStudio.preview')}</Text>
-      </View>
-      <View style={styles.previewPanelWrap}>
-        <ReaderDialoguePanel
-          colors={previewColors}
-          speaker={t('themeStudio.previewSpeaker')}
-          speakerTextStyle={{ color: previewColors.nameText, fontSize: 13 }}
-          displayedText={t('themeStudio.previewDialogue')}
-          isTyping={false}
-          dialogueTextStyle={{ color: previewColors.dialogueText, fontSize: 17, lineHeight: 25 }}
-          cursorStyle={{ color: previewColors.dialogueText }}
-          choices={[
-            { id: 'choice-1', text: t('themeStudio.previewChoiceOne'), nextSceneId: '', targetSceneId: null, index: 0 },
-            { id: 'choice-2', text: t('themeStudio.previewChoiceTwo'), nextSceneId: '', targetSceneId: null, index: 1 },
-          ]}
-          choicesFontSize={15}
-          getChoiceAccessibilityLabel={(text) => text}
-          onSelectChoice={() => {}}
-          onTap={() => {}}
-          pagesLength={1}
-          pageIndex={0}
-          readerControls={null}
+  const layoutOptions = STORY_READER_LAYOUT_PRESETS.map((preset) => ({
+    value: preset,
+    label: t(`themeStudio.layout.${preset}`),
+  }));
+
+  const controls = (
+    <View style={styles.controls}>
+      <SettingsGroup title={t('themeStudio.presets')}>
+        <View style={styles.presetGrid}>
+          {STORY_THEME_PRESETS.map((preset) => {
+            const selected = draftThemeKey === serializeTheme(preset.theme);
+            return (
+              <Pressable
+                key={preset.id}
+                accessibilityRole="button"
+                accessibilityLabel={t(preset.nameKey)}
+                accessibilityState={{ selected }}
+                aria-checked={selected}
+                onPress={() => setDraftTheme({ ...preset.theme })}
+                style={({ pressed }) => [
+                  styles.presetCard,
+                  {
+                    borderColor: selected ? colors.primary : colors['border-subtle'],
+                    borderWidth: selected ? 2 : 1,
+                    opacity: pressed ? 0.75 : 1,
+                  },
+                ]}
+              >
+                <View style={[styles.presetPanel, { backgroundColor: preset.theme.dialogueBg, borderColor: preset.theme.dialogueBorder }]}>
+                  <View style={[styles.presetChip, { backgroundColor: preset.theme.nameBg }]}>
+                    <Text style={[styles.presetChipText, { color: preset.theme.nameText }]}>Aa</Text>
+                  </View>
+                  <View style={[styles.presetChoice, { backgroundColor: preset.theme.choiceBg, borderColor: preset.theme.choiceBorder }]} />
+                </View>
+                <Text style={[styles.presetName, { color: colors.foreground }]}>{t(preset.nameKey)}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </SettingsGroup>
+
+      <SettingsGroup title={t('themeStudio.layout')} footer={t('themeStudio.layoutFooter')} plain>
+        <SettingsRow
+          label={t('themeStudio.layoutLabel')}
+          right={
+            <SegmentedControl
+              accessibilityLabel={t('themeStudio.layoutLabel')}
+              value={draftLayout}
+              options={layoutOptions}
+              onChange={setDraftLayout}
+              segmentMinWidth={30}
+            />
+          }
         />
-      </View>
+      </SettingsGroup>
+
+      {GROUPS.map((group) => {
+        const issue = failedPairs.get(group.pair);
+        return (
+          <SettingsGroup
+            key={group.titleKey}
+            title={t(group.titleKey)}
+            plain
+            footerTone={issue ? 'warning' : 'default'}
+            footer={
+              issue
+                ? t('themeStudio.contrastFailed', { ratio: issue.ratio.toFixed(1) })
+                : t('themeStudio.contrastOk')
+            }
+          >
+            {group.keys.map(({ key, labelKey, alpha }) => (
+              <ColorRow
+                key={key}
+                label={t(labelKey)}
+                value={effective[key]}
+                allowAlpha={alpha}
+                palette={palette}
+                expanded={expandedKey === key}
+                onToggle={() => setExpandedKey((current) => (current === key ? null : key))}
+                onChange={(hex) => updateColor(key, hex)}
+              />
+            ))}
+          </SettingsGroup>
+        );
+      })}
+
+      <SettingsGroup footer={t('themeStudio.resetFooter')} plain>
+        <SettingsRow
+          label={t('themeStudio.reset')}
+          tone="action"
+          onPress={() => setShowResetConfirm(true)}
+        />
+      </SettingsGroup>
     </View>
   );
 
   return (
     <ScreenContainer>
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={[styles.content, wide && styles.contentWide]}>
-          <View style={styles.header}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('menu.back')}
-              onPress={() => router.back()}
-              style={[styles.backButton, { borderColor: colors.border, backgroundColor: colors.surface }]}
-            >
-              <IconSymbol name="arrow.left" size={20} color={colors.foreground} />
-            </Pressable>
-            <View style={styles.headerCopy}>
-              <Text style={[styles.pageTitle, { color: colors.foreground }]}>{t('themeStudio.title')}</Text>
-              <Text style={[styles.subtitle, { color: colors.muted }]} numberOfLines={1}>{story.title}</Text>
-            </View>
-            <View style={styles.headerActions}>
-              <ActionButton label={t('common.cancel')} onPress={() => setDraftTheme({ ...savedTheme })} disabled={!isDirty} />
-              <ActionButton label={t('common.save')} onPress={handleSave} primary disabled={!isDirty} />
-            </View>
+      <View style={[styles.nav, wide ? styles.navWide : styles.navNarrow]}>
+        <View style={styles.navSide}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('menu.back')}
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.navBack, { opacity: pressed ? 0.6 : 1 }]}
+          >
+            <IconSymbol name="chevron.left" size={22} color={colors.primary} />
+          </Pressable>
+        </View>
+        <View style={styles.navTitleWrap}>
+          <Text style={[styles.navTitle, { color: colors.foreground }]} numberOfLines={1}>
+            {t('themeStudio.title')}
+          </Text>
+          <Text style={[styles.navSubtitle, { color: colors['foreground-tertiary'] }]} numberOfLines={1}>
+            {story.title}
+          </Text>
+        </View>
+        <View style={[styles.navSide, styles.navSideEnd]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('common.save')}
+            accessibilityState={{ disabled: !isDirty }}
+            disabled={!isDirty}
+            onPress={handleSave}
+            style={({ pressed }) => [styles.navAction, { opacity: !isDirty ? 0.4 : pressed ? 0.6 : 1 }]}
+          >
+            <Text style={[styles.navActionText, { color: colors.primary }]}>{t('common.save')}</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.scroll}
+      >
+        <View style={wide ? styles.wide : styles.narrow}>
+          <View style={wide ? styles.previewColumn : undefined}>
+            <ScenePreview
+              previewColors={previewColors}
+              backdropUri={story.thumbnailUri}
+              layoutPreset={draftLayout}
+            />
           </View>
-
-          <View style={wide ? styles.mainRow : styles.mainColumn}>
-            <View style={wide ? styles.previewColumn : undefined}>{preview}</View>
-            <View style={styles.settingsColumn}>
-              <SettingsSection title={t('themeStudio.presets')}>
-                <View style={styles.presetGrid}>
-                  {STORY_THEME_PRESETS.map((preset) => {
-                    const selected = draftThemeKey === serializeTheme(preset.theme);
-                    return (
-                      <Pressable
-                        key={preset.id}
-                        accessibilityRole="button"
-                        accessibilityLabel={t(preset.nameKey)}
-                        accessibilityState={{ selected }}
-                        onPress={() => setDraftTheme({ ...preset.theme })}
-                        style={({ pressed }) => [
-                          styles.presetCard,
-                          { borderColor: selected ? colors.primary : colors.border, opacity: pressed ? 0.75 : 1 },
-                        ]}
-                      >
-                        <View style={styles.presetColors}>
-                          {(['dialogueBg', 'nameBg', 'choiceBg', 'choiceText'] as const).map((key) => (
-                            <View key={key} style={[styles.presetColor, { backgroundColor: preset.theme[key] }]} />
-                          ))}
-                        </View>
-                        <Text style={[styles.presetName, { color: colors.foreground }]}>{t(preset.nameKey)}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </SettingsSection>
-
-              <SettingsSection title={t('themeStudio.dialogue')}>
-                <ColorControl label={t('themeStudio.dialogueBg')} themeKey="dialogueBg" value={draftTheme.dialogueBg} fallback={colors.dialogueBg} onChange={updateColor} />
-                <View style={styles.sliderHeader}>
-                  <Text style={[styles.fieldLabel, { color: colors.foreground }]}>{t('themeStudio.opacity')}</Text>
-                  <Text style={[styles.opacityValue, { color: colors.muted }]}>{Math.round(dialogueAlpha * 100)}%</Text>
-                </View>
-                <Slider
-                  minimumValue={0}
-                  maximumValue={1}
-                  step={0.05}
-                  value={dialogueAlpha}
-                  onValueChange={(value) => updateColor('dialogueBg', withAlpha(draftTheme.dialogueBg ?? colors.dialogueBg, value))}
-                  minimumTrackTintColor={colors.primary}
-                  maximumTrackTintColor={colors.border}
-                  thumbTintColor={colors.primary}
-                  accessibilityLabel={t('themeStudio.opacity')}
-                />
-                <ColorControl label={t('themeStudio.dialogueText')} themeKey="dialogueText" value={draftTheme.dialogueText} fallback={colors.dialogueText} onChange={updateColor} />
-                <ColorControl label={t('themeStudio.dialogueBorder')} themeKey="dialogueBorder" value={draftTheme.dialogueBorder} fallback={colors.dialogueBorder} onChange={updateColor} />
-              </SettingsSection>
-
-              <SettingsSection title={t('themeStudio.name')}>
-                <ColorControl label={t('themeStudio.nameBg')} themeKey="nameBg" value={draftTheme.nameBg} fallback={colors.nameBg} onChange={updateColor} />
-                <ColorControl label={t('themeStudio.nameText')} themeKey="nameText" value={draftTheme.nameText} fallback={colors.nameText} onChange={updateColor} />
-              </SettingsSection>
-
-              <SettingsSection title={t('themeStudio.choices')}>
-                <ColorControl label={t('themeStudio.choiceBg')} themeKey="choiceBg" value={draftTheme.choiceBg} fallback={colors.choiceBg} onChange={updateColor} />
-                <ColorControl label={t('themeStudio.choiceBorder')} themeKey="choiceBorder" value={draftTheme.choiceBorder} fallback={colors.choiceBorder} onChange={updateColor} />
-                <ColorControl label={t('themeStudio.choiceText')} themeKey="choiceText" value={draftTheme.choiceText} fallback={colors.choiceText} onChange={updateColor} />
-              </SettingsSection>
-
-              <View style={styles.resetWrap}>
-                <ActionButton label={t('themeStudio.reset')} onPress={() => setShowResetConfirm(true)} danger />
-              </View>
-            </View>
-          </View>
+          <View style={wide ? styles.controlsColumn : undefined}>{controls}</View>
         </View>
       </ScrollView>
+
       <ConfirmDialog
         visible={showResetConfirm}
         title={t('themeStudio.resetTitle')}
@@ -376,44 +356,129 @@ export default function ThemeStudioScreen() {
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { padding: spacing.lg, paddingBottom: spacing['3xl'] },
-  content: { width: '100%', maxWidth: 1200, alignSelf: 'center', gap: spacing.xl },
-  contentWide: { paddingHorizontal: spacing.md },
-  header: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.md },
-  backButton: { width: 42, height: 42, borderRadius: radius.full, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  headerCopy: { flex: 1, minWidth: 180 },
-  pageTitle: { ...typeScale.pageTitle },
-  subtitle: { ...typeScale.label },
-  headerActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  actionButton: { minHeight: 42, paddingHorizontal: spacing.lg, borderRadius: radius.lg, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  actionButtonText: { ...typeScale.label, fontWeight: '700' },
-  mainRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xl },
-  mainColumn: { gap: spacing.xl },
-  previewColumn: { flex: 1, minWidth: 0 },
-  settingsColumn: { flex: 1.15, minWidth: 0, gap: spacing.lg },
-  previewCard: { minHeight: 560, borderRadius: radius.xl, borderWidth: 1, overflow: 'hidden', justifyContent: 'flex-end' },
-  previewGlow: { position: 'absolute', borderRadius: radius.full, opacity: 0.35 },
-  previewGlowOne: { width: 340, height: 340, backgroundColor: '#7c3aed', top: -90, right: -70 },
-  previewGlowTwo: { width: 260, height: 260, backgroundColor: '#2563eb', bottom: 80, left: -100 },
-  previewLabelWrap: { position: 'absolute', top: spacing.lg, left: spacing.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.full, backgroundColor: '#00000066' },
-  previewLabel: { ...typeScale.caption, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.8 },
-  previewPanelWrap: { paddingTop: 160 },
-  section: { borderWidth: 1, borderRadius: radius.xl, padding: spacing.lg, gap: spacing.md },
-  sectionTitle: { ...typeScale.sectionTitle },
-  colorControl: { gap: spacing.sm },
-  fieldLabel: { ...typeScale.label },
-  swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  swatch: { width: 30, height: 30, borderRadius: radius.full, borderWidth: 1 },
-  hexRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  currentColor: { width: 36, height: 36, borderRadius: radius.md, borderWidth: 1 },
-  hexInput: { flex: 1, minHeight: 40, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: spacing.md, fontSize: 15 },
-  sliderHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: -spacing.sm },
-  opacityValue: { ...typeScale.label },
-  presetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  presetCard: { width: 132, borderWidth: 2, borderRadius: radius.lg, padding: spacing.sm, gap: spacing.sm },
-  presetColors: { height: 34, flexDirection: 'row', borderRadius: radius.md, overflow: 'hidden' },
-  presetColor: { flex: 1 },
-  presetName: { ...typeScale.label },
-  resetWrap: { alignItems: 'flex-start' },
-  notFound: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
+  nav: {
+    height: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  navWide: {
+    maxWidth: 988,
+  },
+  navNarrow: {
+    maxWidth: 592,
+  },
+  navSide: {
+    flex: 1,
+    minWidth: 60,
+  },
+  navSideEnd: {
+    alignItems: 'flex-end',
+  },
+  navBack: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navTitleWrap: {
+    alignItems: 'center',
+    flexShrink: 1,
+  },
+  navTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  navSubtitle: {
+    fontSize: 11,
+  },
+  navAction: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  navActionText: {
+    fontSize: 17,
+  },
+  scroll: {
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+  },
+  wide: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 24,
+    width: '100%',
+    // Preview (560) + gap + controls (372): capped so the pair stays centred
+    // instead of leaving dead space beside a preview that cannot grow.
+    maxWidth: 956,
+    alignSelf: 'center',
+  },
+  narrow: {
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
+  },
+  previewColumn: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 8,
+    // A reader is never as wide as a desktop window, so neither is its preview.
+    maxWidth: 560,
+  },
+  controlsColumn: {
+    width: 372,
+  },
+  controls: {
+    paddingBottom: 8,
+  },
+  presetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    padding: 12,
+  },
+  presetCard: {
+    flexGrow: 1,
+    flexBasis: 140,
+    borderRadius: 10,
+    padding: 8,
+    gap: 8,
+  },
+  presetPanel: {
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 8,
+    gap: 6,
+  },
+  presetChip: {
+    alignSelf: 'flex-start',
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  presetChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  presetChoice: {
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  presetName: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  notFound: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  notFoundText: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
 });

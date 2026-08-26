@@ -7,7 +7,12 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import { SEPARATOR_INSET, SettingsGroup, SettingsRow } from '@/components/settings/list';
+import {
+  SEPARATOR_INSET,
+  SEPARATOR_INSET_PLAIN,
+  SettingsGroup,
+  SettingsRow,
+} from '@/components/settings/list';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 describe('SettingsGroup', () => {
@@ -43,6 +48,38 @@ describe('SettingsGroup', () => {
 
     expect(screen.getByText('This browser cannot say.')).toBeTruthy();
     expect(container.querySelectorAll(`[style*="margin-left: ${SEPARATOR_INSET}px"]`)).toHaveLength(0);
+  });
+});
+
+describe('SettingsGroup, without icon tiles', () => {
+  it('pulls the separator back to the row padding when rows carry no tile', () => {
+    const { container } = render(
+      <SettingsGroup title="Dialogue" plain>
+        <SettingsRow label="Background" value="#0F0E17" />
+        <SettingsRow label="Text" value="#F3ECE4" />
+      </SettingsGroup>,
+    );
+
+    expect(container.querySelectorAll(`[style*="margin-left: ${SEPARATOR_INSET_PLAIN}px"]`)).toHaveLength(1);
+    expect(container.querySelectorAll(`[style*="margin-left: ${SEPARATOR_INSET}px"]`)).toHaveLength(0);
+  });
+
+  it('paints the footnote as a warning when a contrast pair fails', () => {
+    const { rerender } = render(
+      <SettingsGroup title="Name" footer="Readable over any scene." plain>
+        <SettingsRow label="Background" value="#222B38" />
+      </SettingsGroup>,
+    );
+    const calm = getComputedStyle(screen.getByText('Readable over any scene.')).color;
+
+    rerender(
+      <SettingsGroup title="Name" footer="Text on background is 3.1:1." footerTone="warning" plain>
+        <SettingsRow label="Background" value="#222B38" />
+      </SettingsGroup>,
+    );
+    const alarmed = getComputedStyle(screen.getByText('Text on background is 3.1:1.')).color;
+
+    expect(alarmed).not.toBe(calm);
   });
 });
 

@@ -18,15 +18,24 @@ import { useColors } from '@/hooks/use-colors';
 /** Row padding + icon tile + gap: separators start where the label does. */
 export const SEPARATOR_INSET = 54;
 
+/** Where the label starts in a group whose rows carry no icon tile. */
+export const SEPARATOR_INSET_PLAIN = 16;
+
 export const SETTINGS_CONTENT_MAX_WIDTH = 560;
 
 export function SettingsGroup({
   title,
   footer,
+  footerTone = 'default',
+  plain = false,
   children,
 }: {
   title?: string;
   footer?: string;
+  /** `warning` paints the footnote in the danger colour, for a contrast failure. */
+  footerTone?: 'default' | 'warning';
+  /** Rows carry no icon tile, so separators start at the row's padding. */
+  plain?: boolean;
   children: React.ReactNode;
 }) {
   const colors = useColors();
@@ -43,7 +52,13 @@ export function SettingsGroup({
           {rows.map((row, index) => (
             <React.Fragment key={index}>
               {index > 0 ? (
-                <View style={[styles.separator, { backgroundColor: colors['border-subtle'] }]} />
+                <View
+                  style={[
+                    styles.separator,
+                    plain && styles.separatorPlain,
+                    { backgroundColor: colors['border-subtle'] },
+                  ]}
+                />
               ) : null}
               {row}
             </React.Fragment>
@@ -51,14 +66,22 @@ export function SettingsGroup({
         </View>
       ) : null}
       {footer ? (
-        <Text style={[styles.groupFooter, { color: colors['foreground-tertiary'] }]}>{footer}</Text>
+        <Text
+          style={[
+            styles.groupFooter,
+            { color: footerTone === 'warning' ? colors.danger : colors['foreground-tertiary'] },
+          ]}
+        >
+          {footer}
+        </Text>
       ) : null}
     </View>
   );
 }
 
 interface RowProps {
-  icon: IconSymbolName;
+  /** Omitted in groups where a tile would repeat nine times without meaning. */
+  icon?: IconSymbolName;
   label: string;
   /** Second line, kept to one line's worth of words where possible. */
   description?: string;
@@ -96,9 +119,11 @@ export function SettingsRow({
 
   const body = (
     <>
-      <View style={[styles.tile, { backgroundColor: colors.primary }]}>
-        <IconSymbol name={icon} size={15} color={colors['text-inverse']} />
-      </View>
+      {icon ? (
+        <View style={[styles.tile, { backgroundColor: colors.primary }]}>
+          <IconSymbol name={icon} size={15} color={colors['text-inverse']} />
+        </View>
+      ) : null}
       <View style={[styles.text, labelWidth === undefined ? styles.textFlexible : { width: labelWidth }]}>
         <Text
           numberOfLines={1}
@@ -232,6 +257,9 @@ const styles = StyleSheet.create({
   separator: {
     height: StyleSheet.hairlineWidth,
     marginLeft: SEPARATOR_INSET,
+  },
+  separatorPlain: {
+    marginLeft: SEPARATOR_INSET_PLAIN,
   },
   row: {
     minHeight: 44,
