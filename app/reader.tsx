@@ -426,8 +426,14 @@ export default function ReaderScreen() {
     }).catch(() => {});
   };
 
-  if (isLoading || !story || !timeline) {
-    const timedOut = !isLoading && (!story || !timeline);
+  // The scene to show comes from the record when there is one and from the
+  // playback state otherwise. With neither — a reader opened at its URL for a
+  // story that has no playback to resume — there is nothing to render, and
+  // asserting one of them non-null turned that into a crash.
+  const activeSceneId = sceneRecord?.id ?? playbackState?.currentSceneId;
+
+  if (isLoading || !story || !timeline || !activeSceneId) {
+    const timedOut = !isLoading && (!story || !timeline || !activeSceneId);
     return (
       <ScreenContainer className="items-center justify-center gap-4">
         <Text style={{ color: colors.foreground, fontSize: 16 }}>
@@ -480,8 +486,8 @@ export default function ReaderScreen() {
         // does. That is what rebuilds reader-local per-scene state — page
         // index, dialogue log, any blocking media/cutscene overlay — instead of
         // leaving it stranded from the playback that was just replaced.
-        key={`${sceneRecord?.id ?? playbackState!.currentSceneId}:${playbackGeneration}`}
-        sceneId={sceneRecord?.id ?? playbackState!.currentSceneId}
+        key={`${activeSceneId}:${playbackGeneration}`}
+        sceneId={activeSceneId}
         timeline={timeline}
         onTransition={handleTransition}
         entryTransition={entryTransition}
