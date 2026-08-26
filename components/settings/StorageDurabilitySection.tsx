@@ -5,13 +5,14 @@
  * browser may evict a whole origin, and every story goes with it. The author
  * cannot be expected to know that, so the app says how much it is storing and
  * offers to ask for the durable mode.
+ *
+ * The promise is the group's footnote and the amount is a reading in its own
+ * row, so the section costs two rows rather than three paragraphs.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
 
-import { Button } from '@/components/ui';
-import { useColors } from '@/hooks/use-colors';
+import { SettingsGroup, SettingsRow } from '@/components/settings/list';
 import { useI18n } from '@/hooks/use-i18n';
 import {
   formatBytes,
@@ -20,8 +21,7 @@ import {
   type StorageDurability,
 } from '@/lib/storage-durability';
 
-export function StorageDurabilityCard() {
-  const colors = useColors();
+export function StorageDurabilitySection() {
   const { t } = useI18n();
   const [state, setState] = useState<StorageDurability | null>(null);
   const [asking, setAsking] = useState(false);
@@ -33,13 +33,14 @@ export function StorageDurabilityCard() {
   }, []);
 
   const ask = useCallback(async () => {
+    if (asking) return;
     setAsking(true);
     try {
       setState(await requestStorageDurability());
     } finally {
       setAsking(false);
     }
-  }, []);
+  }, [asking]);
 
   // Nothing to say on a platform where files are just files, or before the
   // first read resolves.
@@ -48,31 +49,22 @@ export function StorageDurabilityCard() {
   const usage = state.kind === 'unsupported' || state.used === undefined
     ? null
     : state.quota
-      ? t('settings.storage.usageOfQuota', { used: formatBytes(state.used), quota: formatBytes(state.quota) })
-      : t('settings.storage.usage', { used: formatBytes(state.used) });
+      ? t('settings.storage.usageOfQuotaShort', { used: formatBytes(state.used), quota: formatBytes(state.quota) })
+      : t('settings.storage.usageShort', { used: formatBytes(state.used) });
 
   return (
-    <View>
-      <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 20 }}>
-        {t(`settings.storage.${state.kind}`)}
-      </Text>
+    <SettingsGroup title={t('settings.storageSection')} footer={t(`settings.storage.${state.kind}`)}>
       {usage ? (
-        <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 20, marginTop: 6 }}>
-          {usage}
-        </Text>
+        <SettingsRow icon="storage" label={t('settings.storageUsed')} value={usage} />
       ) : null}
       {state.kind === 'best-effort' ? (
-        <View style={{ marginTop: 12 }}>
-          <Button
-            variant="outline"
-            onPress={ask}
-            disabled={asking}
-            accessibilityLabel={t('settings.storage.request')}
-          >
-            {t('settings.storage.request')}
-          </Button>
-        </View>
+        <SettingsRow
+          icon="lock"
+          label={t('settings.storage.request')}
+          tone="action"
+          onPress={() => { void ask(); }}
+        />
       ) : null}
-    </View>
+    </SettingsGroup>
   );
 }

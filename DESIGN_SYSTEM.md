@@ -16,6 +16,7 @@ The app uses a token-driven theme generated from `constants/theme-colors.json` a
 - Text: `foreground`, `foreground-secondary`, `foreground-tertiary`, `foreground-disabled`, `foreground-inverse`.
 - State: `success`, `warning`, `danger`, `error`, `info` and their background variants.
 - Interaction: `hover`, `pressed`, `focus`, `selected`.
+- Controls: `control-knob` — the raised knob of a switch or slider, light in both schemes so it reads against a filled track.
 - Brand actions: `primary`, `primary-hover`, `primary-active`, `secondary`, `secondary-hover`, `secondary-active`.
 - AI provenance: `ai-accent`, `ai-surface`; pair color with an icon or text label.
 - Editor: `editor-canvas`, `editor-grid`, `editor-toolbar`, `editor-panel`, `editor-ruler`.

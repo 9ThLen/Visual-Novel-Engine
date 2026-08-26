@@ -171,6 +171,10 @@
     "light": "rgba(103, 104, 63, 0.12)",
     "dark": "rgba(176, 176, 138, 0.16)"
   },
+  "control-knob": {
+    "light": "#FFFFFF",
+    "dark": "#F3ECE4"
+  },
   "overlay": {
     "light": "rgba(0, 0, 0, 0.50)",
     "dark": "rgba(0, 0, 0, 0.75)"
