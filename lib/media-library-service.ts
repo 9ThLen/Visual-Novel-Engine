@@ -251,11 +251,22 @@ export async function addAssetToLibraryPure(
   const filename = name || uri.split('/').pop() || `asset-${Date.now()}`;
   const ext = filename.includes('.') ? '' : defaultExtensionForType(type);
   const fullFilename = filename.includes('.') ? filename : `${filename}${ext}`;
-  // Two different clips can share a filename. The on-disk name therefore
-  // carries the asset id, or the second import would silently alias the first
-  // one's bytes (the name-based merge is deliberately off for video).
-  const reservedVideoAssetId = type === 'video' ? generateAssetId() : null;
-  const newAsset = (targetUri: string, assetId = reservedVideoAssetId ?? generateAssetId()): LibraryAsset => ({
+  /**
+   * Whether this file has to keep an identity of its own.
+   *
+   * Two files picked out of two folders can share a name and a size, and that
+   * is a duplicate hint for the UI, never proof of sameness. A data URI is the
+   * exception: it is stored under the hash of its own bytes, so identical
+   * content genuinely is the same asset and merging it is correct.
+   *
+   * Both halves of the aliasing follow from this. The name-based merge is
+   * skipped, or the second import would return the first asset and drop the new
+   * file; and the on-disk name carries the asset id, or the copy would find a
+   * file of that name already in place and adopt the earlier one's bytes.
+   */
+  const keepsOwnIdentity = type === 'video' || (type === 'audio' && !uri.startsWith('data:'));
+  const reservedAssetId = keepsOwnIdentity ? generateAssetId() : null;
+  const newAsset = (targetUri: string, assetId = reservedAssetId ?? generateAssetId()): LibraryAsset => ({
     id: assetId,
     type,
     uri: targetUri,
@@ -287,9 +298,9 @@ export async function addAssetToLibraryPure(
   }
 
   // Matching on name alone is only safe for assets we already copied into the
-  // library directory. A freshly picked video keeps its own identity: same
-  // name and size is a duplicate hint for the UI, not proof of sameness.
-  const existingByName = type === 'video'
+  // library directory, and only for files whose identity is not their own —
+  // see `keepsOwnIdentity`.
+  const existingByName = keepsOwnIdentity
     ? undefined
     : assets.find((a) => a.name === name || a.name === filename);
   if (existingByName && existingByName.uri.includes('media-library')) {
@@ -382,7 +393,7 @@ export async function addAssetToLibraryPure(
     return { asset, assets: [...assets, asset] };
   }
 
-  const targetFilename = reservedVideoAssetId ? `${reservedVideoAssetId}-${fullFilename}` : fullFilename;
+  const targetFilename = reservedAssetId ? `${reservedAssetId}-${fullFilename}` : fullFilename;
   const targetPath = `${FileSystem.documentDirectory}media-library/${type}s/${targetFilename}`;
   const dirPath = `${FileSystem.documentDirectory}media-library/${type}s/`;
 
