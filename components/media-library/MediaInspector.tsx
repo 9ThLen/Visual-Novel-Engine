@@ -22,6 +22,7 @@ import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import {
   canDetachOwner,
   canRemoveFromStory,
+  type AudioCategory,
   type CharacterMediaFilter,
   type MediaOwner,
   type StoryMediaItem,
@@ -154,6 +155,16 @@ export interface MediaInspectorProps {
   onAttachToCharacter: (item: StoryMediaItem, characterId: string) => void;
   onDetachFromCharacter: (item: StoryMediaItem, owner: MediaOwner) => void;
   onMakeDefaultSprite: (item: StoryMediaItem, owner: MediaOwner) => void;
+  /**
+   * Audio only, and the same controller the grid drives: one player for the
+   * screen, so the panel and the tile can never both be playing.
+   */
+  onTogglePlayback?: (item: StoryMediaItem) => void;
+  playing?: boolean;
+  progress?: number;
+  playbackFailed?: boolean;
+  /** Audio only: the author's own answer about what this file is. */
+  onSetAudioCategory?: (item: StoryMediaItem, category: AudioCategory) => void;
 }
 
 function InspectorBody({
@@ -171,6 +182,11 @@ function InspectorBody({
   onAttachToCharacter,
   onDetachFromCharacter,
   onMakeDefaultSprite,
+  onTogglePlayback,
+  playing = false,
+  progress = 0,
+  playbackFailed = false,
+  onSetAudioCategory,
 }: Omit<MediaInspectorProps, 'asSheet'>) {
   const { t } = useI18n();
   const [pickingCharacter, setPickingCharacter] = useState(false);
@@ -231,15 +247,57 @@ function InspectorBody({
         </Pressable>
       </View>
 
-      {item.kind === 'video'
-        ? <MediaInspectorVideo item={item} colors={colors} />
-        : (
-          <ResolvedAssetImage
-            uri={item.uri}
-            style={[styles.preview, { backgroundColor: colors.background }]}
-            resizeMode="contain"
+      {item.kind === 'video' ? (
+        <MediaInspectorVideo item={item} colors={colors} />
+      ) : item.kind === 'audio' ? (
+        <View style={[styles.audioPreview, { backgroundColor: colors.background }]}>
+          <IconSymbol
+            name={item.audioCategory === 'music' ? 'music' : 'sound'}
+            size={40}
+            color={colors.muted}
           />
-        )}
+          {onTogglePlayback ? (
+            <Pressable
+              onPress={() => onTogglePlayback(item)}
+              accessibilityRole="button"
+              accessibilityLabel={t(
+                playing ? 'mediaLibrary.audio.stop' : 'mediaLibrary.audio.play',
+                { name: item.name },
+              )}
+              style={[styles.action, { borderColor: colors.border }]}
+            >
+              <IconSymbol name={playing ? 'stop' : 'play'} size={17} color={colors.primary} />
+              <Text style={[typeScale.label, { color: colors.primary }]}>
+                {t(playing ? 'mediaLibrary.audio.stop' : 'mediaLibrary.audio.play', { name: item.name })}
+              </Text>
+            </Pressable>
+          ) : null}
+          {playbackFailed ? (
+            <Text style={[typeScale.caption, { color: colors.muted }]}>
+              {t('mediaLibrary.audio.unavailable')}
+            </Text>
+          ) : null}
+          {playing ? (
+            <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    backgroundColor: colors.primary,
+                    width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%`,
+                  },
+                ]}
+              />
+            </View>
+          ) : null}
+        </View>
+      ) : (
+        <ResolvedAssetImage
+          uri={item.uri}
+          style={[styles.preview, { backgroundColor: colors.background }]}
+          resizeMode="contain"
+        />
+      )}
 
       <Text style={[typeScale.caption, { color: colors.muted }]}>
         {t('mediaLibrary.inspector.addedAt', { date: new Date(item.addedAt).toLocaleDateString() })}
@@ -347,6 +405,43 @@ function InspectorBody({
         </View>
       ) : null}
 
+      {item.audioCategory === undefined ? null : onSetAudioCategory ? (
+        // The name is a guess and the scenes only speak for files already in
+        // use, so the author gets the last word — and it is the answer the
+        // library trusts from then on.
+        <View style={styles.categoryRow}>
+          <Text style={[typeScale.caption, { color: colors.muted }]}>
+            {t('mediaLibrary.inspector.category')}
+          </Text>
+          {(['music', 'sound'] as AudioCategory[]).map((category) => {
+            const active = item.audioCategory === category;
+            return (
+              <Pressable
+                key={category}
+                onPress={() => onSetAudioCategory(item, category)}
+                accessibilityRole="button"
+                // The bare name is also a filter chip a rail away; what this
+                // one does is declare what the file is.
+                accessibilityLabel={t(`mediaLibrary.audio.setCategory.${category}`)}
+                accessibilityState={{ selected: active }}
+                style={[
+                  styles.categoryChip,
+                  { borderColor: active ? colors.primary : colors.border },
+                ]}
+              >
+                <Text style={[typeScale.label, { color: active ? colors.foreground : colors.muted }]}>
+                  {t(`mediaLibrary.audio.category.${category}`)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
+        <Text style={[typeScale.caption, { color: colors.muted }]}>
+          {t('mediaLibrary.inspector.category')}: {t(`mediaLibrary.audio.category.${item.audioCategory}`)}
+        </Text>
+      )}
+
       <View style={styles.metaRow}>
         {item.sizeBytes === undefined ? null : (
           <Text style={[typeScale.caption, { color: colors.muted }]}>
@@ -451,6 +546,24 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   iconButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   preview: { width: '100%', height: 180, borderRadius: radius.md },
+  audioPreview: {
+    width: '100%',
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  categoryRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
+  categoryChip: {
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    borderWidth: 1,
+  },
+  progressTrack: { alignSelf: 'stretch', height: 2, marginHorizontal: spacing.md },
+  progressFill: { height: 2 },
   video: { width: '100%', height: 180, borderRadius: radius.md },
   videoFallback: { width: '100%', height: 180, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   retry: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },

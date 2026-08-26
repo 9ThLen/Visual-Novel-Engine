@@ -54,11 +54,16 @@ function seedStore(overrides: StoreSeed = {}) {
     imageAssetIdsByStory: {},
     mediaAssetIdsByStory: {},
     characterLibraries: {},
+    // Seeded explicitly, or a story's audio library leaks into the next test:
+    // the harness store merges what it is given rather than replacing it.
+    audioLibraries: {},
     hydrateSceneRecordsForStory: vi.fn(async () => {}),
     addImageAssetToStory: vi.fn(),
+    addMediaAssetToStory: vi.fn(),
     removeImageAssetFromStory: vi.fn(),
     removeMediaAssetFromStory: vi.fn(),
     setCharacterLibrary: vi.fn(),
+    setAudioLibrary: vi.fn(),
     ...overrides,
   };
   (useAppStore as unknown as { setState: (value: StoreSeed) => void }).setState(seed);
@@ -77,6 +82,7 @@ describe('media library route', () => {
   beforeEach(() => {
     setLocalSearchParamsForTests({ storyId: 'story-1' });
     getRouterForTests().push.mockClear();
+    document.querySelectorAll('input[type="file"]').forEach((element) => element.remove());
   });
 
   afterEach(() => {
@@ -642,5 +648,114 @@ describe('media library route', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     expect(removeImageAssetFromStory).toHaveBeenCalledWith('story-1', 'spare');
+  });
+
+  it('shows the story sounds on their own tab, with the two categories', async () => {
+    seedStore({
+      mediaLibrary: [
+        asset({ id: 'bgm', type: 'audio', uri: 'file://bgm.mp3', name: 'main-theme.mp3' }),
+        asset({ id: 'door', type: 'audio', uri: 'file://door.mp3', name: 'door.mp3' }),
+        asset({ id: 'bg' }),
+      ],
+      imageAssetIdsByStory: { 'story-1': ['bg'] },
+      mediaAssetIdsByStory: { 'story-1': ['bgm', 'door'] },
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('tab', { name: /Sounds/ }));
+
+    expect(screen.getByRole('button', { name: 'Sound, main-theme.mp3' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sound, door.mp3' })).toBeTruthy();
+    // The image stays on its own tab.
+    expect(screen.queryByRole('button', { name: 'Image, bg.png' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Music' }));
+    expect(screen.getByRole('button', { name: 'Sound, main-theme.mp3' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Sound, door.mp3' })).toBeNull();
+  });
+
+  // Leftover entries are read back into story membership on every hydration, so
+  // one left behind would bring the file back on the next launch.
+  it('drops the audio library entry when the sound is removed', async () => {
+    const removeMediaAssetFromStory = vi.fn();
+    const setAudioLibrary = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'bgm', type: 'audio', uri: 'file://bgm.mp3', name: 'bgm.mp3' })],
+      mediaAssetIdsByStory: { 'story-1': ['bgm'] },
+      // The story's one scene has to be in memory, or usage is unknown and
+      // nothing destructive is offered at all.
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      audioLibraries: {
+        'story-1': [
+          { id: 'bgm', name: 'bgm.mp3', uri: 'file://bgm.mp3', type: 'music', createdAt: 1 },
+          { id: 'other', name: 'other.mp3', uri: 'file://other.mp3', type: 'sfx', createdAt: 1 },
+        ],
+      },
+      removeMediaAssetFromStory,
+      setAudioLibrary,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('tab', { name: /Sounds/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sound, bgm.mp3' }));
+
+    await waitFor(() => expect(screen.getByText('Not used in any scene')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Remove imported file' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(removeMediaAssetFromStory).toHaveBeenCalledWith('story-1', 'bgm');
+    // Only that file's entry: the rest of the audio library is untouched.
+    expect(setAudioLibrary).toHaveBeenCalledWith('story-1', [
+      expect.objectContaining({ id: 'other' }),
+    ]);
+  });
+
+  it('stores the category the author picks for a sound', async () => {
+    const setAudioLibrary = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'door', type: 'audio', uri: 'file://door.mp3', name: 'door.mp3' })],
+      mediaAssetIdsByStory: { 'story-1': ['door'] },
+      setAudioLibrary,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('tab', { name: /Sounds/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sound, door.mp3' }));
+
+    // The name guess made it a sound effect; the author says otherwise. The
+    // chip is named for what it does — "Music" alone is also a filter chip.
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as music' }));
+
+    expect(setAudioLibrary).toHaveBeenCalledWith('story-1', [
+      expect.objectContaining({ id: 'door', uri: 'file://door.mp3', type: 'music' }),
+    ]);
+  });
+
+  // `+` used to pick an image whichever tab was open, so on the video tab it
+  // offered the author a file the tab could not even show. What the dialog
+  // accepts is the observable end of that decision.
+  it('adds what the open tab shows rather than always an image', async () => {
+    seedStore();
+    render(<StoryGalleryRoute />);
+
+    const acceptAfterAdd = async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+      const input = await waitFor(() => {
+        const element = document.querySelector('input[type="file"]') as HTMLInputElement | null;
+        if (!element) throw new Error('expected a file dialog');
+        return element;
+      });
+      const { accept } = input;
+      input.dispatchEvent(new Event('cancel'));
+      return accept;
+    };
+
+    expect(await acceptAfterAdd()).toContain('image/');
+
+    fireEvent.click(screen.getByRole('tab', { name: /Sounds/ }));
+    expect(await acceptAfterAdd()).toContain('audio/');
+
+    fireEvent.click(screen.getByRole('tab', { name: /Videos/ }));
+    expect(await acceptAfterAdd()).toContain('video/');
   });
 });

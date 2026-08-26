@@ -7,6 +7,7 @@ import {
   groupMediaByDate,
   type StoryMediaGalleryInput,
 } from '@/lib/story-media-gallery';
+import { setAudioCategoryInLibrary } from '@/lib/audio-category';
 import type { Character, CharacterSprite } from '@/lib/character-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
@@ -69,8 +70,9 @@ describe('buildStoryMediaGallery', () => {
     expect(gallery).toEqual({
       images: [],
       videos: [],
+      audios: [],
       characterFilters: [],
-      counts: { images: 0, videos: 0, used: 0, unused: 0 },
+      counts: { images: 0, videos: 0, audios: 0, used: 0, unused: 0 },
     });
   });
 
@@ -459,5 +461,189 @@ describe('findOwnerInGallery', () => {
   it('returns nothing when the owner is gone', () => {
     expect(findOwnerInGallery(input([]), 'asset:a1', 'alice:missing')).toBeUndefined();
     expect(findOwnerInGallery(input([]), 'asset:nothing', 'alice:happy')).toBeUndefined();
+  });
+});
+
+describe('audio in the gallery', () => {
+  const track = (id: string, name = `${id}.mp3`) =>
+    asset({ id, name, type: 'audio', uri: `file://${id}.mp3`, durationSeconds: 90 });
+
+  const musicStep = (assetId: string, enabled = true) =>
+    step(`music-${assetId}`, 'music', { mode: 'track', assetId }, enabled);
+  const soundStep = (assetId: string, enabled = true) =>
+    step(`sound-${assetId}`, 'sound', { mode: 'track', assetId }, enabled);
+
+  it('lists the story audio separately from images and videos', () => {
+    const gallery = build({
+      mediaLibrary: [
+        track('bgm'),
+        asset({ id: 'bg' }),
+        asset({ id: 'clip', type: 'video', uri: 'file://clip.mp4', name: 'clip.mp4' }),
+      ],
+      imageAssetIdsByStory: { 'story-1': ['bg'] },
+      mediaAssetIdsByStory: { 'story-1': ['bgm', 'clip'] },
+    });
+
+    expect(gallery.audios.map((item) => item.assetId)).toEqual(['bgm']);
+    expect(gallery.images.map((item) => item.assetId)).toEqual(['bg']);
+    expect(gallery.videos.map((item) => item.assetId)).toEqual(['clip']);
+    expect(gallery.counts).toMatchObject({ images: 1, videos: 1, audios: 1 });
+  });
+
+  // Membership is per story, and the media library is global — the same reason
+  // the video list is filtered rather than taken whole.
+  it('leaves out audio that belongs to another story', () => {
+    const gallery = build({
+      mediaLibrary: [track('ours'), track('theirs')],
+      mediaAssetIdsByStory: { 'story-1': ['ours'], 'story-2': ['theirs'] },
+    });
+
+    expect(gallery.audios.map((item) => item.assetId)).toEqual(['ours']);
+  });
+
+  it('takes the category from the story audio library first', () => {
+    const gallery = build({
+      mediaLibrary: [track('rain', 'rain.mp3')],
+      mediaAssetIdsByStory: { 'story-1': ['rain'] },
+      // Nothing in the name or the scenes says "music"; the author does.
+      audioLibrary: [{ id: 'rain', name: 'rain.mp3', uri: 'file://rain.mp3', type: 'music', createdAt: 1 }],
+    });
+
+    expect(gallery.audios[0].audioCategory).toBe('music');
+  });
+
+  it('falls back to how the scenes play it', () => {
+    const gallery = build({
+      mediaLibrary: [track('one'), track('two')],
+      mediaAssetIdsByStory: { 'story-1': ['one', 'two'] },
+      scenes: [scene('s1', [musicStep('one'), soundStep('two')])],
+    });
+
+    expect(gallery.audios.find((item) => item.assetId === 'one')?.audioCategory).toBe('music');
+    expect(gallery.audios.find((item) => item.assetId === 'two')?.audioCategory).toBe('sound');
+  });
+
+  // A file can be both the theme and a one-shot sting. One answer has to win,
+  // and the background track is the louder claim about what the file is.
+  it('calls a file used in both roles music', () => {
+    const gallery = build({
+      mediaLibrary: [track('both')],
+      mediaAssetIdsByStory: { 'story-1': ['both'] },
+      scenes: [scene('s1', [soundStep('both'), musicStep('both')])],
+    });
+
+    expect(gallery.audios[0].audioCategory).toBe('music');
+  });
+
+  it('guesses from the file name only when nothing plays the file', () => {
+    const gallery = build({
+      mediaLibrary: [track('a', 'main-theme.mp3'), track('b', 'door-creak.mp3')],
+      mediaAssetIdsByStory: { 'story-1': ['a', 'b'] },
+    });
+
+    expect(gallery.audios.find((item) => item.assetId === 'a')?.audioCategory).toBe('music');
+    expect(gallery.audios.find((item) => item.assetId === 'b')?.audioCategory).toBe('sound');
+  });
+
+  // Before this, the gallery handed the usage report no audio at all, so every
+  // music/sound reference in the story counted as broken and every track read
+  // as unused.
+  it('counts audio as used from music and sound references', () => {
+    const gallery = build({
+      mediaLibrary: [track('used-music'), track('used-sound'), track('spare')],
+      mediaAssetIdsByStory: { 'story-1': ['used-music', 'used-sound', 'spare'] },
+      scenes: [scene('s1', [musicStep('used-music'), soundStep('used-sound')], 'Opening')],
+    });
+
+    const byId = new Map(gallery.audios.map((item) => [item.assetId, item]));
+    expect(byId.get('used-music')?.usage).toEqual({ enabled: 1, disabled: 0 });
+    expect(byId.get('used-sound')?.usage).toEqual({ enabled: 1, disabled: 0 });
+    expect(byId.get('spare')?.usage).toEqual({ enabled: 0, disabled: 0 });
+    expect(gallery.counts.used).toBe(2);
+    expect(byId.get('used-music')?.references[0]).toMatchObject({ sceneId: 's1', sceneName: 'Opening' });
+  });
+
+  it('counts a disabled step as usage, so the file stays undeletable', () => {
+    const gallery = build({
+      mediaLibrary: [track('bgm')],
+      mediaAssetIdsByStory: { 'story-1': ['bgm'] },
+      scenes: [scene('s1', [musicStep('bgm', false)])],
+    });
+
+    expect(gallery.audios[0].usage).toEqual({ enabled: 0, disabled: 1 });
+    expect(canRemoveFromStory(gallery.audios[0])).toBe(false);
+  });
+
+  it('filters by category', () => {
+    const gallery = build({
+      mediaLibrary: [track('one'), track('two')],
+      mediaAssetIdsByStory: { 'story-1': ['one', 'two'] },
+      scenes: [scene('s1', [musicStep('one'), soundStep('two')])],
+    });
+
+    expect(filterMediaItems(gallery.audios, { kind: 'audioCategory', category: 'music' })
+      .map((item) => item.assetId)).toEqual(['one']);
+    expect(filterMediaItems(gallery.audios, { kind: 'audioCategory', category: 'sound' })
+      .map((item) => item.assetId)).toEqual(['two']);
+  });
+});
+
+describe('setAudioCategoryInLibrary', () => {
+  const file = { assetId: 'bgm', uri: 'file://bgm.mp3', name: 'bgm.mp3', addedAt: 5 };
+
+  it('records the answer for a file the library has never heard of', () => {
+    const next = setAudioCategoryInLibrary([], file, 'music');
+
+    expect(next).toEqual([expect.objectContaining({
+      id: 'bgm',
+      uri: 'file://bgm.mp3',
+      name: 'bgm.mp3',
+      type: 'music',
+      createdAt: 5,
+    })]);
+  });
+
+  it('rewrites an entry that says the other thing, and leaves the rest alone', () => {
+    const library = [
+      { id: 'bgm', name: 'bgm.mp3', uri: 'file://bgm.mp3', type: 'sfx' as const, createdAt: 1 },
+      { id: 'other', name: 'other.mp3', uri: 'file://other.mp3', type: 'music' as const, createdAt: 1 },
+    ];
+
+    const next = setAudioCategoryInLibrary(library, file, 'music');
+
+    expect(next[0]).toMatchObject({ id: 'bgm', type: 'music' });
+    expect(next[1]).toBe(library[1]);
+  });
+
+  // `voice` and `ambient` both mean "sound" here; flattening them to `sfx`
+  // would throw away a distinction the reader still uses.
+  it('leaves a voice entry alone when told it is a sound', () => {
+    const library = [{ id: 'bgm', name: 'bgm.mp3', uri: 'file://bgm.mp3', type: 'voice' as const, createdAt: 1 }];
+
+    expect(setAudioCategoryInLibrary(library, file, 'sound')).toBe(library);
+  });
+
+  it('matches an entry by URI when the file has no asset id', () => {
+    const library = [{ id: 'legacy', name: 'bgm.mp3', uri: 'file://bgm.mp3', type: 'sfx' as const, createdAt: 1 }];
+
+    const next = setAudioCategoryInLibrary(library, { ...file, assetId: undefined }, 'music');
+
+    expect(next).toHaveLength(1);
+    expect(next[0]).toMatchObject({ id: 'legacy', type: 'music' });
+  });
+
+  it('outranks both the scenes and the file name in the gallery', () => {
+    const built = build({
+      mediaLibrary: [asset({ id: 'bgm', name: 'main-theme.mp3', type: 'audio', uri: 'file://bgm.mp3' })],
+      mediaAssetIdsByStory: { 'story-1': ['bgm'] },
+      scenes: [scene('s1', [step('m', 'music', { mode: 'track', assetId: 'bgm' })])],
+      audioLibrary: setAudioCategoryInLibrary(
+        [],
+        { assetId: 'bgm', uri: 'file://bgm.mp3', name: 'main-theme.mp3', addedAt: 1 },
+        'sound',
+      ),
+    });
+
+    expect(built.audios[0].audioCategory).toBe('sound');
   });
 });

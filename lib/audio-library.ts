@@ -7,6 +7,7 @@
  * violation (lib/ should not import from stores/).
  */
 
+import { guessAudioCategoryFromName } from './audio-category';
 import type { AudioLibraryItem } from './audio-types';
 import { ErrorHandler, ErrorCategory } from '@/lib/error-handler';
 import { generateId } from './id-utils';
@@ -27,15 +28,12 @@ export function getAudioLibraryPure(
   }
 }
 
+/** Best guess at what a file is from its name alone. */
 function inferAudioItemType(name: string): AudioLibraryItem['type'] {
-  const normalizedName = name.toLowerCase();
-  if (normalizedName.includes('voice')) {
+  if (name.toLowerCase().includes('voice')) {
     return 'voice';
   }
-  if (normalizedName.includes('music') || normalizedName.includes('theme') || normalizedName.includes('bgm')) {
-    return 'music';
-  }
-  return 'sfx';
+  return guessAudioCategoryFromName(name) === 'music' ? 'music' : 'sfx';
 }
 
 function mediaAssetToAudioItem(asset: LibraryAsset): AudioLibraryItem | null {

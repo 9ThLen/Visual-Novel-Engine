@@ -1,6 +1,7 @@
 /**
- * The two rails above the grid: image/video tabs, then the filter row where
- * character portraits sit next to the usage filters.
+ * The two rails above the grid: the media type tabs, then the filter row where
+ * character portraits (images) or the two audio categories sit next to the
+ * usage filters.
  */
 
 import React from 'react';
@@ -10,13 +11,18 @@ import { ResolvedAssetImage } from '@/components/resolved-asset-image';
 import { useI18n } from '@/hooks/use-i18n';
 import type { ThemeColorPalette } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
-import type { CharacterMediaFilter, ImageFilter, MediaKind } from '@/lib/story-media-gallery';
+import type {
+  AudioCategory,
+  CharacterMediaFilter,
+  ImageFilter,
+  MediaKind,
+} from '@/lib/story-media-gallery';
 
 export function sameFilter(a: ImageFilter, b: ImageFilter): boolean {
   if (a.kind !== b.kind) return false;
-  return a.kind === 'character' && b.kind === 'character'
-    ? a.characterId === b.characterId
-    : true;
+  if (a.kind === 'character' && b.kind === 'character') return a.characterId === b.characterId;
+  if (a.kind === 'audioCategory' && b.kind === 'audioCategory') return a.category === b.category;
+  return true;
 }
 
 /** Initials stand in for a character with no sprite to show yet. */
@@ -29,10 +35,16 @@ export function initialsOf(name: string): string {
     .join('') || '?';
 }
 
+const TAB_LABELS: Record<MediaKind, string> = {
+  image: 'mediaLibrary.tab.images',
+  video: 'mediaLibrary.tab.videos',
+  audio: 'mediaLibrary.tab.audio',
+};
+
 interface TabsProps {
   colors: ThemeColorPalette;
   kind: MediaKind;
-  counts: { images: number; videos: number };
+  counts: { images: number; videos: number; audios: number };
   onChange: (kind: MediaKind) => void;
 }
 
@@ -40,8 +52,9 @@ export function MediaTypeTabs({ colors, kind, counts, onChange }: TabsProps) {
   const { t } = useI18n();
   return (
     <View style={[styles.tabs, { backgroundColor: colors.background }]}>
-      {(['image', 'video'] as MediaKind[]).map((value) => {
+      {(['image', 'video', 'audio'] as MediaKind[]).map((value) => {
         const active = value === kind;
+        const count = value === 'image' ? counts.images : value === 'video' ? counts.videos : counts.audios;
         return (
           <Pressable
             key={value}
@@ -51,9 +64,9 @@ export function MediaTypeTabs({ colors, kind, counts, onChange }: TabsProps) {
             style={[styles.tab, active && { backgroundColor: colors['surface-1'] }]}
           >
             <Text style={[typeScale.label, { color: active ? colors.foreground : colors.muted }]}>
-              {t(value === 'image' ? 'mediaLibrary.tab.images' : 'mediaLibrary.tab.videos')}
+              {t(TAB_LABELS[value])}
               {'  '}
-              {value === 'image' ? counts.images : counts.videos}
+              {count}
             </Text>
           </Pressable>
         );
@@ -66,8 +79,13 @@ interface FilterRailProps {
   colors: ThemeColorPalette;
   filter: ImageFilter;
   counts: { all: number; used: number; unused: number };
-  /** Empty for the video tab: the model does not tie clips to characters. */
+  /** Empty for the video and audio tabs: the model ties neither to characters. */
   characters: CharacterMediaFilter[];
+  /**
+   * Empty off the audio tab. Music and sound are the two roles a timeline has
+   * for audio, so they are the audio tab's answer to the character chips.
+   */
+  audioCategories?: { category: AudioCategory; count: number }[];
   /**
    * Whether usage is known yet. While it is not, "used" and "unused" are not
    * two halves of the library — everything falls into "unused" because the
@@ -77,7 +95,15 @@ interface FilterRailProps {
   onChange: (filter: ImageFilter) => void;
 }
 
-export function MediaFilterRail({ colors, filter, counts, characters, usageReady, onChange }: FilterRailProps) {
+export function MediaFilterRail({
+  colors,
+  filter,
+  counts,
+  characters,
+  audioCategories = [],
+  usageReady,
+  onChange,
+}: FilterRailProps) {
   const { t } = useI18n();
 
   const chip = (
@@ -91,7 +117,9 @@ export function MediaFilterRail({ colors, filter, counts, characters, usageReady
     const active = sameFilter(filter, value);
     return (
       <Pressable
-        key={`${value.kind}:${value.kind === 'character' ? value.characterId : ''}`}
+        key={`${value.kind}:${
+          value.kind === 'character' ? value.characterId : value.kind === 'audioCategory' ? value.category : ''
+        }`}
         onPress={() => onChange(value)}
         disabled={disabled}
         accessibilityRole="button"
@@ -116,8 +144,18 @@ export function MediaFilterRail({ colors, filter, counts, characters, usageReady
   };
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.railScroll}
+      contentContainerStyle={styles.rail}
+    >
       {chip({ kind: 'all' }, t('mediaLibrary.filter.all'), counts.all)}
+      {audioCategories.map(({ category, count }) => chip(
+        { kind: 'audioCategory', category },
+        t(`mediaLibrary.filter.${category}`),
+        count,
+      ))}
       {chip({ kind: 'used' }, t('mediaLibrary.filter.used'), counts.used, undefined, undefined, !usageReady)}
       {chip({ kind: 'unused' }, t('mediaLibrary.filter.unused'), counts.unused, undefined, undefined, !usageReady)}
       {characters.map((character) => chip(
@@ -142,7 +180,13 @@ export function MediaFilterRail({ colors, filter, counts, characters, usageReady
 const styles = StyleSheet.create({
   tabs: { flexDirection: 'row', padding: 3, borderRadius: radius.md, gap: 3 },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 44, borderRadius: radius.sm },
-  rail: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.xs },
+  // A ScrollView grows by default (flexGrow: 1), so in the library's column the
+  // rail would take half the screen from the grid and stretch every chip down
+  // with it. The rail is one row tall: it takes exactly the height it needs.
+  railScroll: { flexGrow: 0, flexShrink: 0 },
+  // Cross-axis centring keeps the chips at their own height even when the rail
+  // is given more room than a single row.
+  rail: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

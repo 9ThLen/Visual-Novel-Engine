@@ -16,6 +16,7 @@ import { MEDIA_INSPECTOR_WIDTH, MediaInspector, type UsageState } from '@/compon
 import { ScreenContainer } from '@/components/screen-container';
 import { ConfirmDialog } from '@/components/ui';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { useAudioPreview } from '@/hooks/useAudioPreview';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { resolveAssetUri } from '@/lib/asset-resolver';
@@ -25,8 +26,11 @@ import {
   setDefaultSprite,
   spriteNameFromFileName,
 } from '@/lib/character-media';
+import { setAudioCategoryInLibrary, type AudioCategory } from '@/lib/audio-category';
 import { spacing, radius, typeScale } from '@/lib/design-tokens';
+import { pickAudioFromDevice } from '@/lib/pick-audio';
 import { pickImageFromDevice } from '@/lib/pick-image';
+import { pickVideoFromDevice } from '@/lib/pick-video';
 import { isBackgroundRemovalSupported, removeImageBackground } from '@/lib/remove-background';
 import {
   buildStoryMediaGallery,
@@ -58,11 +62,14 @@ export default function StoryGalleryRoute() {
   const mediaLibrary = useAppStore((state) => state.mediaLibrary);
   const imageAssetIdsByStory = useAppStore((state) => state.imageAssetIdsByStory);
   const mediaAssetIdsByStory = useAppStore((state) => state.mediaAssetIdsByStory);
+  const audioLibraries = useAppStore((state) => state.audioLibraries);
   const characters = useAppStore((state) => storyId ? state.characterLibraries[storyId] ?? [] : []);
   const hydrate = useAppStore((state) => state.hydrateSceneRecordsForStory);
   const addImage = useAppStore((state) => state.addImageAssetToStory);
+  const addMedia = useAppStore((state) => state.addMediaAssetToStory);
   const removeImage = useAppStore((state) => state.removeImageAssetFromStory);
   const removeMedia = useAppStore((state) => state.removeMediaAssetFromStory);
+  const setAudioLibrary = useAppStore((state) => state.setAudioLibrary);
   const setCharacterLibrary = useAppStore((state) => state.setCharacterLibrary);
 
   const [kind, setKind] = useState<MediaKind>('image');
@@ -71,6 +78,9 @@ export default function StoryGalleryRoute() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<StoryMediaItem | null>(null);
   const [removingBackgroundKey, setRemovingBackgroundKey] = useState<string | null>(null);
+  // One player for the screen: the grid tiles and the inspector drive the same
+  // controller, so two files can never sound at once.
+  const preview = useAudioPreview();
 
   /**
    * Scene records arrive asynchronously, and until they do every file looks
@@ -123,11 +133,14 @@ export default function StoryGalleryRoute() {
       mediaAssetIdsByStory,
       characters,
       scenes,
+      audioLibrary: storyId ? audioLibraries[storyId] : undefined,
     }),
-    [characters, imageAssetIdsByStory, mediaAssetIdsByStory, mediaLibrary, scenes, storyId],
+    [audioLibraries, characters, imageAssetIdsByStory, mediaAssetIdsByStory, mediaLibrary, scenes, storyId],
   );
 
-  const source = kind === 'image' ? gallery.images : gallery.videos;
+  const source = kind === 'image'
+    ? gallery.images
+    : kind === 'video' ? gallery.videos : gallery.audios;
   const visible = useMemo(() => filterMediaItems(source, filter, query), [filter, query, source]);
   const selected = useMemo(
     () => visible.find((item) => item.key === selectedKey) ?? null,
@@ -137,6 +150,17 @@ export default function StoryGalleryRoute() {
   // Character filters belong to images only: the store does not associate clips
   // with characters, and inventing that link would be a new data model.
   const characterFilters = kind === 'image' ? gallery.characterFilters : [];
+  // Music and sound are what the audio tab has instead: the two roles a
+  // timeline actually plays a file in.
+  const audioCategories = useMemo(
+    () => kind === 'audio'
+      ? ([
+        { category: 'music' as const, count: source.filter((item) => item.audioCategory === 'music').length },
+        { category: 'sound' as const, count: source.filter((item) => item.audioCategory === 'sound').length },
+      ])
+      : [],
+    [kind, source],
+  );
   const counts = useMemo(() => ({
     all: source.length,
     used: source.filter((item) => item.usage.enabled + item.usage.disabled > 0).length,
@@ -147,20 +171,80 @@ export default function StoryGalleryRoute() {
     setKind(next);
     setFilter({ kind: 'all' });
     setSelectedKey(null);
-  }, []);
+    // Leaving the audio tab has to silence it: the tile that was playing is
+    // about to be unmounted, and nothing else offers a way to stop it.
+    preview.stop();
+  }, [preview]);
 
+  const handleTogglePlayback = useCallback(
+    (item: StoryMediaItem) => preview.toggle({ key: item.key, assetId: item.assetId, uri: item.uri }),
+    [preview],
+  );
+
+  /**
+   * What `+` adds is whatever the open tab shows. It used to pick an image
+   * whichever tab was open, so on the video tab it added something the tab
+   * could not even display.
+   */
   const handleAdd = useCallback(async () => {
     if (!storyId) return;
-    try {
-      const picked = await pickImageFromDevice();
-      if (!picked) return;
-      const asset = await addAssetToLibrary(picked.uri, picked.name, 'image');
-      addImage(storyId, asset.id);
-      showToast(t('storyHome.imageAdded'), 'success');
-    } catch {
-      showToast(t('storyHome.imageAddFailed'), 'error');
+    if (kind === 'image') {
+      try {
+        const picked = await pickImageFromDevice();
+        if (!picked) return;
+        const asset = await addAssetToLibrary(picked.uri, picked.name, 'image');
+        addImage(storyId, asset.id);
+        showToast(t('storyHome.imageAdded'), 'success');
+      } catch {
+        showToast(t('storyHome.imageAddFailed'), 'error');
+      }
+      return;
     }
-  }, [addImage, storyId, t]);
+
+    if (kind === 'audio') {
+      const picked = await pickAudioFromDevice();
+      if (picked.status === 'cancelled') return;
+      if (picked.status !== 'picked') {
+        showToast(t(`mediaLibrary.audio.${picked.status}`), 'error');
+        return;
+      }
+      try {
+        const asset = await addAssetToLibrary(picked.audio.uri, picked.audio.name, 'audio', {
+          mimeType: picked.audio.mimeType,
+          size: picked.audio.size,
+          durationSeconds: picked.audio.durationSeconds,
+        });
+        addMedia(storyId, asset.id);
+        showToast(t('mediaLibrary.audio.added'), 'success');
+      } catch {
+        showToast(t('mediaLibrary.audio.addFailed'), 'error');
+      } finally {
+        // The object URL only had to survive the copy into storage.
+        picked.audio.release?.();
+      }
+      return;
+    }
+
+    const picked = await pickVideoFromDevice();
+    if (picked.status === 'cancelled') return;
+    if (picked.status !== 'picked') {
+      showToast(t(`mediaLibrary.video.${picked.status}`), 'error');
+      return;
+    }
+    try {
+      const asset = await addAssetToLibrary(picked.video.uri, picked.video.name, 'video', {
+        mimeType: picked.video.mimeType,
+        size: picked.video.size,
+        durationSeconds: picked.video.durationSeconds,
+      });
+      addMedia(storyId, asset.id);
+      showToast(t('mediaLibrary.video.added'), 'success');
+    } catch {
+      showToast(t('mediaLibrary.video.addFailed'), 'error');
+    } finally {
+      picked.video.release?.();
+    }
+  }, [addImage, addMedia, kind, storyId, t]);
 
   const handleRemoveBackground = useCallback(async (item: StoryMediaItem) => {
     if (!storyId || removingBackgroundKey) return;
@@ -183,12 +267,38 @@ export default function StoryGalleryRoute() {
   const handleConfirmRemoval = useCallback(() => {
     const assetId = pendingRemoval?.assetId;
     if (storyId && assetId) {
-      if (pendingRemoval?.kind === 'video') removeMedia(storyId, assetId);
-      else removeImage(storyId, assetId);
+      // Images have their own membership list; video and audio share
+      // `mediaAssetIdsByStory`.
+      if (pendingRemoval?.kind === 'image') removeImage(storyId, assetId);
+      else removeMedia(storyId, assetId);
+
+      if (pendingRemoval?.kind === 'audio') {
+        // The story's audio library is re-read into membership on every
+        // hydration, so a leftover entry would quietly bring the file back on
+        // the next launch. The entry describes a file of this story, and the
+        // file is the thing being removed.
+        const entries = useAppStore.getState().audioLibraries[storyId] ?? [];
+        const remaining = entries.filter(
+          (entry) => entry.id !== assetId && entry.uri !== pendingRemoval.uri,
+        );
+        if (remaining.length !== entries.length) setAudioLibrary(storyId, remaining);
+      }
       setSelectedKey(null);
     }
     setPendingRemoval(null);
-  }, [pendingRemoval, removeImage, removeMedia, storyId]);
+  }, [pendingRemoval, removeImage, removeMedia, setAudioLibrary, storyId]);
+
+  /**
+   * The author's answer outranks both the file name and the scenes, so it is
+   * stored rather than inferred — as an entry in the story's audio library,
+   * which is the source the gallery already trusts first.
+   */
+  const handleSetAudioCategory = useCallback((item: StoryMediaItem, category: AudioCategory) => {
+    if (!storyId) return;
+    const current = useAppStore.getState().audioLibraries[storyId] ?? [];
+    const next = setAudioCategoryInLibrary(current, item, category);
+    if (next !== current) setAudioLibrary(storyId, next);
+  }, [setAudioLibrary, storyId]);
 
   const handleOpenScene = useCallback((targetSceneId: string) => {
     if (!storyId) return;
@@ -285,9 +395,11 @@ export default function StoryGalleryRoute() {
       ? t('mediaLibrary.empty.character', {
           name: characterFilters.find((item) => item.characterId === filter.characterId)?.name ?? '',
         })
-      : filter.kind === 'used' || filter.kind === 'unused'
-        ? t(`mediaLibrary.empty.${filter.kind}`)
-        : t(kind === 'image' ? 'mediaLibrary.empty.images' : 'mediaLibrary.empty.videos');
+      : filter.kind === 'audioCategory'
+        ? t(`mediaLibrary.empty.${filter.category}`)
+        : filter.kind === 'used' || filter.kind === 'unused'
+          ? t(`mediaLibrary.empty.${filter.kind}`)
+          : t(`mediaLibrary.empty.${kind === 'image' ? 'images' : kind === 'video' ? 'videos' : 'audio'}`);
 
   return (
     <ScreenContainer>
@@ -335,6 +447,7 @@ export default function StoryGalleryRoute() {
             counts={counts}
             usageReady={usageReady}
             characters={characterFilters}
+            audioCategories={audioCategories}
             onChange={(next) => { setFilter(next); setSelectedKey(null); }}
           />
 
@@ -349,6 +462,9 @@ export default function StoryGalleryRoute() {
             emptyLabel={emptyLabel}
             onSelect={(item) => setSelectedKey(item.key)}
             reservedWidth={!isPhone && selected ? MEDIA_INSPECTOR_WIDTH : 0}
+            onTogglePlayback={kind === 'audio' ? handleTogglePlayback : undefined}
+            playingKey={preview.playingKey}
+            progress={preview.progress}
           />
         </View>
 
@@ -369,6 +485,11 @@ export default function StoryGalleryRoute() {
             onAttachToCharacter={handleAttachToCharacter}
             onDetachFromCharacter={handleDetachFromCharacter}
             onMakeDefaultSprite={handleMakeDefaultSprite}
+            onTogglePlayback={selected.kind === 'audio' ? handleTogglePlayback : undefined}
+            playing={preview.playingKey === selected.key}
+            progress={preview.progress}
+            playbackFailed={preview.failedKey === selected.key}
+            onSetAudioCategory={selected.kind === 'audio' ? handleSetAudioCategory : undefined}
           />
         ) : null}
       </View>

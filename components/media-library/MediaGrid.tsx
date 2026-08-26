@@ -79,15 +79,30 @@ interface TileProps {
   colors: ThemeColorPalette;
   selected: boolean;
   onPress: (item: StoryMediaItem) => void;
+  /** Audio only. Absent means the tile has no transport at all. */
+  onTogglePlayback?: (item: StoryMediaItem) => void;
+  playing?: boolean;
+  /** 0–1 through the track; only read while `playing`. */
+  progress?: number;
 }
 
-export const MediaTile = React.memo(function MediaTile({ item, size, colors, selected, onPress }: TileProps) {
+export const MediaTile = React.memo(function MediaTile({
+  item,
+  size,
+  colors,
+  selected,
+  onPress,
+  onTogglePlayback,
+  playing = false,
+  progress = 0,
+}: TileProps) {
   const { t } = useI18n();
   const owner = item.owners[0];
   const accent = owner?.color || colors.primary;
   const kindLabel = t(`mediaLibrary.kind.${item.kind}`);
+  const audible = item.kind === 'audio' && !!onTogglePlayback;
 
-  return (
+  const tile = (
     <Pressable
       onPress={() => onPress(item)}
       accessibilityRole="button"
@@ -105,7 +120,23 @@ export const MediaTile = React.memo(function MediaTile({ item, size, colors, sel
         },
       ]}
     >
-      {item.kind === 'video' ? (
+      {item.kind === 'audio' ? (
+        // Same problem as a clip, and worse: two files named sfx_03 and sfx_04
+        // are indistinguishable until you hear them. Hence the transport below
+        // — and, whether or not it is there, the category icon saying which of
+        // the two roles this file plays.
+        <View style={[
+          audible ? styles.audioPlaceholder : styles.videoPlaceholder,
+          { backgroundColor: colors.background },
+        ]}>
+          <IconSymbol
+            name={item.audioCategory === 'music' ? 'music' : 'sound'}
+            size={audible ? 18 : 28}
+            color={colors.muted}
+          />
+          <Text numberOfLines={2} style={[styles.videoName, { color: colors.muted }]}>{item.name}</Text>
+        </View>
+      ) : item.kind === 'video' ? (
         // A clip has no still frame to show: the asset carries no poster, and
         // handing an .mp4 to <Image> just renders an empty square. The name is
         // the only thing that tells two clips apart in a grid.
@@ -123,13 +154,41 @@ export const MediaTile = React.memo(function MediaTile({ item, size, colors, sel
           resizeMode={item.owners.length ? 'contain' : 'cover'}
         />
       )}
-      {item.kind === 'video' && item.durationSeconds !== undefined ? (
+      {item.kind !== 'image' && item.durationSeconds !== undefined ? (
         <View style={styles.videoBadge}>
           <Text style={styles.duration}>{formatDuration(item.durationSeconds)}</Text>
         </View>
       ) : null}
       {owner ? <View style={[styles.ownerDot, { backgroundColor: accent }]} /> : null}
     </Pressable>
+  );
+
+  if (!audible) return tile;
+
+  return (
+    // The transport is a sibling of the tile, not a child of it: a button inside
+    // a button is one control to a screen reader and invalid markup on web.
+    <View style={{ width: size, height: size }}>
+      {tile}
+      <Pressable
+        onPress={() => onTogglePlayback?.(item)}
+        accessibilityRole="button"
+        accessibilityLabel={t(playing ? 'mediaLibrary.audio.stop' : 'mediaLibrary.audio.play', { name: item.name })}
+        style={[styles.transport, { backgroundColor: colors['surface-1'], borderColor: colors.border }]}
+      >
+        <IconSymbol name={playing ? 'stop' : 'play'} size={22} color={colors.primary} />
+      </Pressable>
+      {playing ? (
+        <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+          <View
+            style={[
+              styles.progressFill,
+              { backgroundColor: colors.primary, width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%` },
+            ]}
+          />
+        </View>
+      ) : null}
+    </View>
   );
 });
 
@@ -143,6 +202,10 @@ interface MediaGridProps {
   onSelect: (item: StoryMediaItem) => void;
   /** Reserved width taken by a side inspector, so tiles size to what is left. */
   reservedWidth?: number;
+  /** Audio only; absent leaves the tiles without a transport. */
+  onTogglePlayback?: (item: StoryMediaItem) => void;
+  playingKey?: string | null;
+  progress?: number;
 }
 
 export function MediaGrid({
@@ -154,6 +217,9 @@ export function MediaGrid({
   emptyLabel,
   onSelect,
   reservedWidth = 0,
+  onTogglePlayback,
+  playingKey = null,
+  progress = 0,
 }: MediaGridProps) {
   const { t } = useI18n();
   const { width } = useWindowDimensions();
@@ -195,11 +261,16 @@ export function MediaGrid({
             colors={colors}
             selected={item.key === selectedKey}
             onPress={onSelect}
+            onTogglePlayback={onTogglePlayback}
+            playing={item.key === playingKey}
+            // Only the playing tile draws a bar, so the rest stay memo-stable
+            // while it ticks.
+            progress={item.key === playingKey ? progress : 0}
           />
         ))}
       </View>
     );
-  }, [colors, onSelect, rowHeight, selectedKey, t, tileSize]);
+  }, [colors, onSelect, onTogglePlayback, playingKey, progress, rowHeight, selectedKey, t, tileSize]);
 
   if (!items.length) {
     return <Text style={[styles.empty, { color: colors.muted }]}>{emptyLabel}</Text>;
@@ -226,6 +297,28 @@ const styles = StyleSheet.create({
   tile: { borderRadius: radius.md, overflow: 'hidden', borderWidth: 2 },
   image: { width: '100%', height: '100%' },
   videoPlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, padding: spacing.sm },
+  // The name sits under the transport rather than behind it.
+  audioPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.xs,
+    padding: spacing.sm,
+  },
+  transport: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: '22%',
+    width: 44,
+    height: 44,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progressTrack: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2 },
+  progressFill: { height: 2 },
   videoName: { ...typeScale.caption, textAlign: 'center' },
   videoBadge: {
     position: 'absolute',
