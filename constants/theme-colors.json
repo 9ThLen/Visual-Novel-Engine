@@ -189,27 +189,27 @@
   },
   "dialogue-bg": {
     "light": "rgba(253, 252, 249, 0.95)",
-    "dark": "rgba(15, 14, 23, 0.92)"
+    "dark": "rgba(23, 21, 18, 0.92)"
   },
   "name-bg": {
-    "light": "#7c5bf5",
-    "dark": "#9d7aff"
+    "light": "#67683F",
+    "dark": "#B0B08A"
   },
   "name-text": {
-    "light": "#ffffff",
-    "dark": "#ffffff"
+    "light": "#FFFFFF",
+    "dark": "#2B2A1F"
   },
   "choice-bg": {
-    "light": "rgba(124, 58, 237, 0.08)",
-    "dark": "rgba(124, 58, 237, 0.12)"
+    "light": "rgba(103, 104, 63, 0.08)",
+    "dark": "rgba(176, 176, 138, 0.12)"
   },
   "choice-border": {
-    "light": "#7c5bf5",
-    "dark": "#9d7aff"
+    "light": "#67683F",
+    "dark": "#B0B08A"
   },
   "choice-hover": {
-    "light": "rgba(124, 58, 237, 0.12)",
-    "dark": "rgba(124, 58, 237, 0.18)"
+    "light": "rgba(103, 104, 63, 0.12)",
+    "dark": "rgba(176, 176, 138, 0.18)"
   },
   "editor-canvas": {
     "light": "#F1EEE6",

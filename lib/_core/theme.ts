@@ -15,7 +15,7 @@ type SchemePaletteItem = SchemePalette[ColorScheme];
  * Convert oklch(L% C H[/ A]) to hex (#rrggbb) or rgba(r,g,b,a).
  * Passes non-oklch values through unchanged.
  */
-function oklchToRgb(input: string): string {
+export function oklchToRgb(input: string): string {
   const match = input.match(/^oklch\(\s*([\d.]+)%\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)$/);
   if (!match) return input;
 
@@ -30,10 +30,20 @@ function oklchToRgb(input: string): string {
   const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
   const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
 
-  let r = l_ * l_ * l_;
-  let g = m_ * m_ * m_;
-  let bl = s_ * s_ * s_;
+  const l = l_ * l_ * l_;
+  const m = m_ * m_ * m_;
+  const s = s_ * s_ * s_;
 
+  // The cubed cone responses are LMS, not RGB. Without this matrix every
+  // oklch() token renders as a desaturated near-neutral: danger comes out
+  // brown, success grey-olive, and the ten block colours of the editor
+  // collapse into three indistinguishable families.
+  let r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+  let g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+  let bl = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+
+  // Eleven of the palette's tokens sit just outside sRGB; clipping each
+  // channel is close enough at those distances and keeps the maths simple.
   r = Math.max(0, Math.min(1, r));
   g = Math.max(0, Math.min(1, g));
   bl = Math.max(0, Math.min(1, bl));

@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import themeTokens from '@/constants/theme-colors.json';
+import { parseColorToHex } from '@/lib/color-picker';
+import { evaluateThemeContrast } from '@/lib/theme-contrast';
 
 const GUARANTEED_SOURCE_TOKENS = [
   'background',
@@ -81,6 +83,42 @@ describe('runtime theme colors', () => {
     const surface = themeTokens.surface[scheme];
     for (const token of ['foreground', 'foreground-secondary', 'foreground-tertiary', 'primary', 'secondary', 'ai-accent', 'lego-audio'] as const) {
       expect(contrastRatio(themeTokens[token][scheme], surface), `${scheme}:${token} on surface`).toBeGreaterThanOrEqual(5);
+    }
+  });
+
+  it.each(['light', 'dark'] as const)('keeps the default reader theme above its own threshold in %s mode', (scheme) => {
+    // A story with no theme of its own reads on these. The speaker plate used
+    // to be white on a violet left over from an older identity, which scored
+    // 3.15 in dark mode - under the 4.5 this very app asks stories to clear.
+    const tokens = themeTokens as unknown as Record<string, Record<'light' | 'dark', string>>;
+    const readerTheme = {
+      dialogueBg: parseColorToHex(tokens['dialogue-bg'][scheme]),
+      dialogueText: parseColorToHex(tokens.foreground[scheme]),
+      nameBg: parseColorToHex(tokens['name-bg'][scheme]),
+      nameText: parseColorToHex(tokens['name-text'][scheme]),
+      // The choice pair is left out on purpose. Its background sits at 8-12%
+      // alpha, so scored on its own it is judged against bare black and white
+      // and always fails - but in the reader it stacks inside the dialogue
+      // panel, which is 92% opaque and does the covering. Recorded in
+      // STUDIO-UI-PLAN.md section 11.
+    };
+
+    expect(evaluateThemeContrast(readerTheme)).toEqual([]);
+  });
+
+  it('leaves no violet in the reader tokens, which the app is not themed on', () => {
+    const reader = ['name-bg', 'name-text', 'choice-bg', 'choice-border', 'choice-hover', 'dialogue-bg'] as const;
+    const tokens = themeTokens as unknown as Record<string, Record<'light' | 'dark', string>>;
+
+    for (const token of reader) {
+      for (const scheme of ['light', 'dark'] as const) {
+        const hex = parseColorToHex(tokens[token][scheme]);
+        expect(hex, `${scheme}:${token}`).toBeTruthy();
+        const [red, blue] = [1, 5].map((o) => Number.parseInt(hex!.slice(o, o + 2), 16));
+        // Violet reads as blue well ahead of red; the app's palette is warm,
+        // so red is never the channel that trails.
+        expect(blue - red, `${scheme}:${token} leans blue`).toBeLessThanOrEqual(4);
+      }
     }
   });
 
