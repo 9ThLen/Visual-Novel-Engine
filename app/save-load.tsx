@@ -3,9 +3,8 @@ import {
   View,
   Text,
   FlatList,
-  Image,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { ScreenContainer } from '@/components/screen-container';
 import { useAppStore } from '@/stores/use-app-store';
@@ -16,6 +15,7 @@ import { Button, ConfirmDialog, IconSymbol } from '@/components/ui';
 import { showToast } from '@/lib/toast-store';
 import { typeScale } from '@/lib/design-tokens';
 import { isQuickSaveSlotId } from '@/stores/app-store-slices/saves-slice';
+import { ShowcaseImage } from '@/components/showcase/ShowcaseImage';
 
 function ReservedSaveSlot({ slot, slotId, label, colors, t, onLoad, onDelete }: {
   slot: SaveSlot;
@@ -29,7 +29,7 @@ function ReservedSaveSlot({ slot, slotId, label, colors, t, onLoad, onDelete }: 
     <View style={[{ backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, marginBottom: 12, borderWidth: 1, overflow: 'hidden' }]}>
       {slot.thumbnailUri ? (
         <View className="relative">
-          <Image source={{ uri: slot.thumbnailUri }} className="w-full h-28"
+          <ShowcaseImage assetRef={slot.thumbnailUri} className="w-full h-28"
             style={{ backgroundColor: colors.background }} resizeMode="cover" />
           <View
             className="absolute bottom-0 left-0 right-0 h-15"
@@ -91,6 +91,7 @@ function ReservedSaveSlot({ slot, slotId, label, colors, t, onLoad, onDelete }: 
 
 export default function SaveLoadScreen() {
   const router = useRouter();
+  const { saveBlocked } = useLocalSearchParams<{ saveBlocked?: string | string[] }>();
   useFocusEffect(
     useCallback(() => {
       return () => {
@@ -103,14 +104,21 @@ export default function SaveLoadScreen() {
   const currentStoryId = useAppStore((state) => state.currentStoryId);
   const playbackState = useAppStore((state) => state.playbackState);
   const saveGame = useAppStore((state) => state.saveGame);
+  const readerBlockingMedia = useAppStore((state) => state.readerBlockingMedia);
   const loadGame = useAppStore((state) => state.loadGame);
   const deleteSaveSlot = useAppStore((state) => state.deleteSaveSlot);
   const hydrateSceneRecordsForStory = useAppStore((state) => state.hydrateSceneRecordsForStory);
   const [activeTab, setActiveTab] = useState<'save' | 'load'>('load');
   const [slotIdToDelete, setSlotIdToDelete] = useState<string | null>(null);
   const { t, language } = useI18n();
+  const saveBlockedByCutscene = readerBlockingMedia !== null
+    || (Array.isArray(saveBlocked) ? saveBlocked.includes('cutscene') : saveBlocked === 'cutscene');
 
   const handleSaveToSlot = useCallback(async (slotId: string) => {
+    if (saveBlockedByCutscene) {
+      showToast(t('save.blockedByCutscene'), 'info');
+      return;
+    }
     if (!currentStoryId || !playbackState) {
       showToast(t('save.noActiveStory'), 'error');
       return;
@@ -126,7 +134,7 @@ export default function SaveLoadScreen() {
     } catch {
       showToast(t('common.error'), 'error');
     }
-  }, [currentStoryId, playbackState, hydrateSceneRecordsForStory, saveGame, t]);
+  }, [currentStoryId, playbackState, hydrateSceneRecordsForStory, saveBlockedByCutscene, saveGame, t]);
 
   const handleLoadFromSlot = useCallback(async (slotId: string) => {
     const slot = saveSlots.find((s) => s.id === slotId);
@@ -187,8 +195,8 @@ export default function SaveLoadScreen() {
       <View style={[{ backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, marginBottom: 12, borderWidth: 1, overflow: 'hidden' }]}>
         {!isEmpty && item.thumbnailUri ? (
           <View className="relative">
-            <Image
-              source={{ uri: item.thumbnailUri }}
+            <ShowcaseImage
+              assetRef={item.thumbnailUri}
               className="w-full h-28"
               style={{ backgroundColor: colors.background }}
               resizeMode="cover"
@@ -353,12 +361,19 @@ export default function SaveLoadScreen() {
           variant={activeTab === 'save' ? 'primary' : 'secondary'}
           size="sm"
           onPress={() => setActiveTab('save')}
+          disabled={saveBlockedByCutscene}
           className="flex-1"
           accessibilityLabel={t('menu.save')}
         >
           {t('menu.save')}
         </Button>
       </View>
+
+      {saveBlockedByCutscene ? (
+        <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 16 }}>
+          {t('save.blockedByCutscene')}
+        </Text>
+      ) : null}
 
       {activeTab === 'load' && quickSaveSlots.length > 0 && (
         <View className="mb-4">

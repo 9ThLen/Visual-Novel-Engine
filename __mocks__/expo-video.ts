@@ -16,6 +16,16 @@ interface MockVideoPlayer {
   pause(): void;
 }
 
+let mockPlayStarts = true;
+
+export function setMockVideoPlayStarts(starts: boolean): void {
+  mockPlayStarts = starts;
+}
+
+export function resetMockVideoPlayer(): void {
+  mockPlayStarts = true;
+}
+
 export function useVideoPlayer(
   source: VideoSource,
   setup?: (player: MockVideoPlayer) => void,
@@ -36,7 +46,7 @@ export function useVideoPlayer(
       currentTime: 0,
       timeUpdateEventInterval: 0,
       keepScreenOnWhilePlaying: true,
-      play() { player.playing = true; },
+      play() { player.playing = mockPlayStarts; },
       pause() { player.playing = false; },
     };
     setupRef.current?.(player);

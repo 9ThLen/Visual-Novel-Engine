@@ -4,6 +4,7 @@ import {
   buildCanonicalLoadSnapshot,
   buildCanonicalSaveSlot,
   buildNextPlaybackState,
+  getReaderSceneStateThumbnailUri,
   getNextSceneId,
   getStartSceneId,
   getTimelineDisplayPages,
@@ -31,6 +32,33 @@ function makeScene(id: string, overrides: Partial<SceneRecord> = {}): SceneRecor
 }
 
 describe('reader-runtime', () => {
+  it('uses the poster of the background video that is active now', () => {
+    const base = { backgroundAssetId: 'static-bg' };
+    const backgroundVideo = {
+      stepId: 'video-1',
+      assetId: 'clip-1',
+      posterAssetId: 'poster-1',
+      layer: 'background' as const,
+      fit: 'cover' as const,
+      playbackRate: 1,
+      muted: true,
+      volume: 0,
+      loop: true,
+      skippableAfterMs: null,
+    };
+
+    expect(getReaderSceneStateThumbnailUri({ ...base, activeVideo: backgroundVideo })).toBe('poster-1');
+    expect(getReaderSceneStateThumbnailUri({
+      ...base,
+      activeVideo: { ...backgroundVideo, stepId: 'video-2', posterAssetId: 'poster-2' },
+    })).toBe('poster-2');
+    expect(getReaderSceneStateThumbnailUri({ ...base, activeVideo: null })).toBe('static-bg');
+    expect(getReaderSceneStateThumbnailUri({
+      ...base,
+      activeVideo: { ...backgroundVideo, posterAssetId: null },
+    })).toBe('static-bg');
+  });
+
   it('resolves metadata start scene before isStart fallback', () => {
     const scenes = {
       a: toReaderScene(makeScene('a', { isStart: true })),
@@ -149,6 +177,11 @@ describe('reader-runtime', () => {
 
     const slot = buildCanonicalSaveSlot('slot-1', snapshot, playbackState);
     expect(slot?.variables).toEqual({ flag: true, score: 7 });
+
+    expect(buildCanonicalSaveSlot('slot-poster', snapshot, playbackState, 'poster-active')?.thumbnailUri)
+      .toBe('poster-active');
+    expect(buildCanonicalSaveSlot('slot-no-visual', snapshot, playbackState, null)?.thumbnailUri)
+      .toBeUndefined();
 
     const loaded = slot ? buildCanonicalLoadSnapshot(snapshot, slot) : null;
     expect(loaded?.playbackState.variables).toEqual({ flag: true, score: 7 });

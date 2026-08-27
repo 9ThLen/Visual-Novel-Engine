@@ -9,9 +9,8 @@ import type {
 } from '@/lib/engine/types';
 import type { SceneImageState } from '@/hooks/useSceneImages';
 import type { InteractiveObject } from '@/lib/interactive-types';
-import type { StoryMetadata } from '@/lib/story-domain';
-import type { PlaybackState, RuntimeVariables } from '@/lib/engine/runtime-types';
-import type { SaveSlot } from '@/lib/story-domain';
+import type { SaveSlot, StoryMetadata } from '@/lib/story-domain';
+import type { PlaybackState, RuntimeVariables, SceneState } from '@/lib/engine/runtime-types';
 import { toSaveSlotMeta, type ReaderScene } from '@/lib/reader-scene';
 
 export interface ReaderChoice {
@@ -145,6 +144,17 @@ export function normalizeRuntimeVariables(variables: unknown): RuntimeVariables 
   return { ...(variables as RuntimeVariables) };
 }
 
+/** Stable thumbnail reference for what the reader is actually rendering now. */
+export function getReaderSceneStateThumbnailUri(
+  sceneState: Pick<SceneState, 'activeVideo' | 'backgroundAssetId'>,
+): string | null {
+  const activeVideo = sceneState.activeVideo;
+  if (activeVideo?.layer === 'background' && activeVideo.posterAssetId) {
+    return activeVideo.posterAssetId;
+  }
+  return sceneState.backgroundAssetId ?? null;
+}
+
 export function buildNextPlaybackState(
   previous: PlaybackState,
   sceneId: string,
@@ -165,6 +175,7 @@ export function buildCanonicalSaveSlot(
   slotId: string,
   snapshot: ReaderRuntimeSnapshot,
   playbackState: PlaybackState,
+  activeThumbnailUri?: string | null,
 ): SaveSlot | null {
   const metadata = snapshot.storiesMetadata.find((story) => story.id === playbackState.storyId);
   const scene = snapshot.sceneRecordsByStory[playbackState.storyId]?.[playbackState.currentSceneId];
@@ -179,7 +190,9 @@ export function buildCanonicalSaveSlot(
     variables: normalizeRuntimeVariables(playbackState.variables),
     timestamp: Date.now(),
     sceneName: sceneMeta.sceneName,
-    thumbnailUri: sceneMeta.thumbnailUri,
+    thumbnailUri: activeThumbnailUri === undefined
+      ? sceneMeta.thumbnailUri
+      : activeThumbnailUri ?? undefined,
     storyTitle: metadata.title,
     sceneText: sceneMeta.sceneText,
     playTime: 0,

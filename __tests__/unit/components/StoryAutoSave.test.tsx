@@ -32,6 +32,7 @@ describe('StoryAutoSave', () => {
       currentStoryId: null,
       playbackState: null,
       readerBlockingMedia: null,
+      readerSceneThumbnailUri: undefined,
       saveSlots: [],
       syncAutoSave: vi.fn(),
     });
@@ -66,6 +67,7 @@ describe('StoryAutoSave', () => {
         variables: { flag: true },
       },
       syncAutoSave,
+      readerSceneThumbnailUri: 'poster-active',
     });
 
     render(<StoryAutoSave />);
@@ -81,6 +83,7 @@ describe('StoryAutoSave', () => {
       storyTitle: 'Active story',
       sceneName: 'scene-1',
       variables: { flag: true },
+      thumbnailUri: 'poster-active',
     }));
   });
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { act, render } from '@testing-library/react';
 import { SceneVideoLayer } from '@/components/reader/SceneVideoLayer';
 import type { RuntimeVideoState } from '@/lib/engine/runtime-types';
+import { resetMockVideoPlayer, setMockVideoPlayStarts } from '../../../__mocks__/expo-video';
 
 function videoState(overrides: Partial<RuntimeVideoState> = {}): RuntimeVideoState {
   return {
@@ -29,6 +30,12 @@ async function renderLayer(video = videoState()) {
 }
 
 describe('SceneVideoLayer', () => {
+  afterEach(() => {
+    resetMockVideoPlayer();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it('tells the clip to fill the layer instead of leaving it at its own size', async () => {
     const { container } = await renderLayer();
     const player = container.querySelector('VideoView');
@@ -47,5 +54,23 @@ describe('SceneVideoLayer', () => {
   it('passes the authored fit through to the player', async () => {
     const { container } = await renderLayer(videoState({ fit: 'contain' }));
     expect(container.querySelector('VideoView')?.getAttribute('contentFit')).toBe('contain');
+  });
+
+  it('keeps rejected autoplay recoverable instead of reporting a fatal error', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setMockVideoPlayStarts(false);
+    const onPlaybackError = vi.fn();
+    const video = videoState({ layer: 'cutscene', muted: false, loop: false });
+    const view = render(<SceneVideoLayer video={video} onPlaybackError={onPlaybackError} />);
+    await act(async () => { await Promise.resolve(); });
+
+    act(() => vi.advanceTimersByTime(1200));
+
+    expect(onPlaybackError).not.toHaveBeenCalled();
+    expect(view.container.querySelector('VideoView')).toBeNull();
+
+    view.rerender(<SceneVideoLayer video={video} onPlaybackError={onPlaybackError} playRequest={1} />);
+    expect(view.container.querySelector('VideoView')).not.toBeNull();
   });
 });

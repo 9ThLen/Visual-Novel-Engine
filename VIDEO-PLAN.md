@@ -24,7 +24,7 @@
 3. **Один видимий `VideoView` у MVP.** Новий background `play` замінює попередній відеофон, а background `stop` прибирає його та відкриває поточний статичний `backgroundAssetId`. Катсцена тимчасово призупиняє активний відеофон і автоматично відновлює його після complete/Skip/recoverable error. Одночасно декодується лише один ролик.
 4. **Не зберігати playback-об'єкти.** У `TimelineStep.data` і `SceneState` дозволені лише серіалізовані ID та параметри. URI, Blob, `VideoPlayer`, currentTime, callbacks і timestamps там заборонені.
 5. **Не хешувати великий ролик під час імпорту.** Для video не читати весь файл у base64 і не рахувати поточний строковий hash. Збіг `name + size` є лише попередженням про можливий дублікат, а не доказом ідентичності.
-6. **Ліміт MVP:** повторно використати `STORY_BACKUP_LIMITS.maxObjectBytes` (зараз 64 MiB). Це продуктове обмеження, яке editor показує до відкриття picker та повторює біля вибраного файла. Більший файл відхиляється до читання bytes. Це зберігає сумісність із `.vnebackup`.
+6. **Ліміт MVP:** повторно використати `STORY_BACKUP_LIMITS.maxObjectBytes` (зараз 64 MiB). Це продуктове обмеження, яке editor показує до відкриття picker та повторює біля вибраного файла. Web і native з відомим provider size відхиляють більший файл до app-managed copy; коли provider не повертає size, media service перевіряє одну контрольовану копію та видаляє її при перевищенні. Це зберігає сумісність із `.vnebackup`.
 7. **Гарантований формат:** MP4 (`video/mp4`, H.264 + AAC). Інші контейнери не обіцяються до окремої platform matrix.
 8. **Збереження під час катсцени:** Quick Save, manual save і autosave блокуються, доки активна блокуюча катсцена. SaveSlot зараз не зберігає step index, тому часткове відновлення ролика не додається в MVP.
 9. **Rollback не переграє катсцену.** Video halt не потрапляє до rollback stack. Після завершення/Skip rollback повертає до попереднього текстового yield-point.
@@ -209,7 +209,7 @@ Gate лишається **закритим**: тестовий MP4 жодног�
   - повністю заборонити `data:` URI;
   - не виконувати `readAsStringAsync(...Base64)` fallback;
   - при помилці copy повертати чесну помилку та прибирати partial target.
-- Перевіряти size до читання bytes. Файл понад 64 MiB відхиляти з локалізованим повідомленням.
+- Перевіряти reported size до app-managed copy. Якщо size невідомий, перевіряти фактичний розмір однієї контрольованої копії та видаляти завеликий файл. В обох випадках показувати локалізоване повідомлення.
 - До picker показувати постійну підказку «MP4 до 64 MiB» з коротким поясненням, що це приблизно 1–2 хвилини 1080p за помірного bitrate. Після вибору одразу показувати фактичний size та статус limit check, не чекаючи помилки під час save/backup.
 - Не об'єднувати assets лише за `name + size`; це лише duplicate warning.
 
@@ -224,7 +224,7 @@ Gate лишається **закритим**: тестовий MP4 жодног�
 
 - Web `File` зберігається без data URI.
 - Native copy failure не переходить до base64.
-- 100+ MiB fake file відхиляється до читання body/bytes і не викликає OOM.
+- 100+ MiB fake web file або native file із reported size відхиляється до body/app-managed copy; native file без size відхиляється після однієї disk copy без base64 і OOM.
 - Однакові name+size з різними URI не дедуплікуються автоматично.
 - Backup/restore повертає video asset з правильним kind та MIME.
 - Poster reference не позначається unused, додає image asset до story membership і переживає backup/restore разом із відео.
@@ -487,7 +487,7 @@ graphify update .
 | 8 | Save/autosave не створюються посеред blocking cutscene | ✅ ephemeral `readerBlockingMedia` |
 | 9 | Plate save/load, текстова серіалізація, JSON і `.vnebackup` зберігають video step | ✅ |
 | 10 | Poster має image reference, membership, backup coverage і save-slot thumbnail | ✅ |
-| 11 | Завеликий файл відхиляється до читання bytes; допустимий не копіюється через base64 | ✅ |
+| 11 | Завеликий файл відхиляється до app-managed copy за наявного size або після однієї контрольованої disk copy без base64 | ✅ |
 | 12 | Автор бачить ліміт до picker і фактичний size одразу після вибору | ✅ |
 | 13 | Story Doctor розрізняє missing video, background, audio, poster і неправильні timing | ✅ |
 | 14 | Старі історії та всі image/audio сценарії сумісні | ✅ |

@@ -99,6 +99,31 @@ describe('app store slices', () => {
     expect(harness.state.playbackState).toBeNull();
   });
 
+  it('keeps a reader thumbnail within the scene and clears it when playback moves', () => {
+    const harness = createSliceHarness();
+    const slice = createPlaybackSlice(harness.set);
+    const sceneOne = {
+      storyId: 'story-1',
+      currentSceneId: 'scene-1',
+      isPlaying: true,
+      currentDialogueIndex: 0,
+      choicesMade: [],
+      variables: {},
+    };
+
+    slice.updatePlaybackState(sceneOne);
+    harness.set({ readerSceneThumbnailUri: 'poster-active' });
+    slice.updatePlaybackState({ ...sceneOne, currentDialogueIndex: 1 });
+    expect(harness.state.readerSceneThumbnailUri).toBe('poster-active');
+
+    slice.updatePlaybackState({ ...sceneOne, currentSceneId: 'scene-2' });
+    expect(harness.state.readerSceneThumbnailUri).toBeUndefined();
+
+    harness.set({ readerSceneThumbnailUri: 'poster-scene-2' });
+    slice.updatePlaybackState(null);
+    expect(harness.state.readerSceneThumbnailUri).toBeUndefined();
+  });
+
   it('normalizes settings updates and stores language changes', () => {
     const harness = createSliceHarness();
     const slice = createPreferencesSlice(harness.set);
@@ -272,6 +297,44 @@ describe('app store slices', () => {
 
     expect(slice.saveGame('slot-1')).toBe(false);
     expect(harness.state.saveSlots).toEqual([]);
+  });
+
+  it('does not create a manual save while a cutscene blocks the reader', () => {
+    const harness = createSliceHarness();
+    const slice = createSavesSlice(harness.set, harness.get);
+    harness.set({ readerBlockingMedia: { stepId: 'video-1', kind: 'cutscene' } });
+
+    expect(slice.saveGame('slot-1')).toBe(false);
+    expect(harness.state.saveSlots).toEqual([]);
+  });
+
+  it('uses the thumbnail reference supplied by the active reader state', () => {
+    const harness = createSliceHarness();
+    const slice = createSavesSlice(harness.set, harness.get);
+    harness.set({
+      currentStoryId: 'story-1',
+      playbackState: {
+        storyId: 'story-1',
+        currentSceneId: 'scene-1',
+        isPlaying: true,
+        currentDialogueIndex: 0,
+        choicesMade: [],
+        variables: {},
+      },
+      readerSceneThumbnailUri: 'poster-active',
+      storiesMetadata: [{
+        id: 'story-1',
+        title: 'Story',
+        startSceneId: 'scene-1',
+        createdAt: 1,
+        updatedAt: 1,
+        sceneCount: 1,
+      }],
+      sceneRecordsByStory: { 'story-1': { 'scene-1': makeSceneRecord('scene-1') } },
+    });
+
+    expect(slice.saveGame('slot-1')).toBe(true);
+    expect(harness.state.saveSlots[0]?.thumbnailUri).toBe('poster-active');
   });
 
   it('replaces autosave and deletes save slots', () => {

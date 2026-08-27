@@ -25,12 +25,13 @@ export type PickVideoResult =
   | { status: 'unsupportedType'; mimeType: string };
 
 function mimeTypeForName(name: string, declared?: string | null): string {
-  if (declared) return declared;
+  if (declared && declared !== 'application/octet-stream') return declared;
   return name.toLowerCase().endsWith('.mp4') ? 'video/mp4' : '';
 }
 
 /**
- * Reject before any bytes are read, so an oversized clip never hits memory.
+ * Reject before the media service reads/copies bytes, so a known-oversized clip
+ * never enters the JS heap or the app's media directory.
  * An unknown size cannot be judged here — the media service re-checks the
  * copied file, which is the only measure that cannot be wrong.
  */
@@ -98,7 +99,10 @@ async function pickVideoNative(): Promise<PickVideoResult> {
   const DocumentPicker = await import('expo-document-picker');
   const result = await DocumentPicker.getDocumentAsync({
     type: 'video/mp4',
-    copyToCacheDirectory: true,
+    // Read provider metadata first. The media service performs the one
+    // app-managed copy after type/size validation; copying here would duplicate
+    // a large clip into cache before we have a chance to reject it.
+    copyToCacheDirectory: false,
     multiple: false,
   });
   if (result.canceled || !result.assets?.[0]) return { status: 'cancelled' };
@@ -124,7 +128,8 @@ async function pickVideoNative(): Promise<PickVideoResult> {
 
 /**
  * Open the platform picker for an MP4 and return a reference the media library
- * can persist. Format and size are checked before any bytes are read.
+ * can persist. Format and reported size are checked before the app copies the
+ * file; when size is absent, the media service verifies its controlled copy.
  */
 export function pickVideoFromDevice(): Promise<PickVideoResult> {
   return Platform.OS === 'web' ? pickVideoWeb() : pickVideoNative();

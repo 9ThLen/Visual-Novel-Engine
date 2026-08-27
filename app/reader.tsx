@@ -20,7 +20,7 @@ import { useReaderInitialization } from '@/hooks/useReaderInitialization';
 import { buttonFeedback } from '@/lib/ui-feedback';
 import { parseResumeExisting } from '@/lib/reader-launch';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { buildNextPlaybackState, getTimelineInteractiveObjects, normalizeRuntimeVariables, type ReaderTransitionEvent } from '@/lib/reader-runtime';
+import { buildNextPlaybackState, getReaderSceneStateThumbnailUri, getTimelineInteractiveObjects, normalizeRuntimeVariables, type ReaderTransitionEvent } from '@/lib/reader-runtime';
 import { normalizeUserSettings } from '@/lib/user-settings';
 import { createInMemorySceneAccess } from '@/lib/scene-access';
 import { getReaderSceneRecordForNavigation } from '@/lib/reader-scene-cache';
@@ -87,6 +87,7 @@ export default function ReaderScreen() {
   // it here is what keeps the finale on screen instead of exiting instantly.
   const [finaleEnding, setFinaleEnding] = useState<{ sceneId: string; endingsSeen: number } | null>(null);
   const recordEndingReached = useAppStore((s) => s.recordEndingReached);
+  const setReaderSceneThumbnailUri = useAppStore((s) => s.setReaderSceneThumbnailUri);
   const pendingChoiceRef = useRef<{ sceneId: string; choiceId: string; stepId: string | null; targetSceneId: string | null } | null>(null);
   const latestVariablesRef = useRef<RuntimeVariables>({});
   // Scene-entry snapshots for cross-scene rollback. Each entry is the
@@ -250,7 +251,8 @@ export default function ReaderScreen() {
   const handleSceneStateChange = useCallback((sceneState: SceneState) => {
     latestVariablesRef.current = normalizeRuntimeVariables(sceneState.variables);
     setReaderSceneState(sceneState);
-  }, []);
+    setReaderSceneThumbnailUri(getReaderSceneStateThumbnailUri(sceneState));
+  }, [setReaderSceneThumbnailUri]);
 
   // Per-scene reader state, dropped on every scene entry — including a load
   // that re-enters the current scene, which is what keeps overlay state from

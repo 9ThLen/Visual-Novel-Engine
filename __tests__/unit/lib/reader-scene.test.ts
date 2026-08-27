@@ -71,6 +71,27 @@ describe('reader-scene projections', () => {
     });
   });
 
+  it('does not guess an active video from authoring order', () => {
+    const timeline: TimelineStep[] = [
+      {
+        id: 'bg-1',
+        blockType: 'background',
+        data: { assetId: 'asset-bg', transition: 'fade', duration: 1000 },
+        collapsed: false,
+        enabled: true,
+      },
+      {
+        id: 'video-1',
+        blockType: 'video',
+        data: { mode: 'play', layer: 'background', assetId: 'clip-1', posterAssetId: 'poster-1' },
+        collapsed: false,
+        enabled: true,
+      },
+    ];
+
+    expect(toSaveSlotMeta(toReaderScene(makeScene({ timeline }))).thumbnailUri).toBe('asset-bg');
+  });
+
   // Zustand selectors compare snapshots by identity: a fresh projection per
   // call makes useSyncExternalStore report a change on every render, and the
   // reader dies with "Maximum update depth exceeded".

@@ -159,6 +159,23 @@ describe('video asset import', () => {
       expect(mockDeleteAsync).toHaveBeenCalled();
     });
 
+    it('rejects a non-MP4 file before the native copy starts', async () => {
+      mockGetInfoAsync.mockResolvedValue({ exists: false, size: 0 });
+
+      await expect(
+        addAssetToLibraryPure('file:///cache/clip.webm', 'clip.webm', 'video', [], {
+          mimeType: 'video/webm',
+          size: 1024,
+        }),
+      ).rejects.toThrow(/only MP4/i);
+      expect(mockCopyAsync).not.toHaveBeenCalled();
+
+      await expect(
+        addAssetToLibraryPure('content://provider/clip', 'clip.webm', 'video', [], { size: 1024 }),
+      ).rejects.toThrow(/only MP4/i);
+      expect(mockCopyAsync).not.toHaveBeenCalled();
+    });
+
     it('records the measured size of an accepted clip', async () => {
       stageCopy(4096);
 

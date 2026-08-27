@@ -211,7 +211,9 @@ export function SceneVideoLayer({
       if (backgrounded.current || player.playing) return;
       setPlaybackBlocked(true);
       const message = `Playback did not start for video asset ${video.assetId}`;
-      reportError(message);
+      // Rejected autoplay is recoverable from the viewer's next gesture. Do
+      // not report it as a fatal playback error: a cutscene would replace its
+      // Tap-to-play action with Continue and silently skip the clip.
       if (__DEV__) console.warn('[SceneVideoLayer]', message);
     }, PLAYBACK_START_GRACE_MS);
     return () => clearTimeout(timer);
