@@ -3,10 +3,13 @@ import { expect, test, type Page } from '@playwright/test';
 const validToken = 'ai-e2e-token';
 
 async function openStoryFromStudio(page: Page, title: string): Promise<void> {
-  const storyIndex = title === 'The Forgotten Library' ? 0 : 1;
-  const editButton = page.getByRole('button', { name: 'Edit', exact: true }).nth(storyIndex);
-  await expect(editButton).toBeVisible();
-  await editButton.click();
+  // On the studio shelf a card is one button named after its story, and it opens
+  // the project page — no per-card «Edit» button any more. The wide featured
+  // card splits its tap target in two, hence `.first()`; addressing the card by
+  // name also drops the old positional guess about which story sits where.
+  const card = page.getByRole('button', { name: title, exact: true }).first();
+  await expect(card).toBeVisible();
+  await card.click();
   await expect(page.getByRole('button', { name: 'Edit novel', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Edit novel', exact: true }).click();
 }
