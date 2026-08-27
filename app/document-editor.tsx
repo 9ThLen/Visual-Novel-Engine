@@ -73,6 +73,7 @@ export default function DocumentEditorRoute() {
   const reorderScenes = useAppStore((state) => state.reorderScenes);
   const deleteScene = useAppStore((state) => state.deleteScene);
   const updateStoryMetadata = useAppStore((state) => state.updateStoryMetadata);
+  const noteSceneOpened = useAppStore((state) => state.noteSceneOpened);
   const branchSelections = useBranchSelections(useMemo(() => selectBranchSelections(storyId), [storyId]));
   const selectChoiceOption = useBranchSelections((state) => state.selectChoiceOption);
   const viewMode = useBranchSelections(useMemo(() => selectDocumentViewMode(storyId), [storyId]));
@@ -161,6 +162,17 @@ export default function DocumentEditorRoute() {
       setCurrentStory(storyId);
     }
   }, [setCurrentStory, storyId]);
+
+  // Every hop between scenes rewrites the route params, so this is the honest
+  // record of where the author stopped — it is what the studio's «Continue»
+  // reopens on the next visit.
+  // Gated on `isLoaded`: persist rehydration replaces the whole state a beat
+  // after mount, so anything written before it lands is silently thrown away.
+  useEffect(() => {
+    if (isLoaded && storyId && sceneId) {
+      noteSceneOpened(storyId, sceneId);
+    }
+  }, [isLoaded, noteSceneOpened, sceneId, storyId]);
 
   useEffect(() => {
     let cancelled = false;

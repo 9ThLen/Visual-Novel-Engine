@@ -42,6 +42,7 @@ export type AppStorePersistenceState = {
   imageAssetIdsByStory: StoryImageAssetIds;
   mediaAssetIdsByStory: StoryMediaAssetIds;
   endingsReachedByStory: Record<string, string[]>;
+  lastEditedSceneByStory: Record<string, string>;
 };
 
 export const MAX_DATA_URI_ASSET_BYTES = 256 * 1024;
@@ -182,6 +183,10 @@ export function buildPersistedAppState(state: AppStorePersistenceState): AppStor
     // Which endings a reader has reached is progress, not cache: losing it would
     // silently re-ask for a review and reset their collection.
     endingsReachedByStory: state.endingsReachedByStory,
+    // Where the author stopped writing. Cheap to lose (the shelf falls back to
+    // the start scene), but losing it on every relaunch is exactly the case
+    // «Continue» exists for.
+    lastEditedSceneByStory: state.lastEditedSceneByStory,
   };
 }
 

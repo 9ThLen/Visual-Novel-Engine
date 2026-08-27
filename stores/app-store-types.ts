@@ -42,6 +42,12 @@ export interface AppState {
   /** storyId → ids of terminal scenes the reader has reached. */
   endingsReachedByStory: Record<string, string[]>;
   /**
+   * storyId → the scene the author last had open in the document editor. Drives
+   * the studio's «Continue»; a stale id is harmless because the shelf falls back
+   * to the start scene when the scene is gone.
+   */
+  lastEditedSceneByStory: Record<string, string>;
+  /**
    * Set while the reader is blocked on media that owns the screen — currently a
    * cutscene. Saving mid-clip would produce a slot nobody can resume from
    * unambiguously, so saves stand down while it is set.
@@ -70,6 +76,8 @@ export interface AppActions {
   createStory: (title: string) => { storyId: string; sceneId: string };
   deleteStory: (storyId: string) => void;
   updateStoryMetadata: (storyId: string, updates: Partial<StoryMetadata>) => void;
+  /** Records where the author is in a story's manuscript; see `lastEditedSceneByStory`. */
+  noteSceneOpened: (storyId: string, sceneId: string) => void;
   deleteScene: (storyId: string, sceneId: string) => void;
   setLanguage: (lang: Language) => void;
   setCharacterLibrary: (storyId: string, characters: Character[]) => void;
