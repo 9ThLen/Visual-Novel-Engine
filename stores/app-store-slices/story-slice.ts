@@ -12,6 +12,12 @@ export interface StorySlice {
   createStory: (title: string) => { storyId: string; sceneId: string };
   deleteStory: (storyId: string) => void;
   updateStoryMetadata: (storyId: string, updates: Partial<StoryMetadata>) => void;
+  /**
+   * Remember which scene the author had open in the document editor, so the
+   * studio's «Continue» reopens the manuscript where they left it rather than
+   * always at scene one.
+   */
+  noteSceneOpened: (storyId: string, sceneId: string) => void;
 }
 
 export function createStorySlice(
@@ -50,12 +56,14 @@ export function createStorySlice(
         const { [storyId]: ___, ...hydrationRest } = s.sceneRecordHydration;
         const { [storyId]: ____, ...imageAssetIdsRest } = s.imageAssetIdsByStory;
         const { [storyId]: _____, ...mediaAssetIdsRest } = s.mediaAssetIdsByStory;
+        const { [storyId]: ______, ...lastEditedRest } = s.lastEditedSceneByStory;
         return {
           storiesMetadata: s.storiesMetadata.filter((m) => m.id !== storyId),
           sceneRecordsByStory: recordRest,
           sceneRecordHydration: hydrationRest,
           imageAssetIdsByStory: imageAssetIdsRest,
           mediaAssetIdsByStory: mediaAssetIdsRest,
+          lastEditedSceneByStory: lastEditedRest,
         };
       });
     },
@@ -66,5 +74,16 @@ export function createStorySlice(
           m.id === storyId ? { ...m, ...updates, updatedAt: Date.now() } : m
         ),
       })),
+
+    noteSceneOpened: (storyId, sceneId) =>
+      set((s) =>
+        // Fires on every editor navigation, so bail out when nothing changes:
+        // a fresh object here would re-render every subscriber for nothing.
+        s.lastEditedSceneByStory[storyId] === sceneId
+          ? {}
+          : {
+              lastEditedSceneByStory: { ...s.lastEditedSceneByStory, [storyId]: sceneId },
+            },
+      ),
   };
 }

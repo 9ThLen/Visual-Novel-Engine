@@ -1,7 +1,13 @@
 /**
- * A project card for the Story Editor. Each story gets a small cover (real
- * thumbnail or the same warm seeded poster the showcase uses, so the two
- * screens feel like one product), a scene-count pill, and quiet actions.
+ * A project card for the studio shelf.
+ *
+ * The cover leads, because a shelf is scanned by covers; under it the card says
+ * only what you need to choose between projects — how much is written, whether
+ * anything is broken, and how long ago you were here. Everything else about the
+ * story lives one tap away on the project page.
+ *
+ * The wide `featured` variant is the same card, not a second component: it is
+ * the project you were last editing, so it gets the room for «Continue».
  *
  * Uses useColors() — this is an author-facing screen and must follow the
  * editor's theme, unlike the always-dark showcase.
@@ -11,209 +17,455 @@ import React, { memo, useCallback, useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ShowcaseImage } from '@/components/showcase/ShowcaseImage';
-import { Button } from '@/components/ui';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
+import { radius, spacing, typeScale } from '@/lib/design-tokens';
+import { describeUpdatedAt, type StudioProject } from '@/lib/editor/story-library';
 import { Fonts, withAlpha } from '@/lib/_core/theme';
 import { posterFallbackForSeed } from '@/lib/showcase/story-showcase';
-import type { StoryMetadata } from '@/lib/story-domain';
 
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});
+/**
+ * Keyed by the app's language, not the browser's: a card that says «edited» in
+ * English next to a date in the OS locale reads as two different products.
+ */
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+function dateFormatterFor(language: string): Intl.DateTimeFormat {
+  const cached = dateFormatters.get(language);
+  if (cached) return cached;
+  const formatter = new Intl.DateTimeFormat(language, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  dateFormatters.set(language, formatter);
+  return formatter;
+}
 
 export interface EditorStoryCardProps {
-  story: StoryMetadata;
-  onEdit: (story: StoryMetadata) => void;
-  onDelete: (storyId: string) => void;
+  project: StudioProject;
+  /** Carries «Continue» — the project the author was last editing. */
+  featured?: boolean;
+  /** Whether there is room to lay the featured card out in two columns. */
+  wide?: boolean;
+  now: number;
+  onOpen: (storyId: string) => void;
+  onContinue: (project: StudioProject) => void;
+  onMenu: (project: StudioProject) => void;
 }
 
 export const EditorStoryCard = memo(function EditorStoryCard({
-  story,
-  onEdit,
-  onDelete,
+  project,
+  featured = false,
+  wide = false,
+  now,
+  onOpen,
+  onContinue,
+  onMenu,
 }: EditorStoryCardProps) {
   const colors = useColors();
-  const { t } = useI18n();
+  const { t, pluralize, language } = useI18n();
   const [hovered, setHovered] = useState(false);
 
-  const fallback = useMemo(() => posterFallbackForSeed(story.id), [story.id]);
-  const initial = story.title.trim().charAt(0).toUpperCase() || '?';
-  const tags = (story.tags ?? []).slice(0, 3);
+  const fallback = useMemo(() => posterFallbackForSeed(project.id), [project.id]);
+  const initial = project.title.trim().charAt(0).toUpperCase() || '?';
+  const tags = project.tags.slice(0, 3);
 
-  const handleEdit = useCallback(() => onEdit(story), [onEdit, story]);
-  const handleDelete = useCallback(() => onDelete(story.id), [onDelete, story.id]);
+  const handleOpen = useCallback(() => onOpen(project.id), [onOpen, project.id]);
+  const handleContinue = useCallback(() => onContinue(project), [onContinue, project]);
+  const handleMenu = useCallback(() => onMenu(project), [onMenu, project]);
+
+  const stats = useMemo(() => {
+    const scenesLabel = pluralize(
+      project.scenes,
+      t('editor.sceneOne'),
+      t('editor.sceneFew'),
+      t('editor.sceneMany'),
+    );
+    if (project.words === null || project.choices === null) {
+      return t('editor.cardStatsPending', { scenes: project.scenes, scenesLabel });
+    }
+    return t('editor.cardStats', {
+      scenes: project.scenes,
+      scenesLabel,
+      words: project.words.toLocaleString(),
+      wordsLabel: pluralize(project.words, t('editor.wordOne'), t('editor.wordFew'), t('editor.wordMany')),
+      choices: project.choices,
+      choicesLabel: pluralize(
+        project.choices,
+        t('editor.choiceOne'),
+        t('editor.choiceFew'),
+        t('editor.choiceMany'),
+      ),
+    });
+  }, [pluralize, project.choices, project.scenes, project.words, t]);
+
+  const status = useMemo(() => {
+    if (project.status === 'pending') return null;
+    if (project.status === 'issues') {
+      return {
+        color: colors.warning,
+        label: t('editor.statusIssues', {
+          count: project.issueCount,
+          label: pluralize(
+            project.issueCount,
+            t('editor.issueOne'),
+            t('editor.issueFew'),
+            t('editor.issueMany'),
+          ),
+        }),
+      };
+    }
+    if (project.status === 'ready') {
+      return { color: colors.success, label: t('editor.statusReady') };
+    }
+    return { color: colors['foreground-tertiary'], label: t('editor.statusDraft') };
+  }, [colors, pluralize, project.issueCount, project.status, t]);
+
+  const edited = useMemo(() => {
+    const relative = describeUpdatedAt(project.updatedAt, now);
+    switch (relative.unit) {
+      case 'justNow':
+        return t('editor.editedWhen', { when: t('editor.timeJustNow') });
+      case 'minutes':
+        return t('editor.editedWhen', { when: t('editor.timeMinutes', { count: relative.count }) });
+      case 'hours':
+        return t('editor.editedWhen', { when: t('editor.timeHours', { count: relative.count }) });
+      case 'yesterday':
+        return t('editor.editedWhen', { when: t('editor.timeYesterday') });
+      case 'days':
+        return t('editor.editedWhen', {
+          when: t('editor.timeDays', {
+            count: relative.count,
+            label: pluralize(relative.count, t('editor.dayOne'), t('editor.dayFew'), t('editor.dayMany')),
+          }),
+        });
+      default:
+        return t('editor.editedWhen', {
+          when: dateFormatterFor(language).format(new Date(project.updatedAt)),
+        });
+    }
+  }, [language, now, pluralize, project.updatedAt, t]);
 
   const hoverProps =
     Platform.OS === 'web'
       ? { onHoverIn: () => setHovered(true), onHoverOut: () => setHovered(false) }
       : {};
 
+  // One narrow column has no room for two: the featured card keeps «Continue»
+  // but stacks like every other card.
+  const spread = featured && wide;
+
+  const cover = (
+    <View style={[styles.cover, spread && styles.coverFeatured, { backgroundColor: fallback.bg }]}>
+      <Text style={[styles.coverInitial, { color: fallback.ink }]}>{initial}</Text>
+      {project.coverUri ? (
+        <ShowcaseImage assetRef={project.coverUri} style={styles.coverImage} resizeMode="cover" />
+      ) : null}
+      <View
+        style={[styles.coverEdge, { borderColor: withAlpha(fallback.ink, 0.18) }]}
+        pointerEvents="none"
+      />
+    </View>
+  );
+
+  const body = (
+    <View style={[styles.body, spread && styles.bodyFeatured]}>
+      <Text
+        style={[styles.title, spread && styles.titleFeatured, { color: colors.foreground }]}
+        numberOfLines={2}
+      >
+        {project.title}
+      </Text>
+      <Text style={[styles.stats, { color: colors['foreground-secondary'] }]} numberOfLines={1}>
+        {stats}
+      </Text>
+      <View style={styles.metaRow}>
+        {status ? (
+          <View style={styles.status}>
+            <View style={[styles.statusDot, { backgroundColor: status.color }]} />
+            <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
+          </View>
+        ) : null}
+        <Text style={[styles.edited, { color: colors['foreground-tertiary'] }]} numberOfLines={1}>
+          {edited}
+        </Text>
+      </View>
+      {tags.length > 0 ? (
+        <View style={styles.tagRow}>
+          {tags.map((tag) => (
+            <View key={tag} style={[styles.tag, { borderColor: colors['border-subtle'] }]}>
+              <Text style={[styles.tagText, { color: colors['foreground-tertiary'] }]} numberOfLines={1}>
+                {tag}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+
+  const actions = (
+    <View style={[styles.featuredActions, spread && styles.featuredActionsSpread]}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={handleContinue}
+        style={({ pressed }) => [
+          styles.primaryAction,
+          { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+        ]}
+      >
+        <Text style={[styles.primaryActionText, { color: colors['foreground-on-primary'] }]}>
+          {t('editor.continueEditing')}
+        </Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        onPress={handleOpen}
+        style={({ pressed }) => [
+          styles.ghostAction,
+          { borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
+        ]}
+      >
+        <Text style={[styles.ghostActionText, { color: colors.foreground }]}>
+          {t('editor.projectOverview')}
+        </Text>
+      </Pressable>
+    </View>
+  );
+
   return (
     <View
       style={[
         styles.card,
+        spread && styles.cardFeatured,
         {
           backgroundColor: colors.surface,
-          borderColor: hovered ? withAlpha(colors.primary, 0.55) : colors.border,
+          borderColor: hovered ? withAlpha(colors.primary, 0.55) : colors['border-subtle'],
         },
         hovered && Platform.OS === 'web' ? styles.cardHover : null,
       ]}
     >
-      {/* The clickable region — cover + info. Actions live OUTSIDE it so we never
-          nest an interactive control inside another (invalid HTML on web). */}
+      {/* The whole card opens the project page. The menu and the featured
+          actions are siblings of this Pressable, never children: an interactive
+          element inside another is invalid HTML on web. */}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={story.title}
-        onPress={handleEdit}
+        accessibilityLabel={project.title}
+        onPress={handleOpen}
         {...hoverProps}
-        style={styles.hitArea}
+        style={spread ? styles.hitAreaFeatured : styles.hitArea}
       >
-        <View style={[styles.cover, { backgroundColor: fallback.bg }]}>
-          <Text style={[styles.coverInitial, { color: fallback.ink }]}>{initial}</Text>
-          <View
-            style={[styles.coverBorder, { borderColor: withAlpha(fallback.ink, 0.18) }]}
-            pointerEvents="none"
-          />
-          {story.thumbnailUri ? (
-            <ShowcaseImage assetRef={story.thumbnailUri} style={styles.coverImage} resizeMode="cover" />
-          ) : null}
-        </View>
-
-        <View style={styles.body}>
-          <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={1}>
-            {story.title}
-          </Text>
-
-          <View style={styles.metaRow}>
-            <View style={[styles.pill, { backgroundColor: withAlpha(colors.secondary, 0.16) }]}>
-              <Text style={[styles.pillText, { color: colors.secondary }]}>
-                {t('editor.sceneCount', { count: story.sceneCount })}
-              </Text>
-            </View>
-            <Text style={[styles.updated, { color: colors.muted }]} numberOfLines={1}>
-              {t('common.updated')} {dateFormatter.format(new Date(story.updatedAt))}
-            </Text>
-          </View>
-
-          {tags.length > 0 ? (
-            <View style={styles.tagRow}>
-              {tags.map((tag) => (
-                <View key={tag} style={[styles.tag, { borderColor: colors.border }]}>
-                  <Text style={[styles.tagText, { color: colors.muted }]} numberOfLines={1}>
-                    {tag}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-        </View>
+        {cover}
+        {spread ? null : body}
       </Pressable>
 
-      <View style={styles.actions}>
-        <Button variant="primary" size="sm" onPress={handleEdit}>
-          {t('common.edit')}
-        </Button>
-        <Button variant="ghost" size="sm" onPress={handleDelete}>
-          {t('common.delete')}
-        </Button>
+      {featured ? (
+        spread ? (
+          <View style={styles.featuredColumn}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={project.title}
+              onPress={handleOpen}
+              {...hoverProps}
+            >
+              {body}
+            </Pressable>
+            {actions}
+          </View>
+        ) : (
+          actions
+        )
+      ) : null}
+
+      {/* Anchored to the cover's box rather than the card's, so the button sits
+          on the artwork in both the tall and the wide layout. */}
+      <View
+        style={[styles.menuAnchor, spread && styles.menuAnchorFeatured]}
+        pointerEvents="box-none"
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${t('editor.moreActions')} — ${project.title}`}
+          onPress={handleMenu}
+          hitSlop={6}
+          style={({ pressed }) => [styles.menuButton, { opacity: pressed ? 0.7 : 1 }]}
+        >
+          <IconSymbol name="more" size={18} color="#FFFFFF" />
+        </Pressable>
       </View>
     </View>
   );
 });
 
-const COVER_WIDTH = 76;
-const COVER_HEIGHT = Math.round((COVER_WIDTH * 3) / 2);
-
 const styles = StyleSheet.create({
   card: {
-    padding: 14,
-    borderRadius: 16,
+    borderRadius: radius.xl,
     borderWidth: 1,
-    gap: 12,
-    ...(Platform.OS === 'web' ? ({ transitionProperty: 'border-color, transform', transitionDuration: '160ms' } as object) : null),
+    overflow: 'hidden',
+    position: 'relative',
+    ...(Platform.OS === 'web'
+      ? ({ transitionProperty: 'border-color, transform', transitionDuration: '160ms' } as object)
+      : null),
+  },
+  cardFeatured: {
+    flexDirection: 'row',
   },
   cardHover: {
     transform: [{ translateY: -2 }],
   },
   hitArea: {
-    flexDirection: 'row',
-    gap: 14,
-    alignItems: 'flex-start',
+    flex: 1,
+  },
+  hitAreaFeatured: {
+    width: '44%',
+  },
+  featuredColumn: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingBottom: spacing.lg,
   },
   cover: {
-    width: COVER_WIDTH,
-    height: COVER_HEIGHT,
-    borderRadius: 10,
-    overflow: 'hidden',
+    aspectRatio: 3 / 2,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  coverFeatured: {
+    aspectRatio: undefined,
+    height: '100%',
+    minHeight: 208,
   },
   coverImage: {
     ...StyleSheet.absoluteFillObject,
     width: '100%',
     height: '100%',
   },
-  coverBorder: {
+  coverEdge: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 10,
     borderWidth: 1,
   },
   coverInitial: {
-    fontSize: 40,
+    fontSize: 52,
     fontFamily: Fonts.serif,
     fontWeight: '700',
   },
   body: {
-    flex: 1,
-    gap: 8,
-    minWidth: 0,
+    padding: spacing.md,
+    paddingTop: spacing.md,
+    gap: spacing.xs + 2,
+  },
+  bodyFeatured: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    gap: spacing.sm,
   },
   title: {
-    fontSize: 18,
-    lineHeight: 24,
-    fontWeight: '800',
+    fontFamily: Fonts.serif,
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: '700',
+  },
+  titleFeatured: {
+    fontSize: 25,
+    lineHeight: 31,
+  },
+  stats: {
+    ...typeScale.caption,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
     flexWrap: 'wrap',
   },
-  pill: {
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 999,
+  status: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
   },
-  pillText: {
-    fontSize: 12,
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: radius.full,
+  },
+  statusText: {
+    ...typeScale.caption,
     fontWeight: '700',
   },
-  updated: {
-    fontSize: 12,
-    fontWeight: '600',
+  edited: {
+    ...typeScale.caption,
     flexShrink: 1,
   },
   tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: spacing.xs + 2,
   },
   tag: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 1,
+    borderRadius: radius.sm,
     borderWidth: 1,
   },
   tagText: {
-    fontSize: 11,
-    fontWeight: '600',
+    ...typeScale.micro,
   },
-  actions: {
+  featuredActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  featuredActionsSpread: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 0,
+  },
+  primaryAction: {
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm + 2,
+  },
+  primaryActionText: {
+    ...typeScale.label,
+    fontWeight: '800',
+  },
+  ghostAction: {
+    borderRadius: radius.full,
+    borderWidth: 1,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+  },
+  ghostActionText: {
+    ...typeScale.label,
+    fontWeight: '700',
+  },
+  menuAnchor: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'flex-end',
+    padding: spacing.sm,
+  },
+  menuAnchorFeatured: {
+    right: undefined,
+    width: '44%',
+  },
+  menuButton: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // The cover behind it is a photo or a dark seeded plate in either theme, so
+    // this scrim is deliberately not a theme token.
+    backgroundColor: 'rgba(0, 0, 0, 0.42)',
   },
 });

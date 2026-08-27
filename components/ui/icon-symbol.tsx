@@ -32,6 +32,7 @@ const MAPPING = {
   duplicate: "content-copy",
   close: "close",
   menu: "menu",
+  more: "more-horiz",
   search: "search",
   list: "format-list-bulleted",
   link: "link",

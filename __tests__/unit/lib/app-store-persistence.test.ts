@@ -118,6 +118,7 @@ function makeState(): AppStorePersistenceState {
     imageAssetIdsByStory: {},
     mediaAssetIdsByStory: {},
     endingsReachedByStory: { 'story-1': ['scene-1'] },
+    lastEditedSceneByStory: { 'story-1': 'scene-1' },
   };
 }
 

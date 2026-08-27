@@ -3,10 +3,22 @@ import { expect, test, type Page } from '@playwright/test';
 const validToken = 'ai-e2e-token';
 
 async function openStoryFromStudio(page: Page, title: string): Promise<void> {
-  const storyIndex = title === 'The Forgotten Library' ? 0 : 1;
-  const editButton = page.getByRole('button', { name: 'Edit', exact: true }).nth(storyIndex);
-  await expect(editButton).toBeVisible();
-  await editButton.click();
+  // Wait for the shelf before looking for a card: the showcase we came from
+  // also labels its posters with story titles, so querying too early matches a
+  // poster clipped inside a horizontal rail and then times out clicking it.
+  // «New story» exists on the shelf in every state and nowhere on the showcase.
+  await expect(page.getByRole('button', { name: 'New story', exact: true }).first()).toBeVisible();
+
+  // A card is one button named after its story, and it opens the project page —
+  // no per-card «Edit» button any more. `visible: true` keeps us off any poster
+  // the previous screen left mounted underneath; the wide featured card splits
+  // its tap target between cover and body, hence `.first()`.
+  const card = page
+    .getByRole('button', { name: title, exact: true })
+    .filter({ visible: true })
+    .first();
+  await expect(card).toBeVisible();
+  await card.click();
   await expect(page.getByRole('button', { name: 'Edit novel', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Edit novel', exact: true }).click();
 }
