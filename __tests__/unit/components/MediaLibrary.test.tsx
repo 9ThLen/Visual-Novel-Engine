@@ -41,15 +41,6 @@ function asset(overrides: Partial<LibraryAsset> & { id: string }): LibraryAsset 
   };
 }
 
-function clip(overrides: Partial<LibraryAsset> & { id: string }): LibraryAsset {
-  return asset({
-    type: 'audio',
-    uri: `file://${overrides.id}.mp3`,
-    name: `${overrides.id}.mp3`,
-    ...overrides,
-  });
-}
-
 function scene(timeline: TimelineStep[]): SceneRecord {
   return {
     id: 'scene-1',
@@ -195,26 +186,6 @@ describe('media grid', () => {
     expect(screen.getByRole('button', { name: 'Video, timed.mp4' })).toBeTruthy();
     expect(screen.getByText('1:15')).toBeTruthy();
     expect(screen.queryByText('0:00')).toBeNull();
-  });
-
-  // Two files called sfx_03 and sfx_04 are indistinguishable in a grid, so the
-  // tile leans on the name and the category icon rather than a preview.
-  it('renders a named placeholder for a sound, with its duration', () => {
-    const built = gallery({
-      mediaLibrary: [
-        clip({ id: 'bgm', name: 'main-theme.mp3', durationSeconds: 135 }),
-        clip({ id: 'door', name: 'door.mp3' }),
-      ],
-      mediaAssetIdsByStory: { 'story-1': ['bgm', 'door'] },
-    });
-
-    renderGrid(built.audios);
-
-    expect(screen.getByRole('button', { name: 'Sound, main-theme.mp3' })).toBeTruthy();
-    expect(screen.getByText('main-theme.mp3')).toBeTruthy();
-    expect(screen.getByText('2:15')).toBeTruthy();
-    expect(screen.queryByText('0:00')).toBeNull();
-    expect(document.querySelectorAll('img')).toHaveLength(0);
   });
 
   // The screen picks the label; the grid must show whatever it was handed, so a

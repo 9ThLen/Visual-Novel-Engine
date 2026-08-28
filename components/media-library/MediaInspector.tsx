@@ -21,6 +21,7 @@ import { useI18n } from '@/hooks/use-i18n';
 import { acquireResolvedAssetUri } from '@/lib/asset-resolver';
 import type { ThemeColorPalette } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
+import { formatBytes, formatDuration } from '@/lib/media-format';
 import {
   canDetachOwner,
   canRemoveFromStory,
@@ -28,18 +29,8 @@ import {
   type CharacterMediaFilter,
   type MediaOwner,
   type StoryMediaItem,
+  type UsageState,
 } from '@/lib/story-media-gallery';
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDuration(seconds: number): string {
-  const whole = Math.max(0, Math.round(seconds));
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
-}
 
 /**
  * Plays one clip, with none of the scene runtime's behaviour: no autoplay, no
@@ -123,15 +114,9 @@ export function MediaInspectorVideo({ item, colors }: { item: StoryMediaItem; co
   return <VideoView player={player} style={styles.video} nativeControls contentFit="contain" />;
 }
 
-/**
- * What the screen knows about where things are used.
- *
- * `pending` is the load still running; `unavailable` is a load that ended
- * without an answer — rejected, or finished without producing the story's
- * scenes. Both forbid the destructive actions, but they are different things to
- * say to an author, and saying "checking…" forever would be the wrong one.
- */
-export type UsageState = 'pending' | 'ready' | 'unavailable';
+// Defined with the gallery model it describes; re-exported here because the
+// screen and its panel both import it from the inspector.
+export type { UsageState };
 
 export /**
  * The audio transport: one button, the position in the track, and a slider to

@@ -1347,4 +1347,30 @@ describe('createEmbeddedScript', () => {
     delete (window as unknown as { __embeddedHarnessApi?: EmbeddedHarnessApi }).__embeddedHarnessApi;
     document.body.innerHTML = '';
   });
+
+  it('renders untrusted asset option values and labels as text', () => {
+    const malicious = '</option></select><img id="stored-xss" onerror="alert(1)">';
+    const harness = createVoidBlockHarness([{
+      id: `asset_${malicious}`,
+      name: malicious,
+      uri: `blob:${malicious}`,
+      assetUri: `assets/background/${malicious}`,
+    }]);
+
+    try {
+      const api = (window as unknown as { __embeddedHarnessApi: EmbeddedHarnessApi }).__embeddedHarnessApi;
+      const block = appendVoidBlock(
+        document.getElementById('editor')!,
+        'background_xss',
+        'background',
+        'background-block',
+      );
+      api.openBackgroundPopover(block, block);
+
+      expect(document.querySelector('#stored-xss')).toBeNull();
+      expect(document.querySelector('.background-popover')?.textContent).toContain(malicious);
+    } finally {
+      harness.cleanup();
+    }
+  });
 });

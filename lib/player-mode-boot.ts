@@ -12,6 +12,8 @@ import { StoryValidator } from '@/lib/story-validator';
 import { createBundledStorySyncPayload, upsertBundledStory } from '@/lib/bundled-story-upsert';
 import { StoryDomain, type CanonicalStory } from '@/lib/story-domain';
 
+const HYDRATION_TIMEOUT_MS = 10_000;
+
 /**
  * Seed the player-mode story into the store and return its id (for routing).
  * Handles both the canonical and the legacy story shapes, mirroring the demo
@@ -35,13 +37,19 @@ export function seedPlayerStory(config: PlayerConfig): string {
 
 /** Resolves once the persisted store has finished rehydrating. */
 function waitForHydration(): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (useAppStore.persist.hasHydrated()) {
       resolve();
       return;
     }
-    const unsub = useAppStore.persist.onFinishHydration(() => {
-      unsub();
+    let unsubscribe = () => {};
+    const timer = setTimeout(() => {
+      unsubscribe();
+      reject(new Error(`Player store hydration timed out after ${HYDRATION_TIMEOUT_MS}ms`));
+    }, HYDRATION_TIMEOUT_MS);
+    unsubscribe = useAppStore.persist.onFinishHydration(() => {
+      clearTimeout(timer);
+      unsubscribe();
       resolve();
     });
   });
@@ -66,7 +74,16 @@ export function ensurePlayerStorySeeded(config: PlayerConfig): Promise<string> {
       const id = seedPlayerStory(config);
       seededStoryId = id;
       return id;
-    })();
+    })().catch((error) => {
+      seedPromise = undefined;
+      throw error;
+    });
   }
   return seedPromise;
+}
+
+/** Test-only: reset the module-level seed cache between cases. */
+export function __resetPlayerModeBootForTests(): void {
+  seededStoryId = null;
+  seedPromise = undefined;
 }

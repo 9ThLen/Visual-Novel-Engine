@@ -16,7 +16,6 @@ export default function OAuthCallback() {
     code?: string;
     state?: string;
     error?: string;
-    sessionToken?: string;
   }>();
   const [status, setStatus] = useState<"processing" | "success" | "error">("processing");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -26,38 +25,6 @@ export default function OAuthCallback() {
     const handleCallback = async () => {
       if (__DEV__) console.log("[OAuth] Callback handler triggered");
       try {
-        if (params.sessionToken) {
-          if (__DEV__) console.log("[OAuth] Session token found in params");
-          await Auth.setSessionToken(params.sessionToken);
-
-          // Fetch user info from backend using the trusted session token
-          try {
-            const apiUser = await Api.getMe();
-            if (apiUser) {
-              const authUserInfo: Auth.User = {
-                id: apiUser.id,
-                openId: apiUser.openId,
-                name: apiUser.name,
-                email: apiUser.email,
-                loginMethod: apiUser.loginMethod,
-                lastSignedIn: new Date(apiUser.lastSignedIn || Date.now()),
-              };
-              await Auth.setUserInfo(authUserInfo);
-              if (__DEV__) console.log("[OAuth] User fetched:", { id: authUserInfo.id, openId: authUserInfo.openId });
-            }
-          } catch (err) {
-            // Non-fatal: user info will be empty, session token is still valid
-            if (__DEV__) console.warn("[OAuth] Failed to fetch user info from API:", err);
-          }
-
-          setStatus("success");
-          if (__DEV__) console.log("[OAuth] Web authentication successful");
-          timeoutIds.push(setTimeout(() => {
-            router.replace("/tabs");
-          }, 1000));
-          return;
-        }
-
         // Get URL from params or Linking
         let url: string | null = null;
 
@@ -88,7 +55,6 @@ export default function OAuthCallback() {
 
         let code: string | null = null;
         let state: string | null = null;
-        let sessionToken: string | null = null;
 
         if (params.code && params.state) {
           code = params.code;
@@ -98,11 +64,10 @@ export default function OAuthCallback() {
             const urlObj = new URL(url);
             code = urlObj.searchParams.get("code");
             state = urlObj.searchParams.get("state");
-            sessionToken = urlObj.searchParams.get("sessionToken");
           } catch (e) {
             if (__DEV__) console.log("[OAuth] Failed to parse as full URL, trying regex:", e);
             // Try parsing as relative URL with query params
-            const match = url.match(/[?&](code|state|sessionToken)=([^&]+)/g);
+            const match = url.match(/[?&](code|state)=([^&]+)/g);
             if (match) {
               match.forEach((param) => {
                 const eqIdx = param.indexOf('=');
@@ -110,12 +75,10 @@ export default function OAuthCallback() {
                 const val = param.substring(eqIdx + 1);
                 if (key === "code") code = decodeURIComponent(val);
                 if (key === "state") state = decodeURIComponent(val);
-                if (key === "sessionToken") sessionToken = decodeURIComponent(val);
               });
               if (__DEV__) console.log("[OAuth] Extracted from regex:", {
                 code: code?.substring(0, 20) + "...",
                 state: state?.substring(0, 20) + "...",
-                sessionToken: sessionToken ? "present" : "missing",
               });
             }
           }
@@ -124,24 +87,19 @@ export default function OAuthCallback() {
         if (__DEV__) console.log("[OAuth] Final extracted values:", {
           hasCode: !!code,
           hasState: !!state,
-          hasSessionToken: !!sessionToken,
         });
-
-        // If we have sessionToken directly from URL, use it
-        if (sessionToken) {
-          if (__DEV__) console.log("[OAuth] Session token found in URL");
-          await Auth.setSessionToken(sessionToken);
-          setStatus("success");
-          timeoutIds.push(setTimeout(() => {
-            router.replace("/tabs");
-          }, 1000));
-          return;
-        }
 
         if (!code || !state) {
           if (__DEV__) console.error("[OAuth] Missing code or state");
           setStatus("error");
           setErrorMessage("Missing code or state parameter");
+          return;
+        }
+
+        if (!(await Auth.validateOAuthState(state))) {
+          if (__DEV__) console.error("[OAuth] Invalid or expired state");
+          setStatus("error");
+          setErrorMessage("Invalid or expired OAuth state");
           return;
         }
 
@@ -182,7 +140,7 @@ export default function OAuthCallback() {
 
     handleCallback();
     return () => timeoutIds.forEach(clearTimeout);
-  }, [params.code, params.state, params.error, params.sessionToken, router]);
+  }, [params.code, params.state, params.error, router]);
 
   return (
     <SafeAreaView className="flex-1" edges={["top", "bottom", "left", "right"]}>

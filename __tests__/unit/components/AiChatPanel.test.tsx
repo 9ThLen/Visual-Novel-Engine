@@ -13,7 +13,7 @@ import {
 import type { AiScenePatch } from '@/lib/ai/scene-patch-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
-import { setChatAttachmentStorageAdapterForTests } from '@/lib/idb-storage';
+import { chatAttachmentRepository } from '@/lib/ai/attachment-storage';
 import { MAX_BINARY_ATTACHMENT_BYTES } from '@/lib/ai/attachments';
 import { useAppStore } from '@/stores/use-app-store';
 import { makeEnvelope } from '@/lib/bridge-protocol';
@@ -93,8 +93,10 @@ describe('AiChatPanel', () => {
     });
   });
 
-  afterEach(() => {
-    setChatAttachmentStorageAdapterForTests(null);
+  afterEach(async () => {
+    await Promise.all((await chatAttachmentRepository.list()).map(({ id }) =>
+      chatAttachmentRepository.delete(id),
+    ));
     vi.unstubAllGlobals();
   });
 
@@ -111,13 +113,6 @@ describe('AiChatPanel', () => {
   });
 
   it('announces supported attachment formats after the bridge capability handshake', async () => {
-    const attachmentRecords = new Map<string, unknown>();
-    setChatAttachmentStorageAdapterForTests({
-      get: async id => attachmentRecords.get(id) ?? null,
-      put: async (id, value) => { attachmentRecords.set(id, value); },
-      delete: async id => { attachmentRecords.delete(id); },
-      list: async () => [...attachmentRecords.values()],
-    });
     class SocketMock {
       static instances: SocketMock[] = [];
       static readonly CONNECTING = 0; static readonly OPEN = 1; static readonly CLOSED = 3;
@@ -166,7 +161,7 @@ describe('AiChatPanel', () => {
     fireEvent.drop(composer!, { dataTransfer: { files: [oversized], types: ['Files'] } });
     await waitFor(() => expect(screen.getByText('This file is unsupported, malformed, or too large.')).toBeTruthy());
     expect(readOversized).not.toHaveBeenCalled();
-    expect(attachmentRecords.size).toBe(1);
+    await expect(chatAttachmentRepository.listForStory('story-1')).resolves.toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'AI settings' }));
     expect(screen.getByText('Images, PDF and text supported · up to 4 files / 5 MB')).toBeTruthy();
 

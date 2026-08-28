@@ -10,9 +10,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
+import { AudioTrackList } from '@/components/media-library/AudioTrackList';
 import { MediaFilterRail, MediaTypeTabs } from '@/components/media-library/MediaFilters';
 import { MediaGrid } from '@/components/media-library/MediaGrid';
-import { MEDIA_INSPECTOR_WIDTH, MediaInspector, type UsageState } from '@/components/media-library/MediaInspector';
+import { MEDIA_INSPECTOR_WIDTH, MediaInspector } from '@/components/media-library/MediaInspector';
 import { ScreenContainer } from '@/components/screen-container';
 import { ConfirmDialog } from '@/components/ui';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -42,6 +43,7 @@ import {
   type MediaKind,
   type MediaOwner,
   type StoryMediaItem,
+  type UsageState,
 } from '@/lib/story-media-gallery';
 import { showToast } from '@/lib/toast-store';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
@@ -398,6 +400,13 @@ export default function StoryGalleryRoute() {
   }, [setCharacterLibrary, storyId, t]);
 
   const isPhone = width < PHONE_MAX_WIDTH;
+  const reservedWidth = !isPhone && selected ? MEDIA_INSPECTOR_WIDTH : 0;
+  /**
+   * Headers only earn their space in the unfiltered view. Under a filter or a
+   * search they name a group holding every visible row, or split a handful of
+   * matches into two lists of one.
+   */
+  const grouped = filter.kind === 'all' && !query.trim();
   // Each empty state has to say why it is empty. Telling an author with six
   // images that the story has none, just because none are used yet, reads as a
   // bug in the library rather than an answer to the filter they picked.
@@ -463,22 +472,38 @@ export default function StoryGalleryRoute() {
             onChange={(next) => { setFilter(next); setSelectedKey(null); }}
           />
 
-          <MediaGrid
-            items={visible}
-            colors={colors}
-            selectedKey={selectedKey}
-            // Date headers only in the unfiltered view; under a filter they
-            // collapse into groups of one or two tiles.
-            grouped={filter.kind === 'all' && !query.trim()}
-            now={Date.now()}
-            emptyLabel={emptyLabel}
-            onSelect={(item) => setSelectedKey(item.key)}
-            reservedWidth={!isPhone && selected ? MEDIA_INSPECTOR_WIDTH : 0}
-            onTogglePlayback={kind === 'audio' ? handleTogglePlayback : undefined}
-            activeAudioKey={preview.activeKey}
-            previewState={preview.state}
-            progress={preview.progress}
-          />
+          {kind === 'audio' ? (
+            // A square is the wrong shape for a sound: it has no picture to
+            // fill one, and the row has somewhere to put what the library
+            // already knows about the file.
+            <AudioTrackList
+              items={visible}
+              colors={colors}
+              selectedKey={selectedKey}
+              grouped={grouped}
+              emptyLabel={emptyLabel}
+              usageState={usageState}
+              onSelect={(item) => setSelectedKey(item.key)}
+              reservedWidth={reservedWidth}
+              onTogglePlayback={handleTogglePlayback}
+              activeAudioKey={preview.activeKey}
+              previewState={preview.state}
+              progress={preview.progress}
+            />
+          ) : (
+            <MediaGrid
+              items={visible}
+              colors={colors}
+              selectedKey={selectedKey}
+              // Date headers only in the unfiltered view; under a filter they
+              // collapse into groups of one or two tiles.
+              grouped={grouped}
+              now={Date.now()}
+              emptyLabel={emptyLabel}
+              onSelect={(item) => setSelectedKey(item.key)}
+              reservedWidth={reservedWidth}
+            />
+          )}
         </View>
 
         {selected ? (

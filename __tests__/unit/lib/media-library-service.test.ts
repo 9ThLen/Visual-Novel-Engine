@@ -98,6 +98,25 @@ describe('media-library-service', () => {
     expect(mockFileSystem.mockReadAsStringAsync).not.toHaveBeenCalled();
   });
 
+  it('strips path components from imported native filenames', async () => {
+    mockFileSystem.mockGetInfoAsync
+      .mockResolvedValueOnce({ exists: false })
+      .mockResolvedValueOnce({ exists: true, size: 3 });
+
+    const result = await addAssetToLibraryPure(
+      'file:///cache/source.png',
+      '..\\..\\outside.png',
+      'image',
+      [],
+    );
+
+    expect(result.asset.name).toBe('outside.png');
+    expect(mockFileSystem.mockCopyAsync).toHaveBeenCalledWith({
+      from: 'file:///cache/source.png',
+      to: 'file:///documents/media-library/images/outside.png',
+    });
+  });
+
   it('keeps data image uploads as data uris when the native document directory is unavailable', async () => {
     mockFileSystem.mockSetDocumentDirectory(null);
 

@@ -22,7 +22,7 @@ import { useAppStore } from '@/stores/use-app-store';
 import { onSnapshotEvicted } from '@/stores/snapshot-eviction-registry';
 import type { AiCapability } from '@/lib/ai/permissions';
 import type { AttachmentRef } from '@/lib/ai/attachments';
-import { chatAttachmentRepository } from '@/lib/ai/attachment-storage.web';
+import { chatAttachmentRepository } from '@/lib/ai/attachment-storage';
 
 export type AiChatRole = 'user' | 'assistant' | 'system';
 

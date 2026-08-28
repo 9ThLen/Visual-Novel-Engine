@@ -85,6 +85,13 @@ export interface StoryMediaItem {
   mimeType?: string;
   /** Only for `kind === 'audio'`. See `audioCategoryOf`. */
   audioCategory?: AudioCategory;
+  /**
+   * Only for `kind === 'audio'`, and only when the story's audio library has an
+   * entry for the file. Undefined means nobody has said either way — which is
+   * not the same as "does not loop", so the row shows nothing rather than
+   * claiming a default.
+   */
+  audioLoop?: boolean;
 }
 
 export interface CharacterMediaFilter {
@@ -164,13 +171,20 @@ function isDefaultSprite(character: Character, sprite: CharacterSprite): boolean
  * handful of words and calls everything else a sound effect, which is a guess,
  * not a fact.
  */
+export function findAudioLibraryEntry(
+  item: StoryMediaItem,
+  audioLibrary: AudioLibraryItem[] | undefined,
+): AudioLibraryItem | undefined {
+  return audioLibrary?.find(
+    (candidate) => candidate.id === item.assetId || candidate.uri === item.uri,
+  );
+}
+
 export function audioCategoryOf(
   item: StoryMediaItem,
   audioLibrary: AudioLibraryItem[] | undefined,
 ): AudioCategory {
-  const entry = audioLibrary?.find(
-    (candidate) => candidate.id === item.assetId || candidate.uri === item.uri,
-  );
+  const entry = findAudioLibraryEntry(item, audioLibrary);
   if (entry) return categoryOfAudioItem(entry);
   if (item.references.some((reference) => reference.kind === 'music')) return 'music';
   if (item.references.some((reference) => reference.kind === 'sound')) return 'sound';
@@ -335,7 +349,10 @@ export function buildStoryMediaGallery(input: StoryMediaGalleryInput): StoryMedi
   const audios = all.filter((item) => item.kind === 'audio').sort(byNewestFirst);
 
   // After the references are attached: the category reads them.
-  for (const item of audios) item.audioCategory = audioCategoryOf(item, audioLibrary);
+  for (const item of audios) {
+    item.audioCategory = audioCategoryOf(item, audioLibrary);
+    item.audioLoop = findAudioLibraryEntry(item, audioLibrary)?.loop;
+  }
 
   const ownedCounts = new Map<string, number>();
   const avatarByCharacter = new Map<string, string>();
@@ -432,6 +449,16 @@ export function usageIsKnowable(
 ): boolean {
   return scenesLoaded && !!story && scenes.length === story.sceneCount;
 }
+
+/**
+ * What the screen knows about where its files are used.
+ *
+ * `pending` is a load still running; `unavailable` is a load that finished
+ * without an answer — rejected, or returning fewer scenes than the story
+ * claims. Both forbid the destructive actions, but they are different things
+ * to tell an author, and saying "checking…" forever would be the wrong one.
+ */
+export type UsageState = 'pending' | 'ready' | 'unavailable';
 
 /**
  * Re-resolve one owner against a freshly supplied state.

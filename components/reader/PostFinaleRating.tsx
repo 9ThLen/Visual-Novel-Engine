@@ -22,12 +22,16 @@ export interface PostFinaleRatingProps {
   sceneName: string | null;
   onSubmit: (rating: ReviewRating, text: string | undefined) => void;
   onDismiss: () => void;
+  showRating?: boolean;
+  dismissLabel?: string;
 }
 
 export const PostFinaleRating = memo(function PostFinaleRating({
   sceneName,
   onSubmit,
   onDismiss,
+  showRating = true,
+  dismissLabel,
 }: PostFinaleRatingProps) {
   const { t } = useI18n();
 
@@ -51,12 +55,23 @@ export const PostFinaleRating = memo(function PostFinaleRating({
         {sceneName ? <Text style={styles.scene}>{sceneName}</Text> : null}
         <Text style={styles.subtitle}>{t('finale.subtitle')}</Text>
 
-        <RatingForm
-          onSubmit={handleSubmit}
-          onCancel={onDismiss}
-          submitLabel={t('review.save')}
-          cancelLabel={t('review.later')}
-        />
+        {showRating ? (
+          <RatingForm
+            onSubmit={handleSubmit}
+            onCancel={onDismiss}
+            submitLabel={t('review.save')}
+            cancelLabel={dismissLabel ?? t('review.later')}
+          />
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={dismissLabel ?? t('review.later')}
+            onPress={onDismiss}
+            style={styles.dismissButton}
+          >
+            <Text style={styles.dismissButtonText}>{dismissLabel ?? t('review.later')}</Text>
+          </Pressable>
+        )}
       </Animated.View>
     </Animated.View>
   );
@@ -95,5 +110,18 @@ const styles = StyleSheet.create({
     color: SHOWCASE_COLORS.muted,
     fontSize: 14,
     marginBottom: 4,
+  },
+  dismissButton: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: SHOWCASE_COLORS.accent,
+    paddingHorizontal: 16,
+  },
+  dismissButtonText: {
+    color: SHOWCASE_COLORS.card,
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

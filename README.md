@@ -138,6 +138,7 @@ The default experience is local-first:
 
 - no account is required;
 - story data stays in the current browser profile;
+- use one app tab at a time; concurrent tabs can overwrite each other's latest local changes;
 - different browsers use separate local storage;
 - clearing site data for `localhost` can remove locally stored stories.
 

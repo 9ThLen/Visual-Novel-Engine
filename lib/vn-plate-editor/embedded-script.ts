@@ -2021,7 +2021,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function option(value, label, current) {
-      return '<option value="' + value + '"' + (value === current ? ' selected' : '') + '>' + label + '</option>';
+      return '<option value="' + escapeHtml(value) + '"' + (value === current ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
     }
 
     function openBackgroundPopover(block, anchor) {

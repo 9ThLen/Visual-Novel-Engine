@@ -111,10 +111,15 @@ const PENDING_SCROLL_SETTLE_MS = 900;
 
 function useSceneCallback<Args extends unknown[]>(
   handler: (sceneId: string, ...args: Args) => void,
+  resetKey: string,
 ): (sceneId: string) => (...args: Args) => void {
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
   const cacheRef = useRef(new Map<string, (...args: Args) => void>());
+
+  useEffect(() => {
+    cacheRef.current.clear();
+  }, [resetKey]);
 
   return useCallback((sceneId: string) => {
     let cached = cacheRef.current.get(sceneId);
@@ -278,6 +283,8 @@ export function DocumentSceneEditor({
     editorRefsRef.current.clear();
     focusedEditorSceneIdRef.current = null;
     setFocusedEditorSceneId(null);
+    setHistoryStateByScene({});
+    setFormatStateByScene({});
     setMeasureVersion((version) => version + 1);
     setMountedSceneIds(seedMountedSceneIds(initialDocuments.map((ds) => ds.sceneId), nextActiveSceneId));
     pendingScrollSceneIdRef.current = nextActiveSceneId;
@@ -393,6 +400,9 @@ export function DocumentSceneEditor({
           return next;
         });
       }
+    }).catch(() => {
+      // Keep the frame mounted: unmounting after a failed flush would discard
+      // the only copy of its latest edits.
     });
   }, [applyDraftSnapshot]);
 
@@ -682,16 +692,16 @@ export function DocumentSceneEditor({
     scheduleMountRecompute();
   }, [scheduleMountRecompute, storyId]);
 
-  const getOnChange = useSceneCallback(handlePlateChangeImpl);
-  const getOnCreateNextScene = useSceneCallback(handleCreateNextSceneImpl);
+  const getOnChange = useSceneCallback(handlePlateChangeImpl, documentsResetKey);
+  const getOnCreateNextScene = useSceneCallback(handleCreateNextSceneImpl, documentsResetKey);
   const getOnDuplicateScene = useSceneCallback((_sceneId: string) => {
     void handleDuplicateScene(_sceneId);
-  });
+  }, documentsResetKey);
   const getOnRequestDeleteScene = useSceneCallback((_sceneId: string) => {
     handleRequestDeleteScene(_sceneId);
-  });
-  const getRegisterEditorRef = useSceneCallback(registerEditorRefImpl);
-  const getOnFrameLayout = useSceneCallback(handleFrameLayoutImpl);
+  }, documentsResetKey);
+  const getRegisterEditorRef = useSceneCallback(registerEditorRefImpl, documentsResetKey);
+  const getOnFrameLayout = useSceneCallback(handleFrameLayoutImpl, documentsResetKey);
 
   const handleUndo = useCallback(() => {
     const sceneId = focusedEditorSceneIdRef.current ?? activeSceneIdRef.current;
@@ -712,7 +722,7 @@ export function DocumentSceneEditor({
       return { ...current, [sceneId]: { canUndo, canRedo } };
     });
   }, []);
-  const getOnHistoryStateChange = useSceneCallback(handleHistoryStateImpl);
+  const getOnHistoryStateChange = useSceneCallback(handleHistoryStateImpl, documentsResetKey);
   const activeHistoryState = historyStateByScene[activeSceneId] ?? { canUndo: false, canRedo: false };
   const handleFormatStateImpl = useCallback((sceneId: string, state: VNPlateFormatState) => {
     setFormatStateByScene((current) => ({ ...current, [sceneId]: state }));
@@ -724,7 +734,7 @@ export function DocumentSceneEditor({
       setFocusedEditorSceneId(sceneId);
     }
   }, []);
-  const getOnFormatStateChange = useSceneCallback(handleFormatStateImpl);
+  const getOnFormatStateChange = useSceneCallback(handleFormatStateImpl, documentsResetKey);
   const formatSceneId = focusedEditorSceneId ?? activeSceneId;
   const activeFormatState = formatStateByScene[formatSceneId] ?? {
     bold: false,

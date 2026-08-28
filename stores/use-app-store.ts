@@ -172,23 +172,38 @@ export const useAppStore = create<AppStore>()(
           }
 
           let sceneRecordsByStory: Record<string, Record<string, SceneRecord>> = {};
+          const failedSceneStoryIds = new Set<string>();
           if (stories.length > 0) {
             const sceneEntries = await Promise.all(
               stories.map(async (s) => {
-                const json = await storage.getItem(STORAGE_KEYS.SCENES(s.id));
-                return [s.id, json ? JSON.parse(json) : {}] as const;
+                try {
+                  const json = await storage.getItem(STORAGE_KEYS.SCENES(s.id));
+                  const legacyScenes = json ? JSON.parse(json) : {};
+                  return [
+                    s.id,
+                    buildCanonicalSceneRecordsFromLegacyScenes(
+                      s.id,
+                      legacyScenes,
+                      s.startSceneId,
+                    ),
+                  ] as const;
+                } catch (error) {
+                  failedSceneStoryIds.add(s.id);
+                  ErrorHandler.handle(
+                    'Legacy story scene migration failed',
+                    error,
+                    ErrorCategory.STORAGE,
+                    ErrorSeverity.LOW,
+                    { storyId: s.id },
+                  );
+                  return [s.id, null] as const;
+                }
               })
             );
-            const legacyScenesByStory = Object.fromEntries(sceneEntries);
             sceneRecordsByStory = Object.fromEntries(
-              stories.map((story) => [
-                story.id,
-                buildCanonicalSceneRecordsFromLegacyScenes(
-                  story.id,
-                  legacyScenesByStory[story.id] || {},
-                  story.startSceneId
-                ),
-              ])
+              sceneEntries.filter(
+                (entry): entry is readonly [string, Record<string, SceneRecord>] => entry[1] !== null,
+              ),
             );
           }
 
@@ -197,6 +212,9 @@ export const useAppStore = create<AppStore>()(
           const mergedSceneRecordsByStory = mergeSceneRecordsByStory(
             current.sceneRecordsByStory,
             sceneRecordsByStory
+          );
+          const migratedSceneHydration = Object.fromEntries(
+            Object.keys(sceneRecordsByStory).map((storyId) => [storyId, 'full' as const]),
           );
           const nextStoriesMetadata = stories.length > 0 && current.storiesMetadata.length === 0
             ? stories
@@ -216,6 +234,10 @@ export const useAppStore = create<AppStore>()(
           set({
             storiesMetadata: nextStoriesMetadata,
             sceneRecordsByStory: mergedSceneRecordsByStory,
+            sceneRecordHydration: {
+              ...current.sceneRecordHydration,
+              ...migratedSceneHydration,
+            },
             saveSlots: saveSlots.length > 0 && current.saveSlots.length === 0 ? saveSlots : current.saveSlots,
             settings: settings ? mergeLegacyUserSettings(settings, current.settings) : normalizeUserSettings(current.settings),
             characterLibraries: nextCharacterLibraries,
@@ -231,6 +253,9 @@ export const useAppStore = create<AppStore>()(
             }),
             language,
             isLoaded: true,
+            migrationError: failedSceneStoryIds.size > 0
+              ? `Could not migrate legacy scene data for: ${[...failedSceneStoryIds].join(', ')}`
+              : null,
           });
         } catch (e) {
           const message = e instanceof Error ? e.message : 'Unknown migration error';

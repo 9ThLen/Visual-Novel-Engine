@@ -22,3 +22,10 @@ export const Easing = {
   sin: (t: number) => t,
   inOut: (fn: (t: number) => number) => fn,
 };
+
+const animationBuilder = {
+  duration: () => animationBuilder,
+  delay: () => animationBuilder,
+};
+export const FadeIn = animationBuilder;
+export const FadeInDown = animationBuilder;
