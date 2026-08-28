@@ -18,6 +18,7 @@ import { AppModal } from '@/components/ui/AppModal';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import type { AudioPreviewState } from '@/hooks/useAudioPreview';
 import { useI18n } from '@/hooks/use-i18n';
+import { formatDate } from '@/lib/format-date';
 import { acquireResolvedAssetUri } from '@/lib/asset-resolver';
 import type { ThemeColorPalette } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
@@ -262,7 +263,7 @@ function InspectorBody({
   playbackFailed = false,
   onSetAudioCategory,
 }: Omit<MediaInspectorProps, 'asSheet'>) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [pickingCharacter, setPickingCharacter] = useState(false);
   // The panel stays mounted while the selection moves from tile to tile; an
   // open picker would otherwise carry over to a file the author never asked
@@ -343,7 +344,7 @@ function InspectorBody({
       )}
 
       <Text style={[typeScale.caption, { color: colors.muted }]}>
-        {t('mediaLibrary.inspector.addedAt', { date: new Date(item.addedAt).toLocaleDateString() })}
+        {t('mediaLibrary.inspector.addedAt', { date: formatDate(item.addedAt, language) })}
       </Text>
 
       {item.owners.length ? (

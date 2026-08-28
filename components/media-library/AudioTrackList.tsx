@@ -19,6 +19,7 @@ import { FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import type { AudioPreviewState } from '@/hooks/useAudioPreview';
 import { useI18n } from '@/hooks/use-i18n';
+import { formatDate } from '@/lib/format-date';
 import type { ThemeColorPalette } from '@/lib/_core/theme';
 import {
   audioFormatLabel,
@@ -63,7 +64,7 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
   previewState = null,
   progress = 0,
 }: TrackRowProps) {
-  const { t, pluralize } = useI18n();
+  const { t, pluralize, language } = useI18n();
   const music = item.audioCategory === 'music';
   /**
    * The two roles get the two colours the editor already paints them in: the
@@ -86,7 +87,7 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
   const source = [
     audioFormatLabel(item),
     item.sizeBytes !== undefined ? formatBytes(item.sizeBytes) : null,
-    new Date(item.addedAt).toLocaleDateString(),
+    formatDate(item.addedAt, language),
   ].filter(Boolean).join('  ·  ');
 
   const badge = audioUsageBadge(item, usageState);

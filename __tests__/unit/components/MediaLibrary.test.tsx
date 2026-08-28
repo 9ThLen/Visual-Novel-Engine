@@ -342,7 +342,11 @@ describe('grid thumbnails', () => {
     resetThumbnailsForTests();
     globalThis.URL.createObjectURL = vi.fn(() => 'blob:thumbnail');
     globalThis.URL.revokeObjectURL = vi.fn();
-    globalThis.fetch = vi.fn(async () => new Response(new Blob(['x']))) as unknown as typeof fetch;
+    // Not a real Response: Node 20 cannot build one from jsdom's Blob, and the
+    // thumbnail module swallows the throw as "no thumbnail". See thumbnails.test.ts.
+    globalThis.fetch = vi.fn(
+      async () => ({ ok: true, blob: async () => new Blob(['x']) }) as unknown as Response,
+    ) as unknown as typeof fetch;
   });
 
   afterEach(() => {

@@ -24,23 +24,8 @@ import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { describeUpdatedAt, type StudioProject } from '@/lib/editor/story-library';
 import { Fonts, withAlpha } from '@/lib/_core/theme';
 import { posterFallbackForSeed } from '@/lib/showcase/story-showcase';
-
-/**
- * Keyed by the app's language, not the browser's: a card that says «edited» in
- * English next to a date in the OS locale reads as two different products.
- */
-const dateFormatters = new Map<string, Intl.DateTimeFormat>();
-function dateFormatterFor(language: string): Intl.DateTimeFormat {
-  const cached = dateFormatters.get(language);
-  if (cached) return cached;
-  const formatter = new Intl.DateTimeFormat(language, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-  dateFormatters.set(language, formatter);
-  return formatter;
-}
+import { formatDate, SHORT_DATE } from '@/lib/format-date';
+import { formatNumber } from '@/lib/format-number';
 
 export interface EditorStoryCardProps {
   project: StudioProject;
@@ -88,7 +73,7 @@ export const EditorStoryCard = memo(function EditorStoryCard({
     return t('editor.cardStats', {
       scenes: project.scenes,
       scenesLabel,
-      words: project.words.toLocaleString(),
+      words: formatNumber(project.words, language),
       wordsLabel: pluralize(project.words, t('editor.wordOne'), t('editor.wordFew'), t('editor.wordMany')),
       choices: project.choices,
       choicesLabel: pluralize(
@@ -98,7 +83,7 @@ export const EditorStoryCard = memo(function EditorStoryCard({
         t('editor.choiceMany'),
       ),
     });
-  }, [pluralize, project.choices, project.scenes, project.words, t]);
+  }, [language, pluralize, project.choices, project.scenes, project.words, t]);
 
   const status = useMemo(() => {
     if (project.status === 'pending') return null;
@@ -142,7 +127,7 @@ export const EditorStoryCard = memo(function EditorStoryCard({
         });
       default:
         return t('editor.editedWhen', {
-          when: dateFormatterFor(language).format(new Date(project.updatedAt)),
+          when: formatDate(project.updatedAt, language, SHORT_DATE),
         });
     }
   }, [language, now, pluralize, project.updatedAt, t]);

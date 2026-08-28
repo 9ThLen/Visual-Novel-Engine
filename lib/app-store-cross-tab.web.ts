@@ -1,7 +1,14 @@
 import { showToast } from '@/lib/toast-store';
 
 const CHANNEL_NAME = 'vne_app_state_tabs';
-const WARNING = 'Visual Novel Engine is open in another tab. Close one tab before editing to avoid overwriting local changes.';
+
+/**
+ * Resolves the warning text when it is actually shown, so a tab that has been
+ * open since before the author switched languages still warns in the language
+ * on screen. `lib/` cannot read the language store itself, so the caller — the
+ * root layout, which has the hook — hands one in.
+ */
+export type TranslateWarning = () => string;
 
 type TabMessage = {
   type: 'hello' | 'present';
@@ -14,7 +21,7 @@ type TabMessage = {
  * supported behavior is to warn both tabs and keep the documented single-tab
  * editing invariant explicit.
  */
-export function startAppStoreCrossTabWarning(): () => void {
+export function startAppStoreCrossTabWarning(translate: TranslateWarning): () => void {
   if (typeof BroadcastChannel === 'undefined') return () => {};
 
   const senderId = crypto.randomUUID();
@@ -24,7 +31,7 @@ export function startAppStoreCrossTabWarning(): () => void {
   const warn = () => {
     if (warned) return;
     warned = true;
-    showToast(WARNING, 'error');
+    showToast(translate(), 'error');
   };
   const send = (type: TabMessage['type']) => channel.postMessage({ type, senderId } satisfies TabMessage);
   const handleMessage = (event: MessageEvent<TabMessage>) => {

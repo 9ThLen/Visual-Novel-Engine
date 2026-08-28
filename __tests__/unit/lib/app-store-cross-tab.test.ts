@@ -43,12 +43,14 @@ describe('app-store cross-tab warning', () => {
   });
 
   it('warns both tabs when a second app instance announces itself', () => {
-    const stopFirst = startAppStoreCrossTabWarning();
-    const stopSecond = startAppStoreCrossTabWarning();
+    const translate = () => 'Open in another tab';
+    const stopFirst = startAppStoreCrossTabWarning(translate);
+    const stopSecond = startAppStoreCrossTabWarning(translate);
 
     expect(useToastStore.getState().toasts).toHaveLength(2);
     expect(useToastStore.getState().toasts.every((toast) => toast.type === 'error')).toBe(true);
-    expect(useToastStore.getState().toasts[0]?.message).toContain('another tab');
+    // The text itself is the caller's, translated at the moment the toast is shown.
+    expect(useToastStore.getState().toasts[0]?.message).toBe('Open in another tab');
 
     stopSecond();
     stopFirst();
