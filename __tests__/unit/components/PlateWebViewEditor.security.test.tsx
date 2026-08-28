@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { createRef } from 'react';
 import { act, render } from '@testing-library/react';
 
@@ -22,6 +24,7 @@ describe('PlateWebViewEditor message boundary', () => {
     );
     const iframe = container.querySelector('iframe');
     expect(iframe?.contentWindow).toBeTruthy();
+    expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts allow-same-origin');
 
     const data = {
       source: 'vn-plate-editor',
@@ -64,6 +67,21 @@ describe('PlateWebViewEditor message boundary', () => {
       }));
     });
     expect(onChange).toHaveBeenCalledOnce();
+  });
+
+  it('uses exact-origin postMessage targets in both bridge directions', () => {
+    const hostSource = fs.readFileSync(
+      path.join(process.cwd(), 'components/vn-plate-editor/PlateWebViewEditor.web.tsx'),
+      'utf8',
+    );
+    const embeddedSource = fs.readFileSync(
+      path.join(process.cwd(), 'lib/vn-plate-editor/embedded-script.ts'),
+      'utf8',
+    );
+
+    expect(hostSource).not.toMatch(/postMessage\([\s\S]*?,\s*['"]\*['"]\)/);
+    expect(hostSource).toContain('window.location.origin');
+    expect(embeddedSource).toContain('window.parent.postMessage(full, window.location.origin)');
   });
 
   it('rejects a flush immediately while the iframe is not ready', async () => {

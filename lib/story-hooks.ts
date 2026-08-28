@@ -345,11 +345,14 @@ export async function importStory(storyJson: string): Promise<CanonicalStory> {
     if (typeof raw.startSceneId !== 'string' || !raw.startSceneId) {
       throw new ValidationError('Imported canonical story must have a startSceneId', 'startSceneId');
     }
-    if (!(raw.startSceneId in (rawScenes as Record<string, unknown>))) {
+    if (!Object.prototype.hasOwnProperty.call(rawScenes, raw.startSceneId)) {
       throw new ValidationError(`startSceneId "${raw.startSceneId}" does not reference an existing scene`, 'startSceneId');
     }
-    const validatedRawScenes: Record<string, SceneRecord> = {};
+    const validatedRawScenes = Object.create(null) as Record<string, SceneRecord>;
     for (const [sceneId, scene] of Object.entries(rawScenes as Record<string, unknown>)) {
+      if (!sceneId || sceneId === '__proto__' || sceneId === 'prototype' || sceneId === 'constructor') {
+        throw new ValidationError(`Scene id "${sceneId}" is reserved`, `scenes.${sceneId}`);
+      }
       if (!scene || typeof scene !== 'object') {
         throw new ValidationError(`Scene "${sceneId}" must be an object`, `scenes.${sceneId}`);
       }

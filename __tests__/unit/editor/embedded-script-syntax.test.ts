@@ -1383,7 +1383,7 @@ describe('createEmbeddedScript', () => {
     const harness = createVoidBlockHarness([{
       id: `asset_${malicious}`,
       name: malicious,
-      uri: `blob:${malicious}`,
+      uri: 'https://example.invalid/image.png");color:red;--injected:"',
       assetUri: `assets/background/${malicious}`,
     }]);
 
@@ -1399,6 +1399,7 @@ describe('createEmbeddedScript', () => {
 
       expect(document.querySelector('#stored-xss')).toBeNull();
       expect(document.querySelector('.background-popover')?.textContent).toContain(malicious);
+      expect(document.querySelector<HTMLElement>('.asset-thumb')?.style.color).toBe('');
     } finally {
       harness.cleanup();
     }

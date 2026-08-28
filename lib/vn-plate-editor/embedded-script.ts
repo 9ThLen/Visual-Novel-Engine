@@ -88,7 +88,7 @@ const EMBEDDED_SCRIPT_BODY = `
       if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
         window.ReactNativeWebView.postMessage(JSON.stringify(full));
       } else {
-        window.parent.postMessage(full, '*');
+        window.parent.postMessage(full, window.location.origin);
       }
     }
 
@@ -340,6 +340,10 @@ const EMBEDDED_SCRIPT_BODY = `
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+    }
+
+    function cssUrl(value) {
+      return 'url(' + JSON.stringify(String(value || '')) + ')';
     }
 
     function normalizeSpeakerName(value) {
@@ -2097,7 +2101,7 @@ const EMBEDDED_SCRIPT_BODY = `
         return;
       }
       preview.hidden = false;
-      preview.style.backgroundImage = 'linear-gradient(180deg, rgba(6, 16, 32, 0.04), rgba(6, 16, 32, 0.18)), url("' + String(uri).replace(/"/g, '\\"') + '")';
+      preview.style.backgroundImage = 'linear-gradient(180deg, rgba(6, 16, 32, 0.04), rgba(6, 16, 32, 0.18)), ' + cssUrl(uri);
       preview.style.backgroundSize = 'cover';
       preview.style.backgroundPosition = 'center';
     }
@@ -2119,7 +2123,7 @@ const EMBEDDED_SCRIPT_BODY = `
         ? backgroundAssets.map(function(asset) {
             var active = asset.id === selected ? ' active' : '';
             return '<button type="button" class="asset-choice' + active + '" data-action="select-background-asset" data-asset-id="' + escapeHtml(asset.id) + '">' +
-              '<span class="asset-thumb" style="background-image:url(&quot;' + escapeHtml(asset.uri) + '&quot;)"></span>' +
+              '<span class="asset-thumb"></span>' +
               '<span class="asset-name">' + escapeHtml(assetLabel(asset) || asset.name || asset.id) + '</span>' +
             '</button>';
           }).join('')
@@ -2132,6 +2136,11 @@ const EMBEDDED_SCRIPT_BODY = `
         '</div>' +
         '<div class="asset-choice-list">' + items + '</div>' +
         '<input class="asset-file-input" type="file" accept="image/*" hidden />';
+      Array.prototype.slice.call(picker.querySelectorAll('.asset-choice')).forEach(function(button) {
+        var asset = backgroundAssets.find(function(candidate) { return candidate.id === button.dataset.assetId; });
+        var thumbnail = button.querySelector('.asset-thumb');
+        if (asset && thumbnail) thumbnail.style.backgroundImage = cssUrl(asset.uri);
+      });
     }
 
     function openAssetPicker() {

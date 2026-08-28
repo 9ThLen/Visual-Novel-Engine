@@ -49,6 +49,26 @@ describe('shouldUpsertBundledStory', () => {
     ).toBe(true);
   });
 
+  it('does not replace a bundled demo after the user has edited it', () => {
+    expect(
+      shouldUpsertBundledStory(
+        {
+          storiesMetadata: [{ id: bundledStory.id, updatedAt: 3 }],
+          sceneRecordsByStory: {
+            [bundledStory.id]: {
+              scene_1: {
+                id: 'scene_1',
+                storyId: bundledStory.id,
+                timeline: [],
+              } as never,
+            },
+          },
+        },
+        { ...bundledStory, updatedAt: 2 },
+      ),
+    ).toBe(false);
+  });
+
   it('returns true when persisted canonical start scene lost bundled music', () => {
     expect(
       shouldUpsertBundledStory(

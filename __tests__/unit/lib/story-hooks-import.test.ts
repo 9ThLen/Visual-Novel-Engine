@@ -121,6 +121,13 @@ describe('importStory', () => {
     await expect(importStory(JSON.stringify(story))).rejects.toThrow(/no valid timeline steps/i);
   });
 
+  it('rejects prototype-mutating canonical scene ids', async () => {
+    const storyJson = '{"title":"Unsafe scene id","startSceneId":"__proto__","scenes":{"__proto__":{"id":"__proto__","timeline":[]}}}';
+
+    await expect(importStory(storyJson)).rejects.toThrow(/reserved/i);
+    expect(Object.prototype).not.toHaveProperty('timeline');
+  });
+
   it('preserves the audio library through export and import', async () => {
     useAppStore.setState({
       storiesMetadata: [{

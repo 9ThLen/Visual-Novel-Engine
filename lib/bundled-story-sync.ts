@@ -42,12 +42,12 @@ export function shouldUpsertBundledStory(
     return true;
   }
 
-  if (
-    typeof bundledStory.updatedAt === 'number'
-    && typeof existingMetadata.updatedAt === 'number'
-    && bundledStory.updatedAt > existingMetadata.updatedAt
-  ) {
-    return true;
+  if (typeof bundledStory.updatedAt === 'number' && typeof existingMetadata.updatedAt === 'number') {
+    // Authoring updates touch metadata.updatedAt. Never replace a demo that the
+    // user has edited, even when its music or yielding steps no longer match
+    // the bundled seed intentionally.
+    if (existingMetadata.updatedAt > bundledStory.updatedAt) return false;
+    if (bundledStory.updatedAt > existingMetadata.updatedAt) return true;
   }
 
   const bundledStartScene = bundledStory.scenes?.[startSceneId];

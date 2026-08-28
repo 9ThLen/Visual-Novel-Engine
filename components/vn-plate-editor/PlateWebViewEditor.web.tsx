@@ -17,6 +17,7 @@ import type { DocumentScene } from '@/lib/document-editor/types';
 const Iframe = 'iframe' as unknown as React.ComponentType<{
   srcDoc: string;
   title: string;
+  sandbox?: string;
   style: React.CSSProperties;
   ref?: React.Ref<HTMLIFrameElement>;
   onLoad?: () => void;
@@ -280,7 +281,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       editorId,
       type: 'backgroundAssetsUpdated',
       assets: resolvedBackgroundAssets,
-    }, '*');
+    }, window.location.origin);
   }, [editorId, resolvedBackgroundAssets]);
 
   const postAudioAssets = useCallback(() => {
@@ -289,7 +290,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       editorId,
       type: 'audioAssetsUpdated',
       assets: resolvedAudioAssets,
-    }, '*');
+    }, window.location.origin);
   }, [editorId, resolvedAudioAssets]);
 
   const postVideoAssets = useCallback(() => {
@@ -298,7 +299,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       editorId,
       type: 'videoAssetsUpdated',
       assets: videoAssets ?? [],
-    }, '*');
+    }, window.location.origin);
   }, [editorId, videoAssets]);
 
   const postScenes = useCallback(() => {
@@ -308,7 +309,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       editorId,
       type: 'scenesUpdated',
       scenes,
-    }, '*');
+    }, window.location.origin);
   }, [editorId, scenes]);
 
   const postBranchInfo = useCallback(() => {
@@ -318,7 +319,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       editorId,
       type: 'branchInfoUpdated',
       branchInfo,
-    }, '*');
+    }, window.location.origin);
   }, [branchInfo, editorId]);
 
   useEffect(() => {
@@ -331,7 +332,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       editorId,
       type: 'branchColorUpdated',
       color: branchColor ?? null,
-    }, '*');
+    }, window.location.origin);
   }, [branchColor, editorId]);
 
   useEffect(() => {
@@ -344,7 +345,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       editorId,
       type: 'commandsUpdated',
       commands: getEmbeddedCommands(language),
-    }, '*');
+    }, window.location.origin);
   }, [editorId, language]);
 
   useEffect(() => {
@@ -362,7 +363,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         editorId,
         type: 'charactersUpdated',
         characters: resolvedCharacters,
-      }, '*');
+      }, window.location.origin);
     });
   }, [characters, editorId]);
 
@@ -400,12 +401,12 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
           editorId,
           type: 'flush',
           requestId,
-        }, '*');
+        }, window.location.origin);
       });
     },
-    undo: () => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'undo' }, '*'),
-    redo: () => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'redo' }, '*'),
-    formatText: (command, value) => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'formatText', command, value }, '*'),
+    undo: () => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'undo' }, window.location.origin),
+    redo: () => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'redo' }, window.location.origin),
+    formatText: (command, value) => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'formatText', command, value }, window.location.origin),
   }), [editorId]);
 
   useEffect(() => {
@@ -478,7 +479,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
               assetUri: asset.uri,
               uri: typeof resolved === 'string' ? resolved : asset.uri,
             },
-          }, '*');
+          }, window.location.origin);
         });
         return;
       }
@@ -491,7 +492,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
             type: 'characterSpriteAssetUploaded',
             requestId: message.requestId,
             asset: null,
-          }, '*');
+          }, window.location.origin);
           return;
         }
         void upload.then(async (asset) => {
@@ -504,7 +505,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
             asset: asset && typeof resolved === 'string'
               ? { ...asset, assetUri: asset.uri, uri: resolved }
               : null,
-          }, '*');
+          }, window.location.origin);
         });
         return;
       }
@@ -517,7 +518,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
             type: 'backgroundRemoved',
             requestId,
             dataUri,
-          }, '*');
+          }, window.location.origin);
         };
         if (!isBackgroundRemovalSupported()) {
           reply(null);
@@ -541,7 +542,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
             requestId,
             asset,
             error,
-          }, '*');
+          }, window.location.origin);
         };
         if (!onPickVideoAsset) {
           reply(null, 'failed');
@@ -567,7 +568,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
               ...asset,
               uri: resolved ?? asset.uri,
             },
-          }, '*');
+          }, window.location.origin);
         });
         return;
       }
@@ -649,6 +650,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         key={editorId}
         title="VN Plate editor"
         srcDoc={html}
+        sandbox="allow-scripts allow-same-origin"
         onLoad={handleIframeLoad}
         style={{
           position: 'absolute',
