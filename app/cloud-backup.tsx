@@ -7,6 +7,7 @@ import { Button, ConfirmDialog } from '@/components/ui';
 import { useCloudBackup } from '@/hooks/use-cloud-backup';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
+import { DATE_TIME, formatDate } from '@/lib/format-date';
 import { showToast } from '@/lib/toast-store';
 import type { CloudBackupSummary } from '@/lib/supabase-backup';
 
@@ -15,7 +16,7 @@ type PendingAction = { kind: 'restore' | 'delete'; backup: CloudBackupSummary };
 export default function CloudBackupScreen() {
   const router = useRouter();
   const colors = useColors();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const cloud = useCloudBackup();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -200,7 +201,7 @@ export default function CloudBackupScreen() {
                   }}
                 >
                   <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '600' }}>
-                    {new Date(backup.createdAt).toLocaleString()}
+                    {formatDate(backup.createdAt, language, DATE_TIME)}
                   </Text>
                   <Text style={{ color: colors.muted, fontSize: 12 }}>
                     {t('cloudBackup.snapshotMeta', {

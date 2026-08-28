@@ -16,8 +16,19 @@ import {
 
 const originalFetch = globalThis.fetch;
 
+/**
+ * A real `Response` is the wrong stub here: Node 20 refuses to build one out of
+ * jsdom's Blob (`object.stream is not a function`) while Node 22+ accepts it,
+ * and `getThumbnailUri` turns every throw into null — so the same suite passed
+ * locally and failed on CI for a reason no assertion could show. The module
+ * reads `ok` and `blob()` and nothing else, so that is all a stub owes it.
+ */
+function fakeResponse({ ok = true }: { ok?: boolean } = {}): Response {
+  return { ok, blob: async () => new Blob(['x']) } as unknown as Response;
+}
+
 function stubFetch(impl?: () => Promise<Response>) {
-  const fetchMock = vi.fn(impl ?? (async () => new Response(new Blob(['x'])) as Response));
+  const fetchMock = vi.fn(impl ?? (async () => fakeResponse()));
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   return fetchMock;
 }
@@ -106,7 +117,7 @@ describe('getThumbnailUri', () => {
   });
 
   it('returns null for a response the fetch rejected', async () => {
-    stubFetch(async () => new Response('', { status: 404 }) as Response);
+    stubFetch(async () => fakeResponse({ ok: false }));
     setThumbnailGeneratorForTests(async () => new Blob(['small']));
 
     await expect(getThumbnailUri('file://a.png')).resolves.toBeNull();

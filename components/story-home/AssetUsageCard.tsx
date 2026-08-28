@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useI18n } from '@/hooks/use-i18n';
+import { formatNumber } from '@/lib/format-number';
 import { Fonts, withAlpha, type ThemeColorPalette } from '@/lib/_core/theme';
 import {
   buildAssetUsageReport,
@@ -37,6 +38,8 @@ function SectionToggle({
   expanded: boolean;
   onPress: () => void;
 }) {
+  const { language } = useI18n();
+
   return (
     <Pressable
       onPress={onPress}
@@ -46,7 +49,7 @@ function SectionToggle({
       style={({ pressed }) => [styles.sectionToggle, { opacity: pressed ? 0.75 : 1 }]}
     >
       <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{title}</Text>
-      <Text style={[styles.sectionCount, { color: colors.muted }]}>{count.toLocaleString()}</Text>
+      <Text style={[styles.sectionCount, { color: colors.muted }]}>{formatNumber(count, language)}</Text>
       <IconSymbol name={expanded ? 'chevron.up' : 'chevron.down'} size={16} color={colors.muted} />
     </Pressable>
   );

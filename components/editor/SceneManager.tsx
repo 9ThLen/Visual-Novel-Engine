@@ -7,6 +7,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { computeOrphanedByDeletion } from '@/lib/document-editor/branch-actions';
+import { formatDate, SHORT_DATE } from '@/lib/format-date';
 import { createSceneRecordFromEditorDraft } from '@/lib/editor-scene-draft';
 import type { BlockType, SceneRecord } from '@/lib/engine/types';
 import { generateId } from '@/lib/id-utils';
@@ -20,12 +21,6 @@ type SceneManagerViewMode = 'list' | 'graph';
 interface SceneManagerProps {
   storyId: string;
 }
-
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});
 
 function createManagedSceneRecord(
   storyId: string,
@@ -48,7 +43,7 @@ function createManagedSceneRecord(
 export function SceneManager({ storyId }: SceneManagerProps) {
   const router = useRouter();
   const colors = useColors();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const insets = useSafeAreaInsets();
 
   const storiesMetadata = useAppStore((state) => state.storiesMetadata);
@@ -325,7 +320,7 @@ export function SceneManager({ storyId }: SceneManagerProps) {
               </View>
 
               <Text style={[styles.sceneMeta, { color: colors.muted }]}>
-                {t('editor.sceneManager.meta', { blocks: scene.timeline?.length || 0, date: dateFormatter.format(new Date(scene.updatedAt)) })}
+                {t('editor.sceneManager.meta', { blocks: scene.timeline?.length || 0, date: formatDate(scene.updatedAt, language, SHORT_DATE) })}
               </Text>
 
               {scene.tags.length > 0 && (

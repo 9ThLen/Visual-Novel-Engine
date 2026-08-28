@@ -143,7 +143,11 @@ export async function getThumbnailUri(
       else refused.add(sourceUri);
       return objectUrl;
     })
-    .catch(() => {
+    .catch((error) => {
+      // Every failure ends as null on purpose, but silently: a thumbnail that
+      // never appears looks the same as one the source did not deserve. Say so
+      // in development, where the difference is worth knowing.
+      if (__DEV__) console.warn('[thumbnails] no thumbnail for', sourceUri, error);
       refused.add(sourceUri);
       return null;
     })

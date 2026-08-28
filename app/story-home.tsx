@@ -21,6 +21,8 @@ import { ConfirmDialog } from '@/components/ui';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
+import { formatDate, SHORT_DATE } from '@/lib/format-date';
+import { formatNumber } from '@/lib/format-number';
 import { Fonts, withAlpha, type ThemeColorPalette } from '@/lib/_core/theme';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
@@ -50,12 +52,6 @@ import { getStoryGalleryImageAssets } from '@/lib/story-image-library';
 import type { StoryMetadata } from '@/lib/story-domain';
 import type { SceneRecord } from '@/lib/engine/types';
 import { selectSceneRecordsForStory, useAppStore } from '@/stores/use-app-store';
-
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});
 
 const rabbitsPattern = require('../assets/background/bg-rabbits-pattern-soft.png');
 const rabbitsPatternAsset = Asset.fromModule(rabbitsPattern);
@@ -201,12 +197,14 @@ function StatTile({
   value: number;
   label: string;
 }) {
+  const { language } = useI18n();
+
   return (
     <View style={[styles.statCard, { backgroundColor: withAlpha(colors.primary, 0.06) }]}>
       <View style={[styles.statIcon, { backgroundColor: withAlpha(colors.primary, 0.1) }]}>
         <IconSymbol name={iconName} size={16} color={colors.primary} />
       </View>
-      <Text style={[styles.statValue, { color: colors.foreground }]}>{value.toLocaleString()}</Text>
+      <Text style={[styles.statValue, { color: colors.foreground }]}>{formatNumber(value, language)}</Text>
       <Text style={[styles.statLabel, { color: colors.muted }]} numberOfLines={1}>
         {label}
       </Text>
@@ -219,7 +217,7 @@ export default function StoryHomeScreen() {
   // This hub is a deliberately light "studio" surface, independent of the app
   // theme — a calm bright space between the dark editor and the dark reader.
   const colors = useColors('light');
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const { width } = useWindowDimensions();
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
 
@@ -792,7 +790,7 @@ export default function StoryHomeScreen() {
                 </Text>
                 <Text style={[styles.heroMetaDot, { color: colors.muted }]}>·</Text>
                 <Text style={[styles.heroMeta, { color: colors.muted }]}>
-                  {t('common.updated')} {dateFormatter.format(new Date(story.updatedAt))}
+                  {t('common.updated')} {formatDate(story.updatedAt, language, SHORT_DATE)}
                 </Text>
               </View>
               {hydrated ? (

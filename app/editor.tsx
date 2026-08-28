@@ -29,6 +29,7 @@ import { EditorStoryCard } from '@/components/editor/EditorStoryCard';
 import { AppModal, ConfirmDialog, IconSymbol } from '@/components/ui';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
+import { formatNumber } from '@/lib/format-number';
 import { withAlpha } from '@/lib/_core/theme';
 import {
   TOOLBAR_MIN_PROJECTS,
@@ -76,7 +77,7 @@ export default function EditorScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const colors = useColors();
-  const { t, pluralize } = useI18n();
+  const { t, pluralize, language } = useI18n();
 
   const storiesMetadata = useAppStore((state) => state.storiesMetadata);
   const sceneRecordsByStory = useAppStore((state) => state.sceneRecordsByStory);
@@ -254,10 +255,10 @@ export default function EditorScreen() {
       scenes: backupPreview.counts.scenes,
       characters: backupPreview.counts.characters,
       assets: backupPreview.counts.embeddedAssets,
-      size: backupPreview.counts.totalAssetBytes.toLocaleString(),
+      size: formatNumber(backupPreview.counts.totalAssetBytes, language),
       kinds: kinds || '—',
     });
-  }, [backupPreview, t]);
+  }, [backupPreview, language, t]);
 
   const handleExport = useCallback(
     async (project: StudioProject) => {

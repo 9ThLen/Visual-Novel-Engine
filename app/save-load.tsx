@@ -10,19 +10,21 @@ import { ScreenContainer } from '@/components/screen-container';
 import { useAppStore } from '@/stores/use-app-store';
 import { useColors } from '@/hooks/use-colors';
 import { SaveSlot } from '@/lib/story-domain';
-import { useI18n } from '@/hooks/use-i18n';
+import { useI18n, type Language } from '@/hooks/use-i18n';
+import { formatDate } from '@/lib/format-date';
 import { Button, ConfirmDialog, IconSymbol } from '@/components/ui';
 import { showToast } from '@/lib/toast-store';
 import { typeScale } from '@/lib/design-tokens';
 import { isQuickSaveSlotId } from '@/stores/app-store-slices/saves-slice';
 import { ShowcaseImage } from '@/components/showcase/ShowcaseImage';
 
-function ReservedSaveSlot({ slot, slotId, label, colors, t, onLoad, onDelete }: {
+function ReservedSaveSlot({ slot, slotId, label, colors, t, language, onLoad, onDelete }: {
   slot: SaveSlot;
   slotId: string;
   label: string;
   colors: ReturnType<typeof useColors>;
   t: (key: string, params?: Record<string, string | number>, fallback?: string) => string;
+  language: Language;
   onLoad: (id: string) => void; onDelete: (id: string) => void;
 }) {
   return (
@@ -37,7 +39,7 @@ function ReservedSaveSlot({ slot, slotId, label, colors, t, onLoad, onDelete }: 
           />
           <View className="absolute bottom-2 left-2 right-2">
             <Text style={{ color: colors['text-inverse'], fontSize: 12, fontWeight: '600' }}>
-              {new Date(slot.timestamp).toLocaleDateString()}
+              {formatDate(slot.timestamp, language)}
             </Text>
           </View>
         </View>
@@ -388,6 +390,7 @@ export default function SaveLoadScreen() {
               label={t('save.quickSave')}
               colors={colors}
               t={t}
+              language={language}
               onLoad={handleLoadFromSlot}
               onDelete={handleDeleteSlot}
             />
@@ -406,6 +409,7 @@ export default function SaveLoadScreen() {
             label={t('save.autosave')}
             colors={colors}
             t={t}
+            language={language}
             onLoad={handleLoadFromSlot}
             onDelete={handleDeleteSlot}
           />

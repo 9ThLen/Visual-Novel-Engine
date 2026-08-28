@@ -2,9 +2,29 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { dirname, resolve } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 
+/**
+ * Where the running node keeps corepack.
+ *
+ * It sits beside the binary on Windows and one level up under `lib/` on POSIX
+ * — the GitHub runner is the second, so the single Windows-shaped guess this
+ * test used to make failed on CI for good while passing locally. Spawning the
+ * PATH shim instead is not an option: Node refuses to spawn a `.cmd` without a
+ * shell, so an unbundled node is named in the error rather than worked around.
+ */
+function corepackEntry(): string {
+  const binDirectory = dirname(process.execPath);
+  const candidates = [
+    resolve(binDirectory, 'node_modules/corepack/dist/corepack.js'),
+    resolve(binDirectory, '../lib/node_modules/corepack/dist/corepack.js'),
+  ];
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (!found) throw new Error(`corepack not found near ${process.execPath}: tried ${candidates.join(', ')}`);
+  return found;
+}
+
 describe('standalone AI bridge package', () => {
   it('packs, installs and starts outside the repository', () => {
-    const corepack = resolve(dirname(process.execPath), 'node_modules/corepack/dist/corepack.js');
+    const corepack = corepackEntry();
     const bridge = resolve(process.cwd(), 'tools/ai-bridge');
     const sandbox = mkdtempSync(resolve(process.cwd(), '.tmp-vne-ai-bridge-'));
     try {

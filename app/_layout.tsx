@@ -11,9 +11,10 @@ import { PlayerModeRouteGuard } from "@/components/PlayerModeRouteGuard";
 import { MigrationErrorBanner } from "@/components/MigrationErrorBanner";
 import { ToastViewport } from "@/components/ui";
 import { ensureStorageBootstrap } from "@/stores/storage-bootstrap";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 import { startAppStoreCrossTabWarning } from "@/lib/app-store-cross-tab";
+import { useI18n } from "@/hooks/use-i18n";
 
 // Web safety: set background before any React rendering
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -33,7 +34,18 @@ export default function RootLayout() {
     void ensureStorageBootstrap();
   }, []);
 
-  useEffect(() => startAppStoreCrossTabWarning(), []);
+  // One subscription for the life of the tab, but the warning is written when
+  // it fires: a ref keeps the current translator without resubscribing (and
+  // re-announcing this tab) every time the author switches language.
+  const { t } = useI18n();
+  const translate = useRef(t);
+  useEffect(() => {
+    translate.current = t;
+  }, [t]);
+  useEffect(
+    () => startAppStoreCrossTabWarning(() => translate.current('common.crossTabWarning')),
+    [],
+  );
 
   // Hide the native splash screen once JS has mounted.
   useEffect(() => {
