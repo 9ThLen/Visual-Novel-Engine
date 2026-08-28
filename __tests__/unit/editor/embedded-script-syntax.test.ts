@@ -122,6 +122,7 @@ function createSpriteUploadHarness(alphaValues: number[]) {
     postHostMessage(data: Record<string, unknown>) {
       window.dispatchEvent(new MessageEvent('message', {
         data: { source: 'vn-plate-host', editorId: 'editor_sprite_upload', ...data },
+        source: window.parent,
       }));
     },
     cleanup() {
@@ -313,6 +314,31 @@ const sceneWithEffect = {
 };
 
 describe('createEmbeddedScript', () => {
+  it('ignores host-shaped messages that were not sent by the parent window', () => {
+    document.body.innerHTML = '<main class="paper"><input id="title" value="Scene 1"><div id="editor"></div></main><div id="slashMenu"></div>';
+    const api = evalEmbeddedScriptForHarness({
+      editorId: 'editor_secure_child',
+      scene: { sceneId: 'scene_1', sceneName: 'Scene 1', blocks: [] },
+      characters: [],
+      isPhone: false,
+      backgroundAssets: [],
+      audioAssets: [],
+      scenes: [],
+    });
+
+    window.dispatchEvent(new MessageEvent('message', {
+      data: {
+        source: 'vn-plate-host',
+        editorId: 'editor_secure_child',
+        type: 'charactersUpdated',
+        characters: [{ id: 'attacker', name: 'Attacker', sprites: [] }],
+      },
+      source: null,
+    }));
+
+    expect(api.getCharacters()).toEqual([]);
+  });
+
   it('creates, edits, validates, and serializes an interactive object without browser prompts', () => {
     const harness = createVoidBlockHarness([{
       id: 'scene_background',
@@ -924,6 +950,7 @@ describe('createEmbeddedScript', () => {
           requestId: pickMessage?.requestId,
           asset: { id: 'asset_clip', name: 'Intro.mp4' },
         },
+        source: window.parent,
       }));
 
       expect(JSON.parse(videoBlock.dataset.video || '{}').assetId).toBe('asset_clip');
@@ -953,6 +980,7 @@ describe('createEmbeddedScript', () => {
           asset: null,
           error: 'tooLarge',
         },
+        source: window.parent,
       }));
 
       expect(popover.querySelector('.video-popover-error')?.textContent).toContain('64');
@@ -1178,6 +1206,7 @@ describe('createEmbeddedScript', () => {
           type: 'charactersUpdated',
           characters: [{ id: 'char_1', name: 'Мія', sprites: [] }],
         },
+        source: window.parent,
       }));
 
       api.insertCommand('camera');
@@ -1201,6 +1230,7 @@ describe('createEmbeddedScript', () => {
           type: 'charactersUpdated',
           characters: [{ id: 'char_1', name: 'Мія Соколова', sprites: [] }],
         },
+        source: window.parent,
       }));
       expect(cameraBlock.textContent).toContain('Мія Соколова');
     } finally {

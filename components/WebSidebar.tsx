@@ -81,17 +81,20 @@ export function WebSidebar({ visible = true }: WebSidebarProps) {
             <Pressable
               key={item.id}
               onPress={() => handleNavigate(item.path)}
-              style={({ pressed, hovered }: { pressed: boolean; hovered: boolean }) => [
-                styles.navItem,
-                {
-                  backgroundColor: isActive
-                    ? withAlpha(colors.primary, 0.08)
-                    : hovered
-                    ? colors.background
-                    : 'transparent',
-                  opacity: pressed ? 0.7 : 1,
-                },
-              ]}
+              style={(state) => {
+                const hovered = 'hovered' in state && state.hovered === true;
+                return [
+                  styles.navItem,
+                  {
+                    backgroundColor: isActive
+                      ? withAlpha(colors.primary, 0.08)
+                      : hovered
+                      ? colors.background
+                      : 'transparent',
+                    opacity: state.pressed ? 0.7 : 1,
+                  },
+                ];
+              }}
             >
               <IconSymbol
                 name={item.icon}

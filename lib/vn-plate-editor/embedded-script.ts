@@ -5945,6 +5945,7 @@ const EMBEDDED_SCRIPT_BODY = `
     });
 
     window.addEventListener('message', function(event) {
+      if (event.source !== window.parent) return;
       var message = event.data;
       if (!message || message.source !== 'vn-plate-host' || message.editorId !== payload.editorId) return;
       if (message.type === 'flush' && message.requestId) {

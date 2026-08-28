@@ -66,10 +66,28 @@ describe('PlateWebViewEditor message boundary', () => {
     expect(onChange).toHaveBeenCalledOnce();
   });
 
-  it('rejects a flush when the iframe does not return a current snapshot', async () => {
-    vi.useFakeTimers();
+  it('rejects a flush immediately while the iframe is not ready', async () => {
     const ref = createRef<PlateWebViewEditorHandle>();
     render(
+      <PlateWebViewEditor
+        ref={ref}
+        editorId="editor-not-ready"
+        scene={{ sceneId: 'scene-1', sceneName: 'Scene 1', blocks: [] }}
+        characters={[]}
+        backgroundAssets={[]}
+        audioAssets={[]}
+        isPhone={false}
+        onChange={vi.fn()}
+      />,
+    );
+
+    await expect(ref.current!.flush()).rejects.toThrow('not ready');
+  });
+
+  it('rejects a flush when a ready iframe does not return a current snapshot', async () => {
+    vi.useFakeTimers();
+    const ref = createRef<PlateWebViewEditorHandle>();
+    const { container } = render(
       <PlateWebViewEditor
         ref={ref}
         editorId="editor-timeout"
@@ -81,11 +99,19 @@ describe('PlateWebViewEditor message boundary', () => {
         onChange={vi.fn()}
       />,
     );
+    const iframe = container.querySelector('iframe')!;
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        data: { source: 'vn-plate-editor', editorId: 'editor-timeout', type: 'ready' },
+        origin: window.location.origin,
+        source: iframe.contentWindow,
+      }));
+    });
 
     const flush = ref.current!.flush();
     const rejected = expect(flush).rejects.toThrow('flush timed out');
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(801);
+      await vi.advanceTimersByTimeAsync(3_001);
     });
     await rejected;
     vi.useRealTimers();

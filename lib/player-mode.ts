@@ -79,6 +79,22 @@ let configPromise: Promise<PlayerConfig | null> | undefined;
 let activeConfig: PlayerConfig | null = null;
 
 function playerConfigUrl(): string {
+  // On static SPA hosts a deep-link fallback keeps document.baseURI at the
+  // requested route (for example `/reader`), while the entry bundle still
+  // carries the real deployment base path. Resolve beside that base so a
+  // published story also boots after a direct deep link or refresh.
+  if (typeof document !== 'undefined') {
+    const entryScript = document.querySelector<HTMLScriptElement>('script[src*="/_expo/"]');
+    const entryUrl = entryScript?.src;
+    const expoSegment = entryUrl?.indexOf('/_expo/') ?? -1;
+    if (entryUrl && expoSegment >= 0) {
+      try {
+        return new URL(PLAYER_CONFIG_PATH, `${entryUrl.slice(0, expoSegment + 1)}`).toString();
+      } catch {
+        /* fall through */
+      }
+    }
+  }
   if (typeof document !== 'undefined' && document.baseURI) {
     try {
       return new URL(PLAYER_CONFIG_PATH, document.baseURI).toString();

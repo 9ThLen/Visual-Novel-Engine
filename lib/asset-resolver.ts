@@ -226,6 +226,11 @@ const BUNDLED_ASSETS: Record<string, number> = {
   'assets/background/bg-treasure-chamber.png': require('../assets/background/bg-treasure-chamber.png'),
   'assets/background/bg-upper-library.png': require('../assets/background/bg-upper-library.png'),
 
+  // Story illustration assets
+  'assets/images/img-reflection-hint.png': require('../assets/images/img-reflection-hint.png'),
+  'assets/images/img-phoenix-illustration.png': require('../assets/images/img-phoenix-illustration.png'),
+  'assets/images/img-constellation-phoenix.png': require('../assets/images/img-constellation-phoenix.png'),
+
   // Background assets - short names
   'bg-ancient-library': require('../assets/background/bg-ancient-library.png'),
   'bg-grand-hall': require('../assets/background/bg-grand-hall.png'),

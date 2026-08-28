@@ -96,13 +96,8 @@ export default function OAuthCallback() {
           return;
         }
 
-        if (!(await Auth.validateOAuthState(state))) {
-          if (__DEV__) console.error("[OAuth] Invalid or expired state");
-          setStatus("error");
-          setErrorMessage("Invalid or expired OAuth state");
-          return;
-        }
-
+        // exchangeOAuthCode owns the one-time state validation. Validating here
+        // as well would consume the state before the exchange can verify it.
         const result = await Api.exchangeOAuthCode(code, state);
 
         if (result.sessionToken) {

@@ -7,17 +7,17 @@ the story — no editor or library UI is reachable.
 ## Usage
 
 ```bash
-pnpm export:story -- --story <id-or-json-path> --out <dir>
+pnpm export:story --story <id-or-json-path> --out <dir>
 ```
 
 Examples:
 
 ```bash
 # By bundled story id (looked up in assets/*.json)
-pnpm export:story -- --story demo-advanced-001 --out ./story-dist
+pnpm export:story --story demo-advanced-001 --out ./story-dist
 
 # By path to an exported story JSON
-pnpm export:story -- --story ./my-story.json --out ./story-dist
+pnpm export:story --story ./my-story.json --out ./story-dist
 ```
 
 Then serve the output with any static host:

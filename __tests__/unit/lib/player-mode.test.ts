@@ -1,6 +1,8 @@
 import {
   PLAYER_CONFIG_VERSION,
+  __resetPlayerModeForTests,
   isCanonicalStoryShape,
+  loadPlayerConfig,
   parsePlayerConfig,
 } from '@/lib/player-mode';
 
@@ -64,5 +66,32 @@ describe('parsePlayerConfig', () => {
     expect(parsePlayerConfig({ story: { id: 'a', startSceneId: 's', scenes: { s: {} } } })).toBeNull();
     expect(parsePlayerConfig({ story: { id: 'a', title: 't', scenes: { s: {} } } })).toBeNull();
     expect(parsePlayerConfig({ story: { id: 'a', title: 't', startSceneId: 's', scenes: {} } })).toBeNull();
+  });
+});
+
+describe('loadPlayerConfig', () => {
+  afterEach(() => {
+    document.querySelector('script[data-player-mode-test]')?.remove();
+    vi.restoreAllMocks();
+    __resetPlayerModeForTests();
+  });
+
+  it('resolves the config beside the deployed base path on a deep-link fallback', async () => {
+    const script = document.createElement('script');
+    script.dataset.playerModeTest = 'true';
+    script.src = 'https://example.test/Visual-Novel-Engine/_expo/static/js/web/entry.js';
+    document.head.appendChild(script);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ story: canonicalStory }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    await expect(loadPlayerConfig()).resolves.not.toBeNull();
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://example.test/Visual-Novel-Engine/player-config.json',
+      { cache: 'no-store' },
+    );
   });
 });

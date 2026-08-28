@@ -11,6 +11,7 @@ const bundleId = rawBundleId
 
 const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
 const schemeFromBundleId = `manus${timestamp}`;
+const webBaseUrl = process.env.VNE_WEB_BASE_URL?.trim();
 
 const appConfig = {
   name: "Visual Novel Engine",
@@ -60,6 +61,7 @@ const appConfig = {
     typedRoutes: true,
     reactCompiler: true,
     tsconfigPaths: true,
+    ...(webBaseUrl ? { baseUrl: webBaseUrl } : {}),
   },
   extra: {
     eas: {

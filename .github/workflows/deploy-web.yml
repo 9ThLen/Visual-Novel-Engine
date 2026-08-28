@@ -84,9 +84,14 @@ jobs:
 
       - name: Build web
         run: pnpm build:web
+        env:
+          VNE_WEB_BASE_URL: /${{ github.event.repository.name }}
 
       - name: Strict demo story export
         run: pnpm export:story --story assets/demo-story.json --out .ci-story-export --skip-build --strict
+
+      - name: Strict advanced demo story export
+        run: pnpm export:story --story assets/demo-story-advanced.json --out .ci-advanced-story-export --skip-build --strict
 
       - name: Create .nojekyll
         run: touch dist/.nojekyll
@@ -103,6 +108,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify deployed web app
+        run: node scripts/check-deployed-web.mjs "${{ steps.deployment.outputs.page_url }}"

@@ -177,7 +177,7 @@
           "expression": "explaining"
         }
       ],
-      "voiceAudioUri": "assets/sounds-sample/voice-guide-hall.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-guide-welcome.mp3",
       "musicUri": "assets/sounds-sample/music-mysterious-adventure.mp3",
       "interactiveObjects": [
         {
@@ -295,7 +295,7 @@
           "expression": "mysterious"
         }
       ],
-      "voiceAudioUri": "assets/sounds-sample/voice-reflection.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-guide-welcome.mp3",
       "musicUri": "assets/sounds-sample/music-eerie.mp3",
       "interactiveObjects": [
         {
@@ -384,7 +384,7 @@
           "expression": "wise"
         }
       ],
-      "voiceAudioUri": "assets/sounds-sample/voice-reflection-wisdom.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-guide-welcome.mp3",
       "musicUri": "assets/sounds-sample/music-eerie.mp3",
       "choices": [
         {
@@ -407,7 +407,7 @@
           "expression": "reading"
         }
       ],
-      "voiceAudioUri": "assets/sounds-sample/voice-librarian-greeting.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-guide-welcome.mp3",
       "musicUri": "assets/sounds-sample/music-peaceful.mp3",
       "interactiveObjects": [
         {
@@ -495,7 +495,7 @@
           "expression": "wise"
         }
       ],
-      "voiceAudioUri": "assets/sounds-sample/voice-librarian-advice.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-guide-welcome.mp3",
       "musicUri": "assets/sounds-sample/music-peaceful.mp3",
       "choices": [
         {
@@ -523,7 +523,7 @@
           "expression": "explaining"
         }
       ],
-      "voiceAudioUri": "assets/sounds-sample/voice-librarian-explain.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-guide-welcome.mp3",
       "musicUri": "assets/sounds-sample/music-peaceful.mp3",
       "choices": [
         {
@@ -659,7 +659,7 @@
           "expression": "happy"
         }
       ],
-      "voiceAudioUri": "assets/sounds-sample/voice-victory.mp3",
+      "voiceAudioUri": "assets/sounds-sample/voice-guide-welcome.mp3",
       "musicUri": "assets/sounds-sample/music-triumphant.mp3",
       "choices": [
         {
