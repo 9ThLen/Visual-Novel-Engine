@@ -50,6 +50,7 @@ const MAPPING = {
   play: "play-arrow",
   pause: "pause",
   stop: "stop",
+  loop: "repeat",
   location: "place",
   lightning: "bolt",
   scissors: "content-cut",

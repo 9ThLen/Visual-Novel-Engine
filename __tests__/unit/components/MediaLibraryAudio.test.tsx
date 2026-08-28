@@ -9,7 +9,7 @@
 import React from 'react';
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 
-import { MediaGrid } from '@/components/media-library/MediaGrid';
+import { AudioTrackList } from '@/components/media-library/AudioTrackList';
 import { MediaInspector } from '@/components/media-library/MediaInspector';
 import { useAudioPreview } from '@/hooks/useAudioPreview';
 import { acquireResolvedAssetUri } from '@/lib/asset-resolver';
@@ -45,18 +45,18 @@ function audios(ids: string[]): StoryMediaItem[] {
   }).audios;
 }
 
-/** The screen in miniature: one controller, handed to the grid. */
+/** The screen in miniature: one controller, handed to the track list. */
 function Screen({ items }: { items: StoryMediaItem[] }) {
   const preview = useAudioPreview();
   const onSelect = vi.fn();
   return (
-    <MediaGrid
+    <AudioTrackList
       items={items}
       colors={colors}
       selectedKey={null}
       grouped={false}
-      now={NOW}
       emptyLabel="No sounds in this story yet."
+      usageState="ready"
       onSelect={onSelect}
       onTogglePlayback={(item) => preview.toggle({ key: item.key, assetId: item.assetId, uri: item.uri })}
       activeAudioKey={preview.activeKey}
@@ -98,7 +98,7 @@ describe('audio preview', () => {
     await waitFor(() => expect(acquireResolvedAssetUri).toHaveBeenCalledWith('bgm'));
   });
 
-  it('stops the tile that was playing when another one starts', async () => {
+  it('stops the row that was playing when another one starts', async () => {
     render(<Screen items={audios(['one', 'two'])} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Play one.mp3' }));
@@ -161,7 +161,7 @@ describe('audio preview', () => {
     expect(mockAudioPlayers).toHaveLength(1);
   });
 
-  it('returns the tile to its stopped state when the track ends', async () => {
+  it('returns the row to its stopped state when the track ends', async () => {
     render(<Screen items={audios(['bgm'])} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Play bgm.mp3' }));
@@ -197,9 +197,9 @@ describe('audio preview', () => {
     expect(mockAudioPlayers).toHaveLength(0);
   });
 
-  // Selecting a tile is not auditioning it: the transport is a separate control
+  // Selecting a row is not auditioning it: the transport is a separate control
   // precisely so one does not trigger the other.
-  it('does not start playback when the tile itself is tapped', async () => {
+  it('does not start playback when the row itself is tapped', async () => {
     render(<Screen items={audios(['bgm'])} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Sound, bgm.mp3' }));
@@ -295,7 +295,7 @@ describe('audio in the inspector', () => {
     return onTogglePlayback;
   }
 
-  it('drives the same controller as the grid and shows the category', () => {
+  it('drives the same controller as the list and shows the category', () => {
     const onTogglePlayback = renderInspector();
 
     fireEvent.click(screen.getByRole('button', { name: 'Play door.mp3' }));
