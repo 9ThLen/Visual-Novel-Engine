@@ -4,7 +4,7 @@
  *
  * Turns ONE story into a self-contained, playable static web bundle:
  *
- *   pnpm export:story -- --story <id-or-json-path> --out <dir>
+ *   pnpm export:story --story <id-or-json-path> --out <dir>
  *
  * It (1) reuses (or runs) the Expo web build, (2) copies it to `--out`, and
  * (3) drops a `player-config.json` boot flag next to `index.html`. The generic
@@ -19,6 +19,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { collectStoryAssetRefs } from './lib/collect-story-assets.mjs';
+import { hardenWebOutput } from './lib/harden-web-output.mjs';
 import { validateStoryGraph } from './lib/validate-story-graph.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -63,7 +64,7 @@ function printHelp() {
 Export one story as a self-contained playable web bundle.
 
 Usage:
-  pnpm export:story -- --story <id-or-json-path> --out <dir> [options]
+  pnpm export:story --story <id-or-json-path> --out <dir> [options]
 
 Options:
   --story <id|path>  Story id (looked up in assets/*.json) or path to a story JSON.
@@ -308,6 +309,7 @@ function main() {
   );
 
   const distPath = ensureWebBuild(args.dist, args);
+  hardenWebOutput(distPath);
   const outPath = copyBuild(distPath, args.out);
   const configFile = writePlayerConfig(outPath, story);
   console.log(color.dim(`  Wrote ${path.relative(process.cwd(), configFile)}`));

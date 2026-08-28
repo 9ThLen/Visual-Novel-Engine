@@ -24,7 +24,7 @@ const Iframe = 'iframe' as unknown as React.ComponentType<{
 
 const MIN_FRAME_HEIGHT = 760;
 const MIN_PHONE_FRAME_HEIGHT = 640;
-const FLUSH_TIMEOUT_MS = 800;
+const FLUSH_TIMEOUT_MS = 3_000;
 
 export function getMinFrameHeight(isPhone: boolean): number {
   return isPhone ? MIN_PHONE_FRAME_HEIGHT : MIN_FRAME_HEIGHT;
@@ -381,6 +381,13 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
 
   useImperativeHandle(ref, () => ({
     flush: () => {
+      if (!readyRef.current) {
+        return Promise.reject(new Error('Editor is not ready to flush its current content'));
+      }
+      const frameWindow = iframeRef.current?.contentWindow;
+      if (!frameWindow) {
+        return Promise.reject(new Error('Editor frame is unavailable'));
+      }
       const requestId = `${editorId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       return new Promise<PlateWebViewEditorSnapshot>((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -388,7 +395,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
           reject(new Error('Editor flush timed out before current content was received'));
         }, FLUSH_TIMEOUT_MS);
         pendingFlushesRef.current.set(requestId, { resolve, reject, timer });
-        iframeRef.current?.contentWindow?.postMessage({
+        frameWindow.postMessage({
           source: 'vn-plate-host',
           editorId,
           type: 'flush',

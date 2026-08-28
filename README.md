@@ -140,7 +140,7 @@ The default experience is local-first:
 
 - no account is required;
 - story data stays in the current browser profile;
-- use one app tab at a time; concurrent tabs can overwrite each other's latest local changes;
+- use one app tab at a time; the app warns both tabs when it detects concurrent editing because simultaneous scene changes cannot be merged safely;
 - different browsers use separate local storage;
 - clearing site data for `localhost` can remove locally stored stories.
 

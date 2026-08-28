@@ -11,9 +11,9 @@ echo "🚀 Building Visual Novel Engine for web..."
 echo "🧹 Cleaning previous build..."
 rm -rf dist
 
-# Export web build
+# Export and apply the production CSP/clickjacking guard.
 echo "📦 Exporting web build..."
-npx expo export --platform web
+corepack pnpm build:web
 
 # Check if build was successful
 if [ ! -d "dist" ]; then

@@ -13,6 +13,7 @@ import { ToastViewport } from "@/components/ui";
 import { ensureStorageBootstrap } from "@/stores/storage-bootstrap";
 import { useEffect } from "react";
 import { Platform } from "react-native";
+import { startAppStoreCrossTabWarning } from "@/lib/app-store-cross-tab";
 
 // Web safety: set background before any React rendering
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -31,6 +32,8 @@ export default function RootLayout() {
   useEffect(() => {
     void ensureStorageBootstrap();
   }, []);
+
+  useEffect(() => startAppStoreCrossTabWarning(), []);
 
   // Hide the native splash screen once JS has mounted.
   useEffect(() => {

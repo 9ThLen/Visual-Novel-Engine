@@ -22,11 +22,34 @@ type BackgroundRemovalModule = typeof import('@imgly/background-removal');
 // Keep the version in sync with @imgly/background-removal in package.json.
 const CDN_MODULE_URL = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm';
 
-// `import(url)` must be hidden from Metro — written literally it fails the
-// build the same way onnxruntime-web does.
-const nativeImport = new Function('url', 'return import(url)') as (url: string) => Promise<BackgroundRemovalModule>;
+// Keep the CDN import inside module-script text so Metro never parses the
+// variable import that onnxruntime-web contains. This uses the browser's module
+// loader without requiring CSP's unsafe-eval.
+function importFromCdn(): Promise<BackgroundRemovalModule> {
+  return new Promise((resolve, reject) => {
+    const callbackName = `__vneBackgroundRemoval_${crypto.randomUUID().replaceAll('-', '')}`;
+    const script = document.createElement('script');
+    const callbacks = window as unknown as Record<string, (module: BackgroundRemovalModule) => void>;
+    const cleanup = () => {
+      delete callbacks[callbackName];
+      script.remove();
+    };
 
-let moduleLoader: () => Promise<BackgroundRemovalModule> = () => nativeImport(CDN_MODULE_URL);
+    callbacks[callbackName] = (module) => {
+      cleanup();
+      resolve(module);
+    };
+    script.type = 'module';
+    script.textContent = `import * as module from ${JSON.stringify(CDN_MODULE_URL)}; window[${JSON.stringify(callbackName)}](module);`;
+    script.onerror = () => {
+      cleanup();
+      reject(new Error('Failed to load the background-removal module'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+let moduleLoader: () => Promise<BackgroundRemovalModule> = importFromCdn;
 let modulePromise: Promise<BackgroundRemovalModule> | null = null;
 
 /** Test seam: replace the CDN loader with a stub module. */
