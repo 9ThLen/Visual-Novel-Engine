@@ -12,6 +12,7 @@ import { useI18n } from '@/hooks/use-i18n';
 import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { getQuickSaveSlotId } from '@/stores/app-store-slices/saves-slice';
 import { useAppStore } from '@/stores/use-app-store';
+import { isPlayerModeActive } from '@/lib/player-mode';
 
 interface ReaderMenuProps {
   visible: boolean;
@@ -48,6 +49,7 @@ export function ReaderMenu({ visible, onClose, onPlaybackReplaced }: ReaderMenuP
   const parallaxStyle = useParallaxLayer(parallaxEnabled && visible, PARALLAX_LAYERS.menu);
 
   const activeStoryId = playbackState?.storyId ?? currentStoryId;
+  const playerMode = isPlayerModeActive();
   const quickSlotId = activeStoryId ? getQuickSaveSlotId(activeStoryId) : null;
   const quickSaveSlot = quickSlotId
     ? saveSlots.find((slot) => slot.id === quickSlotId) ?? null
@@ -120,11 +122,15 @@ export function ReaderMenu({ visible, onClose, onPlaybackReplaced }: ReaderMenuP
     { label: t('reader.saveLoad'), icon: 'save' as IconSymbolName, action: openSaveLoad },
     { label: t('menu.settings'), icon: 'settings' as IconSymbolName, action: () => { leaveReader(); router.push('../settings'); } },
     {
-      label: t('menu.home'),
-      icon: 'home' as IconSymbolName,
+      label: playerMode ? t('reader.restart') : t('menu.home'),
+      icon: (playerMode ? 'play' : 'home') as IconSymbolName,
       action: () => {
         leaveReader();
-        router.replace('/tabs');
+        if (playerMode && activeStoryId) {
+          router.replace({ pathname: '/reader', params: { storyId: activeStoryId, resume: '0' } });
+        } else {
+          router.replace('/tabs');
+        }
       },
     },
     { label: t('menu.close'), icon: 'close' as IconSymbolName, action: onClose },

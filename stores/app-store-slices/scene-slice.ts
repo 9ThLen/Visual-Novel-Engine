@@ -47,6 +47,15 @@ export interface SceneSlice {
   reorderScenes: (storyId: string, sceneIds: string[]) => void;
 }
 
+function assertFullSceneHydration(
+  sceneRecordHydration: Record<string, 'window' | 'full'>,
+  storyId: string,
+): void {
+  if (sceneRecordHydration[storyId] !== 'full') {
+    throw new Error(`Cannot mutate scenes for "${storyId}" before full hydration`);
+  }
+}
+
 export function createSceneSlice(
   set: AppStoreSet,
   get: AppStoreGet,
@@ -144,10 +153,14 @@ export function createSceneSlice(
     },
 
     deleteScene: (storyId, sceneId) =>
-      set((s) => applyCanonicalSceneDelete(s, storyId, sceneId)),
+      set((s) => {
+        assertFullSceneHydration(s.sceneRecordHydration, storyId);
+        return applyCanonicalSceneDelete(s, storyId, sceneId);
+      }),
 
     saveSceneRecord: (record) =>
       set((s) => {
+        assertFullSceneHydration(s.sceneRecordHydration, record.storyId);
         const storyRecords = { ...(s.sceneRecordsByStory[record.storyId] || {}) };
         storyRecords[record.id] = { ...record, updatedAt: Date.now() };
 
@@ -159,6 +172,7 @@ export function createSceneSlice(
 
     commitAiChangeSet: (storyId, result) =>
       set((s) => {
+        assertFullSceneHydration(s.sceneRecordHydration, storyId);
         const storyRecords = { ...(s.sceneRecordsByStory[storyId] || {}) };
         for (const record of result.scenesToSave) {
           storyRecords[record.id] = { ...record, updatedAt: Date.now() };
@@ -183,6 +197,7 @@ export function createSceneSlice(
 
     updateSceneRecordPreservingMeta: (storyId, sceneId, updates) =>
       set((s) => {
+        assertFullSceneHydration(s.sceneRecordHydration, storyId);
         const existingRecord = getCanonicalSceneRecordFromState(s, storyId, sceneId);
         if (!existingRecord) {
           return {};
@@ -205,6 +220,7 @@ export function createSceneSlice(
 
     updateSceneConnection: (storyId, fromSceneId, connection) =>
       set((s) => {
+        assertFullSceneHydration(s.sceneRecordHydration, storyId);
         const storyRecords = { ...(s.sceneRecordsByStory[storyId] || {}) };
         const fromScene = storyRecords[fromSceneId];
         if (!fromScene) return {};
@@ -217,13 +233,20 @@ export function createSceneSlice(
       }),
 
     removeSceneConnection: (storyId, fromSceneId, targetSceneId, outputPort) =>
-      set((s) => removeCanonicalConnection(s, storyId, fromSceneId, targetSceneId, outputPort)),
+      set((s) => {
+        assertFullSceneHydration(s.sceneRecordHydration, storyId);
+        return removeCanonicalConnection(s, storyId, fromSceneId, targetSceneId, outputPort);
+      }),
 
     setStartScene: (storyId, sceneId) =>
-      set((s) => syncCanonicalStartScene(s, storyId, { preferredStartSceneId: sceneId })),
+      set((s) => {
+        assertFullSceneHydration(s.sceneRecordHydration, storyId);
+        return syncCanonicalStartScene(s, storyId, { preferredStartSceneId: sceneId });
+      }),
 
     reorderScenes: (storyId, sceneIds) =>
       set((s) => {
+        assertFullSceneHydration(s.sceneRecordHydration, storyId);
         const storyRecords = { ...(s.sceneRecordsByStory[storyId] || {}) };
         const orderedSceneIds = [
           ...sceneIds.filter((id) => storyRecords[id]),

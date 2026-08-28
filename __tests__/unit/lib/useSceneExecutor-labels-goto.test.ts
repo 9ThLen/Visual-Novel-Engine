@@ -42,6 +42,16 @@ function gotoStep(id: string, data: Partial<GotoBlockData> & { targetLabel: stri
   } as TimelineStep;
 }
 
+function blockingEffectStep(id: string): TimelineStep {
+  return {
+    id,
+    blockType: 'effect',
+    data: { effectType: 'rain', target: 'screen', intensity: 50 },
+    collapsed: false,
+    enabled: true,
+  } as TimelineStep;
+}
+
 function condition(variableName: string, operator: Condition['operator'], value: Condition['value']): Condition {
   return { variableName, operator, value };
 }
@@ -182,6 +192,46 @@ describe('useSceneExecutor labels and goto', () => {
     const { result } = renderHook(() => useSceneExecutor(timeline));
 
     await waitFor(() => expect(result.current.isComplete).toBe(true));
+  });
+
+  it('bounds blocking-effect lookahead work in a single pass', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const timeline = [
+      textStep('step-1', 'Intro'),
+      ...Array.from({ length: 1100 }, (_, index) => blockingEffectStep(`effect-${index}`)),
+      textStep('step-last', 'After effects'),
+    ];
+
+    const { result } = renderHook(() => useSceneExecutor(timeline));
+    await waitFor(() => expect(result.current.currentStepIndex).toBe(0));
+
+    expect(result.current.sceneState.activeEffects).toHaveLength(999);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('lookahead step budget exceeded'));
+    warn.mockRestore();
+  });
+
+  it('ignores non-numeric arithmetic instead of poisoning variables with NaN', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const invalidAdd: TimelineStep = {
+      id: 'step-1',
+      blockType: 'variable',
+      data: { variableName: 'score', operation: 'add', value: 'not-a-number' },
+      collapsed: false,
+      enabled: true,
+    } as TimelineStep;
+    const { result } = renderHook(() => useSceneExecutor(
+      [invalidAdd, textStep('step-2', 'After')],
+      { initialVariables: { score: 3 } },
+    ));
+
+    await waitFor(() => expect(result.current.currentStepIndex).toBe(1));
+    expect(result.current.sceneState.variables.score).toBe(3);
+    expect(Number.isNaN(result.current.sceneState.variables.score)).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('ignored non-numeric arithmetic'),
+      'score',
+    );
+    warn.mockRestore();
   });
 
   it('ignores a disabled goto block', async () => {

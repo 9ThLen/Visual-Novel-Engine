@@ -31,17 +31,26 @@ export function PlayerModeRouteGuard() {
       // Seed here — not only via the '/' boot gate — so a deep-link or reload
       // straight to /reader (or any editor route) still finds the story in the
       // store. The seed is idempotent and shared with app/index.tsx.
-      void ensurePlayerStorySeeded(resolved);
+      void ensurePlayerStorySeeded(resolved).catch(() => {
+        if (!cancelled) router.replace('/');
+      });
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (!config) return;
-    // The reader itself and the transient entry route are allowed through.
-    if (pathname === '/reader' || pathname === '/' || pathname === '') return;
+    // Player settings and save/load are real reader destinations, not escapes
+    // into the authoring application.
+    if (
+      pathname === '/reader'
+      || pathname === '/settings'
+      || pathname === '/save-load'
+      || pathname === '/'
+      || pathname === ''
+    ) return;
     const storyId = (config.story as { id: string }).id;
     router.replace({ pathname: '/reader', params: { storyId, resume: '0' } });
   }, [config, pathname, router]);

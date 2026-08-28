@@ -246,6 +246,14 @@ export function resolveLibraryAssetUri(
   return getLibraryAssetById(assetRef, assets)?.uri ?? null;
 }
 
+function sanitizeAssetFilename(input: string, fallback: string): string {
+  const basename = input.replace(/\\/g, '/').split('/').at(-1)?.trim() ?? '';
+  const sanitized = basename
+    .replace(/\.{2,}/g, '.')
+    .replace(/[<>:"|?*\x00-\x1f]/g, '_');
+  return sanitized && sanitized !== '.' ? sanitized : fallback;
+}
+
 /**
  * Add asset to library (pure function — returns new asset and updated list)
  */
@@ -256,7 +264,11 @@ export async function addAssetToLibraryPure(
   assets: LibraryAsset[],
   metadata?: { mimeType?: string; size?: number; durationSeconds?: number },
 ): Promise<{ asset: LibraryAsset; assets: LibraryAsset[] }> {
-  const filename = name || uri.split('/').pop() || `asset-${Date.now()}`;
+  const fallbackFilename = `asset-${Date.now()}`;
+  const filename = sanitizeAssetFilename(
+    name || uri.split('/').pop() || fallbackFilename,
+    fallbackFilename,
+  );
   const ext = filename.includes('.') ? '' : defaultExtensionForType(type);
   const fullFilename = filename.includes('.') ? filename : `${filename}${ext}`;
   /**
@@ -278,7 +290,7 @@ export async function addAssetToLibraryPure(
     id: assetId,
     type,
     uri: targetUri,
-    name: name || filename,
+    name: filename,
     addedAt: Date.now(),
     ...(metadata?.mimeType ? { mimeType: metadata.mimeType } : {}),
     ...(typeof metadata?.size === 'number' ? { size: metadata.size } : {}),

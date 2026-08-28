@@ -1,6 +1,6 @@
 import { deleteChatAttachmentRecord, getChatAttachmentRecord, listChatAttachmentRecords, putChatAttachmentRecord } from '@/lib/idb-storage';
 import type { StoredChatAttachment } from './attachments';
-import { chooseAttachmentEvictions, type ChatAttachmentRepository } from './attachment-storage';
+import { chooseAttachmentEvictions, type ChatAttachmentRepository } from './attachment-evictions';
 
 export const chatAttachmentRepository: ChatAttachmentRepository = {
   get: getChatAttachmentRecord,

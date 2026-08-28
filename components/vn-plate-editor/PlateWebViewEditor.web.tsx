@@ -146,6 +146,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   const latestSnapshotRef = useRef<PlateWebViewEditorSnapshot>({ scene, characters });
   const pendingFlushesRef = useRef(new Map<string, {
     resolve: (snapshot: PlateWebViewEditorSnapshot) => void;
+    reject: (error: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   }>());
   // Safety net for the shared-script path: if the boot script never reports
@@ -225,7 +226,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     return () => {
       pendingFlushes.forEach((pending) => {
         clearTimeout(pending.timer);
-        pending.resolve(latestSnapshotRef.current);
+        pending.reject(new Error('Editor was destroyed before its content could be flushed'));
       });
       pendingFlushes.clear();
     };
@@ -381,12 +382,12 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   useImperativeHandle(ref, () => ({
     flush: () => {
       const requestId = `${editorId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      return new Promise<PlateWebViewEditorSnapshot>((resolve) => {
+      return new Promise<PlateWebViewEditorSnapshot>((resolve, reject) => {
         const timer = setTimeout(() => {
           pendingFlushesRef.current.delete(requestId);
-          resolve(latestSnapshotRef.current);
+          reject(new Error('Editor flush timed out before current content was received'));
         }, FLUSH_TIMEOUT_MS);
-        pendingFlushesRef.current.set(requestId, { resolve, timer });
+        pendingFlushesRef.current.set(requestId, { resolve, reject, timer });
         iframeRef.current?.contentWindow?.postMessage({
           source: 'vn-plate-host',
           editorId,
@@ -402,6 +403,10 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent<VNPlateEditorMessage | string>) => {
+      if (
+        event.origin !== window.location.origin
+        || event.source !== iframeRef.current?.contentWindow
+      ) return;
       const message = typeof event.data === 'string'
         ? safeParseMessage(event.data)
         : event.data;
@@ -544,7 +549,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         return;
       }
       if (message.type === 'uploadAudioAsset') {
-        void onUploadAudioAsset?.(message.name, message.dataUri).then(async (asset) => {
+        void onUploadAudioAsset?.(message.name, message.dataUri)?.then(async (asset) => {
           if (!asset) return;
           const resolved = await resolvePlayableAssetUri(asset.uri);
           iframeRef.current?.contentWindow?.postMessage({

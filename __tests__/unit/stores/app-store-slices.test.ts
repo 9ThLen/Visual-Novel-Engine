@@ -524,6 +524,7 @@ describe('app store slices', () => {
           'scene-1': makeSceneRecord('scene-1'),
         },
       },
+      sceneRecordHydration: { 'story-1': 'full' },
     });
 
     slice.saveSceneRecord({ ...makeSceneRecord('scene-2'), isStart: true });
@@ -754,6 +755,27 @@ describe('app store slices', () => {
     expect(harness.state.sceneRecordsByStory['story-1']['scene-1'].name).toBe('Edited after full hydrate');
   });
 
+  it('rejects scene mutations while only a reader window is hydrated', () => {
+    const harness = createSliceHarness();
+    const slice = createSceneSlice(harness.set, harness.get);
+    harness.set({
+      sceneRecordsByStory: {
+        'story-1': {
+          'scene-1': makeSceneRecord('scene-1'),
+        },
+      },
+      sceneRecordHydration: { 'story-1': 'window' },
+    });
+
+    expect(() => slice.saveSceneRecord({
+      ...makeSceneRecord('scene-1'),
+      name: 'Must not be persisted',
+    })).toThrow('before full hydration');
+    expect(harness.state.sceneRecordsByStory['story-1']['scene-1'].name).not.toBe(
+      'Must not be persisted',
+    );
+  });
+
   it('updates scene content while preserving metadata fields', () => {
     vi.useFakeTimers();
     vi.setSystemTime(3000);
@@ -775,6 +797,7 @@ describe('app store slices', () => {
           'scene-1': makeSceneRecord('scene-1'),
         },
       },
+      sceneRecordHydration: { 'story-1': 'full' },
     });
 
     slice.updateSceneRecordPreservingMeta('story-1', 'scene-1', {
@@ -803,6 +826,7 @@ describe('app store slices', () => {
           'scene-2': makeSceneRecord('scene-2'),
         },
       },
+      sceneRecordHydration: { 'story-1': 'full' },
     });
 
     slice.updateSceneConnection('story-1', 'scene-1', {
@@ -839,6 +863,7 @@ describe('app store slices', () => {
           'scene-3': makeSceneRecord('scene-3'),
         },
       },
+      sceneRecordHydration: { 'story-1': 'full' },
     });
 
     slice.reorderScenes('story-1', ['scene-3', 'missing']);

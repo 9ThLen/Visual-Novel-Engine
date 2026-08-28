@@ -19,6 +19,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { collectStoryAssetRefs } from './lib/collect-story-assets.mjs';
+import { validateStoryGraph } from './lib/validate-story-graph.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
@@ -112,6 +113,7 @@ function validateStory(story, source) {
   if (!story.scenes || typeof story.scenes !== 'object' || Object.keys(story.scenes).length === 0) {
     problems.push('missing or empty "scenes"');
   }
+  problems.push(...validateStoryGraph(story));
   if (problems.length) fail(`Invalid story JSON (${source})`, problems);
 }
 

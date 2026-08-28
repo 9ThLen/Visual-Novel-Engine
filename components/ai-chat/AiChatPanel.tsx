@@ -34,9 +34,9 @@ import {
   toPendingAiImage,
   type AiImageResult,
 } from '@/lib/ai/image-tools';
-import { pendingImageRepository } from '@/lib/ai/pending-image-storage.web';
+import { pendingImageRepository } from '@/lib/ai/pending-image-storage';
 import { applyImportedImagePlacement } from '@/lib/ai/image-placement';
-import { chatAttachmentRepository } from '@/lib/ai/attachment-storage.web';
+import { chatAttachmentRepository } from '@/lib/ai/attachment-storage';
 import {
   detectAttachment,
   MAX_BINARY_ATTACHMENT_BYTES,
@@ -55,7 +55,7 @@ import { buildAiStoryContext } from '@/lib/ai/story-context';
 import { buildAiChangeSetState, buildPatchProjectContext } from '@/lib/ai/project-context';
 import { BridgeClient, type BridgeConnectionState, type BridgeProvider } from '@/lib/bridge-client';
 import type { BridgeCapabilities } from '@/lib/bridge-protocol';
-import { removeImageBackground } from '@/lib/remove-background.web';
+import { removeImageBackground } from '@/lib/remove-background';
 import type { AiScenePatch } from '@/lib/ai/scene-patch-types';
 import { useAppStore } from '@/stores/use-app-store';
 import { addAssetToLibrary } from '@/stores/media-library-actions';

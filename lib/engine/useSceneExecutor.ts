@@ -172,13 +172,23 @@ function evaluateVariable(
       next[varName] = parsed;
       break;
     case 'add':
-      next[varName] = ((next[varName] as number) || 0) + (parsed as number);
-      break;
     case 'subtract':
-      next[varName] = ((next[varName] as number) || 0) - (parsed as number);
-      break;
     case 'multiply':
-      next[varName] = ((next[varName] as number) || 0) * (parsed as number);
+      {
+        const currentNumber = Number(next[varName] ?? 0);
+        const operand = Number(parsed);
+        if (!Number.isFinite(currentNumber) || !Number.isFinite(operand)) {
+          if (__DEV__) {
+            console.warn('[useSceneExecutor] ignored non-numeric arithmetic variable operation:', varName);
+          }
+          return variables;
+        }
+        next[varName] = operation === 'add'
+          ? currentNumber + operand
+          : operation === 'subtract'
+            ? currentNumber - operand
+            : currentNumber * operand;
+      }
       break;
     case 'toggle':
       next[varName] = !next[varName];
@@ -542,6 +552,12 @@ export function useSceneExecutor(
         if (typing) {
           let lookaheadIndex = idx + 1;
           while (lookaheadIndex < steps.length) {
+            if (++executedSteps > MAX_STEPS_PER_PASS) {
+              if (__DEV__) {
+                console.warn('[useSceneExecutor] lookahead step budget exceeded; deferring remaining preload steps');
+              }
+              break;
+            }
             const lookaheadStep = steps[lookaheadIndex];
             const action = lookaheadActionForStep(lookaheadStep, currentState);
             if (action === 'stop') break;

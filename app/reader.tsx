@@ -34,6 +34,7 @@ import {
   type StoryCoverage,
 } from '@/lib/story-coverage';
 import { useAppStore } from '@/stores/use-app-store';
+import { isPlayerModeActive } from '@/lib/player-mode';
 
 function findChoiceStepIdForOption(sceneRecord: { timeline?: { id: string; blockType: string; enabled?: boolean; data: unknown }[] } | null | undefined, optionId: string): string | null {
   for (const step of sceneRecord?.timeline ?? []) {
@@ -85,7 +86,11 @@ export default function ReaderScreen() {
   const [objDialogue, setObjDialogue] = useState<{ text: string; speaker?: string } | null>(null);
   // Set when the story ends and the reader is worth asking for a rating; holding
   // it here is what keeps the finale on screen instead of exiting instantly.
-  const [finaleEnding, setFinaleEnding] = useState<{ sceneId: string; endingsSeen: number } | null>(null);
+  const [finaleEnding, setFinaleEnding] = useState<{
+    sceneId: string;
+    endingsSeen: number;
+    showRating: boolean;
+  } | null>(null);
   const recordEndingReached = useAppStore((s) => s.recordEndingReached);
   const setReaderSceneThumbnailUri = useAppStore((s) => s.setReaderSceneThumbnailUri);
   const pendingChoiceRef = useRef<{ sceneId: string; choiceId: string; stepId: string | null; targetSceneId: string | null } | null>(null);
@@ -285,8 +290,9 @@ export default function ReaderScreen() {
       // Ask at the peak, or not at all — leaving is the default.
       void (async () => {
         const hasMyReview = !!(await getReviewsStore().getMyReview(story.id));
-        if (shouldPromptForReview(before, after, hasMyReview)) {
-          setFinaleEnding({ sceneId: endingSceneId, endingsSeen: after });
+        const showRating = shouldPromptForReview(before, after, hasMyReview);
+        if (showRating || isPlayerModeActive()) {
+          setFinaleEnding({ sceneId: endingSceneId, endingsSeen: after, showRating });
         } else {
           router.replace('/tabs');
         }
@@ -299,8 +305,12 @@ export default function ReaderScreen() {
 
   const leaveFinale = useCallback(() => {
     setFinaleEnding(null);
+    if (isPlayerModeActive() && story?.id) {
+      router.replace({ pathname: '/reader', params: { storyId: story.id, resume: '0' } });
+      return;
+    }
     router.replace('/tabs');
-  }, [router]);
+  }, [router, story?.id]);
 
   const handleFinaleRating = useCallback((rating: ReviewRating, text: string | undefined) => {
     if (!story?.id || !finaleEnding) return;
@@ -548,6 +558,8 @@ export default function ReaderScreen() {
           sceneName={sceneRecord?.name ?? null}
           onSubmit={handleFinaleRating}
           onDismiss={leaveFinale}
+          showRating={finaleEnding.showRating}
+          dismissLabel={isPlayerModeActive() ? t('reader.restart') : undefined}
         />
       )}
     </View>
