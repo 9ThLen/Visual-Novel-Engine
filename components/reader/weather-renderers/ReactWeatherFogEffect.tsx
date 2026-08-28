@@ -5,9 +5,10 @@ import { gsap } from 'gsap';
 import * as THREE from 'three';
 import type { ActiveEffect } from '@/lib/engine/runtime-types';
 import type { FogEffectVariant } from '@/lib/engine/effect-options';
+import { resolveWebUrl } from '@/lib/web-base-url';
 
-const FOG_ELEMENT_URL = '/vendor/weather-effects/fog/fog-element.png';
-const DENSE_FOG_ELEMENT_URL = '/vendor/weather-effects/fog/dense-fog-element.png';
+const FOG_ELEMENT_PATH = 'vendor/weather-effects/fog/fog-element.png';
+const DENSE_FOG_ELEMENT_PATH = 'vendor/weather-effects/fog/dense-fog-element.png';
 
 interface FogSettings {
   count: number;
@@ -141,9 +142,13 @@ function FogWindController({
 }
 
 function FogCanvas({ effect }: { effect: ActiveEffect }) {
+  const textureUrls = useMemo(
+    () => [resolveWebUrl(FOG_ELEMENT_PATH), resolveWebUrl(DENSE_FOG_ELEMENT_PATH)],
+    [],
+  );
   const [fogElement, denseFogElement] = useLoader(THREE.TextureLoader, [
-    FOG_ELEMENT_URL,
-    DENSE_FOG_ELEMENT_URL,
+    textureUrls[0],
+    textureUrls[1],
   ]);
   const settings = useMemo(() => getSettings(effect), [effect]);
   const windAngle = useRef(0);

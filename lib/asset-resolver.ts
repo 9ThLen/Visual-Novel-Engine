@@ -392,7 +392,16 @@ async function resolveUri(uri: string, aliasKeys: readonly string[] = [uri]): Pr
       } catch { /* continue */ }
     }
 
-    if (uri.startsWith('assets/')) return uri;
+    if (uri.startsWith('assets/')) {
+      ErrorHandler.handle(
+        'Bundled asset was not emitted by the compiled asset map',
+        null,
+        ErrorCategory.VALIDATION,
+        ErrorSeverity.LOW,
+        { uri },
+      );
+      return null;
+    }
 
     ErrorHandler.handle('Could not verify URI, using as-is', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri });
     return uri;

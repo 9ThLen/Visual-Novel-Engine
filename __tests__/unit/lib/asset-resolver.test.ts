@@ -50,6 +50,10 @@ describe('asset resolver', () => {
     await expect(resolveAssetUri('missing-asset')).resolves.toBeNull();
   });
 
+  it('does not pretend an unknown bundled path is runtime-reachable', async () => {
+    await expect(resolveAssetUri('assets/images/not-emitted.png')).resolves.toBeNull();
+  });
+
   it('resolves IndexedDB media references once and caches the object URL', async () => {
     getMediaBlobMock.mockResolvedValue(new Blob(['ABC'], { type: 'image/png' }));
     useAppStore.setState({

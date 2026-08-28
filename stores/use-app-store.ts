@@ -72,7 +72,10 @@ function mergeSceneRecordsByStory(
       const imported = importedSceneRecords[storyId];
       const current = currentSceneRecords[storyId];
 
-      if (hasSceneRecords(imported)) return [storyId, { ...(current || {}), ...imported }] as const;
+      // Legacy data may still be present after the canonical store has been
+      // edited. It can fill missing scenes, but it must never replace a newer
+      // hydrated scene with the same id.
+      if (hasSceneRecords(imported)) return [storyId, { ...imported, ...(current || {}) }] as const;
       return [storyId, current || imported || {}] as const;
     })
   );
@@ -102,12 +105,13 @@ export const useAppStore = create<AppStore>()(
       migrateFromLegacyKeys: async () => {
         try {
           const storage = createPersistentStorage();
+          const canonicalStorage = createAppStoreStorage();
           const TIMEOUT_MS = 10_000;
           const timeoutPromise = new Promise<null>((_, reject) =>
             setTimeout(() => reject(new Error('migrateFromLegacyKeys timed out')), TIMEOUT_MS)
           );
 
-          const [storiesJson, saveSlotsJson, settingsJson, blockTreeJson, langJson] =
+          const [storiesJson, saveSlotsJson, settingsJson, blockTreeJson, langJson, canonicalStateJson] =
             await Promise.race([
               Promise.all([
                 storage.getItem(STORAGE_KEYS.STORIES),
@@ -115,9 +119,11 @@ export const useAppStore = create<AppStore>()(
                 storage.getItem(STORAGE_KEYS.SETTINGS),
                 storage.getItem(STORAGE_KEYS.BLOCK_TREE),
                 storage.getItem('app_language'),
+                canonicalStorage.getItem(STORAGE_KEYS.APP_STATE),
               ]),
               timeoutPromise,
-            ]) as [string | null, string | null, string | null, string | null, string | null];
+            ]) as [string | null, string | null, string | null, string | null, string | null, string | null];
+          const hasCanonicalState = canonicalStateJson !== null;
 
           const stories: StoryMetadata[] = storiesJson ? JSON.parse(storiesJson) : [];
           const saveSlots: SaveSlot[] = saveSlotsJson ? JSON.parse(saveSlotsJson) : [];
@@ -127,15 +133,20 @@ export const useAppStore = create<AppStore>()(
             : 'en';
 
           let characterLibraries: Record<string, Character[]> = {};
+          let defaultCharacterMigrationFailed = false;
+          let defaultCharacterKeyMigrated = false;
+          const failedCharacterStoryIds = new Set<string>();
           try {
             const oldCharLibJson = await storage.getItem(STORAGE_KEYS.CHARACTER_LIBRARY);
             if (oldCharLibJson) {
               const parsed = JSON.parse(oldCharLibJson);
+              defaultCharacterKeyMigrated = true;
               if (parsed.characters) {
                 characterLibraries['default'] = migrateCharacterLibrary(parsed.characters);
               }
             }
           } catch (error) {
+            defaultCharacterMigrationFailed = true;
             ErrorHandler.handle(
               'Legacy default character library migration failed',
               error,
@@ -153,6 +164,7 @@ export const useAppStore = create<AppStore>()(
                     return [s.id, migrateCharacterLibrary(lib.characters || lib)] as const;
                   }
                 } catch (error) {
+                  failedCharacterStoryIds.add(s.id);
                   ErrorHandler.handle(
                     'Legacy story character library migration failed',
                     error,
@@ -221,8 +233,8 @@ export const useAppStore = create<AppStore>()(
             : current.storiesMetadata;
           const nextCharacterLibraries = Object.keys(characterLibraries).length > 0
             ? migrateCharacterLibraries({
-                ...current.characterLibraries,
                 ...characterLibraries,
+                ...current.characterLibraries,
               })
             : migrateCharacterLibraries(current.characterLibraries);
           const nextImageAssetIdsByStory = migrateStoryImageAssetIds(
@@ -239,7 +251,9 @@ export const useAppStore = create<AppStore>()(
               ...migratedSceneHydration,
             },
             saveSlots: saveSlots.length > 0 && current.saveSlots.length === 0 ? saveSlots : current.saveSlots,
-            settings: settings ? mergeLegacyUserSettings(settings, current.settings) : normalizeUserSettings(current.settings),
+            settings: settings && !hasCanonicalState
+              ? mergeLegacyUserSettings(settings, current.settings)
+              : normalizeUserSettings(current.settings),
             characterLibraries: nextCharacterLibraries,
             imageAssetIdsByStory: nextImageAssetIdsByStory,
             mediaAssetIdsByStory: migrateStoryMediaAssetIds({
@@ -251,12 +265,37 @@ export const useAppStore = create<AppStore>()(
               audioLibraries: current.audioLibraries,
               mediaLibrary: current.mediaLibrary,
             }),
-            language,
+            language: hasCanonicalState ? current.language : language,
             isLoaded: true,
             migrationError: failedSceneStoryIds.size > 0
               ? `Could not migrate legacy scene data for: ${[...failedSceneStoryIds].join(', ')}`
               : null,
           });
+
+          if (storiesJson || saveSlotsJson || settingsJson || langJson || defaultCharacterKeyMigrated) {
+            // Commit the canonical snapshot before retiring one-shot legacy
+            // inputs. Failed story blobs stay in place for diagnosis/recovery.
+            await persistAppStoreStateNow();
+            await Promise.all(
+              [
+                ...stories
+                  .filter((story) => !failedSceneStoryIds.has(story.id))
+                  .map((story) => storage.removeItem(STORAGE_KEYS.SCENES(story.id))),
+                ...stories
+                  .filter((story) => !failedCharacterStoryIds.has(story.id))
+                  .map((story) => storage.removeItem(`character_library_${story.id}`)),
+                ...(saveSlotsJson ? [storage.removeItem(STORAGE_KEYS.SAVE_SLOTS)] : []),
+                ...(settingsJson ? [storage.removeItem(STORAGE_KEYS.SETTINGS)] : []),
+                ...(langJson ? [storage.removeItem('app_language')] : []),
+                ...(defaultCharacterMigrationFailed || !defaultCharacterKeyMigrated
+                  ? []
+                  : [storage.removeItem(STORAGE_KEYS.CHARACTER_LIBRARY)]),
+              ],
+            );
+            if (failedSceneStoryIds.size === 0) {
+              await storage.removeItem(STORAGE_KEYS.STORIES);
+            }
+          }
         } catch (e) {
           const message = e instanceof Error ? e.message : 'Unknown migration error';
           ErrorHandler.handle('AppStore migration failed', e, ErrorCategory.STORAGE);

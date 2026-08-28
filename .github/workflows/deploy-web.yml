@@ -115,5 +115,22 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install smoke-test dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install smoke-test browser
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Verify deployed web app
         run: node scripts/check-deployed-web.mjs "${{ steps.deployment.outputs.page_url }}"

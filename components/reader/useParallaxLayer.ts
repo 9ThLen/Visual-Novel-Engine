@@ -3,7 +3,6 @@ import { Platform } from 'react-native';
 import {
   cancelAnimation,
   Easing,
-  makeMutable,
   ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
@@ -11,6 +10,7 @@ import {
   withSequence,
   withSpring,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 export interface ParallaxLayerConfig {
@@ -52,15 +52,12 @@ export function pointerToParallaxOffset(position: number, extent: number): numbe
   return Math.max(-1, Math.min(1, (position / extent) * 2 - 1));
 }
 
-// One driver feeds every parallax layer so they stay in phase: normalized
-// [-1, 1] offsets driven by the pointer on web and by a slow ambient drift
-// on native (the project has no motion-sensor dependency).
-const driverOffsetX = makeMutable(0);
-const driverOffsetY = makeMutable(0);
-let driverConsumers = 0;
-let stopDriver: (() => void) | null = null;
-
-function startDriver(): () => void {
+// Each mounted layer owns hook-created shared values. This avoids executing
+// Reanimated mutable-state APIs at module scope on the library's first screen.
+function startDriver(
+  driverOffsetX: SharedValue<number>,
+  driverOffsetY: SharedValue<number>,
+): () => void {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     const handlePointerMove = (event: PointerEvent) => {
       driverOffsetX.value = withSpring(
@@ -94,34 +91,28 @@ function startDriver(): () => void {
   };
 }
 
-function retainDriver(): () => void {
-  driverConsumers += 1;
-  if (driverConsumers === 1) stopDriver = startDriver();
-  return () => {
-    driverConsumers -= 1;
-    if (driverConsumers === 0) {
-      stopDriver?.();
-      stopDriver = null;
-      driverOffsetX.value = withTiming(0, { duration: TOGGLE_MS, reduceMotion: ReduceMotion.Never });
-      driverOffsetY.value = withTiming(0, { duration: TOGGLE_MS, reduceMotion: ReduceMotion.Never });
-    }
-  };
-}
-
 /**
- * Parallax transform for one reader layer. All layers share a single offset
- * driver; `config` scales it per depth. Returns a reanimated style for a view
- * wrapping the layer's content. Toggling `enabled` fades the effect in/out.
+ * Parallax transform for one reader layer. Each driver receives the same
+ * pointer coordinates; `config` scales them per depth. Returns a reanimated
+ * style for a view wrapping the layer's content. Toggling `enabled` fades the
+ * effect in/out.
  */
 export function useParallaxLayer(enabled: boolean, config: ParallaxLayerConfig) {
   const progress = useSharedValue(0);
+  const driverOffsetX = useSharedValue(0);
+  const driverOffsetY = useSharedValue(0);
   const { shiftX, shiftY, overscan = 1 } = config;
 
   useEffect(() => {
     progress.value = withTiming(enabled ? 1 : 0, { duration: TOGGLE_MS, reduceMotion: ReduceMotion.Never });
     if (!enabled) return undefined;
-    return retainDriver();
-  }, [enabled, progress]);
+    const stop = startDriver(driverOffsetX, driverOffsetY);
+    return () => {
+      stop();
+      driverOffsetX.value = withTiming(0, { duration: TOGGLE_MS, reduceMotion: ReduceMotion.Never });
+      driverOffsetY.value = withTiming(0, { duration: TOGGLE_MS, reduceMotion: ReduceMotion.Never });
+    };
+  }, [driverOffsetX, driverOffsetY, enabled, progress]);
 
   return useAnimatedStyle(() => ({
     transform: [

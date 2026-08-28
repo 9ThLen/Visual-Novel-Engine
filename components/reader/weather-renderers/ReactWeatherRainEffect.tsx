@@ -4,11 +4,12 @@ import type { RainEffectVariant } from '@/lib/engine/effect-options';
 import { subscribeToLightning } from '@/lib/engine/lightning-scheduler';
 import Raindrops from './react-weather-effects/rain/raindrops';
 import { weatherData } from './react-weather-effects/rain/rain-utils';
+import { resolveWebUrl } from '@/lib/web-base-url';
 
 type RainType = RainEffectVariant;
 
-const DROP_ALPHA_URL = '/vendor/weather-effects/rain/drop-alpha.png';
-const DROP_COLOR_URL = '/vendor/weather-effects/rain/drop-color.png';
+const DROP_ALPHA_PATH = 'vendor/weather-effects/rain/drop-alpha.png';
+const DROP_COLOR_PATH = 'vendor/weather-effects/rain/drop-color.png';
 
 interface RaindropsInstance {
   canvas?: HTMLCanvasElement;
@@ -123,8 +124,8 @@ export function ReactWeatherRainEffect({ effect }: { effect: ActiveEffect }) {
 
     const start = async () => {
       const [dropAlpha, dropColor] = await Promise.all([
-        loadImage(DROP_ALPHA_URL),
-        loadImage(DROP_COLOR_URL),
+        loadImage(resolveWebUrl(DROP_ALPHA_PATH)),
+        loadImage(resolveWebUrl(DROP_COLOR_PATH)),
       ]);
       if (disposed || !context) return;
 
