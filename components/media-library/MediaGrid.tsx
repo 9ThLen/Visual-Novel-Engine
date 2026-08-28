@@ -1,5 +1,6 @@
 /**
- * The media grid.
+ * The media grid: images and video clips. Audio has its own list — a square is
+ * the wrong shape for a file with no picture in it.
  *
  * `numColumns` on FlatList cannot coexist with sections and SectionList has no
  * `numColumns`, so the data is pre-chunked into rows here and rendered as one
@@ -15,7 +16,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useI18n } from '@/hooks/use-i18n';
 import type { ThemeColorPalette } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
-import type { AudioPreviewState } from '@/hooks/useAudioPreview';
+import { formatDuration } from '@/lib/media-format';
 import {
   groupMediaByDate,
   type DateGroupLabel,
@@ -69,23 +70,12 @@ export function buildGridRows(
   ]);
 }
 
-function formatDuration(seconds: number): string {
-  const whole = Math.max(0, Math.round(seconds));
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
-}
-
 interface TileProps {
   item: StoryMediaItem;
   size: number;
   colors: ThemeColorPalette;
   selected: boolean;
   onPress: (item: StoryMediaItem) => void;
-  /** Audio only. Absent means the tile has no transport at all. */
-  onTogglePlayback?: (item: StoryMediaItem) => void;
-  /** What the one preview controller is doing, when it is on this item. */
-  previewState?: AudioPreviewState | null;
-  /** 0–1 through the track; only read while the controller is on this item. */
-  progress?: number;
 }
 
 export const MediaTile = React.memo(function MediaTile({
@@ -94,25 +84,13 @@ export const MediaTile = React.memo(function MediaTile({
   colors,
   selected,
   onPress,
-  onTogglePlayback,
-  previewState = null,
-  progress = 0,
 }: TileProps) {
   const { t } = useI18n();
   const owner = item.owners[0];
   const accent = owner?.color || colors.primary;
   const kindLabel = t(`mediaLibrary.kind.${item.kind}`);
-  const audible = item.kind === 'audio' && !!onTogglePlayback;
-  /**
-   * Three things one button can mean, and the label has to say which: pause a
-   * sound that is playing, resume one that is paused, and — while the file is
-   * still being resolved — call the whole attempt off.
-   */
-  const transport = previewState === 'playing'
-    ? 'pause'
-    : previewState === 'loading' ? 'stop' : 'play';
 
-  const tile = (
+  return (
     <Pressable
       onPress={() => onPress(item)}
       accessibilityRole="button"
@@ -130,23 +108,7 @@ export const MediaTile = React.memo(function MediaTile({
         },
       ]}
     >
-      {item.kind === 'audio' ? (
-        // Same problem as a clip, and worse: two files named sfx_03 and sfx_04
-        // are indistinguishable until you hear them. Hence the transport below
-        // — and, whether or not it is there, the category icon saying which of
-        // the two roles this file plays.
-        <View style={[
-          audible ? styles.audioPlaceholder : styles.videoPlaceholder,
-          { backgroundColor: colors.background },
-        ]}>
-          <IconSymbol
-            name={item.audioCategory === 'music' ? 'music' : 'sound'}
-            size={audible ? 18 : 28}
-            color={colors.muted}
-          />
-          <Text numberOfLines={2} style={[styles.videoName, { color: colors.muted }]}>{item.name}</Text>
-        </View>
-      ) : item.kind === 'video' ? (
+      {item.kind === 'video' ? (
         // A clip has no still frame to show: the asset carries no poster, and
         // handing an .mp4 to <Image> just renders an empty square. The name is
         // the only thing that tells two clips apart in a grid.
@@ -172,34 +134,6 @@ export const MediaTile = React.memo(function MediaTile({
       {owner ? <View style={[styles.ownerDot, { backgroundColor: accent }]} /> : null}
     </Pressable>
   );
-
-  if (!audible) return tile;
-
-  return (
-    // The transport is a sibling of the tile, not a child of it: a button inside
-    // a button is one control to a screen reader and invalid markup on web.
-    <View style={{ width: size, height: size }}>
-      {tile}
-      <Pressable
-        onPress={() => onTogglePlayback?.(item)}
-        accessibilityRole="button"
-        accessibilityLabel={t(`mediaLibrary.audio.${transport}`, { name: item.name })}
-        style={[styles.transport, { backgroundColor: colors['surface-1'], borderColor: colors.border }]}
-      >
-        <IconSymbol name={transport} size={22} color={colors.primary} />
-      </Pressable>
-      {previewState ? (
-        <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
-          <View
-            style={[
-              styles.progressFill,
-              { backgroundColor: colors.primary, width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%` },
-            ]}
-          />
-        </View>
-      ) : null}
-    </View>
-  );
 });
 
 interface MediaGridProps {
@@ -212,12 +146,6 @@ interface MediaGridProps {
   onSelect: (item: StoryMediaItem) => void;
   /** Reserved width taken by a side inspector, so tiles size to what is left. */
   reservedWidth?: number;
-  /** Audio only; absent leaves the tiles without a transport. */
-  onTogglePlayback?: (item: StoryMediaItem) => void;
-  /** The item the one preview controller is on, and what it is doing there. */
-  activeAudioKey?: string | null;
-  previewState?: AudioPreviewState;
-  progress?: number;
 }
 
 export function MediaGrid({
@@ -229,10 +157,6 @@ export function MediaGrid({
   emptyLabel,
   onSelect,
   reservedWidth = 0,
-  onTogglePlayback,
-  activeAudioKey = null,
-  previewState = 'loading',
-  progress = 0,
 }: MediaGridProps) {
   const { t } = useI18n();
   const { width } = useWindowDimensions();
@@ -274,27 +198,11 @@ export function MediaGrid({
             colors={colors}
             selected={item.key === selectedKey}
             onPress={onSelect}
-            onTogglePlayback={onTogglePlayback}
-            previewState={item.key === activeAudioKey ? previewState : null}
-            // Only the active tile draws a bar, so the rest stay memo-stable
-            // while it ticks.
-            progress={item.key === activeAudioKey ? progress : 0}
           />
         ))}
       </View>
     );
-  }, [
-    activeAudioKey,
-    colors,
-    onSelect,
-    onTogglePlayback,
-    previewState,
-    progress,
-    rowHeight,
-    selectedKey,
-    t,
-    tileSize,
-  ]);
+  }, [colors, onSelect, rowHeight, selectedKey, t, tileSize]);
 
   if (!items.length) {
     return <Text style={[styles.empty, { color: colors.muted }]}>{emptyLabel}</Text>;
@@ -321,28 +229,6 @@ const styles = StyleSheet.create({
   tile: { borderRadius: radius.md, overflow: 'hidden', borderWidth: 2 },
   image: { width: '100%', height: '100%' },
   videoPlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, padding: spacing.sm },
-  // The name sits under the transport rather than behind it.
-  audioPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: spacing.xs,
-    padding: spacing.sm,
-  },
-  transport: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '22%',
-    width: 44,
-    height: 44,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  progressTrack: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2 },
-  progressFill: { height: 2 },
   videoName: { ...typeScale.caption, textAlign: 'center' },
   videoBadge: {
     position: 'absolute',
