@@ -2,8 +2,9 @@
 
 How a finished novel leaves the editor and reaches a reader.
 
-Status: proposal. Nothing here is implemented yet except the parts marked
-**exists** in [Current state](#1-current-state).
+Status: in progress. **R0 and R1 are implemented**; everything from R2 onward is
+still a proposal, alongside the parts marked **exists** in
+[Current state](#1-current-state).
 
 ---
 
@@ -745,7 +746,7 @@ neither could be accepted until R9 shipped. The boundaries are now: R4 proves th
 JS and autolinking cut, R7 proves the job kernel against a fake builder, R9 is
 the first stage that touches EAS and a device.
 
-### R0 — Release domain core
+### R0 — Release domain core ✅
 
 *No UI. Pure modules, unit-tested in isolation.*
 
@@ -756,7 +757,7 @@ the first stage that touches EAS and a device.
 
 **Done when:** a hand-written manifest round-trips and every malformed field is rejected with a specific error.
 
-### R1 — Preflight gate
+### R1 — Preflight gate ✅
 
 - `lib/release/preflight.ts` — aggregates `runStoryDoctor`, `validateSceneGraph`,
   `computeStoryStats`, `evaluateThemeContrast`, asset portability, metadata
