@@ -176,6 +176,7 @@ export function buildCanonicalSaveSlot(
   snapshot: ReaderRuntimeSnapshot,
   playbackState: PlaybackState,
   activeThumbnailUri?: string | null,
+  release?: { releaseId: string; version: string } | null,
 ): SaveSlot | null {
   const metadata = snapshot.storiesMetadata.find((story) => story.id === playbackState.storyId);
   const scene = snapshot.sceneRecordsByStory[playbackState.storyId]?.[playbackState.currentSceneId];
@@ -196,6 +197,9 @@ export function buildCanonicalSaveSlot(
     storyTitle: metadata.title,
     sceneText: sceneMeta.sceneText,
     playTime: 0,
+    // Stamped so a later republish can tell the reader their save came from a
+    // different version rather than dropping them into a story that has moved.
+    ...(release ? { releaseId: release.releaseId, releaseVersion: release.version } : {}),
   };
 }
 

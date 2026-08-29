@@ -39,6 +39,7 @@ import {
 import { computeStoryStats } from '@/lib/story-stats';
 import { runStoryDoctor } from '@/lib/story-doctor';
 import { runReleasePreflight } from '@/lib/release/preflight';
+import type { ReleaseChannel } from '@/lib/release/types';
 import { highestReleaseVersion, type ReleaseMeta } from '@/lib/release/release-storage';
 import { publishStoryRelease } from '@/lib/release/service';
 import { createPersistentStorage } from '@/lib/persistent-storage';
@@ -326,6 +327,12 @@ export default function StoryHomeScreen() {
   const loadReleasesForStory = useAppStore((state) => state.loadReleasesForStory);
   const setReleasePublished = useAppStore((state) => state.setReleasePublished);
   const [releasing, setReleasing] = useState(false);
+  /**
+   * Where the author means to publish. The gate below answers for this rather
+   * than for the strictest channel: a story that is ready to hand to a friend
+   * as an app should not be blocked by what a storefront listing would need.
+   */
+  const [releaseChannel, setReleaseChannel] = useState<ReleaseChannel>('both');
 
   useEffect(() => {
     if (!storyId) return;
@@ -398,11 +405,19 @@ export default function StoryHomeScreen() {
           mediaAssets: storyImageAssets,
           audioAssets: storyDoctorAudioAssets,
           characters: characterLibrary,
-          channel: 'both',
+          channel: releaseChannel,
           previousVersion: highestReleaseVersion(releases),
         })
       : null,
-    [characterLibrary, releases, sceneRecords, story, storyDoctorAudioAssets, storyImageAssets],
+    [
+      characterLibrary,
+      releaseChannel,
+      releases,
+      sceneRecords,
+      story,
+      storyDoctorAudioAssets,
+      storyImageAssets,
+    ],
   );
 
   /**
@@ -1123,6 +1138,8 @@ export default function StoryHomeScreen() {
             story={story}
             releases={releases}
             preflight={releasePreflight}
+            channel={releaseChannel}
+            onChannelChange={setReleaseChannel}
             busy={releasing}
             onPublish={handlePublish}
             onSetPublished={handleSetPublished}

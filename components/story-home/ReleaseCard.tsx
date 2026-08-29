@@ -33,11 +33,20 @@ export interface PublishRequest {
   notes?: string;
 }
 
+export const RELEASE_CHANNEL_OPTIONS: readonly ReleaseChannel[] = ['page', 'app', 'both'];
+
 interface ReleaseCardProps {
   colors: ThemeColorPalette;
   story: StoryMetadata;
   releases: ReleaseMeta[];
   preflight: ReleasePreflightReport | null;
+  /**
+   * Where the author means to publish. The gate is answered for this, not for
+   * the strictest channel: a bundle handed to a friend should not be blocked by
+   * what a storefront listing would need.
+   */
+  channel: ReleaseChannel;
+  onChannelChange: (channel: ReleaseChannel) => void;
   busy?: boolean;
   onPublish: (request: PublishRequest) => void;
   onSetPublished: (releaseId: string, published: boolean) => void;
@@ -56,6 +65,8 @@ export function ReleaseCard({
   story,
   releases,
   preflight,
+  channel,
+  onChannelChange,
   busy = false,
   onPublish,
   onSetPublished,
@@ -65,7 +76,6 @@ export function ReleaseCard({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [version, setVersion] = useState('');
   const [notes, setNotes] = useState('');
-  const [channel, setChannel] = useState<ReleaseChannel>('both');
 
   const published = useMemo(() => currentPublishedRelease(releases), [releases]);
   const highest = useMemo(() => highestReleaseVersion(releases), [releases]);
@@ -83,7 +93,6 @@ export function ReleaseCard({
   const openSheet = () => {
     setVersion(nextReleaseVersion(highest, 'minor'));
     setNotes('');
-    setChannel('both');
     setSheetOpen(true);
   };
 
@@ -116,6 +125,20 @@ export function ReleaseCard({
           {t('release.card.history', { count: releases.length })}
         </Text>
       ) : null}
+
+      <Text style={[styles.fieldLabel, { color: colors.muted }]}>
+        {t('release.sheet.channel')}
+      </Text>
+      <SegmentedControl<ReleaseChannel>
+        options={RELEASE_CHANNEL_OPTIONS.map((option) => ({
+          value: option,
+          label: t(`release.sheet.channel.${option}`),
+        }))}
+        value={channel}
+        onChange={onChannelChange}
+        accessibilityLabel={t('release.sheet.channel')}
+        segmentMinWidth={78}
+      />
 
       <Pressable
         onPress={openSheet}
@@ -195,17 +218,9 @@ export function ReleaseCard({
               <Text style={[styles.fieldLabel, { color: colors.muted }]}>
                 {t('release.sheet.channel')}
               </Text>
-              <SegmentedControl<ReleaseChannel>
-                options={[
-                  { value: 'page', label: t('release.sheet.channel.page') },
-                  { value: 'app', label: t('release.sheet.channel.app') },
-                  { value: 'both', label: t('release.sheet.channel.both') },
-                ]}
-                value={channel}
-                onChange={setChannel}
-                accessibilityLabel={t('release.sheet.channel')}
-                segmentMinWidth={90}
-              />
+              <Text style={[styles.hint, { color: colors['foreground-secondary'] }]}>
+                {t(`release.sheet.channel.${channel}`)}
+              </Text>
 
               <Text style={[styles.fieldLabel, { color: colors.muted }]}>
                 {t('release.sheet.notes')}

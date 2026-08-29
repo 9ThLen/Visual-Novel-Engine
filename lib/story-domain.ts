@@ -134,6 +134,13 @@ export interface SaveSlot {
   storyTitle?: string;
   sceneText?: string;
   playTime?: number;
+  /**
+   * The release this save was taken in, when it was taken while reading one.
+   * Absent for saves from before releases existed, and for an author testing
+   * their own draft — both are legitimate, so its absence is not an error.
+   */
+  releaseId?: string;
+  releaseVersion?: string;
 }
 
 export const StoryDomain = {

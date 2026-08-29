@@ -37,6 +37,9 @@ export function createSavesSlice(set: AppStoreSet, get: AppStoreGet): SavesSlice
         ),
         state.playbackState,
         state.readerSceneThumbnailUri,
+        state.readerRelease?.storyId === state.playbackState.storyId
+          ? { releaseId: state.readerRelease.releaseId, version: state.readerRelease.version }
+          : null,
       );
       if (!newSlot) return false;
 

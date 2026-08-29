@@ -2,15 +2,22 @@ import type { SceneRecord } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
 import type { ReaderRuntimeSnapshot } from '@/lib/reader-runtime';
 import { toReaderScene } from '@/lib/reader-scene';
-import { createInMemorySceneAccess } from '@/lib/scene-access';
+import { createReaderSceneAccess, type ReaderReleaseSource } from '@/lib/scene-access';
 import {
   buildReaderRuntimeSnapshotFromCache,
   buildReaderSceneCache,
 } from '@/lib/reader-scene-cache';
 
+/**
+ * Both snapshots below feed the reader — saving, loading and prefetching — so
+ * they read through the reader's view. Building them from the working copy
+ * would let a save taken during release playback carry the author's draft
+ * text, and would fail outright on a scene that exists only in the release.
+ */
 type SceneSnapshotState = {
   storiesMetadata: StoryMetadata[];
   sceneRecordsByStory: Record<string, Record<string, SceneRecord>>;
+  readerRelease?: ReaderReleaseSource | null;
 };
 
 export function buildScopedReaderRuntimeSnapshot(
@@ -18,7 +25,7 @@ export function buildScopedReaderRuntimeSnapshot(
   storyId: string,
   sceneId: string,
 ): ReaderRuntimeSnapshot {
-  const sceneAccess = createInMemorySceneAccess(state);
+  const sceneAccess = createReaderSceneAccess(state);
   const metadata = sceneAccess.getStoryMetadata(storyId);
   const sceneRecord = sceneAccess.getSceneRecord(storyId, sceneId);
 
@@ -36,7 +43,7 @@ export function buildPrefetchedReaderRuntimeSnapshot(
   sceneId: string,
   maxPrefetchScenes = 4,
 ): ReaderRuntimeSnapshot {
-  const sceneAccess = createInMemorySceneAccess(state);
+  const sceneAccess = createReaderSceneAccess(state);
   const cache = buildReaderSceneCache(sceneAccess, storyId, sceneId, { maxPrefetchScenes });
   return buildReaderRuntimeSnapshotFromCache(sceneAccess, cache);
 }
