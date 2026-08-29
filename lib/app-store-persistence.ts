@@ -326,6 +326,8 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
     return currentState;
   }
 
+  // Keep merge tolerant of raw payloads too: backup/import callers use this
+  // helper outside Zustand's versioned hydration path.
   const persisted = migratePersistedAppState(persistedState, 0) as Partial<AppStorePersistenceState>;
   const mediaLibrary = 'mediaLibrary' in persisted
     ? getHydratableMediaLibrary(persisted.mediaLibrary)
@@ -398,6 +400,11 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
       'playbackState' in persisted
         ? normalizePlaybackState(persisted.playbackState)
         : currentState.playbackState,
-    sceneRecordHydration: currentState.sceneRecordHydration,
+    sceneRecordHydration: {
+      ...currentState.sceneRecordHydration,
+      ...(isRecord(persisted.sceneRecordHydration)
+        ? persisted.sceneRecordHydration as AppStorePersistenceState['sceneRecordHydration']
+        : {}),
+    },
   };
 }

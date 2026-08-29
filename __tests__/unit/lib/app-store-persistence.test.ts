@@ -512,6 +512,18 @@ describe('app store persistence helpers', () => {
     expect(merged.sceneRecordsByStory).toBe(currentState.sceneRecordsByStory);
   });
 
+  it('restores persisted scene hydration while preserving current entries', () => {
+    const current = makeState();
+    current.sceneRecordHydration = { current: 'full' };
+
+    const merged = mergePersistedAppState(
+      { sceneRecordHydration: { persisted: 'window' } },
+      current,
+    );
+
+    expect(merged.sceneRecordHydration).toEqual({ current: 'full', persisted: 'window' });
+  });
+
   it('normalizes older persisted playback state without variables', () => {
     const currentState = makeState();
     const merged = mergePersistedAppState(

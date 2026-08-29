@@ -60,7 +60,8 @@ function hasSceneRecords(records: Record<string, SceneRecord> | undefined): bool
 
 function mergeSceneRecordsByStory(
   currentSceneRecords: Record<string, Record<string, SceneRecord>>,
-  importedSceneRecords: Record<string, Record<string, SceneRecord>>
+  importedSceneRecords: Record<string, Record<string, SceneRecord>>,
+  currentHydration: Record<string, 'full' | 'window'>,
 ): Record<string, Record<string, SceneRecord>> {
   const storyIds = new Set([
     ...Object.keys(currentSceneRecords),
@@ -71,6 +72,8 @@ function mergeSceneRecordsByStory(
     [...storyIds].map((storyId) => {
       const imported = importedSceneRecords[storyId];
       const current = currentSceneRecords[storyId];
+
+      if (currentHydration[storyId] === 'full') return [storyId, current || {}] as const;
 
       // Legacy data may still be present after the canonical store has been
       // edited. It can fill missing scenes, but it must never replace a newer
@@ -107,12 +110,14 @@ export const useAppStore = create<AppStore>()(
           const storage = createPersistentStorage();
           const canonicalStorage = createAppStoreStorage();
           const TIMEOUT_MS = 10_000;
-          const timeoutPromise = new Promise<null>((_, reject) =>
-            setTimeout(() => reject(new Error('migrateFromLegacyKeys timed out')), TIMEOUT_MS)
-          );
+          let timeoutId: ReturnType<typeof setTimeout> | undefined;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('migrateFromLegacyKeys timed out')), TIMEOUT_MS);
+          });
 
-          const [storiesJson, saveSlotsJson, settingsJson, blockTreeJson, langJson, canonicalStateJson] =
-            await Promise.race([
+          let legacyValues: [string | null, string | null, string | null, string | null, string | null, string | null];
+          try {
+            legacyValues = await Promise.race([
               Promise.all([
                 storage.getItem(STORAGE_KEYS.STORIES),
                 storage.getItem(STORAGE_KEYS.SAVE_SLOTS),
@@ -122,7 +127,11 @@ export const useAppStore = create<AppStore>()(
                 canonicalStorage.getItem(STORAGE_KEYS.APP_STATE),
               ]),
               timeoutPromise,
-            ]) as [string | null, string | null, string | null, string | null, string | null, string | null];
+            ]);
+          } finally {
+            if (timeoutId !== undefined) clearTimeout(timeoutId);
+          }
+          const [storiesJson, saveSlotsJson, settingsJson, blockTreeJson, langJson, canonicalStateJson] = legacyValues;
           const hasCanonicalState = canonicalStateJson !== null;
 
           const stories: StoryMetadata[] = storiesJson ? JSON.parse(storiesJson) : [];
@@ -219,33 +228,32 @@ export const useAppStore = create<AppStore>()(
             );
           }
 
-          // Merge with existing state — don't overwrite what persist already hydrated
-          const current = get();
-          const mergedSceneRecordsByStory = mergeSceneRecordsByStory(
-            current.sceneRecordsByStory,
-            sceneRecordsByStory
-          );
           const migratedSceneHydration = Object.fromEntries(
             Object.keys(sceneRecordsByStory).map((storyId) => [storyId, 'full' as const]),
           );
-          const nextStoriesMetadata = stories.length > 0 && current.storiesMetadata.length === 0
-            ? stories
-            : current.storiesMetadata;
-          const nextCharacterLibraries = Object.keys(characterLibraries).length > 0
-            ? migrateCharacterLibraries({
-                ...characterLibraries,
-                ...current.characterLibraries,
-              })
-            : migrateCharacterLibraries(current.characterLibraries);
-          const nextImageAssetIdsByStory = migrateStoryImageAssetIds(
-            current.imageAssetIdsByStory,
-            mergedSceneRecordsByStory,
-            current.mediaLibrary,
-            Object.keys(current.imageAssetIdsByStory).length === 0,
-          );
-          set({
-            storiesMetadata: nextStoriesMetadata,
-            sceneRecordsByStory: mergedSceneRecordsByStory,
+          // Derive from the latest store state atomically. Other bootstrap work
+          // may update the store while the legacy reads above are in flight.
+          set((current) => {
+            const mergedSceneRecordsByStory = mergeSceneRecordsByStory(
+              current.sceneRecordsByStory,
+              sceneRecordsByStory,
+              current.sceneRecordHydration,
+            );
+            const nextStoriesMetadata = stories.length > 0 && current.storiesMetadata.length === 0
+              ? stories
+              : current.storiesMetadata;
+            const nextCharacterLibraries = Object.keys(characterLibraries).length > 0
+              ? migrateCharacterLibraries({ ...characterLibraries, ...current.characterLibraries })
+              : migrateCharacterLibraries(current.characterLibraries);
+            const nextImageAssetIdsByStory = migrateStoryImageAssetIds(
+              current.imageAssetIdsByStory,
+              mergedSceneRecordsByStory,
+              current.mediaLibrary,
+              Object.keys(current.imageAssetIdsByStory).length === 0,
+            );
+            return {
+              storiesMetadata: nextStoriesMetadata,
+              sceneRecordsByStory: mergedSceneRecordsByStory,
             sceneRecordHydration: {
               ...current.sceneRecordHydration,
               ...migratedSceneHydration,
@@ -270,6 +278,7 @@ export const useAppStore = create<AppStore>()(
             migrationError: failedSceneStoryIds.size > 0
               ? `Could not migrate legacy scene data for: ${[...failedSceneStoryIds].join(', ')}`
               : null,
+            };
           });
 
           if (storiesJson || saveSlotsJson || settingsJson || langJson || defaultCharacterKeyMigrated) {

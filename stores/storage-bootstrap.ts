@@ -13,7 +13,7 @@ import { Platform } from 'react-native';
 import { setWebMediaReferenceInvariant } from '@/lib/app-store-persistence';
 import { ErrorCategory, ErrorHandler } from '@/lib/error-handler';
 import { migrateWebMediaReferences } from '@/lib/web-media-migration';
-import { useAppStore } from './use-app-store';
+import { persistAppStoreStateNow, useAppStore } from './use-app-store';
 
 export type StorageBootstrapResult = {
   error: unknown | null;
@@ -23,14 +23,17 @@ let bootstrapPromise: Promise<StorageBootstrapResult> | null = null;
 
 function waitForHydration(): Promise<void> {
   return new Promise<void>((resolve) => {
-    if (useAppStore.persist.hasHydrated()) {
-      resolve();
-      return;
-    }
-    const unsubscribe = useAppStore.persist.onFinishHydration(() => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
       unsubscribe();
       resolve();
-    });
+    };
+    const unsubscribe = useAppStore.persist.onFinishHydration(finish);
+    // Subscribe first, then re-check so hydration cannot finish between the
+    // check and listener registration.
+    if (useAppStore.persist.hasHydrated()) finish();
   });
 }
 
@@ -53,15 +56,16 @@ async function runStorageBootstrap(): Promise<StorageBootstrapResult> {
         state.mediaLibrary,
         state.characterLibraries,
       );
-      // The gate opens only once every Blob write has succeeded; until then the
-      // size caps stay active as a rollback guard.
-      setWebMediaReferenceInvariant(true);
       if (migrated.migratedCount > 0) {
         useAppStore.setState({
           mediaLibrary: migrated.mediaLibrary,
           characterLibraries: migrated.characterLibraries,
         });
+        await persistAppStoreStateNow();
       }
+      // Open the gate only after both Blob writes and the canonical snapshot
+      // containing their idb:// references have been committed.
+      setWebMediaReferenceInvariant(true);
     } catch (caught) {
       error = error ?? caught;
       ErrorHandler.handle('Failed to migrate inline media to IndexedDB', caught, ErrorCategory.STORAGE);
