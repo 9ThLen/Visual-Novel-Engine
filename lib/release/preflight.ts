@@ -132,13 +132,7 @@ function checkPresentation(
       messageKey: 'releasePreflight.issue.missingTitle',
     });
   }
-  if (isBlank(metadata.author)) {
-    findings.push({
-      severity: presentationSeverity,
-      code: 'release.missingAuthor',
-      messageKey: 'releasePreflight.issue.missingAuthor',
-    });
-  }
+  // The author is checked by `checkPublication`, which blocks on every channel.
   if (isBlank(metadata.description)) {
     findings.push({
       severity: presentationSeverity,
@@ -156,27 +150,36 @@ function checkPresentation(
 }
 
 /**
- * Publication checks. Content rating and language are what a reader needs
- * before they open a story, so a storefront release cannot omit them; a bundle
- * the author hands to someone directly can.
+ * Publication checks — blockers on every channel, unlike presentation.
+ *
+ * The line is between marketing and identity. A bundle handed to a friend can
+ * ship without a cover image; nothing should ship without saying who wrote it,
+ * what language it is in, and who it is for. These three are also exactly what
+ * the release manifest requires, so leniency here would only move the failure
+ * to `compileRelease`, after the author had been told they were ready.
  */
 function checkPublication(
   metadata: StoryMetadata,
   channel: ReleaseChannel,
   findings: ReleaseFinding[],
 ): void {
-  const severity: ReleaseFindingSeverity = isStorefrontChannel(channel) ? 'blocker' : 'warning';
-
+  if (isBlank(metadata.author)) {
+    findings.push({
+      severity: 'blocker',
+      code: 'release.missingPublicationAuthor',
+      messageKey: 'releasePreflight.issue.missingAuthor',
+    });
+  }
   if (!metadata.contentRating) {
     findings.push({
-      severity,
+      severity: 'blocker',
       code: 'release.missingContentRating',
       messageKey: 'releasePreflight.issue.missingContentRating',
     });
   }
   if (!metadata.languages?.length) {
     findings.push({
-      severity,
+      severity: 'blocker',
       code: 'release.missingLanguages',
       messageKey: 'releasePreflight.issue.missingLanguages',
     });

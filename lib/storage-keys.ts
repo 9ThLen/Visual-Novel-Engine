@@ -59,6 +59,21 @@ export const STORAGE_KEYS = {
       snapshotId,
     )}_${encodeURIComponent(sceneId)}`,
 
+  // Frozen releases (per story). Same shape as snapshots -- a cheap index, then
+  // one manifest, one libraries blob and one key per scene. These keys must be
+  // written through `createPersistentStorage`: `lib/web-media-cleanup.ts` finds
+  // live media by scanning persisted values, so a release stored anywhere else
+  // would have its media collected out from under it.
+  RELEASE_INDEX: (storyId: string) => `${PREFIX}release_index_${encodeURIComponent(storyId)}`,
+  RELEASE_MANIFEST: (storyId: string, releaseId: string) =>
+    `${PREFIX}release_${encodeURIComponent(storyId)}_${encodeURIComponent(releaseId)}`,
+  RELEASE_LIBRARIES: (storyId: string, releaseId: string) =>
+    `${PREFIX}release_libraries_${encodeURIComponent(storyId)}_${encodeURIComponent(releaseId)}`,
+  RELEASE_SCENE: (storyId: string, releaseId: string, sceneId: string) =>
+    `${PREFIX}release_scene_${encodeURIComponent(storyId)}_${encodeURIComponent(
+      releaseId,
+    )}_${encodeURIComponent(sceneId)}`,
+
 } as const;
 
 /**

@@ -100,7 +100,6 @@ describe('presentation checks', () => {
   });
 
   it.each([
-    ['author', { author: '' }, 'release.missingAuthor'],
     ['description', { description: '' }, 'release.missingDescription'],
     ['cover', { thumbnailUri: undefined }, 'release.missingCover'],
   ])('blocks a missing %s on a storefront release', (_label, overrides, code) => {
@@ -111,7 +110,6 @@ describe('presentation checks', () => {
   });
 
   it.each([
-    ['author', { author: '' }, 'release.missingAuthor'],
     ['description', { description: '' }, 'release.missingDescription'],
     ['cover', { thumbnailUri: undefined }, 'release.missingCover'],
   ])('only warns about a missing %s for a downloadable app', (_label, overrides, code) => {
@@ -143,16 +141,22 @@ describe('publication checks', () => {
     );
   });
 
-  it('only warns for an app-only release', () => {
+  // Unlike presentation, these block everywhere: they are what the manifest
+  // requires, so being lenient here would only move the failure to compile.
+  it.each(['page', 'app', 'both'] as const)('blocks on the %s channel too', (channel) => {
     const report = runReleasePreflight(
       readyInput({
-        channel: 'app',
-        metadata: readyMetadata({ contentRating: undefined, languages: undefined }),
+        channel,
+        metadata: readyMetadata({ author: '', contentRating: undefined, languages: undefined }),
       }),
     );
-    expect(report.ready).toBe(true);
-    expect(codes(report.warnings)).toEqual(
-      expect.arrayContaining(['release.missingContentRating', 'release.missingLanguages']),
+    expect(report.ready).toBe(false);
+    expect(codes(report.blockers)).toEqual(
+      expect.arrayContaining([
+        'release.missingPublicationAuthor',
+        'release.missingContentRating',
+        'release.missingLanguages',
+      ]),
     );
   });
 
