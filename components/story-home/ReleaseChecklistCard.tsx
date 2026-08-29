@@ -11,6 +11,8 @@ interface ReleaseChecklistCardProps {
   colors: ThemeColorPalette;
   report: ReleasePreflightReport;
   onOpenScene: (sceneId: string) => void;
+  /** Rendered inside a band that already draws the surface and the frame. */
+  embedded?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -76,6 +78,7 @@ export function ReleaseChecklistCard({
   colors,
   report,
   onOpenScene,
+  embedded = false,
   style,
 }: ReleaseChecklistCardProps) {
   const { t } = useI18n();
@@ -94,6 +97,31 @@ export function ReleaseChecklistCard({
     : report.warnings.length > 0
       ? t('releasePreflight.warningsOnly', { count: report.warnings.length })
       : t('releasePreflight.ready');
+
+  // Inside the state band the tile above already carries the summary, so the
+  // card is only its findings: no surface, no header, nothing to expand.
+  if (embedded) {
+    return (
+      <View style={[styles.body, style]}>
+        <FindingList
+          colors={colors}
+          title={t('releasePreflight.blockersTitle')}
+          findings={report.blockers}
+          tone={colors.danger}
+          icon="xmark"
+          onOpenScene={onOpenScene}
+        />
+        <FindingList
+          colors={colors}
+          title={t('releasePreflight.warningsTitle')}
+          findings={report.warnings}
+          tone={colors.warning}
+          icon="question"
+          onOpenScene={onOpenScene}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.card, { backgroundColor: colors['surface-1'], borderColor: colors.border }, style]}>

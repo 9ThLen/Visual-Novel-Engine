@@ -15,18 +15,17 @@ import { ScreenContainer } from '@/components/screen-container';
 import { ResolvedAssetImage } from '@/components/resolved-asset-image';
 import { AssetUsageCard } from '@/components/story-home/AssetUsageCard';
 import { ChoiceStatisticsCard } from '@/components/story-home/ChoiceStatisticsCard';
+import { PlaytestCoverageCard } from '@/components/story-home/PlaytestCoverageCard';
 import { ReleaseCard, type PublishRequest } from '@/components/story-home/ReleaseCard';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { ReleaseChecklistCard } from '@/components/story-home/ReleaseChecklistCard';
 import { StoryHealthCard } from '@/components/story-home/StoryHealthCard';
 import { StorySnapshotsCard } from '@/components/story-home/StorySnapshotsCard';
 import { ConfirmDialog } from '@/components/ui';
-import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
-import { formatDate, SHORT_DATE } from '@/lib/format-date';
-import { formatNumber } from '@/lib/format-number';
-import { Fonts, withAlpha, type ThemeColorPalette } from '@/lib/_core/theme';
+import { Fonts, withAlpha } from '@/lib/_core/theme';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { showToast } from '@/lib/toast-store';
@@ -54,17 +53,43 @@ import {
 import { getPlaybackAudioLibraryPure } from '@/lib/audio-library';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
 import { getStoryGalleryImageAssets } from '@/lib/story-image-library';
-import type { StoryMetadata } from '@/lib/story-domain';
+import { buildStoryAssetUsageReport } from '@/lib/story-home/asset-report';
 import {
-  CONTENT_RATINGS,
-  sanitizeStoryLanguages,
-  type ContentRating,
-} from '@/lib/story-publication';
+  buildOverviewState,
+  verdictTone,
+  type OverviewTileKey,
+  type OverviewTone,
+} from '@/lib/story-home/overview-state';
+import type { StoryMetadata } from '@/lib/story-domain';
+import { CONTENT_RATINGS, sanitizeStoryLanguages, type ContentRating } from '@/lib/story-publication';
+import { formatNumber } from '@/lib/format-number';
 import type { SceneRecord } from '@/lib/engine/types';
 import { selectSceneRecordsForStory, useAppStore } from '@/stores/use-app-store';
 
 /** Stable identity so the store selector cannot loop by returning a new []. */
 const EMPTY_RELEASES: ReleaseMeta[] = [];
+
+/**
+ * Keyed by the app's language, not the browser's: «Updated» in English beside a
+ * date in the OS locale reads as two different products.
+ */
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+function dateFormatterFor(language: string): Intl.DateTimeFormat {
+  const cached = dateFormatters.get(language);
+  if (cached) return cached;
+  const formatter = new Intl.DateTimeFormat(language, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  dateFormatters.set(language, formatter);
+  return formatter;
+}
+
+/** One reading column; the paper pattern frames it on either side. */
+const COLUMN_MAX_WIDTH = 920;
+/** Thumbnails before the strip turns into «+N». */
+const GALLERY_PREVIEW_COUNT = 6;
 
 const rabbitsPattern = require('../assets/background/bg-rabbits-pattern-soft.png');
 const rabbitsPatternAsset = Asset.fromModule(rabbitsPattern);
@@ -119,125 +144,22 @@ function getPaperEditorSceneId(
   return scenes.find((scene) => scene.isStart)?.id ?? scenes[0]?.id ?? null;
 }
 
-type ActionTone = 'solid' | 'outline' | 'soft';
-
-interface ActionButtonProps {
-  colors: ThemeColorPalette;
-  label: string;
-  iconName?: IconSymbolName;
-  tone?: ActionTone;
-  accent?: 'primary' | 'secondary';
-  size?: 'base' | 'sm';
-  onPress: () => void;
-  disabled?: boolean;
-  accessibilityLabel?: string;
-  style?: object;
-}
-
-function ActionButton({
-  colors,
-  label,
-  iconName,
-  tone = 'solid',
-  accent = 'primary',
-  size = 'base',
-  onPress,
-  disabled,
-  accessibilityLabel,
-  style,
-}: ActionButtonProps) {
-  const solid = tone === 'solid';
-  const outline = tone === 'outline';
-  const accentColor = colors[accent];
-  const bg = solid ? accentColor : outline ? 'transparent' : withAlpha(accentColor, 0.1);
-  const fg = solid ? colors['text-inverse'] : accentColor;
-  const iconSize = size === 'sm' ? 16 : 18;
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
-      style={({ pressed }) => [
-        styles.action,
-        size === 'sm' && styles.actionSm,
-        {
-          backgroundColor: bg,
-          borderWidth: outline ? 1.5 : 0,
-          borderColor: outline ? accentColor : 'transparent',
-          opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
-        },
-        style,
-      ]}
-    >
-      {iconName ? <IconSymbol name={iconName} size={iconSize} color={fg} /> : null}
-      <Text style={[styles.actionLabel, size === 'sm' && styles.actionLabelSm, { color: fg }]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function SectionHeader({
-  colors,
-  iconName,
-  title,
-  right,
-}: {
-  colors: ThemeColorPalette;
-  iconName: IconSymbolName;
-  title: string;
-  right?: React.ReactNode;
-}) {
-  return (
-    <View style={styles.sectionHeader}>
-      <View style={[styles.sectionIcon, { backgroundColor: withAlpha(colors.primary, 0.1) }]}>
-        <IconSymbol name={iconName} size={15} color={colors.primary} />
-      </View>
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{title}</Text>
-      <View style={styles.sectionSpacer} />
-      {right}
-    </View>
-  );
-}
-
-function StatTile({
-  colors,
-  iconName,
-  value,
-  label,
-}: {
-  colors: ThemeColorPalette;
-  iconName: IconSymbolName;
-  value: number;
-  label: string;
-}) {
-  const { language } = useI18n();
-
-  return (
-    <View style={[styles.statCard, { backgroundColor: withAlpha(colors.primary, 0.06) }]}>
-      <View style={[styles.statIcon, { backgroundColor: withAlpha(colors.primary, 0.1) }]}>
-        <IconSymbol name={iconName} size={16} color={colors.primary} />
-      </View>
-      <Text style={[styles.statValue, { color: colors.foreground }]}>{formatNumber(value, language)}</Text>
-      <Text style={[styles.statLabel, { color: colors.muted }]} numberOfLines={1}>
-        {label}
-      </Text>
-    </View>
-  );
-}
-
 export default function StoryHomeScreen() {
   const router = useRouter();
   // This hub is a deliberately light "studio" surface, independent of the app
   // theme — a calm bright space between the dark editor and the dark reader.
   const colors = useColors('light');
-  const { t, language } = useI18n();
+  const { t, pluralize, language } = useI18n();
   const { width } = useWindowDimensions();
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
 
-  const wide = Platform.OS === 'web' && width >= 900;
-  const heroWide = width >= 620;
+  // The passport lays cover and fields side by side once there is room for both.
+  const passportWide = width >= 700;
+  // Four tiles in a row need about 130 px each before the labels start to clip.
+  const tilesTwoUp = width < 560;
 
   const storiesMetadata = useAppStore((state) => state.storiesMetadata);
+  const isLoaded = useAppStore((state) => state.isLoaded);
   const hydrateSceneRecordsForStory = useAppStore((state) => state.hydrateSceneRecordsForStory);
   const updateStoryMetadata = useAppStore((state) => state.updateStoryMetadata);
   const [hydrated, setHydrated] = useState(false);
@@ -286,8 +208,8 @@ export default function StoryHomeScreen() {
 
   const commitLanguages = useCallback(() => {
     if (!story) return;
-    // Sanitizing here rather than on every keystroke lets the author type
-    // "uk, en" without the half-finished "u" vanishing under them.
+    // Sanitized on blur rather than on every keystroke, so a half-typed "u"
+    // does not vanish under the author.
     const next = sanitizeStoryLanguages(languagesDraft.split(','));
     setLanguagesDraft((next ?? []).join(', '));
     if ((next ?? []).join(',') !== (story.languages ?? []).join(',')) {
@@ -296,8 +218,7 @@ export default function StoryHomeScreen() {
   }, [languagesDraft, story, updateStoryMetadata]);
 
   const commitContentRating = useCallback((rating: ContentRating) => {
-    if (!story) return;
-    updateStoryMetadata(story.id, { contentRating: rating });
+    if (story) updateStoryMetadata(story.id, { contentRating: rating });
   }, [story, updateStoryMetadata]);
 
   const commitDescription = useCallback(() => {
@@ -415,8 +336,8 @@ export default function StoryHomeScreen() {
     if (!storyId) return;
     setReleasing(true);
     try {
-      // Publishing goes through the service rather than the store: compiling
-      // reads the store, so a store action that compiled would close a cycle.
+      // Through the service, not a store action: compiling reads the store, so
+      // a store action that compiled would close an import cycle.
       const meta = await publishStoryRelease({ storyId, ...request });
       await loadReleasesForStory(storyId);
       showToast(t('release.published', { version: meta.version }), 'success');
@@ -434,6 +355,7 @@ export default function StoryHomeScreen() {
     if (!storyId) return;
     void setReleasePublished(storyId, releaseId, published).catch(() => undefined);
   }, [setReleasePublished, storyId]);
+
   const audioLibraries = useAppStore((state) => state.audioLibraries);
   const mediaLibrary = useAppStore((state) => state.mediaLibrary);
   const imageAssetIdsByStory = useAppStore((state) => state.imageAssetIdsByStory);
@@ -457,9 +379,17 @@ export default function StoryHomeScreen() {
     }),
     [characterLibrary, sceneRecords, story, storyDoctorAudioAssets, storyImageAssets],
   );
-  // Preflight runs the story doctor itself, so it is memoized on the same
-  // inputs rather than handed the report above: the two must never disagree
-  // about which story they described.
+  const coverageReport = useMemo(
+    () => computeCoverageReport(sceneRecords, coverage),
+    [coverage, sceneRecords],
+  );
+  const choiceStatsReport = useMemo(
+    () => getChoiceStats(sceneRecords, coverage),
+    [coverage, sceneRecords],
+  );
+  // The release gate replaces the old five-check readiness list: two readiness
+  // answers on one page could only disagree, and the gate is the strict
+  // superset (STORY-HOME-PLAN.md §2.4).
   const releasePreflight = useMemo(
     () => story
       ? runReleasePreflight({
@@ -474,17 +404,90 @@ export default function StoryHomeScreen() {
       : null,
     [characterLibrary, releases, sceneRecords, story, storyDoctorAudioAssets, storyImageAssets],
   );
-  const coverageReport = useMemo(
-    () => computeCoverageReport(sceneRecords, coverage),
-    [coverage, sceneRecords],
+
+  /**
+   * What «still to do» lists: the blockers the story doctor did not raise.
+   * The doctor's own findings already have their own verdict line and tile, so
+   * repeating them here would say the same thing twice.
+   */
+  const releaseGate = useMemo(() => {
+    if (!hydrated || !releasePreflight) return null;
+    return {
+      blockers: releasePreflight.blockers.length,
+      warnings: releasePreflight.warnings.length,
+      missing: releasePreflight.blockers
+        .filter((finding) => !finding.fromStoryDoctor)
+        .map((finding) => finding.messageKey),
+    };
+  }, [hydrated, releasePreflight]);
+
+  // The «assets» tile and the panel it opens read the same report, so they can
+  // never contradict each other.
+  const assetReport = useMemo(
+    () => (storyId
+      ? buildStoryAssetUsageReport({
+          storyId,
+          scenes: sceneRecords,
+          mediaLibrary,
+          imageAssetIdsByStory,
+          storyAudioLibrary: audioLibraries[storyId] ?? [],
+          characters: characterLibrary,
+        })
+      : null),
+    [audioLibraries, characterLibrary, imageAssetIdsByStory, mediaLibrary, sceneRecords, storyId],
   );
-  const choiceStatsReport = useMemo(
-    () => getChoiceStats(sceneRecords, coverage),
-    [coverage, sceneRecords],
+
+  const overview = useMemo(
+    () => buildOverviewState({
+      hydrated,
+      readiness: releaseGate,
+      doctor: storyDoctorReport.summary,
+      coverage: {
+        scenesSeen: coverageReport.visitedReachableScenes,
+        scenesTotal: coverageReport.totalReachableScenes,
+      },
+      assets: {
+        total: assetReport?.assets.length ?? 0,
+        unused: assetReport?.unusedAssets.length ?? 0,
+        broken: assetReport?.brokenReferences.length ?? 0,
+      },
+    }),
+    [assetReport, coverageReport, hydrated, releaseGate, storyDoctorReport.summary],
   );
+
+  const [openTile, setOpenTile] = useState<OverviewTileKey | null>(null);
+
+  const unusedImageCount = useMemo(() => {
+    if (!assetReport) return 0;
+    const galleryIds = new Set(storyImageAssets.map((asset) => asset.id));
+    return assetReport.unusedAssets.filter((asset) => galleryIds.has(asset.id)).length;
+  }, [assetReport, storyImageAssets]);
+
+  // What a full backup would carry. The bytes are already in the media library;
+  // only the sum was missing.
+  const mediaAssetIdsByStory = useAppStore((state) => state.mediaAssetIdsByStory);
+  const backupPayload = useMemo(() => {
+    if (!storyId) return { files: 0, bytes: 0 };
+    const ids = new Set([
+      ...(mediaAssetIdsByStory[storyId] ?? []),
+      ...(imageAssetIdsByStory[storyId] ?? []),
+    ]);
+    let bytes = 0;
+    let files = 0;
+    for (const asset of mediaLibrary) {
+      if (!ids.has(asset.id)) continue;
+      files += 1;
+      bytes += asset.size ?? 0;
+    }
+    return { files, bytes };
+  }, [imageAssetIdsByStory, mediaAssetIdsByStory, mediaLibrary, storyId]);
+  // Waits for `isLoaded`, and not out of politeness: persist rehydrates a beat
+  // after mount, and any store write before that makes the middleware save the
+  // still-empty initial state over the real one. Opening this route directly
+  // used to do exactly that and take every story's metadata with it.
   useEffect(() => {
     let cancelled = false;
-    if (!storyId) return;
+    if (!storyId || !isLoaded) return;
     void hydrateSceneRecordsForStory(storyId)
       .catch(() => {})
       .finally(() => {
@@ -493,7 +496,7 @@ export default function StoryHomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [storyId, hydrateSceneRecordsForStory]);
+  }, [storyId, isLoaded, hydrateSceneRecordsForStory]);
 
   useFocusEffect(
     useCallback(() => {
@@ -567,394 +570,697 @@ export default function StoryHomeScreen() {
       .catch(() => showToast(t('storyCoverage.resetFailed'), 'error'));
   }, [story, t]);
 
+  const formatBytes = useCallback(
+    (bytes: number): string => {
+      if (bytes >= 1024 * 1024) {
+        const mb = bytes / (1024 * 1024);
+        return t('storyHome.sizeMb', { value: mb >= 10 ? Math.round(mb) : mb.toFixed(1) });
+      }
+      return t('storyHome.sizeKb', { value: Math.max(1, Math.round(bytes / 1024)) });
+    },
+    [t],
+  );
+
+  const toneColor = useCallback(
+    (tone: OverviewTone): string => {
+      switch (tone) {
+        case 'ok':
+          return colors.success;
+        case 'warning':
+          return colors.warning;
+        case 'danger':
+          return colors.danger;
+        case 'neutral':
+          return colors.foreground;
+        default:
+          return colors['foreground-disabled'];
+      }
+    },
+    [colors],
+  );
+
   if (!story) {
     return (
       <ScreenContainer
-        className="px-4 py-5"
         edges={['top', 'left', 'right', 'bottom']}
         style={{ backgroundColor: colors.background }}
       >
+        <View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[StyleSheet.absoluteFillObject, styles.rabbitsPattern, rabbitsPatternBackground]}
+        />
+        {/* Stories arrive from IndexedDB a beat after the first paint, and
+            «Story not found» is a cruel thing to flash at somebody whose story
+            is merely still loading. */}
+        {!isLoaded ? (
+          <View style={styles.notFoundWrap}>
+            <Text style={[styles.notFoundHint, { color: colors['foreground-tertiary'] }]}>
+              {t('home.preparingLibrary')}
+            </Text>
+          </View>
+        ) : (
         <View style={styles.notFoundWrap}>
-          <View style={[styles.notFound, { backgroundColor: colors['surface-1'], borderColor: colors.border }, shadowCard]}>
+          <View style={[styles.notFound, { backgroundColor: colors['surface-1'], borderColor: colors['border-subtle'] }, shadowCard]}>
             <View style={[styles.notFoundIcon, { backgroundColor: withAlpha(colors.primary, 0.1) }]}>
               <IconSymbol name="question" size={26} color={colors.primary} />
             </View>
             <Text style={[styles.notFoundTitle, { color: colors.foreground }]}>{t('storyHome.notFound')}</Text>
             <Text style={[styles.notFoundHint, { color: colors.muted }]}>{t('storyHome.notFoundHint')}</Text>
-            <ActionButton
-              colors={colors}
-              label={t('common.back')}
-              iconName="chevron.left"
+            <Pressable
               onPress={() => router.replace('/editor')}
-            />
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.primaryAction,
+                { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+              ]}
+            >
+              <Text style={[styles.primaryActionText, { color: colors['foreground-on-primary'] }]}>
+                {t('common.back')}
+              </Text>
+            </Pressable>
           </View>
         </View>
+        )}
       </ScreenContainer>
     );
   }
 
-  const cardBase = { backgroundColor: colors['surface-1'], borderColor: colors.border };
-  const inputBorder = (field: string) => (focusedField === field ? colors.primary : colors.border);
+  const bandSurface = {
+    backgroundColor: colors['surface-1'],
+    borderColor: colors['border-subtle'],
+  };
+  const fieldStyle = (field: string) => [
+    styles.field,
+    focusedField === field
+      ? { borderColor: colors.primary, backgroundColor: colors.background }
+      : { borderColor: 'transparent', backgroundColor: 'transparent' },
+  ];
   const coverInitial = (story.title || '?').trim().charAt(0).toUpperCase();
+  const statsLine = t('storyHome.statsLine', {
+    scenes: stats.scenes,
+    scenesLabel: pluralize(stats.scenes, t('editor.sceneOne'), t('editor.sceneFew'), t('editor.sceneMany')),
+    words: formatNumber(stats.words, language),
+    wordsLabel: pluralize(stats.words, t('editor.wordOne'), t('editor.wordFew'), t('editor.wordMany')),
+    choices: stats.choices,
+    choicesLabel: pluralize(stats.choices, t('editor.choiceOne'), t('editor.choiceFew'), t('editor.choiceMany')),
+    characters: characterCount,
+    charactersLabel: pluralize(
+      characterCount,
+      t('storyHome.characterOne'),
+      t('storyHome.characterFew'),
+      t('storyHome.characterMany'),
+    ),
+  });
 
-  const detailsCard = (
-    <View style={[styles.card, cardBase, shadowCard]}>
-      <SectionHeader colors={colors} iconName="editor" title={t('storyHome.details')} />
+  // Sizes are only known for media the library actually measured, so a zero is
+  // «not measured», not «weightless» — leave that part out rather than lie.
+  const backupSummary = [
+    `${story.sceneCount ?? stats.scenes} ${pluralize(
+      story.sceneCount ?? stats.scenes,
+      t('editor.sceneOne'),
+      t('editor.sceneFew'),
+      t('editor.sceneMany'),
+    )}`,
+    `${backupPayload.files} ${pluralize(
+      backupPayload.files,
+      t('storyHome.fileOne'),
+      t('storyHome.fileFew'),
+      t('storyHome.fileMany'),
+    )}`,
+    backupPayload.bytes > 0 ? formatBytes(backupPayload.bytes) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
-      <Text style={[styles.fieldLabel, { color: colors.muted }]}>{t('storyHome.titleLabel')}</Text>
-      <TextInput
-        value={titleDraft}
-        onChangeText={setTitleDraft}
-        onFocus={() => setFocusedField('title')}
-        onBlur={() => {
-          setFocusedField(null);
-          commitTitle();
-        }}
-        placeholder={t('storyHome.titlePlaceholder')}
-        placeholderTextColor={colors.muted}
-        style={[styles.input, { backgroundColor: colors.background, borderColor: inputBorder('title'), color: colors.foreground }]}
-      />
+  const verdictText = (() => {
+    switch (overview.verdict.kind) {
+      case 'errors':
+        return t('storyHome.verdictErrors', {
+          count: overview.verdict.count,
+          label: pluralize(
+            overview.verdict.count,
+            t('storyHome.errorOne'),
+            t('storyHome.errorFew'),
+            t('storyHome.errorMany'),
+          ),
+        });
+      case 'warnings':
+        return t('storyHome.verdictWarnings', {
+          count: overview.verdict.count,
+          label: pluralize(
+            overview.verdict.count,
+            t('storyHome.warningOne'),
+            t('storyHome.warningFew'),
+            t('storyHome.warningMany'),
+          ),
+        });
+      case 'incomplete':
+        return t('storyHome.verdictIncomplete', {
+          items: overview.verdict.missing.map((key) => t(key)).join(' '),
+        });
+      case 'ready':
+        return t('storyHome.verdictReady');
+      default:
+        return t('storyHome.verdictPending');
+    }
+  })();
 
-      <Text style={[styles.fieldLabel, { color: colors.muted }]}>{t('storyHome.authorLabel')}</Text>
-      <TextInput
-        value={authorDraft}
-        onChangeText={setAuthorDraft}
-        onFocus={() => setFocusedField('author')}
-        onBlur={() => {
-          setFocusedField(null);
-          commitAuthor();
-        }}
-        placeholder={t('storyHome.authorPlaceholder')}
-        placeholderTextColor={colors.muted}
-        style={[styles.input, { backgroundColor: colors.background, borderColor: inputBorder('author'), color: colors.foreground }]}
-      />
+  const tileLabels: Record<OverviewTileKey, string> = {
+    readiness: t('storyHome.tileReadiness'),
+    health: t('storyHome.tileHealth'),
+    coverage: t('storyHome.tileCoverage'),
+    assets: t('storyHome.tileAssets'),
+  };
 
-      <Text style={[styles.fieldLabel, { color: colors.muted }]}>{t('storyHome.descriptionLabel')}</Text>
-      <TextInput
-        value={descriptionDraft}
-        onChangeText={setDescriptionDraft}
-        onFocus={() => setFocusedField('description')}
-        onBlur={() => {
-          setFocusedField(null);
-          commitDescription();
-        }}
-        placeholder={t('storyHome.descriptionPlaceholder')}
-        placeholderTextColor={colors.muted}
-        multiline
-        numberOfLines={4}
-        style={[styles.input, styles.textArea, { backgroundColor: colors.background, borderColor: inputBorder('description'), color: colors.foreground }]}
-      />
+  const tileSub = (key: OverviewTileKey): string => {
+    if (!hydrated) return t('storyHome.tileEmpty');
+    switch (key) {
+      case 'readiness':
+        if (!releaseGate) return t('storyHome.tileEmpty');
+        if (releaseGate.blockers > 0) return t('storyHome.tileReadinessLeft', { count: releaseGate.blockers });
+        if (releaseGate.warnings > 0) return t('storyHome.tileReadinessWarnings', { count: releaseGate.warnings });
+        return t('storyHome.tileReadinessDone');
+      case 'health': {
+        const { errors, warnings } = storyDoctorReport.summary;
+        if (errors > 0 && warnings > 0) {
+          return t('storyHome.tileHealthWarnings', {
+            count: warnings,
+            label: pluralize(warnings, t('storyHome.warningOne'), t('storyHome.warningFew'), t('storyHome.warningMany')),
+          });
+        }
+        if (errors === 0 && warnings === 0) return t('storyHome.tileHealthClean');
+        return '';
+      }
+      case 'coverage':
+        // «Nobody has played» must key off visits, not picks: a linear story
+        // has no choices to pick and would read as unplayed after every read.
+        return coverageReport.visitedReachableScenes > 0
+          ? t('storyHome.tileCoverageSeen')
+          : t('storyHome.tileCoverageIdle');
+      default:
+        if (!assetReport || assetReport.assets.length === 0) return t('storyHome.tileEmpty');
+        return assetReport.brokenReferences.length > 0
+          ? t('storyHome.tileAssetsBroken')
+          : t('storyHome.tileAssetsLibrary');
+    }
+  };
 
-      <Text style={[styles.fieldLabel, { color: colors.muted }]}>{t('storyHome.contentRatingLabel')}</Text>
-      <SegmentedControl<ContentRating>
-        options={CONTENT_RATINGS.map((rating) => ({
-          value: rating,
-          label: t(`storyHome.contentRating.${rating}`),
-        }))}
-        value={story.contentRating ?? 'everyone'}
-        onChange={commitContentRating}
-        accessibilityLabel={t('storyHome.contentRatingLabel')}
-        segmentMinWidth={80}
-      />
-      {story.contentRating ? null : (
-        <Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.contentRatingUnset')}</Text>
-      )}
-
-      <Text style={[styles.fieldLabel, { color: colors.muted }]}>{t('storyHome.languagesLabel')}</Text>
-      <TextInput
-        value={languagesDraft}
-        onChangeText={setLanguagesDraft}
-        onFocus={() => setFocusedField('languages')}
-        onBlur={() => {
-          setFocusedField(null);
-          commitLanguages();
-        }}
-        autoCapitalize="none"
-        placeholder={t('storyHome.languagesPlaceholder')}
-        placeholderTextColor={colors.muted}
-        style={[styles.input, { backgroundColor: colors.background, borderColor: inputBorder('languages'), color: colors.foreground }]}
-      />
-
-      <Text style={[styles.fieldLabel, { color: colors.muted }]}>{t('storyHome.tagsLabel')}</Text>
-      {tags.length > 0 ? (
-        <View style={styles.tagRow}>
-          {tags.map((tag) => (
-            <Pressable
-              key={tag}
-              onPress={() => handleRemoveTag(tag)}
-              accessibilityRole="button"
-              accessibilityLabel={t('storyHome.removeTag', { tag })}
-              style={[styles.chip, { backgroundColor: withAlpha(colors.primary, 0.09), borderColor: withAlpha(colors.primary, 0.25) }]}
-            >
-              <Text style={[styles.chipText, { color: colors.primary }]}>{tag}</Text>
-              <IconSymbol name="xmark" size={13} color={colors.primary} />
-            </Pressable>
-          ))}
-        </View>
-      ) : (
-        <Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.noTags')}</Text>
-      )}
-      <View style={styles.tagInputRow}>
-        <TextInput
-          value={tagInput}
-          onChangeText={setTagInput}
-          onFocus={() => setFocusedField('tag')}
-          onBlur={() => setFocusedField(null)}
-          onSubmitEditing={handleAddTag}
-          placeholder={t('storyHome.tagPlaceholder')}
-          placeholderTextColor={colors.muted}
-          maxLength={MAX_STORY_TAG_LENGTH}
-          returnKeyType="done"
-          style={[styles.input, styles.tagInput, { backgroundColor: colors.background, borderColor: inputBorder('tag'), color: colors.foreground }]}
-        />
-        <ActionButton
-          colors={colors}
-          label={t('storyHome.addTag')}
-          iconName="add"
-          tone="soft"
-          onPress={handleAddTag}
-          accessibilityLabel={t('storyHome.addTag')}
-        />
-      </View>
-    </View>
-  );
-
-  // One readiness surface, and it is the release gate: the old five-item
-  // checklist asked a strict subset of the same questions, so two cards on one
-  // screen could only disagree in confusing ways.
-  const releaseCard = hydrated ? (
-    <ReleaseCard
-      colors={colors}
-      story={story}
-      releases={releases}
-      preflight={releasePreflight}
-      busy={releasing}
-      onPublish={handlePublish}
-      onSetPublished={handleSetPublished}
-      style={[styles.card, cardBase, shadowCard]}
-    />
-  ) : null;
-
-  const readinessCard = hydrated && releasePreflight ? (
-    <ReleaseChecklistCard
-      colors={colors}
-      report={releasePreflight}
-      onOpenScene={handleOpenHealthScene}
-      style={[styles.card, cardBase, shadowCard]}
-    />
-  ) : null;
-
-  const imageLibraryCard = <View style={[styles.card, cardBase, shadowCard]}><SectionHeader colors={colors} iconName="gallery" title={t('mediaLibrary.title')} /><Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.gallery.openHint')}</Text><ActionButton colors={colors} label={t('storyHome.gallery.open')} iconName="gallery" accent="secondary" onPress={() => router.push({ pathname: '/story-gallery', params: { storyId: story.id } })} /></View>;
-
-  const backupCard = (
-    <View style={[styles.card, cardBase, shadowCard]}>
-      <SectionHeader colors={colors} iconName="save" title={t('storyHome.backup')} />
-      <Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.fullBackupHint')}</Text>
-      <ActionButton
-        colors={colors}
-        label={backingUp && backupProgress
-          ? t(`storyHome.backupProgress.${backupProgress}`)
-          : t('storyHome.fullBackup')}
-        iconName="save"
-        onPress={handleFullBackup}
-        disabled={backingUp || exporting}
-        style={styles.backupButton}
-      />
-      <ActionButton
-        colors={colors}
-        label={t('storyHome.exportJson')}
-        iconName="square.and.arrow.up"
-        tone="outline"
-        onPress={() => setShowExportWarning(true)}
-        disabled={exporting || backingUp}
-        style={styles.backupButton}
-      />
-    </View>
-  );
+  const openPanel = () => {
+    switch (openTile) {
+      case 'readiness':
+        return releasePreflight ? (
+          <ReleaseChecklistCard
+            embedded
+            colors={colors}
+            report={releasePreflight}
+            onOpenScene={handleOpenHealthScene}
+          />
+        ) : null;
+      case 'health':
+        return (
+          <StoryHealthCard
+            embedded
+            colors={colors}
+            report={storyDoctorReport}
+            scenes={sceneRecords}
+            onOpenScene={handleOpenHealthScene}
+          />
+        );
+      case 'coverage':
+        // Coverage answers to this tile and no other: what a playthrough has
+        // reached, and — once somebody has actually played — how the picks fell.
+        return (
+          <View style={styles.panelStack}>
+            <PlaytestCoverageCard
+              embedded
+              colors={colors}
+              report={coverageReport}
+              onOpenScene={handleOpenHealthScene}
+              onReset={() => setShowResetCoverage(true)}
+            />
+            <ChoiceStatisticsCard
+              embedded
+              colors={colors}
+              report={choiceStatsReport}
+              onReset={() => setShowResetCoverage(true)}
+            />
+          </View>
+        );
+      case 'assets':
+        return (
+          <AssetUsageCard
+            embedded
+            colors={colors}
+            storyId={story.id}
+            scenes={sceneRecords}
+            onOpenScene={handleOpenHealthScene}
+          />
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <ScreenContainer
-      className="px-4 py-5"
       edges={['top', 'left', 'right', 'bottom']}
       style={{ backgroundColor: colors.background }}
     >
+      {/* The paper texture the whole studio sits on. It stays behind everything,
+          never scrolls, and is invisible to assistive tech. */}
       <View
         pointerEvents="none"
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
         style={[StyleSheet.absoluteFillObject, styles.rabbitsPattern, rabbitsPatternBackground]}
       />
-      <ScrollView
-        contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Top bar: back + breadcrumb */}
-        <View style={styles.topBar}>
-          <Pressable
-            onPress={handleBack}
-            accessibilityRole="button"
-            accessibilityLabel={t('common.back')}
-            style={({ pressed }) => [
-              styles.backButton,
-              { backgroundColor: colors['surface-1'], borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
-              shadowCard,
-            ]}
-          >
-            <IconSymbol name="chevron.left" size={20} color={colors.foreground} />
-          </Pressable>
-          <Pressable onPress={handleBack} accessibilityRole="button" accessibilityLabel={t('editor.title')}>
-            <Text style={[styles.breadcrumbRoot, { color: colors.primary }]}>{t('editor.title')}</Text>
-          </Pressable>
-          <Text style={[styles.breadcrumbSep, { color: colors.muted }]}>/</Text>
-          <Text style={[styles.breadcrumbCurrent, { color: colors.foreground }]} numberOfLines={1}>
-            {story.title || t('storyHome.untitled')}
-          </Text>
-        </View>
 
-        {/* Hero: cover + identity + primary journeys */}
-        <View style={[styles.hero, cardBase, shadowCard]}>
-          <View style={[styles.heroAccent, { backgroundColor: colors.secondary }]} />
-          <View style={[styles.heroInner, heroWide ? styles.heroRow : styles.heroColumn]}>
-            <View>
-              <Pressable
-                onPress={handlePickCover}
-                accessibilityRole="button"
-                accessibilityLabel={story.thumbnailUri ? t('storyHome.changeCover') : t('storyHome.addCover')}
-                style={[styles.coverFrame, shadowCover]}
-              >
-                {story.thumbnailUri ? (
-                  <ResolvedAssetImage uri={story.thumbnailUri} style={styles.cover} resizeMode="cover" />
-                ) : (
-                  <View style={[styles.coverPlaceholder, { backgroundColor: withAlpha(colors.primary, 0.12) }]}>
-                    <Text style={[styles.coverInitial, { color: colors.primary }]}>{coverInitial}</Text>
-                  </View>
-                )}
-                <View style={[styles.coverBadge, { backgroundColor: colors.primary }]}>
-                  <IconSymbol name="image" size={15} color={colors['text-inverse']} />
-                </View>
-              </Pressable>
-              {story.thumbnailUri ? (
+      <View style={[styles.nav, { borderBottomColor: colors['border-subtle'] }]}>
+        <Pressable
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel={t('storyHome.backToStudio')}
+          style={({ pressed }) => [styles.navBack, { opacity: pressed ? 0.6 : 1 }]}
+        >
+          <IconSymbol name="chevron.left" size={20} color={colors.primary} />
+          <Text style={[styles.navBackText, { color: colors.primary }]}>{t('storyHome.backToStudio')}</Text>
+        </Pressable>
+        <Text style={[styles.navTitle, { color: colors.foreground }]} numberOfLines={1}>
+          {story.title || t('storyHome.untitled')}
+        </Text>
+        <View style={styles.navSide} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.column}>
+
+          {/* ── A · passport: the identity and the form are the same thing ── */}
+          <View style={[styles.band, bandSurface, shadowCard]}>
+            <View style={[styles.passport, passportWide ? styles.passportRow : styles.passportColumn]}>
+              <View>
                 <Pressable
-                  onPress={handleRemoveCover}
+                  onPress={handlePickCover}
                   accessibilityRole="button"
-                  accessibilityLabel={t('storyHome.removeCover')}
-                  style={styles.removeCoverBtn}
+                  accessibilityLabel={story.thumbnailUri ? t('storyHome.changeCover') : t('storyHome.addCover')}
+                  style={[styles.coverFrame, shadowCover]}
                 >
-                  <Text style={[styles.removeCoverText, { color: colors.muted }]}>{t('storyHome.removeCover')}</Text>
+                  {story.thumbnailUri ? (
+                    <ResolvedAssetImage uri={story.thumbnailUri} style={styles.cover} resizeMode="cover" />
+                  ) : (
+                    <View style={[styles.coverPlaceholder, { backgroundColor: withAlpha(colors.primary, 0.12) }]}>
+                      <Text style={[styles.coverInitial, { color: colors.primary }]}>{coverInitial}</Text>
+                    </View>
+                  )}
+                  <View style={[styles.coverBadge, { backgroundColor: colors.primary }]}>
+                    <IconSymbol name="image" size={15} color={colors['foreground-on-primary']} />
+                  </View>
                 </Pressable>
-              ) : null}
-            </View>
-
-            <View style={styles.heroCopy}>
-              <Text style={[styles.heroTitle, { color: colors.foreground }]} numberOfLines={3}>
-                {story.title || t('storyHome.untitled')}
-              </Text>
-              {story.author ? (
-                <Text style={[styles.heroByline, { color: colors['foreground-secondary'] }]} numberOfLines={1}>
-                  {t('storyHome.byAuthor', { author: story.author })}
-                </Text>
-              ) : null}
-              <Text style={[styles.heroDescription, { color: colors['foreground-secondary'] }]} numberOfLines={3}>
-                {story.description?.trim() || t('storyHome.descriptionEmpty')}
-              </Text>
-              <View style={styles.heroMetaRow}>
-                <IconSymbol name="manuscript" size={14} color={colors.muted} />
-                <Text style={[styles.heroMeta, { color: colors.muted }]}>
-                  {t('editor.sceneCount', { count: story.sceneCount ?? 0 })}
-                </Text>
-                <Text style={[styles.heroMetaDot, { color: colors.muted }]}>·</Text>
-                <Text style={[styles.heroMeta, { color: colors.muted }]}>
-                  {t('common.updated')} {formatDate(story.updatedAt, language, SHORT_DATE)}
-                </Text>
+                {story.thumbnailUri ? (
+                  <Pressable
+                    onPress={handleRemoveCover}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('storyHome.removeCover')}
+                    style={styles.removeCoverBtn}
+                  >
+                    <Text style={[styles.removeCoverText, { color: colors.muted }]}>{t('storyHome.removeCover')}</Text>
+                  </Pressable>
+                ) : null}
               </View>
-              {hydrated ? (
-                <View style={styles.heroStats}>
-                  <StatTile colors={colors} iconName="manuscript" value={stats.scenes} label={t('storyHome.statScenes')} />
-                  <StatTile colors={colors} iconName="text" value={stats.words} label={t('storyHome.statWords')} />
-                  <StatTile colors={colors} iconName="list" value={stats.choices} label={t('storyHome.statChoices')} />
-                  <StatTile colors={colors} iconName="character" value={characterCount} label={t('storyHome.statCharacters')} />
+
+              <View style={styles.fields}>
+                <TextInput
+                  value={titleDraft}
+                  onChangeText={setTitleDraft}
+                  onFocus={() => setFocusedField('title')}
+                  onBlur={() => {
+                    setFocusedField(null);
+                    commitTitle();
+                  }}
+                  placeholder={t('storyHome.titlePlaceholder')}
+                  placeholderTextColor={colors['foreground-disabled']}
+                  accessibilityLabel={t('storyHome.titleLabel')}
+                  style={[fieldStyle('title'), styles.titleField, { color: colors.foreground }]}
+                />
+                <TextInput
+                  value={authorDraft}
+                  onChangeText={setAuthorDraft}
+                  onFocus={() => setFocusedField('author')}
+                  onBlur={() => {
+                    setFocusedField(null);
+                    commitAuthor();
+                  }}
+                  placeholder={t('storyHome.authorPlaceholder')}
+                  placeholderTextColor={colors['foreground-disabled']}
+                  accessibilityLabel={t('storyHome.authorLabel')}
+                  style={[fieldStyle('author'), styles.authorField, { color: colors['foreground-secondary'] }]}
+                />
+                <TextInput
+                  value={descriptionDraft}
+                  onChangeText={setDescriptionDraft}
+                  onFocus={() => setFocusedField('description')}
+                  onBlur={() => {
+                    setFocusedField(null);
+                    commitDescription();
+                  }}
+                  placeholder={t('storyHome.descriptionPlaceholder')}
+                  placeholderTextColor={colors['foreground-disabled']}
+                  accessibilityLabel={t('storyHome.descriptionLabel')}
+                  multiline
+                  numberOfLines={3}
+                  style={[fieldStyle('description'), styles.aboutField, { color: colors['foreground-secondary'] }]}
+                />
+
+                <View style={styles.publication}>
+                  <SegmentedControl<ContentRating>
+                    options={CONTENT_RATINGS.map((rating) => ({
+                      value: rating,
+                      label: t(`storyHome.contentRating.${rating}`),
+                    }))}
+                    value={story.contentRating ?? 'everyone'}
+                    onChange={commitContentRating}
+                    accessibilityLabel={t('storyHome.contentRatingLabel')}
+                    segmentMinWidth={78}
+                  />
+                  <TextInput
+                    value={languagesDraft}
+                    onChangeText={setLanguagesDraft}
+                    onFocus={() => setFocusedField('languages')}
+                    onBlur={() => {
+                      setFocusedField(null);
+                      commitLanguages();
+                    }}
+                    autoCapitalize="none"
+                    placeholder={t('storyHome.languagesPlaceholder')}
+                    placeholderTextColor={colors['foreground-disabled']}
+                    accessibilityLabel={t('storyHome.languagesLabel')}
+                    style={[
+                      styles.tagInput,
+                      {
+                        borderColor: focusedField === 'languages' ? colors.primary : colors['border-subtle'],
+                        color: colors.foreground,
+                      },
+                    ]}
+                  />
                 </View>
-              ) : null}
-              <View style={styles.heroActions}>
-                <ActionButton
-                  colors={colors}
-                  label={t('storyHome.playNovel')}
-                  iconName="play"
-                  tone="solid"
-                  accent="secondary"
-                  onPress={handlePlay}
-                />
-                <ActionButton
-                  colors={colors}
-                  label={t('storyHome.editText')}
-                  iconName="editor"
-                  tone="outline"
-                  onPress={handleEditText}
-                />
-                <ActionButton
-                  colors={colors}
-                  label={t('storyHome.customizeTheme')}
-                  iconName="palette"
-                  tone="outline"
-                  onPress={handleCustomizeTheme}
-                />
+
+                <View style={styles.tagRow}>
+                  {tags.map((tag) => (
+                    <Pressable
+                      key={tag}
+                      onPress={() => handleRemoveTag(tag)}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('storyHome.removeTag', { tag })}
+                      style={[
+                        styles.chip,
+                        {
+                          backgroundColor: withAlpha(colors.primary, 0.09),
+                          borderColor: withAlpha(colors.primary, 0.25),
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.chipText, { color: colors.primary }]}>{tag}</Text>
+                      <IconSymbol name="xmark" size={12} color={colors.primary} />
+                    </Pressable>
+                  ))}
+                  <TextInput
+                    value={tagInput}
+                    onChangeText={setTagInput}
+                    onFocus={() => setFocusedField('tag')}
+                    onBlur={() => setFocusedField(null)}
+                    onSubmitEditing={handleAddTag}
+                    placeholder={t('storyHome.tagPlaceholder')}
+                    placeholderTextColor={colors['foreground-disabled']}
+                    accessibilityLabel={t('storyHome.addTag')}
+                    maxLength={MAX_STORY_TAG_LENGTH}
+                    returnKeyType="done"
+                    style={[
+                      styles.tagInput,
+                      {
+                        borderColor: focusedField === 'tag' ? colors.primary : colors['border-subtle'],
+                        color: colors.foreground,
+                      },
+                    ]}
+                  />
+                </View>
+
+                <Text style={[styles.statsLine, { color: colors['foreground-tertiary'] }]}>
+                  {hydrated ? `${statsLine} · ` : ''}
+                  {t('common.updated')} {dateFormatterFor(language).format(new Date(story.updatedAt))}
+                </Text>
+
+                <View style={styles.actions}>
+                  <Pressable
+                    onPress={handleEditText}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.primaryAction,
+                      { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+                    ]}
+                  >
+                    <Text style={[styles.primaryActionText, { color: colors['foreground-on-primary'] }]}>
+                      {t('storyHome.editText')}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handlePlay}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.ghostAction,
+                      { borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
+                    ]}
+                  >
+                    <Text style={[styles.ghostActionText, { color: colors.foreground }]}>
+                      {t('storyHome.playNovel')}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleCustomizeTheme}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.ghostAction,
+                      { borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
+                    ]}
+                  >
+                    <Text style={[styles.ghostActionText, { color: colors.foreground }]}>
+                      {t('storyHome.customizeTheme')}
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
             </View>
           </View>
-        </View>
 
-        {/* Editable story details stay close to the story identity. */}
-        <View style={wide ? styles.mainGridRow : styles.mainGridColumn}>
-          <View style={wide ? styles.mainLeft : undefined}>{detailsCard}</View>
-          <View style={[wide ? styles.mainRight : undefined, styles.rightStack]}>
-            {releaseCard}
-            {readinessCard}
-            {imageLibraryCard}
+          {/* ── B · state: one verdict, four tiles, one panel at a time ── */}
+          <View style={[styles.band, bandSurface, shadowCard]}>
+            <View style={styles.verdictRow}>
+              <View style={[styles.verdictDot, { backgroundColor: toneColor(verdictTone(overview.verdict)) }]} />
+              <Text style={[styles.verdictText, { color: colors.foreground }]}>{verdictText}</Text>
+              {overview.verdict.kind === 'ready' ? (
+                <Text style={[styles.verdictHint, { color: colors['foreground-tertiary'] }]}>
+                  {t('storyHome.verdictHintReady')}
+                </Text>
+              ) : null}
+            </View>
+
+            <View style={[styles.tiles, tilesTwoUp && styles.tilesWrap, { borderTopColor: colors['border-subtle'] }]}>
+              {overview.tiles.map((tile, index) => {
+                const open = openTile === tile.key;
+                // Two up on a phone, four across on a desktop — the hairlines
+                // follow whichever grid is in play.
+                const showLeft = tilesTwoUp ? index % 2 === 1 : index > 0;
+                const showTop = tilesTwoUp && index >= 2;
+                return (
+                  <Pressable
+                    key={tile.key}
+                    onPress={tile.expandable ? () => setOpenTile(open ? null : tile.key) : undefined}
+                    disabled={!tile.expandable}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: open, disabled: !tile.expandable }}
+                    accessibilityLabel={`${tileLabels[tile.key]}: ${tile.value ?? '—'}`}
+                    style={({ pressed }) => [
+                      styles.tile,
+                      tilesTwoUp && styles.tileHalf,
+                      showLeft && { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors['border-subtle'] },
+                      showTop && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors['border-subtle'] },
+                      open && { backgroundColor: colors['surface-2'] },
+                      pressed && tile.expandable && !open && { backgroundColor: colors.hover },
+                    ]}
+                  >
+                    <Text style={[styles.tileKey, { color: colors['foreground-tertiary'] }]} numberOfLines={1}>
+                      {tileLabels[tile.key]}
+                    </Text>
+                    <Text style={[styles.tileValue, { color: toneColor(tile.tone) }]}>
+                      {tile.value ?? '—'}
+                    </Text>
+                    <Text style={[styles.tileSub, { color: colors['foreground-tertiary'] }]} numberOfLines={1}>
+                      {tileSub(tile.key)}
+                    </Text>
+                    {open ? (
+                      <View style={[styles.tileMarker, { backgroundColor: colors.primary }]} />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {openTile ? (
+              <View
+                style={[
+                  styles.panel,
+                  { backgroundColor: colors['surface-2'], borderTopColor: colors['border-subtle'] },
+                ]}
+              >
+                {openPanel()}
+              </View>
+            ) : null}
+          </View>
+
+          {/* ── B2 · release: the door out, right under the verdict ── */}
+          <ReleaseCard
+            colors={colors}
+            story={story}
+            releases={releases}
+            preflight={releasePreflight}
+            busy={releasing}
+            onPublish={handlePublish}
+            onSetPublished={handleSetPublished}
+            style={[styles.band, bandSurface, shadowCard]}
+          />
+
+          {/* ── C · media library: a preview, not a link ── */}
+          <View style={[styles.band, bandSurface, shadowCard]}>
+            <View style={styles.bandHead}>
+              <Text style={[styles.bandTitle, { color: colors.foreground }]}>{t('mediaLibrary.title')}</Text>
+              <Text style={[styles.bandMeta, { color: colors['foreground-tertiary'] }]} numberOfLines={1}>
+                {t('storyHome.galleryCount', {
+                  count: storyImageAssets.length,
+                  label: pluralize(
+                    storyImageAssets.length,
+                    t('storyHome.imageOne'),
+                    t('storyHome.imageFew'),
+                    t('storyHome.imageMany'),
+                  ),
+                })}
+                {unusedImageCount > 0 ? ` · ${t('storyHome.galleryUnused', { count: unusedImageCount })}` : ''}
+              </Text>
+            </View>
+
+            {storyImageAssets.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.strip}
+              >
+                {storyImageAssets.slice(0, GALLERY_PREVIEW_COUNT).map((asset) => (
+                  <View key={asset.id} style={[styles.thumb, { borderColor: colors['border-subtle'] }]}>
+                    <ResolvedAssetImage uri={asset.uri} style={styles.thumbImage} resizeMode="cover" />
+                  </View>
+                ))}
+                {storyImageAssets.length > GALLERY_PREVIEW_COUNT ? (
+                  <View style={[styles.thumbMore, { borderColor: colors.border }]}>
+                    <Text style={[styles.thumbMoreText, { color: colors['foreground-tertiary'] }]}>
+                      {t('storyHome.galleryMore', { count: storyImageAssets.length - GALLERY_PREVIEW_COUNT })}
+                    </Text>
+                  </View>
+                ) : null}
+              </ScrollView>
+            ) : (
+              <Text style={[styles.bandBody, { color: colors['foreground-tertiary'] }]}>
+                {t('storyHome.galleryEmpty')}
+              </Text>
+            )}
+
+            <View style={styles.bandFoot}>
+              <Pressable
+                onPress={() => router.push({ pathname: '/story-gallery', params: { storyId: story.id } })}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.ghostAction,
+                  { borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Text style={[styles.ghostActionText, { color: colors.foreground }]}>
+                  {t('storyHome.gallery.open')}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* ── D · version snapshots: a working panel, not a row ── */}
+          <StorySnapshotsCard
+            colors={colors}
+            storyId={story.id}
+            style={[styles.snapshotsBand, { borderColor: colors['border-subtle'] }, shadowCard]}
+          />
+
+          {/* ── E · backups: explained before the tap, not warned about after ── */}
+          <View style={[styles.band, bandSurface, shadowCard]}>
+            <View style={styles.bandHead}>
+              <Text style={[styles.bandTitle, { color: colors.foreground }]}>{t('storyHome.backups')}</Text>
+              <Text style={[styles.bandMeta, { color: colors['foreground-tertiary'] }]} numberOfLines={1}>
+                {backupSummary}
+              </Text>
+            </View>
+
+            <View style={[styles.option, { borderTopColor: colors['border-subtle'] }]}>
+              <View style={styles.optionCopy}>
+                <Text style={[styles.optionTitle, { color: colors.foreground }]}>
+                  {t('storyHome.backupFullTitle')}
+                </Text>
+                <Text style={[styles.optionBody, { color: colors['foreground-secondary'] }]}>
+                  {t('storyHome.backupFullBody')}
+                </Text>
+              </View>
+              <Pressable
+                onPress={handleFullBackup}
+                disabled={backingUp || exporting}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.primaryAction,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: backingUp || exporting ? 0.5 : pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.primaryActionText, { color: colors['foreground-on-primary'] }]}>
+                  {backingUp && backupProgress
+                    ? t(`storyHome.backupProgress.${backupProgress}`)
+                    : t('storyHome.backupFullAction')}
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={[styles.option, { borderTopColor: colors['border-subtle'] }]}>
+              <View style={styles.optionCopy}>
+                <Text style={[styles.optionTitle, { color: colors.foreground }]}>
+                  {t('storyHome.backupTextTitle')}
+                </Text>
+                <Text style={[styles.optionBody, { color: colors['foreground-secondary'] }]}>
+                  {t('storyHome.backupTextBody')}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setShowExportWarning(true)}
+                disabled={exporting || backingUp}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.ghostAction,
+                  {
+                    borderColor: colors.border,
+                    opacity: exporting || backingUp ? 0.5 : pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.ghostActionText, { color: colors.foreground }]}>
+                  {t('storyHome.backupTextAction')}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </View>
-
-        {/* Recovery actions belong together and keep independent heights. */}
-        <View style={wide ? styles.mainGridRow : styles.mainGridColumn}>
-          <View style={wide ? styles.mainLeft : undefined}>
-            <StorySnapshotsCard colors={colors} storyId={story.id} style={[styles.standaloneCard, shadowCard]} />
-          </View>
-          <View style={wide ? styles.mainRight : undefined}>{backupCard}</View>
-        </View>
-
-        {/* Variable-length reports use independent columns so expanding one
-            report never stretches or displaces cards in the other columns. */}
-        {hydrated ? (
-          <View style={wide ? styles.analyticsRow : styles.analyticsColumn}>
-            <View style={styles.analyticsLane}>
-              <ChoiceStatisticsCard
-                colors={colors}
-                report={choiceStatsReport}
-                onReset={() => setShowResetCoverage(true)}
-                style={[styles.standaloneCard, shadowCard]}
-              />
-            </View>
-            <View style={styles.analyticsLane}>
-              <StoryHealthCard
-                colors={colors}
-                report={storyDoctorReport}
-                coverageReport={coverageReport}
-                scenes={sceneRecords}
-                onOpenScene={handleOpenHealthScene}
-                onResetCoverage={() => setShowResetCoverage(true)}
-                style={[styles.standaloneCard, shadowCard]}
-              />
-            </View>
-            <View style={styles.analyticsLane}>
-              <AssetUsageCard
-                colors={colors}
-                storyId={story.id}
-                scenes={sceneRecords}
-                onOpenScene={handleOpenHealthScene}
-                style={[styles.standaloneCard, shadowCard]}
-              />
-            </View>
-          </View>
-        ) : null}
       </ScrollView>
 
       <ConfirmDialog
@@ -981,332 +1287,395 @@ const styles = StyleSheet.create({
   rabbitsPattern: {
     opacity: 0.72,
   },
-  content: {
-    paddingBottom: spacing['2xl'],
-    gap: spacing.lg,
-  },
-  webContent: {
-    width: '100%',
-    maxWidth: 1000,
-    alignSelf: 'center',
-  },
 
-  // Top bar
-  topBar: {
+  // ── Navigation ──────────────────────────────────────────────────────
+  nav: {
+    height: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.full,
-    borderWidth: 1,
+  navBack: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.xs,
+    gap: 2,
+    minWidth: 104,
   },
-  breadcrumbRoot: {
+  navBackText: {
     ...typeScale.label,
-    fontWeight: '700',
+    fontWeight: '600',
   },
-  breadcrumbSep: {
-    ...typeScale.label,
-  },
-  breadcrumbCurrent: {
+  navTitle: {
     flex: 1,
-    ...typeScale.label,
+    textAlign: 'center',
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: '700',
+    paddingHorizontal: spacing.sm,
+  },
+  navSide: {
+    minWidth: 104,
   },
 
-  // Hero
-  hero: {
+  // ── Page ────────────────────────────────────────────────────────────
+  content: {
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
+  },
+  column: {
+    width: '100%',
+    maxWidth: COLUMN_MAX_WIDTH,
+    alignSelf: 'center',
+    gap: spacing.lg,
+  },
+  band: {
     borderWidth: 1,
     borderRadius: radius.xl,
     overflow: 'hidden',
   },
-  heroAccent: {
-    height: 4,
-    width: '100%',
+  bandHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
   },
-  heroInner: {
-    padding: spacing.xl,
-    gap: spacing.xl,
+  bandTitle: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '700',
   },
-  heroRow: {
+  bandMeta: {
+    ...typeScale.caption,
+    marginLeft: 'auto',
+    flexShrink: 1,
+  },
+  bandBody: {
+    ...typeScale.caption,
+    fontSize: 13,
+    lineHeight: 19,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  bandFoot: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+
+  // ── A · passport ────────────────────────────────────────────────────
+  passport: {
+    padding: spacing.lg,
+    gap: spacing.lg,
+  },
+  passportRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
   },
-  heroColumn: {
+  passportColumn: {
     flexDirection: 'column',
-    alignItems: 'center',
   },
   coverFrame: {
-    width: 132,
-    height: 180,
+    width: 148,
+    height: 222,
     borderRadius: radius.lg,
     overflow: 'hidden',
     position: 'relative',
   },
   cover: {
-    width: 132,
-    height: 180,
+    width: '100%',
+    height: '100%',
   },
   coverPlaceholder: {
-    width: 132,
-    height: 180,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   coverInitial: {
-    fontSize: 52,
-    fontWeight: '800',
+    fontSize: 62,
+    fontFamily: Fonts.serif,
+    fontWeight: '700',
   },
   coverBadge: {
     position: 'absolute',
     right: spacing.sm,
     bottom: spacing.sm,
-    width: 30,
-    height: 30,
+    width: 28,
+    height: 28,
     borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   removeCoverBtn: {
-    marginTop: spacing.sm,
     alignItems: 'center',
+    paddingTop: spacing.sm,
   },
   removeCoverText: {
-    ...typeScale.caption,
-    fontWeight: '600',
+    ...typeScale.micro,
   },
-  heroCopy: {
+  fields: {
     flex: 1,
-    gap: spacing.sm,
     minWidth: 0,
-  },
-  heroTitle: {
-    fontSize: 34,
-    lineHeight: 40,
-    fontWeight: '800',
-    fontFamily: Fonts.serif,
-  },
-  heroByline: {
-    ...typeScale.body,
-    fontStyle: 'italic',
-  },
-  heroDescription: {
-    ...typeScale.body,
-    marginTop: spacing.xs,
-  },
-  heroMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  heroMeta: {
-    ...typeScale.caption,
-  },
-  heroMetaDot: {
-    ...typeScale.caption,
-    marginHorizontal: 2,
-  },
-  heroActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
-    marginTop: spacing.md,
   },
-  heroStats: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-
-  // Action buttons
-  action: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 46,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-  },
-  actionSm: {
-    height: 38,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-  },
-  actionLabel: {
-    ...typeScale.label,
-    fontWeight: '700',
-  },
-  actionLabelSm: {
-    ...typeScale.caption,
-    fontWeight: '700',
-  },
-
-  // Section header
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  sectionIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sectionTitle: {
-    ...typeScale.sectionTitle,
-    fontWeight: '800',
-  },
-  sectionSpacer: {
-    flex: 1,
-  },
-
-  // Cards
-  card: {
+  // Fields carry no frame until you enter them: the passport reads as a page,
+  // not as a form, and the title is not printed twice.
+  field: {
     borderWidth: 1,
-    borderRadius: radius.xl,
-    padding: spacing.lg,
-    gap: spacing.sm,
-  },
-
-  // Fields
-  fieldLabel: {
-    ...typeScale.caption,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginTop: spacing.sm,
-  },
-  input: {
-    borderWidth: 1.5,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...typeScale.body,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginHorizontal: -spacing.sm,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
   },
-  textArea: {
-    minHeight: 104,
+  titleField: {
+    fontFamily: Fonts.serif,
+    fontSize: 27,
+    lineHeight: 34,
+    fontWeight: '700',
+  },
+  authorField: {
+    ...typeScale.label,
+    fontWeight: '500',
+  },
+  aboutField: {
+    fontSize: 14.5,
+    lineHeight: 22,
+    minHeight: 66,
     textAlignVertical: 'top',
+  },
+  publication: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
+    alignItems: 'center',
+    gap: spacing.xs + 2,
+    paddingTop: spacing.xs,
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.xs + 1,
     borderWidth: 1,
     borderRadius: radius.full,
-    paddingVertical: 5,
-    paddingLeft: spacing.md,
-    paddingRight: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 3,
   },
   chipText: {
     ...typeScale.caption,
-    fontWeight: '700',
-  },
-  emptyHint: {
-    ...typeScale.label,
-  },
-  tagInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
   },
   tagInput: {
-    flex: 1,
+    minWidth: 116,
+    height: 28,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    fontSize: typeScale.caption.fontSize,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
   },
-  backupButton: {
-    alignSelf: 'flex-start',
-    marginTop: spacing.xs,
+  statsLine: {
+    ...typeScale.caption,
+    paddingTop: spacing.xs,
+  },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  primaryAction: {
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm + 2,
+  },
+  primaryActionText: {
+    ...typeScale.label,
+    fontWeight: '800',
+  },
+  ghostAction: {
+    borderRadius: radius.full,
+    borderWidth: 1,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+  },
+  ghostActionText: {
+    ...typeScale.label,
+    fontWeight: '700',
   },
 
-  // Compact story metrics are part of the hero instead of separate cards.
-  statCard: {
-    minWidth: 104,
+  // ── B · state ───────────────────────────────────────────────────────
+  verdictRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: spacing.sm + 2,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  verdictDot: {
+    width: 9,
+    height: 9,
+    borderRadius: radius.full,
+  },
+  verdictText: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  verdictHint: {
+    ...typeScale.caption,
+    marginLeft: 'auto',
+  },
+  tiles: {
+    flexDirection: 'row',
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  tilesWrap: {
+    flexWrap: 'wrap',
+  },
+  tileHalf: {
+    flexGrow: 0,
+    flexBasis: '50%',
+  },
+  tile: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md + 2,
+    position: 'relative',
+  },
+  tileKey: {
+    ...typeScale.caption,
+    fontWeight: '600',
+  },
+  tileValue: {
+    fontSize: 21,
+    lineHeight: 27,
+    fontWeight: '800',
+  },
+  tileSub: {
+    ...typeScale.micro,
+  },
+  tileMarker: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    bottom: 0,
+    height: 2,
+  },
+  panel: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+  },
+  panelStack: {
+    gap: spacing.lg,
+  },
+  checkList: {
     gap: spacing.sm,
   },
-  statIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.sm,
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  checkDot: {
+    width: 20,
+    height: 20,
+    borderRadius: radius.full,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  statValue: {
-    fontSize: 17,
-    lineHeight: 20,
-    fontWeight: '800',
-  },
-  statLabel: {
-    ...typeScale.caption,
+  checkLabel: {
+    ...typeScale.label,
+    fontWeight: '500',
     flexShrink: 1,
   },
 
-  // Main responsive grid
-  mainGridRow: {
+  // ── C · media ───────────────────────────────────────────────────────
+  strip: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.lg,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
   },
-  mainGridColumn: {
-    flexDirection: 'column',
-    gap: spacing.lg,
+  thumb: {
+    width: 108,
+    height: 72,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
-  mainLeft: {
-    flex: 1.5,
+  thumbImage: {
+    width: '100%',
+    height: '100%',
   },
-  mainRight: {
-    flex: 1,
+  thumbMore: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  rightStack: {
-    gap: spacing.lg,
-  },
-  analyticsRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.lg,
-  },
-  analyticsColumn: {
-    gap: spacing.lg,
-  },
-  analyticsLane: {
-    flex: 1,
-    minWidth: 0,
-    gap: spacing.lg,
-  },
-  standaloneCard: {
-    flexGrow: 0,
-    flexBasis: 'auto',
-    minWidth: 0,
+  thumbMoreText: {
+    ...typeScale.label,
+    fontWeight: '700',
   },
 
-  // Not found
+  // ── D · snapshots ───────────────────────────────────────────────────
+  snapshotsBand: {
+    flexGrow: 0,
+    flexBasis: 'auto',
+    borderRadius: radius.xl,
+  },
+
+  // ── E · backups ─────────────────────────────────────────────────────
+  option: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md + 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  optionCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  optionTitle: {
+    ...typeScale.label,
+    fontWeight: '700',
+  },
+  optionBody: {
+    fontSize: 13,
+    lineHeight: 19.5,
+  },
+
+  // ── Not found ───────────────────────────────────────────────────────
   notFoundWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    padding: spacing.lg,
   },
   notFound: {
+    width: '100%',
     maxWidth: 420,
     borderWidth: 1,
     borderRadius: radius.xl,
@@ -1315,12 +1684,11 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   notFoundIcon: {
-    width: 56,
-    height: 56,
+    width: 52,
+    height: 52,
     borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xs,
   },
   notFoundTitle: {
     ...typeScale.sectionTitle,
@@ -1329,6 +1697,7 @@ const styles = StyleSheet.create({
   },
   notFoundHint: {
     ...typeScale.label,
+    fontWeight: '400',
     textAlign: 'center',
   },
 });
