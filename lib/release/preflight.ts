@@ -216,12 +216,18 @@ function checkPlayability(
     });
   }
 
-  // A story with no ending never finishes: the reader runs out of scenes rather
-  // than arriving somewhere. The doctor reports individual dead ends; this asks
-  // whether the story can be completed at all.
+  // A warning, deliberately, not a blocker.
+  //
+  // "Terminal" here means a scene with no outgoing connection, and connections
+  // are derived from choices alone (`mapLegacyChoicesToConnections`). A story
+  // whose endings offer "play again" therefore has zero terminal scenes while
+  // being perfectly finishable — the engine's own advanced demo is exactly that
+  // shape. Blocking on this would refuse to publish a story that plays fine,
+  // which is worse than letting an unfinishable one through to a warning the
+  // author can read.
   if (stats.endings === 0) {
     findings.push({
-      severity: 'blocker',
+      severity: 'warning',
       code: 'release.noEndings',
       messageKey: 'releasePreflight.issue.noEndings',
     });

@@ -47,7 +47,6 @@ import {
   saveCoverage,
   type StoryCoverage,
 } from '@/lib/story-coverage';
-import { validateSceneGraph } from '@/lib/document-editor/scene-graph-validator';
 import { getPlaybackAudioLibraryPure } from '@/lib/audio-library';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
 import { getStoryGalleryImageAssets } from '@/lib/story-image-library';
@@ -416,19 +415,6 @@ export default function StoryHomeScreen() {
     () => getChoiceStats(sceneRecords, coverage),
     [coverage, sceneRecords],
   );
-  const readiness = useMemo(() => {
-    const issues = validateSceneGraph(sceneRecords);
-    const has = (type: string) => issues.some((issue) => issue.type === type);
-    return [
-      { key: 'checkStartScene', ok: !has('noStartScene') },
-      { key: 'checkNoBrokenLinks', ok: !has('danglingChoiceTarget') && !has('danglingNextTarget') },
-      { key: 'checkAllReachable', ok: !has('unreachableScene') },
-      { key: 'checkHasDescription', ok: Boolean(story?.description && story.description.trim()) },
-      { key: 'checkHasCover', ok: Boolean(story?.thumbnailUri) },
-    ];
-  }, [sceneRecords, story?.description, story?.thumbnailUri]);
-  const readyCount = readiness.filter((item) => item.ok).length;
-  const allReady = readyCount === readiness.length;
   useEffect(() => {
     let cancelled = false;
     if (!storyId) return;
@@ -636,56 +622,16 @@ export default function StoryHomeScreen() {
     </View>
   );
 
-  const readinessCard = hydrated ? (
-    <View style={[styles.card, cardBase, shadowCard]}>
-      <SectionHeader
-        colors={colors}
-        iconName="checkmark"
-        title={t('storyHome.readiness')}
-        right={
-          allReady ? (
-            <View style={[styles.readyBadge, { backgroundColor: withAlpha(colors.success, 0.14) }]}>
-              <IconSymbol name="checkmark" size={13} color={colors.success} />
-              <Text style={[styles.readyBadgeText, { color: colors.success }]}>{t('storyHome.allReady')}</Text>
-            </View>
-          ) : (
-            <Text style={[styles.readyCount, { color: colors.muted }]}>
-              {t('storyHome.readinessCount', { done: readyCount, total: readiness.length })}
-            </Text>
-          )
-        }
-      />
-      <View style={[styles.progressTrack, { backgroundColor: withAlpha(colors.foreground, 0.08) }]}>
-        <View
-          style={[
-            styles.progressFill,
-            {
-              backgroundColor: allReady ? colors.success : colors.primary,
-              width: `${(readyCount / readiness.length) * 100}%`,
-            },
-          ]}
-        />
-      </View>
-      <View style={styles.checkList}>
-        {readiness.map((item) => (
-          <View key={item.key} style={styles.checkRow}>
-            <View
-              style={[
-                styles.checkDot,
-                item.ok
-                  ? { backgroundColor: colors.success, borderColor: colors.success }
-                  : { backgroundColor: 'transparent', borderColor: withAlpha(colors.foreground, 0.25) },
-              ]}
-            >
-              {item.ok ? <IconSymbol name="checkmark" size={12} color={colors['text-inverse']} /> : null}
-            </View>
-            <Text style={[styles.checkLabel, { color: item.ok ? colors.foreground : colors.muted }]}>
-              {t(`storyHome.${item.key}`)}
-            </Text>
-          </View>
-        ))}
-      </View>
-    </View>
+  // One readiness surface, and it is the release gate: the old five-item
+  // checklist asked a strict subset of the same questions, so two cards on one
+  // screen could only disagree in confusing ways.
+  const readinessCard = hydrated && releasePreflight ? (
+    <ReleaseChecklistCard
+      colors={colors}
+      report={releasePreflight}
+      onOpenScene={handleOpenHealthScene}
+      style={[styles.card, cardBase, shadowCard]}
+    />
   ) : null;
 
   const imageLibraryCard = <View style={[styles.card, cardBase, shadowCard]}><SectionHeader colors={colors} iconName="gallery" title={t('mediaLibrary.title')} /><Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.gallery.openHint')}</Text><ActionButton colors={colors} label={t('storyHome.gallery.open')} iconName="gallery" accent="secondary" onPress={() => router.push({ pathname: '/story-gallery', params: { storyId: story.id } })} /></View>;
@@ -887,16 +833,6 @@ export default function StoryHomeScreen() {
                 style={[styles.standaloneCard, shadowCard]}
               />
             </View>
-            {releasePreflight ? (
-              <View style={styles.analyticsLane}>
-                <ReleaseChecklistCard
-                  colors={colors}
-                  report={releasePreflight}
-                  onOpenScene={handleOpenHealthScene}
-                  style={[styles.standaloneCard, shadowCard]}
-                />
-              </View>
-            ) : null}
             <View style={styles.analyticsLane}>
               <AssetUsageCard
                 colors={colors}
@@ -1213,56 +1149,6 @@ const styles = StyleSheet.create({
   statLabel: {
     ...typeScale.caption,
     flexShrink: 1,
-  },
-
-  // Readiness
-  readyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 5,
-  },
-  readyBadgeText: {
-    ...typeScale.caption,
-    fontWeight: '800',
-  },
-  readyCount: {
-    ...typeScale.caption,
-    fontWeight: '700',
-  },
-  progressTrack: {
-    height: 8,
-    borderRadius: radius.full,
-    overflow: 'hidden',
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: radius.full,
-  },
-  checkList: {
-    gap: spacing.xs,
-  },
-  checkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: 5,
-  },
-  checkDot: {
-    width: 22,
-    height: 22,
-    borderRadius: radius.full,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkLabel: {
-    flex: 1,
-    ...typeScale.label,
   },
 
   // Main responsive grid

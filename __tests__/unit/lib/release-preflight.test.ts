@@ -1,6 +1,8 @@
 import { runReleasePreflight, type ReleasePreflightInput } from '@/lib/release/preflight';
 import type { SceneConnection, SceneRecord } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
+import { buildCanonicalSceneRecordsFromLegacyScenes } from '@/lib/scene-operations';
+import advancedDemo from '@/assets/demo-story-advanced.json';
 
 /** Scenes connect by object, not by id string; a bare id is not a connection. */
 function connectionTo(targetSceneId: string): SceneConnection {
@@ -189,7 +191,10 @@ describe('playability checks', () => {
     expect(codes(report.blockers)).toContain('release.missingStartScene');
   });
 
-  it('blocks a story that can never end', () => {
+  // Not a blocker: connections come from choices alone, so a story whose
+  // endings offer "play again" has no terminal scene while playing fine. The
+  // engine's own advanced demo is that shape -- see the regression test below.
+  it('warns, but does not block, when no scene ends the story', () => {
     const report = runReleasePreflight(
       readyInput({
         scenes: [
@@ -198,7 +203,8 @@ describe('playability checks', () => {
         ],
       }),
     );
-    expect(codes(report.blockers)).toContain('release.noEndings');
+    expect(codes(report.warnings)).toContain('release.noEndings');
+    expect(codes(report.blockers)).not.toContain('release.noEndings');
     expect(report.stats.endings).toBe(0);
   });
 
@@ -297,5 +303,36 @@ describe('story doctor integration', () => {
     const doctorCodes = all.filter((finding) => finding.fromStoryDoctor).map((f) => f.code);
     const ownCodes = all.filter((finding) => !finding.fromStoryDoctor).map((f) => f.code);
     expect(doctorCodes.filter((code) => ownCodes.includes(code))).toEqual([]);
+  });
+});
+
+describe('the bundled advanced demo', () => {
+  // Regression: an earlier version blocked on "no terminal scene", which this
+  // story trips -- every scene has an outgoing choice because its endings loop
+  // back. A gate that refuses the engine's own flagship demo is wrong about
+  // what an ending is, not right about the story.
+  const scenes = Object.values(
+    buildCanonicalSceneRecordsFromLegacyScenes(
+      advancedDemo.id,
+      advancedDemo.scenes as never,
+      advancedDemo.startSceneId,
+    ) as Record<string, SceneRecord>,
+  );
+
+  it('has no graph-terminal scene, yet is not blocked for it', () => {
+    const report = runReleasePreflight({
+      metadata: {
+        ...readyMetadata(),
+        id: advancedDemo.id,
+        title: advancedDemo.title,
+        startSceneId: advancedDemo.startSceneId,
+      },
+      scenes,
+      channel: 'both',
+    });
+
+    expect(report.stats.endings).toBe(0);
+    expect(codes(report.warnings)).toContain('release.noEndings');
+    expect(codes(report.blockers)).not.toContain('release.noEndings');
   });
 });
