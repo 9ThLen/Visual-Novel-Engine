@@ -7,6 +7,10 @@
 import type { SceneRecord } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
 import {
+  buildShowcaseStoryFromRelease,
+  type ReleaseShowcaseSource,
+} from '@/lib/showcase/release-showcase';
+import {
   buildShowcaseStory,
   type ShowcaseProgressInput,
   type ShowcaseStory,
@@ -57,6 +61,24 @@ export function progressForStory(source: ShowcaseSource, storyId: string): Showc
     latestSave: latestSaveForStory(source.saveSlots ?? [], storyId),
     endingsReached: source.endingsReachedByStory?.[storyId] ?? [],
   };
+}
+
+/**
+ * What the shelf shows: one card per published release, in the order their
+ * stories were released.
+ *
+ * Deliberately not a filter over `buildShowcaseStories`. A draft has no card at
+ * all — not a greyed-out one — and the fields come from the frozen release, so
+ * the two paths read different data and cannot be collapsed into one.
+ */
+export function buildShowcaseStoriesFromReleases(
+  releases: ReleaseShowcaseSource[],
+  source: Pick<ShowcaseSource, 'saveSlots' | 'endingsReachedByStory'>,
+): ShowcaseStory[] {
+  return (releases ?? []).map((release) => buildShowcaseStoryFromRelease(release, {
+    latestSave: latestSaveForStory(source.saveSlots ?? [], release.storyId),
+    endingsReached: source.endingsReachedByStory?.[release.storyId] ?? [],
+  }));
 }
 
 export function buildShowcaseStories(source: ShowcaseSource): ShowcaseStory[] {

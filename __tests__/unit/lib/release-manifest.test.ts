@@ -56,6 +56,11 @@ function validManifest(): Record<string, unknown> {
         aiAssisted: false,
       },
       stats: { scenes: 3, words: 1200, readMinutes: 7, endings: 2, branches: 4 },
+      showcase: {
+        teaser: 'A door opens.',
+        bannerBackgroundAssetId: 'asset_bg',
+        terminalSceneIds: ['scene_2', 'scene_3'],
+      },
     },
     counts: {
       scenes: 3,

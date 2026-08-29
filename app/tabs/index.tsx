@@ -27,7 +27,7 @@ import { useLibraryBootstrap } from '@/hooks/useLibraryBootstrap';
 import { stopReaderPlayback } from '@/hooks/useReaderAudio';
 import { useI18n } from '@/hooks/use-i18n';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
-import { buildShowcaseStories, posterAssetFor } from '@/lib/showcase/showcase-adapter';
+import { buildShowcaseStoriesFromReleases, posterAssetFor } from '@/lib/showcase/showcase-adapter';
 import { SHOWCASE_COLORS } from '@/lib/showcase/showcase-colors';
 import { buildShelves, type ShowcaseStory } from '@/lib/showcase/story-showcase';
 import { buttonFeedback } from '@/lib/ui-feedback';
@@ -48,20 +48,29 @@ export default function HomeScreen() {
     }, []),
   );
 
-  const storiesMetadata = useAppStore((state) => state.storiesMetadata);
-  const sceneRecordsByStory = useAppStore((state) => state.sceneRecordsByStory);
+  const storyCount = useAppStore((state) => state.storiesMetadata.length);
+  const releaseShowcaseByStory = useAppStore((state) => state.releaseShowcaseByStory);
+  const loadPublishedReleases = useAppStore((state) => state.loadPublishedReleases);
   const saveSlots = useAppStore((state) => state.saveSlots);
   const endingsReachedByStory = useAppStore((state) => state.endingsReachedByStory);
 
+  // Refreshed on focus, not once on mount: the author may have published
+  // between visits, and the shelf is the first thing they check afterwards.
+  useFocusEffect(
+    useCallback(() => {
+      void loadPublishedReleases().catch(() => undefined);
+    }, [loadPublishedReleases]),
+  );
+
   const shelves = useMemo(() => {
-    const stories = buildShowcaseStories({
-      storiesMetadata,
-      sceneRecordsByStory,
-      saveSlots,
-      endingsReachedByStory,
-    });
+    // Only published releases. A draft has no card here at all — the studio is
+    // where unfinished work lives.
+    const stories = buildShowcaseStoriesFromReleases(
+      Object.values(releaseShowcaseByStory),
+      { saveSlots, endingsReachedByStory },
+    );
     return buildShelves(stories, Date.now());
-  }, [storiesMetadata, sceneRecordsByStory, saveSlots, endingsReachedByStory]);
+  }, [releaseShowcaseByStory, saveSlots, endingsReachedByStory]);
 
   const openStudio = useCallback(() => {
     buttonFeedback();
@@ -189,7 +198,11 @@ export default function HomeScreen() {
         ) : (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>{t('showcase.emptyTitle')}</Text>
-            <Text style={styles.emptyHint}>{t('showcase.emptyHint')}</Text>
+            <Text style={styles.emptyHint}>
+              {/* «Write the first scene» would be wrong for an author who has
+                  written three and published none. */}
+              {storyCount > 0 ? t('showcase.emptyDraftsHint') : t('showcase.emptyHint')}
+            </Text>
             <Pressable onPress={openStudio} accessibilityRole="button" style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>{t('showcase.studio')}</Text>
             </Pressable>

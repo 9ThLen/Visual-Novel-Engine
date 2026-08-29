@@ -62,6 +62,23 @@ export type ReleaseChannel = (typeof RELEASE_CHANNELS)[number];
 /** A release credit is a story credit, frozen; the shape must not diverge. */
 export type ReleaseCredit = StoryCredit;
 
+/**
+ * What a storefront needs that the rest of the manifest cannot supply, frozen
+ * at release time.
+ *
+ * These three are all derived from the scenes, and a listing must not have to
+ * open the story to draw a card: the showcase renders from the release, not
+ * from the author's working copy. That is the whole point of freezing.
+ */
+export interface ReleaseShowcase {
+  /** First lines of the opening scene, already trimmed for a card. */
+  teaser: string | null;
+  /** Background of the opening scene, for the hero banner. */
+  bannerBackgroundAssetId: string | null;
+  /** Scenes a playthrough can end on, so «endings seen» needs no scene load. */
+  terminalSceneIds: string[];
+}
+
 /** How the story presents itself; a frozen copy, not a pointer to live state. */
 export interface ReleasePresentation {
   coverAssetId?: string;
@@ -106,6 +123,7 @@ export interface ReleaseBlock {
   presentation?: ReleasePresentation;
   publication: ReleasePublication;
   stats: ReleaseStats;
+  showcase: ReleaseShowcase;
 }
 
 export interface ReleaseAsset {

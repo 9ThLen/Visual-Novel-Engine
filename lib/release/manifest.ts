@@ -33,6 +33,7 @@ import {
   type ReleasePresentation,
   type ReleasePreview,
   type ReleasePublication,
+  type ReleaseShowcase,
   type ReleaseStats,
 } from '@/lib/release/types';
 
@@ -186,6 +187,23 @@ function parseStats(value: unknown): ReleaseStats {
   };
 }
 
+function parseShowcase(value: unknown): ReleaseShowcase {
+  const showcase = requireObject(value, 'showcase');
+  const parsed: ReleaseShowcase = {
+    teaser: showcase.teaser === null || showcase.teaser === undefined
+      ? null
+      : requireString(showcase.teaser, 'teaser'),
+    bannerBackgroundAssetId: showcase.bannerBackgroundAssetId === null
+      || showcase.bannerBackgroundAssetId === undefined
+      ? null
+      : requireString(showcase.bannerBackgroundAssetId, 'banner background'),
+    terminalSceneIds: Array.isArray(showcase.terminalSceneIds)
+      ? requireStringArray(showcase.terminalSceneIds, 'terminal scenes')
+      : [],
+  };
+  return parsed;
+}
+
 function parseReleaseBlock(value: unknown): ReleaseBlock {
   const release = requireObject(value, 'release block');
 
@@ -209,6 +227,7 @@ function parseReleaseBlock(value: unknown): ReleaseBlock {
     payloadHash,
     publication: parsePublication(release.publication),
     stats: parseStats(release.stats),
+    showcase: parseShowcase(release.showcase),
   };
 
   if (release.notes !== undefined) {

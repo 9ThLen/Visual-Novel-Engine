@@ -19,6 +19,7 @@ export const initialAppState: AppState = {
   mediaAssetIdsByStory: {},
   endingsReachedByStory: {},
   releasesByStory: {},
+  releaseShowcaseByStory: {},
   lastEditedSceneByStory: {},
   readerBlockingMedia: null,
   readerSceneThumbnailUri: undefined,

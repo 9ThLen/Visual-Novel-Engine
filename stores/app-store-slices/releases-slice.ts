@@ -9,22 +9,31 @@
  * `lib/story-backup/service.ts` is already used.
  */
 import {
+  currentPublishedRelease,
   deleteRelease as deleteStoredRelease,
   listReleases,
+  readReleaseManifest,
   setReleasePublished as setStoredReleasePublished,
   type ReleaseMeta,
 } from '@/lib/release/release-storage';
+import {
+  releaseShowcaseSource,
+  type ReleaseShowcaseSource,
+} from '@/lib/showcase/release-showcase';
 import { createPersistentStorage, type StorageLike } from '@/lib/persistent-storage';
-import type { AppStoreSet } from '@/stores/app-store-slices/types';
+import type { AppStoreGet, AppStoreSet } from '@/stores/app-store-slices/types';
 
 export interface ReleasesSlice {
   loadReleasesForStory: (storyId: string) => Promise<ReleaseMeta[]>;
+  /** Refresh what the showcase shows: the current published release per story. */
+  loadPublishedReleases: () => Promise<void>;
   setReleasePublished: (storyId: string, releaseId: string, published: boolean) => Promise<void>;
   deleteRelease: (storyId: string, releaseId: string) => Promise<void>;
 }
 
 export function createReleasesSlice(
   set: AppStoreSet,
+  get: AppStoreGet,
   storage: StorageLike = createPersistentStorage(),
 ): ReleasesSlice {
   const cache = (storyId: string, releases: ReleaseMeta[]) => {
@@ -38,12 +47,27 @@ export function createReleasesSlice(
       return releases;
     },
 
+    loadPublishedReleases: async () => {
+      const published: Record<string, ReleaseShowcaseSource> = {};
+      for (const story of get().storiesMetadata) {
+        const current = currentPublishedRelease(await listReleases(storage, story.id));
+        if (!current) continue;
+        const manifest = await readReleaseManifest(storage, story.id, current.releaseId);
+        // A release whose manifest no longer parses is not shown rather than
+        // shown broken: the shelf is the reader's side of the app.
+        if (manifest) published[story.id] = releaseShowcaseSource(manifest);
+      }
+      set({ releaseShowcaseByStory: published });
+    },
+
     setReleasePublished: async (storyId, releaseId, published) => {
       cache(storyId, await setStoredReleasePublished(storage, storyId, releaseId, published));
+      await get().loadPublishedReleases();
     },
 
     deleteRelease: async (storyId, releaseId) => {
       cache(storyId, await deleteStoredRelease(storage, storyId, releaseId));
+      await get().loadPublishedReleases();
     },
   };
 }

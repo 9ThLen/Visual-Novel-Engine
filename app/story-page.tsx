@@ -31,7 +31,7 @@ import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import { getReviewsStore } from '@/lib/reviews/reviews-storage';
 import { computeAggregate, type ReviewRating, type StoryReview } from '@/lib/reviews/reviews-domain';
 import {
-  buildShowcaseStories,
+  buildShowcaseStoriesFromReleases,
   posterAssetFor,
   sceneNameFor,
   scenesForStory,
@@ -65,15 +65,17 @@ export default function StoryPageScreen() {
   const [reviews, setReviews] = useState<StoryReview[]>([]);
   const [myReview, setMyReview] = useState<StoryReview | null>(null);
 
+  const release = useAppStore((state) => (storyId ? state.releaseShowcaseByStory[storyId] : undefined));
+  const loadPublishedReleases = useAppStore((state) => state.loadPublishedReleases);
+
+  useEffect(() => {
+    void loadPublishedReleases().catch(() => undefined);
+  }, [loadPublishedReleases]);
+
   const story = useMemo(() => {
-    const stories = buildShowcaseStories({
-      storiesMetadata,
-      sceneRecordsByStory,
-      saveSlots,
-      endingsReachedByStory,
-    });
-    return stories.find((candidate) => candidate.id === storyId) ?? null;
-  }, [storiesMetadata, sceneRecordsByStory, saveSlots, endingsReachedByStory, storyId]);
+    if (!release) return null;
+    return buildShowcaseStoriesFromReleases([release], { saveSlots, endingsReachedByStory })[0] ?? null;
+  }, [release, saveSlots, endingsReachedByStory]);
 
   const metadata = useMemo(
     () => storiesMetadata.find((candidate) => candidate.id === storyId) ?? null,

@@ -105,7 +105,7 @@ export const useAppStore = create<AppStore>()(
       ...createStorySlice(set),
       ...createSceneSlice(set, get),
       ...createSnapshotsSlice(set, get),
-      ...createReleasesSlice(set),
+      ...createReleasesSlice(set, get),
 
       migrateFromLegacyKeys: async () => {
         try {

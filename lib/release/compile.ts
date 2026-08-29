@@ -28,11 +28,16 @@ import {
   type ReleaseManifestV1,
   type ReleasePayloadV1,
   type ReleasePresentation,
+  type ReleaseShowcase,
 } from '@/lib/release/types';
 import { generateReleaseId } from '@/lib/release/version';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import type { SceneRecordStorageLike } from '@/lib/scene-record-storage';
-import { pickBannerEffect } from '@/lib/showcase/story-showcase';
+import {
+  extractTeaser,
+  firstBackgroundAssetId,
+  pickBannerEffect,
+} from '@/lib/showcase/story-showcase';
 import { captureStoryBackup } from '@/lib/story-backup/capture';
 import { sha256Chunks, sourceFromBytes } from '@/lib/story-backup/hash';
 import type { PreparedStoryBackupAsset } from '@/lib/story-backup/types';
@@ -149,6 +154,20 @@ function buildPublication(metadata: {
   return publication;
 }
 
+/**
+ * The storefront's copy of what the scenes say, taken once at release time so
+ * a listing never has to open the story.
+ */
+function buildShowcase(scenes: SceneRecord[], startSceneId: string): ReleaseShowcase {
+  return {
+    teaser: extractTeaser(scenes, startSceneId),
+    bannerBackgroundAssetId: firstBackgroundAssetId(scenes, startSceneId),
+    terminalSceneIds: scenes
+      .filter((scene) => !Array.isArray(scene?.connections) || scene.connections.length === 0)
+      .map((scene) => scene.id),
+  };
+}
+
 function toReleaseAsset(asset: PreparedStoryBackupAsset): ReleaseAsset {
   return { ...asset.metadata };
 }
@@ -182,6 +201,7 @@ export async function compileRelease(input: CompileReleaseInput): Promise<Compil
     payloadHash: payloadDigest.sha256,
     publication: buildPublication(story),
     stats,
+    showcase: buildShowcase(sceneList, story.startSceneId),
   };
   if (input.notes?.trim()) release.notes = input.notes.trim();
   const presentation = buildPresentation(story, sceneList);

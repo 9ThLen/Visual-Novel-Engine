@@ -57,6 +57,7 @@ function manifest(overrides: { releaseId?: string; version?: string } = {}): Rel
       payloadHash,
       publication: { author: 'A Writer', languages: ['uk'], contentRating: 'everyone' },
       stats: { scenes: 2, words: 10, readMinutes: 1, endings: 1, branches: 0 },
+      showcase: { teaser: 'A door opens.', bannerBackgroundAssetId: null, terminalSceneIds: ['scene_2'] },
     },
     counts: { scenes: 2, characters: 0, audioItems: 0, embeddedAssets: 1, totalAssetBytes: 100 },
     payload: { archivePath: 'story.json', sha256: payloadHash, size: 512 },
