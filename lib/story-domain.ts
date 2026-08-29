@@ -9,8 +9,18 @@ import {
   type StoryReaderLayoutPreset,
   type StoryReaderTheme,
 } from './story-theme';
+import {
+  STORY_PUBLICATION_KEYS,
+  sanitizeStoryPublication,
+  type StoryPublicationMetadata,
+} from './story-publication';
 
-export interface StoryMetadata {
+/**
+ * The publication fields (`StoryPublicationMetadata`) are optional on every
+ * story and stay absent until the author fills them in for a release, so
+ * adding them invalidates nothing that already exists.
+ */
+export interface StoryMetadata extends StoryPublicationMetadata {
   id: string;
   title: string;
   description?: string;
@@ -74,6 +84,13 @@ export function normalizeStoryMetadata(metadata: StoryMetadata): StoryMetadata {
   } else {
     delete normalized.readerLayoutPreset;
   }
+
+  const publication = sanitizeStoryPublication(metadata);
+  for (const key of STORY_PUBLICATION_KEYS) {
+    if (publication[key] === undefined) delete normalized[key];
+  }
+  Object.assign(normalized, publication);
+
   return normalized;
 }
 

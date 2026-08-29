@@ -167,9 +167,21 @@ function terminalSceneIds(scenes: SceneRecord[]): string[] {
     .map((scene) => scene.id);
 }
 
+/**
+ * The true number of scenes a playthrough can end on — zero when every scene
+ * leads somewhere, i.e. the story is a closed loop with no way out.
+ *
+ * The showcase never shows this figure (see {@link countEndings}); the release
+ * gate needs it, because "no ending" is exactly the case the display floor
+ * hides.
+ */
+export function countTerminalScenes(scenes: SceneRecord[]): number {
+  return terminalSceneIds(scenes).length;
+}
+
 /** A story always has at least one ending: a pure loop still stops somewhere. */
 export function countEndings(scenes: SceneRecord[]): number {
-  return Math.max(1, terminalSceneIds(scenes).length);
+  return Math.max(1, countTerminalScenes(scenes));
 }
 
 export function countBranches(scenes: SceneRecord[]): number {

@@ -16,7 +16,17 @@ import type { Character } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import { STORY_BACKUP_LIMITS } from '@/lib/story-backup/types';
 import type { StoryMetadata } from '@/lib/story-domain';
+import {
+  CONTENT_RATINGS,
+  MAX_STORY_CONTENT_WARNINGS,
+  MAX_STORY_CREDITS,
+  MAX_STORY_LANGUAGES,
+  type ContentRating,
+  type StoryCredit,
+} from '@/lib/story-publication';
 import type { StoryReaderLayoutPreset, StoryReaderTheme } from '@/lib/story-theme';
+
+export { CONTENT_RATINGS, type ContentRating };
 
 export const RELEASE_FORMAT = 'vne-release' as const;
 export const RELEASE_CONTAINER_VERSION = 1 as const;
@@ -36,9 +46,12 @@ export const RELEASE_LIMITS = {
    * ceilings are per-channel and belong to the channel (see RELEASE-PLAN.md).
    */
   softWarnBytes: 150 * 1024 * 1024,
-  maxCredits: 200,
-  maxLanguages: 20,
-  maxContentWarnings: 40,
+  // Shared with story metadata so a story the editor accepts can always be
+  // released: a lower cap here would reject a story the author was allowed to
+  // write.
+  maxCredits: MAX_STORY_CREDITS,
+  maxLanguages: MAX_STORY_LANGUAGES,
+  maxContentWarnings: MAX_STORY_CONTENT_WARNINGS,
   maxNotesLength: 4_000,
 } as const;
 
@@ -46,15 +59,8 @@ export const RELEASE_LIMITS = {
 export const RELEASE_CHANNELS = ['page', 'app', 'both'] as const;
 export type ReleaseChannel = (typeof RELEASE_CHANNELS)[number];
 
-export const CONTENT_RATINGS = ['everyone', 'teen', 'mature'] as const;
-export type ContentRating = (typeof CONTENT_RATINGS)[number];
-
-export interface ReleaseCredit {
-  role: string;
-  name: string;
-  source?: string;
-  licence?: string;
-}
+/** A release credit is a story credit, frozen; the shape must not diverge. */
+export type ReleaseCredit = StoryCredit;
 
 /** How the story presents itself; a frozen copy, not a pointer to live state. */
 export interface ReleasePresentation {
