@@ -4,6 +4,7 @@ import { writeStoryArchive } from '@/lib/story-backup/archive';
 import { sha256Chunks, sourceFromBytes } from '@/lib/story-backup/hash';
 import {
   importStoryArchive,
+  deduplicateStoryBackupAssets,
   type StoryArchiveImportDependencies,
 } from '@/lib/story-backup/import';
 import type {
@@ -409,5 +410,27 @@ describe('importStoryArchive', () => {
     // video list and make Story Doctor call every video reference broken.
     expect(restored?.type).toBe('video');
     expect(restored?.mimeType).toBe('video/mp4');
+  });
+});
+
+describe('deduplicateStoryBackupAssets', () => {
+  it('coalesces identical objects while retaining every archive reference', () => {
+    const base = {
+      sha256: 'same-hash',
+      size: 4,
+      kind: 'image' as const,
+      mimeType: 'image/png',
+      originalName: 'first.png',
+      originalExtension: '.png',
+      archivePath: 'objects/same-hash' as const,
+    };
+
+    const result = deduplicateStoryBackupAssets([
+      { ...base, assetId: 'asset-a', sourceReferences: ['old-a'] },
+      { ...base, assetId: 'asset-b', sourceReferences: ['old-b'] },
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].sourceReferences).toEqual(['old-a', 'asset-b', 'old-b']);
   });
 });

@@ -374,6 +374,61 @@
     0 0 0 4px #67683F;
 }
 
+/* Safari <15.4 and older embedded webviews parse custom-property values
+   lazily, so an unsupported oklch() poisons the consuming declaration rather
+   than falling back to an earlier value. Override every public OKLCH-backed
+   token explicitly on those engines. */
+@supports not (color: oklch(50% 0 0)) {
+  :root {
+    --p-50: #f2f4ff; --p-100: #e1e5ff; --p-200: #c0c7ff;
+    --p-300: #9ca1ff; --p-400: #7c79ff; --p-500: #685bfc;
+    --p-600: #5537eb; --p-700: #4224bf; --p-800: #2d138d; --p-900: #1c0761;
+    --g-50: #f5f5f5; --g-100: #e8e8e8; --g-200: #d1d1d1;
+    --g-300: #b1b1b1; --g-400: #8c8c8c; --g-500: #6c6c6c;
+    --g-600: #505050; --g-700: #3a3a3a; --g-800: #262626; --g-900: #161616;
+    --sp-green-400: #00c470; --sp-green-500: #04ab62;
+    --sp-red-400: #f3625d; --sp-red-500: #de3b3d;
+    --sp-amber-400: #e9ab2b; --sp-amber-500: #d89700;
+    --sp-blue-400: #4ba3f7; --sp-blue-500: #0089ed;
+    --sp-cyan-400: #3ecce2; --sp-cyan-500: #00b5ce;
+    --lego-dialogue: #685bfc; --lego-character: #d89700;
+    --lego-background: #04ab62; --lego-audio: #de3b3d;
+    --lego-fx: #debb19; --lego-choice: #0089ed;
+    --lego-condition: #e4762c; --lego-variable: #00b5ce;
+    --lego-loop: #a170eb; --lego-transition: #a245d9;
+    --color-success-bg: #012a14; --color-warning-bg: #301d00;
+    --color-danger-bg: #310d0c; --color-info-bg: #011b35;
+    --color-lego-dialogue: #7474ef; --color-lego-character: #cf9a35;
+    --color-lego-background: #49a46e; --color-lego-fx: #cfb656;
+    --color-lego-choice: #4393e1; --color-lego-condition: #d38151;
+    --color-lego-variable: #4ab6c7; --color-lego-loop: #9d79d7;
+    --color-lego-transition: #9d60c6;
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.15);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.20), 0 1px 2px rgba(0, 0, 0, 0.12);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.25), 0 2px 4px rgba(0, 0, 0, 0.15);
+    --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.30), 0 4px 8px rgba(0, 0, 0, 0.20);
+    --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.25);
+    --shadow-focus: 0 0 0 2px var(--color-bg), 0 0 0 4px #7c79ff;
+  }
+
+  [data-theme="light"] {
+    --color-success: #008b45; --color-success-bg: #daf7e3; --color-success-fg: #005e19;
+    --color-warning: #be8200; --color-warning-bg: #fdecd1; --color-warning-fg: #7f4600;
+    --color-danger: #c53637; --color-danger-bg: #ffe5e1; --color-danger-fg: #97000f;
+    --color-info: #0f74c5; --color-info-bg: #dbf1ff; --color-info-fg: #004d9a;
+    --color-lego-dialogue: #5449d0; --color-lego-character: #ab7400;
+    --color-lego-background: #00793d; --color-lego-fx: #aa8d00;
+    --color-lego-choice: #006ac0; --color-lego-condition: #ba5d1d;
+    --color-lego-variable: #008398; --color-lego-loop: #794db6;
+    --color-lego-transition: #823bae;
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.10), 0 2px 4px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.08);
+    --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.15), 0 8px 16px rgba(0, 0, 0, 0.10);
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════
    BASE STYLES
    ═══════════════════════════════════════════════════════════════ */

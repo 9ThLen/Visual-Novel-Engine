@@ -121,7 +121,7 @@ export function SceneVideoLayer({
     player.volume = video.volume;
     player.playbackRate = video.playbackRate;
     player.timeUpdateEventInterval = endAt === null ? 0 : 0.25;
-    player.play();
+    if (startAt <= 0) player.play();
     return () => player.pause();
   }, [
     endAt,
@@ -131,6 +131,7 @@ export function SceneVideoLayer({
     video.muted,
     video.playbackRate,
     video.volume,
+    startAt,
   ]);
 
   // Seeking before the player reports readyToPlay is dropped on native, so the
@@ -143,6 +144,7 @@ export function SceneVideoLayer({
     if (appliedSeekKeyRef.current === seekKey) return;
     appliedSeekKeyRef.current = seekKey;
     player.currentTime = startAt;
+    player.play();
   }, [player, playerState.status, seekKey, source, startAt]);
 
   // A clip that keeps decoding behind a backgrounded app burns battery for a

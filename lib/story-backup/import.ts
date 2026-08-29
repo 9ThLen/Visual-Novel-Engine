@@ -63,6 +63,31 @@ const defaultImportDependencies: StoryArchiveImportDependencies = {
   rollbackPromoted: rollbackPromotedStoryBackupObjects,
 };
 
+export function deduplicateStoryBackupAssets(assets: StoryBackupAsset[]): StoryBackupAsset[] {
+  const byHash = new Map<string, StoryBackupAsset>();
+  for (const asset of assets) {
+    const existing = byHash.get(asset.sha256);
+    if (!existing) {
+      byHash.set(asset.sha256, {
+        ...asset,
+        sourceReferences: [...new Set(asset.sourceReferences)],
+      });
+      continue;
+    }
+    byHash.set(asset.sha256, {
+      ...existing,
+      sourceReferences: [
+        ...new Set([
+          ...existing.sourceReferences,
+          asset.assetId,
+          ...asset.sourceReferences,
+        ]),
+      ],
+    });
+  }
+  return [...byHash.values()];
+}
+
 function requirePayloadConsistency(
   manifest: StoryArchiveManifestV1,
   payload: StoryArchivePayloadV1,
@@ -223,8 +248,9 @@ export async function importStoryArchive(
     const assetIdByReference = new Map<string, string>();
     const uriByReference = new Map<string, string>();
     const newIdByArchiveId = new Map<string, string>();
+    const uniqueAssets = deduplicateStoryBackupAssets(manifest.assets);
 
-    for (const asset of manifest.assets) {
+    for (const asset of uniqueAssets) {
       const newAssetId = createUniqueId(generateAssetId, usedAssetIds);
       newIdByArchiveId.set(asset.assetId, newAssetId);
       for (const reference of new Set([asset.assetId, ...asset.sourceReferences])) {
@@ -243,7 +269,7 @@ export async function importStoryArchive(
 
     const promoted = await dependencies.promote(stagedObjects);
     try {
-      for (const asset of manifest.assets) {
+      for (const asset of uniqueAssets) {
         const object = promoted.get(asset.sha256);
         if (!object) throw new Error(`Story backup object was not promoted: ${asset.sha256}`);
         for (const reference of new Set([asset.assetId, ...asset.sourceReferences])) {
@@ -251,7 +277,7 @@ export async function importStoryArchive(
         }
       }
 
-      const importedAssets: LibraryAsset[] = manifest.assets.map((asset) => ({
+      const importedAssets: LibraryAsset[] = uniqueAssets.map((asset) => ({
         id: newIdByArchiveId.get(asset.assetId)!,
         type: asset.kind === 'image' || asset.kind === 'audio' || asset.kind === 'video'
           ? asset.kind

@@ -11,7 +11,7 @@ import { useAppStore } from '@/stores/use-app-store';
 import { useColors } from '@/hooks/use-colors';
 import { SaveSlot } from '@/lib/story-domain';
 import { useI18n, type Language } from '@/hooks/use-i18n';
-import { formatDate } from '@/lib/format-date';
+import { formatDate, formatRelativeTime } from '@/lib/format-date';
 import { Button, ConfirmDialog, IconSymbol } from '@/components/ui';
 import { showToast } from '@/lib/toast-store';
 import { typeScale } from '@/lib/design-tokens';
@@ -169,7 +169,7 @@ export default function SaveLoadScreen() {
     setSlotIdToDelete(null);
   }, [deleteSaveSlot, slotIdToDelete]);
 
-  const formatDate = useCallback((timestamp: number) => {
+  const formatSaveTimestamp = useCallback((timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -178,11 +178,11 @@ export default function SaveLoadScreen() {
     const diffDays = Math.floor(diffMs / 86400000);
 
     if (diffMins < 1) return t('time.justNow');
-    if (diffMins < 60) return `${diffMins}${t('time.minutesAgo')}`;
-    if (diffHours < 24) return `${diffHours}${t('time.hoursAgo')}`;
-    if (diffDays < 7) return `${diffDays}${t('time.daysAgo')}`;
+    if (diffMins < 60) return formatRelativeTime(-diffMins, 'minute', language);
+    if (diffHours < 24) return formatRelativeTime(-diffHours, 'hour', language);
+    if (diffDays < 7) return formatRelativeTime(-diffDays, 'day', language);
 
-    return date.toLocaleDateString(language, {
+    return formatDate(date, language, {
       month: 'short',
       day: 'numeric',
       year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
@@ -217,7 +217,7 @@ export default function SaveLoadScreen() {
             </View>
             <View className="absolute bottom-2 left-2 right-2">
               <Text style={{ color: colors['text-inverse'], fontSize: 12, fontWeight: '600' }}>
-                {formatDate(item.timestamp)}
+                {formatSaveTimestamp(item.timestamp)}
               </Text>
             </View>
           </View>
@@ -311,7 +311,7 @@ export default function SaveLoadScreen() {
         </View>
       </View>
     );
-  }, [activeTab, colors, t, formatDate, handleSaveToSlot, handleLoadFromSlot, handleDeleteSlot]);
+  }, [activeTab, colors, t, formatSaveTimestamp, handleSaveToSlot, handleLoadFromSlot, handleDeleteSlot]);
 
   const slots = useMemo<(SaveSlot | null)[]>(
     () => Array.from({ length: 10 }, (_, i) =>

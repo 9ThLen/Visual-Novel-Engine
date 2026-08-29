@@ -17,6 +17,19 @@ function createNoopStorage(): StorageLike {
   };
 }
 
+function createUnavailableStorage(cause: unknown): StorageLike {
+  const error = new Error('Persistent storage is unavailable', { cause });
+  const fail = (): never => {
+    showToast('Persistent storage is unavailable. Changes cannot be saved.', 'error');
+    throw error;
+  };
+  return {
+    getItem: fail,
+    setItem: fail,
+    removeItem: fail,
+  };
+}
+
 function createWebStorage(storage: Storage): StorageLike {
   return {
     getItem: (key) => storage.getItem(key),
@@ -34,6 +47,12 @@ function createSafeWebStorage(storage: StorageLike): StorageLike {
           try {
             JSON.parse(value);
           } catch (error) {
+            // Preserve the exact bytes for manual recovery. This is best-effort:
+            // a full backend may reject the backup, but the original is then
+            // still removed so startup is not trapped on the same bad JSON.
+            try {
+              await storage.setItem(`${key}__corrupt_backup_${Date.now()}`, value);
+            } catch {}
             await storage.removeItem(key);
             if (__DEV__) console.warn('[Storage] removed invalid app state:', error);
             return null;
@@ -51,6 +70,7 @@ function createSafeWebStorage(storage: StorageLike): StorageLike {
       } catch (error) {
         showToast('Storage is full. Your latest changes were not saved; existing media was kept.', 'error');
         if (__DEV__) console.warn('[Storage] setItem skipped:', key, error);
+        throw error;
       }
     },
     removeItem: async (key) => {
@@ -58,6 +78,7 @@ function createSafeWebStorage(storage: StorageLike): StorageLike {
         await storage.removeItem(key);
       } catch (error) {
         if (__DEV__) console.warn('[Storage] removeItem failed:', key, error);
+        throw error;
       }
     },
   };
@@ -76,7 +97,7 @@ export function createPersistentStorage() {
     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
     return AsyncStorage;
   } catch (error) {
-    if (__DEV__) console.warn('[Storage] falling back to noop persistent storage:', error);
-    return createNoopStorage();
+    if (__DEV__) console.warn('[Storage] persistent storage unavailable:', error);
+    return createUnavailableStorage(error);
   }
 }

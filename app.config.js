@@ -39,7 +39,7 @@ const appConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: bundleId,
-    permissions: ["POST_NOTIFICATIONS", "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE"],
+    permissions: ["POST_NOTIFICATIONS"],
   },
   web: {
     bundler: "metro",

@@ -88,7 +88,7 @@ interface Props {
   timeline?: TimelineStep[];
   initialVariables?: RuntimeVariables;
   onContinue?: (targetSceneId?: string) => void;
-  onExecutorChoiceSelect?: (choice: { sceneId: string; choiceId: string; targetSceneId: string | null }) => void;
+  onExecutorChoiceSelect?: (choice: { sceneId: string; choiceId: string; stepId: string; targetSceneId: string | null }) => void;
   onTransition?: (targetSceneId: string | null, transition?: ReaderTransitionEvent) => void;
   /** How to animate into the current scene (set by the host from the previous scene's transition block). */
   entryTransition?: Pick<ReaderTransitionEvent, 'transitionType' | 'durationSec'> | null;
@@ -254,7 +254,7 @@ export function StoryReaderResponsive({
     transitionMode: executor.sceneState.transitionMode,
     transitionType: executor.sceneState.transitionType,
     transitionDuration: executor.sceneState.transitionDuration,
-    isComplete: executor.isComplete,
+    isComplete: usingExecutor && executor.isComplete,
     activeEffects: executor.sceneState.activeEffects,
     routeOnExecutorComplete,
     onTransition,
@@ -393,6 +393,7 @@ export function StoryReaderResponsive({
     onExecutorChoiceSelect?.({
       sceneId: displaySceneId,
       choiceId,
+      stepId: timeline?.[executor.currentStepIndex]?.id ?? '',
       targetSceneId: choice.targetSceneId,
     });
   };

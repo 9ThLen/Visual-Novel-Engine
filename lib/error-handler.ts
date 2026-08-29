@@ -37,7 +37,7 @@ export class ErrorHandler {
   /**
    * Set a callback for showing errors to the user (e.g., React Native Alert)
    */
-  static setUserAlertCallback(callback: (message: string, severity: ErrorSeverity) => void): void {
+  static setUserAlertCallback(callback?: (message: string, severity: ErrorSeverity) => void): void {
     this.userAlertCallback = callback;
   }
 

@@ -15,6 +15,8 @@ import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 import { startAppStoreCrossTabWarning } from "@/lib/app-store-cross-tab";
 import { useI18n } from "@/hooks/use-i18n";
+import { ErrorHandler, ErrorSeverity } from "@/lib/error-handler";
+import { showToast } from "@/lib/toast-store";
 
 // Web safety: set background before any React rendering
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -23,15 +25,35 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   document.body.style.margin = '0';
 }
 
-// Lazy-load reanimated after module setup; web can fail if it is not polyfilled.
-void import("react-native-reanimated").catch(() => {});
-
 export default function RootLayout() {
   // Storage bootstrap must not depend on the entry route: a web refresh lands
   // directly on /document-editor or /reader, which would otherwise skip the
   // media migration and leave the lossy size caps active for that session.
   useEffect(() => {
-    void ensureStorageBootstrap();
+    let cancelled = false;
+    void (async () => {
+      let SplashScreen: typeof import("expo-splash-screen") | null = null;
+      try {
+        // Both imports stay behind the platform/effect boundary: module-level
+        // evaluation can hang web before React gets a chance to render.
+        if (Platform.OS !== 'web') {
+          SplashScreen = await import("expo-splash-screen");
+          await SplashScreen.preventAutoHideAsync();
+          await import("react-native-reanimated");
+        }
+        await ensureStorageBootstrap();
+      } catch {
+        // The app still renders its in-app recovery UI if an optional native
+        // module cannot initialize.
+      } finally {
+        if (!cancelled && SplashScreen) {
+          await SplashScreen.hideAsync().catch(() => {});
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // One subscription for the life of the tab, but the warning is written when
@@ -46,16 +68,13 @@ export default function RootLayout() {
     () => startAppStoreCrossTabWarning(() => translate.current('common.crossTabWarning')),
     [],
   );
-
-  // Hide the native splash screen once JS has mounted.
   useEffect(() => {
-    const hideSplash = async () => {
-      try {
-        const SplashScreen = await import("expo-splash-screen");
-        await SplashScreen.hideAsync();
-      } catch {}
-    };
-    hideSplash();
+    ErrorHandler.setUserAlertCallback((message, severity) => {
+      if (severity === ErrorSeverity.HIGH || severity === ErrorSeverity.CRITICAL) {
+        showToast(message, 'error');
+      }
+    });
+    return () => ErrorHandler.setUserAlertCallback();
   }, []);
 
   return (

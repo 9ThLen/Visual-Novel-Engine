@@ -97,14 +97,14 @@ export default function ThemeStudioScreen() {
     setDraftTheme({ ...savedTheme });
     setDraftLayout(savedLayout);
     setExpandedKey(null);
-  }, [story?.id, savedThemeKey, savedLayout]);
+  }, [story?.id, savedTheme, savedThemeKey, savedLayout]);
 
   const draftThemeKey = serializeTheme(draftTheme);
   const isDirty = draftThemeKey !== savedThemeKey || draftLayout !== savedLayout;
 
   const previewColors = useMemo(
     () => mergeReaderColors(colors, sanitizeStoryTheme(draftTheme)),
-    [colors, draftThemeKey],
+    [colors, draftTheme],
   );
 
   /**

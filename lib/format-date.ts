@@ -27,6 +27,7 @@ export const DATE_TIME: Intl.DateTimeFormatOptions = {
 };
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
+const relativeFormatters = new Map<string, Intl.RelativeTimeFormat>();
 
 /** A cached formatter for `language`; omit `options` for the locale's own default date. */
 export function dateFormatterFor(
@@ -55,4 +56,17 @@ export function formatDate(
   options?: Intl.DateTimeFormatOptions,
 ): string {
   return dateFormatterFor(language, options).format(value instanceof Date ? value : new Date(value));
+}
+
+export function formatRelativeTime(
+  value: number,
+  unit: Intl.RelativeTimeFormatUnit,
+  language: Language | string,
+): string {
+  let formatter = relativeFormatters.get(language);
+  if (!formatter) {
+    formatter = new Intl.RelativeTimeFormat(language, { numeric: 'always' });
+    relativeFormatters.set(language, formatter);
+  }
+  return formatter.format(value, unit);
 }

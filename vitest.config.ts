@@ -44,6 +44,12 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       include: ['lib/**/*.{ts,tsx}', 'server/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}', 'app/**/*.{ts,tsx}'],
+      thresholds: {
+        statements: 60,
+        branches: 75,
+        functions: 70,
+        lines: 60,
+      },
     },
   },
   esbuild: {

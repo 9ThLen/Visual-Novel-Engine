@@ -1,6 +1,7 @@
 import type { Character } from '@/lib/character-types';
 import {
   persistWebDataUri,
+  persistWebBlobUri,
   type LibraryAsset,
 } from '@/lib/media-library-service';
 
@@ -22,11 +23,13 @@ export async function migrateWebMediaReferences(
   const migratedMediaLibrary: LibraryAsset[] = [];
 
   for (const asset of mediaLibrary) {
-    if (!asset.uri.startsWith('data:')) {
+    if (!asset.uri.startsWith('data:') && !asset.uri.startsWith('blob:')) {
       migratedMediaLibrary.push(asset);
       continue;
     }
-    const uri = await persistWebDataUri(asset.uri, asset.type);
+    const uri = asset.uri.startsWith('blob:')
+      ? await persistWebBlobUri(asset.uri, asset.type)
+      : await persistWebDataUri(asset.uri, asset.type);
     migratedMediaLibrary.push({ ...asset, uri });
     migratedCount += 1;
   }
@@ -37,11 +40,13 @@ export async function migrateWebMediaReferences(
     for (const character of characters) {
       const migratedSprites = [];
       for (const sprite of character.sprites) {
-        if (!sprite.uri.startsWith('data:')) {
+        if (!sprite.uri.startsWith('data:') && !sprite.uri.startsWith('blob:')) {
           migratedSprites.push(sprite);
           continue;
         }
-        const uri = await persistWebDataUri(sprite.uri, 'image');
+        const uri = sprite.uri.startsWith('blob:')
+          ? await persistWebBlobUri(sprite.uri, 'image')
+          : await persistWebDataUri(sprite.uri, 'image');
         migratedSprites.push({ ...sprite, uri });
         migratedCount += 1;
       }

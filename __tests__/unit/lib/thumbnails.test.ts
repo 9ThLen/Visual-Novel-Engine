@@ -110,10 +110,26 @@ describe('getThumbnailUri', () => {
   // Null is the caller's signal to show the original, so every way of failing
   // has to arrive there rather than throwing into a render.
   it('returns null when the source cannot be fetched', async () => {
-    stubFetch(async () => { throw new Error('offline'); });
+    const fetchMock = stubFetch(async () => { throw new Error('offline'); });
     setThumbnailGeneratorForTests(async () => new Blob(['small']));
 
     await expect(getThumbnailUri('file://a.png')).resolves.toBeNull();
+    await expect(getThumbnailUri('file://a.png')).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a transient fetch failure after the cooldown', async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubFetch()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue(fakeResponse());
+    setThumbnailGeneratorForTests(async () => new Blob(['small']));
+
+    await expect(getThumbnailUri('file://retry.png')).resolves.toBeNull();
+    vi.advanceTimersByTime(30_001);
+    await expect(getThumbnailUri('file://retry.png')).resolves.toBe('blob:thumb-1');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 
   it('returns null for a response the fetch rejected', async () => {

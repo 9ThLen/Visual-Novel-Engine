@@ -34,6 +34,8 @@ const cache = new Map<string, string>();
 const inFlight = new Map<string, Promise<string | null>>();
 /** Sources that cannot produce a thumbnail: asking again would decode again. */
 const refused = new Set<string>();
+const retryAfter = new Map<string, number>();
+const TRANSIENT_FAILURE_TTL_MS = 30_000;
 
 let active = 0;
 const waiting: (() => void)[] = [];
@@ -124,6 +126,9 @@ export async function getThumbnailUri(
   maxSide = THUMBNAIL_MAX_SIDE,
 ): Promise<string | null> {
   if (!sourceUri || refused.has(sourceUri)) return null;
+  const retryAt = retryAfter.get(sourceUri);
+  if (retryAt && retryAt > Date.now()) return null;
+  retryAfter.delete(sourceUri);
 
   const cached = cache.get(sourceUri);
   if (cached) return cached;
@@ -133,13 +138,14 @@ export async function getThumbnailUri(
 
   const work = withDecodeSlot(async () => {
     const response = await fetch(sourceUri);
-    if (!response.ok) return null;
+    if (!response.ok) throw new Error(`Thumbnail fetch failed: ${response.status}`);
     const thumbnail = await generate(await response.blob(), maxSide);
     if (!thumbnail) return null;
     return URL.createObjectURL(thumbnail);
   })
     .then((objectUrl) => {
       if (objectUrl) remember(sourceUri, objectUrl);
+      // A successful decode that produces no smaller image is permanent.
       else refused.add(sourceUri);
       return objectUrl;
     })
@@ -148,7 +154,7 @@ export async function getThumbnailUri(
       // never appears looks the same as one the source did not deserve. Say so
       // in development, where the difference is worth knowing.
       if (__DEV__) console.warn('[thumbnails] no thumbnail for', sourceUri, error);
-      refused.add(sourceUri);
+      retryAfter.set(sourceUri, Date.now() + TRANSIENT_FAILURE_TTL_MS);
       return null;
     })
     .finally(() => {
@@ -164,6 +170,7 @@ export function resetThumbnailsForTests(): void {
   cache.clear();
   inFlight.clear();
   refused.clear();
+  retryAfter.clear();
   active = 0;
   waiting.length = 0;
   generate = drawThumbnail;

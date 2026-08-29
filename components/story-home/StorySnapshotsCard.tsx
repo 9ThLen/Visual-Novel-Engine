@@ -11,6 +11,7 @@ import {
 import { ConfirmDialog } from '@/components/ui';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useI18n } from '@/hooks/use-i18n';
+import { formatRelativeTime } from '@/lib/format-date';
 import { Fonts, withAlpha, type ThemeColorPalette } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { createPersistentStorage } from '@/lib/persistent-storage';
@@ -32,19 +33,19 @@ interface StorySnapshotsCardProps {
 type PendingAction = { type: 'restore' | 'delete'; snapshot: SnapshotMeta };
 
 function useRelativeTime() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   return useCallback(
     (timestamp: number): string => {
       const diffMs = Date.now() - timestamp;
       const minutes = Math.floor(diffMs / 60000);
       if (minutes < 1) return t('time.justNow');
-      if (minutes < 60) return `${minutes}${t('time.minutesAgo')}`;
+      if (minutes < 60) return formatRelativeTime(-minutes, 'minute', language);
       const hours = Math.floor(minutes / 60);
-      if (hours < 24) return `${hours}${t('time.hoursAgo')}`;
+      if (hours < 24) return formatRelativeTime(-hours, 'hour', language);
       const days = Math.floor(hours / 24);
-      return `${days}${t('time.daysAgo')}`;
+      return formatRelativeTime(-days, 'day', language);
     },
-    [t],
+    [language, t],
   );
 }
 

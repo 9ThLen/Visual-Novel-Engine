@@ -292,6 +292,22 @@ describe('media-library-service', () => {
     expect(idbMocks.put).toHaveBeenCalledWith(expect.any(String), sourceBlob);
   });
 
+  it('deduplicates different Blob URLs with identical bytes', async () => {
+    Platform.OS = 'web';
+    const sourceBlob = new Blob(['same-audio'], { type: 'audio/mpeg' });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      blob: async () => sourceBlob,
+    } as Response);
+
+    const first = await addAssetToLibraryPure('blob:first', 'first.mp3', 'audio', []);
+    idbMocks.has.mockResolvedValue(true);
+    const second = await addAssetToLibraryPure('blob:second', 'second.mp3', 'audio', first.assets);
+
+    expect(second.asset).toBe(first.asset);
+    expect(second.assets).toHaveLength(1);
+  });
+
   it('rejects unsafe SVG data uploads before writing a Blob', async () => {
     Platform.OS = 'web';
 

@@ -183,7 +183,6 @@ async function persistWebMediaBlob(
   uri: string,
   type: AssetType,
   parsedDataUri: ParsedDataUri | null,
-  fallbackStorageKey: string,
 ): Promise<{ blob: Blob; storageKey: string }> {
   if (uri.startsWith('data:')) {
     if (!parsedDataUri) throw new Error(`Invalid ${type} data URI`);
@@ -196,7 +195,12 @@ async function persistWebMediaBlob(
   if (!response.ok) throw new Error(`Could not read ${type} Blob`);
   const blob = await response.blob();
   validateMediaBlob(blob, type);
-  return { blob, storageKey: fallbackStorageKey };
+  return { blob, storageKey: await hashBlob(blob) };
+}
+
+async function hashBlob(blob: Blob): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 /** Whether the Blob migration is able to convert this inline data URI at all. */
@@ -217,6 +221,18 @@ export async function persistWebDataUri(
     await putMediaBlob(parsed.contentHash, blob);
   }
   return createMediaBlobUri(parsed.contentHash);
+}
+
+/** Persist an ephemeral web Blob URL under a content-derived identity. */
+export async function persistWebBlobUri(uri: string, type: AssetType): Promise<string> {
+  if (!uri.startsWith('blob:')) throw new Error(`Invalid ${type} Blob URL`);
+  const response = await fetch(uri);
+  if (!response.ok) throw new Error(`Could not read ${type} Blob`);
+  const blob = await response.blob();
+  validateMediaBlob(blob, type);
+  const storageKey = await hashBlob(blob);
+  if (!await hasMediaBlob(storageKey)) await putMediaBlob(storageKey, blob);
+  return createMediaBlobUri(storageKey);
 }
 
 /**
@@ -352,7 +368,7 @@ export async function addAssetToLibraryPure(
       return { asset, assets: [...assets, asset] };
     }
 
-    const persisted = await persistWebMediaBlob(uri, type, parsedDataUri, generatedAssetId);
+    const persisted = await persistWebMediaBlob(uri, type, parsedDataUri);
     const targetUri = createMediaBlobUri(persisted.storageKey);
     const existingByTargetUri = assets.find((asset) => asset.uri === targetUri);
     if (existingByTargetUri) {

@@ -86,10 +86,12 @@ function migrateLocalStorage(db: IDBDatabase, entries: [string, string][]): Prom
     transaction.onabort = rejectOnce;
 
     const markerRequest = store.get(LOCAL_STORAGE_MIGRATION_KEY);
+    markerRequest.onerror = rejectOnce;
     markerRequest.onsuccess = () => {
       if (markerRequest.result === LOCAL_STORAGE_MIGRATION_VERSION) return;
 
       const keysRequest = store.getAllKeys();
+      keysRequest.onerror = rejectOnce;
       keysRequest.onsuccess = () => {
         const existingKeys = new Set(keysRequest.result.map(String));
         for (const [key, value] of entries) {
@@ -122,7 +124,12 @@ function openDatabase(factory: IDBFactory, sourceStorage: Storage | null): Promi
       if (!db.objectStoreNames.contains(AI_ATTACHMENTS_STORE_NAME)) db.createObjectStore(AI_ATTACHMENTS_STORE_NAME);
     };
     request.onerror = () => rejectOnce(request.error);
-    request.onblocked = () => rejectOnce(new Error('IndexedDB open was blocked'));
+    // `blocked` is advisory: the request can still succeed as soon as another
+    // tab closes its older connection. Rejecting here permanently selected the
+    // size-limited localStorage fallback for the rest of the session.
+    request.onblocked = () => {
+      if (__DEV__) console.warn('[Storage] IndexedDB upgrade is waiting for another tab');
+    };
     request.onsuccess = async () => {
       const db = request.result;
       if (settled) {
@@ -150,6 +157,9 @@ function getDatabase(factory: IDBFactory, sourceStorage: Storage | null): Promis
   if (!databasePromise) {
     databasePromise = Promise.resolve().then(() => openDatabase(factory, sourceStorage)).catch((error) => {
       if (__DEV__) console.warn('[Storage] IndexedDB unavailable; using localStorage:', error);
+      setTimeout(() => {
+        if (databasePromises.get(factory) === databasePromise) databasePromises.delete(factory);
+      }, 5_000);
       return null;
     });
     databasePromises.set(factory, databasePromise);

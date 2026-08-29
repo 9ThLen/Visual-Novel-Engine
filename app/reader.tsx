@@ -22,7 +22,7 @@ import { parseResumeExisting } from '@/lib/reader-launch';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { buildNextPlaybackState, getReaderSceneStateThumbnailUri, getTimelineInteractiveObjects, normalizeRuntimeVariables, type ReaderTransitionEvent } from '@/lib/reader-runtime';
 import { normalizeUserSettings } from '@/lib/user-settings';
-import { createInMemorySceneAccess } from '@/lib/scene-access';
+import { createInMemorySceneAccess, getSceneRecordFromAccess } from '@/lib/scene-access';
 import { getReaderSceneRecordForNavigation } from '@/lib/reader-scene-cache';
 import { createPersistentStorage } from '@/lib/persistent-storage';
 import {
@@ -35,15 +35,7 @@ import {
 } from '@/lib/story-coverage';
 import { useAppStore } from '@/stores/use-app-store';
 import { isPlayerModeActive } from '@/lib/player-mode';
-
-function findChoiceStepIdForOption(sceneRecord: { timeline?: { id: string; blockType: string; enabled?: boolean; data: unknown }[] } | null | undefined, optionId: string): string | null {
-  for (const step of sceneRecord?.timeline ?? []) {
-    if (step.enabled === false || step.blockType !== 'choice') continue;
-    const options = (step.data as { options?: { id: string }[] }).options ?? [];
-    if (options.some((option) => option.id === optionId)) return step.id;
-  }
-  return null;
-}
+import { ErrorCategory, ErrorHandler } from '@/lib/error-handler';
 
 const MAX_SCENE_ROLLBACK_DEPTH = 20;
 
@@ -138,6 +130,25 @@ export default function ReaderScreen() {
     latestVariablesRef.current = normalizeRuntimeVariables(playbackState?.variables);
   }, [playbackState?.storyId, playbackState?.currentSceneId, playbackState?.variables]);
 
+  const flushCoverageUpdates = useCallback((storyIdForCoverage: string) => {
+    if (coverageTimerRef.current) {
+      clearTimeout(coverageTimerRef.current);
+      coverageTimerRef.current = null;
+    }
+    const mutations = coverageMutationsRef.current.splice(0);
+    if (mutations.length === 0) return coverageSaveChainRef.current;
+
+    coverageSaveChainRef.current = coverageSaveChainRef.current.then(async () => {
+      const storage = coverageStorageRef.current!;
+      const loaded = coverageCacheRef.current
+        ?? await (coverageLoadRef.current ??= loadCoverage(storage, storyIdForCoverage));
+      const next = mutations.reduce((current, apply) => apply(current), loaded);
+      coverageCacheRef.current = next;
+      await saveCoverage(storage, storyIdForCoverage, next);
+    }).catch(() => {});
+    return coverageSaveChainRef.current;
+  }, []);
+
   const enqueueCoverageUpdate = useCallback((
     storyIdForCoverage: string,
     mutation: (coverage: StoryCoverage) => StoryCoverage,
@@ -158,20 +169,14 @@ export default function ReaderScreen() {
     if (coverageTimerRef.current) return;
 
     coverageTimerRef.current = setTimeout(() => {
-      coverageTimerRef.current = null;
-      const mutations = coverageMutationsRef.current.splice(0);
-      if (mutations.length === 0) return;
-
-      coverageSaveChainRef.current = coverageSaveChainRef.current.then(async () => {
-        const storage = coverageStorageRef.current!;
-        const loaded = coverageCacheRef.current
-          ?? await (coverageLoadRef.current ??= loadCoverage(storage, storyIdForCoverage));
-        const next = mutations.reduce((current, apply) => apply(current), loaded);
-        coverageCacheRef.current = next;
-        await saveCoverage(storage, storyIdForCoverage, next);
-      }).catch(() => {});
+      void flushCoverageUpdates(storyIdForCoverage);
     }, 0);
-  }, []);
+  }, [flushCoverageUpdates]);
+
+  useEffect(() => () => {
+    const activeStoryId = coverageStoryIdRef.current;
+    if (activeStoryId) void flushCoverageUpdates(activeStoryId);
+  }, [flushCoverageUpdates]);
 
   const recordCoverageCommit = useCallback((
     storyIdForCoverage: string,
@@ -225,7 +230,7 @@ export default function ReaderScreen() {
       clearSceneHistory();
     }
     expectedSceneRef.current = location;
-  }, [playbackState?.storyId, playbackState?.currentSceneId, clearSceneHistory]);
+  }, [playbackState, clearSceneHistory]);
 
   const handleRollbackScene = useCallback(() => {
     if (sceneRollbackInFlightRef.current) return;
@@ -269,6 +274,7 @@ export default function ReaderScreen() {
 
   const finishStory = useCallback((choicesMade: { sceneId: string; choiceId: string }[]) => {
     if (!playbackState) return;
+    if (story?.id) void flushCoverageUpdates(story.id);
     updatePlaybackState({
       ...playbackState,
       isPlaying: false,
@@ -281,7 +287,10 @@ export default function ReaderScreen() {
     // showcase counts by. finishStory also runs when navigation fails on a
     // broken link, and that must not be recorded as an ending the reader saw.
     const endingSceneId = playbackState.currentSceneId;
-    const isTerminalScene = !sceneRecord?.connections?.length;
+    const liveSceneRecord = story?.id
+      ? getSceneRecordFromAccess(useAppStore.getState(), story.id, endingSceneId)
+      : null;
+    const isTerminalScene = !!liveSceneRecord && !liveSceneRecord.connections.length;
     if (story?.id && endingSceneId && isTerminalScene) {
       const before = useAppStore.getState().endingsReachedByStory[story.id]?.length ?? 0;
       recordEndingReached(story.id, endingSceneId);
@@ -301,7 +310,7 @@ export default function ReaderScreen() {
     }
 
     router.replace('/tabs');
-  }, [playbackState, router, updatePlaybackState, story?.id, sceneRecord, recordEndingReached]);
+  }, [playbackState, router, updatePlaybackState, story?.id, recordEndingReached, flushCoverageUpdates]);
 
   const leaveFinale = useCallback(() => {
     setFinaleEnding(null);
@@ -330,7 +339,12 @@ export default function ReaderScreen() {
     coverageChoice?: { sceneId: string; stepId: string | null; optionId: string } | null,
   ): Promise<boolean> => {
     if (!story || !playbackState) return false;
-    await hydrateReaderSceneWindow(story.id, sceneId);
+    try {
+      await hydrateReaderSceneWindow(story.id, sceneId);
+    } catch (error) {
+      ErrorHandler.handle('Failed to load reader scene', error, ErrorCategory.STORAGE);
+      return false;
+    }
     const appState = useAppStore.getState();
     const sceneAccess = createInMemorySceneAccess(appState);
     const targetSceneRecord = getReaderSceneRecordForNavigation(
@@ -403,6 +417,9 @@ export default function ReaderScreen() {
           recordPendingChoiceOnly();
           finishStory(updatedChoices);
         }
+      }).catch(() => {
+        recordPendingChoiceOnly();
+        finishStory(updatedChoices);
       });
     } else {
       recordPendingChoiceOnly();
@@ -410,12 +427,11 @@ export default function ReaderScreen() {
     }
   };
 
-  const handleExecutorChoiceSelect = useCallback((choice: { sceneId: string; choiceId: string; targetSceneId: string | null }) => {
+  const handleExecutorChoiceSelect = useCallback((choice: { sceneId: string; choiceId: string; stepId: string; targetSceneId: string | null }) => {
     pendingChoiceRef.current = {
       ...choice,
-      stepId: findChoiceStepIdForOption(sceneRecord, choice.choiceId),
     };
-  }, [sceneRecord]);
+  }, []);
 
   const handleObjectSceneTransition = (sceneId: string) => {
     void navigateToScene(sceneId);
