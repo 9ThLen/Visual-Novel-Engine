@@ -5,16 +5,15 @@ import { useI18n } from '@/hooks/use-i18n';
 import { Fonts, withAlpha, type ThemeColorPalette } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import type { SceneRecord } from '@/lib/engine/types';
-import type { CoverageReport } from '@/lib/story-coverage';
 import type { StoryDoctorFinding, StoryDoctorReport } from '@/lib/story-doctor';
 
 interface StoryHealthCardProps {
   colors: ThemeColorPalette;
   report: StoryDoctorReport;
-  coverageReport?: CoverageReport | null;
   scenes: SceneRecord[];
   onOpenScene: (sceneId: string) => void;
-  onResetCoverage?: () => void;
+  /** Rendered inside a band that already draws the surface and the frame. */
+  embedded?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -48,20 +47,14 @@ function groupFindings(findings: StoryDoctorFinding[], scenes: SceneRecord[], ge
 export function StoryHealthCard({
   colors,
   report,
-  coverageReport,
   scenes,
   onOpenScene,
-  onResetCoverage,
+  embedded = false,
   style,
 }: StoryHealthCardProps) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
-  const [coverageExpanded, setCoverageExpanded] = useState(false);
   const hasFindings = report.findings.length > 0;
-  const hasCoverageMisses = Boolean(
-    coverageReport
-    && (coverageReport.unvisitedScenes.length > 0 || coverageReport.neverTakenChoices.length > 0),
-  );
   const statusColor = report.summary.errors > 0
     ? colors.danger
     : report.summary.warnings > 0
@@ -73,7 +66,15 @@ export function StoryHealthCard({
   );
 
   return (
-    <View style={[styles.card, { backgroundColor: colors['surface-1'], borderColor: colors.border }, style]}>
+    <View
+      style={[
+        styles.card,
+        embedded
+          ? styles.embedded
+          : { backgroundColor: colors['surface-1'], borderColor: colors.border },
+        style,
+      ]}
+    >
       <Pressable
         onPress={() => setExpanded((value) => !value)}
         accessibilityRole="button"
@@ -139,117 +140,22 @@ export function StoryHealthCard({
         </View>
       ) : null}
 
-      {coverageReport ? (
-        <View style={[styles.coverageSection, { borderTopColor: colors.border }]}>
-          <View style={styles.coverageHeader}>
-            <View style={[styles.iconWrap, { backgroundColor: withAlpha(colors.primary, 0.1) }]}>
-              <IconSymbol name={hasCoverageMisses ? 'timeline' : 'checkmark'} size={18} color={hasCoverageMisses ? colors.primary : colors.success} />
-            </View>
-            <View style={styles.headerCopy}>
-              <Text style={[styles.title, { color: colors.foreground }]}>{t('storyCoverage.title')}</Text>
-              <Text style={[styles.status, { color: colors.muted }]} numberOfLines={1}>
-                {t('storyCoverage.summary', {
-                  visited: coverageReport.visitedReachableScenes,
-                  total: coverageReport.totalReachableScenes,
-                  choices: coverageReport.neverTakenChoices.length,
-                })}
-              </Text>
-            </View>
-            {onResetCoverage ? (
-              <Pressable
-                onPress={onResetCoverage}
-                accessibilityRole="button"
-                accessibilityLabel={t('storyCoverage.reset')}
-                style={({ pressed }) => [styles.resetButton, { borderColor: colors.border, opacity: pressed ? 0.7 : 1 }]}
-              >
-                <IconSymbol name="xmark" size={13} color={colors.muted} />
-                <Text style={[styles.resetText, { color: colors.muted }]}>{t('storyCoverage.reset')}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-
-          <View style={[styles.coverageTrack, { backgroundColor: withAlpha(colors.foreground, 0.08) }]}>
-            <View
-              style={[
-                styles.coverageFill,
-                {
-                  backgroundColor: hasCoverageMisses ? colors.primary : colors.success,
-                  width: `${coverageReport.totalCoveragePercent}%`,
-                },
-              ]}
-            />
-          </View>
-
-          <Pressable
-            onPress={() => setCoverageExpanded((value) => !value)}
-            accessibilityRole="button"
-            accessibilityLabel={t('storyCoverage.toggleDetails')}
-            accessibilityState={{ expanded: coverageExpanded }}
-            style={({ pressed }) => [styles.coverageToggle, { opacity: pressed ? 0.75 : 1 }]}
-          >
-            <Text style={[styles.coverageToggleText, { color: colors['foreground-secondary'] }]}>
-              {t('storyCoverage.unvisitedScenes', { count: coverageReport.unvisitedScenes.length })}
-            </Text>
-            <Text style={[styles.coverageToggleText, { color: colors['foreground-secondary'] }]}>
-              {t('storyCoverage.untakenChoices', { count: coverageReport.neverTakenChoices.length })}
-            </Text>
-            <IconSymbol name={coverageExpanded ? 'chevron.up' : 'chevron.down'} size={16} color={colors.muted} />
-          </Pressable>
-
-          {coverageExpanded ? (
-            <View style={styles.body}>
-              {coverageReport.unvisitedScenes.length > 0 ? (
-                <View style={styles.group}>
-                  <Text style={[styles.groupTitle, { color: colors.foreground }]}>{t('storyCoverage.unvisitedScenesTitle')}</Text>
-                  {coverageReport.unvisitedScenes.map((item) => (
-                    <Pressable
-                      key={item.sceneId}
-                      onPress={() => onOpenScene(item.sceneId)}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('storyCoverage.openScene', { scene: item.sceneName })}
-                      style={({ pressed }) => [styles.coverageItem, pressed && styles.issuePressed]}
-                    >
-                      <Text style={[styles.issueText, { color: colors['foreground-secondary'] }]} numberOfLines={1}>
-                        {item.sceneName}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-
-              {coverageReport.neverTakenChoices.length > 0 ? (
-                <View style={styles.group}>
-                  <Text style={[styles.groupTitle, { color: colors.foreground }]}>{t('storyCoverage.untakenChoicesTitle')}</Text>
-                  {coverageReport.neverTakenChoices.map((item) => (
-                    <Pressable
-                      key={`${item.sceneId}-${item.stepId}-${item.optionId}`}
-                      onPress={() => onOpenScene(item.sceneId)}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('storyCoverage.openChoice', { scene: item.sceneName, choice: item.optionText })}
-                      style={({ pressed }) => [styles.coverageItem, pressed && styles.issuePressed]}
-                    >
-                      <Text style={[styles.issueText, { color: colors['foreground-secondary'] }]} numberOfLines={2}>
-                        {t('storyCoverage.choiceItem', { scene: item.sceneName, choice: item.optionText })}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-
-              {!hasCoverageMisses ? (
-                <Text style={[styles.issueText, { color: colors['foreground-secondary'] }]}>
-                  {t('storyCoverage.complete')}
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
-        </View>
-      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  /** Inside the project page's state band the surround belongs to the band. */
+  embedded: {
+    flexGrow: 0,
+    flexBasis: 'auto',
+    minWidth: 0,
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    backgroundColor: 'transparent',
+  },
   card: {
     flexGrow: 1,
     flexBasis: 220,

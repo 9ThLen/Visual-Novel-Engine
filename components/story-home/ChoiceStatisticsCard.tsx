@@ -10,10 +10,18 @@ interface ChoiceStatisticsCardProps {
   colors: ThemeColorPalette;
   report: ChoiceStatsReport;
   onReset: () => void;
+  /** Rendered inside a band that already draws the surface and the frame. */
+  embedded?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
-export function ChoiceStatisticsCard({ colors, report, onReset, style }: ChoiceStatisticsCardProps) {
+export function ChoiceStatisticsCard({
+  colors,
+  report,
+  onReset,
+  embedded = false,
+  style,
+}: ChoiceStatisticsCardProps) {
   const { t } = useI18n();
   const sceneGroups = useMemo(
     () => report.scenes
@@ -28,7 +36,15 @@ export function ChoiceStatisticsCard({ colors, report, onReset, style }: ChoiceS
   if (report.totalPicks <= 0 || sceneGroups.length === 0) return null;
 
   return (
-    <View style={[styles.card, { backgroundColor: colors['surface-1'], borderColor: colors.border }, style]}>
+    <View
+      style={[
+        styles.card,
+        embedded
+          ? styles.embedded
+          : { backgroundColor: colors['surface-1'], borderColor: colors.border },
+        style,
+      ]}
+    >
       <View style={styles.header}>
         <View style={[styles.iconWrap, { backgroundColor: withAlpha(colors.primary, 0.1) }]}>
           <IconSymbol name="list" size={18} color={colors.primary} />
@@ -97,6 +113,17 @@ export function ChoiceStatisticsCard({ colors, report, onReset, style }: ChoiceS
 }
 
 const styles = StyleSheet.create({
+  /** Inside the project page's state band the surround belongs to the band. */
+  embedded: {
+    flexGrow: 0,
+    flexBasis: 'auto',
+    minWidth: 0,
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    backgroundColor: 'transparent',
+  },
   card: {
     flexGrow: 1,
     flexBasis: 320,

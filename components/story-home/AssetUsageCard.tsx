@@ -3,17 +3,10 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } fro
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useI18n } from '@/hooks/use-i18n';
 import { Fonts, withAlpha, type ThemeColorPalette } from '@/lib/_core/theme';
-import {
-  buildAssetUsageReport,
-  buildAvailableAssets,
-  collectAssetReferences,
-  type AssetReference,
-  type AssetUsageKind,
-} from '@/lib/asset-usage';
-import { buildPlaybackAudioLibraryItems } from '@/lib/audio-library';
+import { type AssetReference, type AssetUsageKind } from '@/lib/asset-usage';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import type { SceneRecord } from '@/lib/engine/types';
-import { getStoryImageAssets } from '@/lib/story-image-library';
+import { buildStoryAssetUsageReport } from '@/lib/story-home/asset-report';
 import { useAppStore } from '@/stores/use-app-store';
 
 interface AssetUsageCardProps {
@@ -21,6 +14,8 @@ interface AssetUsageCardProps {
   storyId: string;
   scenes: SceneRecord[];
   onOpenScene: (sceneId: string) => void;
+  /** Rendered inside a band that already draws the surface and the frame. */
+  embedded?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -94,6 +89,7 @@ export const AssetUsageCard = React.memo(function AssetUsageCard({
   storyId,
   scenes,
   onOpenScene,
+  embedded = false,
   style,
 }: AssetUsageCardProps) {
   const { t } = useI18n();
@@ -105,22 +101,19 @@ export const AssetUsageCard = React.memo(function AssetUsageCard({
   const [unusedExpanded, setUnusedExpanded] = useState(false);
   const [brokenExpanded, setBrokenExpanded] = useState(false);
 
-  const playbackAudioLibrary = useMemo(
-    () => buildPlaybackAudioLibraryItems(storyAudioLibrary, mediaLibrary),
-    [mediaLibrary, storyAudioLibrary],
-  );
-  const storyImageAssets = useMemo(
-    () => getStoryImageAssets(storyId, imageAssetIdsByStory, mediaLibrary),
-    [imageAssetIdsByStory, mediaLibrary, storyId],
-  );
-  const availableAssets = useMemo(
-    () => buildAvailableAssets(storyImageAssets, playbackAudioLibrary, characters),
-    [characters, playbackAudioLibrary, storyImageAssets],
-  );
-  const references = useMemo(() => collectAssetReferences(scenes), [scenes]);
+  // Same report the project page's «assets» tile counts, from the same
+  // function — a tile that disagreed with the list under it would be worse
+  // than no tile at all.
   const report = useMemo(
-    () => buildAssetUsageReport(references, availableAssets),
-    [availableAssets, references],
+    () => buildStoryAssetUsageReport({
+      storyId,
+      scenes,
+      mediaLibrary,
+      imageAssetIdsByStory,
+      storyAudioLibrary,
+      characters,
+    }),
+    [characters, imageAssetIdsByStory, mediaLibrary, scenes, storyAudioLibrary, storyId],
   );
   const usedAssets = useMemo(
     () => report.assets.filter((item) => item.references.length > 0),
@@ -137,7 +130,15 @@ export const AssetUsageCard = React.memo(function AssetUsageCard({
       : colors.success;
 
   return (
-    <View style={[styles.card, { backgroundColor: colors['surface-1'], borderColor: colors.border }, style]}>
+    <View
+      style={[
+        styles.card,
+        embedded
+          ? styles.embedded
+          : { backgroundColor: colors['surface-1'], borderColor: colors.border },
+        style,
+      ]}
+    >
       <View style={styles.header}>
         <View style={[styles.iconWrap, { backgroundColor: withAlpha(statusColor, 0.12) }]}>
           <IconSymbol name={report.brokenReferences.length > 0 ? 'question' : 'image'} size={18} color={statusColor} />
@@ -267,6 +268,17 @@ export const AssetUsageCard = React.memo(function AssetUsageCard({
 });
 
 const styles = StyleSheet.create({
+  /** Inside the project page's state band the surround belongs to the band. */
+  embedded: {
+    flexGrow: 0,
+    flexBasis: 'auto',
+    minWidth: 0,
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    backgroundColor: 'transparent',
+  },
   card: {
     flexGrow: 1,
     flexBasis: 260,
