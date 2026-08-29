@@ -2,8 +2,8 @@
 
 How a finished novel leaves the editor and reaches a reader.
 
-Status: in progress. **R0 and R1 are implemented**; everything from R2 onward is
-still a proposal, alongside the parts marked **exists** in
+Status: in progress. **R0, R1 and R2 are implemented**; everything from R3 onward
+is still a proposal, alongside the parts marked **exists** in
 [Current state](#1-current-state).
 
 ---
@@ -772,7 +772,7 @@ the first stage that touches EAS and a device.
 **Done when:** a deliberately broken demo story lists its blockers, and a good
 one reports "ready to release".
 
-### R2 — Build and store a release
+### R2 — Build and store a release ✅
 
 - `lib/release/compile.ts` — freeze the payload; reuse `lib/story-backup/capture.ts`
   for asset collection and `lib/story-backup/hash.ts` for hashing; strip
