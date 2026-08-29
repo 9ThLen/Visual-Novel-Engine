@@ -7,7 +7,7 @@ import type {
   TimelineStep,
 } from '@/lib/engine/types';
 import type { AudioTrigger } from '@/lib/audio-types';
-import { getSceneRecordFromAccess, type SceneAccessSnapshot } from '@/lib/scene-access';
+import { getReaderSceneRecord, type SceneAccessSnapshot } from '@/lib/scene-access';
 
 export interface ReaderScene {
   id: string;
@@ -78,7 +78,7 @@ export function getReaderSceneFromAccess(
   storyId: string,
   sceneId: string,
 ): ReaderScene | undefined {
-  const record = getSceneRecordFromAccess(snapshot, storyId, sceneId);
+  const record = getReaderSceneRecord(snapshot, storyId, sceneId);
   return record ? toStableReaderScene(record) : undefined;
 }
 

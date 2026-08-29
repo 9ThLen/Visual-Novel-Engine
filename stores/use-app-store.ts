@@ -15,6 +15,8 @@ import type { SceneRecord } from '@/lib/engine/types';
 import {
   getSceneRecordMapForStoryFromAccess,
   getSceneRecordFromAccess,
+  getReaderSceneRecord,
+  isReadingRelease,
   getSceneRecordsForStoryFromAccess,
   getStoryMetadataFromAccess,
 } from '@/lib/scene-access';
@@ -351,12 +353,16 @@ export const selectStoryMetadata = (storyId: string) => (state: AppState) =>
 export const selectCanonicalSceneRecord = (storyId: string, sceneId: string) => (state: AppState) =>
   getSceneRecordFromAccess(state, storyId, sceneId);
 export const selectReaderScene = (storyId: string, sceneId: string) => (state: AppState) => {
-  const record = getSceneRecordFromAccess(state, storyId, sceneId);
+  const record = getReaderSceneRecord(state, storyId, sceneId);
   return record ? toReaderScene(record) : null;
 };
 export const selectReaderStartSceneId =
-  (storyId: string, fallbackSceneId: string | null | undefined) => (state: AppState) =>
-    resolveCanonicalStartSceneId(state, storyId, fallbackSceneId) || fallbackSceneId;
+  (storyId: string, fallbackSceneId: string | null | undefined) => (state: AppState) => {
+    // A release names its own opening scene. Resolving against the working copy
+    // could start the reader on a scene the author added after publishing.
+    if (isReadingRelease(state, storyId)) return state.readerRelease?.startSceneId ?? fallbackSceneId;
+    return resolveCanonicalStartSceneId(state, storyId, fallbackSceneId) || fallbackSceneId;
+  };
 export const selectSceneRecordMapForStory = (storyId: string) => (state: AppState) =>
   getSceneRecordMapForStoryFromAccess(state, storyId);
 export const selectSceneRecordsForStory = (storyId: string) => (state: AppState) =>

@@ -13,6 +13,7 @@ import {
   deleteRelease as deleteStoredRelease,
   listReleases,
   readReleaseManifest,
+  readReleasePayload,
   setReleasePublished as setStoredReleasePublished,
   type ReleaseMeta,
 } from '@/lib/release/release-storage';
@@ -29,6 +30,14 @@ export interface ReleasesSlice {
   loadPublishedReleases: () => Promise<void>;
   setReleasePublished: (storyId: string, releaseId: string, published: boolean) => Promise<void>;
   deleteRelease: (storyId: string, releaseId: string) => Promise<void>;
+  /**
+   * Load a frozen release for the reader. Returns false when the release is
+   * gone or damaged, so the caller can fall back rather than open an empty
+   * reader.
+   */
+  openReleaseForReading: (storyId: string, releaseId?: string) => Promise<boolean>;
+  /** Leave release playback; the reader falls back to the working copy. */
+  closeReleaseReading: () => void;
 }
 
 export function createReleasesSlice(
@@ -59,6 +68,33 @@ export function createReleasesSlice(
       }
       set({ releaseShowcaseByStory: published });
     },
+
+    openReleaseForReading: async (storyId, releaseId) => {
+      const releases = await listReleases(storage, storyId);
+      const target = releaseId
+        ? releases.find((release) => release.releaseId === releaseId)
+        : currentPublishedRelease(releases);
+      if (!target) return false;
+
+      const [manifest, payload] = await Promise.all([
+        readReleaseManifest(storage, storyId, target.releaseId),
+        readReleasePayload(storage, storyId, target.releaseId),
+      ]);
+      if (!manifest || !payload) return false;
+
+      set({
+        readerRelease: {
+          storyId,
+          releaseId: target.releaseId,
+          version: target.version,
+          startSceneId: manifest.story.startSceneId,
+          scenes: payload.scenes,
+        },
+      });
+      return true;
+    },
+
+    closeReleaseReading: () => set({ readerRelease: null }),
 
     setReleasePublished: async (storyId, releaseId, published) => {
       cache(storyId, await setStoredReleasePublished(storage, storyId, releaseId, published));

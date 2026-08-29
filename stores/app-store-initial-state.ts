@@ -20,6 +20,7 @@ export const initialAppState: AppState = {
   endingsReachedByStory: {},
   releasesByStory: {},
   releaseShowcaseByStory: {},
+  readerRelease: null,
   lastEditedSceneByStory: {},
   readerBlockingMedia: null,
   readerSceneThumbnailUri: undefined,

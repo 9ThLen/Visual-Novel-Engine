@@ -25,6 +25,7 @@ const storeVal: any = {
   mediaAssetIdsByStory: {},
   releasesByStory: {},
   releaseShowcaseByStory: {},
+  readerRelease: null,
   language: 'en',
   readerSceneThumbnailUri: undefined,
   syncAutoSave: mockFn(),
@@ -40,6 +41,8 @@ const storeVal: any = {
   createStorySnapshot: mockFn().mockResolvedValue(undefined),
   loadReleasesForStory: mockFn().mockResolvedValue([]),
   loadPublishedReleases: mockFn().mockResolvedValue(undefined),
+  openReleaseForReading: mockFn().mockResolvedValue(false),
+  closeReleaseReading: mockFn(),
   setReleasePublished: mockFn().mockResolvedValue(undefined),
   deleteRelease: mockFn().mockResolvedValue(undefined),
 };

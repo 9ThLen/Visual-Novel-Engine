@@ -7,6 +7,7 @@ import type { SceneRecordContentUpdates } from '@/lib/scene-operations';
 import type { SnapshotMeta } from '@/lib/story-snapshots';
 import type { ReleaseMeta } from '@/lib/release/release-storage';
 import type { ReleaseShowcaseSource } from '@/lib/showcase/release-showcase';
+import type { ReaderReleaseSource } from '@/lib/scene-access';
 import type { Character } from '@/lib/character-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { AudioLibraryItem } from '@/lib/audio-types';
@@ -54,6 +55,12 @@ export interface AppState {
    * draft and has no card at all.
    */
   releaseShowcaseByStory: Record<string, ReleaseShowcaseSource>;
+  /**
+   * The frozen release the reader is playing, if any. Ephemeral: it is not
+   * persisted, because a reader that resumed into a release the author has
+   * since deleted would have nothing to play.
+   */
+  readerRelease: ReaderReleaseSource | null;
   /**
    * storyId → the scene the author last had open in the document editor. Drives
    * the studio's «Continue»; a stale id is harmless because the shelf falls back
@@ -140,6 +147,8 @@ export interface AppActions {
   restoreStorySnapshot: (storyId: string, snapshotId: string) => Promise<boolean>;
   loadReleasesForStory: (storyId: string) => Promise<ReleaseMeta[]>;
   loadPublishedReleases: () => Promise<void>;
+  openReleaseForReading: (storyId: string, releaseId?: string) => Promise<boolean>;
+  closeReleaseReading: () => void;
   setReleasePublished: (storyId: string, releaseId: string, published: boolean) => Promise<void>;
   deleteRelease: (storyId: string, releaseId: string) => Promise<void>;
 }

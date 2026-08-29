@@ -31,6 +31,7 @@ import { buildShowcaseStoriesFromReleases, posterAssetFor } from '@/lib/showcase
 import { SHOWCASE_COLORS } from '@/lib/showcase/showcase-colors';
 import { buildShelves, type ShowcaseStory } from '@/lib/showcase/story-showcase';
 import { buttonFeedback } from '@/lib/ui-feedback';
+import { showToast } from '@/lib/toast-store';
 import { useAppStore } from '@/stores/use-app-store';
 
 const WEB_BANNER_MAX_HEIGHT = 480;
@@ -51,6 +52,7 @@ export default function HomeScreen() {
   const storyCount = useAppStore((state) => state.storiesMetadata.length);
   const releaseShowcaseByStory = useAppStore((state) => state.releaseShowcaseByStory);
   const loadPublishedReleases = useAppStore((state) => state.loadPublishedReleases);
+  const openReleaseForReading = useAppStore((state) => state.openReleaseForReading);
   const saveSlots = useAppStore((state) => state.saveSlots);
   const endingsReachedByStory = useAppStore((state) => state.endingsReachedByStory);
 
@@ -90,8 +92,16 @@ export default function HomeScreen() {
   );
 
   const readStory = useCallback(
-    (story: ShowcaseStory) => {
+    async (story: ShowcaseStory) => {
       buttonFeedback();
+      // Load the frozen release before navigating: opening the reader first
+      // would show the working copy for a frame, which is the exact thing
+      // publishing is supposed to prevent.
+      const opened = await openReleaseForReading(story.id).catch(() => false);
+      if (!opened) {
+        showToast(t('showcase.releaseUnavailable'), 'error');
+        return;
+      }
       navigateWithViewTransition(() => {
         router.push({
           pathname: '/reader',
@@ -99,7 +109,7 @@ export default function HomeScreen() {
         });
       });
     },
-    [router],
+    [openReleaseForReading, router, t],
   );
 
   const captionFor = useCallback(
@@ -178,7 +188,7 @@ export default function HomeScreen() {
 
             <View style={styles.heroActions}>
               <Pressable
-                onPress={() => readStory(hero)}
+                onPress={() => { void readStory(hero); }}
                 accessibilityRole="button"
                 style={({ pressed }) => [styles.primaryButton, { opacity: pressed ? 0.85 : 1 }]}
               >

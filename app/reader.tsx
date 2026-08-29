@@ -22,7 +22,7 @@ import { parseResumeExisting } from '@/lib/reader-launch';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { buildNextPlaybackState, getReaderSceneStateThumbnailUri, getTimelineInteractiveObjects, normalizeRuntimeVariables, type ReaderTransitionEvent } from '@/lib/reader-runtime';
 import { normalizeUserSettings } from '@/lib/user-settings';
-import { createInMemorySceneAccess, getSceneRecordFromAccess } from '@/lib/scene-access';
+import { createReaderSceneAccess, getReaderSceneRecord } from '@/lib/scene-access';
 import { getReaderSceneRecordForNavigation } from '@/lib/reader-scene-cache';
 import { createPersistentStorage } from '@/lib/persistent-storage';
 import {
@@ -67,6 +67,13 @@ export default function ReaderScreen() {
   const rawSettings = useAppStore((s) => s.settings);
   const settings = useMemo(() => normalizeUserSettings(rawSettings), [rawSettings]);
   const hydrateReaderSceneWindow = useAppStore((s) => s.hydrateReaderSceneWindow);
+  const closeReleaseReading = useAppStore((s) => s.closeReleaseReading);
+
+  // Leaving the reader drops the frozen release. Keeping it would make the
+  // author's next preview of their own draft replay the published version
+  // instead — the reader is the only place a release is loaded, so it is the
+  // only place responsible for putting it down.
+  useEffect(() => closeReleaseReading, [closeReleaseReading]);
   // Bumped by loadGame. A slot can point at the scene already on screen, in
   // which case playbackState looks unchanged — this is the only signal that
   // playback was replaced and the scene has to start over.
@@ -288,7 +295,7 @@ export default function ReaderScreen() {
     // broken link, and that must not be recorded as an ending the reader saw.
     const endingSceneId = playbackState.currentSceneId;
     const liveSceneRecord = story?.id
-      ? getSceneRecordFromAccess(useAppStore.getState(), story.id, endingSceneId)
+      ? getReaderSceneRecord(useAppStore.getState(), story.id, endingSceneId)
       : null;
     const isTerminalScene = !!liveSceneRecord && !liveSceneRecord.connections.length;
     if (story?.id && endingSceneId && isTerminalScene) {
@@ -346,7 +353,7 @@ export default function ReaderScreen() {
       return false;
     }
     const appState = useAppStore.getState();
-    const sceneAccess = createInMemorySceneAccess(appState);
+    const sceneAccess = createReaderSceneAccess(appState);
     const targetSceneRecord = getReaderSceneRecordForNavigation(
       sceneAccess,
       story.id,

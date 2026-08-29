@@ -96,6 +96,12 @@ export function createSceneSlice(
     },
 
     hydrateReaderSceneWindow: async (storyId, sceneId, maxPrefetchScenes = 4) => {
+      // A release is loaded whole and never windowed: prefetching from the
+      // author's stored scenes would pull the working copy back in under the
+      // frozen one.
+      const release = get().readerRelease;
+      if (release && release.storyId === storyId) return !!release.scenes[sceneId];
+
       if (get().sceneRecordHydration[storyId] === 'full') {
         return !!get().sceneRecordsByStory[storyId]?.[sceneId];
       }

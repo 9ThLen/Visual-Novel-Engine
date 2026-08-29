@@ -38,6 +38,7 @@ import {
 } from '@/lib/showcase/showcase-adapter';
 import { SHOWCASE_COLORS } from '@/lib/showcase/showcase-colors';
 import { buttonFeedback } from '@/lib/ui-feedback';
+import { showToast } from '@/lib/toast-store';
 import { useAppStore } from '@/stores/use-app-store';
 
 const WEB_BANNER_MAX_HEIGHT = 360;
@@ -67,6 +68,7 @@ export default function StoryPageScreen() {
 
   const release = useAppStore((state) => (storyId ? state.releaseShowcaseByStory[storyId] : undefined));
   const loadPublishedReleases = useAppStore((state) => state.loadPublishedReleases);
+  const openReleaseForReading = useAppStore((state) => state.openReleaseForReading);
 
   useEffect(() => {
     void loadPublishedReleases().catch(() => undefined);
@@ -144,16 +146,21 @@ export default function StoryPageScreen() {
     );
   }, [router, storyId]);
 
-  const readStory = useCallback(() => {
+  const readStory = useCallback(async () => {
     if (!story) return;
     buttonFeedback();
+    const opened = await openReleaseForReading(story.id).catch(() => false);
+    if (!opened) {
+      showToast(t('showcase.releaseUnavailable'), 'error');
+      return;
+    }
     navigateWithViewTransition(() => {
       router.push({
         pathname: '/reader',
         params: { storyId: story.id, resume: story.hasStarted ? '1' : '0' },
       });
     });
-  }, [router, story]);
+  }, [openReleaseForReading, router, story, t]);
 
   const aggregate = useMemo(() => computeAggregate(reviews), [reviews]);
 
