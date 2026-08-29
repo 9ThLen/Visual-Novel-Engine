@@ -15,6 +15,8 @@ import { ScreenContainer } from '@/components/screen-container';
 import { ResolvedAssetImage } from '@/components/resolved-asset-image';
 import { AssetUsageCard } from '@/components/story-home/AssetUsageCard';
 import { ChoiceStatisticsCard } from '@/components/story-home/ChoiceStatisticsCard';
+import { ReleaseCard, type PublishRequest } from '@/components/story-home/ReleaseCard';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { ReleaseChecklistCard } from '@/components/story-home/ReleaseChecklistCard';
 import { StoryHealthCard } from '@/components/story-home/StoryHealthCard';
 import { StorySnapshotsCard } from '@/components/story-home/StorySnapshotsCard';
@@ -38,6 +40,8 @@ import {
 import { computeStoryStats } from '@/lib/story-stats';
 import { runStoryDoctor } from '@/lib/story-doctor';
 import { runReleasePreflight } from '@/lib/release/preflight';
+import { highestReleaseVersion, type ReleaseMeta } from '@/lib/release/release-storage';
+import { publishStoryRelease } from '@/lib/release/service';
 import { createPersistentStorage } from '@/lib/persistent-storage';
 import {
   EMPTY_STORY_COVERAGE,
@@ -51,8 +55,16 @@ import { getPlaybackAudioLibraryPure } from '@/lib/audio-library';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
 import { getStoryGalleryImageAssets } from '@/lib/story-image-library';
 import type { StoryMetadata } from '@/lib/story-domain';
+import {
+  CONTENT_RATINGS,
+  sanitizeStoryLanguages,
+  type ContentRating,
+} from '@/lib/story-publication';
 import type { SceneRecord } from '@/lib/engine/types';
 import { selectSceneRecordsForStory, useAppStore } from '@/stores/use-app-store';
+
+/** Stable identity so the store selector cannot loop by returning a new []. */
+const EMPTY_RELEASES: ReleaseMeta[] = [];
 
 const rabbitsPattern = require('../assets/background/bg-rabbits-pattern-soft.png');
 const rabbitsPatternAsset = Asset.fromModule(rabbitsPattern);
@@ -267,6 +279,27 @@ export default function StoryHomeScreen() {
     if (next !== (story.author ?? '')) updateStoryMetadata(story.id, { author: next });
   }, [story, authorDraft, updateStoryMetadata]);
 
+  const [languagesDraft, setLanguagesDraft] = useState('');
+  useEffect(() => {
+    setLanguagesDraft((story?.languages ?? []).join(', '));
+  }, [story?.languages]);
+
+  const commitLanguages = useCallback(() => {
+    if (!story) return;
+    // Sanitizing here rather than on every keystroke lets the author type
+    // "uk, en" without the half-finished "u" vanishing under them.
+    const next = sanitizeStoryLanguages(languagesDraft.split(','));
+    setLanguagesDraft((next ?? []).join(', '));
+    if ((next ?? []).join(',') !== (story.languages ?? []).join(',')) {
+      updateStoryMetadata(story.id, { languages: next });
+    }
+  }, [languagesDraft, story, updateStoryMetadata]);
+
+  const commitContentRating = useCallback((rating: ContentRating) => {
+    if (!story) return;
+    updateStoryMetadata(story.id, { contentRating: rating });
+  }, [story, updateStoryMetadata]);
+
   const commitDescription = useCallback(() => {
     if (!story) return;
     const next = descriptionDraft.trim();
@@ -368,6 +401,39 @@ export default function StoryHomeScreen() {
   const characterLibrary = useAppStore((state) =>
     storyId ? state.characterLibraries[storyId] ?? [] : [],
   );
+  const releases = useAppStore((state) => (storyId ? state.releasesByStory[storyId] ?? EMPTY_RELEASES : EMPTY_RELEASES));
+  const loadReleasesForStory = useAppStore((state) => state.loadReleasesForStory);
+  const setReleasePublished = useAppStore((state) => state.setReleasePublished);
+  const [releasing, setReleasing] = useState(false);
+
+  useEffect(() => {
+    if (!storyId) return;
+    void loadReleasesForStory(storyId).catch(() => undefined);
+  }, [loadReleasesForStory, storyId]);
+
+  const handlePublish = useCallback(async (request: PublishRequest) => {
+    if (!storyId) return;
+    setReleasing(true);
+    try {
+      // Publishing goes through the service rather than the store: compiling
+      // reads the store, so a store action that compiled would close a cycle.
+      const meta = await publishStoryRelease({ storyId, ...request });
+      await loadReleasesForStory(storyId);
+      showToast(t('release.published', { version: meta.version }), 'success');
+    } catch (error) {
+      showToast(
+        t('release.failed', { reason: error instanceof Error ? error.message : String(error) }),
+        'error',
+      );
+    } finally {
+      setReleasing(false);
+    }
+  }, [loadReleasesForStory, storyId, t]);
+
+  const handleSetPublished = useCallback((releaseId: string, published: boolean) => {
+    if (!storyId) return;
+    void setReleasePublished(storyId, releaseId, published).catch(() => undefined);
+  }, [setReleasePublished, storyId]);
   const audioLibraries = useAppStore((state) => state.audioLibraries);
   const mediaLibrary = useAppStore((state) => state.mediaLibrary);
   const imageAssetIdsByStory = useAppStore((state) => state.imageAssetIdsByStory);
@@ -403,9 +469,10 @@ export default function StoryHomeScreen() {
           audioAssets: storyDoctorAudioAssets,
           characters: characterLibrary,
           channel: 'both',
+          previousVersion: highestReleaseVersion(releases),
         })
       : null,
-    [characterLibrary, sceneRecords, story, storyDoctorAudioAssets, storyImageAssets],
+    [characterLibrary, releases, sceneRecords, story, storyDoctorAudioAssets, storyImageAssets],
   );
   const coverageReport = useMemo(
     () => computeCoverageReport(sceneRecords, coverage),
@@ -578,6 +645,36 @@ export default function StoryHomeScreen() {
         style={[styles.input, styles.textArea, { backgroundColor: colors.background, borderColor: inputBorder('description'), color: colors.foreground }]}
       />
 
+      <Text style={[styles.fieldLabel, { color: colors.muted }]}>{t('storyHome.contentRatingLabel')}</Text>
+      <SegmentedControl<ContentRating>
+        options={CONTENT_RATINGS.map((rating) => ({
+          value: rating,
+          label: t(`storyHome.contentRating.${rating}`),
+        }))}
+        value={story.contentRating ?? 'everyone'}
+        onChange={commitContentRating}
+        accessibilityLabel={t('storyHome.contentRatingLabel')}
+        segmentMinWidth={80}
+      />
+      {story.contentRating ? null : (
+        <Text style={[styles.emptyHint, { color: colors.muted }]}>{t('storyHome.contentRatingUnset')}</Text>
+      )}
+
+      <Text style={[styles.fieldLabel, { color: colors.muted }]}>{t('storyHome.languagesLabel')}</Text>
+      <TextInput
+        value={languagesDraft}
+        onChangeText={setLanguagesDraft}
+        onFocus={() => setFocusedField('languages')}
+        onBlur={() => {
+          setFocusedField(null);
+          commitLanguages();
+        }}
+        autoCapitalize="none"
+        placeholder={t('storyHome.languagesPlaceholder')}
+        placeholderTextColor={colors.muted}
+        style={[styles.input, { backgroundColor: colors.background, borderColor: inputBorder('languages'), color: colors.foreground }]}
+      />
+
       <Text style={[styles.fieldLabel, { color: colors.muted }]}>{t('storyHome.tagsLabel')}</Text>
       {tags.length > 0 ? (
         <View style={styles.tagRow}>
@@ -625,6 +722,19 @@ export default function StoryHomeScreen() {
   // One readiness surface, and it is the release gate: the old five-item
   // checklist asked a strict subset of the same questions, so two cards on one
   // screen could only disagree in confusing ways.
+  const releaseCard = hydrated ? (
+    <ReleaseCard
+      colors={colors}
+      story={story}
+      releases={releases}
+      preflight={releasePreflight}
+      busy={releasing}
+      onPublish={handlePublish}
+      onSetPublished={handleSetPublished}
+      style={[styles.card, cardBase, shadowCard]}
+    />
+  ) : null;
+
   const readinessCard = hydrated && releasePreflight ? (
     <ReleaseChecklistCard
       colors={colors}
@@ -797,6 +907,7 @@ export default function StoryHomeScreen() {
         <View style={wide ? styles.mainGridRow : styles.mainGridColumn}>
           <View style={wide ? styles.mainLeft : undefined}>{detailsCard}</View>
           <View style={[wide ? styles.mainRight : undefined, styles.rightStack]}>
+            {releaseCard}
             {readinessCard}
             {imageLibraryCard}
           </View>

@@ -51,6 +51,7 @@ import { createPlaybackSlice } from '@/stores/app-store-slices/playback-slice';
 import { createPreferencesSlice } from '@/stores/app-store-slices/preferences-slice';
 import { createSavesSlice } from '@/stores/app-store-slices/saves-slice';
 import { createSceneSlice } from '@/stores/app-store-slices/scene-slice';
+import { createReleasesSlice } from '@/stores/app-store-slices/releases-slice';
 import { createSnapshotsSlice } from '@/stores/app-store-slices/snapshots-slice';
 import { createStorySlice } from '@/stores/app-store-slices/story-slice';
 
@@ -104,6 +105,7 @@ export const useAppStore = create<AppStore>()(
       ...createStorySlice(set),
       ...createSceneSlice(set, get),
       ...createSnapshotsSlice(set, get),
+      ...createReleasesSlice(set),
 
       migrateFromLegacyKeys: async () => {
         try {

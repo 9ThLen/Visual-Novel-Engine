@@ -23,6 +23,7 @@ const storeVal: any = {
   characterLibraries: {},
   imageAssetIdsByStory: {},
   mediaAssetIdsByStory: {},
+  releasesByStory: {},
   language: 'en',
   readerSceneThumbnailUri: undefined,
   syncAutoSave: mockFn(),
@@ -36,6 +37,9 @@ const storeVal: any = {
   removeMediaAssetFromStory: mockFn(),
   migrateFromLegacyKeys: mockFn(),
   createStorySnapshot: mockFn().mockResolvedValue(undefined),
+  loadReleasesForStory: mockFn().mockResolvedValue([]),
+  setReleasePublished: mockFn().mockResolvedValue(undefined),
+  deleteRelease: mockFn().mockResolvedValue(undefined),
 };
 
 export const persistAppStoreStateNow: any = mockFn().mockResolvedValue(undefined);

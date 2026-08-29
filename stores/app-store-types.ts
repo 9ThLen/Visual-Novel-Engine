@@ -5,6 +5,7 @@ import type { SaveSlot, StoryMetadata } from '@/lib/story-domain';
 import type { SceneRecord, SceneConnection } from '@/lib/engine/types';
 import type { SceneRecordContentUpdates } from '@/lib/scene-operations';
 import type { SnapshotMeta } from '@/lib/story-snapshots';
+import type { ReleaseMeta } from '@/lib/release/release-storage';
 import type { Character } from '@/lib/character-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { AudioLibraryItem } from '@/lib/audio-types';
@@ -41,6 +42,12 @@ export interface AppState {
   mediaAssetIdsByStory: StoryMediaAssetIds;
   /** storyId → ids of terminal scenes the reader has reached. */
   endingsReachedByStory: Record<string, string[]>;
+  /**
+   * storyId → its frozen releases, newest version first. A read-through cache
+   * of the release storage keys, not persisted app state: the artifacts on
+   * disk are the source of truth, and this is only what the UI has looked at.
+   */
+  releasesByStory: Record<string, ReleaseMeta[]>;
   /**
    * storyId → the scene the author last had open in the document editor. Drives
    * the studio's «Continue»; a stale id is harmless because the shelf falls back
@@ -125,6 +132,9 @@ export interface AppActions {
     automatic?: boolean,
   ) => Promise<SnapshotMeta | null>;
   restoreStorySnapshot: (storyId: string, snapshotId: string) => Promise<boolean>;
+  loadReleasesForStory: (storyId: string) => Promise<ReleaseMeta[]>;
+  setReleasePublished: (storyId: string, releaseId: string, published: boolean) => Promise<void>;
+  deleteRelease: (storyId: string, releaseId: string) => Promise<void>;
 }
 
 export type AppStore = AppState & AppActions;
