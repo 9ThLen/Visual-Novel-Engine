@@ -15,6 +15,7 @@ import { ScreenContainer } from '@/components/screen-container';
 import { ResolvedAssetImage } from '@/components/resolved-asset-image';
 import { AssetUsageCard } from '@/components/story-home/AssetUsageCard';
 import { ChoiceStatisticsCard } from '@/components/story-home/ChoiceStatisticsCard';
+import { ReleaseChecklistCard } from '@/components/story-home/ReleaseChecklistCard';
 import { StoryHealthCard } from '@/components/story-home/StoryHealthCard';
 import { StorySnapshotsCard } from '@/components/story-home/StorySnapshotsCard';
 import { ConfirmDialog } from '@/components/ui';
@@ -36,6 +37,7 @@ import {
 } from '@/lib/story-backup/service';
 import { computeStoryStats } from '@/lib/story-stats';
 import { runStoryDoctor } from '@/lib/story-doctor';
+import { runReleasePreflight } from '@/lib/release/preflight';
 import { createPersistentStorage } from '@/lib/persistent-storage';
 import {
   EMPTY_STORY_COVERAGE,
@@ -388,6 +390,22 @@ export default function StoryHomeScreen() {
       characters: characterLibrary,
       metadata: story ?? undefined,
     }),
+    [characterLibrary, sceneRecords, story, storyDoctorAudioAssets, storyImageAssets],
+  );
+  // Preflight runs the story doctor itself, so it is memoized on the same
+  // inputs rather than handed the report above: the two must never disagree
+  // about which story they described.
+  const releasePreflight = useMemo(
+    () => story
+      ? runReleasePreflight({
+          metadata: story,
+          scenes: sceneRecords,
+          mediaAssets: storyImageAssets,
+          audioAssets: storyDoctorAudioAssets,
+          characters: characterLibrary,
+          channel: 'both',
+        })
+      : null,
     [characterLibrary, sceneRecords, story, storyDoctorAudioAssets, storyImageAssets],
   );
   const coverageReport = useMemo(
@@ -869,6 +887,16 @@ export default function StoryHomeScreen() {
                 style={[styles.standaloneCard, shadowCard]}
               />
             </View>
+            {releasePreflight ? (
+              <View style={styles.analyticsLane}>
+                <ReleaseChecklistCard
+                  colors={colors}
+                  report={releasePreflight}
+                  onOpenScene={handleOpenHealthScene}
+                  style={[styles.standaloneCard, shadowCard]}
+                />
+              </View>
+            ) : null}
             <View style={styles.analyticsLane}>
               <AssetUsageCard
                 colors={colors}
