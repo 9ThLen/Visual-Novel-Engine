@@ -9,7 +9,23 @@ Freezing is the point. An author who publishes v1.0 and then rewrites chapter
 nine has not changed what readers are reading; they have a draft and a release,
 and the release does not move until they publish again.
 
-## Publishing a playable web bundle
+## Exporting from inside the app
+
+Open a story's project page, publish a release, and use **Export as a playable
+folder**. The studio downloads the player it was deployed with, injects the
+story, and hands back a zip anyone can unzip and open — no command line, no
+account, no app.
+
+This needs a deployment built by `pnpm build:web`, which writes
+`player-shell-<version>.zip` and `player-shell.json` beside the studio. A
+deployment without them says so rather than producing a folder that would not
+play, and so does one whose shell came from a different engine version: the
+shell carries the reader, and a story exported into a mismatched one would be
+played by code that never saw its schema.
+
+Web only. On a phone or a desktop build there is no shell to download.
+
+## Publishing from the command line
 
 ```bash
 pnpm export:story --release <file.vnerelease> --out <dir>
@@ -60,12 +76,14 @@ republishing does not invalidate it.
 
 ## Making a release file
 
-The app is the real producer — freezing a story is
-[`lib/release/compile.ts`](../lib/release/compile.ts) and writing the container
-is [`lib/release/package.ts`](../lib/release/package.ts). Until export from
-inside the app lands (R6 in [`RELEASE-PLAN.md`](../RELEASE-PLAN.md)), there is a
-script that produces one from a story JSON, using the same writer and the same
-manifest parser:
+The app is the real producer — publishing a story freezes it
+([`lib/release/compile.ts`](../lib/release/compile.ts)) and stores it, and the
+in-app export above turns a stored release into a folder without a `.vnerelease`
+file ever existing on disk.
+
+A `.vnerelease` file is what the command-line path takes. This script writes one
+from a story JSON, using the same writer and the same manifest parser the app
+uses:
 
 ```bash
 pnpm demo:release --story assets/demo-story-advanced.json \
@@ -76,6 +94,18 @@ pnpm demo:release --story assets/demo-story-advanced.json \
 `--media` packages a file and points the opening scene at it through an
 `idb-media://` reference — the shape a real release has, and the case the legacy
 exporter could never publish.
+
+## What the shell is
+
+`pnpm build:web` produces two builds. `dist/` is the studio; inside it sits the
+player build, zipped, as `player-shell-<version>.zip` — about 3.6 MB.
+
+The shell carries the app and the icon fonts it draws with, and **not**
+`assets/assets/`: the project's own art, every demo background and sample track,
+110 MB of it. A release packages the media its own story uses, bundled art
+included, so a player built for one novel has no use for another's. With it, the
+shell was 116 MB and an author downloaded all of it to export a story that
+needed six.
 
 ## What ends up in the bundle
 
@@ -100,6 +130,10 @@ existing bundle's config can be inspected or replaced by hand.
 
 - **Nothing is re-encoded.** A release weighs what its media weighs; see
   `VIDEO-PLAN.md`. The app reports the size and the author decides.
+- **In-app export holds the bundle in memory and zips on the main thread.** A
+  browser tab has no filesystem to stream through, and the production CSP
+  forbids the blob workers fflate's async API needs. The tab pauses while a
+  bundle is assembled; for a very large novel, use the command line.
 - **`file://` does not work.** The production Content-Security-Policy written by
   `scripts/lib/harden-web-output.mjs` is `default-src 'self'`, which a file
   origin satisfies nowhere. Opening a bundle by double-clicking `index.html`

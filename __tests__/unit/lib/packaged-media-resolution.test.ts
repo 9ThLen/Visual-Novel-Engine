@@ -7,7 +7,9 @@
  * `index.html`. These cases pin the one hop between the two.
  */
 import {
+  getBundledAsset,
   getPackagedMediaMap,
+  getPackagedMediaUri,
   resetAssetResolverForTests,
   resolveAssetUri,
   setPackagedMediaMap,
@@ -85,5 +87,45 @@ describe('packaged media resolution', () => {
   it('treats an empty map as no map at all', () => {
     setPackagedMediaMap({});
     expect(getPackagedMediaMap()).toBeNull();
+  });
+});
+
+describe('packaged media and the app’s own bundled assets', () => {
+  const BUNDLED = 'assets/charakters/char-guide.png';
+
+  beforeEach(() => resetAssetResolverForTests());
+  afterEach(() => resetAssetResolverForTests());
+
+  it('normally answers a bundled reference from the compiled asset map', () => {
+    expect(getBundledAsset(BUNDLED)).not.toBeNull();
+  });
+
+  /**
+   * The defect this exists for: character sprites are drawn through
+   * `getBundledAsset` and nothing else, so a published bundle — which ships no
+   * `assets/` directory at all — rendered its backgrounds and none of its
+   * people. Standing aside here is what sends those callers to the resolver,
+   * which does read the packaged map.
+   */
+  it('stands aside when the bundle carries its own copy', () => {
+    setPackagedMediaMap({ [BUNDLED]: 'media/abc.png' });
+    expect(getBundledAsset(BUNDLED)).toBeNull();
+  });
+
+  it('offers the packaged file synchronously, for callers that cannot await', () => {
+    setPackagedMediaMap({ [BUNDLED]: 'media/abc.png' });
+    expect(getPackagedMediaUri(BUNDLED)).toContain('media/abc.png');
+    expect(getPackagedMediaUri('assets/never-packaged.png')).toBeNull();
+    expect(getPackagedMediaUri(undefined)).toBeNull();
+  });
+
+  it('accepts the bundle:// form the resolver also accepts', () => {
+    setPackagedMediaMap({ [BUNDLED]: 'media/abc.png' });
+    expect(getPackagedMediaUri(`bundle://${BUNDLED}`)).toContain('media/abc.png');
+  });
+
+  it('leaves the compiled asset map alone for references the bundle lacks', () => {
+    setPackagedMediaMap({ 'idb-media://cover': 'media/cover.png' });
+    expect(getBundledAsset(BUNDLED)).not.toBeNull();
   });
 });

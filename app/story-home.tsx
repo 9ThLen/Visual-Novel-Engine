@@ -41,7 +41,13 @@ import { runStoryDoctor } from '@/lib/story-doctor';
 import { runReleasePreflight } from '@/lib/release/preflight';
 import type { ReleaseChannel } from '@/lib/release/types';
 import { highestReleaseVersion, type ReleaseMeta } from '@/lib/release/release-storage';
-import { publishStoryRelease } from '@/lib/release/service';
+import { publishStoryRelease, resolveEngineVersion } from '@/lib/release/service';
+import { savePlayerBundle } from '@/lib/release/bundle-file';
+import {
+  buildPlayerBundle,
+  PlayerShellUnavailableError,
+  type PlayerBundleProgress,
+} from '@/lib/release/shell-build';
 import { createPersistentStorage } from '@/lib/persistent-storage';
 import {
   EMPTY_STORY_COVERAGE,
@@ -333,6 +339,10 @@ export default function StoryHomeScreen() {
    * as an app should not be blocked by what a storefront listing would need.
    */
   const [releaseChannel, setReleaseChannel] = useState<ReleaseChannel>('both');
+  const [exportProgress, setExportProgress] = useState<PlayerBundleProgress | null>(null);
+  const [exportMessage, setExportMessage] = useState<
+    { tone: 'error' | 'done'; text: string } | null
+  >(null);
 
   useEffect(() => {
     if (!storyId) return;
@@ -357,6 +367,50 @@ export default function StoryHomeScreen() {
       setReleasing(false);
     }
   }, [loadReleasesForStory, storyId, t]);
+
+  /**
+   * The shell's own error messages are developer-facing and in one language, so
+   * the reason is translated here from the *kind* of problem rather than passed
+   * through as text.
+   */
+  const handleExportBundle = useCallback(async (releaseId: string) => {
+    if (!storyId) return;
+    setExportMessage(null);
+    setExportProgress('preparing');
+    try {
+      const bundle = await buildPlayerBundle({
+        storyId,
+        releaseId,
+        engineVersion: resolveEngineVersion(),
+        onProgress: setExportProgress,
+      });
+      const saved = await savePlayerBundle(bundle.fileName, bundle.bytes);
+      // Closing the save dialog is a decision; saying nothing is the right
+      // answer to it.
+      if (saved) {
+        setExportMessage({ tone: 'done', text: t('release.export.done', { fileName: bundle.fileName }) });
+      }
+    } catch (error) {
+      if (error instanceof PlayerShellUnavailableError) {
+        setExportMessage({
+          tone: 'error',
+          text: error.problem.kind === 'version-mismatch'
+            ? t('release.export.versionMismatch', {
+                engineVersion: error.problem.engineVersion,
+                shellVersion: error.problem.shellVersion,
+              })
+            : t('release.export.noShell'),
+        });
+      } else {
+        setExportMessage({
+          tone: 'error',
+          text: error instanceof Error ? error.message : String(error),
+        });
+      }
+    } finally {
+      setExportProgress(null);
+    }
+  }, [storyId, t]);
 
   const handleSetPublished = useCallback((releaseId: string, published: boolean) => {
     if (!storyId) return;
@@ -1143,6 +1197,9 @@ export default function StoryHomeScreen() {
             busy={releasing}
             onPublish={handlePublish}
             onSetPublished={handleSetPublished}
+            onExportBundle={Platform.OS === 'web' ? (releaseId) => void handleExportBundle(releaseId) : undefined}
+            exportProgress={exportProgress}
+            exportMessage={exportMessage}
             style={[styles.band, bandSurface, shadowCard]}
           />
 

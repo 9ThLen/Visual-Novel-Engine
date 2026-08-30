@@ -35,18 +35,22 @@ import { collectStoryAssetRefs } from './lib/collect-story-assets.mjs';
 import { hardenWebOutput } from './lib/harden-web-output.mjs';
 import { validateStoryGraph } from './lib/validate-story-graph.mjs';
 
-import {
-  buildReleaseAssetMap,
-  releaseObjectFileName,
-  RELEASE_MEDIA_DIR,
-} from '@/lib/release/asset-map';
+import { releaseObjectFileName, RELEASE_MEDIA_DIR } from '@/lib/release/asset-map';
 import { extractReleaseArchive, readReleaseManifest } from '@/lib/release/package';
+import {
+  buildPlayerBootConfig,
+  findUnpackagedBundledReferences,
+  inlinePlayerConfig as inlineIntoHtml,
+  readInlinedPlayerConfig,
+  PLAYER_BUNDLE_HTML_FILES,
+  PLAYER_CONFIG_VERSION,
+  type PlayerBootConfig,
+} from '@/lib/release/player-bundle';
 import type { ReleaseManifestV1 } from '@/lib/release/types';
 import type {
   StoryArchiveBinarySource,
   StoryBackupAsset,
 } from '@/lib/story-backup/types';
-import { PLAYER_CONFIG_GLOBAL, PLAYER_CONFIG_VERSION } from '@/lib/player-mode';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
@@ -320,13 +324,8 @@ function copyBuild(distPath: string, outArg: string): string {
   return outPath;
 }
 
-interface PlayerConfigFile {
-  version: number;
-  generatedAt: string;
-  story: unknown;
-  assets?: Record<string, string>;
-  release?: { releaseId: string; version: string; releasedAt: string };
-}
+/** The legacy `--story` path has no release block; everything else is shared. */
+type PlayerConfigFile = PlayerBootConfig | Omit<PlayerBootConfig, 'release'>;
 
 function writePlayerConfig(outPath: string, config: PlayerConfigFile): string {
   const file = path.join(outPath, 'player-config.json');
@@ -343,25 +342,20 @@ function writePlayerConfig(outPath: string, config: PlayerConfigFile): string {
  * from — three ways for a folder that "looks fine" to open on an empty screen.
  * Inlined, the config is simply there before the first paint.
  *
- * `<` is escaped so the payload cannot close the surrounding script tag, and the
- * paragraph separators because a bare U+2028 is a line terminator in a script
- * body but legal inside a JSON string.
+ * The escaping and the tag shape come from `lib/release/player-bundle.ts`, which
+ * the in-app exporter uses too: the two must produce the same bundle.
  */
 function inlinePlayerConfig(outPath: string, config: PlayerConfigFile): void {
-  const literal = JSON.stringify(config)
-    .replace(/</g, '\\u003c')
-    .replace(/\u2028/g, '\\u2028')
-    .replace(/\u2029/g, '\\u2029');
-  const tag = `<script data-vne-player-config>window.${PLAYER_CONFIG_GLOBAL}=${literal}</script>`;
-
-  for (const name of ['index.html', '404.html']) {
+  for (const name of PLAYER_BUNDLE_HTML_FILES) {
     const file = path.join(outPath, name);
     if (!fs.existsSync(file)) continue;
-    let html = fs.readFileSync(file, 'utf8');
-    html = html.replace(/<script data-vne-player-config>[\s\S]*?<\/script>/g, '');
-    if (!html.includes('</head>')) fail(`Cannot inline the player config without </head>: ${file}`);
-    html = html.replace('</head>', `${tag}</head>`);
-    fs.writeFileSync(file, html);
+    try {
+      fs.writeFileSync(file, inlineIntoHtml(fs.readFileSync(file, 'utf8'), config as PlayerBootConfig));
+    } catch (error) {
+      fail(`Could not inline the player config into ${name}`, [
+        error instanceof Error ? error.message : String(error),
+      ]);
+    }
   }
 }
 
@@ -461,26 +455,23 @@ async function exportFromRelease(args: Args): Promise<void> {
     fail('Could not unpack the release', [error instanceof Error ? error.message : String(error)]);
   }
 
-  const config: PlayerConfigFile = {
-    version: PLAYER_CONFIG_VERSION,
-    generatedAt: new Date().toISOString(),
-    // The canonical story shape the reader seeds from: frozen scenes and cast
-    // out of the payload, everything else out of the manifest's story block.
-    story: {
-      ...story,
-      scenes: payload.scenes,
-      characterLibrary: payload.characters,
-      audioLibrary: payload.audioLibrary,
-    },
-    assets: buildReleaseAssetMap(manifest),
-    release: {
-      releaseId: release.releaseId,
-      version: release.version,
-      releasedAt: release.releasedAt,
-    },
-  };
+  // A shell built by `pnpm build:web` carries no `assets/` directory, so a
+  // reference the release did not package has nothing to resolve to. Warned
+  // rather than fatal: a `--dist` pointing at a full Expo build still has those
+  // files, and this path is often used exactly that way.
+  const unpackaged = findUnpackagedBundledReferences(payload, manifest);
+  if (unpackaged.length > 0) {
+    if (args.strict) {
+      fail(`${unpackaged.length} bundled reference(s) are not packaged in the release`, unpackaged);
+    }
+    console.warn(color.yellow(
+      `  ⚠ ${unpackaged.length} bundled reference(s) are not packaged in the release.`,
+    ));
+    console.warn(color.yellow('    They will only play if --dist carries them:'));
+    for (const reference of unpackaged) console.warn(color.yellow(`      • ${reference}`));
+  }
 
-  inlinePlayerConfig(outPath, config);
+  inlinePlayerConfig(outPath, buildPlayerBootConfig({ manifest, payload }));
   smokeCheck(outPath, { expectInline: true });
 
   const mediaFiles = listFilesRecursive(mediaDir);
@@ -537,18 +528,9 @@ function smokeCheck(outPath: string, { expectInline }: { expectInline: boolean }
   if (!fs.existsSync(indexFile)) {
     problems.push('index.html missing');
   } else if (expectInline) {
-    const html = fs.readFileSync(indexFile, 'utf8');
-    const match = html.match(/<script data-vne-player-config>window\.[A-Z_]+=([\s\S]*?)<\/script>/);
-    if (!match) {
-      problems.push('index.html carries no inlined player config');
-    } else {
-      try {
-        const parsed = JSON.parse(match[1].replace(/\\u003c/g, '<'));
-        if (!parsed.story || !parsed.story.id) problems.push('the inlined player config has no story');
-      } catch {
-        problems.push('the inlined player config is not valid JSON');
-      }
-    }
+    const parsed = readInlinedPlayerConfig(fs.readFileSync(indexFile, 'utf8'));
+    if (!parsed) problems.push('index.html carries no readable inlined player config');
+    else if (!(parsed.story as { id?: string })?.id) problems.push('the inlined player config has no story');
   }
 
   if (problems.length) fail('Smoke check failed', problems);

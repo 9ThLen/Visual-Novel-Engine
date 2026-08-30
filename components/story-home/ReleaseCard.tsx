@@ -23,6 +23,7 @@ import {
   type ReleaseMeta,
 } from '@/lib/release/release-storage';
 import type { ReleasePreflightReport } from '@/lib/release/preflight';
+import type { PlayerBundleProgress } from '@/lib/release/shell-build';
 import type { ReleaseChannel } from '@/lib/release/types';
 import { isNewerReleaseVersion, nextReleaseVersion } from '@/lib/release/version';
 import type { StoryMetadata } from '@/lib/story-domain';
@@ -50,6 +51,16 @@ interface ReleaseCardProps {
   busy?: boolean;
   onPublish: (request: PublishRequest) => void;
   onSetPublished: (releaseId: string, published: boolean) => void;
+  /**
+   * Turn a stored release into a folder the author can hand to a stranger.
+   * Absent when the running build cannot do it at all — on native there is no
+   * player shell to build from.
+   */
+  onExportBundle?: (releaseId: string) => void;
+  /** Non-null while an export is running; drives the label. */
+  exportProgress?: PlayerBundleProgress | null;
+  /** Already localized by the caller: the reasons are not all from one place. */
+  exportMessage?: { tone: 'error' | 'done'; text: string } | null;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -70,6 +81,9 @@ export function ReleaseCard({
   busy = false,
   onPublish,
   onSetPublished,
+  onExportBundle,
+  exportProgress = null,
+  exportMessage = null,
   style,
 }: ReleaseCardProps) {
   const { t, language } = useI18n();
@@ -89,6 +103,11 @@ export function ReleaseCard({
   );
 
   const versionIsUsable = isNewerReleaseVersion(version, highest);
+
+  // Exporting needs an artifact, not a showcase entry: a release the author took
+  // off the showcase is still a release they can hand to someone.
+  const exportable = published ?? releases.find((release) => release.version === highest) ?? null;
+  const exporting = exportProgress !== null;
 
   const openSheet = () => {
     setVersion(nextReleaseVersion(highest, 'minor'));
@@ -185,6 +204,36 @@ export function ReleaseCard({
         >
           <Text style={[styles.linkLabel, { color: colors.primary }]}>{t('release.republish')}</Text>
         </Pressable>
+      ) : null}
+
+      {onExportBundle && exportable ? (
+        <Pressable
+          onPress={() => onExportBundle(exportable.releaseId)}
+          disabled={exporting}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: exporting, busy: exporting }}
+          accessibilityLabel={t('release.export')}
+          style={({ pressed }) => [styles.linkButton, { opacity: pressed || exporting ? 0.7 : 1 }]}
+        >
+          <Text style={[styles.linkLabel, { color: colors.primary }]}>
+            {exporting ? t(`release.export.${exportProgress}`) : t('release.export')}
+          </Text>
+        </Pressable>
+      ) : null}
+
+      {onExportBundle && exportable && !exporting && !exportMessage ? (
+        <Text style={[styles.hint, { color: colors.muted }]}>{t('release.exportHint')}</Text>
+      ) : null}
+
+      {exportMessage ? (
+        <Text
+          style={[
+            styles.hint,
+            { color: exportMessage.tone === 'error' ? colors.error : colors.muted },
+          ]}
+        >
+          {exportMessage.text}
+        </Text>
       ) : null}
 
       <AppModal visible={sheetOpen} transparent animationType="fade" onRequestClose={() => setSheetOpen(false)}>

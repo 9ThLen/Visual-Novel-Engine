@@ -48,6 +48,21 @@ export function getPackagedMediaMap(): Record<string, string> | null {
   return packagedMediaByReference;
 }
 
+/**
+ * The packaged file for a reference, resolved synchronously.
+ *
+ * Some callers cannot await — a list item drawing an image as it scrolls — and
+ * a bundle's media is a plain relative path, so there is nothing to await
+ * anyway. Returns `null` when this build is not a published bundle, or when the
+ * bundle does not carry that reference.
+ */
+export function getPackagedMediaUri(reference: string | undefined | null): string | null {
+  if (!reference || !packagedMediaByReference) return null;
+  const target = packagedMediaByReference[reference]
+    ?? packagedMediaByReference[reference.replace('bundle://', '')];
+  return target ? resolveWebUrl(target) : null;
+}
+
 const uriCache = new Map<string, TimedCacheEntry<string | number | null>>();
 const playableUriCache = new Map<string, TimedCacheEntry<string | null>>();
 const mediaObjectUrlCache = new Map<string, string>();
@@ -308,6 +323,15 @@ const BUNDLED_ASSETS: Record<string, number> = {
  */
 export function getBundledAsset(assetId: string): number | null {
   if (!assetId) return null;
+
+  // A published bundle carries its own copy of this file and does not ship the
+  // app's `assets/` tree at all, so the compiled asset map would resolve to a
+  // path that is not there. Callers fall back to `resolveAssetUri`, which reads
+  // the packaged map — returning null here is what sends them down that road.
+  // Found the hard way: character sprites went through this function and only
+  // this function, so a published bundle rendered its backgrounds and none of
+  // its people.
+  if (getPackagedMediaUri(assetId)) return null;
 
   const cleaned = assetId.replace('bundle://', '');
   

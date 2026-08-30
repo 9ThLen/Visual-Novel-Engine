@@ -2,10 +2,11 @@
 
 How a finished novel leaves the editor and reaches a reader.
 
-Status: in progress. **R0–R5 are implemented** — R0–R3 complete Channel A, R4 is
-the build profile every native channel stands on, and R5 is the first shippable
-artifact of Channel B. Everything from R6 onward is still a proposal, alongside
-the parts marked **exists** in [Current state](#1-current-state).
+Status: in progress. **R0–R6 are implemented** — R0–R3 complete Channel A, R4 is
+the build profile every native channel stands on, R5 is the first shippable
+artifact of Channel B, and R6 puts it behind a button. Everything from R7 onward
+is still a proposal, alongside the parts marked **exists** in
+[Current state](#1-current-state).
 
 ---
 
@@ -977,17 +978,63 @@ backup are the same zip, so "Not a VNE release" on its own left an author starin
 at a file that opens fine everywhere else with no idea which of the two they had
 picked.
 
-### R6 — Channel B2: export from inside the app
+### R6 — Channel B2: export from inside the app — **implemented**
 
-- `scripts/build-web.mjs` also emits `player-shell-<version>.zip`.
-- `lib/release/shell-build.ts` — fetch shell, unzip, inject, re-zip, hand to
-  `lib/export-story-file.ts` (web download) or `expo-sharing` (native).
-- Version-match guard with a clear refusal message.
-- UI: "Export as app" in the publish sheet, with progress states matching
-  `StoryBackupProgress`.
+- `scripts/build-web.mjs` builds twice: `dist/` (studio) with
+  `player-shell-<version>.zip` and `player-shell.json` inside it.
+- `lib/release/shell.ts` — descriptor, version guard, download.
+- `lib/release/asset-sources.ts` — a stored release's media, resolved back out of
+  the library and **verified against the manifest's hashes**. An author who
+  replaced a picture after publishing is refused by name rather than shipping a
+  bundle that does not match its own manifest.
+- `lib/release/player-bundle.ts` — the parts that decide what a bundle *is*,
+  shared with `scripts/export-story-web.ts` so the two cannot drift.
+- `lib/release/shell-build.ts` — fetch, unzip, inject, re-zip.
+- `lib/release/bundle-file.ts` — save picker on web, `expo-sharing` on native.
+- UI: «Export as a playable folder» on the release card, with progress states
+  mirroring `StoryBackupProgress`.
 
-**Done when:** a writer with only a browser produces a zip that a stranger can
-unzip and play offline.
+**Done when:** a writer with only a browser produces a zip a stranger can unzip
+and play offline. **They can.** Verified by clicking it: the studio built
+`Export_Trial-v1.0.0.zip` — 3.79 MB, 32 entries — whose `index.html` carries the
+story, the release stamp and the scene's first line.
+
+**The shell is 3.6 MB, not 116 MB.** The first build zipped all of
+`dist-player/`, which carries `assets/assets/` — every demo background and sample
+track, 110 MB. A release packages the media its own story uses, bundled art
+included, so a player built for one novel has no use for another's. Excluding it
+is what makes the feature usable at all. `assets/node_modules/` stays: 400 kB of
+icon fonts the app draws its own menu with, and an earlier cut that dropped all
+of `assets/` rendered a reader whose menu button was an empty square.
+
+**Three defects this found, all in code written earlier:**
+
+1. **Character sprites never reached the packaged map.** `useSceneImages` and
+   `InteractiveObjectsLayer` call `getBundledAsset` and *only* that, so R5's hook
+   — which lives in `resolveAssetUri` — never saw them. A published bundle
+   rendered its backgrounds and none of its people. `getBundledAsset` now stands
+   aside when the bundle carries its own copy, which sends every such caller down
+   the resolving path; `getPackagedMediaUri` serves the one caller that cannot
+   await.
+2. **The async zip hung.** fflate's `zip`/`unzip` build a worker from a `blob:`
+   URL, and the production CSP refuses blob workers — fflate then hangs rather
+   than failing, so the export sat forever on «Assembling the folder…».
+   Synchronous now: widening the policy for one operation is the wrong trade, and
+   a tab that pauses during an export the author asked for is understandable
+   where one that never finishes is not.
+3. **A closed save dialog was reported as an error.** The browser raises
+   `AbortError` for "I changed my mind"; the card answered it with a red line.
+
+**Deliberately not done:** the app writes no `.vnerelease` file. It goes from
+stored release straight to folder, because that is what an author wants. R7 needs
+a file to upload, and that is where writing one belongs.
+
+**Not verified:** publishing through the release gate. No bundled demo passes it
+— their own asset references are broken, which is a content problem older than
+this work — so the release under test was written into storage directly and
+everything downstream of it exercised for real. `scripts/make-demo-release.ts`
+now packages bundled `assets/…` too, the way `captureStoryBackup` does, so the
+fixture is a faithful stand-in rather than a thinner one.
 
 ### R7 — Build service (EAS only)
 

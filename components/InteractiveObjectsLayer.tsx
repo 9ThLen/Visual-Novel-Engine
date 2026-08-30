@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
-import { getBundledAsset } from '@/lib/asset-resolver';
+import { getBundledAsset, getPackagedMediaUri } from '@/lib/asset-resolver';
 import {
   resolveInteractiveDialogueAction,
   type InteractiveAction,
@@ -227,7 +227,12 @@ function InteractiveObjectView({ object, onPress, isClicked }: ObjectViewProps) 
         {object.imageUri ? (
           // Resolve bundled asset or fall back to URI
           (() => {
-            const resolved = getBundledAsset(object.imageUri) ?? { uri: object.imageUri };
+            // A published bundle answers from the files it carries; nothing
+            // here can await, and a packaged path needs no awaiting.
+            const packaged = getPackagedMediaUri(object.imageUri);
+            const resolved = packaged
+              ? { uri: packaged }
+              : getBundledAsset(object.imageUri) ?? { uri: object.imageUri };
             return (
               <Image
                 source={resolved}

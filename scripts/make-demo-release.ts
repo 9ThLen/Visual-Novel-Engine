@@ -1,12 +1,12 @@
 /**
  * Build a `.vnerelease` from a story JSON on disk.
  *
- * The app is the real producer of releases — `lib/release/compile.ts` freezes an
- * author's working copy and `lib/release/package.ts` writes the container. That
- * path needs the app's store, so until the in-app export exists (R6 in
- * RELEASE-PLAN.md) there is no way to *get* a release file to hand to the
- * exporter. This makes one, using the same writer and the same manifest parser
- * the app uses, so what comes out is a real release rather than a mock.
+ * The app freezes and stores releases (`lib/release/compile.ts`), and exports a
+ * playable folder straight from storage — no `.vnerelease` file is written on
+ * that path. So nothing in the app produces the container this exporter reads,
+ * and there would be no way to exercise it. This writes one, through the same
+ * `lib/release/package.ts` writer and the same manifest parser the app uses, so
+ * what comes out is a real release rather than a mock.
  *
  * `--media` is the point of it. A story JSON can only name art that ships with
  * the app; the case worth testing is art that came from the media library, which
@@ -14,6 +14,11 @@
  * own machine. Passing a file here packages those bytes and rewrites the
  * opening scene's background to point at them — the exact shape a real release
  * has, and the one the legacy exporter could never publish.
+ *
+ * Bundled `assets/…` references are packaged too, read straight from the repo.
+ * `lib/story-backup/capture.ts` does the same thing at runtime by resolving them
+ * through `expo-asset`; a fixture that skipped it would produce releases the app
+ * never produces, and bundles missing every sprite.
  *
  * Usage:
  *   pnpm demo:release --story assets/demo-story-advanced.json --out demo.vnerelease
@@ -157,6 +162,48 @@ async function main(): Promise<void> {
         (step.data as { assetId?: string }).assetId = PACKAGED_MEDIA_REFERENCE;
       }
     }
+  }
+
+  // Everything the scenes name out of the app's own `assets/` tree. Capture
+  // packages these at runtime; the fixture has the same files on disk.
+  const bundledReferences = new Set<string>();
+  for (const match of JSON.stringify(scenes).matchAll(/"(assets\/[^"]+)"/g)) {
+    bundledReferences.add(match[1]);
+  }
+  for (const reference of bundledReferences) {
+    const onDisk = path.resolve(REPO_ROOT, reference);
+    if (!fs.existsSync(onDisk)) {
+      console.warn(`  ! skipping ${reference} — not on disk`);
+      continue;
+    }
+    const bytes = new Uint8Array(fs.readFileSync(onDisk));
+    const digest = await sha256Chunks(sourceFromBytes(bytes).open());
+    // Same bytes under another name: record the reference on the object that
+    // already carries them rather than packaging a second copy. Without this the
+    // scene's own path resolves to nothing, which is how the first bundle built
+    // this way lost its sprites.
+    const existing = assets.find((asset) => asset.metadata.sha256 === digest.sha256);
+    if (existing) {
+      if (!existing.metadata.sourceReferences.includes(reference)) {
+        existing.metadata.sourceReferences.push(reference);
+      }
+      continue;
+    }
+    const extension = path.extname(onDisk).toLowerCase();
+    assets.push({
+      metadata: {
+        assetId: `bundled_${digest.sha256.slice(0, 12)}`,
+        sourceReferences: [reference],
+        sha256: digest.sha256,
+        size: digest.size,
+        kind: extension === '.mp3' || extension === '.m4a' ? 'audio' : 'image',
+        mimeType: MIME_BY_EXTENSION[extension] ?? 'application/octet-stream',
+        originalName: path.basename(onDisk),
+        originalExtension: extension,
+        archivePath: `${RELEASE_PATHS.objectPrefix}${digest.sha256}`,
+      },
+      source: sourceFromBytes(bytes),
+    });
   }
 
   const payload: ReleasePayloadV1 = { scenes, characters: [], audioLibrary: [] };
