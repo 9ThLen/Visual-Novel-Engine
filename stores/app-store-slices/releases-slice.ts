@@ -40,12 +40,33 @@ export interface ReleasesSlice {
   closeReleaseReading: () => void;
 }
 
+/**
+ * Identity of a listing, for skipping writes that change nothing.
+ *
+ * `persist` writes the whole app state on **every** store change, so an
+ * unconditional `set` on screen focus means a full serialize-and-write each
+ * time the author opens the shelf — and, with two tabs open, a cross-tab write
+ * collision on mere navigation rather than on actual editing.
+ */
+function releaseListSignature(releases: ReleaseMeta[]): string {
+  return releases.map((release) => `${release.releaseId}:${release.version}:${release.published}`).join('|');
+}
+
+function showcaseSignature(sources: Record<string, ReleaseShowcaseSource>): string {
+  return Object.keys(sources)
+    .sort()
+    .map((storyId) => `${storyId}:${sources[storyId].releaseId}`)
+    .join('|');
+}
+
 export function createReleasesSlice(
   set: AppStoreSet,
   get: AppStoreGet,
   storage: StorageLike = createPersistentStorage(),
 ): ReleasesSlice {
   const cache = (storyId: string, releases: ReleaseMeta[]) => {
+    const current = get().releasesByStory[storyId];
+    if (current && releaseListSignature(current) === releaseListSignature(releases)) return;
     set((state) => ({ releasesByStory: { ...state.releasesByStory, [storyId]: releases } }));
   };
 
@@ -66,6 +87,8 @@ export function createReleasesSlice(
         // shown broken: the shelf is the reader's side of the app.
         if (manifest) published[story.id] = releaseShowcaseSource(manifest);
       }
+      // Focus-driven, so most calls find exactly what is already cached.
+      if (showcaseSignature(get().releaseShowcaseByStory) === showcaseSignature(published)) return;
       set({ releaseShowcaseByStory: published });
     },
 

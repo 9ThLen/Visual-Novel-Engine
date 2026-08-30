@@ -1,5 +1,6 @@
 import { createReleasesSlice } from '@/stores/app-store-slices/releases-slice';
-import { saveRelease } from '@/lib/release/release-storage';
+import { saveRelease, type ReleaseMeta } from '@/lib/release/release-storage';
+import type { ReleaseShowcaseSource } from '@/lib/showcase/release-showcase';
 import { parseReleaseManifest } from '@/lib/release/manifest';
 import {
   getReaderSceneRecord,
@@ -77,8 +78,8 @@ function manifest(): ReleaseManifestV1 {
 
 interface HarnessState {
   storiesMetadata: StoryMetadata[];
-  releasesByStory: Record<string, unknown>;
-  releaseShowcaseByStory: Record<string, unknown>;
+  releasesByStory: Record<string, ReleaseMeta[]>;
+  releaseShowcaseByStory: Record<string, ReleaseShowcaseSource>;
   readerRelease: ReaderReleaseSource | null;
   sceneRecordsByStory: Record<string, Record<string, SceneRecord>>;
 }
@@ -100,12 +101,13 @@ function createHarness(storage: StorageLike) {
       : update as Partial<HarnessState>;
     state = { ...state, ...patch };
   };
-  const get = () => state;
+  // The real store's get() returns state *and* actions -- the slice calls its
+  // own loadPublishedReleases through it.
+  let slice: ReturnType<typeof createReleasesSlice>;
+  const get = () => ({ ...state, ...slice });
+  slice = createReleasesSlice(set as never, get as never, storage);
 
-  return {
-    slice: createReleasesSlice(set as never, get as never, storage),
-    snapshot: (): HarnessState => state,
-  };
+  return { slice, snapshot: (): HarnessState => state };
 }
 
 async function storeRelease(storage: StorageLike): Promise<void> {
@@ -204,5 +206,47 @@ describe('what the reader sees while a release is open', () => {
     expect(snapshot().readerRelease).toBeNull();
     expect(firstText(getReaderSceneRecord(snapshot(), STORY_ID, 'start')))
       .toBe('Rewritten after publishing.');
+  });
+});
+
+// `persist` writes the whole app state on every store change, so a focus-driven
+// load that always called set() meant a full write each time the author opened
+// the shelf -- and, with two tabs open, a cross-tab collision on navigation
+// rather than on editing.
+describe('loading does not write when nothing changed', () => {
+  it('leaves the state object untouched on a repeat load', async () => {
+    const storage = memoryStorage();
+    await storeRelease(storage);
+    const { slice, snapshot } = createHarness(storage);
+
+    await slice.loadPublishedReleases();
+    const afterFirst = snapshot().releaseShowcaseByStory;
+
+    await slice.loadPublishedReleases();
+    expect(snapshot().releaseShowcaseByStory).toBe(afterFirst);
+  });
+
+  it('still updates when the published release changes', async () => {
+    const storage = memoryStorage();
+    await storeRelease(storage);
+    const { slice, snapshot } = createHarness(storage);
+
+    await slice.loadPublishedReleases();
+    const afterFirst = snapshot().releaseShowcaseByStory;
+
+    await slice.setReleasePublished(STORY_ID, 'release_1', false);
+    expect(snapshot().releaseShowcaseByStory).not.toBe(afterFirst);
+  });
+
+  it('does not rewrite the listing cache for an unchanged story', async () => {
+    const storage = memoryStorage();
+    await storeRelease(storage);
+    const { slice, snapshot } = createHarness(storage);
+
+    await slice.loadReleasesForStory(STORY_ID);
+    const afterFirst = snapshot().releasesByStory;
+
+    await slice.loadReleasesForStory(STORY_ID);
+    expect(snapshot().releasesByStory).toBe(afterFirst);
   });
 });
