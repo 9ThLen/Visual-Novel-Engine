@@ -10,6 +10,8 @@
  * during local development and broke every CI run.
  */
 
+const { PLAYER_BLOCKED_TREES } = require('./player-profile');
+
 /** Escape a path for literal use inside a RegExp, accepting either separator. */
 function pathToPattern(value) {
   return value
@@ -36,4 +38,26 @@ function createBlockList(projectRoot) {
   ];
 }
 
-module.exports = { createBlockList, pathToPattern };
+/**
+ * The extra patterns the player build refuses to serve — the authoring trees
+ * named by `player-profile.js`.
+ *
+ * Blocking is coarser than the reachability check in
+ * `tools/check-player-bundle.mjs` and complements it: this stops a player bundle
+ * from being *built* at all once an authoring import appears, while the checker
+ * explains which reader screen pulled it in. Both are needed. The bundler alone
+ * cannot express "this one file in lib/ai is shared"; the checker alone runs
+ * only when someone remembers to run it.
+ *
+ * @param {string} projectRoot absolute path of the Expo project
+ * @returns {RegExp[]} additional `config.resolver.blockList` patterns
+ */
+function createPlayerBlockList(projectRoot) {
+  const sep = '[\\\\/]';
+  const root = pathToPattern(String(projectRoot).replace(/[\\/]+$/, ''));
+  return PLAYER_BLOCKED_TREES.map(
+    (tree) => new RegExp(`^${root}${sep}${pathToPattern(tree)}${sep}.*`),
+  );
+}
+
+module.exports = { createBlockList, createPlayerBlockList, pathToPattern };

@@ -14,7 +14,7 @@ import {
 import type { SceneRecord } from '@/lib/engine/types';
 import type { SaveSlot } from '@/lib/story-domain';
 import type { AppStore } from '@/stores/app-store-types';
-import type { AppStoreGet, AppStoreSet } from '@/stores/app-store-slices/types';
+import type { AppStoreGet, AppStateSet } from '@/stores/app-store-slices/types';
 
 function makeSceneRecord(
   id: string,
@@ -65,7 +65,7 @@ function makeSceneRecord(
 
 function createSliceHarness() {
   let state = { ...initialAppState } as AppStore;
-  const set: AppStoreSet = (partial) => {
+  const set: AppStateSet = (partial) => {
     const next = typeof partial === 'function' ? partial(state) : partial;
     state = { ...state, ...next };
   };

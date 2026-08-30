@@ -1,3 +1,11 @@
+import {
+  isPlayerProfile,
+  PLAYER_AUTOLINKING_EXCLUDE,
+  PLAYER_BLOCKED_PERMISSIONS,
+  PLAYER_EXCLUDED_PLUGINS,
+  PLAYER_ROUTER_ROOT,
+} from "./player-profile.js";
+
 const rawBundleId = "space.manus.visual.novel.engine.t20260331092519";
 const bundleId = rawBundleId
   .replace(/[-_]/g, ".")
@@ -12,6 +20,17 @@ const bundleId = rawBundleId
 const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
 const schemeFromBundleId = `manus${timestamp}`;
 const webBaseUrl = process.env.VNE_WEB_BASE_URL?.trim();
+
+/**
+ * The player build (`VNE_PROFILE=player`) is the same app with the studio taken
+ * out: a different router root, no file pickers, and no permissions a reader has
+ * no use for. See `player-profile.js` and `app-player/README.md`.
+ *
+ * Autolinking reads this config rather than the Metro graph, so excluding a
+ * module here — not blocking it in the bundler — is what actually keeps the
+ * native code and its manifest entries out of the app.
+ */
+const playerProfile = isPlayerProfile();
 
 const appConfig = {
   name: "Visual Novel Engine",
@@ -39,7 +58,8 @@ const appConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: bundleId,
-    permissions: ["POST_NOTIFICATIONS"],
+    permissions: playerProfile ? [] : ["POST_NOTIFICATIONS"],
+    ...(playerProfile ? { blockedPermissions: PLAYER_BLOCKED_PERMISSIONS } : {}),
   },
   web: {
     bundler: "metro",
@@ -48,7 +68,7 @@ const appConfig = {
   },
   assetBundlePatterns: ["**/*"],
   plugins: [
-    "expo-router",
+    playerProfile ? ["expo-router", { root: PLAYER_ROUTER_ROOT }] : "expo-router",
     "expo-asset",
     "expo-audio",
     "expo-document-picker",
@@ -56,7 +76,10 @@ const appConfig = {
     "expo-video",
     "expo-splash-screen",
     "expo-build-properties",
-  ],
+  ].filter((plugin) => !playerProfile || !PLAYER_EXCLUDED_PLUGINS.includes(plugin)),
+  ...(playerProfile
+    ? { autolinking: { android: { exclude: PLAYER_AUTOLINKING_EXCLUDE } } }
+    : {}),
   experiments: {
     typedRoutes: true,
     reactCompiler: true,

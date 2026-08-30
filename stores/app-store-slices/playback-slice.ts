@@ -1,5 +1,5 @@
 import type { AppActions } from '@/stores/app-store-types';
-import type { AppStoreSet } from '@/stores/app-store-slices/types';
+import type { AppStateSet } from '@/stores/app-store-slices/types';
 
 export type PlaybackSliceActions = Pick<
   AppActions,
@@ -10,7 +10,7 @@ export type PlaybackSliceActions = Pick<
   | 'setReaderSceneThumbnailUri'
 >;
 
-export function createPlaybackSlice(set: AppStoreSet): PlaybackSliceActions {
+export function createPlaybackSlice(set: AppStateSet): PlaybackSliceActions {
   return {
     loadCurrentStory: async (storyId) => {
       if (!storyId) {

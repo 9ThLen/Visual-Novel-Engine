@@ -22,7 +22,7 @@ import {
   type ReleaseShowcaseSource,
 } from '@/lib/showcase/release-showcase';
 import { createPersistentStorage, type StorageLike } from '@/lib/persistent-storage';
-import type { AppStoreGet, AppStoreSet } from '@/stores/app-store-slices/types';
+import type { AppStoreGet, AppStateSet } from '@/stores/app-store-slices/types';
 
 export interface ReleasesSlice {
   loadReleasesForStory: (storyId: string) => Promise<ReleaseMeta[]>;
@@ -60,7 +60,7 @@ function showcaseSignature(sources: Record<string, ReleaseShowcaseSource>): stri
 }
 
 export function createReleasesSlice(
-  set: AppStoreSet,
+  set: AppStateSet,
   get: AppStoreGet,
   storage: StorageLike = createPersistentStorage(),
 ): ReleasesSlice {

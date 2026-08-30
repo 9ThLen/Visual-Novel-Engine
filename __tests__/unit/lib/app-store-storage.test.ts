@@ -1,4 +1,7 @@
-import { createAppStoreStorage } from '@/lib/app-store-storage';
+import {
+  createAppStateRevisionTracker,
+  createAppStoreStorage,
+} from '@/lib/app-store-storage';
 import {
   __resetAppStateConflictForTests,
   hasAppStateConflict,
@@ -138,7 +141,7 @@ describe('app store storage', () => {
   it('migrates legacy sceneRecordsByStory to per-story storage on read', async () => {
     const storageMock = createMemoryStorage();
     storageMock.values.set(STORAGE_KEYS.APP_STATE, appEnvelope());
-    const storage = createAppStoreStorage(storageMock.memoryStorage);
+    const storage = createAppStoreStorage(storageMock.memoryStorage, createAppStateRevisionTracker());
 
     const raw = await storage.getItem(STORAGE_KEYS.APP_STATE);
     const appState = JSON.parse(raw ?? '{}');
@@ -150,7 +153,7 @@ describe('app store storage', () => {
 
   it('compacts app state scenes on write after per-story scene persistence succeeds', async () => {
     const storageMock = createMemoryStorage();
-    const storage = createAppStoreStorage(storageMock.memoryStorage);
+    const storage = createAppStoreStorage(storageMock.memoryStorage, createAppStateRevisionTracker());
 
     await storage.setItem(STORAGE_KEYS.APP_STATE, appEnvelope());
 
@@ -162,7 +165,7 @@ describe('app store storage', () => {
   it('keeps the full app state fallback if per-story scene persistence fails', async () => {
     const storageMock = createMemoryStorage();
     storageMock.state.failSceneRecordWrites = true;
-    const storage = createAppStoreStorage(storageMock.memoryStorage);
+    const storage = createAppStoreStorage(storageMock.memoryStorage, createAppStateRevisionTracker());
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     await storage.setItem(STORAGE_KEYS.APP_STATE, appEnvelope());
@@ -188,7 +191,7 @@ describe('app store storage', () => {
       },
       updatedAt: 1,
     }));
-    const storage = createAppStoreStorage(storageMock.memoryStorage);
+    const storage = createAppStoreStorage(storageMock.memoryStorage, createAppStateRevisionTracker());
 
     await storage.setItem(STORAGE_KEYS.APP_STATE, metadataOnlyEnvelope());
 
@@ -225,7 +228,7 @@ describe('app store storage', () => {
       record: scene('scene-1'),
       updatedAt: 1,
     }));
-    const storage = createAppStoreStorage(storageMock.memoryStorage);
+    const storage = createAppStoreStorage(storageMock.memoryStorage, createAppStateRevisionTracker());
 
     await storage.setItem(STORAGE_KEYS.APP_STATE, emptyEnvelope());
 
@@ -247,7 +250,7 @@ describe('app store storage', () => {
       },
       updatedAt: 1,
     }));
-    const storage = createAppStoreStorage(storageMock.memoryStorage);
+    const storage = createAppStoreStorage(storageMock.memoryStorage, createAppStateRevisionTracker());
 
     await storage.setItem(STORAGE_KEYS.APP_STATE, readerWindowEnvelope());
 
@@ -268,8 +271,10 @@ describe('app store storage', () => {
     __resetAppStateConflictForTests();
     const storageMock = createMemoryStorage();
     storageMock.values.set(STORAGE_KEYS.APP_STATE, appEnvelope());
-    const firstTab = createAppStoreStorage(storageMock.memoryStorage);
-    const secondTab = createAppStoreStorage(storageMock.memoryStorage);
+    // Separate revision trackers are what makes these two *tabs* rather than
+    // two wrappers in one tab; the shared browser storage is the same either way.
+    const firstTab = createAppStoreStorage(storageMock.memoryStorage, createAppStateRevisionTracker());
+    const secondTab = createAppStoreStorage(storageMock.memoryStorage, createAppStateRevisionTracker());
 
     await firstTab.getItem(STORAGE_KEYS.APP_STATE);
     await secondTab.getItem(STORAGE_KEYS.APP_STATE);
@@ -286,12 +291,56 @@ describe('app store storage', () => {
     __resetAppStateConflictForTests();
     const storageMock = createMemoryStorage();
     storageMock.values.set(STORAGE_KEYS.APP_STATE, appEnvelope());
-    const onlyTab = createAppStoreStorage(storageMock.memoryStorage);
+    const onlyTab = createAppStoreStorage(storageMock.memoryStorage, createAppStateRevisionTracker());
 
     await onlyTab.getItem(STORAGE_KEYS.APP_STATE);
     await onlyTab.setItem(STORAGE_KEYS.APP_STATE, metadataOnlyEnvelope());
     await onlyTab.setItem(STORAGE_KEYS.APP_STATE, emptyEnvelope());
 
     expect(hasAppStateConflict()).toBe(false);
+  });
+  /**
+   * `persistAppStoreStateNow()` builds a fresh wrapper for every explicit save,
+   * alongside the long-lived one the persist middleware holds. While the
+   * revision lived in the factory's closure, the fresh wrapper bumped the
+   * counter without the middleware knowing, and the next autosave reported a
+   * collision with a tab that did not exist.
+   */
+  it('does not collide with itself when one tab uses two storage wrappers', async () => {
+    __resetAppStateConflictForTests();
+    const storageMock = createMemoryStorage();
+    storageMock.values.set(STORAGE_KEYS.APP_STATE, appEnvelope());
+    const tracker = createAppStateRevisionTracker();
+    const middleware = createAppStoreStorage(storageMock.memoryStorage, tracker);
+    const explicitSave = createAppStoreStorage(storageMock.memoryStorage, tracker);
+
+    await middleware.getItem(STORAGE_KEYS.APP_STATE);
+    await explicitSave.setItem(STORAGE_KEYS.APP_STATE, metadataOnlyEnvelope());
+    await middleware.setItem(STORAGE_KEYS.APP_STATE, metadataOnlyEnvelope());
+
+    expect(hasAppStateConflict()).toBe(false);
+  });
+  /**
+   * Reading an empty store is knowledge too. While `getItem` only recorded a
+   * revision when it found one, a tab that had already written, then read a
+   * cleared store, kept its old number and refused its next write as if another
+   * tab had raced it.
+   */
+  it('does not treat a cleared store as another tab’s write', async () => {
+    __resetAppStateConflictForTests();
+    const storageMock = createMemoryStorage();
+    storageMock.values.set(STORAGE_KEYS.APP_STATE, appEnvelope());
+    const tracker = createAppStateRevisionTracker();
+    const tab = createAppStoreStorage(storageMock.memoryStorage, tracker);
+
+    await tab.getItem(STORAGE_KEYS.APP_STATE);
+    await tab.setItem(STORAGE_KEYS.APP_STATE, metadataOnlyEnvelope());
+
+    storageMock.values.clear();
+    await tab.getItem(STORAGE_KEYS.APP_STATE);
+    await tab.setItem(STORAGE_KEYS.APP_STATE, metadataOnlyEnvelope());
+
+    expect(hasAppStateConflict()).toBe(false);
+    expect(storageMock.values.has(STORAGE_KEYS.APP_STATE)).toBe(true);
   });
 });

@@ -2,7 +2,7 @@ import { buildCanonicalLoadSnapshot, buildCanonicalSaveSlot } from '@/lib/reader
 import { buildScopedReaderRuntimeSnapshot } from '@/lib/reader-runtime-snapshot';
 import type { SaveSlot } from '@/lib/story-domain';
 import type { AppActions } from '@/stores/app-store-types';
-import type { AppStoreGet, AppStoreSet } from '@/stores/app-store-slices/types';
+import type { AppStateGet, AppStateSet } from '@/stores/app-store-slices/types';
 
 const QUICK_SAVE_SLOT_PREFIX = 'quick-';
 
@@ -23,7 +23,7 @@ export function upsertSaveSlot(saveSlots: SaveSlot[], newSlot: SaveSlot): SaveSl
   return [...saveSlots.filter((slot) => slot.id !== newSlot.id), newSlot];
 }
 
-export function createSavesSlice(set: AppStoreSet, get: AppStoreGet): SavesSliceActions {
+export function createSavesSlice(set: AppStateSet, get: AppStateGet): SavesSliceActions {
   return {
     saveGame: (slotId) => {
       const state = get();

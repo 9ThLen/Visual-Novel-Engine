@@ -1,13 +1,13 @@
 import { normalizeUserSettings } from '@/lib/user-settings';
 import type { AppActions } from '@/stores/app-store-types';
-import type { AppStoreSet } from '@/stores/app-store-slices/types';
+import type { AppStateSet } from '@/stores/app-store-slices/types';
 
 export type PreferencesSliceActions = Pick<
   AppActions,
   'clearMigrationError' | 'setLanguage' | 'updateSettings' | 'updateAiBridgeSettings'
 >;
 
-export function createPreferencesSlice(set: AppStoreSet): PreferencesSliceActions {
+export function createPreferencesSlice(set: AppStateSet): PreferencesSliceActions {
   return {
     clearMigrationError: () => set({ migrationError: null }),
 

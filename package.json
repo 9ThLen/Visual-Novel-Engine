@@ -14,6 +14,7 @@
     "check": "tsc --noEmit",
     "check:editor-boundaries": "bash tools/check-editor-boundaries.sh",
     "check:reader-audio-boundaries": "node tools/check-reader-audio-boundaries.mjs",
+    "check:player-bundle": "node tools/check-player-bundle.mjs",
     "lint": "node node_modules/expo/bin/cli lint --max-warnings=0",
     "format": "prettier --write .",
     "test": "vitest run",

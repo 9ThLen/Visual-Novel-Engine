@@ -155,3 +155,35 @@ export interface AppActions {
 
 export type AppStore = AppState & AppActions;
 export type MediaLibraryAsset = LibraryAsset;
+
+/**
+ * What a published player build's store can do.
+ *
+ * Deliberately a hand-listed subset rather than `Omit<AppActions, …>`: adding
+ * an authoring action to `AppActions` must not silently grant it to players.
+ * The composition that implements this lives in `stores/use-app-store.player.ts`
+ * and is checked by `tools/check-player-bundle.mjs`.
+ */
+export type PlayerAppActions = Pick<
+  AppActions,
+  | 'migrateFromLegacyKeys'
+  | 'clearMigrationError'
+  | 'loadCurrentStory'
+  | 'updatePlaybackState'
+  | 'setReaderBlockingMedia'
+  | 'setReaderSceneThumbnailUri'
+  | 'recordEndingReached'
+  | 'saveGame'
+  | 'loadGame'
+  | 'deleteSaveSlot'
+  | 'syncAutoSave'
+  | 'updateSettings'
+  | 'updateAiBridgeSettings'
+  | 'setLanguage'
+  | 'hydrateSceneRecordsForStory'
+  | 'hydrateReaderSceneWindow'
+  | 'getScenesForStory'
+  | 'closeReleaseReading'
+>;
+
+export type PlayerAppStore = AppState & PlayerAppActions;

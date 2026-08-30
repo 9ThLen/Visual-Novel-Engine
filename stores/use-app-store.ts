@@ -12,21 +12,9 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { createPersistentStorage } from '@/lib/persistent-storage';
 import { createAppStoreStorage } from '@/lib/app-store-storage';
 import type { SceneRecord } from '@/lib/engine/types';
-import {
-  getSceneRecordMapForStoryFromAccess,
-  getSceneRecordFromAccess,
-  getReaderSceneRecord,
-  isReadingRelease,
-  getSceneRecordsForStoryFromAccess,
-  getStoryMetadataFromAccess,
-} from '@/lib/scene-access';
 import type { Language } from '@/lib/translations';
 import { type SaveSlot, type StoryMetadata } from '@/lib/story-domain';
-import {
-  buildCanonicalSceneRecordsFromLegacyScenes,
-  resolveCanonicalStartSceneId,
-} from '@/lib/scene-operations';
-import { toReaderScene } from '@/lib/reader-scene';
+import { buildCanonicalSceneRecordsFromLegacyScenes } from '@/lib/scene-operations';
 import type { Character } from '@/lib/character-types';
 import {
   migrateCharacterLibraries,
@@ -348,24 +336,5 @@ export async function persistAppStoreStateNow(): Promise<void> {
   }));
 }
 
-export const selectStoryMetadata = (storyId: string) => (state: AppState) =>
-  getStoryMetadataFromAccess(state, storyId);
-export const selectCanonicalSceneRecord = (storyId: string, sceneId: string) => (state: AppState) =>
-  getSceneRecordFromAccess(state, storyId, sceneId);
-export const selectReaderScene = (storyId: string, sceneId: string) => (state: AppState) => {
-  const record = getReaderSceneRecord(state, storyId, sceneId);
-  return record ? toReaderScene(record) : null;
-};
-export const selectReaderStartSceneId =
-  (storyId: string, fallbackSceneId: string | null | undefined) => (state: AppState) => {
-    // A release names its own opening scene. Resolving against the working copy
-    // could start the reader on a scene the author added after publishing.
-    if (isReadingRelease(state, storyId)) return state.readerRelease?.startSceneId ?? fallbackSceneId;
-    return resolveCanonicalStartSceneId(state, storyId, fallbackSceneId) || fallbackSceneId;
-  };
-export const selectSceneRecordMapForStory = (storyId: string) => (state: AppState) =>
-  getSceneRecordMapForStoryFromAccess(state, storyId);
-export const selectSceneRecordsForStory = (storyId: string) => (state: AppState) =>
-  getSceneRecordsForStoryFromAccess(state, storyId);
-
+export * from '@/stores/app-store-selectors';
 export type { AppActions, AppState, MediaLibraryAsset } from '@/stores/app-store-types';

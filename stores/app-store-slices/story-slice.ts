@@ -6,7 +6,7 @@ import {
 import { type SceneRecordStorageLike } from '@/lib/scene-record-storage';
 import { forgetStoryStorage } from '@/lib/story-storage';
 import type { StoryMetadata } from '@/lib/story-domain';
-import type { AppStoreSet } from '@/stores/app-store-slices/types';
+import type { AppStateSet } from '@/stores/app-store-slices/types';
 
 export interface StorySlice {
   createStory: (title: string) => { storyId: string; sceneId: string };
@@ -21,7 +21,7 @@ export interface StorySlice {
 }
 
 export function createStorySlice(
-  set: AppStoreSet,
+  set: AppStateSet,
   storage: SceneRecordStorageLike = createPersistentStorage() as SceneRecordStorageLike,
 ): StorySlice {
   return {

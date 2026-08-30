@@ -8,7 +8,7 @@ import {
   type SnapshotStoryMetadata,
 } from '@/lib/story-snapshots';
 import { allTranslations } from '@/lib/translations';
-import type { AppStoreGet, AppStoreSet } from '@/stores/app-store-slices/types';
+import type { AppStoreGet, AppStateSet } from '@/stores/app-store-slices/types';
 import { notifySnapshotEvicted } from '@/stores/snapshot-eviction-registry';
 
 /** i18n key for the automatic snapshot taken right before a restore. */
@@ -44,7 +44,7 @@ function toStoryMetadataSubset(get: AppStoreGet, storyId: string): SnapshotStory
 }
 
 export function createSnapshotsSlice(
-  set: AppStoreSet,
+  set: AppStateSet,
   get: AppStoreGet,
   storage: SceneRecordStorageLike = createPersistentStorage(),
 ): SnapshotsSlice {

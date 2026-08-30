@@ -5,7 +5,7 @@ import {
   removeImageAssetFromStory,
 } from '@/lib/story-image-library';
 import type { AppActions } from '@/stores/app-store-types';
-import type { AppStoreSet } from '@/stores/app-store-slices/types';
+import type { AppStateSet } from '@/stores/app-store-slices/types';
 import {
   addMediaAssetToStory,
   removeMediaAssetFromStory,
@@ -18,7 +18,7 @@ export type LibrariesSliceActions = Pick<
   | 'addMediaAssetToStory' | 'removeMediaAssetFromStory'
 >;
 
-export function createLibrariesSlice(set: AppStoreSet): LibrariesSliceActions {
+export function createLibrariesSlice(set: AppStateSet): LibrariesSliceActions {
   return {
     setCharacterLibrary: (storyId, characters) =>
       set((state) => {

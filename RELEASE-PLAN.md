@@ -2,9 +2,10 @@
 
 How a finished novel leaves the editor and reaches a reader.
 
-Status: in progress. **R0–R3 are implemented**, which completes Channel A;
-everything from R4 onward is still a proposal, alongside the parts marked
-**exists** in [Current state](#1-current-state).
+Status: in progress. **R0–R4 are implemented** — R0–R3 complete Channel A, and
+R4 is the build profile every native channel stands on. Everything from R5
+onward is still a proposal, alongside the parts marked **exists** in
+[Current state](#1-current-state).
 
 ---
 
@@ -818,32 +819,92 @@ play, and clearing the editor's working copy does not damage either.
 the author publishes again, and an in-flight save survives a republish or
 explains itself.
 
-### R4 — Player build profile
+### R4 — Player build profile — **implemented**
 
-- `app-player/` — **committed**, thin route wrappers over shared reader screens,
-  with its own minimal `_layout` (no `StoryAutoSave`, no migration banner, no
-  cross-tab machinery). Selected via the `expo-router` plugin's `root` option.
-- Store cut: a reader-only composition of `stores/use-app-store.ts` — playback,
-  saves, preferences, libraries — with the snapshots and story-authoring slices
-  out of the graph.
-- `metro-blocklist.js` — player-profile patterns excluding the editor, AI and
-  media-library trees.
-- Native audit: staged player config drops `expo-image-picker`,
-  `expo-document-picker` and the storage/notification permissions. Autolinking
-  ignores the Metro blocklist, so this is a config change, not a bundler one.
-- `tools/check-player-bundle.mjs` — fails the build if an editor entry point or
-  an authoring store slice is reachable from the player root.
-- Record the **JS bundle** size before/after.
+- `app-player/` — committed, thin route wrappers over the shared reader screens,
+  with its own minimal `_layout`. Selected via the `expo-router` plugin's `root`
+  option (`extra.router.root`), so Expo Router crawls only this directory and the
+  studio's routes are never required into the bundle.
+- Store cut: `stores/use-app-store.player.ts` composes playback, preferences,
+  saves and a new **scene *read*** slice. The story, snapshots, libraries,
+  releases and scene-*write* slices are out of the graph. Metro substitutes it
+  for `@/stores/use-app-store` — substituted rather than blocked, because every
+  reader screen imports that path and blocking it would only break the build.
+- `metro-blocklist.js` — `createPlayerBlockList()` refuses the authoring trees
+  outright in the player profile.
+- `tools/check-player-bundle.mjs` — walks the module graph from `app-player/`,
+  applying the same store substitution, and fails on any authoring module,
+  reporting the **import chain** rather than the filename.
+- `player-profile.js` — one description of the profile, shared by `app.config.js`,
+  `metro.config.js` and the checker. Earlier drafts kept three copies and they
+  drifted.
+- Native audit: the player config drops the `expo-document-picker` and
+  `expo-image-picker` plugins, excludes them (and `expo-secure-store`) from
+  Android autolinking, and sets `blockedPermissions` so the merged manifest loses
+  camera, microphone, storage, media and notification permissions even when a
+  transitive dependency declares them. `expo config` confirms `expo-audio` still
+  requests `RECORD_AUDIO` and that the block list strips it.
 
-**Done when:** a player build runs the reader with the editor absent from the JS
-bundle — not merely unreachable — and `expo-modules-autolinking resolve` reports
-the reduced native module set.
+**Measured** (`expo export --platform web`, same machine, same commit):
+
+| | entry bundle | total JS | chunks |
+|---|---|---|---|
+| studio | 5 030 584 B | 6 098 425 B | 7 |
+| player | 2 879 117 B | 3 931 453 B | 4 |
+| | **−42.8 %** | **−35.5 %** | |
+
+Reachability from the router root: **406 → 209 modules, 42 → 28 packages**. The
+packages the player no longer contains include `expo-image-picker`,
+`expo-document-picker`, `expo-secure-store`, `expo-crypto`, `expo-sharing`,
+`expo-linking`, `@imgly/background-removal`, `@supabase/supabase-js`,
+`tus-js-client`, `react-native-svg`, `fflate`, `fast-sha256` and `zod`. Grepping
+the built player bundle for `document-editor`, `createStorySnapshot`,
+`saveSceneRecord`, `commitAiChangeSet`, `story-home` and `theme-studio` returns
+nothing; the studio bundle contains all of them.
+
+**Verified live**: the player bundle plus a `player-config.json` boots straight
+into the reader, the menu offers only save/load, settings and restart — no route
+back into the studio — and a quick save survives a reload. The studio profile
+still builds and runs its shelf unchanged.
+
+**Corrections to the earlier draft of this step:**
+
+- `StoryAutoSave` **stays** in the player layout. The draft listed it among the
+  things to drop, which was wrong: it autosaves *reader progress* into a save
+  slot, so it is what makes "continue where you left off" work. It belongs to the
+  player more than to the studio. `AppStateConflictBanner` stays for the same
+  kind of reason — when a write is refused, a reader needs to know their progress
+  stopped being saved. What actually goes is `PlayerModeRouteGuard` (nothing to
+  guard against), `MigrationErrorBanner` (no studio history to migrate) and the
+  proactive cross-tab warning (readers do not edit).
+- Blocking whole directories is not enough on its own. `lib/document-editor/scene-graph-*`
+  is graph traversal the reader's own coverage code walks, and `lib/ai/permissions.ts`
+  is read by `lib/user-settings.ts`. Blocking those directories breaks the player
+  build, so the bundler handles the unambiguous trees and the checker names
+  individual files.
+
+**Found while building this**, both in the cross-tab write guard and both fixed
+here rather than left for later:
+
+1. The write revision lived in the storage factory's closure, so it was
+   per-wrapper rather than per-tab — and `persistAppStoreStateNow()` builds a
+   fresh wrapper every call. That wrapper skipped the check, wrote, and bumped
+   the counter; the persist middleware's wrapper then saw a revision it had not
+   written and reported a collision **with its own tab**. Autosaving was enough
+   to trigger it. This is almost certainly what produced the error report that
+   prompted the warning work in the first place.
+2. `getItem` only recorded a revision when it found a value, so a tab that read a
+   cleared store kept its old number and refused its next write as another tab's.
 
 **Deliberately not here:** APK and AAB measurements, and the installed
 permission list. Those need a staged Android project, which does not exist until
 R9 — an earlier draft put them in R4's acceptance criteria and made R4
 unacceptable until R9 shipped. R4 proves the *JS and autolinking* boundary; R9
 proves it on a real artifact.
+
+**Known and not addressed here:** the full translation table for both languages
+ships in the player bundle, because `lib/translations.ts` is one module. Worth
+splitting before R9 measures an APK, but it is not a boundary problem.
 
 ### R5 — Channel B1: portable web bundle
 
