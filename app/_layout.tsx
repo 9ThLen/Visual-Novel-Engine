@@ -9,6 +9,7 @@ import { StoryAutoSave } from "@/components/StoryAutoSave";
 import { ReaderAudioRouteGuard } from "@/components/ReaderAudioRouteGuard";
 import { PlayerModeRouteGuard } from "@/components/PlayerModeRouteGuard";
 import { MigrationErrorBanner } from "@/components/MigrationErrorBanner";
+import { AppStateConflictBanner } from "@/components/AppStateConflictBanner";
 import { ToastViewport } from "@/components/ui";
 import { ensureStorageBootstrap } from "@/stores/storage-bootstrap";
 import { useEffect, useRef } from "react";
@@ -87,6 +88,7 @@ export default function RootLayout() {
           <ReaderAudioRouteGuard />
           <PlayerModeRouteGuard />
           <MigrationErrorBanner />
+          <AppStateConflictBanner />
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="tabs" />
           </Stack>

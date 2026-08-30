@@ -1,4 +1,8 @@
 import { createAppStoreStorage } from '@/lib/app-store-storage';
+import {
+  __resetAppStateConflictForTests,
+  hasAppStateConflict,
+} from '@/lib/app-store-conflict';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
 import type { SceneRecord } from '@/lib/engine/types';
 
@@ -254,7 +258,14 @@ describe('app store storage', () => {
     expect(appState.state.sceneRecordHydration).toEqual({});
   });
 
-  it('rejects a stale whole-store write from another tab', async () => {
+  /**
+   * The refusal is reported rather than thrown: nothing awaits this promise, so
+   * a rejection reached the author as an uncaught error overlay in development
+   * and as silence in production. What must not change is that the other tab's
+   * work survives.
+   */
+  it('refuses a stale whole-store write from another tab and reports it', async () => {
+    __resetAppStateConflictForTests();
     const storageMock = createMemoryStorage();
     storageMock.values.set(STORAGE_KEYS.APP_STATE, appEnvelope());
     const firstTab = createAppStoreStorage(storageMock.memoryStorage);
@@ -264,9 +275,23 @@ describe('app store storage', () => {
     await secondTab.getItem(STORAGE_KEYS.APP_STATE);
     await firstTab.setItem(STORAGE_KEYS.APP_STATE, metadataOnlyEnvelope());
 
-    await expect(secondTab.setItem(STORAGE_KEYS.APP_STATE, emptyEnvelope()))
-      .rejects.toThrow('changed in another tab');
+    await expect(secondTab.setItem(STORAGE_KEYS.APP_STATE, emptyEnvelope())).resolves.toBeUndefined();
+
+    expect(hasAppStateConflict()).toBe(true);
     const persisted = JSON.parse(storageMock.values.get(STORAGE_KEYS.APP_STATE) ?? '{}');
     expect(persisted.state.storiesMetadata).toHaveLength(1);
+  });
+
+  it('leaves the latch alone while tabs do not collide', async () => {
+    __resetAppStateConflictForTests();
+    const storageMock = createMemoryStorage();
+    storageMock.values.set(STORAGE_KEYS.APP_STATE, appEnvelope());
+    const onlyTab = createAppStoreStorage(storageMock.memoryStorage);
+
+    await onlyTab.getItem(STORAGE_KEYS.APP_STATE);
+    await onlyTab.setItem(STORAGE_KEYS.APP_STATE, metadataOnlyEnvelope());
+    await onlyTab.setItem(STORAGE_KEYS.APP_STATE, emptyEnvelope());
+
+    expect(hasAppStateConflict()).toBe(false);
   });
 });

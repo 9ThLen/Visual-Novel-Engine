@@ -4,6 +4,7 @@ import {
   type SceneRecordStorageLike,
 } from '@/lib/scene-record-storage';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
+import { reportAppStateConflict } from '@/lib/app-store-conflict';
 import type { AppStorePersistenceState } from '@/lib/app-store-persistence';
 
 type PersistEnvelope = {
@@ -113,7 +114,12 @@ export function createAppStoreStorage(
           ? parsePersistEnvelope(currentValue)?.writeRevision ?? 0
           : 0;
         if (lastKnownRevision !== null && currentRevision !== lastKnownRevision) {
-          throw new Error('App state changed in another tab; reload before continuing');
+          // Refuse the write — overwriting would discard whatever the other tab
+          // saved — but report it instead of throwing. Nothing awaits this
+          // promise, so a rejection here reached the author as an uncaught
+          // error overlay in development and as silence in production.
+          reportAppStateConflict();
+          return;
         }
 
         const parsed = parsePersistEnvelope(value);
