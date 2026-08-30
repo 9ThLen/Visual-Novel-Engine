@@ -137,15 +137,35 @@ export default function EditorScreen() {
     return merged;
   }, [sceneRecordHydration, settledStoryIds]);
 
+  const releaseShowcaseByStory = useAppStore((state) => state.releaseShowcaseByStory);
+  const loadPublishedReleases = useAppStore((state) => state.loadPublishedReleases);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadPublishedReleases().catch(() => undefined);
+    }, [loadPublishedReleases]),
+  );
+
+  const publishedByStory = useMemo(
+    () => Object.fromEntries(
+      Object.values(releaseShowcaseByStory).map((release) => [
+        release.storyId,
+        { version: release.version, releasedAt: release.updatedAt },
+      ]),
+    ),
+    [releaseShowcaseByStory],
+  );
+
   const projects = useMemo(
     () =>
       buildStudioProjects({
         storiesMetadata,
         sceneRecordsByStory,
         sceneRecordHydration: hydration,
+        publishedByStory,
         lastEditedSceneByStory,
       }),
-    [hydration, lastEditedSceneByStory, sceneRecordsByStory, storiesMetadata],
+    [hydration, lastEditedSceneByStory, publishedByStory, sceneRecordsByStory, storiesMetadata],
   );
 
   const visibleProjects = useMemo(

@@ -22,6 +22,21 @@ export type StudioProjectStatus = 'pending' | 'issues' | 'draft' | 'ready';
 
 export type StudioSort = 'recent' | 'title' | 'size';
 
+/**
+ * What the shelf knows about a story's published state.
+ *
+ * Kept beside `status` rather than folded into it: they answer different
+ * questions. `status` describes the draft — is the graph sound, is it
+ * presentable — while this describes what readers can actually see. A story
+ * can be published and simultaneously have a draft full of broken links.
+ */
+export interface StudioPublication {
+  version: string;
+  releasedAt: number;
+  /** The working copy has moved since that release was cut. */
+  hasUnreleasedChanges: boolean;
+}
+
 export interface StudioProject {
   id: string;
   title: string;
@@ -36,6 +51,8 @@ export interface StudioProject {
   status: StudioProjectStatus;
   /** How many graph issues the status is counting; 0 unless `status` is `issues`. */
   issueCount: number;
+  /** Null while the story has never been published. */
+  publication: StudioPublication | null;
   /** The scene «Continue» opens: the last one edited, or the start scene. */
   resumeSceneId: string;
   /** Where a preview begins — always the story's own entry point. */
@@ -49,6 +66,8 @@ export interface StudioLibraryInput {
   sceneRecordsByStory: Record<string, Record<string, SceneRecord>>;
   sceneRecordHydration: Record<string, 'full' | 'window'>;
   lastEditedSceneByStory: Record<string, string>;
+  /** storyId → the release readers currently see, if any. */
+  publishedByStory?: Record<string, { version: string; releasedAt: number }>;
 }
 
 function scenesOf(
@@ -77,8 +96,24 @@ export function resolveResumeSceneId(
 export function buildStudioProject(
   story: StoryMetadata,
   scenes: SceneRecord[],
-  options: { hydrated: boolean; lastEditedSceneId?: string },
+  options: {
+    hydrated: boolean;
+    lastEditedSceneId?: string;
+    published?: { version: string; releasedAt: number };
+  },
 ): StudioProject {
+  const published = options.published;
+  const publication: StudioPublication | null = published
+    ? {
+        version: published.version,
+        releasedAt: published.releasedAt,
+        // Compared against the release date, not against a saved flag: the
+        // story's own updatedAt is the only thing that knows about every edit
+        // path into it.
+        hasUnreleasedChanges: story.updatedAt > published.releasedAt,
+      }
+    : null;
+
   const base = {
     id: story.id,
     title: story.title,
@@ -99,6 +134,7 @@ export function buildStudioProject(
       choices: null,
       status: 'pending',
       issueCount: 0,
+      publication,
     };
   }
 
@@ -115,6 +151,7 @@ export function buildStudioProject(
     choices: stats.choices,
     status: issues.length > 0 ? 'issues' : presentable ? 'ready' : 'draft',
     issueCount: issues.length,
+    publication,
   };
 }
 
@@ -123,6 +160,7 @@ export function buildStudioProjects(input: StudioLibraryInput): StudioProject[] 
     buildStudioProject(story, scenesOf(input, story.id), {
       hydrated: input.sceneRecordHydration[story.id] === 'full',
       lastEditedSceneId: input.lastEditedSceneByStory[story.id],
+      published: input.publishedByStory?.[story.id],
     }),
   );
 }

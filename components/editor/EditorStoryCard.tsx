@@ -85,6 +85,12 @@ export const EditorStoryCard = memo(function EditorStoryCard({
     });
   }, [language, pluralize, project.choices, project.scenes, project.words, t]);
 
+  /**
+   * Publication outranks the draft's own status in the headline: «published
+   * v1.2» is what a reader experiences, and «ready» only ever meant «could
+   * be». Issues still win over both — a broken graph is the thing the author
+   * has to know first.
+   */
   const status = useMemo(() => {
     if (project.status === 'pending') return null;
     if (project.status === 'issues') {
@@ -101,11 +107,22 @@ export const EditorStoryCard = memo(function EditorStoryCard({
         }),
       };
     }
+    if (project.publication) {
+      return project.publication.hasUnreleasedChanges
+        ? {
+            color: colors.warning,
+            label: t('editor.statusUnreleasedChanges', { version: project.publication.version }),
+          }
+        : {
+            color: colors.success,
+            label: t('editor.statusPublished', { version: project.publication.version }),
+          };
+    }
     if (project.status === 'ready') {
       return { color: colors.success, label: t('editor.statusReady') };
     }
     return { color: colors['foreground-tertiary'], label: t('editor.statusDraft') };
-  }, [colors, pluralize, project.issueCount, project.status, t]);
+  }, [colors, pluralize, project.issueCount, project.publication, project.status, t]);
 
   const edited = useMemo(() => {
     const relative = describeUpdatedAt(project.updatedAt, now);

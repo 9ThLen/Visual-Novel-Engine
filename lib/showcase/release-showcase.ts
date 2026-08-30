@@ -10,7 +10,11 @@
  * drawing a card needs no scene load at all — only the manifest and the
  * reader's own progress.
  */
-import type { ReleaseManifestV1 } from '@/lib/release/types';
+import type {
+  ContentRating,
+  ReleaseCredit,
+  ReleaseManifestV1,
+} from '@/lib/release/types';
 import type {
   ShowcaseBannerEffect,
   ShowcaseProgressInput,
@@ -42,6 +46,17 @@ export interface ReleaseShowcaseSource {
   terminalSceneIds: string[];
   createdAt: number;
   updatedAt: number;
+  /**
+   * The publication facts a store page has to answer before a stranger starts
+   * reading. Carried here so the page needs no second read of the manifest.
+   */
+  contentRating: ContentRating;
+  languages: string[];
+  contentWarnings: string[];
+  licence: string | null;
+  credits: ReleaseCredit[];
+  /** Undefined means the author said nothing either way. */
+  aiAssisted?: boolean;
 }
 
 export function releaseShowcaseSource(manifest: ReleaseManifestV1): ReleaseShowcaseSource {
@@ -65,8 +80,16 @@ export function releaseShowcaseSource(manifest: ReleaseManifestV1): ReleaseShowc
     // The release date, not the story's `updatedAt`: a shelf that reordered
     // itself while an author edited a draft would be reporting private work.
     updatedAt: Date.parse(release.releasedAt) || story.updatedAt,
+    contentRating: release.publication.contentRating,
+    languages: release.publication.languages,
+    contentWarnings: release.publication.contentWarnings ?? [],
+    licence: release.publication.licence ?? null,
+    credits: release.publication.credits ?? [],
   };
   if (release.notes) source.notes = release.notes;
+  if (release.publication.aiAssisted !== undefined) {
+    source.aiAssisted = release.publication.aiAssisted;
+  }
   return source;
 }
 

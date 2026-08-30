@@ -247,3 +247,63 @@ describe('describeUpdatedAt', () => {
     expect(describeUpdatedAt(now + minute, now)).toEqual({ unit: 'justNow' });
   });
 });
+
+describe('publication state on the shelf', () => {
+  const published = { version: '1.2.0', releasedAt: 5_000 };
+
+  function project(storyUpdatedAt: number, withRelease = true) {
+    return buildStudioProject(
+      {
+        id: 'story_1',
+        title: 'A Novel',
+        description: 'Described.',
+        thumbnailUri: 'idb-media://cover',
+        startSceneId: 'start',
+        createdAt: 1,
+        updatedAt: storyUpdatedAt,
+        sceneCount: 1,
+      },
+      [{ id: 'start', isStart: true, timeline: [], connections: [], createdAt: 1 } as never],
+      { hydrated: true, published: withRelease ? published : undefined },
+    );
+  }
+
+  it('reports nothing for a story that was never published', () => {
+    expect(project(9_000, false).publication).toBeNull();
+  });
+
+  it('reports the published version', () => {
+    expect(project(4_000).publication).toEqual({
+      version: '1.2.0',
+      releasedAt: 5_000,
+      hasUnreleasedChanges: false,
+    });
+  });
+
+  // Compared against the release date rather than a saved flag: updatedAt is
+  // the only thing that knows about every edit path into the story.
+  it('notices edits made after the release', () => {
+    expect(project(6_000).publication?.hasUnreleasedChanges).toBe(true);
+  });
+
+  it('does not call the release itself an unreleased change', () => {
+    expect(project(5_000).publication?.hasUnreleasedChanges).toBe(false);
+  });
+
+  it('still reports publication before the scenes are hydrated', () => {
+    const pending = buildStudioProject(
+      {
+        id: 'story_1',
+        title: 'A Novel',
+        startSceneId: 'start',
+        createdAt: 1,
+        updatedAt: 4_000,
+        sceneCount: 3,
+      },
+      [],
+      { hydrated: false, published },
+    );
+    expect(pending.status).toBe('pending');
+    expect(pending.publication?.version).toBe('1.2.0');
+  });
+});

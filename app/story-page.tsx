@@ -27,6 +27,7 @@ import { LiveSceneBackdrop } from '@/components/showcase/LiveSceneBackdrop';
 import { ShowcaseImage } from '@/components/showcase/ShowcaseImage';
 import { useLibraryBootstrap } from '@/hooks/useLibraryBootstrap';
 import { useI18n } from '@/hooks/use-i18n';
+import { formatDate, SHORT_DATE } from '@/lib/format-date';
 import { navigateWithViewTransition } from '@/lib/navigation-transition';
 import { getReviewsStore } from '@/lib/reviews/reviews-storage';
 import { computeAggregate, type ReviewRating, type StoryReview } from '@/lib/reviews/reviews-domain';
@@ -47,7 +48,7 @@ const MAX_GALLERY_FRAMES = 6;
 
 export default function StoryPageScreen() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const { height } = useWindowDimensions();
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
 
@@ -267,6 +268,46 @@ export default function StoryPageScreen() {
           </View>
         ) : null}
 
+        {release ? (
+          <View style={styles.block}>
+            <Text style={styles.blockTitle}>
+              {t('storyPage.version', { version: release.version })}
+            </Text>
+            <Text style={styles.releaseMeta}>
+              {t('storyPage.releasedOn', {
+                date: formatDate(release.updatedAt, language, SHORT_DATE),
+              })}
+              {' · '}
+              {t(`storyHome.contentRating.${release.contentRating}`)}
+              {release.languages.length > 0 ? ` · ${release.languages.join(', ')}` : ''}
+            </Text>
+            {release.notes ? <Text style={styles.description}>{release.notes}</Text> : null}
+            {release.contentWarnings.length > 0 ? (
+              <Text style={styles.releaseMeta}>
+                {t('storyPage.contentWarnings', { items: release.contentWarnings.join(', ') })}
+              </Text>
+            ) : null}
+            {release.licence ? (
+              <Text style={styles.releaseMeta}>
+                {t('storyPage.licence', { licence: release.licence })}
+              </Text>
+            ) : null}
+            {release.aiAssisted === true ? (
+              <Text style={styles.releaseMeta}>{t('storyPage.aiAssisted')}</Text>
+            ) : null}
+            {release.credits.length > 0 ? (
+              <View style={styles.credits}>
+                {release.credits.map((credit) => (
+                  <Text key={`${credit.role}-${credit.name}`} style={styles.releaseMeta}>
+                    {credit.role}: {credit.name}
+                    {credit.licence ? ` (${credit.licence})` : ''}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         <View style={styles.metrics}>
           <Metric value={String(story.branchCount)} label={t('storyPage.branches')} />
           <Metric
@@ -396,6 +437,15 @@ const styles = StyleSheet.create({
     color: SHOWCASE_COLORS.text,
     fontSize: 18,
     fontWeight: '800',
+  },
+  releaseMeta: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: SHOWCASE_COLORS.muted,
+  },
+  credits: {
+    gap: 2,
+    marginTop: 4,
   },
   description: {
     color: SHOWCASE_COLORS.secondary,
