@@ -2,9 +2,9 @@
 
 How a finished novel leaves the editor and reaches a reader.
 
-Status: in progress. **R0, R1 and R2 are implemented**; everything from R3 onward
-is still a proposal, alongside the parts marked **exists** in
-[Current state](#1-current-state).
+Status: in progress. **R0–R3 are implemented**, which completes Channel A;
+everything from R4 onward is still a proposal, alongside the parts marked
+**exists** in [Current state](#1-current-state).
 
 ---
 
@@ -803,7 +803,7 @@ one reports "ready to release".
 **Done when:** publishing twice produces two immutable versions that both still
 play, and clearing the editor's working copy does not damage either.
 
-### R3 — Channel A: the showcase publishes releases
+### R3 — Channel A: the showcase publishes releases ✅
 
 - `lib/showcase/showcase-adapter.ts`: source becomes published releases, not
   `storiesMetadata`.
