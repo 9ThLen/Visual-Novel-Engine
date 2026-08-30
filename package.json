@@ -9,6 +9,7 @@
     "dev:tunnel": "node node_modules/expo/bin/cli start --tunnel",
     "build:web": "node scripts/build-web.mjs",
     "ai-bridge": "tsx tools/ai-bridge/src/main.ts",
+    "build-helper": "tsx tools/build-helper/src/main.ts",
     "ai-bridge:build": "node tools/ai-bridge/build.mjs",
     "ai-bridge:pack": "pnpm --dir tools/ai-bridge pack",
     "check": "tsc --noEmit",

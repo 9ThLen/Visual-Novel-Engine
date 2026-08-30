@@ -73,6 +73,9 @@ const PLAYER_FORBIDDEN_MODULES = [
   'lib/release/shell-build.ts',
   'lib/release/asset-sources.ts',
   'lib/release/bundle-file.ts',
+  // The build client talks to a local helper that holds signing credentials.
+  // Nothing a published player does involves it.
+  'lib/release/build-client.ts',
   'lib/story-backup/capture.ts',
   'lib/story-backup/import.ts',
   'lib/story-backup/service.ts',

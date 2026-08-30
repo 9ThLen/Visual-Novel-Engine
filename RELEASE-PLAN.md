@@ -2,11 +2,12 @@
 
 How a finished novel leaves the editor and reaches a reader.
 
-Status: in progress. **R0–R6 are implemented** — R0–R3 complete Channel A, R4 is
+Status: in progress. **R0–R7 are implemented** — R0–R3 complete Channel A, R4 is
 the build profile every native channel stands on (JS and config; the native
 module cut is specified and verified but applied by R9), R5 is the first
-shippable artifact of Channel B, and R6 puts it behind a button. Everything from
-R7 onward is still a proposal, alongside the parts marked **exists** in
+shippable artifact of Channel B, R6 puts it behind a button, and R7 is the build
+kernel every native channel will submit through. Everything from R8 onward is
+still a proposal, alongside the parts marked **exists** in
 [Current state](#1-current-state).
 
 Corrections to earlier steps are recorded inline rather than edited away: R2's
@@ -1096,7 +1097,7 @@ everything downstream of it exercised for real. `scripts/make-demo-release.ts`
 now packages bundled `assets/…` too, the way `captureStoryBackup` does, so the
 fixture is a faithful stand-in rather than a thinner one.
 
-### R7 — Build service (EAS only)
+### R7 — Build service (EAS only) — **implemented**, against a fake builder
 
 The seam behind every native build — a real service with state, not a client
 adapter. The app never runs a toolchain and never holds a build credential; it
@@ -1154,7 +1155,40 @@ interface. Not built now; the interface exists so they can be.
 **Done when:** the transport, the upload endpoint and the durable job state
 machine survive abuse against a **fake builder** — reload mid-build, cancel,
 retry, a resubmit with the same idempotency key, a resubmit with the same key and
-a different payload, an abandoned upload.
+a different payload, an abandoned upload. **They do.** Every case in that list is
+a test in `__tests__/unit/tools/build-helper.test.ts`, driven over real sockets
+and real HTTP rather than by calling methods, plus: an upload for a request
+nobody submitted, an upload without the token, an upload from an unpaired origin,
+an oversized upload, a binary frame, a socket without the token, a retry of a
+running build, and an artifact past its expiry.
+
+**What was built**
+
+- `lib/release/build-request.ts` — the request and what makes two of them the
+  same job. The id is validated here because it becomes a filename in two
+  places, and sanitising it in each would be two chances to disagree.
+- `lib/release/build-job.ts` — the state machine, pure. An event that does not
+  belong in the current state returns the job unchanged rather than throwing: a
+  cancel landing just after a build finished is a race, not a fault.
+- `lib/release/build-protocol.ts` — its own message set, with the four reasons it
+  is not the AI bridge's written down beside it.
+- `lib/release/build-client.ts` — the app's half. No credential, no toolchain, no
+  decision about the build.
+- `tools/build-helper/` — the service: upload endpoint, socket, durable job store
+  (atomic writes), log sanitizer, `Builder` seam, `FakeBuilder`, `EasBuilder`,
+  CLI. `pnpm build-helper`.
+
+**Honest about what is not proved.** No build has ever run. `EasBuilder` refuses
+with a reason rather than pretending, because a build command that has never met
+a real project would be a guess in the shape of working code. R7 delivers the
+kernel; R9 plugs in the builder and is where "a real APK exists" becomes
+checkable.
+
+**One rule the plan named that turned out to matter more than expected:** the
+upload endpoint must know the expected hash *before* it accepts bytes. Taking the
+upload first and being told afterwards what it should have hashed to would mean
+trusting the uploader to grade its own work — so an upload for a request nobody
+submitted is a 404, not a staging area.
 
 **Deliberately not here:** a real EAS build. That needs the staged Android
 project from R9, and requiring it here would make R7 unacceptable until R9
