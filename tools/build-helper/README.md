@@ -92,15 +92,15 @@ that says when it will.
   because a reload, a cancel, a retry and a resubmitted key are all answerable
   without a cloud account, and requiring one would mean the kernel could not be
   tested until R9 shipped.
-- `EasBuilder` — the CLI default. **Stages for real, and stops before
-  submitting.** R9 made the staging real: it turns the verified `.vnerelease`
-  into an Expo project with the story inside it, the editor out of it and the
-  file pickers unlinked, then checks the result and leaves it on disk. `eas
-  build` itself has never run here — it needs an Expo account, credentials that
-  account owns, and a paid queue — so the job fails with the command to run by
-  hand rather than with a submit-and-poll path written blind. A build command
-  that has never run against a real project would be a guess in the shape of
-  working code.
+- `EasBuilder` — the CLI default, and it **refuses**. R9 built the half of an
+  Android build that can be checked without a cloud account: `pnpm stage:android`
+  turns a verified `.vnerelease` into an Expo project with the story inside it,
+  the editor out of it and the file pickers unlinked. Submitting that project has
+  never run through this helper, so readiness says no and the job never leaves
+  `queued`. `build()` briefly staged and then threw; it was taken back out,
+  because the server never reaches it while readiness is false, and an
+  unreachable branch that reads like a working feature is worse than an honest
+  refusal.
 
 `github-actions` and `local` plug into the same interface when they are wanted.
 

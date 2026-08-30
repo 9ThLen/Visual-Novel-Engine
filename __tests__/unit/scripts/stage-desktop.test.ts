@@ -23,6 +23,7 @@ import {
   stageDesktopProject,
   verifyStagedProject,
 } from '../../../scripts/lib/stage-desktop';
+import { OUTPUT_MARKER } from '../../../tools/lib/out-path';
 import { deriveApplicationId } from '@/lib/release/native-identity';
 import { inlinePlayerConfig, type PlayerBootConfig } from '@/lib/release/player-bundle';
 
@@ -196,13 +197,49 @@ describe('staging a desktop project', () => {
    * never see it, because their build looks fine.
    */
   it('does not carry anything over from a previous story', () => {
-    fs.mkdirSync(path.join(out, FRONTEND_DIR_NAME, 'media'), { recursive: true });
-    fs.writeFileSync(path.join(out, FRONTEND_DIR_NAME, 'media', 'from-another-novel.png'), 'x');
+    const previous = stageDesktopProject({
+      bundleDir: bundle, outDir: out, templateDir: TEMPLATE_DIR, repoRoot: REPO_ROOT,
+    });
+    fs.mkdirSync(path.join(previous.frontendDir, 'media'), { recursive: true });
+    fs.writeFileSync(path.join(previous.frontendDir, 'media', 'from-another-novel.png'), 'x');
 
     const staged = stageDesktopProject({
       bundleDir: bundle, outDir: out, templateDir: TEMPLATE_DIR, repoRoot: REPO_ROOT,
     });
     expect(fs.existsSync(path.join(staged.frontendDir, 'media', 'from-another-novel.png'))).toBe(false);
+  });
+
+  /**
+   * The guard this originally got wrong.
+   *
+   * It refused a filesystem root, the repository, the current directory and
+   * anything containing either — which catches `--out .` and nothing else.
+   * `--out ./assets` went straight through and deleted the art. Naming a path is
+   * not consenting to lose what is in it.
+   */
+  it('refuses a directory holding files it did not write', () => {
+    const source = path.join(path.dirname(out), 'assets');
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, 'keep.png'), 'irreplaceable');
+
+    expect(() => stageDesktopProject({
+      bundleDir: bundle, outDir: source, templateDir: TEMPLATE_DIR, repoRoot: REPO_ROOT,
+    })).toThrow('no build command wrote');
+    expect(fs.existsSync(path.join(source, 'keep.png'))).toBe(true);
+  });
+
+  it('accepts an empty directory, and one it wrote before', () => {
+    const empty = path.join(path.dirname(out), 'empty');
+    fs.mkdirSync(empty, { recursive: true });
+    const first = stageDesktopProject({
+      bundleDir: bundle, outDir: empty, templateDir: TEMPLATE_DIR, repoRoot: REPO_ROOT,
+    });
+    expect(fs.existsSync(path.join(first.outDir, OUTPUT_MARKER))).toBe(true);
+
+    // The marker is what makes a re-run safe without asking again.
+    expect(() => stageDesktopProject({
+      bundleDir: bundle, outDir: empty, templateDir: TEMPLATE_DIR, repoRoot: REPO_ROOT,
+    })).not.toThrow();
   });
 
   it('writes the targets it was given, and keeps the template default otherwise', () => {

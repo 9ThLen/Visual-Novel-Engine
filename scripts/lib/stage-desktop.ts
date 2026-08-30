@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { assertSafeOutPath } from './out-path.mjs';
+import { prepareOutPath } from '../../tools/lib/out-path';
 
 import {
   chooseIconSource,
@@ -149,8 +149,8 @@ export function stageDesktopProject(input: StageDesktopInput): StagedDesktopProj
   if (outDir === bundleDir) {
     throw new Error('The staged project must not be the bundle directory: it is emptied first.');
   }
-  assertSafeOutPath(outDir, { repoRoot: input.repoRoot, cwd: input.cwd });
-
+  // Everything that can refuse happens before anything is emptied: a bundle with
+  // no release must not cost the author the directory they pointed at.
   const release = readBundleRelease(bundleDir);
   const identity = input.identity ?? deriveNativeIdentity({
     storyId: release.storyId,
@@ -158,8 +158,7 @@ export function stageDesktopProject(input: StageDesktopInput): StagedDesktopProj
     version: release.version,
   });
 
-  fs.rmSync(outDir, { recursive: true, force: true });
-  fs.mkdirSync(outDir, { recursive: true });
+  prepareOutPath(outDir, { repoRoot: input.repoRoot, cwd: input.cwd });
   fs.cpSync(templateDir, outDir, { recursive: true });
 
   const frontendDir = path.join(outDir, FRONTEND_DIR_NAME);

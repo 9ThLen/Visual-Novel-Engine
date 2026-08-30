@@ -32,7 +32,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { collectStoryAssetRefs } from './lib/collect-story-assets.mjs';
-import { assertSafeOutPath } from './lib/out-path.mjs';
+import { prepareOutPath } from '../tools/lib/out-path';
 import { hardenWebOutput } from './lib/harden-web-output.mjs';
 import { inlineBundleFonts } from './lib/inline-bundle-fonts.mjs';
 import { validateStoryGraph } from './lib/validate-story-graph.mjs';
@@ -296,12 +296,10 @@ function copyBuild(distPath: string, outArg: string): string {
   const outPath = path.resolve(process.cwd(), outArg);
   if (outPath === distPath) fail('--out must differ from the build (--dist) directory');
   try {
-    assertSafeOutPath(outPath, { repoRoot: REPO_ROOT });
+    prepareOutPath(outPath, { repoRoot: REPO_ROOT });
   } catch (error) {
     fail((error as Error).message, ['Pass a dedicated path such as  --out ./story-dist']);
   }
-  fs.rmSync(outPath, { recursive: true, force: true });
-  fs.mkdirSync(outPath, { recursive: true });
   fs.cpSync(distPath, outPath, { recursive: true });
   return outPath;
 }

@@ -41,7 +41,12 @@ if (playerProfile) {
 
 const finalConfig = withNativeWind(config, { input: "./global.css" });
 
-const extraAssetExts = ['ogg', 'wav', 'mp3', 'm4a', 'aac'];
+// Metro's defaults already cover the image and video types a release can carry.
+// These are the audio ones it does not — `weba` included, which is what a
+// release names an `audio/webm` object: without it the file resolves as source
+// and the sound is simply not in the app. `BUNDLEABLE_MEDIA_EXTENSIONS` in
+// `tools/vne-build/stage-android.ts` is checked against this list by a test.
+const extraAssetExts = ['ogg', 'wav', 'mp3', 'm4a', 'aac', 'weba'];
 extraAssetExts.forEach(ext => {
   if (!finalConfig.resolver.assetExts.includes(ext)) {
     finalConfig.resolver.assetExts.push(ext);

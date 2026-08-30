@@ -8,15 +8,18 @@
  * fails silently. A build of the wrong thing succeeds exactly as loudly as a
  * build of the right one, twenty minutes later, on someone else's machine.
  */
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import {
+  BUNDLEABLE_MEDIA_EXTENSIONS,
   GENERATED_MODULE,
   STAGED_ICON,
   STAGED_MEDIA_DIR,
   STAGED_RELEASE_JSON,
+  assertEveryReferencePackaged,
   generatedReleaseModule,
   referencedStudioRoutes,
   stagedEasJson,
@@ -67,10 +70,13 @@ function stagedProject(overrides: { skip?: string[] } = {}): string {
     })));
   }
   if (!skip.has('release')) {
+    // A config the *runtime* accepts, not merely one the verifier reads: the
+    // story needs a start scene and a non-empty scene table, or the app builds,
+    // installs and sits on its boot screen.
     write(root, STAGED_RELEASE_JSON, JSON.stringify({
       version: 1,
-      story: { id: 'story_42', title: 'Rain', scenes: { s1: {} } },
-      assets: { 'idb-media://cover': `${'media'}/abc.png` },
+      story: { id: 'story_42', title: 'Rain', startSceneId: 's1', scenes: { s1: { id: 's1' } } },
+      assets: { 'idb-media://cover': 'media/abc.png' },
       release: { releaseId: 'r1', version: '2.1.0', releasedAt: 'now' },
     }));
     write(root, `${STAGED_MEDIA_DIR}/abc.png`, 'png-bytes');
@@ -258,14 +264,100 @@ export const PACKAGED_RELEASE: PackagedRelease | null = null;
     expect(verifyStagedAndroidProject(root).join('\n')).toContain('components/document-editor is still');
   });
 
-  it('catches a release with no scenes', () => {
-    root = stagedProject({ skip: ['release'] });
-    write(root, STAGED_RELEASE_JSON, JSON.stringify({ version: 1, story: { id: 'x', scenes: {} } }));
-    expect(verifyStagedAndroidProject(root).join('\n')).toContain('no scenes');
+  /**
+   * Checked by parsing it the way the app will, rather than by looking for the
+   * fields this file happens to think matter. A story with no start scene is the
+   * case that motivated it: the verifier waved one through, and the app would
+   * have installed, opened on its boot screen and stayed there.
+   */
+  it('catches a release the player could not actually boot from', () => {
+    for (const story of [
+      { id: 'x', title: 'Rain', startSceneId: 's1', scenes: {} },
+      { id: 'x', title: 'Rain', scenes: { s1: {} } },
+      { id: 'x', startSceneId: 's1', scenes: { s1: {} } },
+    ]) {
+      const project = stagedProject({ skip: ['release'] });
+      write(project, STAGED_RELEASE_JSON, JSON.stringify({ version: 1, story }));
+      expect(verifyStagedAndroidProject(project).join('\n'), JSON.stringify(story))
+        .toContain('could boot from');
+      fs.rmSync(project, { recursive: true, force: true });
+    }
+    root = stagedProject();
+  });
+
+  /** One release is one application, whichever format it is built into. */
+  it('catches two build profiles that describe different applications', () => {
+    root = stagedProject({ skip: ['eas.json'] });
+    const eas = stagedEasJson({ VNE_PROFILE: 'player', VNE_PLAYER_APP_ID: 'com.a.b' }) as
+      { build: Record<string, { env: Record<string, string> }> };
+    eas.build['player-aab'].env = { VNE_PROFILE: 'player', VNE_PLAYER_APP_ID: 'com.other.app' };
+    write(root, 'eas.json', JSON.stringify(eas));
+    expect(verifyStagedAndroidProject(root).join('\n')).toContain('disagree about VNE_PLAYER_APP_ID');
   });
 
   it('says so when there is no project at all', () => {
     root = tempDir();
     expect(verifyStagedAndroidProject(root)).toEqual(['The staged project has no package.json.']);
+  });
+});
+
+describe('art the release does not carry', () => {
+  const manifest = {
+    assets: [{ assetId: 'a1', sourceReferences: ['assets/background/kept.png'] }],
+  } as never;
+
+  it('passes a release that packaged everything its story names', () => {
+    const payload = { scenes: { s1: { bg: 'assets/background/kept.png' } } } as never;
+    expect(() => assertEveryReferencePackaged(payload, manifest)).not.toThrow();
+  });
+
+  /**
+   * Fatal here, where the web exporter only warns. A `--dist` pointing at a full
+   * Expo build still holds the app's own `assets/` tree, so on the web the
+   * picture may still appear. On Android the player profile substitutes an empty
+   * bundled-asset map and staging deletes the files, so this is a guaranteed
+   * blank image on a stranger's phone.
+   */
+  it('refuses one that names art nobody packaged', () => {
+    const payload = { scenes: { s1: { bg: 'assets/background/missing.png' } } } as never;
+    expect(() => assertEveryReferencePackaged(payload, manifest))
+      .toThrow('assets/background/missing.png');
+  });
+
+  it('names a few and counts the rest rather than printing hundreds', () => {
+    const scenes = Object.fromEntries(
+      Array.from({ length: 9 }, (_, i) => [`s${i}`, { bg: `assets/background/m${i}.png` }]),
+    );
+    expect(() => assertEveryReferencePackaged({ scenes } as never, manifest))
+      .toThrow('and 4 more');
+  });
+});
+
+/**
+ * Metro bundles a file as an asset only if its extension is in `assetExts`.
+ * Anything else resolves as source and fails, or is simply not there — and the
+ * verifier's whole job is to catch that before a build, so the two lists have to
+ * be the same list. `.weba`, which is what a release calls an `audio/webm`
+ * object, was in one and not the other.
+ */
+describe('the extensions the verifier will accept', () => {
+  it('are all extensions Metro actually bundles', () => {
+    // Asked of Metro in a real Node process rather than imported here: the test
+    // runner cannot load `expo/metro-config`, and a hand-copied list of defaults
+    // would be the same duplication this test exists to catch.
+    const probe = spawnSync(process.execPath, ['-e', `
+      const { getDefaultConfig } = require('expo/metro-config');
+      const declared = require('./metro.config.js').resolver.assetExts;
+      process.stdout.write(JSON.stringify([
+        ...getDefaultConfig(process.cwd()).resolver.assetExts,
+        ...declared,
+      ]));
+    `], { cwd: REPO_ROOT, encoding: 'utf8' });
+    expect(probe.status, probe.stderr).toBe(0);
+
+    const bundled = new Set(JSON.parse(probe.stdout) as string[]);
+    for (const extension of BUNDLEABLE_MEDIA_EXTENSIONS) {
+      expect(bundled.has(extension.replace('.', '')), extension).toBe(true);
+    }
   });
 });

@@ -1321,8 +1321,38 @@ nowhere to apply.
 **Not verified, and not pretended:** the APK, its size and its permission list on
 a device; the launch splash, which only behaves faithfully in a release build;
 v2 installing over v1 with saves intact; and the post-build certificate check,
-which needs an artifact to check. `EasBuilder` stages for real and stops at the
-submit line with the command to run by hand.
+which needs an artifact to check. `EasBuilder` refuses, and the job never leaves
+`queued`; staging is `pnpm stage:android`.
+
+**Five things a review found afterwards, all real, all fixed:**
+
+1. **The output guard only caught `--out .`** — `--out ./assets` would have been
+   emptied. Naming a path is not consenting to lose what is in it, so the rule is
+   now about contents: absent or empty is fair game, a directory carrying the
+   marker these commands write is fair game, anything else is refused. Shared by
+   all three writers (`tools/lib/out-path.ts`) rather than copied a third time.
+2. **`.weba` was accepted by the verifier and dropped by Metro** — it is what a
+   release names an `audio/webm` object, so the sound would simply not be in the
+   app. Added to `metro.config.js`, and the verifier's list is now checked
+   against Metro's own `assetExts` by a test that asks Metro in a real process.
+3. **Android staging never checked for unpackaged bundled references.** The web
+   exporter warns; here it must be fatal, because the asset cut above deletes the
+   very files a warning would have been survivable against.
+4. **The claim that `EasBuilder` stages through the helper was false.** The
+   server asks `readiness()` before staging, and it answers no, so `build()` was
+   unreachable. The staging in it has been removed rather than left to read like
+   a working path.
+5. **`--eas-project-id` was optional**, so a build would have gone to the
+   engine's own EAS project and been signed with credentials that are not the
+   author's. Now required, with `--allow-engine-project` to opt in deliberately.
+
+Also fixed: the config and autolinking checks failed *open* when the
+`node_modules` junction could not be created, printing a green tick for checks
+that never ran; the verifier now parses the staged release the way the runtime
+will, rather than looking for the fields it happened to think mattered (a story
+with no `startSceneId` passed, and would have installed and sat on its boot
+screen); the two build profiles are checked to describe the same application; and
+staging is deterministic, stamped from the release rather than from the clock.
 
 - `wiki/releases-android.md` — sideload instructions, the Play checklist, and
   what losing a signing key costs.

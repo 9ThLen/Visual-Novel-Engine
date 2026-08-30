@@ -49,11 +49,12 @@ interface Args {
   easProjectId?: string;
   icon?: string;
   skipChecks: boolean;
+  allowEngineProject: boolean;
   help: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { skipChecks: false, help: false };
+  const args: Args = { skipChecks: false, allowEngineProject: false, help: false };
   for (let i = 0; i < argv.length; i += 1) {
     switch (argv[i]) {
       case '--release': args.release = argv[++i]; break;
@@ -61,6 +62,7 @@ function parseArgs(argv: string[]): Args {
       case '--eas-project-id': args.easProjectId = argv[++i]; break;
       case '--icon': args.icon = argv[++i]; break;
       case '--skip-checks': args.skipChecks = true; break;
+      case '--allow-engine-project': args.allowEngineProject = true; break;
       case '--help': case '-h': args.help = true; break;
       default:
         if (argv[i].startsWith('--')) fail(`Unknown option: ${argv[i]}`);
@@ -84,6 +86,9 @@ Options:
                           cover when it is square, and to the engine icon
                           otherwise.
   --skip-checks           Stage only. The checks need this repo's node_modules.
+  --allow-engine-project  Build against the engine's own EAS project. Only for
+                          trying the pipeline out: the credentials Android holds
+                          a story to for its whole life would not be yours.
   -h, --help              Show this help.
 `);
 }
@@ -204,6 +209,18 @@ async function main(): Promise<void> {
   if (args.help) { printHelp(); return; }
   if (!args.release) fail('--release is required (a .vnerelease file)');
   if (!args.out) fail('--out is required (where the staged project goes)');
+  if (!args.easProjectId && !args.allowEngineProject) {
+    // Refused rather than warned. Android holds an app to the key that signed
+    // it for the life of the story, and the account that owns that key should be
+    // the author's — a warning on a command that then prints `eas build` and
+    // exits 0 is an invitation to publish from someone else's account.
+    fail('--eas-project-id is required', [
+      "A build belongs to the author's own EAS project, because the signing",
+      'credentials it creates are what every future update has to match.',
+      'Run `eas init` in the staged project to make one, or pass',
+      "--allow-engine-project to try the pipeline against the engine's.",
+    ]);
+  }
 
   console.log(color.green('▸ Staging an Android player project\n'));
 
@@ -232,7 +249,8 @@ async function main(): Promise<void> {
     + `${describeBytes(staged.prunedBytes)}`,
   ));
   if (!args.easProjectId) {
-    console.log(color.yellow('  ⚠ No --eas-project-id: the build would go to the engine\'s own EAS project.'));
+    console.log(color.yellow('  ⚠ --allow-engine-project: this build would go to the engine\'s EAS project,'));
+    console.log(color.yellow('    and be signed with credentials that are not the author\'s.'));
   }
 
   const problems = verifyStagedAndroidProject(staged.outDir);
@@ -250,12 +268,19 @@ async function main(): Promise<void> {
   console.log(color.dim('  Every module the player imports is present'));
 
   if (args.skipChecks) {
+    console.log(color.yellow('  ⚠ --skip-checks: the resolved config and the native cut were not verified.'));
     console.log(color.green(`\n✔ Staged: ${staged.outDir}`));
     return;
   }
 
   if (!linkNodeModules(staged.outDir)) {
-    console.log(color.yellow('  ⚠ Could not link node_modules; skipping the config and autolinking checks.'));
+    // Not skipped with a warning: the two checks below are the only evidence
+    // that the config resolves and the native cut applies, and a run that
+    // quietly stops performing them still prints a green tick.
+    fail('Could not link node_modules into the staged project', [
+      'The config and autolinking checks cannot run without it.',
+      'Pass --skip-checks to stage anyway, knowing neither was verified.',
+    ]);
   } else {
     for (const [label, check] of [
       ['Expo config', () => checkExpoConfig(staged.outDir, staged.env)],

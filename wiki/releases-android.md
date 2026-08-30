@@ -12,7 +12,7 @@ it, and EAS compiles and signs it.**
 
 ```bash
 pnpm stage:android --release novel.vnerelease --out ./novel-android \
-  --eas-project-id <your own EAS project>
+  --eas-project-id <your own EAS project>   # required, and it should be yours
 
 cd ./novel-android
 eas build --platform android --profile player-apk
@@ -43,6 +43,18 @@ screens that were inside every artifact because a static `require` named them.
 What remains is the engine (about 3 MB of source, 9 MB with its icons) plus the
 release's own media.
 
+**A release that names art it does not carry is refused.** The web exporter only
+warns, because a `--dist` pointing at a full Expo build still holds the app's own
+`assets/` tree and the picture may still appear. Nothing rescues it here: the
+player profile substitutes an empty bundled-asset map and staging then deletes
+the files, so an unpackaged reference is a guaranteed blank image on a stranger's
+phone.
+
+**The output directory is not emptied unless it is safe to empty.** A directory
+that already holds files no build command wrote is refused outright — naming a
+path is not consenting to lose what is in it. An earlier guard only caught
+`--out .` and `--out ..`, so `--out ./assets` would have deleted the art.
+
 **The editor is not in the upload.** The authoring component trees are removed,
 and so is every route under `app/` that the player root does not re-export.
 Metro would not have bundled them, but "the archive contains no editor code"
@@ -53,9 +65,13 @@ should be true of the archive, not only of the bundle.
 Four passes, all runnable without an Android SDK or an Expo account:
 
 1. **Structural** — the autolinking exclusions are present, `appVersionSource` is
-   `local`, both build profiles exist and emit the formats they claim, every file
-   the asset map names is on disk, every `require` in the generated module
-   resolves, and none of the media has an extension Metro will not bundle.
+   `local`, both build profiles exist, emit the formats they claim and agree
+   about which application they are building, the release parses the way the
+   *runtime* will parse it, every file the asset map names is on disk, every
+   `require` in the generated module resolves, and none of the media has an
+   extension Metro will not bundle. That last list is checked against Metro's own
+   `assetExts` by a test, because it was wrong once: `.weba` — what a release
+   calls an `audio/webm` object — was accepted here and silently dropped there.
 2. **Completeness** — the player's whole module graph is walked *inside the
    staged copy*. An allowlist that missed a directory otherwise produces a
    project that uploads cleanly and fails in Metro twenty minutes later.
@@ -160,9 +176,15 @@ that reads it. Everything below it is not:
 - installing v2 over v1 with the saves intact;
 - the post-build certificate check, which needs an artifact to check.
 
-`EasBuilder` in [`tools/build-helper`](../tools/build-helper/README.md) stages for
-real and then stops at that line, with the command to run by hand. It is not
-pretending to submit.
+`EasBuilder` in [`tools/build-helper`](../tools/build-helper/README.md) **refuses
+outright**, and the job never leaves `queued` — the helper asks a builder whether
+it is ready before staging anything, which is the right order. Staging is
+`pnpm stage:android`; wiring it into the helper is part of the submit half that
+does not exist yet.
+
+An earlier version of this page said the helper staged for real. It did not: the
+server never reaches `build()` while readiness is false, so that code could not
+run. It has been removed rather than left to read like a working path.
 
 ## The launcher icon
 

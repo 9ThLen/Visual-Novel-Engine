@@ -24,6 +24,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { chooseIconSource, type IconCandidate, type IconChoice } from '../lib/icon-source';
+import { prepareOutPath } from '../lib/out-path';
 
 import { RELEASE_MEDIA_DIR, releaseObjectFileName } from '@/lib/release/asset-map';
 import {
@@ -31,8 +32,13 @@ import {
   type AndroidIdentity,
 } from '@/lib/release/native-identity';
 import { extractReleaseArchive, readReleaseManifest } from '@/lib/release/package';
-import { buildPlayerBootConfig, type PlayerBootConfig } from '@/lib/release/player-bundle';
-import type { ReleaseManifestV1 } from '@/lib/release/types';
+import {
+  buildPlayerBootConfig,
+  findUnpackagedBundledReferences,
+  type PlayerBootConfig,
+} from '@/lib/release/player-bundle';
+import { parsePlayerConfig } from '@/lib/player-mode';
+import type { ReleaseManifestV1, ReleasePayloadV1 } from '@/lib/release/types';
 import type { StoryArchiveBinarySource, StoryBackupAsset } from '@/lib/story-backup/types';
 
 /**
@@ -375,10 +381,12 @@ export async function stageAndroidProject(
   const releaseFile = path.resolve(input.releaseFile);
   const outDir = path.resolve(input.outDir);
   const repoRoot = path.resolve(input.repoRoot);
-  const generatedAt = input.generatedAt ?? new Date().toISOString();
+  // Defaulted to the release's own timestamp rather than to now, so staging the
+  // same release twice produces the same files. A build that differs from the
+  // last one only in a comment is a build nobody can compare.
+  const generatedAt = input.generatedAt;
 
   if (!fs.existsSync(releaseFile)) throw new Error(`No such release file: ${releaseFile}`);
-  assertSafeStagingPath(outDir, repoRoot, input.cwd ?? process.cwd());
 
   // Read and check the manifest before anything is written. A corrupt archive
   // must fail here rather than after twenty minutes of cloud build.
@@ -396,8 +404,7 @@ export async function stageAndroidProject(
     version: manifest.release.version,
   });
 
-  fs.rmSync(outDir, { recursive: true, force: true });
-  fs.mkdirSync(outDir, { recursive: true });
+  prepareOutPath(outDir, { repoRoot, cwd: input.cwd });
 
   for (const file of STAGED_ROOT_FILES) {
     copyIfPresent(path.join(repoRoot, file), path.join(outDir, file));
@@ -424,7 +431,18 @@ export async function stageAndroidProject(
     (asset) => mediaFileSink(mediaDir, asset),
   );
 
-  const bootConfig = buildPlayerBootConfig({ manifest, payload, generatedAt });
+  // A reference to art the release did not package.
+  //
+  // The web exporter warns about these, because a `--dist` pointing at a full
+  // Expo build still carries the app's own `assets/` tree and the picture would
+  // still appear. Nothing rescues them here: the player profile substitutes an
+  // empty bundled-asset map and staging then deletes the files, so an unpackaged
+  // reference is a guaranteed blank image on a stranger's phone. Fatal, and
+  // fatal before the media is written rather than after.
+  assertEveryReferencePackaged(payload, manifest);
+
+  const stamp = generatedAt ?? manifest.release.releasedAt;
+  const bootConfig = buildPlayerBootConfig({ manifest, payload, generatedAt: stamp });
   fs.writeFileSync(
     path.join(outDir, ...STAGED_RELEASE_JSON.split('/')),
     JSON.stringify(bootConfig),
@@ -433,7 +451,7 @@ export async function stageAndroidProject(
   const mediaFiles = fs.readdirSync(mediaDir).sort();
   const generatedFile = path.join(outDir, ...GENERATED_MODULE.split('/'));
   fs.mkdirSync(path.dirname(generatedFile), { recursive: true });
-  fs.writeFileSync(generatedFile, generatedReleaseModule(mediaFiles, generatedAt));
+  fs.writeFileSync(generatedFile, generatedReleaseModule(mediaFiles, stamp));
 
   const icon = stageIcons(outDir, repoRoot, bootConfig, input.iconOverride);
 
@@ -464,30 +482,6 @@ export async function stageAndroidProject(
     prunedBytes: pruned.bytes,
     unresolvedModules: graph.unresolved,
   };
-}
-
-/**
- * The staged directory is emptied before it is written, and the path comes from
- * a command line. Same rule as the web and desktop exporters, restated here
- * rather than shared only because those two are ESM scripts and this is imported
- * by the build helper as well.
- */
-function assertSafeStagingPath(outDir: string, repoRoot: string, cwd: string): void {
-  const contains = (parent: string, child: string) => {
-    const rel = path.relative(parent, child);
-    return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
-  };
-  const unsafe = outDir === path.parse(outDir).root
-    || outDir === repoRoot
-    || outDir === cwd
-    || contains(outDir, repoRoot)
-    || contains(outDir, cwd);
-  if (unsafe) {
-    throw new Error(
-      `Refusing to stage into "${outDir}": it is emptied before writing, so it must be `
-      + 'a dedicated folder — not a drive root, the repository, the current directory, or a parent.',
-    );
-  }
 }
 
 /**
@@ -530,6 +524,29 @@ function stageIcons(
   fs.copyFileSync(choice.file, path.join(outDir, ...STAGED_ICON.split('/')));
   fs.copyFileSync(engineSplash, path.join(outDir, ...STAGED_SPLASH.split('/')));
   return choice;
+}
+
+/**
+ * Refuse a release that names art it does not carry.
+ *
+ * The web exporter only warns about these, because a `--dist` pointing at a full
+ * Expo build still holds the app's own `assets/` tree and the picture would
+ * still appear. Nothing rescues them here: the player profile substitutes an
+ * empty bundled-asset map and staging then deletes the files, so an unpackaged
+ * reference is a guaranteed blank image on a stranger's phone.
+ */
+export function assertEveryReferencePackaged(
+  payload: ReleasePayloadV1,
+  manifest: ReleaseManifestV1,
+): void {
+  const unpackaged = findUnpackagedBundledReferences(payload, manifest);
+  if (unpackaged.length === 0) return;
+  const shown = unpackaged.slice(0, 5).join(', ');
+  throw new Error(
+    `The release names ${unpackaged.length} asset(s) it does not carry, and an Android build `
+    + `has nothing to resolve them against: ${shown}`
+    + (unpackaged.length > 5 ? `, and ${unpackaged.length - 5} more` : ''),
+  );
 }
 
 // ── Verification ────────────────────────────────────────────────────────────
@@ -593,20 +610,30 @@ export function verifyStagedAndroidProject(outDir: string): string[] {
         problems.push(`eas.json profile "${profile}" carries no application id.`);
       }
     }
+    // One release, one application. Two profiles that disagree would sideload
+    // and list as different apps, and only one of them could take an update.
+    const [apk, aab] = ['player-apk', 'player-aab'].map((name) => eas.build?.[name]?.env ?? {});
+    for (const key of ['VNE_PLAYER_APP_ID', 'VNE_PLAYER_VERSION', 'VNE_PLAYER_VERSION_CODE']) {
+      if (apk[key] !== aab[key]) {
+        problems.push(`The two build profiles disagree about ${key}: "${apk[key]}" and "${aab[key]}".`);
+      }
+    }
   }
 
   // 3. The release, and every file it names.
   if (!exists(...STAGED_RELEASE_JSON.split('/'))) {
     problems.push('The staged project carries no release.');
   } else {
-    const config = JSON.parse(
+    const raw = JSON.parse(
       fs.readFileSync(read(...STAGED_RELEASE_JSON.split('/')), 'utf8'),
     ) as PlayerBootConfig;
-    const story = config.story as { id?: string; scenes?: Record<string, unknown> } | null;
-    if (!story?.id) problems.push('The staged release carries no story.');
-    if (!story?.scenes || Object.keys(story.scenes).length === 0) {
-      problems.push('The staged release carries a story with no scenes.');
+    // Parsed the way the app will parse it, not merely inspected. A config this
+    // check waves through and `parsePlayerConfig` rejects is an app that builds,
+    // installs, and opens on the boot screen forever.
+    if (!parsePlayerConfig(raw)) {
+      problems.push('The staged release is not one the player could boot from.');
     }
+    const config = raw;
     for (const file of new Set(Object.values(config.assets ?? {}))) {
       if (!exists('assets', ...file.split('/'))) {
         problems.push(`The asset map names ${file}, which is not in the staged project.`);

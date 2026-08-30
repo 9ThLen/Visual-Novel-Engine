@@ -10,7 +10,6 @@
  */
 import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
 
 import { BuildHelperServer } from './server';
 import { EasBuilder, FakeBuilder, type Builder } from './builder';
@@ -58,8 +57,8 @@ Local build helper for Visual Novel Engine.
   --allow-origin <origin> Loopback origin the browser will connect from.
                           Repeatable; defaults to the AI bridge's.
   --builder <fake|eas>    Which builder to use. Default eas; fake is test-only.
-  --staged-project <dir>  Where the Android project is staged. A fresh one
-                          per request under --work-dir otherwise.
+  --staged-project <dir>  Reserved. Staging is "pnpm stage:android" today; the
+                          helper does not submit builds yet.
   --token <value>         Pairing token. A fresh one is generated otherwise.
 `);
         process.exit(0);
@@ -69,12 +68,8 @@ Local build helper for Visual Novel Engine.
   return options;
 }
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-
 function makeBuilder(options: Options): Builder {
-  return options.builder === 'eas'
-    ? new EasBuilder(REPO_ROOT, options.stagedProject)
-    : new FakeBuilder({ stepMs: 400 });
+  return options.builder === 'eas' ? new EasBuilder() : new FakeBuilder({ stepMs: 400 });
 }
 
 async function main(): Promise<void> {
