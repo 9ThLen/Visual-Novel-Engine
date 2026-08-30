@@ -19,20 +19,39 @@ export interface ReaderReleaseStamp {
   version: string;
 }
 
-export function resolveReaderReleaseStamp(
+export interface ActiveReaderRelease extends ReaderReleaseStamp {
+  sceneIds: string[];
+}
+
+/** The release currently being read, whether it came from preview or a player bundle. */
+export function resolveActiveReaderRelease(
   readerRelease: ReaderReleaseSource | null | undefined,
   storyId: string | null | undefined,
-): ReaderReleaseStamp | null {
+): ActiveReaderRelease | null {
   if (readerRelease && readerRelease.storyId === storyId) {
-    return { releaseId: readerRelease.releaseId, version: readerRelease.version };
+    return {
+      releaseId: readerRelease.releaseId,
+      version: readerRelease.version,
+      sceneIds: Object.keys(readerRelease.scenes),
+    };
   }
 
   const config = getActivePlayerConfig();
   const release = config?.release;
-  if (!release) return null;
-  // A player carries one story; the id check is what stops a stamp leaking onto
-  // a save for something else if that ever stops being true.
+  if (!config || !release) return null;
   const configStoryId = (config.story as { id?: string }).id;
   if (storyId && configStoryId && configStoryId !== storyId) return null;
-  return { releaseId: release.releaseId, version: release.version };
+  return {
+    releaseId: release.releaseId,
+    version: release.version,
+    sceneIds: Object.keys(config.story.scenes),
+  };
+}
+
+export function resolveReaderReleaseStamp(
+  readerRelease: ReaderReleaseSource | null | undefined,
+  storyId: string | null | undefined,
+): ReaderReleaseStamp | null {
+  const active = resolveActiveReaderRelease(readerRelease, storyId);
+  return active ? { releaseId: active.releaseId, version: active.version } : null;
 }

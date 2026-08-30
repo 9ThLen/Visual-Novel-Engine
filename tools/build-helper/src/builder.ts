@@ -91,7 +91,7 @@ export class FakeBuilder implements Builder {
     }
 
     mkdirSync(input.outputDirectory, { recursive: true });
-    const fileName = `${input.request.releaseId}-${input.request.versionCode}.${input.request.target}`;
+    const fileName = `${input.request.requestId}.${input.request.target}`;
     const artifactPath = path.join(input.outputDirectory, fileName);
     writeFileSync(artifactPath, new Uint8Array(this.options.artifactBytes ?? 1024).fill(7));
     return { artifactPath, fileName };
@@ -112,17 +112,11 @@ export class EasBuilder implements Builder {
   constructor(private readonly stagedProjectDir?: string) {}
 
   async readiness(): Promise<{ ready: true } | { ready: false; reason: string }> {
-    if (!this.stagedProjectDir) {
-      return {
-        ready: false,
-        reason: 'No staged Android project to build. Producing one is R9 in RELEASE-PLAN.md.',
-      };
-    }
-    const { existsSync } = await import('node:fs');
-    if (!existsSync(this.stagedProjectDir)) {
-      return { ready: false, reason: `Staged project not found: ${this.stagedProjectDir}` };
-    }
-    return { ready: true };
+    const suffix = this.stagedProjectDir ? ' The staged project will be used once R9 lands.' : '';
+    return {
+      ready: false,
+      reason: `The EAS builder is not implemented yet; see R9 in RELEASE-PLAN.md.${suffix}`,
+    };
   }
 
   async build(): Promise<BuilderResult> {

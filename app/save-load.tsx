@@ -22,6 +22,7 @@ import { showToast } from '@/lib/toast-store';
 import { typeScale } from '@/lib/design-tokens';
 import { isQuickSaveSlotId } from '@/stores/app-store-slices/saves-slice';
 import { ShowcaseImage } from '@/components/showcase/ShowcaseImage';
+import { resolveActiveReaderRelease } from '@/lib/reader-release-stamp';
 
 /** What to tell the reader about a save that no longer fits. */
 function describeMismatch(
@@ -199,13 +200,7 @@ export default function SaveLoadScreen() {
 
     const compatibility = describeSaveCompatibility({
       slot,
-      release: readerRelease && readerRelease.storyId === slot.storyId
-        ? {
-            releaseId: readerRelease.releaseId,
-            version: readerRelease.version,
-            sceneIds: Object.keys(readerRelease.scenes),
-          }
-        : null,
+      release: resolveActiveReaderRelease(readerRelease, slot.storyId),
     });
 
     if (needsSaveCompatibilityWarning(compatibility)) {

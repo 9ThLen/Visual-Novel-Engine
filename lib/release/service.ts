@@ -12,7 +12,7 @@
  * store, and this follows it.
  */
 import { compileRelease } from '@/lib/release/compile';
-import { saveReleaseObjects } from '@/lib/release/object-store';
+import { forgetReleaseObjects, saveReleaseObjects } from '@/lib/release/object-store';
 import {
   saveRelease,
   type ReleaseMeta,
@@ -83,7 +83,14 @@ export async function publishStoryRelease(input: PublishStoryInput): Promise<Rel
   // what happened while this step was missing: publishing hashed the media and
   // relied on the library still holding it, so replacing a picture quietly made
   // an already-published version unexportable.
-  await saveReleaseObjects(compiled.manifest.release.releaseId, compiled.assets, storage);
+  const releaseId = compiled.manifest.release.releaseId;
+  const objects = await saveReleaseObjects(releaseId, compiled.assets, storage);
+  if (objects.failed.length > 0) {
+    await forgetReleaseObjects(releaseId, storage);
+    throw new Error(
+      `Release was not saved because ${objects.failed.length} media object(s) could not be secured.`,
+    );
+  }
 
   return saveRelease(storage, {
     manifest: compiled.manifest,

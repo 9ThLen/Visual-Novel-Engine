@@ -38,6 +38,12 @@ const PATTERNS: readonly { pattern: RegExp; replacement: string; why: string }[]
     why: 'a build URL names the account and the project it belongs to',
   },
   {
+    // Signed artifact and object-store URLs carry credentials in query strings.
+    pattern: /https?:\/\/\S+[?&](?:token|sig|signature|x-amz-signature|access_token|api[_-]?key|code)=[^\s&]+[^\s]*/gi,
+    replacement: `${REDACTED} credential url`,
+    why: 'signed download URLs carry short-lived credentials even without an account path',
+  },
+  {
     pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
     replacement: `${REDACTED} email`,
     why: 'EAS prints the signed-in account',
@@ -69,6 +75,11 @@ const PATTERNS: readonly { pattern: RegExp; replacement: string; why: string }[]
     replacement: `${REDACTED} path`,
     why: 'an absolute path names the machine and its user',
   },
+  {
+    pattern: /\/(?:tmp|workspace|var|opt|builds)\/[^\s"']+/gi,
+    replacement: `${REDACTED} path`,
+    why: 'an absolute toolchain path can disclose the operator or build layout',
+  },
 ];
 
 /** The patterns and their reasons, so a reviewer can read the policy. */
@@ -77,7 +88,9 @@ export function describeLogSanitizer(): { pattern: string; why: string }[] {
 }
 
 export function sanitizeBuildLogLine(line: string, options: LogSanitizerOptions = {}): string {
-  let output = line;
+  // Remove terminal control sequences that can hide or rewrite a secret in a
+  // browser console while keeping ordinary progress output readable.
+  let output = line.replace(/\u001b\[[0-?]*[ -\/]*[@-~]/g, '');
 
   // Literal secrets first: they may be substrings the patterns would not match.
   for (const secret of options.secrets ?? []) {

@@ -9,6 +9,8 @@ import type { StorageLike } from '@/lib/persistent-storage';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
 import { useAppStore } from '@/stores/use-app-store';
+import { setMediaBlobStorageAdapterForTests } from '@/lib/idb-storage';
+import { readReleaseObjectIndex } from '@/lib/release/object-store';
 
 const STORY_ID = 'publish-flow-story';
 const COVER_URI = 'data:image/png;base64,AQID';
@@ -21,6 +23,17 @@ function memoryStorage(): StorageLike & { dump: () => string } {
     removeItem: (key) => { map.delete(key); },
     dump: () => [...map.values()].join('\n'),
   };
+}
+
+function blobStore(): void {
+  const blobs = new Map<string, Blob>();
+  setMediaBlobStorageAdapterForTests({
+    get: async (key: string) => blobs.get(key) ?? null,
+    has: async (key: string) => blobs.has(key),
+    put: async (key: string, blob: Blob) => { blobs.set(key, blob); },
+    delete: async (key: string) => { blobs.delete(key); },
+    list: async () => [...blobs.keys()],
+  } as never);
 }
 
 function scene(id: string, isStart = false): SceneRecord {
@@ -73,6 +86,7 @@ describe('publishing a story end to end', () => {
   let restore: () => void;
 
   beforeEach(() => {
+    blobStore();
     const before = useAppStore.getState();
     useAppStore.setState({
       storiesMetadata: [story],
@@ -86,7 +100,10 @@ describe('publishing a story end to end', () => {
     restore = () => useAppStore.setState(before, true);
   });
 
-  afterEach(() => restore());
+  afterEach(() => {
+    setMediaBlobStorageAdapterForTests(null);
+    restore();
+  });
 
   it('compiles, stores and reads back a release', async () => {
     const storage = memoryStorage();
@@ -159,6 +176,27 @@ describe('publishing a story end to end', () => {
     expect(meta.published).toBe(false);
     expect(currentPublishedRelease(await listReleases(storage, STORY_ID))).toBeNull();
     expect(await readReleaseManifest(storage, STORY_ID, meta.releaseId)).not.toBeNull();
+  });
+
+  it('does not mint a mutable release when its media cannot be secured', async () => {
+    setMediaBlobStorageAdapterForTests({
+      get: async () => null,
+      has: async () => false,
+      put: async () => { throw new Error('no room'); },
+      delete: async () => {},
+      list: async () => [],
+    } as never);
+    const storage = memoryStorage();
+
+    await expect(publishStoryRelease({
+      storyId: STORY_ID,
+      version: '1.0.0',
+      channel: 'both',
+      storage,
+    })).rejects.toThrow(/could not be secured/);
+
+    expect(await listReleases(storage, STORY_ID)).toEqual([]);
+    expect((await readReleaseObjectIndex(storage)).objects).toEqual({});
   });
 
   it('refuses to publish a story missing its publication facts', async () => {

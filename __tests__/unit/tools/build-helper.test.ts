@@ -128,7 +128,29 @@ describe('the build helper', () => {
     expect(completed.job.artifact.fileName).toBe('release_1-7.apk');
     expect(completed.job.artifact.bytes).toBeGreaterThan(0);
     expect(completed.job.artifact.expiresAt).toBeTruthy();
+
+    const artifact = await fetch(`http://127.0.0.1:${port}/build-artifacts/req_one`, {
+      headers: { 'x-vne-build-token': server.token, origin: ORIGIN },
+    });
+    expect(artifact.status).toBe(200);
+    expect(artifact.headers.get('content-disposition')).toContain('release_1-7.apk');
+    expect((await artifact.arrayBuffer()).byteLength).toBe(completed.job.artifact.bytes);
     client.close();
+  });
+
+  it('answers the browser upload preflight with exact CORS headers', async () => {
+    await startServer();
+    const response = await fetch(`http://127.0.0.1:${port}/build-inputs/req_one`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: ORIGIN,
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'x-vne-build-token',
+      },
+    });
+    expect(response.status).toBe(204);
+    expect(response.headers.get('access-control-allow-origin')).toBe(ORIGIN);
+    expect(response.headers.get('access-control-allow-headers')).toContain('x-vne-build-token');
   });
 
   /**
@@ -355,6 +377,19 @@ describe('the build helper', () => {
     (client as any).socket.send(new Uint8Array([1, 2, 3]));
     const error = await client.waitFor((m) => m.type === 'error');
     expect(error.code).toBe('MALFORMED');
+    client.close();
+  });
+
+  it('rejects an unsafe command id without taking down the socket', async () => {
+    await startServer();
+    const client = await TestClient.connect(port, server.token);
+    client.send({ type: 'status', requestId: '../escape' });
+    const error = await client.waitFor((m) => m.type === 'error');
+    expect(error.code).toBe('MALFORMED');
+
+    client.send({ type: 'status', requestId: 'req_one' });
+    const second = await client.waitFor((m) => m.type === 'error' && m.code === 'UNKNOWN_REQUEST');
+    expect(second.code).toBe('UNKNOWN_REQUEST');
     client.close();
   });
 

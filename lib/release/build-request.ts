@@ -29,6 +29,7 @@ export const BUILD_LIMITS = {
   /** How long a finished artifact stays downloadable. Shown, not implied. */
   artifactTtlMs: 7 * 24 * 60 * 60 * 1000,
   maxRequestIdLength: 64,
+  maxReleaseIdLength: 128,
 } as const;
 
 export interface BuildRequest {
@@ -43,6 +44,7 @@ export interface BuildRequest {
 }
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+const RELEASE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -61,12 +63,20 @@ export function isBuildRequestId(value: unknown): value is string {
     && REQUEST_ID_PATTERN.test(value);
 }
 
+/** Release ids may be displayed, but must never gain filesystem semantics. */
+export function isBuildReleaseId(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= BUILD_LIMITS.maxReleaseIdLength
+    && RELEASE_ID_PATTERN.test(value);
+}
+
 export function parseBuildRequest(value: unknown): BuildRequest {
   const raw = isRecord(value) ? value : null;
   if (!raw) throw new Error('Invalid build request');
 
   if (!isBuildRequestId(raw.requestId)) throw new Error('Invalid build request id');
-  if (typeof raw.releaseId !== 'string' || !raw.releaseId.trim()) {
+  if (!isBuildReleaseId(raw.releaseId)) {
     throw new Error('Invalid build release id');
   }
   if (typeof raw.target !== 'string' || !BUILD_TARGETS.includes(raw.target as BuildTarget)) {

@@ -32,6 +32,11 @@ describe('sanitizing build output', () => {
     expect(sanitizeBuildLogLine(line)).toBe('Build details: [redacted] build url');
   });
 
+  it('redacts credentials in signed artifact URLs', () => {
+    expect(sanitizeBuildLogLine('Download https://objects.example.test/a.apk?X-Amz-Signature=secret&expires=1'))
+      .toContain('[redacted] credential url');
+  });
+
   it('redacts a signing fingerprint', () => {
     const line = 'SHA-256: AB:CD:EF:01:23:45:67:89:AB:CD';
     expect(sanitizeBuildLogLine(line)).toContain('[redacted] fingerprint');
@@ -56,6 +61,12 @@ describe('sanitizing build output', () => {
       .toContain('[redacted] path');
     expect(sanitizeBuildLogLine('Reading /home/runner/work/project'))
       .toContain('[redacted] path');
+    expect(sanitizeBuildLogLine('Reading /workspace/signing/upload.jks'))
+      .toContain('[redacted] path');
+  });
+
+  it('removes terminal control sequences before exposing a line', () => {
+    expect(sanitizeBuildLogLine('\u001b[2Ksecret-free output')).toBe('secret-free output');
   });
 
   /**

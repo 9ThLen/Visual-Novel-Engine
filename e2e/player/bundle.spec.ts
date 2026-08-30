@@ -129,6 +129,10 @@ test('has no editor route to reach', async ({ page }) => {
  */
 test('plays from a double-clicked index.html, with no server', async ({ page }) => {
   const failures: string[] = [];
+  const networkRequests: string[] = [];
+  page.on('request', (request: Request) => {
+    if (/^https?:/i.test(request.url())) networkRequests.push(request.url());
+  });
   page.on('requestfailed', (request: Request) => {
     failures.push(`${request.failure()?.errorText ?? 'failed'} ${request.url()}`);
   });
@@ -156,4 +160,5 @@ test('plays from a double-clicked index.html, with no server', async ({ page }) 
     .toBe(true);
 
   expect(failures).toEqual([]);
+  expect(networkRequests).toEqual([]);
 });

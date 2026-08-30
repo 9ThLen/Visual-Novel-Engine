@@ -63,6 +63,7 @@ describe('a build request', () => {
     expect(() => parseBuildRequest(request({ target: 'ipa' as never }))).toThrow('target');
     expect(() => parseBuildRequest(request({ versionCode: 0 }))).toThrow('version code');
     expect(() => parseBuildRequest(request({ payloadHash: 'nope' }))).toThrow('payload hash');
+    expect(() => parseBuildRequest(request({ releaseId: '../escape' }))).toThrow('release id');
   });
 
   /**

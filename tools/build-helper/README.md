@@ -32,11 +32,17 @@ error, whatever the transport could carry.
 ```
 POST /build-inputs/:requestId       the .vnerelease, streamed
   x-vne-build-token: <token>
+  Origin: <one of --allow-origin>
   → written to <requestId>.part, SHA-256 computed as it arrives
   → renamed only once complete and matching
   → 404 if no such request was submitted
   → 409 if the bytes are not the ones the request declared
   → 413 above the upload limit
+
+GET /build-artifacts/:requestId     the verified APK/AAB
+  x-vne-build-token: <token>
+  → available only while the job is succeeded and before expiresAt
+  → SHA-256 is checked again before bytes are sent
 
 WebSocket (same port)
   client → helper   hello | submit | status | cancel | retry
@@ -53,7 +59,7 @@ Stated rules, not implied ones:
   helper stops reading and drops the connection rather than draining it politely.
 - **Abandoned `.part` files are swept** at startup and by age. A closed laptop
   mid-upload is the normal case, not the exception.
-- **Origin and token are checked** on both the socket and the upload.
+- **Origin and token are checked** on the socket, upload, and artifact download.
 - **The archive never travels over the socket.** It would need the whole release
   in memory twice, and the message cap exists so that cannot happen by accident.
 
@@ -86,7 +92,7 @@ that says when it will.
   because a reload, a cancel, a retry and a resubmitted key are all answerable
   without a cloud account, and requiring one would mean the kernel could not be
   tested until R9 shipped.
-- `EasBuilder` — refuses with a reason until R9 has produced a staged Android
+- `EasBuilder` — is the CLI default and refuses with a reason until R9 has produced a staged Android
   project to build. Deliberately unimplemented rather than half-implemented: a
   build command that has never run against a real project would be a guess in the
   shape of working code.

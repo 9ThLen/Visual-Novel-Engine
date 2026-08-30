@@ -20,8 +20,13 @@
  * it arrives, which a WebSocket message cannot do without buffering the whole
  * thing in memory twice.
  */
-import { parseBuildRequest, type BuildRequest } from '@/lib/release/build-request';
-import type { BuildJobSummary, BuildState } from '@/lib/release/build-job';
+import {
+  BUILD_TARGETS,
+  isBuildRequestId,
+  parseBuildRequest,
+  type BuildRequest,
+} from '@/lib/release/build-request';
+import { BUILD_STATES, type BuildJobSummary, type BuildState } from '@/lib/release/build-job';
 
 export const BUILD_PROTOCOL_VERSION = 1;
 
@@ -38,8 +43,8 @@ export type BuildClientMessage =
 export type BuildServerMessage =
   | { type: 'ready'; version: number }
   | { type: 'progress'; job: BuildJobSummary; log?: string[] }
-  | { type: 'completed'; job: BuildJobSummary }
-  | { type: 'failed'; job: BuildJobSummary }
+  | { type: 'completed'; job: BuildJobSummary; log?: string[] }
+  | { type: 'failed'; job: BuildJobSummary; log?: string[] }
   | { type: 'error'; code: BuildErrorCode; message: string; requestId?: string };
 
 export type BuildErrorCode =
@@ -58,7 +63,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function requireRequestId(raw: Record<string, unknown>): string {
   const { requestId } = raw;
-  if (typeof requestId !== 'string' || !requestId) throw new Error('Missing request id');
+  if (!isBuildRequestId(requestId)) throw new Error('Invalid build request id');
   return requestId;
 }
 
@@ -103,6 +108,49 @@ export function parseBuildClientMessage(raw: string): BuildClientMessage {
 
 export function encodeBuildServerMessage(message: BuildServerMessage): string {
   return JSON.stringify(message);
+}
+
+/** Parse helper output before it is allowed to drive browser state. */
+export function parseBuildServerMessage(raw: string): BuildServerMessage {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error('Build server message is not JSON');
+  }
+  if (!isRecord(value) || typeof value.type !== 'string') {
+    throw new Error('Build server message is not an object');
+  }
+  if (value.type === 'ready') {
+    if (typeof value.version !== 'number') throw new Error('Invalid build protocol version');
+    return { type: 'ready', version: value.version };
+  }
+  if (value.type === 'error') {
+    if (typeof value.code !== 'string' || typeof value.message !== 'string') {
+      throw new Error('Invalid build error');
+    }
+    return value as unknown as BuildServerMessage;
+  }
+  if (!['progress', 'completed', 'failed'].includes(value.type) || !isRecord(value.job)) {
+    throw new Error('Unknown build server message');
+  }
+  const job = value.job;
+  if (
+    !isBuildRequestId(job.requestId)
+    || typeof job.releaseId !== 'string'
+    || !BUILD_TARGETS.includes(job.target as never)
+    || !BUILD_STATES.includes(job.state as never)
+    || !Number.isSafeInteger(job.attempt)
+    || typeof job.updatedAt !== 'string'
+  ) {
+    throw new Error('Invalid build job summary');
+  }
+  if (value.log !== undefined && (
+    !Array.isArray(value.log) || value.log.some((line) => typeof line !== 'string')
+  )) {
+    throw new Error('Invalid build log');
+  }
+  return value as unknown as BuildServerMessage;
 }
 
 /** Which server message a state change should be announced as. */

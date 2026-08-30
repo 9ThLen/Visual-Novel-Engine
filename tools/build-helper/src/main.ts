@@ -28,7 +28,7 @@ function parseArgs(argv: string[]): Options {
     port: 8790,
     workDirectory: path.resolve(process.cwd(), '.vne-builds'),
     allowedOrigins: [],
-    builder: 'fake',
+    builder: 'eas',
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -56,7 +56,7 @@ Local build helper for Visual Novel Engine.
   --work-dir <dir>        Jobs, uploads and artifacts (default ./.vne-builds).
   --allow-origin <origin> Loopback origin the browser will connect from.
                           Repeatable; defaults to the AI bridge's.
-  --builder <fake|eas>    Which builder to use. Default fake.
+  --builder <fake|eas>    Which builder to use. Default eas; fake is test-only.
   --staged-project <dir>  For --builder eas. R9 produces this.
   --token <value>         Pairing token. A fresh one is generated otherwise.
 `);

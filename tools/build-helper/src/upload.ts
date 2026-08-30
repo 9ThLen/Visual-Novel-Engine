@@ -23,6 +23,8 @@ import {
 } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
 import path from 'node:path';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 import { BUILD_LIMITS, isBuildRequestId } from '../../../lib/release/build-request';
 
@@ -73,26 +75,23 @@ export async function receiveBuildInput(
   let overflowed = false;
 
   const stream = createWriteStream(temp);
+  const meter = new Transform({
+    transform(chunk: Uint8Array, _encoding, callback) {
+      bytes += chunk.byteLength;
+      if (bytes > maxBytes) {
+        overflowed = true;
+        callback(new Error('too large'));
+        return;
+      }
+      hash.update(chunk);
+      callback(null, chunk);
+    },
+  });
   try {
-    await new Promise<void>((resolve, reject) => {
-      request.on('data', (chunk: Uint8Array) => {
-        if (overflowed) return;
-        bytes += chunk.byteLength;
-        if (bytes > maxBytes) {
-          overflowed = true;
-          request.destroy();
-          reject(new Error('too large'));
-          return;
-        }
-        hash.update(chunk);
-        stream.write(chunk);
-      });
-      request.on('end', () => stream.end(resolve));
-      request.on('error', reject);
-      stream.on('error', reject);
-    });
+    // pipeline propagates backpressure from disk to the socket. Ignoring
+    // write()'s return value here can otherwise queue the full 2 GiB in memory.
+    await pipeline(request, meter, stream);
   } catch (error) {
-    stream.destroy();
     rmSync(temp, { force: true });
     if (overflowed) {
       return {
