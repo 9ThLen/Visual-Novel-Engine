@@ -154,6 +154,30 @@ export async function writeStoryArchive(
     throw new Error('Story backup manifest is too large');
   }
 
+  await writeArchiveContainer({ manifestBytes, payloadBytes, assets: input.assets }, sink);
+  return normalizedManifest;
+}
+
+/**
+ * Stream one container: manifest, then payload, then each distinct object.
+ *
+ * The layout belongs to the container, not to what is inside it — a
+ * `.vnerelease` is the same zip with a different manifest (see
+ * `lib/release/types.ts`), so it streams through here rather than through a
+ * second copy of this. The order matters: readers below rely on the manifest
+ * arriving first, which is what lets a preview cost one entry instead of a
+ * whole file.
+ */
+export interface ArchiveContainerInput {
+  manifestBytes: Uint8Array;
+  payloadBytes: Uint8Array;
+  assets: PreparedStoryBackupAsset[];
+}
+
+export async function writeArchiveContainer(
+  input: ArchiveContainerInput,
+  sink: StoryArchiveBinarySink,
+): Promise<void> {
   const output = new QueuedZipSink(sink);
   const zip = new Zip((error, chunk, final) => output.push(error, chunk, final));
   const uniqueObjects = new Map<string, PreparedStoryBackupAsset>();
@@ -170,13 +194,13 @@ export async function writeStoryArchive(
       zip,
       output,
       new ZipDeflate(STORY_BACKUP_PATHS.manifest, { level: 6 }),
-      sourceFromBytes(manifestBytes),
+      sourceFromBytes(input.manifestBytes),
     );
     await writeZipFile(
       zip,
       output,
       new ZipDeflate(STORY_BACKUP_PATHS.payload, { level: 6 }),
-      sourceFromBytes(payloadBytes),
+      sourceFromBytes(input.payloadBytes),
     );
     for (const asset of uniqueObjects.values()) {
       await writeZipFile(
@@ -190,7 +214,6 @@ export async function writeStoryArchive(
     zip.end();
     await output.drain();
     await sink.close();
-    return normalizedManifest;
   } catch (error) {
     zip.terminate();
     await sink.abort?.(error).catch(() => undefined);
@@ -198,10 +221,18 @@ export async function writeStoryArchive(
   }
 }
 
+/**
+ * The container's human name, so the readers below can serve both the backup
+ * and the release without two copies of them. Capitalised because it starts
+ * most of these messages; the "Not a VNE ..." form lowercases it.
+ */
+type ContainerLabel = 'Story backup' | 'Release';
+
 async function readLeadingEntry(
   source: StoryArchiveBinarySource,
   expectedPath: string,
   maxBytes: number,
+  label: ContainerLabel = 'Story backup',
 ): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -220,10 +251,10 @@ async function readLeadingEntry(
     try {
       assertSafeEntryPath(file.name);
       if (entryCount !== 1 || file.name !== expectedPath) {
-        throw new Error(`Story backup must start with ${expectedPath}`);
+        throw new Error(`${label} must start with ${expectedPath}`);
       }
       if (typeof file.originalSize === 'number' && file.originalSize > maxBytes) {
-        throw new Error(`Story backup entry exceeds the ${maxBytes}-byte limit`);
+        throw new Error(`${label} entry exceeds the ${maxBytes}-byte limit`);
       }
       file.ondata = (error, chunk, final) => {
         if (settled) return;
@@ -235,7 +266,7 @@ async function readLeadingEntry(
         size += chunk.byteLength;
         if (size > maxBytes) {
           settled = true;
-          rejectEntry(new Error(`Story backup entry exceeds the ${maxBytes}-byte limit`));
+          rejectEntry(new Error(`${label} entry exceeds the ${maxBytes}-byte limit`));
           return;
         }
         if (chunk.byteLength) chunks.push(chunk.slice());
@@ -260,7 +291,7 @@ async function readLeadingEntry(
     if (!settled) unzip.push(EMPTY_BYTES, true);
     if (!settled) {
       settled = true;
-      rejectEntry(new Error('Not a VNE story backup'));
+      rejectEntry(new Error(`Not a VNE ${label.toLowerCase()}`));
     }
   } catch (error) {
     if (!settled) {
@@ -271,14 +302,23 @@ async function readLeadingEntry(
   return result;
 }
 
+/**
+ * The manifest, still as bytes. Reading stops at the first entry, so a preview
+ * costs one entry rather than the whole file — which is the reason the writer
+ * puts the manifest first.
+ */
+export function readArchiveManifestBytes(
+  source: StoryArchiveBinarySource,
+  label: ContainerLabel = 'Story backup',
+  maxBytes: number = STORY_BACKUP_LIMITS.maxManifestBytes,
+): Promise<Uint8Array> {
+  return readLeadingEntry(source, STORY_BACKUP_PATHS.manifest, maxBytes, label);
+}
+
 export async function readStoryArchiveManifest(
   source: StoryArchiveBinarySource,
 ): Promise<StoryArchiveManifestV1> {
-  const bytes = await readLeadingEntry(
-    source,
-    STORY_BACKUP_PATHS.manifest,
-    STORY_BACKUP_LIMITS.maxManifestBytes,
-  );
+  const bytes = await readArchiveManifestBytes(source);
   try {
     return parseStoryArchiveManifest(JSON.parse(strFromU8(bytes)));
   } catch (error) {
@@ -293,10 +333,18 @@ export async function previewStoryArchive(
   return buildStoryArchivePreview(await readStoryArchiveManifest(source));
 }
 
-export async function readStoryArchivePayload(
+/**
+ * The payload, still as bytes, with the manifest's digest already verified.
+ *
+ * Split from the parse step so the release container can reuse it: the bytes
+ * are the same shape of thing in both, only the schema inside differs.
+ */
+export async function readArchivePayloadBytes(
   source: StoryArchiveBinarySource,
-  manifest: StoryArchiveManifestV1,
-): Promise<StoryArchivePayloadV1> {
+  expectedPayload: { sha256: string; size: number },
+  label: ContainerLabel = 'Story backup',
+  maxBytes: number = STORY_BACKUP_LIMITS.maxPayloadBytes,
+): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
   let size = 0;
   let entryIndex = 0;
@@ -314,7 +362,9 @@ export async function readStoryArchivePayload(
     try {
       assertSafeEntryPath(file.name);
       const expected = entryIndex === 1 ? STORY_BACKUP_PATHS.manifest : STORY_BACKUP_PATHS.payload;
-      if (file.name !== expected) throw new Error(`Unexpected story backup entry order: ${file.name}`);
+      if (file.name !== expected) {
+        throw new Error(`Unexpected ${label.toLowerCase()} entry order: ${file.name}`);
+      }
       if (entryIndex === 1) return;
       file.ondata = (error, chunk, final) => {
         if (settled) return;
@@ -324,9 +374,9 @@ export async function readStoryArchivePayload(
           return;
         }
         size += chunk.byteLength;
-        if (size > STORY_BACKUP_LIMITS.maxPayloadBytes) {
+        if (size > maxBytes) {
           settled = true;
-          rejectPayload(new Error('Story backup payload is too large'));
+          rejectPayload(new Error(`${label} payload is too large`));
           return;
         }
         if (chunk.byteLength) chunks.push(chunk.slice());
@@ -351,7 +401,7 @@ export async function readStoryArchivePayload(
     if (!settled) unzip.push(EMPTY_BYTES, true);
     if (!settled) {
       settled = true;
-      rejectPayload(new Error('Not a VNE story backup'));
+      rejectPayload(new Error(`Not a VNE ${label.toLowerCase()}`));
     }
   } catch (error) {
     if (!settled) {
@@ -361,10 +411,18 @@ export async function readStoryArchivePayload(
   }
 
   const bytes = await result;
-  const digest = await sha256Chunks(sourceFromBytes(bytes).open(), STORY_BACKUP_LIMITS.maxPayloadBytes);
-  if (digest.size !== manifest.payload.size || digest.sha256 !== manifest.payload.sha256) {
-    throw new Error('Story backup payload hash mismatch');
+  const digest = await sha256Chunks(sourceFromBytes(bytes).open(), maxBytes);
+  if (digest.size !== expectedPayload.size || digest.sha256 !== expectedPayload.sha256) {
+    throw new Error(`${label} payload hash mismatch`);
   }
+  return bytes;
+}
+
+export async function readStoryArchivePayload(
+  source: StoryArchiveBinarySource,
+  manifest: StoryArchiveManifestV1,
+): Promise<StoryArchivePayloadV1> {
+  const bytes = await readArchivePayloadBytes(source, manifest.payload);
   try {
     return parseStoryArchivePayload(JSON.parse(strFromU8(bytes)));
   } catch (error) {

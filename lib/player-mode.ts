@@ -2,10 +2,12 @@
  * Player mode — the boot flag that turns a generic web build into a
  * single-story player.
  *
- * A published bundle (see `scripts/export-story-web.mjs`) is the ordinary Expo
- * web build plus a `player-config.json` dropped next to `index.html`. When that
- * file is present the app skips the library/editor UI and launches straight into
- * the reader for the bundled story.
+ * A published bundle (see `scripts/export-story-web.ts`) is the ordinary Expo
+ * web build plus a boot config — inlined into `index.html` as
+ * `window.__VNE_PLAYER_CONFIG__`, or dropped beside it as `player-config.json`.
+ * When one is present the app skips the library/editor UI and launches straight
+ * into the reader for the bundled story, resolving its media from the files the
+ * bundle carries.
  *
  * This module owns the *decision* logic and stays free of store / React Native
  * imports so the parsing can be unit-tested in isolation. Runtime wiring
@@ -20,13 +22,75 @@ import { resolveWebUrl } from '@/lib/web-base-url';
 export const PLAYER_CONFIG_PATH = 'player-config.json';
 export const PLAYER_CONFIG_VERSION = 1;
 
+/**
+ * Global the exporter writes into `index.html`.
+ *
+ * Preferred over fetching `player-config.json`. The fetch has three ways to
+ * fail on a folder that looks perfectly fine: the host serves the file with the
+ * wrong content type, the host answers a missing file with `index.html` (every
+ * SPA fallback does), or the bundle is served from a sub-path the relative url
+ * does not survive. Inlined, the config is simply there before the first paint,
+ * and one round trip disappears with it.
+ *
+ * Not a promise that `file://` works: the production CSP written by
+ * `scripts/lib/harden-web-output.mjs` is `default-src 'self'`, and a file
+ * origin satisfies that nowhere. Opening a bundle from the filesystem needs
+ * that policy relaxed, which is a separate decision.
+ */
+export const PLAYER_CONFIG_GLOBAL = '__VNE_PLAYER_CONFIG__';
+
 /** A bundled story is either the legacy `Story` or the canonical shape. */
 export type PlayerStory = Story | CanonicalStory;
+
+/** Which release a bundle was cut from, for the reader's own save stamps. */
+export interface PlayerReleaseInfo {
+  releaseId: string;
+  version: string;
+  releasedAt?: string;
+}
 
 export interface PlayerConfig {
   version: number;
   story: PlayerStory;
   generatedAt?: string;
+  /**
+   * Story reference → file inside the bundle. See
+   * `lib/release/asset-map.ts`; absent for a bundle whose art is all bundled
+   * with the app.
+   */
+  assets?: Record<string, string>;
+  release?: PlayerReleaseInfo;
+}
+
+/**
+ * Keep the asset map to relative paths inside the bundle.
+ *
+ * The config ships inside the bundle, so it is as trusted as the code around
+ * it — this is not a security boundary. It is a statement of what the field
+ * means: a file this bundle carries. An absolute or protocol-relative value
+ * would silently turn a self-contained folder into one that phones somewhere,
+ * and that should be a visible decision, not a typo in an asset map.
+ */
+function sanitizePackagedAssets(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const assets: Record<string, string> = {};
+  for (const [reference, target] of Object.entries(raw as Record<string, unknown>)) {
+    if (!reference || typeof target !== 'string' || !target) continue;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('//') || target.startsWith('/')) continue;
+    if (target.split('/').includes('..')) continue;
+    assets[reference] = target;
+  }
+  return Object.keys(assets).length > 0 ? assets : undefined;
+}
+
+function parsePlayerRelease(raw: unknown): PlayerReleaseInfo | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.releaseId !== 'string' || !record.releaseId) return undefined;
+  if (typeof record.version !== 'string' || !record.version) return undefined;
+  const release: PlayerReleaseInfo = { releaseId: record.releaseId, version: record.version };
+  if (typeof record.releasedAt === 'string') release.releasedAt = record.releasedAt;
+  return release;
 }
 
 /**
@@ -68,7 +132,16 @@ export function parsePlayerConfig(raw: unknown): PlayerConfig | null {
     version,
     story: story as PlayerStory,
     generatedAt: typeof record.generatedAt === 'string' ? record.generatedAt : undefined,
+    assets: sanitizePackagedAssets(record.assets),
+    release: parsePlayerRelease(record.release),
   };
+}
+
+/** The config the exporter inlined into `index.html`, if this is a bundle. */
+export function readInlinePlayerConfig(): PlayerConfig | null {
+  const globalScope = globalThis as Record<string, unknown>;
+  const raw = globalScope[PLAYER_CONFIG_GLOBAL];
+  return raw ? parsePlayerConfig(raw) : null;
 }
 
 // ── Runtime state (web only) ────────────────────────────────────────────────
@@ -90,6 +163,13 @@ function playerConfigUrl(): string {
 export function loadPlayerConfig(): Promise<PlayerConfig | null> {
   if (configPromise) return configPromise;
   configPromise = (async () => {
+    // The inlined config wins: it is present before the first paint, and it is
+    // the only form that survives being opened from the filesystem.
+    const inline = readInlinePlayerConfig();
+    if (inline) {
+      activeConfig = inline;
+      return inline;
+    }
     if (typeof fetch !== 'function' || typeof document === 'undefined') return null;
     try {
       const response = await fetch(playerConfigUrl(), { cache: 'no-store' });

@@ -22,6 +22,7 @@ import {
   RELEASE_FORMAT,
   RELEASE_PATHS,
   RELEASE_SCHEMA_VERSION,
+  MIN_ENGINE_VERSION_FOR_RELEASE_V1,
   type ReleaseAsset,
   type ReleaseBlock,
   type ReleaseChannel,
@@ -42,12 +43,10 @@ import { captureStoryBackup } from '@/lib/story-backup/capture';
 import { sha256Chunks, sourceFromBytes } from '@/lib/story-backup/hash';
 import type { PreparedStoryBackupAsset } from '@/lib/story-backup/types';
 
-/**
- * The oldest engine that understands release schema v1. Bumped only when a
- * change makes an older reader mis-play a release rather than merely miss a
- * feature — refusing to open is worse than degrading, so the bar is high.
- */
-export const MIN_ENGINE_VERSION_FOR_RELEASE_V1 = '1.0.0';
+// Re-exported from its old home so callers that already import it from here
+// keep working; it now lives in `types.ts`, which readers can load without the
+// compiler's dependencies.
+export { MIN_ENGINE_VERSION_FOR_RELEASE_V1 };
 
 export interface CompileReleaseInput {
   storyId: string;

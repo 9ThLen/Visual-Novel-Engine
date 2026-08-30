@@ -272,7 +272,13 @@ function parseAsset(value: unknown): ReleaseAsset {
  */
 export function parseReleaseManifest(value: unknown): ReleaseManifestV1 {
   const manifest = requireObject(value, 'manifest');
-  if (manifest.format !== RELEASE_FORMAT) throw new Error('Not a VNE release');
+  if (manifest.format !== RELEASE_FORMAT) {
+    // Name what arrived. A backup and a release are the same zip, so "not a
+    // release" on its own leaves an author staring at a file that opens fine
+    // everywhere else with no idea which of the two they picked.
+    const found = typeof manifest.format === 'string' ? manifest.format : typeof manifest.format;
+    throw new Error(`Not a VNE release: this file declares itself "${found}"`);
+  }
   if (manifest.containerVersion !== RELEASE_CONTAINER_VERSION) {
     throw new Error(`Unsupported release container version: ${String(manifest.containerVersion)}`);
   }

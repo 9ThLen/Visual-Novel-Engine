@@ -48,6 +48,8 @@ const mockExemptFiles = [
   path.join(rootDir, '__tests__/unit/lib/audio-library.test.ts'),
   path.join(rootDir, '__tests__/unit/lib/audio-manager-enhanced.test.ts'),
   path.join(rootDir, '__tests__/unit/lib/asset-resolver.test.ts'),
+  // Exercises the real packaged-media hook, which is the point of the file.
+  path.join(rootDir, '__tests__/unit/lib/packaged-media-resolution.test.ts'),
   path.join(rootDir, '__mocks__/lib/audio-library.ts'),
 ];
 

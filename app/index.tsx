@@ -14,8 +14,8 @@ type BootState =
   | { status: 'error'; message: string };
 
 /**
- * Entry route. In a published web bundle (see `scripts/export-story-web.mjs`)
- * this detects `player-config.json`, seeds its story into the store and routes
+ * Entry route. In a published web bundle (see `scripts/export-story-web.ts`)
+ * this detects the boot config, seeds its story into the store and routes
  * straight to the reader. Everywhere else it redirects to the library.
  */
 export default function Index() {

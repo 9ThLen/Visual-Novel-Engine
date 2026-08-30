@@ -5,6 +5,7 @@
  * seeds the demo stories, so the reader can look it up by id. Kept separate from
  * the pure `lib/player-mode` decision logic because it pulls in the store.
  */
+import { setPackagedMediaMap } from '@/lib/asset-resolver';
 import { isCanonicalStoryShape, type PlayerConfig } from '@/lib/player-mode';
 import type { Story } from '@/lib/scene-operations';
 import { useAppStore } from '@/stores/use-app-store';
@@ -20,6 +21,10 @@ const HYDRATION_TIMEOUT_MS = 10_000;
  * sync path in `app/tabs/index.tsx`.
  */
 export function seedPlayerStory(config: PlayerConfig): string {
+  // Before the story lands in the store, so the first scene the reader renders
+  // already resolves its background against the files the bundle carries.
+  setPackagedMediaMap(config.assets ?? null);
+
   if (isCanonicalStoryShape(config.story)) {
     const story = config.story as CanonicalStory;
     const metadata = StoryDomain.extractMetadata(story);
@@ -86,4 +91,5 @@ export function ensurePlayerStorySeeded(config: PlayerConfig): Promise<string> {
 export function __resetPlayerModeBootForTests(): void {
   seededStoryId = null;
   seedPromise = undefined;
+  setPackagedMediaMap(null);
 }

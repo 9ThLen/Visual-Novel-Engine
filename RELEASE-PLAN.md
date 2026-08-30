@@ -2,10 +2,10 @@
 
 How a finished novel leaves the editor and reaches a reader.
 
-Status: in progress. **R0–R4 are implemented** — R0–R3 complete Channel A, and
-R4 is the build profile every native channel stands on. Everything from R5
-onward is still a proposal, alongside the parts marked **exists** in
-[Current state](#1-current-state).
+Status: in progress. **R0–R5 are implemented** — R0–R3 complete Channel A, R4 is
+the build profile every native channel stands on, and R5 is the first shippable
+artifact of Channel B. Everything from R6 onward is still a proposal, alongside
+the parts marked **exists** in [Current state](#1-current-state).
 
 ---
 
@@ -38,7 +38,7 @@ not build two publishing paths that can disagree about what "the story" is.
 
 | Capability | Where |
 | --- | --- |
-| Single-story web bundle (CLI only) | `scripts/export-story-web.mjs`, `pnpm export:story` |
+| Single-story web bundle (CLI only) | `scripts/export-story-web.ts`, `pnpm export:story` |
 | Player-mode boot flag + editor lockout | `lib/player-mode.ts`, `lib/player-mode-boot.ts`, `components/PlayerModeRouteGuard.tsx`, `app/index.tsx` |
 | Production hardening of web output (CSP, frame guard, `404.html`) | `scripts/lib/harden-web-output.mjs` |
 | Story graph validation for export | `scripts/lib/validate-story-graph.mjs`, `lib/document-editor/scene-graph-validator.ts` |
@@ -906,19 +906,76 @@ proves it on a real artifact.
 ships in the player bundle, because `lib/translations.ts` is one module. Worth
 splitting before R9 measures an APK, but it is not a boundary problem.
 
-### R5 — Channel B1: portable web bundle
+### R5 — Channel B1: portable web bundle — **implemented**
 
-- `lib/release/package.ts` — write and read `.vnerelease` on top of `lib/story-backup/archive.ts`.
-- `scripts/export-story-web.mjs`: `--release`, `media/` emission, asset map,
-  inlined boot config, `--base-url`.
-- `lib/release/asset-map.ts` + a hook in `lib/asset-resolver.ts` for player mode.
-- `lib/player-mode.ts`: read `window.__VNE_PLAYER_CONFIG__` first.
-- Playwright smoke: export a demo story with IndexedDB media, serve the folder,
-  play from the first scene to an ending, assert every asset loaded.
-- Update `wiki/publish-web.md` to `wiki/releases.md`.
+- `lib/release/package.ts` — writes and reads `.vnerelease` on top of the backup
+  container. The zip streaming, the hash verification, the entry-order safety and
+  the zip-bomb limits are the *same code*: `lib/story-backup/archive.ts` grew a
+  container writer and byte readers, and `extract.ts` became generic over the
+  manifest inside it. A second copy of the extractor is where a malformed archive
+  would eventually do damage.
+- `lib/release/asset-map.ts` — every string the story uses for a picture →
+  `media/<sha256>.<ext>`. Built from the manifest's `sourceReferences`, because
+  only the manifest knows that a media-library id, the library asset's own uri
+  and the `idb-media://` string a scene stored are all the same bytes.
+- `lib/asset-resolver.ts` — `setPackagedMediaMap()`, consulted **first**. In a
+  bundle the packaged file is the only copy that exists, so every other branch
+  would be looking for something that was never shipped. Deliberately a plain
+  string map set from outside rather than an import of the release code: the
+  resolver sits in the reader's core, and a player should not gain the release
+  machinery to look up a filename.
+- `lib/player-mode.ts` — reads `window.__VNE_PLAYER_CONFIG__` before falling back
+  to the fetch, and carries the asset map and the release stamp.
+- `scripts/export-story-web.ts` — `--release`, `media/` emission, inlined boot
+  config, `--base-url`, `--profile`. Converted from `.mjs` to TypeScript run
+  under `tsx` so it uses the app's own container reader, manifest parser and
+  asset-map rules rather than a second implementation of each.
+- `scripts/make-demo-release.ts` — produces a real `.vnerelease` from a story
+  JSON. Exists because the in-app producer is R6, and R5 could not otherwise be
+  exercised at all; it uses the same writer and parser, so a fixture cannot be
+  something the app could never have produced.
+- `wiki/publish-web.md` → `wiki/releases.md`, rewritten.
+- `pnpm test:player-e2e` — builds a release, exports it, serves the folder, and
+  asserts the bundle boots from the inlined config, fetches the packaged art with
+  a 200, serves **every** file the asset map names with a real content type, and
+  answers no editor route.
 
 **Done when:** a story whose art was uploaded through the media library exports
-and plays — the case that is impossible today.
+and plays — the case that was impossible before. **It does.** Verified end to
+end: `make-demo-release` packaged a PNG behind an `idb-media://` reference,
+`export-story-web --release` unpacked it to `media/<sha>.png`, and the served
+bundle rendered that background and played on into the story. The network log
+shows `GET /media/<sha>.png → 200` and no request for `player-config.json`.
+
+**Where the boot config went.** Into `index.html`. A fetched
+`player-config.json` has three ways to fail on a folder that looks perfectly
+fine: wrong content type, an SPA fallback answering a missing file with
+`index.html`, or a sub-path the relative url does not survive. This is *not* a
+claim that `file://` works — the production CSP is `default-src 'self'`, which a
+file origin satisfies nowhere. The legacy `--story` path still writes the JSON
+file as well, so an existing bundle's config stays inspectable by hand.
+
+**Verified less than claimed, and said so:**
+
+- `--base-url` is confirmed by the emitted HTML (`src="/novel/_expo/…"`) and by
+  a unit test on the resolution rule, not by a served sub-path: the preview
+  browser available here would not follow a link into a sub-directory.
+- The e2e does **not** walk the story to an ending. Scripting a path through a
+  branching demo breaks whenever the demo is edited and proves less than asking
+  whether every packaged file is served — which is what it asserts instead. The
+  click-through was verified by hand in the browser.
+
+**Found while building this:** the player root had no seeding on any route but
+`index`, so a reader who reloaded while on `/reader` — or opened a link straight
+to it — would have found a store with no story. R4 dropped
+`PlayerModeRouteGuard`, which had been doing that job in the studio root, and
+nothing took it over. Seeding now happens in `app-player/_layout.tsx`, which
+mounts on every route.
+
+**Also:** `parseReleaseManifest` now names the format it found. A release and a
+backup are the same zip, so "Not a VNE release" on its own left an author staring
+at a file that opens fine everywhere else with no idea which of the two they had
+picked.
 
 ### R6 — Channel B2: export from inside the app
 

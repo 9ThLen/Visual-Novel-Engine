@@ -20,6 +20,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:ai-e2e": "playwright test --config=playwright.ai.config.ts",
+    "test:player-e2e": "playwright test --config=playwright.player.config.ts",
     "test:ai-live": "playwright test --config=playwright.ai-live.config.ts",
     "test:ai-openai-live": "tsx tools/ai-bridge/smoke-provider.ts openai",
     "test:ai-claude-live": "tsx tools/ai-bridge/smoke-provider.ts claude",
@@ -27,7 +28,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "qr": "node scripts/generate_qr.mjs",
-    "export:story": "node scripts/export-story-web.mjs"
+    "export:story": "tsx scripts/export-story-web.ts",
+    "demo:release": "tsx scripts/make-demo-release.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.207",

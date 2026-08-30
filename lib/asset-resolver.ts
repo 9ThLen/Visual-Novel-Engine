@@ -13,6 +13,7 @@ import {
   IDB_MEDIA_URI_PREFIX,
 } from '@/lib/idb-storage';
 import { getBrowserSafeAudioUri } from './audio-web-source';
+import { resolveWebUrl } from '@/lib/web-base-url';
 import { resolveLibraryAssetUri } from '@/stores/media-library-actions';
 import { isSafeUri } from './story-validator';
 
@@ -20,6 +21,32 @@ type TimedCacheEntry<T> = {
   expiresAt: number;
   value: Promise<T>;
 };
+
+/**
+ * Where a published release keeps its media, when the app is running as one.
+ *
+ * A packaged bundle carries its art as plain files next to `index.html`, and the
+ * story still refers to it by whatever string the author's device used — most
+ * often an `idb-media://` uri naming a database that exists only on that
+ * device. Without this the reader would resolve those to nothing and play a
+ * story with no pictures, which is precisely the case R5 exists to fix.
+ *
+ * Deliberately a plain string map set from the outside rather than an import of
+ * the release code: the resolver sits in the reader's core, and a player build
+ * should not gain the release machinery just to look up a filename.
+ */
+let packagedMediaByReference: Record<string, string> | null = null;
+
+/** Called once at player boot. `null` restores normal resolution. */
+export function setPackagedMediaMap(map: Record<string, string> | null): void {
+  packagedMediaByReference = map && Object.keys(map).length > 0 ? map : null;
+  uriCache.clear();
+  playableUriCache.clear();
+}
+
+export function getPackagedMediaMap(): Record<string, string> | null {
+  return packagedMediaByReference;
+}
 
 const uriCache = new Map<string, TimedCacheEntry<string | number | null>>();
 const playableUriCache = new Map<string, TimedCacheEntry<string | null>>();
@@ -322,6 +349,12 @@ export async function resolveAssetUri(uri: string | undefined): Promise<string |
  */
 async function resolveUri(uri: string, aliasKeys: readonly string[] = [uri]): Promise<string | number | null> {
   try {
+    // Checked before anything else: in a published bundle the packaged file is
+    // the only copy that exists, so every other branch below would be looking
+    // for something that was never shipped.
+    const packaged = packagedMediaByReference?.[uri];
+    if (packaged) return resolveWebUrl(packaged);
+
     if (uri.startsWith('data:')) {
       if (!isSafeDataUri(uri)) {
         ErrorHandler.handle('Blocked unsafe data URI', null, ErrorCategory.VALIDATION, ErrorSeverity.LOW, { uri: uri.slice(0, 80) });
@@ -529,6 +562,7 @@ export function resetAssetResolverForTests(): void {
   storageKeyByAlias.clear();
   mediaLeaseCounts.clear();
   pinnedEvictionWarned = false;
+  packagedMediaByReference = null;
   uriCache.clear();
   playableUriCache.clear();
   moduleUriCache.clear();

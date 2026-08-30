@@ -13,6 +13,8 @@ import { ensureStorageBootstrap } from "@/stores/storage-bootstrap";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 import { ErrorHandler, ErrorSeverity } from "@/lib/error-handler";
+import { loadPlayerConfig } from "@/lib/player-mode";
+import { ensurePlayerStorySeeded } from "@/lib/player-mode-boot";
 import { showToast } from "@/lib/toast-store";
 import { useI18n } from "@/hooks/use-i18n";
 
@@ -73,6 +75,18 @@ export default function PlayerRootLayout() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Seeded from the layout, not only from `index`: a reader who reloads while
+  // on /reader — or opens a link straight to it — never mounts the entry route,
+  // and would otherwise find a store with no story in it. The seed is
+  // idempotent and shared with `index`, which awaits the same promise.
+  useEffect(() => {
+    void loadPlayerConfig()
+      .then((config) => (config ? ensurePlayerStorySeeded(config) : null))
+      .catch(() => {
+        // `index` surfaces the failure; the layout must not blank the screen.
+      });
   }, []);
 
   const { language } = useI18n();

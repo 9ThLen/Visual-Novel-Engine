@@ -1,9 +1,11 @@
 import {
+  PLAYER_CONFIG_GLOBAL,
   PLAYER_CONFIG_VERSION,
   __resetPlayerModeForTests,
   isCanonicalStoryShape,
   loadPlayerConfig,
   parsePlayerConfig,
+  readInlinePlayerConfig,
 } from '@/lib/player-mode';
 
 const canonicalStory = {
@@ -93,5 +95,98 @@ describe('loadPlayerConfig', () => {
       'https://example.test/Visual-Novel-Engine/player-config.json',
       { cache: 'no-store' },
     );
+  });
+});
+
+describe('the inlined boot config', () => {
+  const globalScope = globalThis as Record<string, unknown>;
+
+  beforeEach(() => {
+    __resetPlayerModeForTests();
+    delete globalScope[PLAYER_CONFIG_GLOBAL];
+  });
+  afterEach(() => {
+    __resetPlayerModeForTests();
+    delete globalScope[PLAYER_CONFIG_GLOBAL];
+  });
+
+  it('is absent when nothing inlined one', () => {
+    expect(readInlinePlayerConfig()).toBeNull();
+  });
+
+  /**
+   * The inline copy is present before the first paint and cannot be answered
+   * with an SPA fallback page, so it must win outright — a fetch that also ran
+   * would be a second, slower source of truth for the same thing.
+   */
+  it('wins over the fetched file, which is never requested', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    globalScope[PLAYER_CONFIG_GLOBAL] = { version: 1, story: canonicalStory };
+
+    const config = await loadPlayerConfig();
+
+    expect(config?.story).toMatchObject({ id: 'story-1' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('is ignored when it carries nothing playable', () => {
+    globalScope[PLAYER_CONFIG_GLOBAL] = { version: 1, story: { id: 'x' } };
+    expect(readInlinePlayerConfig()).toBeNull();
+  });
+});
+
+describe('the packaged asset map in a boot config', () => {
+  it('keeps references to files the bundle carries', () => {
+    const config = parsePlayerConfig({
+      version: 1,
+      story: canonicalStory,
+      assets: { 'idb-media://cover': 'media/abc.png' },
+    });
+    expect(config?.assets).toEqual({ 'idb-media://cover': 'media/abc.png' });
+  });
+
+  /**
+   * A self-contained folder that quietly fetches from somewhere else should be
+   * a visible decision, not a typo in an asset map.
+   */
+  it('drops anything that points outside the bundle', () => {
+    const config = parsePlayerConfig({
+      version: 1,
+      story: canonicalStory,
+      assets: {
+        'a': 'https://example.test/x.png',
+        'b': '//example.test/x.png',
+        'c': '/absolute/x.png',
+        'd': '../escape/x.png',
+        'e': 'data:image/png;base64,AAA',
+        'f': 'media/kept.png',
+      },
+    });
+    expect(config?.assets).toEqual({ f: 'media/kept.png' });
+  });
+
+  it('leaves the field absent when a bundle packages nothing', () => {
+    const config = parsePlayerConfig({ version: 1, story: canonicalStory, assets: {} });
+    expect(config?.assets).toBeUndefined();
+  });
+
+  it('carries the release the bundle was cut from, when there is one', () => {
+    const config = parsePlayerConfig({
+      version: 1,
+      story: canonicalStory,
+      release: { releaseId: 'rel_1', version: '1.2.0', releasedAt: '2026-08-29T10:00:00.000Z' },
+    });
+    expect(config?.release).toEqual({
+      releaseId: 'rel_1',
+      version: '1.2.0',
+      releasedAt: '2026-08-29T10:00:00.000Z',
+    });
+  });
+
+  it('ignores a release block that names no release', () => {
+    const config = parsePlayerConfig({ version: 1, story: canonicalStory, release: { version: '1.0.0' } });
+    expect(config?.release).toBeUndefined();
   });
 });

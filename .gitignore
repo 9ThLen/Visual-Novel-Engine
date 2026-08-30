@@ -6,8 +6,13 @@ node_modules/
 # Expo
 .expo/
 dist/
+dist-player/
+dist-player-baseurl/
 web-build/
 expo-env.d.ts
+
+# Published bundles and release containers produced by scripts/
+*.vnerelease
 
 # Native
 .kotlin/

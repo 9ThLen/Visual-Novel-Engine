@@ -55,6 +55,17 @@ export const RELEASE_LIMITS = {
   maxNotesLength: 4_000,
 } as const;
 
+/**
+ * The oldest engine that understands release schema v1. Bumped only when a
+ * change makes an older reader mis-play a release rather than merely miss a
+ * feature — refusing to open is worse than degrading, so the bar is high.
+ *
+ * Lives here rather than beside the compiler because it describes the *format*,
+ * and readers need it without the compiler's dependencies: a Node tool that only
+ * writes a container should not have to load the app's media layer to learn it.
+ */
+export const MIN_ENGINE_VERSION_FOR_RELEASE_V1 = '1.0.0';
+
 /** Where a release is meant to be consumed. Both channels read the same file. */
 export const RELEASE_CHANNELS = ['page', 'app', 'both'] as const;
 export type ReleaseChannel = (typeof RELEASE_CHANNELS)[number];

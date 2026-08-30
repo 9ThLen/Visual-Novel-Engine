@@ -31,9 +31,38 @@ function concatChunks(chunks: Uint8Array[], size: number): Uint8Array {
   return result;
 }
 
-function assertSafePath(path: string): void {
+/**
+ * What differs between the two containers that share this layout: the manifest
+ * inside and the words for it. A `.vnerelease` is the same zip as a
+ * `.vnebackup` (see `lib/release/types.ts`), and the checks below — entry order,
+ * declared sizes, compression ratios, per-object hashes — are the part that must
+ * not exist twice. A second copy is where a zip bomb would eventually get in.
+ */
+export interface ArchiveExtractionSpec<TManifest, TPayload> {
+  /** Capitalised; starts most messages. The lowercase form appears mid-sentence. */
+  label: string;
+  parseManifest: (raw: unknown) => TManifest;
+  parsePayload: (raw: unknown) => TPayload;
+}
+
+/** The manifest fields extraction actually reads, whichever container it is. */
+export interface ExtractableManifest {
+  payload: { sha256: string; size: number };
+  assets: readonly StoryBackupAsset[];
+}
+
+const STORY_BACKUP_EXTRACTION: ArchiveExtractionSpec<
+  StoryArchiveManifestV1,
+  StoryArchivePayloadV1
+> = {
+  label: 'Story backup',
+  parseManifest: parseStoryArchiveManifest,
+  parsePayload: parseStoryArchivePayload,
+};
+
+function assertSafePath(path: string, label: string): void {
   if (!SAFE_ENTRY_PATTERN.test(path) || path.includes('\\') || path.includes('..')) {
-    throw new Error(`Unsafe or unexpected story backup entry: ${path}`);
+    throw new Error(`Unsafe or unexpected ${label.toLowerCase()} entry: ${path}`);
   }
 }
 
@@ -43,19 +72,26 @@ export interface StoryArchiveObjectSink<TResult> {
   abort(reason: unknown): Promise<void>;
 }
 
-export interface ExtractedStoryArchive<TResult> {
-  payload: StoryArchivePayloadV1;
+export interface ExtractedArchive<TPayload, TResult> {
+  payload: TPayload;
   objects: Map<string, TResult>;
 }
 
-export async function extractStoryArchive<TResult>(
+export type ExtractedStoryArchive<TResult> = ExtractedArchive<
+  StoryArchivePayloadV1,
+  TResult
+>;
+
+export async function extractArchive<TManifest extends ExtractableManifest, TPayload, TResult>(
   source: StoryArchiveBinarySource,
-  expectedManifest: StoryArchiveManifestV1,
+  expectedManifest: TManifest,
   createObjectSink: (
     asset: StoryBackupAsset,
   ) => Promise<StoryArchiveObjectSink<TResult>> | StoryArchiveObjectSink<TResult>,
+  spec: ArchiveExtractionSpec<TManifest, TPayload>,
   maxTotalBytes = STORY_BACKUP_LIMITS.maxNativeUncompressedBytes,
-): Promise<ExtractedStoryArchive<TResult>> {
+): Promise<ExtractedArchive<TPayload, TResult>> {
+  const { label } = spec;
   const manifestChunks: Uint8Array[] = [];
   const payloadChunks: Uint8Array[] = [];
   const results = new Map<string, TResult>();
@@ -81,14 +117,14 @@ export async function extractStoryArchive<TResult>(
   const checkChunk = (chunk: Uint8Array, entrySize: number, maxEntryBytes: number) => {
     const nextEntrySize = entrySize + chunk.byteLength;
     totalBytes += chunk.byteLength;
-    if (nextEntrySize > maxEntryBytes) throw new Error('Story backup entry exceeds its size limit');
-    if (totalBytes > maxTotalBytes) throw new Error('Story backup exceeds its total size limit');
+    if (nextEntrySize > maxEntryBytes) throw new Error(`${label} entry exceeds its size limit`);
+    if (totalBytes > maxTotalBytes) throw new Error(`${label} exceeds its total size limit`);
     return nextEntrySize;
   };
   const checkCompressionRatio = (file: UnzipFile, actualSize: number) => {
     if (typeof file.size === 'number' && file.size > 0
       && actualSize / file.size > STORY_BACKUP_LIMITS.maxCompressionRatio) {
-      throw new Error(`Story backup entry has an unsafe compression ratio: ${file.name}`);
+      throw new Error(`${label} entry has an unsafe compression ratio: ${file.name}`);
     }
   };
 
@@ -96,15 +132,15 @@ export async function extractStoryArchive<TResult>(
     if (failure !== undefined) return;
     try {
       entryCount += 1;
-      if (entryCount > STORY_BACKUP_LIMITS.maxEntries) throw new Error('Story backup has too many entries');
-      assertSafePath(file.name);
-      if (seenPaths.has(file.name)) throw new Error(`Duplicate story backup entry: ${file.name}`);
+      if (entryCount > STORY_BACKUP_LIMITS.maxEntries) throw new Error(`${label} has too many entries`);
+      assertSafePath(file.name, label);
+      if (seenPaths.has(file.name)) throw new Error(`Duplicate ${label.toLowerCase()} entry: ${file.name}`);
       seenPaths.add(file.name);
       if (entryCount === 1 && file.name !== STORY_BACKUP_PATHS.manifest) {
-        throw new Error('Story backup manifest must be the first entry');
+        throw new Error(`${label} manifest must be the first entry`);
       }
       if (entryCount === 2 && file.name !== STORY_BACKUP_PATHS.payload) {
-        throw new Error('Story backup payload must be the second entry');
+        throw new Error(`${label} payload must be the second entry`);
       }
 
       if (file.name === STORY_BACKUP_PATHS.manifest) {
@@ -131,7 +167,7 @@ export async function extractStoryArchive<TResult>(
             payloadHasher = null;
             if (payloadSize !== expectedManifest.payload.size
               || digest !== expectedManifest.payload.sha256) {
-              throw new Error('Story backup payload hash mismatch');
+              throw new Error(`${label} payload hash mismatch`);
             }
           }
         });
@@ -140,7 +176,7 @@ export async function extractStoryArchive<TResult>(
       }
 
       const asset = expectedObjects.get(file.name);
-      if (!asset) throw new Error(`Unexpected story backup object: ${file.name}`);
+      if (!asset) throw new Error(`Unexpected ${label.toLowerCase()} object: ${file.name}`);
       const hasher = new Hash();
       let objectSize = 0;
       const sinkPromise = Promise.resolve(createObjectSink(asset)).then((sink) => {
@@ -150,7 +186,7 @@ export async function extractStoryArchive<TResult>(
       file.ondata = (error, chunk, final) => queue(async () => {
         if (error) throw error;
         objectSize = checkChunk(chunk, objectSize, STORY_BACKUP_LIMITS.maxObjectBytes);
-        if (objectSize > asset.size) throw new Error(`Story backup object exceeds declared size: ${asset.assetId}`);
+        if (objectSize > asset.size) throw new Error(`${label} object exceeds declared size: ${asset.assetId}`);
         hasher.update(chunk);
         const sink = await sinkPromise;
         if (chunk.byteLength) await sink.write(chunk);
@@ -159,7 +195,7 @@ export async function extractStoryArchive<TResult>(
           const digest = bytesToHex(hasher.digest());
           hasher.clean();
           if (objectSize !== asset.size || digest !== asset.sha256) {
-            throw new Error(`Story backup object hash mismatch: ${asset.assetId}`);
+            throw new Error(`${label} object hash mismatch: ${asset.assetId}`);
           }
           results.set(asset.sha256, await sink.close());
           openedSinks.delete(sink);
@@ -183,22 +219,22 @@ export async function extractStoryArchive<TResult>(
     if (failure !== undefined) throw failure;
     if (!seenPaths.has(STORY_BACKUP_PATHS.manifest)
       || !seenPaths.has(STORY_BACKUP_PATHS.payload)) {
-      throw new Error('Story backup is missing manifest or payload');
+      throw new Error(`${label} is missing manifest or payload`);
     }
     for (const path of expectedObjects.keys()) {
-      if (!seenPaths.has(path)) throw new Error(`Story backup is missing object: ${path}`);
+      if (!seenPaths.has(path)) throw new Error(`${label} is missing object: ${path}`);
     }
     if (source.size && totalBytes / source.size > STORY_BACKUP_LIMITS.maxCompressionRatio) {
-      throw new Error('Story backup has an unsafe total compression ratio');
+      throw new Error(`${label} has an unsafe total compression ratio`);
     }
 
-    const actualManifest = parseStoryArchiveManifest(
+    const actualManifest = spec.parseManifest(
       JSON.parse(strFromU8(concatChunks(manifestChunks, manifestSize))),
     );
     if (JSON.stringify(actualManifest) !== JSON.stringify(expectedManifest)) {
-      throw new Error('Story backup manifest changed during import');
+      throw new Error(`${label} manifest changed during import`);
     }
-    const payload = parseStoryArchivePayload(
+    const payload = spec.parsePayload(
       JSON.parse(strFromU8(concatChunks(payloadChunks, payloadSize))),
     );
     return { payload, objects: results };
@@ -207,4 +243,22 @@ export async function extractStoryArchive<TResult>(
     await Promise.all(Array.from(openedSinks, (sink) => sink.abort(error).catch(() => undefined)));
     throw error;
   }
+}
+
+/** The backup container's extraction, unchanged for every existing caller. */
+export function extractStoryArchive<TResult>(
+  source: StoryArchiveBinarySource,
+  expectedManifest: StoryArchiveManifestV1,
+  createObjectSink: (
+    asset: StoryBackupAsset,
+  ) => Promise<StoryArchiveObjectSink<TResult>> | StoryArchiveObjectSink<TResult>,
+  maxTotalBytes = STORY_BACKUP_LIMITS.maxNativeUncompressedBytes,
+): Promise<ExtractedStoryArchive<TResult>> {
+  return extractArchive(
+    source,
+    expectedManifest,
+    createObjectSink,
+    STORY_BACKUP_EXTRACTION,
+    maxTotalBytes,
+  );
 }
