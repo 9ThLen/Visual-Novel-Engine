@@ -166,5 +166,6 @@ background three chapters in is invisible to whoever ran the build.
 ## Shipping it as an application
 
 A release can also become a desktop application — a Windows installer, a `.deb`,
-an AppImage, a `.dmg` — wrapping the very same bundle. See
-[`releases-desktop.md`](releases-desktop.md).
+an AppImage, a `.dmg` — wrapping the very same bundle
+([`releases-desktop.md`](releases-desktop.md)), or an Android app built from the
+release itself ([`releases-android.md`](releases-android.md)).

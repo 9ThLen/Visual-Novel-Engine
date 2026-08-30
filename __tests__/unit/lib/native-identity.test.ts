@@ -14,6 +14,12 @@ import {
   desktopVersionProblem,
   isValidApplicationId,
   normalizeProductName,
+  androidVersionCode,
+  androidVersionCodeProblem,
+  deriveAndroidIdentity,
+  isSameSigningCertificate,
+  normalizeSigningFingerprint,
+  MAX_ANDROID_VERSION_CODE,
   NATIVE_ID_PREFIX,
 } from '@/lib/release/native-identity';
 
@@ -155,5 +161,80 @@ describe('the whole identity', () => {
 
   it('throws rather than handing back a name the platform will reject', () => {
     expect(() => deriveNativeIdentity({ storyId: 's1', version: '1.0' })).toThrow('MAJOR.MINOR.PATCH');
+  });
+});
+
+describe('the Android version code', () => {
+  /**
+   * Derived rather than reserved from a counter. Monotonic by construction,
+   * because a release version is already refused unless it is strictly newer
+   * than the last one — so there is no counter to lose and nothing to race for.
+   */
+  it('increases with the release version', () => {
+    const codes = ['1.0.0', '1.0.1', '1.1.0', '2.0.0'].map((v) => androidVersionCode(v));
+    for (let i = 1; i < codes.length; i += 1) expect(codes[i]).toBeGreaterThan(codes[i - 1]);
+  });
+
+  /**
+   * The same release in two formats is one version of the app. Different codes
+   * would make a sideloaded APK and a Play listing of one release look like two
+   * versions to a device that saw both.
+   */
+  it('gives the same release the same code every time', () => {
+    expect(androidVersionCode('3.4.5')).toBe(androidVersionCode('3.4.5'));
+    expect(androidVersionCode('3.4.5')).toBe(3_004_005);
+  });
+
+  it('stays inside what Android accepts', () => {
+    expect(androidVersionCode('2000.999.999')).toBeLessThan(MAX_ANDROID_VERSION_CODE);
+  });
+
+  it('refuses a version it cannot pack, rather than wrapping it', () => {
+    expect(androidVersionCodeProblem('1.1000.0')).toContain('does not fit');
+    expect(androidVersionCodeProblem('2001.0.0')).toContain('does not fit');
+    expect(androidVersionCodeProblem('1.0')).toContain('MAJOR.MINOR.PATCH');
+    expect(() => androidVersionCode('1.0.1000')).toThrow('does not fit');
+  });
+});
+
+describe('a signing certificate fingerprint', () => {
+  const colons = 'AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89'
+    + ':AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89';
+
+  /**
+   * `keytool` prints it with colons, some CI tools without, and either in lower
+   * case. Compared through one normalizer so no caller compares raw strings and
+   * concludes a matching certificate does not match.
+   */
+  it('is the same certificate however it was printed', () => {
+    expect(isSameSigningCertificate(colons, colons.replace(/:/g, ''))).toBe(true);
+    expect(isSameSigningCertificate(colons, colons.toLowerCase())).toBe(true);
+    expect(normalizeSigningFingerprint(colons.replace(/:/g, '').toLowerCase())).toBe(colons);
+  });
+
+  it('is not equal to something that is not a fingerprint', () => {
+    expect(isSameSigningCertificate(colons, 'unknown')).toBe(false);
+    expect(isSameSigningCertificate(null, null)).toBe(false);
+    expect(normalizeSigningFingerprint('AB:CD')).toBeNull();
+    // A SHA-1 fingerprint is 20 bytes, and the two are printed identically.
+    expect(normalizeSigningFingerprint('AB'.repeat(20))).toBeNull();
+  });
+});
+
+describe('the Android identity', () => {
+  it('is the shared identity plus a version code', () => {
+    expect(deriveAndroidIdentity({ storyId: 'story_42', title: 'Rain', version: '2.1.0' })).toEqual({
+      storyId: 'story_42',
+      applicationId: deriveApplicationId('story_42'),
+      productName: 'Rain',
+      version: '2.1.0',
+      androidVersionCode: 2_001_000,
+    });
+  });
+
+  /** The desktop derivation must not inherit a limit that is not its own. */
+  it('refuses a version the desktop one accepts', () => {
+    expect(deriveNativeIdentity({ storyId: 's1', version: '1.0.1000' }).version).toBe('1.0.1000');
+    expect(() => deriveAndroidIdentity({ storyId: 's1', version: '1.0.1000' })).toThrow('does not fit');
   });
 });

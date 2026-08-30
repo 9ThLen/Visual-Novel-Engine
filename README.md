@@ -201,6 +201,7 @@ Canonical scene data uses `SceneRecord + TimelineStep`. Legacy `Story`, `StorySc
 - [`wiki/testing-guide.md`](wiki/testing-guide.md) — automated testing guide.
 - [`wiki/releases.md`](wiki/releases.md) — freeze a story into a release and publish it as a standalone web bundle.
 - [`wiki/releases-desktop.md`](wiki/releases-desktop.md) — wrap that same bundle in a desktop installer.
+- [`wiki/releases-android.md`](wiki/releases-android.md) — stage that same release as an Android app.
 - [`PRODUCT.md`](PRODUCT.md) — product purpose and design principles.
 - [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) — visual language, tokens, and theme rules.
 

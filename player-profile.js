@@ -31,6 +31,25 @@ const PLAYER_STORE_SUBSTITUTION = {
 };
 
 /**
+ * Every module the player build swaps for a reader-only one.
+ *
+ * Two so far, and they exist for the same reason: the module is *needed*, so
+ * blocking it would only break the build, and what has to change is what it
+ * contains.
+ *
+ * - the store, which the reader pulls all of but must not be able to write
+ *   through;
+ * - the bundled-asset map, whose static `require` calls put ~110 MB of demo art
+ *   inside every artifact. A release carries its own bytes, so a player needs
+ *   none of it — but Metro bundles what it can see, and the only way to not ship
+ *   a file is to stop naming it.
+ */
+const PLAYER_MODULE_SUBSTITUTIONS = [
+  PLAYER_STORE_SUBSTITUTION,
+  { from: 'lib/bundled-assets.ts', to: 'lib/bundled-assets.player.ts' },
+];
+
+/**
  * Whole trees the player bundler refuses to resolve. Coarse on purpose: every
  * entry here is authoring UI or authoring logic with no reader caller, so a
  * failed resolve is a real mistake rather than a false alarm.
@@ -148,6 +167,7 @@ const PLAYER_BLOCKED_PERMISSIONS = [
 
 module.exports = {
   playerAutolinkingPackageJson,
+  PLAYER_MODULE_SUBSTITUTIONS,
   PLAYER_PROFILE,
   isPlayerProfile,
   PLAYER_ROUTER_ROOT,

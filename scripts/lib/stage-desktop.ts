@@ -21,6 +21,12 @@ import path from 'node:path';
 import { assertSafeOutPath } from './out-path.mjs';
 
 import {
+  chooseIconSource,
+  type IconCandidate,
+  type IconChoice as IconChoiceType,
+} from '../../tools/lib/icon-source';
+
+import {
   deriveNativeIdentity,
   type NativeIdentity,
 } from '@/lib/release/native-identity';
@@ -282,45 +288,9 @@ export function verifyStagedProject(outDir: string): string[] {
   return problems;
 }
 
-// ── Icons ───────────────────────────────────────────────────────────────────
+// ── Icons ─────────────────────────────────────────────────────────────────
 
-/** What `tauri icon` needs of its source: a square PNG, big enough to shrink. */
-export const MIN_ICON_SIZE = 512;
-
-export interface PngSize { width: number; height: number }
-
-/**
- * Read a PNG's dimensions from its header.
- *
- * Just the IHDR chunk, which is always the first one and always at the same
- * offset. Enough to answer the only question asked here, and it avoids a decoder
- * dependency for a check that runs once per build.
- */
-export function readPngSize(file: string): PngSize | null {
-  let handle: number;
-  try {
-    handle = fs.openSync(file, 'r');
-  } catch {
-    return null;
-  }
-  try {
-    const header = new Uint8Array(24);
-    const read = fs.readSync(handle, header, 0, 24, 0);
-    if (read < 24) return null;
-    const signature = [137, 80, 78, 71, 13, 10, 26, 10];
-    if (signature.some((byte, index) => header[index] !== byte)) return null;
-    const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
-    return { width: view.getUint32(16), height: view.getUint32(20) };
-  } finally {
-    fs.closeSync(handle);
-  }
-}
-
-export interface IconChoice {
-  file: string;
-  /** Said out loud, because a silent fallback to the engine icon looks like a bug. */
-  reason: string;
-}
+export { MIN_ICON_SIZE, readPngSize, type IconChoice, type PngSize } from '../../tools/lib/icon-source';
 
 export interface PickIconSourceInput {
   bundleDir: string;
@@ -335,15 +305,11 @@ export interface PickIconSourceInput {
 
 /**
  * The novel's cover, when it can be an application icon; the engine's icon
- * otherwise.
- *
- * Covers are usually portrait, and `tauri icon` needs a square source — so most
- * stories will land on the fallback. That is fine, and it is *reported* rather
- * than assumed: an author who wonders why their installer shows the engine logo
- * deserves the actual reason.
+ * otherwise. The rule itself lives in `tools/lib/icon-source.ts`, shared with
+ * the Android channel so the two cannot disagree about the same file.
  */
-export function pickIconSource(input: PickIconSourceInput): IconChoice {
-  const candidates: { file: string; label: string }[] = [];
+export function pickIconSource(input: PickIconSourceInput): IconChoiceType {
+  const candidates: IconCandidate[] = [];
   if (input.override) {
     candidates.push({ file: path.resolve(input.override), label: 'the icon you passed' });
   } else {
@@ -353,31 +319,5 @@ export function pickIconSource(input: PickIconSourceInput): IconChoice {
       candidates.push({ file: path.join(input.bundleDir, mapped), label: 'the story cover' });
     }
   }
-
-  for (const candidate of candidates) {
-    const size = readPngSize(candidate.file);
-    if (!size) {
-      return {
-        file: input.fallbackIcon,
-        reason: `${candidate.label} is not a PNG, so the engine icon is used instead`,
-      };
-    }
-    if (size.width !== size.height) {
-      return {
-        file: input.fallbackIcon,
-        reason: `${candidate.label} is ${size.width}x${size.height} and an app icon must be square, `
-          + 'so the engine icon is used instead',
-      };
-    }
-    if (size.width < MIN_ICON_SIZE) {
-      return {
-        file: input.fallbackIcon,
-        reason: `${candidate.label} is only ${size.width}px and an app icon needs at least `
-          + `${MIN_ICON_SIZE}px, so the engine icon is used instead`,
-      };
-    }
-    return { file: candidate.file, reason: `icons generated from ${candidate.label}` };
-  }
-
-  return { file: input.fallbackIcon, reason: 'the story has no cover, so the engine icon is used' };
+  return chooseIconSource(candidates, input.fallbackIcon);
 }

@@ -32,7 +32,8 @@
     "qr": "node scripts/generate_qr.mjs",
     "export:story": "tsx scripts/export-story-web.ts",
     "demo:release": "tsx scripts/make-demo-release.ts",
-    "build:desktop": "tsx scripts/build-desktop.ts"
+    "build:desktop": "tsx scripts/build-desktop.ts",
+    "stage:android": "tsx tools/vne-build/main.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.207",

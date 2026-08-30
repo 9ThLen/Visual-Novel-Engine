@@ -99,30 +99,77 @@ export class FakeBuilder implements Builder {
 }
 
 /**
- * The real one, once there is something to build.
+ * The real one — as far as it has been run.
  *
- * EAS needs a staged native project — an app config, a `package.json` carrying
- * the autolinking exclusions, and the release's media laid out where the build
- * expects them. R9 produces that. Until then this refuses with the reason rather
- * than being absent, so the seam is visible and the message is the true one.
+ * Staging is implemented and tested: it turns the verified `.vnerelease` into an
+ * Expo project with the story inside it, the editor out of it and the file
+ * pickers unlinked, and it checks the result rather than assuming it. That part
+ * runs here, for real, and leaves a project the author can build.
+ *
+ * Submitting it does not. `eas build` needs an Expo account, credentials the
+ * account owns, and a paid queue; no build has ever been run through this
+ * helper, and a submit-and-poll-and-verify path written blind would be a guess
+ * in the shape of working code — the exact thing that makes a pipeline look
+ * finished and fail on someone else's machine. So it stops at the line it has
+ * not crossed and says where the staged project is.
  */
 export class EasBuilder implements Builder {
   readonly name = 'eas';
 
-  constructor(private readonly stagedProjectDir?: string) {}
+  /**
+   * `repoRoot` is what gets copied into the staged project. It defaults to the
+   * working directory because the helper is started from the repository
+   * (`pnpm build-helper`); `main.ts` passes the resolved path anyway, so the
+   * default only covers a caller that constructed one directly.
+   */
+  constructor(
+    private readonly repoRoot: string = process.cwd(),
+    private readonly stagedProjectDir?: string,
+  ) {}
 
   async readiness(): Promise<{ ready: true } | { ready: false; reason: string }> {
-    const suffix = this.stagedProjectDir ? ' The staged project will be used once R9 lands.' : '';
     return {
       ready: false,
-      reason: `The EAS builder is not implemented yet; see R9 in RELEASE-PLAN.md.${suffix}`,
+      reason:
+        'Submitting an Android build is not implemented: no build has ever been run through '
+        + 'this helper. Staging works — the job will leave you a project to build by hand.',
     };
   }
 
-  async build(): Promise<BuilderResult> {
-    // Deliberately unimplemented rather than half-implemented: a build command
-    // that has never run against a real project would be a guess in the shape of
-    // working code.
-    throw new Error('The EAS builder is not implemented yet; see R9 in RELEASE-PLAN.md.');
+  async build(input: BuilderInput): Promise<BuilderResult> {
+    const path = await import('node:path');
+    const { stageAndroidProject, verifyStagedAndroidProject } = await import(
+      '../../vne-build/stage-android'
+    );
+
+    const outDir = this.stagedProjectDir
+      ?? path.join(input.outputDirectory, `${input.request.requestId}-android`);
+
+    input.onLog('Staging the Android project');
+    const staged = await stageAndroidProject({
+      releaseFile: input.archivePath,
+      outDir,
+      repoRoot: this.repoRoot,
+    });
+    input.onLog(
+      `Staged ${staged.identity.applicationId} ${staged.identity.version} `
+      + `(version code ${staged.identity.androidVersionCode})`,
+    );
+    input.onLog(`${staged.mediaFiles.length} media file(s); dropped ${staged.prunedAssets} unused asset(s)`);
+
+    if (staged.unresolvedModules.length > 0) {
+      throw new Error(
+        `The staged project is missing ${staged.unresolvedModules.length} module(s) the player imports.`,
+      );
+    }
+    const problems = verifyStagedAndroidProject(outDir);
+    if (problems.length > 0) throw new Error(`The staged project is not usable: ${problems[0]}`);
+    input.onLog('Verified the staged project');
+
+    const profile = input.request.target === 'aab' ? 'player-aab' : 'player-apk';
+    throw new Error(
+      `The project is staged and checked, and submitting it is not implemented. `
+      + `Build it with: eas build --platform android --profile ${profile}`,
+    );
   }
 }

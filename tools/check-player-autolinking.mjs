@@ -84,8 +84,11 @@ console.log(
   `${PLAYER_AUTOLINKING_EXCLUDE.length} excluded, ${excluded.size} left.`,
 );
 console.log(
-  'Note: the exclusions are NOT applied by this repo — autolinking reads',
+  'Note: this repo still links all of them — autolinking reads package.json,',
 );
 console.log(
-  'package.json, which the studio shares. R9\'s staged project applies them.',
+  'which the studio shares and which needs the pickers. They are excluded in',
+);
+console.log(
+  'the staged Android project, where `pnpm stage:android` re-checks it for real.',
 );

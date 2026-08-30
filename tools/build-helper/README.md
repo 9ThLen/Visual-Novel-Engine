@@ -92,10 +92,15 @@ that says when it will.
   because a reload, a cancel, a retry and a resubmitted key are all answerable
   without a cloud account, and requiring one would mean the kernel could not be
   tested until R9 shipped.
-- `EasBuilder` — is the CLI default and refuses with a reason until R9 has produced a staged Android
-  project to build. Deliberately unimplemented rather than half-implemented: a
-  build command that has never run against a real project would be a guess in the
-  shape of working code.
+- `EasBuilder` — the CLI default. **Stages for real, and stops before
+  submitting.** R9 made the staging real: it turns the verified `.vnerelease`
+  into an Expo project with the story inside it, the editor out of it and the
+  file pickers unlinked, then checks the result and leaves it on disk. `eas
+  build` itself has never run here — it needs an Expo account, credentials that
+  account owns, and a paid queue — so the job fails with the command to run by
+  hand rather than with a submit-and-poll path written blind. A build command
+  that has never run against a real project would be a guess in the shape of
+  working code.
 
 `github-actions` and `local` plug into the same interface when they are wanted.
 

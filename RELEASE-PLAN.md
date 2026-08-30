@@ -2,19 +2,23 @@
 
 How a finished novel leaves the editor and reaches a reader.
 
-Status: in progress. **R0–R7 are implemented, and R8 up to the point where it
-needs a Rust toolchain** — R0–R3 complete Channel A, R4 is the build profile
-every native channel stands on (JS and config; the native module cut is
-specified and verified but applied by R9), R5 is the first shippable artifact of
-Channel B, R6 puts it behind a button, R7 is the build kernel every native
-channel will submit through, and R8 stages a desktop application from the same
-bundle R5 publishes. Everything from R9 onward is still a proposal, alongside
-the parts marked **exists** in [Current state](#1-current-state).
+Status: in progress. **R0–R7 are implemented; R8 and R9 are implemented up to
+the point where each needs a toolchain nobody here has** — R0–R3 complete
+Channel A, R4 is the build profile every native channel stands on, R5 is the
+first shippable artifact of Channel B, R6 puts it behind a button, R7 is the
+build kernel every native channel submits through, R8 stages a desktop
+application from the same bundle R5 publishes, and R9 stages an Android project
+and proves the native cut R4 could only specify. R10 is still a proposal,
+alongside the parts marked **exists** in [Current state](#1-current-state).
+
+Neither `tauri build` nor `eas build` has ever run. Each stage says so in its own
+section rather than in a footnote.
 
 Corrections to earlier steps are recorded inline rather than edited away: R2's
 object store and R4's autolinking exclusions were both marked done before they
 worked, and R6's offline claim rested on a test that never left HTTP. In the same
-spirit, R7 and R8 each say which of their steps has never been executed.
+spirit, R7, R8 and R9 each say which of their steps has never been executed, and
+R9 replaces this plan's version-code design with a simpler one and says why.
 
 ---
 
@@ -1246,37 +1250,87 @@ the "Done when" below is not yet met.
 **Done when:** the same release that plays on the project page also installs and
 runs offline from a Windows installer, with no browser involved.
 
-### R9 — Channel B4: Android player app
+### R9 — Channel B4: Android player app — **staged and checked; never built**
 
-- `lib/release/native-identity.ts` — **exists as of R8**, which needed the
-  application id first. R9 extends it with the Android-only parts: monotonic
-  `androidVersionCode`, `easProjectId`, `signingCertSha256`, `distributionMode`.
-  The package id is already derived there from `storyId`, never from author or
-  title, and R9 must not re-derive it.
-- `tools/vne-build/stage-android.mjs` — the staging step: verify `payloadHash`,
-  stream-extract media to disk, emit `generated/player-assets.ts` with static
-  `require`s, write icon / adaptive icon / engine splash PNGs, write the staged
-  `app.json` and `eas.json` (with `appVersionSource: "local"`), drop picker
-  plugins and storage permissions, then create the EAS tarball.
-- `app.config.js` — `VNE_PLAYER_APP_ID`, `VNE_PLAYER_APP_NAME`,
-  `VNE_PLAYER_VERSION`, `VNE_PLAYER_VERSION_CODE`, `VNE_PLAYER_ICON`,
-  `VNE_EAS_PROJECT_ID` (the hardcoded engine `projectId` becomes a default, not
-  a constant).
-- `lib/player-mode.ts` — native boot path reading the release from the generated
-  module through `expo-asset`; media map resolving to bundled assets.
-- Staged `eas.json` — **two** profiles: `player-apk` (`buildType: "apk"`) and
-  `player-aab` (`buildType: "app-bundle"`).
-- Preflight: Android size **warning** pre-build; hard gate post-build on the
-  actual artifact. Ceilings and the routes past them are in
-  [When the novel is genuinely bigger than 200 MB](#when-the-novel-is-genuinely-bigger-than-200-mb);
-  the warning names the route, not just the number.
-- `wiki/releases-android.md` — sideload instructions for readers, Play Console
-  checklist and key-loss consequences for authors who want a listing.
+Everything up to `eas build` is implemented and verified. `eas build` itself has
+never run: no machine involved had an Android SDK, and a cloud build spends money
+on an account and signs with credentials that outlive it.
 
-- One-time onboarding flow (EAS CLI check → `eas login` → `eas init` →
-  interactive credentials), then `--freeze-credentials` builds thereafter.
-- Post-return verification: signing certificate against the stored fingerprint,
-  APK size, `bundletool get-size total` for the AAB.
+- `lib/release/native-identity.ts` — the Android half: `androidVersionCode`,
+  distribution mode, and one normalizer for signing-certificate fingerprints so
+  nothing compares them as raw strings. The package id was already derived here
+  in R8, from `storyId` and never from author or title.
+  - **Correction.** This stage was specified with a version code reserved
+    atomically from a counter, never returned on failure, with an acceptance test
+    that two concurrent requests get different codes. It is derived instead:
+    `major * 1e6 + minor * 1e3 + patch`. Monotonic by construction, because a
+    release version is already refused unless it is strictly newer — so there is
+    no counter to reserve, nothing to race for, and nothing a crashed helper can
+    strand. It also gets the concurrency case right the *other* way: two requests
+    for the same release must produce the *same* code, since an APK and an AAB of
+    one release are one version of the app.
+- `tools/vne-build/stage-android.ts` + `pnpm stage:android` — verify the manifest
+  against its payload hash before writing anything, copy an allowlisted project,
+  stream the media out of the archive, generate `lib/generated/player-release.ts`
+  as one static `require` per object, write the staged `package.json` (with the
+  autolinking exclusions), `eas.json` and `.easignore`, and stage the icon and the
+  engine splash.
+- `lib/release/packaged-release.ts` + `lib/generated/player-release.ts` (a
+  committed stub) — the runtime end: module references become uris through
+  `expo-asset` and join the *existing* asset seam rather than adding a second
+  resolution path. Registered into `lib/player-mode.ts` rather than imported by
+  it, so that file stays loadable by the Node scripts that use it.
+- `app.config.js` — `VNE_PLAYER_APP_ID` / `_APP_NAME` / `_VERSION` /
+  `_VERSION_CODE` / `_SLUG` / `_ICON` / `_SPLASH`, read **only** under the player
+  profile, and `VNE_EAS_PROJECT_ID` as a default rather than a constant. The
+  gating is a test: a stray export must not be able to repackage the studio.
+- The identity travels in `eas.json`'s per-profile `env` rather than in a
+  generated `app.json`, so there is one config with one set of rules and the
+  values it reads sit in a file anyone can open.
+
+**The asset cut, which was not in the plan and turned out to matter more than
+anything else here.** `lib/asset-resolver.ts` held the bundled-art map inline, so
+its static `require`s put every demo background, sample track and sprite inside
+every artifact. It is now `lib/bundled-assets.ts`, and the player profile
+substitutes an empty one the way it already substitutes the store
+(`PLAYER_MODULE_SUBSTITUTIONS`). Measured, not asserted:
+
+| | before | after |
+| --- | --- | --- |
+| player web build (`dist-player`) | 117 MB | **7.7 MB** |
+| exported bundle for the demo release | 212.6 MB | **104.1 MB** |
+| staged Android project | 219 MB | **106 MB** (96 MB of it the release's own media) |
+| player module graph | 209 | **181** |
+
+A release already carries its own bytes — `lib/story-backup/capture.ts` resolves
+bundled references and packs them — so the player answers from the packaged map,
+which `getBundledAsset` was already written to defer to. Staging then deletes the
+art nothing imports, driven by the graph rather than by a list of directories.
+
+**Verified** (`pnpm test`, `pnpm stage:android`, `pnpm test:player-e2e`): the
+identity rules; the staged `package.json`, `eas.json` and generated module; that
+a media file the asset map names but the project lacks is caught, as is a
+`.bin` Metro would not bundle, the committed stub, authoring code that came
+along, and a profile that would build the studio. Then, against a real release:
+the player's whole module graph resolves inside the staged copy; `expo config`
+there reports the right name, version, package, version code, router root and
+blocked permissions; and **`expo-modules-autolinking resolve -p android` reports
+27 linked modules against this repository's 31** — the check R4 wrote and had
+nowhere to apply.
+
+**Not verified, and not pretended:** the APK, its size and its permission list on
+a device; the launch splash, which only behaves faithfully in a release build;
+v2 installing over v1 with saves intact; and the post-build certificate check,
+which needs an artifact to check. `EasBuilder` stages for real and stops at the
+submit line with the command to run by hand.
+
+- `wiki/releases-android.md` — sideload instructions, the Play checklist, and
+  what losing a signing key costs.
+
+Still to do for the **Done when** below: EAS onboarding (CLI check → login →
+`eas init` → interactive credentials), submit-and-poll, artifact download,
+certificate verification against the stored fingerprint, and `bundletool
+get-size total` for the AAB.
 
 **Done when:** an author who has completed the one-time onboarding presses
 Release → Android and receives an APK that installs on a phone, opens on the
@@ -1304,25 +1358,34 @@ This stage is roughly the size of R0–R9 combined.
 Beyond each stage's own unit tests, these gate R4 and R9. They exist because
 every one of them corresponds to a way this can ship broken and look fine.
 
-**Config contract** (cheap, run in CI on every change):
+**Config contract** (cheap; all of these run today in `pnpm test` and
+`pnpm stage:android`):
 
 - `packageId` is stable across a title rename and an author rename;
-- `androidVersionCode` increases monotonically, is reserved atomically, and is
-  **not** returned to the pool after a failed build;
-- two concurrent build requests for one novel receive different version codes;
-- router root resolves to `app-player/`;
+- `androidVersionCode` increases monotonically — by construction now, not by
+  reservation; see R9's correction, which also replaces "two concurrent requests
+  get different codes" with its opposite: two requests for the *same* release
+  must get the *same* code;
+- router root resolves to `app-player/` in the staged project's resolved config;
 - both `player-apk` and `player-aab` profiles exist and emit the formats they
   claim;
-- icon, adaptive icon and engine splash are present in the staged project.
+- icon and engine splash are present in the staged project. The **adaptive**
+  icon stays the engine's: a foreground layer needs a safe zone a cover does not
+  have, and generating one needs a rasterizer this pipeline does not carry.
 
 **Bundle contract:**
 
 - **R4:** no editor route, authoring store slice, or AI/media-library module is
-  reachable from the player root; `expo-modules-autolinking resolve` reports the
-  reduced native set; JS bundle size recorded.
-- **R9:** `eas build:inspect --stage archive` contains no editor code; the
-  installed APK's permission list contains nothing a novel needs; APK size and
-  `bundletool get-size total` for the AAB, against the R4 baseline.
+  reachable from the player root ✅; JS bundle size recorded ✅.
+  `expo-modules-autolinking resolve` reporting the reduced native set could not
+  be done here — the exclusions live in `package.json`, which the studio shares —
+  and is done by R9 instead.
+- **R9, done:** the staged project links 27 native modules against this
+  repository's 31; the authoring trees and every unreferenced studio route are
+  absent from the staged tree, which is stronger than inspecting the archive for
+  them; the staged project's whole module graph resolves.
+- **R9, still open:** the installed APK's permission list on a device; APK size
+  and `bundletool get-size total` for the AAB. Both need a build.
 
 **Install lifecycle** (a real device or emulator):
 

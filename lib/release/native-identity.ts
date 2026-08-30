@@ -25,9 +25,11 @@
  * in Node, it must be synchronous, and it is a uniqueness suffix rather than a
  * security boundary. Nothing is authenticated by it.
  *
- * R9 extends this module with the Android-only parts (version code, signing
- * fingerprint, EAS project). They are not here yet because nothing has needed
- * them, and an unused field is a field nobody has checked.
+ * The Android-only parts — version code, signing fingerprint, distribution mode
+ * — are at the bottom, kept behind their own derivation rather than folded into
+ * the shared one: a version can be perfectly installable on a desktop and not
+ * fit an Android version code, and a desktop build has no business failing over
+ * a limit that is not its own.
  */
 
 /** Default reverse-DNS prefix. Every story built by this engine shares it. */
@@ -226,4 +228,111 @@ export function deriveNativeIdentity(input: DeriveNativeIdentityInput): NativeId
     productName: normalizeProductName(input.title),
     version: input.version,
   };
+}
+
+// ── Android ─────────────────────────────────────────────────────────────────
+
+/**
+ * Android compares updates by `versionCode`, an integer, and refuses to install
+ * one that is not higher than what is on the device. Its ceiling is 2100000000.
+ */
+export const MAX_ANDROID_VERSION_CODE = 2_100_000_000;
+
+/** The widths the packing below reserves for each part of a version. */
+export const ANDROID_VERSION_CODE_LIMITS = { major: 2000, minor: 999, patch: 999 } as const;
+
+/**
+ * `MAJOR.MINOR.PATCH` packed into one integer: `major * 1e6 + minor * 1e3 + patch`.
+ *
+ * **A correction to the plan.** R9 was specified with a version code reserved
+ * atomically from a counter and never returned to the pool on failure, plus an
+ * acceptance test that two concurrent requests receive different codes. That
+ * design solves a problem this one does not have. A derived code is monotonic by
+ * construction, because `lib/release/version.ts` already refuses to republish a
+ * version that is not strictly newer than the last one; there is no counter to
+ * reserve, so there is nothing to lose, nothing to race for, and no way for a
+ * crashed helper to strand a number.
+ *
+ * The concurrency case resolves the other way round too. Two requests for the
+ * *same* release must produce the *same* code — they are the same artifact in
+ * two formats, and handing them different codes would make a sideloaded APK and
+ * a Play listing of one release look like two versions of the app. Two requests
+ * for different releases get different codes because their versions differ.
+ *
+ * What is given up: the code is no longer dense, so an author who releases
+ * 1.0.0 and then 2.0.0 skips a million codes. Android does not care — it only
+ * compares.
+ */
+export function androidVersionCode(version: string): number {
+  const problem = androidVersionCodeProblem(version);
+  if (problem) throw new Error(problem);
+  const [major, minor, patch] = version.split('.').map(Number);
+  return major * 1_000_000 + minor * 1_000 + patch;
+}
+
+/** Why this version cannot be packed into a version code, or `null`. */
+export function androidVersionCodeProblem(version: unknown): string | null {
+  if (typeof version !== 'string') return 'The release has no version.';
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (!match) {
+    return `"${version}" is not MAJOR.MINOR.PATCH; an Android version code needs three numbers.`;
+  }
+  const [major, minor, patch] = match.slice(1).map(Number);
+  const limits = ANDROID_VERSION_CODE_LIMITS;
+  if (major > limits.major || minor > limits.minor || patch > limits.patch) {
+    return `Version ${version} does not fit an Android version code `
+      + `(at most ${limits.major}.${limits.minor}.${limits.patch}).`;
+  }
+  return null;
+}
+
+/**
+ * Where an artifact is going. It belongs to the *request*, not to the identity:
+ * one novel can ship both a sideload APK and a Play AAB, and the two are signed
+ * by different keys with very different consequences if one is lost.
+ */
+export const DISTRIBUTION_MODES = ['sideload', 'play'] as const;
+export type DistributionMode = (typeof DISTRIBUTION_MODES)[number];
+
+/**
+ * A SHA-256 signing certificate fingerprint, as `AB:CD:…` — 32 bytes.
+ *
+ * Stored per story and per distribution mode, and compared against the artifact
+ * that comes back. The three Android certificates are distinct things that must
+ * never share a field: the sideload signing certificate, the Play upload
+ * certificate, and the Play app-signing certificate. Confusing them is how an
+ * author concludes their key is fine right up until an update will not install.
+ */
+export function normalizeSigningFingerprint(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const hex = raw.replace(/[\s:]/g, '').toUpperCase();
+  if (!/^[0-9A-F]{64}$/.test(hex)) return null;
+  return (hex.match(/../g) as string[]).join(':');
+}
+
+/**
+ * Whether two fingerprints name the same certificate, written once so no caller
+ * compares them as raw strings — the same certificate is printed with colons by
+ * `keytool`, without them by some CI tools, and in either case.
+ */
+export function isSameSigningCertificate(a: unknown, b: unknown): boolean {
+  const left = normalizeSigningFingerprint(a);
+  const right = normalizeSigningFingerprint(b);
+  return left !== null && left === right;
+}
+
+export interface AndroidIdentity extends NativeIdentity {
+  /** Also the Android package name; `applicationId` already satisfies its rules. */
+  androidVersionCode: number;
+}
+
+/**
+ * Kept separate from {@link deriveNativeIdentity} rather than folded into it: a
+ * version like `1.0.1000` is perfectly installable on a desktop and cannot be
+ * packed into an Android version code, and a desktop build has no business
+ * failing over a limit that is not its own.
+ */
+export function deriveAndroidIdentity(input: DeriveNativeIdentityInput): AndroidIdentity {
+  const identity = deriveNativeIdentity(input);
+  return { ...identity, androidVersionCode: androidVersionCode(identity.version) };
 }
