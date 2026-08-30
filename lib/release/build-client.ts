@@ -28,6 +28,10 @@ export interface BuildClientOptions {
   /** Injectable for tests; defaults to the platform's. */
   createSocket?: (url: string) => WebSocket;
   fetch?: typeof fetch;
+  /** Automatic reconnect is on by default. Disable it only for one-shot tools. */
+  reconnect?: boolean;
+  reconnectDelayMs?: number;
+  maxReconnectDelayMs?: number;
 }
 
 export function buildSocketUrl(endpoint: string): string {
@@ -39,8 +43,15 @@ export function buildSocketUrl(endpoint: string): string {
 
 export class BuildClient {
   private socket: WebSocket | null = null;
+  private connectPromise: Promise<void> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempt = 0;
+  private hasBeenReady = false;
+  private manuallyClosed = true;
   private ready = false;
   private readonly queued: string[] = [];
+  private readonly subscriptions = new Set<string>();
+  private readonly pendingSubmits = new Map<string, BuildRequest>();
   private readonly submitAcks = new Map<string, Promise<BuildJobSummary>>();
   private readonly submitWaiters = new Map<string, {
     resolve: (job: BuildJobSummary) => void;
@@ -50,12 +61,45 @@ export class BuildClient {
   constructor(private readonly options: BuildClientOptions) {}
 
   async connect(): Promise<void> {
+    this.manuallyClosed = false;
+    if (this.ready) return;
+    if (this.connectPromise) return this.connectPromise;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    const connection = this.openSocket();
+    this.connectPromise = connection;
+    try {
+      await connection;
+    } finally {
+      if (this.connectPromise === connection) this.connectPromise = null;
+    }
+  }
+
+  private openSocket(): Promise<void> {
     const create = this.options.createSocket ?? ((url: string) => new WebSocket(url));
     const socket = create(buildSocketUrl(this.options.endpoint));
     this.socket = socket;
 
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Build helper pairing timed out')), 5_000);
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let permanentFailure = false;
+      const resolveOnce = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      const rejectOnce = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
+      const timeout = setTimeout(() => {
+        rejectOnce(new Error('Build helper pairing timed out'));
+        socket.close();
+      }, 5_000);
       socket.onopen = () => {
         socket.send(JSON.stringify({
           type: 'hello',
@@ -65,7 +109,14 @@ export class BuildClient {
       };
       socket.onerror = () => {
         clearTimeout(timeout);
-        reject(new Error('Could not reach the build helper'));
+        if (this.socket === socket) {
+          this.socket = null;
+          this.ready = false;
+        }
+        rejectOnce(new Error('Could not reach the build helper'));
+        this.options.onClose?.('error');
+        this.scheduleReconnect();
+        socket.close();
       };
       socket.onmessage = (event: MessageEvent) => {
         if (this.socket !== socket) return;
@@ -78,15 +129,27 @@ export class BuildClient {
         if (message.type === 'ready') {
           if (message.version !== BUILD_PROTOCOL_VERSION) {
             clearTimeout(timeout);
-            reject(new Error(`Unsupported build protocol ${message.version}`));
+            permanentFailure = true;
+            rejectOnce(new Error(`Unsupported build protocol ${message.version}`));
             socket.close();
             return;
           }
           clearTimeout(timeout);
           this.ready = true;
+          this.reconnectAttempt = 0;
           for (const frame of this.queued.splice(0)) socket.send(frame);
-          resolve();
+          if (this.hasBeenReady) this.restoreSubscriptions(socket);
+          this.hasBeenReady = true;
+          resolveOnce();
           return;
+        }
+        if (!this.ready && message.type === 'error') {
+          permanentFailure = ['UNAUTHORIZED', 'UNSUPPORTED_VERSION'].includes(message.code);
+          if (permanentFailure) {
+            clearTimeout(timeout);
+            rejectOnce(new Error(message.message));
+            socket.close();
+          }
         }
         const requestId = 'job' in message
           ? message.job.requestId
@@ -108,18 +171,65 @@ export class BuildClient {
       socket.onclose = (event: CloseEvent) => {
         if (this.socket !== socket) return;
         clearTimeout(timeout);
+        this.socket = null;
         this.ready = false;
         const error = new Error(event.reason || 'Build helper connection closed');
-        for (const waiter of this.submitWaiters.values()) waiter.reject(error);
-        this.submitWaiters.clear();
+        rejectOnce(error);
         this.options.onClose?.(event.reason || 'closed');
+        if (!permanentFailure && !this.manuallyClosed && this.options.reconnect !== false) {
+          this.scheduleReconnect();
+        } else if (!this.manuallyClosed) {
+          this.rejectPending(error);
+        }
       };
     });
   }
 
+  private restoreSubscriptions(socket: WebSocket): void {
+    // A submit is idempotent and doubles as a status request. Re-send any one
+    // whose acknowledgement was lost with the socket, then rejoin every other
+    // job explicitly. This cannot start a second paid build on a conforming
+    // helper because requestId + payloadHash identify the existing job.
+    for (const request of this.pendingSubmits.values()) {
+      socket.send(JSON.stringify({ type: 'submit', request }));
+    }
+    for (const requestId of this.subscriptions) {
+      if (!this.pendingSubmits.has(requestId)) {
+        socket.send(JSON.stringify({ type: 'status', requestId }));
+      }
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.manuallyClosed || this.options.reconnect === false || this.reconnectTimer) return;
+    const initial = Math.max(0, this.options.reconnectDelayMs ?? 250);
+    const maximum = Math.max(initial, this.options.maxReconnectDelayMs ?? 5_000);
+    const delay = Math.min(maximum, initial * (2 ** this.reconnectAttempt));
+    this.reconnectAttempt += 1;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connect().catch(() => {
+        // openSocket schedules the next bounded attempt. The original caller
+        // already received its connection error, so there is nothing to throw.
+      });
+    }, delay);
+  }
+
+  private rejectPending(error: Error): void {
+    for (const waiter of this.submitWaiters.values()) waiter.reject(error);
+    this.submitWaiters.clear();
+    this.pendingSubmits.clear();
+  }
+
   private send(message: unknown): void {
     const frame = JSON.stringify(message);
-    if (!this.socket) throw new Error('The build client is not connected');
+    if (!this.socket) {
+      if (this.hasBeenReady && !this.manuallyClosed && this.options.reconnect !== false) {
+        this.queued.push(frame);
+        return;
+      }
+      throw new Error('The build client is not connected');
+    }
     if (!this.ready) {
       this.queued.push(frame);
       return;
@@ -130,28 +240,36 @@ export class BuildClient {
   submit(request: BuildRequest): Promise<BuildJobSummary> {
     const existing = this.submitAcks.get(request.requestId);
     if (existing) return existing;
+    this.subscriptions.add(request.requestId);
     const acknowledged = new Promise<BuildJobSummary>((resolve, reject) => {
       this.submitWaiters.set(request.requestId, { resolve, reject });
+      this.pendingSubmits.set(request.requestId, request);
       try {
         this.send({ type: 'submit', request });
       } catch (error) {
         this.submitWaiters.delete(request.requestId);
         reject(error instanceof Error ? error : new Error(String(error)));
       }
-    }).finally(() => this.submitAcks.delete(request.requestId));
+    }).finally(() => {
+      this.submitAcks.delete(request.requestId);
+      this.pendingSubmits.delete(request.requestId);
+    });
     this.submitAcks.set(request.requestId, acknowledged);
     return acknowledged;
   }
 
   status(requestId: string): void {
+    this.subscriptions.add(requestId);
     this.send({ type: 'status', requestId });
   }
 
   cancel(requestId: string): void {
+    this.subscriptions.add(requestId);
     this.send({ type: 'cancel', requestId });
   }
 
   retry(requestId: string): void {
+    this.subscriptions.add(requestId);
     this.send({ type: 'retry', requestId });
   }
 
@@ -192,10 +310,17 @@ export class BuildClient {
   }
 
   close(): void {
-    this.socket?.close();
+    this.manuallyClosed = true;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    const socket = this.socket;
     this.socket = null;
+    socket?.close();
     this.ready = false;
     this.queued.length = 0;
+    this.subscriptions.clear();
+    this.rejectPending(new Error('Build client closed'));
+    this.submitAcks.clear();
   }
 }
 

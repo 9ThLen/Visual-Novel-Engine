@@ -23,6 +23,7 @@
 import {
   BUILD_TARGETS,
   isBuildRequestId,
+  isBuildReleaseId,
   parseBuildRequest,
   type BuildRequest,
 } from '@/lib/release/build-request';
@@ -47,15 +48,18 @@ export type BuildServerMessage =
   | { type: 'failed'; job: BuildJobSummary; log?: string[] }
   | { type: 'error'; code: BuildErrorCode; message: string; requestId?: string };
 
-export type BuildErrorCode =
-  | 'UNAUTHORIZED'
-  | 'UNSUPPORTED_VERSION'
-  | 'MALFORMED'
-  | 'UNKNOWN_REQUEST'
-  | 'PAYLOAD_MISMATCH'
-  | 'UPLOAD_MISSING'
-  | 'NOT_RETRYABLE'
-  | 'INTERNAL';
+export const BUILD_ERROR_CODES = [
+  'UNAUTHORIZED',
+  'UNSUPPORTED_VERSION',
+  'MALFORMED',
+  'UNKNOWN_REQUEST',
+  'PAYLOAD_MISMATCH',
+  'UPLOAD_MISSING',
+  'NOT_RETRYABLE',
+  'INTERNAL',
+] as const;
+
+export type BuildErrorCode = (typeof BUILD_ERROR_CODES)[number];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -126,7 +130,12 @@ export function parseBuildServerMessage(raw: string): BuildServerMessage {
     return { type: 'ready', version: value.version };
   }
   if (value.type === 'error') {
-    if (typeof value.code !== 'string' || typeof value.message !== 'string') {
+    if (
+      typeof value.code !== 'string'
+      || !BUILD_ERROR_CODES.includes(value.code as BuildErrorCode)
+      || typeof value.message !== 'string'
+      || (value.requestId !== undefined && !isBuildRequestId(value.requestId))
+    ) {
       throw new Error('Invalid build error');
     }
     return value as unknown as BuildServerMessage;
@@ -137,16 +146,45 @@ export function parseBuildServerMessage(raw: string): BuildServerMessage {
   const job = value.job;
   if (
     !isBuildRequestId(job.requestId)
-    || typeof job.releaseId !== 'string'
+    || !isBuildReleaseId(job.releaseId)
     || !BUILD_TARGETS.includes(job.target as never)
     || !BUILD_STATES.includes(job.state as never)
     || !Number.isSafeInteger(job.attempt)
+    || (job.attempt as number) < 1
     || typeof job.updatedAt !== 'string'
+    || !Number.isFinite(Date.parse(job.updatedAt))
+    || (job.failureReason !== undefined && typeof job.failureReason !== 'string')
   ) {
     throw new Error('Invalid build job summary');
   }
+  if (job.artifact !== undefined) {
+    if (
+      !isRecord(job.artifact)
+      || typeof job.artifact.fileName !== 'string'
+      || job.artifact.fileName.length === 0
+      || /[\r\n]/.test(job.artifact.fileName)
+      || !Number.isSafeInteger(job.artifact.bytes)
+      || (job.artifact.bytes as number) < 0
+      || typeof job.artifact.sha256 !== 'string'
+      || !/^[a-f0-9]{64}$/.test(job.artifact.sha256)
+      || typeof job.artifact.expiresAt !== 'string'
+      || !Number.isFinite(Date.parse(job.artifact.expiresAt))
+    ) {
+      throw new Error('Invalid build artifact');
+    }
+  }
+  if (
+    (value.type === 'completed' && job.state !== 'succeeded')
+    || (value.type === 'completed' && job.artifact === undefined)
+    || (value.type === 'failed' && !['failed', 'cancelled', 'expired'].includes(job.state as string))
+    || (value.type === 'progress' && ['succeeded', 'failed', 'cancelled', 'expired'].includes(job.state as string))
+  ) {
+    throw new Error('Build message does not match job state');
+  }
   if (value.log !== undefined && (
-    !Array.isArray(value.log) || value.log.some((line) => typeof line !== 'string')
+    !Array.isArray(value.log)
+    || value.log.length > 500
+    || value.log.some((line) => typeof line !== 'string')
   )) {
     throw new Error('Invalid build log');
   }

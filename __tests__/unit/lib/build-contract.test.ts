@@ -20,6 +20,7 @@ import {
 import {
   MAX_BUILD_MESSAGE_BYTES,
   parseBuildClientMessage,
+  parseBuildServerMessage,
 } from '@/lib/release/build-protocol';
 import {
   isBuildRequestId,
@@ -193,5 +194,52 @@ describe('the build message set', () => {
   it('refuses a frame larger than the cap', () => {
     const huge = JSON.stringify({ type: 'status', requestId: 'x'.repeat(MAX_BUILD_MESSAGE_BYTES) });
     expect(() => parseBuildClientMessage(huge)).toThrow('too large');
+  });
+
+  it('validates helper errors before they reach browser state', () => {
+    expect(parseBuildServerMessage(JSON.stringify({
+      type: 'error',
+      code: 'UNKNOWN_REQUEST',
+      message: 'No such build',
+      requestId: 'req_one',
+    }))).toMatchObject({ code: 'UNKNOWN_REQUEST', requestId: 'req_one' });
+    expect(() => parseBuildServerMessage(JSON.stringify({
+      type: 'error',
+      code: 'MADE_UP',
+      message: 'No',
+    }))).toThrow('Invalid build error');
+    expect(() => parseBuildServerMessage(JSON.stringify({
+      type: 'error',
+      code: 'UNKNOWN_REQUEST',
+      message: 'No',
+      requestId: '../escape',
+    }))).toThrow('Invalid build error');
+  });
+
+  it('rejects malformed artifact metadata and mismatched message states', () => {
+    const job = {
+      requestId: 'req_one',
+      releaseId: 'release_1',
+      target: 'apk',
+      state: 'succeeded',
+      attempt: 1,
+      updatedAt: '2026-08-30T10:00:00.000Z',
+      artifact: {
+        fileName: 'release.apk',
+        bytes: 10,
+        sha256: HASH,
+        expiresAt: '2026-09-06T10:00:00.000Z',
+      },
+    };
+    expect(parseBuildServerMessage(JSON.stringify({ type: 'completed', job })))
+      .toMatchObject({ type: 'completed' });
+    expect(() => parseBuildServerMessage(JSON.stringify({
+      type: 'completed',
+      job: { ...job, artifact: { ...job.artifact, fileName: 'bad\r\nname.apk' } },
+    }))).toThrow('Invalid build artifact');
+    expect(() => parseBuildServerMessage(JSON.stringify({
+      type: 'progress',
+      job,
+    }))).toThrow('does not match job state');
   });
 });
