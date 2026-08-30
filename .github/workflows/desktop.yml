@@ -1,0 +1,111 @@
+name: Desktop installer
+
+# Expensive and slow — a Rust toolchain per runner, compiled from scratch — so it
+# is asked for rather than run on every commit. It does run by itself when the
+# desktop pipeline changes, because a channel that is only built by hand is a
+# channel that is broken by the time anyone tries.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/desktop-shell/**'
+      - 'scripts/build-desktop.ts'
+      - 'scripts/lib/stage-desktop.ts'
+      - 'lib/release/native-identity.ts'
+      - '.github/workflows/desktop.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    # macOS produces an unsigned .dmg: Gatekeeper refuses it on a reader's
+    # machine until there is a Developer ID to sign with. Built anyway so the
+    # pipeline is known to work there, and allowed to fail so a missing
+    # certificate does not block the two channels that do ship.
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows installer
+            targets: nsis
+          - os: ubuntu-latest
+            name: Linux packages
+            targets: deb,appimage
+          - os: macos-latest
+            name: macOS disk image (unsigned)
+            targets: dmg
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Not a dependency of the repository: it carries a prebuilt binary per
+      # platform and is useless without the Rust toolchain below, which no
+      # lockfile can install. See wiki/releases-desktop.md.
+      - name: Install the Tauri CLI
+        run: pnpm add -D @tauri-apps/cli@^2 --no-frozen-lockfile
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux build dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            libssl-dev
+
+      - name: Build the player web bundle
+        run: pnpm build:web
+
+      # A real release through the committed tools, not a fixture: the point of
+      # this job is that the same artifact both channels consume produces an
+      # installer.
+      - name: Package a release
+        run: >
+          pnpm demo:release
+          --story assets/demo-story-advanced.json
+          --media assets/background/bg-museum-entrance.png
+          --out demo.vnerelease
+
+      - name: Export the web bundle
+        run: pnpm export:story --release demo.vnerelease --out desktop-web --skip-build
+
+      - name: Build the desktop application
+        run: pnpm build:desktop --bundle desktop-web --out desktop-app --targets ${{ matrix.targets }}
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            desktop-app/src-tauri/target/release/bundle/**/*.exe
+            desktop-app/src-tauri/target/release/bundle/**/*.msi
+            desktop-app/src-tauri/target/release/bundle/**/*.deb
+            desktop-app/src-tauri/target/release/bundle/**/*.AppImage
+            desktop-app/src-tauri/target/release/bundle/**/*.dmg

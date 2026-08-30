@@ -32,6 +32,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { collectStoryAssetRefs } from './lib/collect-story-assets.mjs';
+import { assertSafeOutPath } from './lib/out-path.mjs';
 import { hardenWebOutput } from './lib/harden-web-output.mjs';
 import { inlineBundleFonts } from './lib/inline-bundle-fonts.mjs';
 import { validateStoryGraph } from './lib/validate-story-graph.mjs';
@@ -291,39 +292,14 @@ function ensureWebBuild(distDir: string, args: Args): string {
   return distPath;
 }
 
-/** True when `ancestor` strictly contains `descendant` on the filesystem. */
-function isAncestor(ancestor: string, descendant: string): boolean {
-  const rel = path.relative(ancestor, descendant);
-  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
-}
-
-/**
- * `copyBuild` empties the output directory before writing, so guard against a
- * destructive `--out`. Refuse a drive/filesystem root, the repo root, the
- * current directory, or any directory that *contains* the repo or cwd (which
- * `--out .` / `--out ..` resolve to). The bundle must go to its own folder.
- */
-function assertSafeOutPath(outPath: string) {
-  const cwd = process.cwd();
-  const unsafe =
-    outPath === path.parse(outPath).root ||
-    outPath === REPO_ROOT ||
-    outPath === cwd ||
-    isAncestor(outPath, REPO_ROOT) ||
-    isAncestor(outPath, cwd);
-  if (unsafe) {
-    fail(`Refusing to use --out "${outPath}"`, [
-      'The output directory is emptied before writing, so it must be a dedicated',
-      'folder — not a drive root, the repo root, the current directory, or a parent.',
-      'Pass a dedicated path such as  --out ./story-dist',
-    ]);
-  }
-}
-
 function copyBuild(distPath: string, outArg: string): string {
   const outPath = path.resolve(process.cwd(), outArg);
   if (outPath === distPath) fail('--out must differ from the build (--dist) directory');
-  assertSafeOutPath(outPath);
+  try {
+    assertSafeOutPath(outPath, { repoRoot: REPO_ROOT });
+  } catch (error) {
+    fail((error as Error).message, ['Pass a dedicated path such as  --out ./story-dist']);
+  }
   fs.rmSync(outPath, { recursive: true, force: true });
   fs.mkdirSync(outPath, { recursive: true });
   fs.cpSync(distPath, outPath, { recursive: true });

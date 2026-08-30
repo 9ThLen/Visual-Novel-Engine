@@ -2,17 +2,19 @@
 
 How a finished novel leaves the editor and reaches a reader.
 
-Status: in progress. **R0–R7 are implemented** — R0–R3 complete Channel A, R4 is
-the build profile every native channel stands on (JS and config; the native
-module cut is specified and verified but applied by R9), R5 is the first
-shippable artifact of Channel B, R6 puts it behind a button, and R7 is the build
-kernel every native channel will submit through. Everything from R8 onward is
-still a proposal, alongside the parts marked **exists** in
-[Current state](#1-current-state).
+Status: in progress. **R0–R7 are implemented, and R8 up to the point where it
+needs a Rust toolchain** — R0–R3 complete Channel A, R4 is the build profile
+every native channel stands on (JS and config; the native module cut is
+specified and verified but applied by R9), R5 is the first shippable artifact of
+Channel B, R6 puts it behind a button, R7 is the build kernel every native
+channel will submit through, and R8 stages a desktop application from the same
+bundle R5 publishes. Everything from R9 onward is still a proposal, alongside
+the parts marked **exists** in [Current state](#1-current-state).
 
 Corrections to earlier steps are recorded inline rather than edited away: R2's
 object store and R4's autolinking exclusions were both marked done before they
-worked, and R6's offline claim rested on a test that never left HTTP.
+worked, and R6's offline claim rested on a test that never left HTTP. In the same
+spirit, R7 and R8 each say which of their steps has never been executed.
 
 ---
 
@@ -1197,25 +1199,60 @@ the real builder into it. If that separation ever feels artificial in practice,
 the honest alternative is to merge R7 and R9 into one vertical Android stage
 rather than to blur their acceptance criteria.
 
-### R8 — Channel B3: desktop installer (Tauri)
+### R8 — Channel B3: desktop installer (Tauri) — **implemented up to `tauri build`**
 
-- `tools/desktop-shell/` — Tauri v2 template: `src-tauri/`, a
-  `tauri.conf.json` with placeholders, and the icon set.
-- `scripts/build-desktop.mjs` — take a B1 bundle plus its release manifest,
-  fill `productName` / `identifier` / `version` / icons, run `tauri build`.
-- CI job per OS (Windows + Linux signed-off first; macOS unsigned until a
-  Developer ID exists).
-- `wiki/releases-desktop.md` — what the author gets, and what "unsigned" means
-  for a reader's first launch.
+- `tools/desktop-shell/` — Tauri v2 template: `src-tauri/` with
+  `tauri.conf.json`, `Cargo.toml`, `build.rs`, `src/main.rs` and
+  `capabilities/default.json`. No icon set: `tauri icon` generates one at stage
+  time, and it ships with the same CLI as `tauri build`, so an author who can
+  build can always produce icons.
+- `lib/release/native-identity.ts` — moved up from R9, because R8 needs it
+  first. The application id is derived from the **story id alone** and always
+  carries a hash of it. That id decides the WebView2 data directory on Windows,
+  which is where the reader's saves live: derived from the title it would orphan
+  every save on the first rename, and without the hash two stories whose ids
+  slugify alike would install over each other and share saved games. Also the
+  product-name and version rules — a novel title carries colons far more often
+  than a software name does, and an out-of-range version is refused rather than
+  clamped, since clamping makes two releases install as one.
+- `scripts/lib/stage-desktop.ts` — the staging library, and the whole of this
+  stage that needs no Rust: copy the template, put the bundle in `frontend/`,
+  write the identity into parsed JSON rather than substituting placeholders,
+  then read it all back and verify. A substitution that silently missed produces
+  a perfectly good installer for the wrong application.
+- `scripts/build-desktop.ts` (`pnpm build:desktop`) — takes a **B1 bundle**, not
+  a `.vnerelease`. The desktop channel consumes exactly what the web channel
+  publishes, so there is one reader of the container and the two channels cannot
+  drift into being different novels. `--stage-only` needs no toolchain.
+- `scripts/lib/out-path.mjs` — the "is this directory safe to empty" guard,
+  extracted from the web exporter. A destructive guard in two copies is a guard
+  that will eventually exist in one.
+- `.github/workflows/desktop.yml` — Windows, Linux and macOS, macOS
+  `continue-on-error` until there is a Developer ID.
+- `wiki/releases-desktop.md`, `tools/desktop-shell/README.md`.
+
+**Verified:** 32 unit tests (identity, staging, verification, icon choice, and
+the shell's boundary: no commands, no plugins, `core:default` only), plus five
+e2e cases that stage the project from the real exported bundle and play it **from
+the staged copy, offline, with zero network requests** — Tauri serves the
+frontend from the root of its own origin, which is strictly easier than the
+`file://` page those tests use.
+
+**Not verified — no machine involved had a Rust toolchain, so `tauri build` has
+never run and neither has the CI workflow.** Everything the script decides before
+that line is tested; the line itself is not. Recorded rather than smoothed over:
+the "Done when" below is not yet met.
 
 **Done when:** the same release that plays on the project page also installs and
 runs offline from a Windows installer, with no browser involved.
 
 ### R9 — Channel B4: Android player app
 
-- `lib/release/native-identity.ts` — **mint once, then read-only**: `packageId`
-  from `storyId` (never from author or title), monotonic `androidVersionCode`,
-  `easProjectId`, `signingCertSha256`, `distributionMode`. Shared with R8.
+- `lib/release/native-identity.ts` — **exists as of R8**, which needed the
+  application id first. R9 extends it with the Android-only parts: monotonic
+  `androidVersionCode`, `easProjectId`, `signingCertSha256`, `distributionMode`.
+  The package id is already derived there from `storyId`, never from author or
+  title, and R9 must not re-derive it.
 - `tools/vne-build/stage-android.mjs` — the staging step: verify `payloadHash`,
   stream-extract media to disk, emit `generated/player-assets.ts` with static
   `require`s, write icon / adaptive icon / engine splash PNGs, write the staged
@@ -1297,6 +1334,24 @@ every one of them corresponds to a way this can ship broken and look fine.
   APK;
 - a corrupted or missing release fails with a visible, human error rather than a
   blank screen.
+
+**Desktop contract** (R8; everything above the toolchain line runs in `pnpm test`
+and `pnpm test:player-e2e`):
+
+- the application id is stable across a title rename, and two story ids that
+  slugify alike still get different ids;
+- an out-of-range version is refused rather than clamped;
+- no template value survives staging — identifier, product name, version, window
+  title;
+- the staged directory is emptied first, so nothing from the previous story
+  ships inside this one;
+- the staged copy carries every media file the bundle had, byte for byte;
+- the staged frontend plays offline from a `file://` page with zero network
+  requests, which is strictly harder than Tauri's own origin;
+- the shell registers no commands and grants `core:default` only.
+
+Not covered until the CI workflow runs: `tauri build` itself, and therefore the
+installer, the icons and the "installs over v1" lifecycle.
 
 **Build service** (against a fake builder in R7, against EAS in R9):
 

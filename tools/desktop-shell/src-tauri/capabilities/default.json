@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Everything the player window is allowed to do. Core only: no filesystem, no shell, no dialog, no HTTP plugin. The reader's saves live in the webview's own storage, which needs no permission.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

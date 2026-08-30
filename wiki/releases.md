@@ -158,3 +158,13 @@ type, and that no editor route answers. The last case opens the same folder over
 `file://` with no server running at all — the only way to catch the absolute
 paths, the refused policy and the router's history call that each broke a
 double-click while every HTTP test stayed green.
+
+The same suite stages the desktop project from that bundle and plays it from the
+staged copy, offline. A copy is where files quietly go missing, and a missing
+background three chapters in is invisible to whoever ran the build.
+
+## Shipping it as an application
+
+A release can also become a desktop application — a Windows installer, a `.deb`,
+an AppImage, a `.dmg` — wrapping the very same bundle. See
+[`releases-desktop.md`](releases-desktop.md).
