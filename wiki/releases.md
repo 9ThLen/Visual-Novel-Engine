@@ -42,6 +42,10 @@ into `media/`, and a boot config inlined into `index.html`. Opening it launches
 straight into the reader; there is no editor to reach, because the player build
 does not contain one (see [`app-player/README.md`](../app-player/README.md)).
 
+Every path in it is relative, so the same folder plays from a host's root, from a
+sub-directory, and from a double-clicked `index.html` with no server at all.
+`--base-url` is only for pinning it to one path on purpose.
+
 ### Options
 
 | Flag           | Meaning                                                                  |
@@ -134,12 +138,10 @@ existing bundle's config can be inspected or replaced by hand.
   browser tab has no filesystem to stream through, and the production CSP
   forbids the blob workers fflate's async API needs. The tab pauses while a
   bundle is assembled; for a very large novel, use the command line.
-- **`file://` does not work.** The production Content-Security-Policy written by
-  `scripts/lib/harden-web-output.mjs` is `default-src 'self'`, which a file
-  origin satisfies nowhere. Opening a bundle by double-clicking `index.html`
-  needs that policy relaxed — a separate decision.
-- **Sub-path hosting needs `--base-url`.** Without it the build emits absolute
-  `/` paths and a project sub-directory serves a blank page.
+- **A player bundle carries no Content-Security-Policy.** `default-src 'self'`
+  is unsatisfiable from a `file://` page, and a bundle is meant to be opened by
+  double-clicking it. The clickjacking guard stays, because bundles get hosted
+  and framed. The studio keeps its strict policy.
 - The legacy `--story` path keeps its old limits: only bundled `assets/…`,
   `data:` URIs and remote URLs can be published.
 
@@ -152,4 +154,7 @@ pnpm test:player-e2e
 Builds a release, exports it, serves the folder, and asserts that it boots into
 the reader from the inlined config, that the packaged art is fetched and
 returns 200, that every file the asset map names is served with a real content
-type, and that no editor route answers.
+type, and that no editor route answers. The last case opens the same folder over
+`file://` with no server running at all — the only way to catch the absolute
+paths, the refused policy and the router's history call that each broke a
+double-click while every HTTP test stayed green.

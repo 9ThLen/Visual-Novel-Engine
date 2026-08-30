@@ -9,6 +9,9 @@
 import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
 
 import { collectReleaseObjects } from '@/lib/release/asset-sources';
+import { saveReleaseObjects } from '@/lib/release/object-store';
+import { setMediaBlobStorageAdapterForTests } from '@/lib/idb-storage';
+import { sourceFromBytes } from '@/lib/story-backup/hash';
 import {
   buildPlayerBundle,
   PlayerShellUnavailableError,
@@ -494,5 +497,51 @@ describe('getting a stored release’s media back', () => {
 
     expect(reads).toBe(1);
     expect(objects.size).toBe(1);
+  });
+});
+
+describe('a release that kept its own bytes', () => {
+  /**
+   * The property R2 promised and R6 did not have: a published release stays
+   * exportable after the author moves on. Publishing writes the media into the
+   * shared object store, so replacing the picture in the library afterwards
+   * changes the draft and nothing else.
+   */
+  it('exports from the object store even after the library changed', async () => {
+    const blobs = new Map<string, Blob>();
+    setMediaBlobStorageAdapterForTests({
+      get: async (key: string) => blobs.get(key) ?? null,
+      has: async (key: string) => blobs.has(key),
+      put: async (key: string, blob: Blob) => { blobs.set(key, blob); },
+      delete: async (key: string) => { blobs.delete(key); },
+    } as never);
+
+    try {
+      const storage = memoryStorage();
+      const manifest = await storedRelease(storage);
+      await saveReleaseObjects(
+        manifest.release.releaseId,
+        [{ metadata: manifest.assets[0], source: sourceFromBytes(COVER_BYTES) }],
+        storage,
+      );
+
+      const bundle = await buildPlayerBundle({
+        storyId: 'story_1',
+        releaseId: 'release_1',
+        engineVersion: '1.0.0',
+        storage,
+        // The author has since replaced the picture. The library would hand
+        // back something else; the release does not ask it.
+        resolveSource: async () => {
+          throw new Error('the library should not be consulted');
+        },
+        loadShell: async () => ({ descriptor: shellDescriptor('1.0.0'), bytes: shellZip() }),
+      });
+
+      const files = unzipSync(bundle.bytes);
+      expect(Array.from(files[`media/${coverHash}.png`])).toEqual(Array.from(COVER_BYTES));
+    } finally {
+      setMediaBlobStorageAdapterForTests(null);
+    }
   });
 });

@@ -12,6 +12,7 @@
  * store, and this follows it.
  */
 import { compileRelease } from '@/lib/release/compile';
+import { saveReleaseObjects } from '@/lib/release/object-store';
 import {
   saveRelease,
   type ReleaseMeta,
@@ -75,7 +76,16 @@ export async function publishStoryRelease(input: PublishStoryInput): Promise<Rel
     engineVersion: resolveEngineVersion(),
   });
 
-  return saveRelease(input.storage ?? createPersistentStorage(), {
+  const storage = input.storage ?? createPersistentStorage();
+
+  // The bytes first, then the release that claims them. A release stored
+  // without its objects is one that cannot be exported later — which is exactly
+  // what happened while this step was missing: publishing hashed the media and
+  // relied on the library still holding it, so replacing a picture quietly made
+  // an already-published version unexportable.
+  await saveReleaseObjects(compiled.manifest.release.releaseId, compiled.assets, storage);
+
+  return saveRelease(storage, {
     manifest: compiled.manifest,
     payload: compiled.payload,
     published: input.published,

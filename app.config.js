@@ -1,6 +1,5 @@
 import {
   isPlayerProfile,
-  PLAYER_AUTOLINKING_EXCLUDE,
   PLAYER_BLOCKED_PERMISSIONS,
   PLAYER_EXCLUDED_PLUGINS,
   PLAYER_ROUTER_ROOT,
@@ -26,9 +25,11 @@ const webBaseUrl = process.env.VNE_WEB_BASE_URL?.trim();
  * out: a different router root, no file pickers, and no permissions a reader has
  * no use for. See `player-profile.js` and `app-player/README.md`.
  *
- * Autolinking reads this config rather than the Metro graph, so excluding a
- * module here — not blocking it in the bundler — is what actually keeps the
- * native code and its manifest entries out of the app.
+ * `blockedPermissions` is real here — the Android config is applied at prebuild,
+ * and it strips a permission even when a transitive dependency declares it.
+ * Autolinking is **not**: it reads `package.json`, never this file, so the
+ * native module cut belongs to R9's staged project. An `autolinking` key used to
+ * sit here and did nothing at all.
  */
 const playerProfile = isPlayerProfile();
 
@@ -77,9 +78,6 @@ const appConfig = {
     "expo-splash-screen",
     "expo-build-properties",
   ].filter((plugin) => !playerProfile || !PLAYER_EXCLUDED_PLUGINS.includes(plugin)),
-  ...(playerProfile
-    ? { autolinking: { android: { exclude: PLAYER_AUTOLINKING_EXCLUDE } } }
-    : {}),
   experiments: {
     typedRoutes: true,
     reactCompiler: true,

@@ -23,6 +23,7 @@ import type { ReleaseChannel, ReleaseManifestV1, ReleasePayloadV1 } from '@/lib/
 import { compareReleaseVersions, isReleaseVersion } from '@/lib/release/version';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { StorageLike } from '@/lib/persistent-storage';
+import { forgetReleaseObjects } from '@/lib/release/object-store';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
 
 export const RELEASE_STORAGE_VERSION = 1;
@@ -209,6 +210,10 @@ export async function deleteRelease(
   }
   await storage.removeItem(STORAGE_KEYS.RELEASE_LIBRARIES(storyId, releaseId));
   await storage.removeItem(STORAGE_KEYS.RELEASE_MANIFEST(storyId, releaseId));
+  // Drops this release's claim on its media; objects another release still
+  // needs stay. Two versions of a novel usually differ by a page of text, and
+  // deleting the older one must not take the newer one's artwork with it.
+  await forgetReleaseObjects(releaseId, storage);
 
   const remaining = (await listReleases(storage, storyId))
     .filter((release) => release.releaseId !== releaseId);

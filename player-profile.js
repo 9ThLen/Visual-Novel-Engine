@@ -79,18 +79,53 @@ const PLAYER_FORBIDDEN_MODULES = [
 ];
 
 /**
- * Expo config plugins the player build drops. Autolinking reads the config, not
- * the Metro graph, so a picker excluded here is what actually keeps the native
- * module — and the permission it declares — out of the app.
+ * Expo config plugins the player build drops. This keeps their config-time
+ * effects — the permissions and manifest entries a plugin declares — out of the
+ * app. It does **not** unlink the native module; see below.
  */
 const PLAYER_EXCLUDED_PLUGINS = ['expo-document-picker', 'expo-image-picker'];
 
-/** Native modules autolinking must skip. Mirrors {@link PLAYER_EXCLUDED_PLUGINS}. */
+/**
+ * Native modules a player build has no use for.
+ *
+ * **This list is a specification, not a setting that is currently applied.**
+ * `expo-modules-autolinking` reads its options from `package.json` under
+ * `expo.autolinking` and from CLI flags — it never looks at the Expo app config
+ * (see `createAutolinkingOptionsLoader` in the package). An earlier version of
+ * this put the list in `app.config.js`, `expo config` dutifully echoed it back,
+ * and it linked exactly nothing differently: `expo-modules-autolinking resolve
+ * -p android` returned the same 31 modules with and without the player profile.
+ *
+ * It cannot simply move to this repo's `package.json` either, because that file
+ * is shared with the studio build, which needs the pickers. The exclusions
+ * belong to the *staged* Android project R9 produces, which gets a `package.json`
+ * of its own — see {@link playerAutolinkingPackageJson}.
+ *
+ * `tools/check-player-autolinking.mjs` verifies that the names here are real
+ * linked modules and that excluding them actually removes them, so the list is
+ * known to be correct before R9 has anywhere to apply it.
+ */
 const PLAYER_AUTOLINKING_EXCLUDE = [
   'expo-document-picker',
   'expo-image-picker',
   'expo-secure-store',
+  'expo-notifications',
 ];
+
+/**
+ * The `expo.autolinking` block a staged player project needs in its own
+ * `package.json`. One source for the list, so R9 cannot drift from the profile.
+ */
+function playerAutolinkingPackageJson() {
+  return {
+    expo: {
+      autolinking: {
+        android: { exclude: [...PLAYER_AUTOLINKING_EXCLUDE] },
+        ios: { exclude: [...PLAYER_AUTOLINKING_EXCLUDE] },
+      },
+    },
+  };
+}
 
 /**
  * Permissions stripped from the merged manifest even if a transitive dependency
@@ -109,6 +144,7 @@ const PLAYER_BLOCKED_PERMISSIONS = [
 ];
 
 module.exports = {
+  playerAutolinkingPackageJson,
   PLAYER_PROFILE,
   isPlayerProfile,
   PLAYER_ROUTER_ROOT,

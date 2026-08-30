@@ -91,18 +91,43 @@ export function checkPlayerShell(
   return null;
 }
 
+function toHex(bytes: ArrayBuffer): string {
+  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Download the shell and check it is the one the descriptor describes.
+ *
+ * The filename carries only the engine version, which does not change between
+ * two builds of the same version — so a browser holding a stale copy would
+ * happily serve it forever, and a length check alone cannot tell two builds of
+ * the same size apart. The hash in the query string busts the cache when the
+ * content changes, and the digest check is what makes the descriptor mean
+ * something rather than merely accompany the file.
+ */
 export async function fetchPlayerShell(descriptor: PlayerShellDescriptor): Promise<Uint8Array> {
-  const response = await fetch(resolveWebUrl(descriptor.file), { cache: 'default' });
+  const url = `${resolveWebUrl(descriptor.file)}?sha256=${descriptor.sha256.slice(0, 16)}`;
+  const response = await fetch(url, { cache: 'default' });
   if (!response.ok) {
     throw new Error(`Could not download the player shell (${response.status})`);
   }
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
   if (bytes.byteLength !== descriptor.bytes) {
-    // A truncated or rewritten shell would be unzipped into a bundle nobody
-    // could play, and the author would find out from a reader.
     throw new Error(
       `The player shell is ${bytes.byteLength} bytes but its descriptor says ${descriptor.bytes}`,
     );
+  }
+
+  // `crypto.subtle` is absent on an insecure origin. Refusing to build there
+  // would break local development for no gain; the length check still stands.
+  if (globalThis.crypto?.subtle) {
+    const digest = toHex(await globalThis.crypto.subtle.digest('SHA-256', buffer));
+    if (digest !== descriptor.sha256) {
+      throw new Error(
+        'The player shell does not match its descriptor. The deployment is serving a stale or altered file.',
+      );
+    }
   }
   return bytes;
 }

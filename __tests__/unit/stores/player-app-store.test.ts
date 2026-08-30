@@ -2,7 +2,11 @@
  * The player build's store: what it can do, and — more to the point — what it
  * cannot. See `stores/use-app-store.player.ts`.
  */
-import { useAppStore as usePlayerStore } from '@/stores/use-app-store.player';
+import {
+  persistAppStoreStateNow,
+  useAppStore as usePlayerStore,
+} from '@/stores/use-app-store.player';
+import { STORAGE_KEYS } from '@/lib/storage-keys';
 import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { SceneRecord } from '@/lib/engine/types';
 
@@ -178,5 +182,44 @@ describe('the player app store', () => {
   it('clears reader release state truthfully', () => {
     usePlayerStore.getState().closeReleaseReading();
     expect(usePlayerStore.getState().readerRelease).toBeNull();
+  });
+});
+
+describe('a player sharing an origin with the studio', () => {
+  /**
+   * The studio and a published novel can sit on one host — the studio at `/`,
+   * the novel at `/novel/` — and then they share localStorage. While the player
+   * wrote the studio's key with the studio's shape, opening the novel replaced
+   * the author's draft scenes with the release's frozen ones. Nobody would have
+   * noticed until the next edit.
+   */
+  it('does not touch the studio’s state when it saves', async () => {
+    const studioState = JSON.stringify({
+      state: {
+        storiesMetadata: [{ id: 'story-1', title: 'The draft', sceneCount: 12 }],
+        sceneRecordsByStory: { 'story-1': { 'scene-1': { id: 'scene-1', name: 'Chapter nine, rewritten' } } },
+      },
+      version: 8,
+    });
+    localStorage.setItem(STORAGE_KEYS.APP_STATE, studioState);
+
+    // The player has the same story open, frozen at the published version.
+    usePlayerStore.setState({
+      storiesMetadata: [
+        { id: 'story-1', title: 'The release', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 1 },
+      ],
+      sceneRecordsByStory: { 'story-1': { 'scene-1': sceneRecord('scene-1', 'story-1') } },
+      currentStoryId: 'story-1',
+      saveSlots: [],
+    });
+
+    await persistAppStoreStateNow();
+
+    expect(localStorage.getItem(STORAGE_KEYS.APP_STATE)).toBe(studioState);
+
+    const written = JSON.parse(localStorage.getItem(STORAGE_KEYS.PLAYER_STATE) ?? '{}');
+    expect(written.state.storiesMetadata).toBeUndefined();
+    expect(written.state.sceneRecordsByStory).toBeUndefined();
+    expect(written.state.currentStoryId).toBe('story-1');
   });
 });

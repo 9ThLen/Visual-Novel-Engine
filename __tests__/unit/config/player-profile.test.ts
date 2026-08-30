@@ -14,6 +14,7 @@ const {
   PLAYER_EXCLUDED_PLUGINS,
   PLAYER_AUTOLINKING_EXCLUDE,
   PLAYER_BLOCKED_PERMISSIONS,
+  playerAutolinkingPackageJson,
 } = playerProfile as {
   isPlayerProfile: (env?: Record<string, string | undefined>) => boolean;
   PLAYER_ROUTER_ROOT: string;
@@ -23,6 +24,9 @@ const {
   PLAYER_EXCLUDED_PLUGINS: string[];
   PLAYER_AUTOLINKING_EXCLUDE: string[];
   PLAYER_BLOCKED_PERMISSIONS: string[];
+  playerAutolinkingPackageJson: () => {
+    expo: { autolinking: { android: { exclude: string[] }; ios: { exclude: string[] } } };
+  };
 };
 
 const { createPlayerBlockList } = metroBlockList as {
@@ -68,11 +72,33 @@ describe('the player build profile', () => {
   });
 
   it('excludes every dropped plugin from autolinking too', () => {
-    // Autolinking reads the config, not the Metro graph: dropping the plugin
-    // without excluding the module still ships the native code.
+    // Dropping a config plugin removes what it declares; it does not unlink the
+    // native module. Both are needed, so the lists must agree.
     for (const plugin of PLAYER_EXCLUDED_PLUGINS) {
       expect(PLAYER_AUTOLINKING_EXCLUDE, plugin).toContain(plugin);
     }
+  });
+
+  /**
+   * Autolinking reads `package.json`, never the Expo app config — see
+   * `createAutolinkingOptionsLoader` in `expo-modules-autolinking`. The list
+   * lived in `app.config.js` for a while, where `expo config` echoed it back and
+   * it linked exactly nothing differently. It belongs in the staged project R9
+   * produces, and this is the shape that project needs.
+   */
+  it('offers the autolinking block a staged project needs', () => {
+    const block = playerAutolinkingPackageJson();
+    expect(block.expo.autolinking.android.exclude).toEqual(PLAYER_AUTOLINKING_EXCLUDE);
+    expect(block.expo.autolinking.ios.exclude).toEqual(PLAYER_AUTOLINKING_EXCLUDE);
+  });
+
+  it('does not hand the same array out twice', () => {
+    // A caller writing a staged package.json must not be able to mutate the
+    // profile by editing what it was given.
+    const first = playerAutolinkingPackageJson().expo.autolinking.android.exclude;
+    first.push('expo-camera');
+    expect(playerAutolinkingPackageJson().expo.autolinking.android.exclude)
+      .toEqual(PLAYER_AUTOLINKING_EXCLUDE);
   });
 
   it('blocks permissions as fully qualified android names', () => {

@@ -1,3 +1,6 @@
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
 import { expect, test, type Page, type Request } from '@playwright/test';
 
 /**
@@ -112,4 +115,45 @@ test('has no editor route to reach', async ({ page }) => {
   // screen is the correct answer — an editor rendering here would mean the
   // build profile leaked.
   await expect(page.locator('body')).not.toContainText(/timeline|inspector|scene manager/i);
+});
+
+/**
+ * The bundle opened straight off the filesystem, with no server anywhere.
+ *
+ * This is the claim R6 makes — "unzip and play" — and the one nothing else here
+ * can check: every other test in this file goes through a static host, which
+ * hides both of the things that used to break it. Expo emits absolute
+ * `/_expo/…` paths unless the build is told otherwise, and the studio's
+ * `default-src 'self'` is unsatisfiable from a file page, so a reader who
+ * double-clicked `index.html` got a blank screen either way.
+ */
+test('plays from a double-clicked index.html, with no server', async ({ page }) => {
+  const failures: string[] = [];
+  page.on('requestfailed', (request: Request) => {
+    failures.push(`${request.failure()?.errorText ?? 'failed'} ${request.url()}`);
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error') failures.push(`console: ${message.text()}`);
+  });
+
+  const indexPath = path.join(process.cwd(), 'e2e/player/.bundle/index.html');
+  await page.goto(pathToFileURL(indexPath).href);
+  await waitForReader(page);
+
+  const config = await page.evaluate(() => (window as any).__VNE_PLAYER_CONFIG__);
+  expect(config?.story?.id).toBeTruthy();
+
+  // The packaged background is a file next to index.html; if the asset map
+  // resolved it against a server root it would not be here.
+  const background = config.story.scenes[config.story.startSceneId].sceneState.backgroundAssetId;
+  const packaged = config.assets?.[background];
+  expect(packaged).toBeTruthy();
+  await expect
+    .poll(() => page.evaluate((file) => {
+      const images = Array.from(document.querySelectorAll('img'));
+      return images.some((image) => image.currentSrc.includes(file) && image.naturalWidth > 0);
+    }, packaged as string), { timeout: 30_000 })
+    .toBe(true);
+
+  expect(failures).toEqual([]);
 });

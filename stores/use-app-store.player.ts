@@ -8,11 +8,18 @@
  * player profile (see `metro.config.js`), so the authoring slices and
  * everything they pull in never enter the bundle.
  *
- * State is byte-for-byte the studio's: same storage key, same persist version,
- * same migrations. A player and the studio can therefore read each other's
- * storage, which matters for the web build where both may be served from the
- * same origin — and it means a save written here stays loadable if the story is
- * ever opened in the studio again.
+ * State is deliberately **not** the studio's. It lives under its own key and
+ * persists almost nothing: where the reader is, what they saved, which endings
+ * they reached, and their settings (`lib/player-persistence.ts`). The story
+ * itself is never written down — it arrives inlined in `index.html` and is
+ * seeded fresh on every launch.
+ *
+ * An earlier version of this shared the studio's key and shape, on the reasoning
+ * that the two could then read each other's storage. That was backwards: a
+ * player served from the same origin as the studio — a project page with the
+ * studio at `/` and a novel at `/novel/` — writes to the same localStorage, and
+ * the player's frozen copy of a story would land on top of the author's draft
+ * the moment a reader opened it.
  *
  * What is missing here is missing on purpose:
  *   - story slice        — a player creates and deletes no stories
@@ -26,13 +33,12 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { createAppStoreStorage } from '@/lib/app-store-storage';
+import { createPersistentStorage } from '@/lib/persistent-storage';
 import {
-  APP_STORE_PERSIST_VERSION,
-  buildPersistedAppState,
-  mergePersistedAppState,
-  migratePersistedAppState,
-} from '@/lib/app-store-persistence';
+  buildPlayerPersistedState,
+  mergePlayerPersistedState,
+  PLAYER_PERSIST_VERSION,
+} from '@/lib/player-persistence';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
 import { initialAppState } from '@/stores/app-store-initial-state';
 import { createPlaybackSlice } from '@/stores/app-store-slices/playback-slice';
@@ -64,21 +70,23 @@ export const useAppStore = create<PlayerAppStore>()(
       },
     }),
     {
-      name: STORAGE_KEYS.APP_STATE,
-      version: APP_STORE_PERSIST_VERSION,
-      storage: createJSONStorage(createAppStoreStorage),
-      migrate: (persistedState, fromVersion) =>
-        migratePersistedAppState(persistedState, fromVersion),
-      partialize: (state) => buildPersistedAppState(state),
-      merge: (persistedState, currentState) => mergePersistedAppState(persistedState, currentState),
+      name: STORAGE_KEYS.PLAYER_STATE,
+      version: PLAYER_PERSIST_VERSION,
+      // The plain storage, not `createAppStoreStorage`: that wrapper exists to
+      // compact scene records out of the studio's document and to guard its
+      // cross-tab writes, and a player writes no scenes.
+      storage: createJSONStorage(createPersistentStorage),
+      partialize: (state) => buildPlayerPersistedState(state),
+      merge: (persistedState, currentState) =>
+        mergePlayerPersistedState(persistedState, currentState),
     },
   ),
 );
 
 export async function persistAppStoreStateNow(): Promise<void> {
-  await createAppStoreStorage().setItem(STORAGE_KEYS.APP_STATE, JSON.stringify({
-    state: buildPersistedAppState(useAppStore.getState()),
-    version: APP_STORE_PERSIST_VERSION,
+  await createPersistentStorage().setItem(STORAGE_KEYS.PLAYER_STATE, JSON.stringify({
+    state: buildPlayerPersistedState(useAppStore.getState()),
+    version: PLAYER_PERSIST_VERSION,
   }));
 }
 

@@ -3,10 +3,15 @@
 How a finished novel leaves the editor and reaches a reader.
 
 Status: in progress. **R0–R6 are implemented** — R0–R3 complete Channel A, R4 is
-the build profile every native channel stands on, R5 is the first shippable
-artifact of Channel B, and R6 puts it behind a button. Everything from R7 onward
-is still a proposal, alongside the parts marked **exists** in
+the build profile every native channel stands on (JS and config; the native
+module cut is specified and verified but applied by R9), R5 is the first
+shippable artifact of Channel B, and R6 puts it behind a button. Everything from
+R7 onward is still a proposal, alongside the parts marked **exists** in
 [Current state](#1-current-state).
+
+Corrections to earlier steps are recorded inline rather than edited away: R2's
+object store and R4's autolinking exclusions were both marked done before they
+worked, and R6's offline claim rested on a test that never left HTTP.
 
 ---
 
@@ -805,6 +810,16 @@ one reports "ready to release".
 **Done when:** publishing twice produces two immutable versions that both still
 play, and clearing the editor's working copy does not damage either.
 
+> **Corrected 2026-08-30.** R2 was marked done without the object store above.
+> Publishing hashed the media and kept only the manifest, on the reasoning that
+> the media library still held the bytes. It does — until the author replaces a
+> picture, and then a release that is supposed to be immutable can no longer be
+> exported at all. The store now exists (`lib/release/object-store.ts`), keyed by
+> SHA-256 and reference-counted so two versions share every unchanged file and
+> deleting one takes only what nothing else needs. Publishing on a device that
+> will not store blobs still succeeds and falls back to the library, which is
+> what every release did before.
+
 ### R3 — Channel A: the showcase publishes releases ✅
 
 - `lib/showcase/showcase-adapter.ts`: source becomes published releases, not
@@ -840,11 +855,27 @@ explains itself.
   `metro.config.js` and the checker. Earlier drafts kept three copies and they
   drifted.
 - Native audit: the player config drops the `expo-document-picker` and
-  `expo-image-picker` plugins, excludes them (and `expo-secure-store`) from
-  Android autolinking, and sets `blockedPermissions` so the merged manifest loses
-  camera, microphone, storage, media and notification permissions even when a
-  transitive dependency declares them. `expo config` confirms `expo-audio` still
-  requests `RECORD_AUDIO` and that the block list strips it.
+  `expo-image-picker` plugins and sets `blockedPermissions`, so the merged
+  manifest loses camera, microphone, storage, media and notification permissions
+  even when a transitive dependency declares them. `expo config` confirms
+  `expo-audio` still requests `RECORD_AUDIO` and that the block list strips it.
+
+> **Corrected 2026-08-30.** This step also claimed to exclude those modules from
+> Android autolinking, and it did not. `expo-modules-autolinking` reads its
+> options from `package.json` under `expo.autolinking` and from CLI flags; it
+> never looks at the Expo app config. The exclusions sat in `app.config.js`,
+> `expo config` echoed them back, and `expo-modules-autolinking resolve -p
+> android` returned the same **31 modules** with and without the player profile.
+> Checking that the value was written was mistaken for checking that it had an
+> effect.
+>
+> They cannot move to this repo's `package.json` either — the studio build shares
+> it and needs the pickers. So the list is a specification
+> (`playerAutolinkingPackageJson()` in `player-profile.js`) applied by the staged
+> project R9 produces, and `pnpm check:player-autolinking` runs real autolinking
+> to prove every name is a module this project links and that excluding them
+> removes those four and nothing else. **The native module cut is specified and
+> verified, not yet applied.**
 
 **Measured** (`expo export --platform web`, same machine, same commit):
 
@@ -996,8 +1027,36 @@ picked.
 
 **Done when:** a writer with only a browser produces a zip a stranger can unzip
 and play offline. **They can.** Verified by clicking it: the studio built
-`Export_Trial-v1.0.0.zip` — 3.79 MB, 32 entries — whose `index.html` carries the
-story, the release stamp and the scene's first line.
+`Export_Trial-v1.0.0.zip` whose `index.html` carries the story, the release stamp
+and the scene's first line — and, separately, by opening an exported bundle from
+the filesystem with no server anywhere
+(`e2e/player/bundle.spec.ts`, "plays from a double-clicked index.html").
+
+> **Corrected 2026-08-30.** The first version of this claimed offline on the
+> strength of an HTTP-served folder, which hid two things. Expo emitted absolute
+> `/_expo/…` paths, so the bundle needed to sit at a host's root; and the
+> studio's `default-src 'self'` is unsatisfiable from a file page, so every
+> subresource was refused. Both are fixed — the player profile builds with a
+> relative base url and carries the frame guard without the CSP — and two more
+> problems surfaced only once a file page actually ran:
+>
+> - **The router died on boot.** Expo Router calls `history.replaceState` while
+>   resolving the initial route, and a `file://` document's opaque origin refuses
+>   it. The exception escaped before React mounted, leaving the "You need to
+>   enable JavaScript" fallback. A guard in the hardening step swallows it for
+>   the file protocol only.
+> - **Every route is the story now.** A file page's path is
+>   `/C:/Users/…/index.html`, which matches nothing, so the player's `+not-found`
+>   renders the boot gate. For a bundle with one story in it that is the only
+>   sensible answer anyway.
+> - **Fonts are CORS-restricted even from the same directory.** The icon font was
+>   the one resource a file page could not load, leaving the reader's menu button
+>   an empty box. `scripts/lib/inline-bundle-fonts.mjs` puts it in the code as a
+>   `data:` URI.
+>
+> Also learned: `app/+html.tsx` is dead for `web.output: 'single'` — Expo uses its
+> own template — which is why the CSP has always been written by
+> `scripts/lib/harden-web-output.mjs` and why the file guard is written there too.
 
 **The shell is 3.6 MB, not 116 MB.** The first build zipped all of
 `dist-player/`, which carries `assets/assets/` — every demo background and sample
@@ -1027,7 +1086,8 @@ of `assets/` rendered a reader whose menu button was an empty square.
 
 **Deliberately not done:** the app writes no `.vnerelease` file. It goes from
 stored release straight to folder, because that is what an author wants. R7 needs
-a file to upload, and that is where writing one belongs.
+a file to upload, and that is where writing one belongs — now possible, because
+a release keeps its own bytes (see the R2 correction).
 
 **Not verified:** publishing through the release gate. No bundled demo passes it
 — their own asset references are broken, which is a content problem older than

@@ -33,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 
 import { collectStoryAssetRefs } from './lib/collect-story-assets.mjs';
 import { hardenWebOutput } from './lib/harden-web-output.mjs';
+import { inlineBundleFonts } from './lib/inline-bundle-fonts.mjs';
 import { validateStoryGraph } from './lib/validate-story-graph.mjs';
 
 import { releaseObjectFileName, RELEASE_MEDIA_DIR } from '@/lib/release/asset-map';
@@ -135,7 +136,8 @@ Options:
                      Default: dist-player, or dist with --profile studio.
   --profile <name>   player (default) or studio. The player profile has no
                      editor in it at all — see app-player/README.md.
-  --base-url <path>  Serve the bundle from a sub-path, e.g. /my-novel.
+  --base-url <path>  Pin the bundle to a path, e.g. /my-novel. A player bundle
+                     is relative to itself by default and needs no base url.
   --build            Force a fresh 'expo export --platform web'.
   --skip-build       Never build; require an existing dist directory.
   --strict           Treat missing bundled asset references as errors.
@@ -276,7 +278,11 @@ function ensureWebBuild(distDir: string, args: Args): string {
         // and metro.config.js (blocked trees, store substitution), which is why
         // it travels as an environment variable rather than a CLI flag.
         ...(args.profile === 'player' ? { VNE_PROFILE: 'player' } : {}),
-        ...(args.baseUrl ? { VNE_WEB_BASE_URL: args.baseUrl } : {}),
+        // A player bundle is relative to itself by default. Expo's `baseUrl`
+        // otherwise emits absolute `/_expo/…` paths, which need the bundle to
+        // sit at the root of a host — the folder plays from a server and from
+        // nowhere else, least of all from a double-click.
+        VNE_WEB_BASE_URL: args.baseUrl ?? (args.profile === 'player' ? '.' : ''),
       },
     },
   );
@@ -438,8 +444,14 @@ async function exportFromRelease(args: Args): Promise<void> {
   );
 
   const distPath = ensureWebBuild(args.dist ?? defaultDistDir(args.profile), args);
-  hardenWebOutput(distPath);
+  // No CSP on a player bundle: `default-src 'self'` is unsatisfiable from a
+  // `file://` page, and this folder is meant to be opened by double-clicking it.
+  hardenWebOutput(distPath, { csp: args.profile !== 'player', fileProtocol: args.profile === 'player' });
   const outPath = copyBuild(distPath, args.out as string);
+
+  // Fonts are CORS-restricted even from the same directory, and a `file://`
+  // page has no origin to satisfy that — so they travel inside the code.
+  if (args.profile === 'player') inlineBundleFonts(outPath);
 
   const mediaDir = path.join(outPath, RELEASE_MEDIA_DIR);
   fs.mkdirSync(mediaDir, { recursive: true });
@@ -496,7 +508,7 @@ function exportFromStoryJson(args: Args): void {
   );
 
   const distPath = ensureWebBuild(args.dist ?? defaultDistDir(args.profile), args);
-  hardenWebOutput(distPath);
+  hardenWebOutput(distPath, { csp: args.profile !== 'player', fileProtocol: args.profile === 'player' });
   const outPath = copyBuild(distPath, args.out as string);
 
   const config: PlayerConfigFile = {
@@ -506,6 +518,7 @@ function exportFromStoryJson(args: Args): void {
   };
   // Both forms: the inline one is what the app reads, and the file stays so an
   // existing bundle's config can still be inspected or replaced by hand.
+  if (args.profile === 'player') inlineBundleFonts(outPath);
   const configFile = writePlayerConfig(outPath, config);
   inlinePlayerConfig(outPath, config);
   console.log(color.dim(`  Wrote ${path.relative(process.cwd(), configFile)} and inlined it into index.html`));

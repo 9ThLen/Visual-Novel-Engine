@@ -34,6 +34,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { zipSync } from 'fflate';
 import { hardenWebOutput } from './lib/harden-web-output.mjs';
+import { inlineBundleFonts } from './lib/inline-bundle-fonts.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -52,7 +53,13 @@ function expoExport({ outputDir, profile }) {
     {
       cwd: repoRoot,
       stdio: 'inherit',
-      env: { ...process.env, ...(profile === 'player' ? { VNE_PROFILE: 'player' } : {}) },
+      env: {
+        ...process.env,
+        // The shell is relative to itself: a bundle built from it must play from
+        // a sub-path, from a static host's root, and from a double-clicked
+        // `index.html`. Absolute `/_expo/…` paths manage only the middle one.
+        ...(profile === 'player' ? { VNE_PROFILE: 'player', VNE_WEB_BASE_URL: '.' } : {}),
+      },
     },
   );
   if (result.status !== 0) process.exit(result.status ?? 1);
@@ -94,7 +101,10 @@ function collectFiles(dir, base = dir) {
 function buildPlayerShell(version) {
   const playerDist = path.join(repoRoot, PLAYER_DIST);
   expoExport({ outputDir: PLAYER_DIST, profile: 'player' });
-  hardenWebOutput(playerDist);
+  // See `hardenWebOutput`: a player bundle carries the frame guard but no CSP,
+  // because `default-src 'self'` is unsatisfiable from a `file://` page.
+  hardenWebOutput(playerDist, { csp: false, fileProtocol: true });
+  inlineBundleFonts(playerDist);
 
   const files = collectFiles(playerDist);
   const entryCount = Object.keys(files).length;

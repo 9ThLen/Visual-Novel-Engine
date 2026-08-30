@@ -3,12 +3,14 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import { persistAppStoreStateNow, useAppStore } from '@/stores/use-app-store';
 import type { ReaderRuntimeSnapshot } from '@/lib/reader-runtime';
 import { buildScopedReaderRuntimeSnapshot } from '@/lib/reader-runtime-snapshot';
+import { resolveReaderReleaseStamp } from '@/lib/reader-release-stamp';
 
 export function StoryAutoSave() {
   const playbackState = useAppStore((s) => s.playbackState);
   const syncAutoSave = useAppStore((s) => s.syncAutoSave);
   const readerBlockingMedia = useAppStore((s) => s.readerBlockingMedia);
   const readerSceneThumbnailUri = useAppStore((s) => s.readerSceneThumbnailUri);
+  const readerRelease = useAppStore((s) => s.readerRelease);
   const storyId = playbackState?.storyId;
   const sceneId = playbackState?.currentSceneId;
   const runtimeSnapshot = useAppStore((state) =>
@@ -30,6 +32,10 @@ export function StoryAutoSave() {
     // clip, so resuming it would either replay or skip the cutscene silently.
     enabled: !!playbackState?.isPlaying && !readerBlockingMedia,
     activeThumbnailUri: readerSceneThumbnailUri,
+    // Most reading happens through the autosave slot, so an unstamped one is
+    // the common case: without this a reader who resumes after a version bump
+    // is told nothing.
+    releaseStamp: resolveReaderReleaseStamp(readerRelease, storyId),
   });
 
   return null;

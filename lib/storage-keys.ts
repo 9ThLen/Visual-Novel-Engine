@@ -14,6 +14,16 @@ const PREFIX = 'vne_'; // Visual Novel Engine
 export const STORAGE_KEYS = {
   // Zustand app store
   APP_STATE: `${PREFIX}app_state`,
+  /**
+   * A published player's own state, deliberately NOT `APP_STATE`.
+   *
+   * Both are the same app, and a player served from the same origin as the
+   * studio — a project page with the studio at `/` and a novel at `/novel/` —
+   * shares localStorage with it. Writing through the studio's key meant the
+   * player's frozen copy of a story landed on top of the author's draft the
+   * moment a reader opened it.
+   */
+  PLAYER_STATE: `${PREFIX}player_state`,
 
   // Stories
   STORIES: `${PREFIX}stories`,
@@ -69,6 +79,14 @@ export const STORAGE_KEYS = {
     `${PREFIX}release_${encodeURIComponent(storyId)}_${encodeURIComponent(releaseId)}`,
   RELEASE_LIBRARIES: (storyId: string, releaseId: string) =>
     `${PREFIX}release_libraries_${encodeURIComponent(storyId)}_${encodeURIComponent(releaseId)}`,
+  /**
+   * Every release's media, content-addressed and shared between them, plus the
+   * reference count that says which releases still need each object. Also what
+   * pins those blobs on web: `lib/web-media-cleanup.ts` finds live media by
+   * scanning persisted values for `idb://media/…`, and this is where the uris
+   * are written down.
+   */
+  RELEASE_OBJECTS: `${PREFIX}release_objects`,
   RELEASE_SCENE: (storyId: string, releaseId: string, sceneId: string) =>
     `${PREFIX}release_scene_${encodeURIComponent(storyId)}_${encodeURIComponent(
       releaseId,
