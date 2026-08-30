@@ -52,7 +52,13 @@ async function verifyInBrowser() {
       runtimeErrors.push(message.text());
     });
 
-    for (const route of ['', 'tabs', 'definitely-missing']) {
+    for (const route of [
+      '',
+      'tabs',
+      'reader?storyId=deployment-smoke',
+      'document-editor?storyId=deployment-smoke&sceneId=deployment-smoke',
+      'definitely-missing',
+    ]) {
       await page.goto(new URL(route, pageRoot).toString(), { waitUntil: 'domcontentloaded' });
       await page.locator('#root > *').first().waitFor({ state: 'visible', timeout: 20_000 });
       await page.waitForTimeout(1_000);

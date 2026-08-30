@@ -13,10 +13,32 @@ import { SaveSlot } from '@/lib/story-domain';
 import { useI18n, type Language } from '@/hooks/use-i18n';
 import { formatDate, formatRelativeTime } from '@/lib/format-date';
 import { Button, ConfirmDialog, IconSymbol } from '@/components/ui';
+import {
+  describeSaveCompatibility,
+  needsSaveCompatibilityWarning,
+  type SaveCompatibility,
+} from '@/lib/release/save-compatibility';
 import { showToast } from '@/lib/toast-store';
 import { typeScale } from '@/lib/design-tokens';
 import { isQuickSaveSlotId } from '@/stores/app-store-slices/saves-slice';
 import { ShowcaseImage } from '@/components/showcase/ShowcaseImage';
+
+/** What to tell the reader about a save that no longer fits. */
+function describeMismatch(
+  compatibility: SaveCompatibility,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
+  if (compatibility.kind === 'missingScene') return t('save.missingSceneMessage');
+  if (compatibility.kind === 'otherVersion') {
+    return compatibility.savedVersion
+      ? t('save.versionMismatchMessage', {
+          saved: compatibility.savedVersion,
+          current: compatibility.currentVersion,
+        })
+      : t('save.versionUnknownMessage', { current: compatibility.currentVersion });
+  }
+  return '';
+}
 
 function ReservedSaveSlot({ slot, slotId, label, colors, t, language, onLoad, onDelete }: {
   slot: SaveSlot;
@@ -108,6 +130,11 @@ export default function SaveLoadScreen() {
   const saveGame = useAppStore((state) => state.saveGame);
   const readerBlockingMedia = useAppStore((state) => state.readerBlockingMedia);
   const loadGame = useAppStore((state) => state.loadGame);
+  const readerRelease = useAppStore((state) => state.readerRelease);
+  const [pendingLoad, setPendingLoad] = useState<{
+    slotId: string;
+    compatibility: SaveCompatibility;
+  } | null>(null);
   const deleteSaveSlot = useAppStore((state) => state.deleteSaveSlot);
   const hydrateSceneRecordsForStory = useAppStore((state) => state.hydrateSceneRecordsForStory);
   const [activeTab, setActiveTab] = useState<'save' | 'load'>('load');
@@ -138,7 +165,8 @@ export default function SaveLoadScreen() {
     }
   }, [currentStoryId, playbackState, hydrateSceneRecordsForStory, saveBlockedByCutscene, saveGame, t]);
 
-  const handleLoadFromSlot = useCallback(async (slotId: string) => {
+  /** Load without asking; the caller has already resolved any mismatch. */
+  const loadSlotNow = useCallback(async (slotId: string) => {
     const slot = saveSlots.find((s) => s.id === slotId);
     if (!slot) return;
 
@@ -158,6 +186,34 @@ export default function SaveLoadScreen() {
       showToast(t('common.error'), 'error');
     }
   }, [saveSlots, hydrateSceneRecordsForStory, loadGame, router, t]);
+
+  /**
+   * A published story moves. Before dropping a reader back into a save taken
+   * in a different version — or onto a scene that version no longer has — say
+   * so and let them choose. Same version, or no release at all: load straight
+   * through, because there is nothing to warn about.
+   */
+  const handleLoadFromSlot = useCallback(async (slotId: string) => {
+    const slot = saveSlots.find((s) => s.id === slotId);
+    if (!slot) return;
+
+    const compatibility = describeSaveCompatibility({
+      slot,
+      release: readerRelease && readerRelease.storyId === slot.storyId
+        ? {
+            releaseId: readerRelease.releaseId,
+            version: readerRelease.version,
+            sceneIds: Object.keys(readerRelease.scenes),
+          }
+        : null,
+    });
+
+    if (needsSaveCompatibilityWarning(compatibility)) {
+      setPendingLoad({ slotId, compatibility });
+      return;
+    }
+    await loadSlotNow(slotId);
+  }, [loadSlotNow, readerRelease, saveSlots]);
 
   const handleDeleteSlot = useCallback((slotId: string) => {
     setSlotIdToDelete(slotId);
@@ -426,6 +482,19 @@ export default function SaveLoadScreen() {
         keyExtractor={(_, index) => `slot-${index}`}
         scrollEnabled={true}
         contentContainerStyle={{ paddingBottom: 20 }}
+      />
+      <ConfirmDialog
+        visible={pendingLoad !== null}
+        title={t('save.versionMismatchTitle')}
+        message={pendingLoad ? describeMismatch(pendingLoad.compatibility, t) : ''}
+        confirmLabel={t('save.loadAnyway')}
+        onConfirm={() => {
+          const slotId = pendingLoad?.slotId;
+          setPendingLoad(null);
+          if (slotId) void loadSlotNow(slotId);
+        }}
+        onCancel={() => setPendingLoad(null)}
+        destructive={false}
       />
       <ConfirmDialog
         visible={slotIdToDelete !== null}

@@ -200,20 +200,21 @@ export function createIndexedDbStorage(
   sourceStorage: Storage | null,
   fallback: StorageLike,
 ): StorageLike {
-  const dbReady = getDatabase(factory, sourceStorage);
-
   return {
     getItem: async (key) => {
-      const db = await dbReady;
+      // Resolve for every operation. `onversionchange` closes the old handle
+      // and removes its promise from the cache; retaining that promise here
+      // kept handing callers the closed database forever.
+      const db = await getDatabase(factory, sourceStorage);
       return db ? readValue(db, key) : fallback.getItem(key);
     },
     setItem: async (key, value) => {
-      const db = await dbReady;
+      const db = await getDatabase(factory, sourceStorage);
       if (db) await writeValue(db, key, value);
       else await fallback.setItem(key, value);
     },
     removeItem: async (key) => {
-      const db = await dbReady;
+      const db = await getDatabase(factory, sourceStorage);
       if (db) await writeValue(db, key);
       else await fallback.removeItem(key);
     },

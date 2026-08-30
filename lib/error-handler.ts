@@ -31,13 +31,13 @@ export interface AppError {
 
 export class ErrorHandler {
   private static errorListeners: ((error: AppError) => void)[] = [];
-  private static userAlertCallback?: (message: string, severity: ErrorSeverity) => void;
+  private static userAlertCallback?: (error: AppError) => void;
   private static isHandlingError = false; // Prevent recursive error handling
 
   /**
    * Set a callback for showing errors to the user (e.g., React Native Alert)
    */
-  static setUserAlertCallback(callback?: (message: string, severity: ErrorSeverity) => void): void {
+  static setUserAlertCallback(callback?: (error: AppError) => void): void {
     this.userAlertCallback = callback;
   }
 
@@ -120,8 +120,7 @@ export class ErrorHandler {
     // Show user alert if callback is set
     if (this.userAlertCallback) {
       try {
-        const userMessage = ErrorHandler.getUserMessage(appError);
-        this.userAlertCallback(userMessage, severity);
+        this.userAlertCallback(appError);
       } catch (err) {
         // Prevent recursive error handling — just log to console
         if (shouldLogDevDiagnostics()) console.error('[ErrorHandler] Error in user alert callback:', err);
@@ -183,20 +182,31 @@ export class ErrorHandler {
   /**
    * Get user-friendly error message
    */
-  static getUserMessage(error: AppError): string {
+  static getUserMessage(error: AppError, language: 'en' | 'uk' = 'en'): string {
+    const uk = language === 'uk';
     switch (error.category) {
       case ErrorCategory.STORAGE:
-        return 'Не вдалося зберегти або завантажити дані. Перевірте доступний простір на пристрої.';
+        return uk
+          ? 'Не вдалося зберегти або завантажити дані. Перевірте доступний простір на пристрої.'
+          : 'Could not save or load data. Check the available storage on your device.';
       case ErrorCategory.NETWORK:
-        return 'Проблема з підключенням до мережі. Перевірте інтернет-з\'єднання.';
+        return uk
+          ? 'Проблема з підключенням до мережі. Перевірте інтернет-з\'єднання.'
+          : 'There is a network connection problem. Check your internet connection.';
       case ErrorCategory.VALIDATION:
-        return `Помилка валідації: ${error.message}`;
+        return `${uk ? 'Помилка валідації' : 'Validation error'}: ${error.message}`;
       case ErrorCategory.MEDIA:
-        return 'Не вдалося завантажити медіа-файл. Файл може бути пошкоджений або відсутній.';
+        return uk
+          ? 'Не вдалося завантажити медіа-файл. Файл може бути пошкоджений або відсутній.'
+          : 'Could not load the media file. It may be damaged or missing.';
       case ErrorCategory.RENDERING:
-        return 'Виникла помилка відображення. Спробуйте перезавантажити додаток.';
+        return uk
+          ? 'Виникла помилка відображення. Спробуйте перезавантажити додаток.'
+          : 'A display error occurred. Try reloading the app.';
       default:
-        return 'Виникла непередбачена помилка. Спробуйте ще раз.';
+        return uk
+          ? 'Виникла непередбачена помилка. Спробуйте ще раз.'
+          : 'An unexpected error occurred. Try again.';
     }
   }
 }

@@ -59,19 +59,21 @@ export default function RootLayout() {
   // One subscription for the life of the tab, but the warning is written when
   // it fires: a ref keeps the current translator without resubscribing (and
   // re-announcing this tab) every time the author switches language.
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const translate = useRef(t);
+  const languageRef = useRef(language);
   useEffect(() => {
     translate.current = t;
-  }, [t]);
+    languageRef.current = language;
+  }, [language, t]);
   useEffect(
     () => startAppStoreCrossTabWarning(() => translate.current('common.crossTabWarning')),
     [],
   );
   useEffect(() => {
-    ErrorHandler.setUserAlertCallback((message, severity) => {
-      if (severity === ErrorSeverity.HIGH || severity === ErrorSeverity.CRITICAL) {
-        showToast(message, 'error');
+    ErrorHandler.setUserAlertCallback((error) => {
+      if (error.severity === ErrorSeverity.HIGH || error.severity === ErrorSeverity.CRITICAL) {
+        showToast(ErrorHandler.getUserMessage(error, languageRef.current), 'error');
       }
     });
     return () => ErrorHandler.setUserAlertCallback();

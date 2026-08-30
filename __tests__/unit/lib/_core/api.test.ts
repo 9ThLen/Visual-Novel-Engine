@@ -1,28 +1,34 @@
-/**
- * Tests for API rate limiting logic.
- *
- * Note: The rate limiting functions (isRateLimited, pruneLog) are not exported
- * from api.ts, so we test them indirectly by verifying the module loads correctly
- * and the RATE_LIMIT constant is properly configured.
- */
 describe('API Rate Limiting', () => {
-  it('should load api module without errors', () => {
-    // Dynamic import to avoid side effects during module loading
-    expect(() => {
-      require('@/lib/_core/api');
-    }).not.toThrow();
+  beforeEach(() => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })));
   });
 
-  it('should have RATE_LIMIT configuration with valid values', () => {
-    // Re-import to get fresh module state
-    const api = require('@/lib/_core/api');
-    // The module should export apiCall function
-    expect(typeof api.apiCall).toBe('function');
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
-  it('should export OAuth helper functions', () => {
-    const api = require('@/lib/_core/api');
-    expect(typeof api.exchangeOAuthCode).toBe('function');
-    expect(typeof api.getMe).toBe('function');
+  it('rejects the eleventh request to one endpoint within a second', async () => {
+    const { apiCall } = await import('@/lib/_core/api');
+    for (let request = 0; request < 10; request += 1) {
+      await apiCall('/api/story');
+    }
+
+    await expect(apiCall('/api/story')).rejects.toThrow('Rate limit exceeded');
+    expect(fetch).toHaveBeenCalledTimes(10);
+  });
+
+  it('allows the endpoint again after its rate-limit window', async () => {
+    const { apiCall } = await import('@/lib/_core/api');
+    for (let request = 0; request < 10; request += 1) await apiCall('/api/story');
+    vi.advanceTimersByTime(1_001);
+
+    await expect(apiCall('/api/story')).resolves.toEqual({});
   });
 });

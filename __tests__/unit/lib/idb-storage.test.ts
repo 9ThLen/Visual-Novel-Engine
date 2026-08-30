@@ -96,4 +96,61 @@ describe('IndexedDB storage', () => {
     expect(factory.open).not.toHaveBeenCalled();
     warnSpy.mockRestore();
   });
+
+  it('opens a fresh database after the active handle receives versionchange', async () => {
+    const values = new Map<string, string>([['__local_storage_migration__', '1']]);
+    const databases: Array<IDBDatabase & { closed: boolean }> = [];
+    const open = vi.fn(() => {
+      const request = {} as IDBOpenDBRequest;
+      const db = {
+        closed: false,
+        close: vi.fn(() => { db.closed = true; }),
+        objectStoreNames: { contains: () => true },
+        transaction: vi.fn((_name: string, mode: IDBTransactionMode) => {
+          if (db.closed) throw new DOMException('Database is closed', 'InvalidStateError');
+          const transaction = { error: null } as unknown as IDBTransaction;
+          const complete = () => setTimeout(() => transaction.oncomplete?.(new Event('complete')), 0);
+          const store = {
+            get: (key: string) => {
+              const item = { result: values.get(key) } as IDBRequest;
+              setTimeout(() => {
+                item.onsuccess?.(new Event('success'));
+                complete();
+              }, 0);
+              return item;
+            },
+            getAllKeys: () => ({ result: [] }) as unknown as IDBRequest<IDBValidKey[]>,
+            put: (value: string, key: string) => {
+              values.set(key, value);
+              if (mode === 'readwrite') complete();
+              return {} as IDBRequest;
+            },
+            delete: (key: string) => {
+              values.delete(key);
+              complete();
+              return {} as IDBRequest;
+            },
+          };
+          Object.assign(transaction, { objectStore: () => store });
+          return transaction;
+        }),
+      } as unknown as IDBDatabase & { closed: boolean };
+      databases.push(db);
+      Object.assign(request, { result: db });
+      setTimeout(() => request.onsuccess?.(new Event('success')), 0);
+      return request;
+    });
+    const storage = createIndexedDbStorage({ open } as unknown as IDBFactory, null, {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    });
+
+    await storage.getItem('first');
+    databases[0].onversionchange?.(new Event('versionchange') as IDBVersionChangeEvent);
+    await storage.getItem('second');
+
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(databases[0].closed).toBe(true);
+  });
 });

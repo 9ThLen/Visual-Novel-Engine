@@ -34,4 +34,11 @@ describe('ErrorHandler', () => {
       ErrorHandler.handle('null error', null, ErrorCategory.STORAGE);
     }).not.toThrow();
   });
+
+  it('formats user-facing messages in the active language', () => {
+    const error = ErrorHandler.handle('offline', null, ErrorCategory.NETWORK);
+
+    expect(ErrorHandler.getUserMessage(error, 'en')).toContain('network connection');
+    expect(ErrorHandler.getUserMessage(error, 'uk')).toContain('мережі');
+  });
 });

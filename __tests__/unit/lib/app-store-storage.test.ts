@@ -253,4 +253,20 @@ describe('app store storage', () => {
     expect(appState.state.sceneRecordsByStory).toEqual({});
     expect(appState.state.sceneRecordHydration).toEqual({});
   });
+
+  it('rejects a stale whole-store write from another tab', async () => {
+    const storageMock = createMemoryStorage();
+    storageMock.values.set(STORAGE_KEYS.APP_STATE, appEnvelope());
+    const firstTab = createAppStoreStorage(storageMock.memoryStorage);
+    const secondTab = createAppStoreStorage(storageMock.memoryStorage);
+
+    await firstTab.getItem(STORAGE_KEYS.APP_STATE);
+    await secondTab.getItem(STORAGE_KEYS.APP_STATE);
+    await firstTab.setItem(STORAGE_KEYS.APP_STATE, metadataOnlyEnvelope());
+
+    await expect(secondTab.setItem(STORAGE_KEYS.APP_STATE, emptyEnvelope()))
+      .rejects.toThrow('changed in another tab');
+    const persisted = JSON.parse(storageMock.values.get(STORAGE_KEYS.APP_STATE) ?? '{}');
+    expect(persisted.state.storiesMetadata).toHaveLength(1);
+  });
 });
