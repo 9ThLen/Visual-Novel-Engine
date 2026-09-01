@@ -128,7 +128,7 @@ export class BuildHelperServer {
     // Anything left behind by a previous run, before accepting new work.
     sweepAbandonedUploads(this.uploadsDir, BUILD_LIMITS.abandonedUploadMs, this.now());
 
-    const resumable = this.reconcilePersistedJobs();
+    const resumable = await this.reconcilePersistedJobs();
     this.builderReadiness = await this.builder.readiness();
     this.http = createServer((request, response) => {
       void this.handleHttp(request, response).catch((error) => {
@@ -266,6 +266,20 @@ export class BuildHelperServer {
     this.uploading.add(requestId);
     const attempt = job.attempt;
     try {
+      // A crash can happen after the verified .part file is renamed but before
+      // uploadedBytes reaches the durable job record. Reuse that already
+      // verified archive instead of making retries fail on an existing target.
+      if (await this.reconcileQueuedArchive(job)) {
+        const recovered = this.store.read(requestId);
+        this.respond(response, 200, {
+          ok: true,
+          bytes: recovered?.uploadedBytes ?? statSync(buildArchivePath(this.uploadsDir, requestId)).size,
+          sha256: job.request.payloadHash,
+        }, origin);
+        void this.runBuild(requestId);
+        return;
+      }
+
       const outcome = await receiveBuildInput(request, {
         directory: this.uploadsDir,
         requestId,
@@ -682,13 +696,12 @@ export class BuildHelperServer {
   }
 
   /** Reconcile durable records before accepting traffic after a restart. */
-  private reconcilePersistedJobs(): string[] {
+  private async reconcilePersistedJobs(): Promise<string[]> {
     const resumable: string[] = [];
     for (const raw of this.store.list()) {
       const job = this.expireIfDue(raw);
       if (job.state === 'queued') {
-        const archive = buildArchivePath(this.uploadsDir, job.request.requestId);
-        if (job.uploadedBytes !== undefined && existsSync(archive)) resumable.push(job.request.requestId);
+        if (await this.reconcileQueuedArchive(job)) resumable.push(job.request.requestId);
         continue;
       }
       if (['staging', 'submitted', 'building', 'verifying'].includes(job.state)) {
@@ -701,6 +714,36 @@ export class BuildHelperServer {
       }
     }
     return resumable;
+  }
+
+  /** Repair the only non-atomic boundary shared by the upload and job files. */
+  private async reconcileQueuedArchive(job: BuildJob): Promise<boolean> {
+    if (job.state !== 'queued') return false;
+    const archive = buildArchivePath(this.uploadsDir, job.request.requestId);
+    if (!existsSync(archive)) {
+      // The archive may have been removed manually after a completed upload.
+      // Clear the marker so the request can accept the bytes again.
+      if (job.uploadedBytes !== undefined) {
+        this.store.write({ ...job, uploadedBytes: undefined, updatedAt: this.stamp() });
+      }
+      return false;
+    }
+    if (job.uploadedBytes !== undefined) return true;
+
+    const sha256 = await this.hashFile(archive);
+    if (sha256 !== job.request.payloadHash) {
+      rmSync(archive, { force: true });
+      return false;
+    }
+
+    const current = this.store.read(job.request.requestId);
+    if (!current || current.state !== 'queued' || current.attempt !== job.attempt) return false;
+    this.store.write({
+      ...current,
+      uploadedBytes: statSync(archive).size,
+      updatedAt: this.stamp(),
+    });
+    return true;
   }
 
   private async hashFile(file: string): Promise<string> {

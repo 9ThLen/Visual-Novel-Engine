@@ -53,6 +53,7 @@ const playerProfile = playerProfileModule as unknown as {
   PLAYER_BLOCKED_TREES: string[];
   PLAYER_BLOCKED_PERMISSIONS: string[];
   PLAYER_AUTOLINKING_EXCLUDE: string[];
+  PLAYER_FORBIDDEN_MODULES: string[];
   playerAutolinkingPackageJson: () => { expo: { autolinking: unknown } };
 };
 
@@ -104,6 +105,54 @@ export const STAGED_RELEASE_JSON = 'assets/player-release.json';
 export const GENERATED_MODULE = 'lib/generated/player-release.ts';
 export const STAGED_ICON = 'assets/player-icon.png';
 export const STAGED_SPLASH = 'assets/player-splash.png';
+export const NATIVE_IDENTITY_FILE = '.vne-native-identity.json';
+
+const EAS_PROJECT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+interface StoredNativeIdentity {
+  version: 1;
+  storyId: string;
+  applicationId: string;
+  easProjectId: string;
+}
+
+export function isEasProjectId(value: string | undefined): value is string {
+  return typeof value === 'string' && EAS_PROJECT_ID_PATTERN.test(value);
+}
+
+function readStoredNativeIdentity(outDir: string): StoredNativeIdentity | null {
+  if (!fs.existsSync(outDir)) return null;
+  const identityFile = path.join(outDir, NATIVE_IDENTITY_FILE);
+  let raw: unknown;
+  if (fs.existsSync(identityFile)) {
+    raw = JSON.parse(fs.readFileSync(identityFile, 'utf8'));
+  } else {
+    // Migrate a project staged before the explicit identity record existed.
+    const easFile = path.join(outDir, 'eas.json');
+    const releaseFile = path.join(outDir, ...STAGED_RELEASE_JSON.split('/'));
+    if (!fs.existsSync(easFile) || !fs.existsSync(releaseFile)) return null;
+    const eas = JSON.parse(fs.readFileSync(easFile, 'utf8')) as StagedEasJson;
+    const release = JSON.parse(fs.readFileSync(releaseFile, 'utf8')) as PlayerBootConfig;
+    const env = eas.build?.['player-apk']?.env ?? {};
+    raw = {
+      version: 1,
+      storyId: (release.story as { id?: unknown })?.id,
+      applicationId: env.VNE_PLAYER_APP_ID,
+      easProjectId: env.VNE_EAS_PROJECT_ID,
+    };
+  }
+  const record = raw as Partial<StoredNativeIdentity> | null;
+  if (
+    !record
+    || record.version !== 1
+    || typeof record.storyId !== 'string'
+    || typeof record.applicationId !== 'string'
+    || !isEasProjectId(record.easProjectId)
+  ) {
+    throw new Error(`The existing ${NATIVE_IDENTITY_FILE} is invalid; refusing to mint another app identity.`);
+  }
+  return record as StoredNativeIdentity;
+}
 
 /** Extensions Metro treats as assets in this project (`metro.config.js`). */
 export const BUNDLEABLE_MEDIA_EXTENSIONS = new Set([
@@ -408,8 +457,15 @@ export async function stageAndroidProject(
   const generatedAt = input.generatedAt;
 
   if (!fs.existsSync(releaseFile)) throw new Error(`No such release file: ${releaseFile}`);
-  if (!input.easProjectId && !input.allowEngineProject) {
+  const previousIdentity = readStoredNativeIdentity(outDir);
+  const easProjectId = input.easProjectId
+    ?? previousIdentity?.easProjectId
+    ?? (input.allowEngineProject ? ENGINE_EAS_PROJECT_ID : undefined);
+  if (!easProjectId) {
     throw new Error('An EAS project id is required unless engine-project use is explicitly allowed.');
+  }
+  if (!isEasProjectId(easProjectId)) {
+    throw new Error('The EAS project id must be a canonical UUID from `eas project:info`.');
   }
 
   // Read and check the manifest before anything is written. A corrupt archive
@@ -427,6 +483,16 @@ export async function stageAndroidProject(
     title: manifest.story.title,
     version: manifest.release.version,
   });
+  if (previousIdentity && (
+    previousIdentity.storyId !== manifest.story.id
+    || previousIdentity.applicationId !== identity.applicationId
+    || previousIdentity.easProjectId !== easProjectId
+  )) {
+    throw new Error(
+      'The existing staged project belongs to a different immutable native identity. '
+      + 'Use its original EAS project, or choose a new empty output directory.',
+    );
+  }
 
   const transaction = beginOutPath(outDir, {
     repoRoot,
@@ -449,6 +515,7 @@ export async function stageAndroidProject(
     // Before the release's own media lands, so the walk is over source and the
     // engine's art rather than over a hundred megabytes of the author's.
     const graph = await inspectStagedGraph(stageDir);
+    pruneUnreachableSource(stageDir, graph.sourceFiles);
     const pruned = pruneUnreferencedAssets(stageDir, graph.assetFiles);
 
     // Media, streamed out of the archive and verified as it goes.
@@ -478,7 +545,7 @@ export async function stageAndroidProject(
     fs.writeFileSync(generatedFile, generatedReleaseModule(mediaFiles, stamp));
 
     const icon = stageIcons(stageDir, repoRoot, bootConfig, input.iconOverride);
-    const env = buildEnv(identity, input.easProjectId ?? ENGINE_EAS_PROJECT_ID);
+    const env = buildEnv(identity, easProjectId);
     fs.writeFileSync(
       path.join(stageDir, 'package.json'),
       `${JSON.stringify(
@@ -491,6 +558,12 @@ export async function stageAndroidProject(
       )}\n`,
     );
     fs.writeFileSync(path.join(stageDir, 'eas.json'), `${JSON.stringify(stagedEasJson(env), null, 2)}\n`);
+    fs.writeFileSync(path.join(stageDir, NATIVE_IDENTITY_FILE), `${JSON.stringify({
+      version: 1,
+      storyId: manifest.story.id,
+      applicationId: identity.applicationId,
+      easProjectId,
+    }, null, 2)}\n`);
     fs.writeFileSync(path.join(stageDir, '.easignore'), EAS_IGNORE);
 
     const structuralProblems = verifyStagedAndroidProject(stageDir);
@@ -608,12 +681,27 @@ interface StagedEasJson {
  */
 export function verifyStagedAndroidProject(outDir: string): string[] {
   const problems: string[] = [];
+  let storedIdentity: StoredNativeIdentity | null = null;
   const read = (...parts: string[]) => path.join(outDir, ...parts);
   const exists = (...parts: string[]) => fs.existsSync(read(...parts));
 
   // 1. The native cut. This is the one R4 specified and could not apply.
   if (!exists('package.json')) {
     return ['The staged project has no package.json.'];
+  }
+  if (!exists(NATIVE_IDENTITY_FILE)) {
+    problems.push(`The staged project has no ${NATIVE_IDENTITY_FILE}; update identity cannot be verified.`);
+  } else {
+    try {
+      storedIdentity = JSON.parse(
+        fs.readFileSync(read(NATIVE_IDENTITY_FILE), 'utf8'),
+      ) as StoredNativeIdentity;
+      if (!isEasProjectId(storedIdentity.easProjectId)) {
+        problems.push('The stored EAS project id is not a UUID.');
+      }
+    } catch (error) {
+      problems.push(`${NATIVE_IDENTITY_FILE} is not readable: ${(error as Error).message}`);
+    }
   }
   const packageJson = JSON.parse(fs.readFileSync(read('package.json'), 'utf8')) as {
     expo?: { autolinking?: { android?: { exclude?: string[] } }; install?: unknown };
@@ -656,6 +744,12 @@ export function verifyStagedAndroidProject(outDir: string): string[] {
     // One release, one application. Two profiles that disagree would sideload
     // and list as different apps, and only one of them could take an update.
     const [apk, aab] = ['player-apk', 'player-aab'].map((name) => eas.build?.[name]?.env ?? {});
+    if (storedIdentity && (
+      storedIdentity.applicationId !== apk.VNE_PLAYER_APP_ID
+      || storedIdentity.easProjectId !== apk.VNE_EAS_PROJECT_ID
+    )) {
+      problems.push('The stored native identity disagrees with eas.json.');
+    }
     for (const key of [
       'VNE_PROFILE',
       'VNE_EAS_PROJECT_ID',
@@ -726,6 +820,9 @@ export function verifyStagedAndroidProject(outDir: string): string[] {
   for (const tree of playerProfile.PLAYER_BLOCKED_TREES) {
     if (exists(...tree.split('/'))) problems.push(`${tree} is still in the staged project.`);
   }
+  for (const module of playerProfile.PLAYER_FORBIDDEN_MODULES) {
+    if (exists(...module.split('/'))) problems.push(`${module} is still in the staged project.`);
+  }
 
   // 6. Branding.
   for (const file of [STAGED_ICON, STAGED_SPLASH]) {
@@ -740,6 +837,8 @@ export interface StagedGraph {
   unresolved: { from: string; specifier: string }[];
   /** Files under `assets/` the bundle actually names, repo-relative with `/`. */
   assetFiles: Set<string>;
+  /** Source files Metro can reach for Android, staged-project relative. */
+  sourceFiles: Set<string>;
 }
 
 /**
@@ -761,6 +860,7 @@ export async function inspectStagedGraph(outDir: string): Promise<StagedGraph> {
       projectRoot: string;
       entries: string[];
       substitutions?: Record<string, string>;
+      platformPrefixes?: string[];
     }) => {
       modules: Map<string, string | null>;
       unresolved: { from: string; specifier: string }[];
@@ -769,7 +869,7 @@ export async function inspectStagedGraph(outDir: string): Promise<StagedGraph> {
 
   const entries = fs.readdirSync(path.join(outDir, 'app-player'))
     .filter((name) => /\.[jt]sx?$/.test(name))
-    .map((name) => `app-player/${name}`);
+    .map((name) => path.join(outDir, 'app-player', name));
 
   const { modules, unresolved } = walkModuleGraph({
     projectRoot: outDir,
@@ -777,14 +877,40 @@ export async function inspectStagedGraph(outDir: string): Promise<StagedGraph> {
     substitutions: Object.fromEntries(
       moduleSubstitutions().map((entry) => [entry.from, entry.to]),
     ),
+    platformPrefixes: ['.android', '.native', ''],
   });
 
   const assetFiles = new Set<string>();
+  const sourceFiles = new Set<string>();
   for (const key of modules.keys()) {
     const normalized = key.split(path.sep).join('/');
     if (normalized.startsWith('assets/')) assetFiles.add(normalized);
+    else sourceFiles.add(normalized);
   }
-  return { unresolved, assetFiles };
+  return { unresolved, assetFiles, sourceFiles };
+}
+
+const PRUNABLE_SOURCE_ROOTS = ['app', 'app-player', 'components', 'hooks', 'lib', 'stores'];
+const SOURCE_FILE_PATTERN = /\.(?:[cm]?[jt]sx?)$/;
+
+/** Remove source EAS would upload even though Android Metro cannot reach it. */
+export function pruneUnreachableSource(outDir: string, reachable: Set<string>): string[] {
+  const removed: string[] = [];
+  const walk = (dir: string) => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!SOURCE_FILE_PATTERN.test(entry.name)) continue;
+      const relative = path.relative(outDir, full).split(path.sep).join('/');
+      if (reachable.has(relative)) continue;
+      fs.rmSync(full);
+      removed.push(relative);
+    }
+    removeEmptyDirectories(dir);
+  };
+  for (const root of PRUNABLE_SOURCE_ROOTS) walk(path.join(outDir, root));
+  return removed;
 }
 
 function moduleSubstitutions(): { from: string; to: string }[] {

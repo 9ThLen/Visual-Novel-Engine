@@ -36,7 +36,12 @@ function bootConfig(overrides: Partial<PlayerBootConfig> = {}): PlayerBootConfig
   return {
     version: 1,
     generatedAt: '2026-08-30T00:00:00.000Z',
-    story: { id: 'story_42', title: 'Rain: A Novel' },
+    story: {
+      id: 'story_42',
+      title: 'Rain: A Novel',
+      startSceneId: 'scene_1',
+      scenes: { scene_1: { id: 'scene_1', timeline: [] } },
+    },
     release: { releaseId: 'release_1', version: '2.1.0', releasedAt: '2026-08-30T00:00:00.000Z' },
     ...overrides,
   };
@@ -137,6 +142,13 @@ describe('reading what a bundle is', () => {
   it('refuses a bundle exported from a story JSON', () => {
     dir = writeBundle(tempDir('bundle'), { ...bootConfig(), release: undefined } as never);
     expect(() => readBundleRelease(dir)).toThrow('no release version');
+  });
+
+  it('refuses a config that the player runtime cannot boot', () => {
+    dir = writeBundle(tempDir('bundle'), bootConfig({
+      story: { id: 'story_42', title: 'Rain: A Novel', scenes: {} },
+    }));
+    expect(() => readBundleRelease(dir)).toThrow('carries no player config');
   });
 });
 

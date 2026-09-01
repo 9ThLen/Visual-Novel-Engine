@@ -128,10 +128,45 @@ const PLAYER_EXCLUDED_PLUGINS = ['expo-document-picker', 'expo-image-picker'];
  * known to be correct before R9 has anywhere to apply it.
  */
 const PLAYER_AUTOLINKING_EXCLUDE = [
+  'expo-dev-client',
+  'expo-dev-launcher',
+  'expo-dev-menu',
+  'expo-dev-menu-interface',
   'expo-document-picker',
   'expo-image-picker',
   'expo-secure-store',
   'expo-notifications',
+];
+
+/**
+ * Exact native graph the current player is allowed to link. A "full engine
+ * minus exclusions" assertion cannot discover a newly added studio-only native
+ * dependency; an allowlist fails as soon as one leaks into the staged app.
+ */
+const PLAYER_AUTOLINKING_ALLOWED = [
+  'expo',
+  'expo-application',
+  'expo-asset',
+  'expo-audio',
+  'expo-blur',
+  'expo-constants',
+  'expo-crypto',
+  'expo-file-system',
+  'expo-font',
+  'expo-haptics',
+  'expo-image',
+  'expo-image-loader',
+  'expo-json-utils',
+  'expo-keep-awake',
+  'expo-linking',
+  'expo-manifests',
+  'expo-modules-core',
+  'expo-sharing',
+  'expo-splash-screen',
+  'expo-system-ui',
+  'expo-updates-interface',
+  'expo-video',
+  'expo-web-browser',
 ];
 
 /**
@@ -176,5 +211,6 @@ module.exports = {
   PLAYER_FORBIDDEN_MODULES,
   PLAYER_EXCLUDED_PLUGINS,
   PLAYER_AUTOLINKING_EXCLUDE,
+  PLAYER_AUTOLINKING_ALLOWED,
   PLAYER_BLOCKED_PERMISSIONS,
 };

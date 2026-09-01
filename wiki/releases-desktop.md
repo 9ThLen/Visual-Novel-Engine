@@ -136,8 +136,17 @@ that it works offline.
 three platforms from a real release through the committed tools. It runs on
 demand, and by itself when the desktop pipeline changes.
 
-**It has never run.** Neither has `tauri build`: no machine involved in writing
-this had a Rust toolchain. Everything up to that line — staging, identity,
-verification, and the staged bundle playing offline — is covered by tests that do
-run (`pnpm test`, `pnpm test:player-e2e`). The build itself is unproven until
-that workflow goes green.
+**The workflow has never run**, so Linux and macOS are unproven.
+
+Windows is not. On 2026-09-01 the whole pipeline ran locally against the demo
+release: `tauri icon` generated the icons, `cargo` compiled the shell in about
+five minutes, and the NSIS bundler produced a 107 MB installer whose name,
+identifier and version came from the staged config. Launching the built binary
+opens a visible window titled from that config, with a WebView2 child hosting the
+page.
+
+Where the evidence stops: nobody has watched the story render in that window, and
+nobody has run the installer. A blank webview looks identical from outside. The
+same frontend does play from `file://` with zero network requests under
+`pnpm test:player-e2e`, and Tauri serves it from an easier origin than that — but
+that is an argument, not an observation.

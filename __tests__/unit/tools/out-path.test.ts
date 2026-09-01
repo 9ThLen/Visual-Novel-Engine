@@ -100,4 +100,20 @@ describe("safe generated output directories", () => {
     );
     expect(fs.existsSync(path.join(output, "partial.txt"))).toBe(false);
   });
+
+  it("lets an outer transaction verify a nested stager before replacing output", () => {
+    const output = path.join(root, "output");
+    const previous = beginOutPath(output, { repoRoot: REPO_ROOT });
+    fs.writeFileSync(path.join(previous.workPath, "complete.txt"), "old");
+    previous.commit();
+
+    const outer = beginOutPath(output, { repoRoot: REPO_ROOT });
+    const inner = beginOutPath(outer.workPath, { repoRoot: REPO_ROOT });
+    fs.writeFileSync(path.join(inner.workPath, "complete.txt"), "new");
+    inner.commit();
+    expect(fs.readFileSync(path.join(outer.workPath, "complete.txt"), "utf8")).toBe("new");
+    outer.commit();
+
+    expect(fs.readFileSync(path.join(output, "complete.txt"), "utf8")).toBe("new");
+  });
 });

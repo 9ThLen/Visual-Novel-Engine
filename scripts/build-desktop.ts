@@ -30,6 +30,7 @@ import {
 } from './lib/stage-desktop';
 
 import { readInlinedPlayerConfig } from '@/lib/release/player-bundle';
+import { beginOutPath } from '../tools/lib/out-path';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
@@ -47,8 +48,10 @@ function fail(message: string, details: string[] = []): never {
   console.error(color.red(`\n✖ ${message}`));
   for (const line of details) console.error(color.red(`    • ${line}`));
   console.error('');
-  process.exit(1);
+  throw new CliFailure(message);
 }
+
+class CliFailure extends Error {}
 
 interface Args {
   bundle?: string;
@@ -245,11 +248,17 @@ async function main(): Promise<void> {
   console.log(`  Story: ${color.green(release.title || release.storyId)} (${release.storyId})`);
   console.log(`  Release: ${color.green(`v${release.version}`)} ${color.dim(release.releaseId)}`);
 
+  const finalOutDir = path.resolve(process.cwd(), args.out);
+  const transaction = beginOutPath(finalOutDir, {
+    repoRoot: REPO_ROOT,
+    inputs: [bundleDir, TEMPLATE_DIR, ...(args.icon ? [path.resolve(args.icon)] : [])],
+  });
+  try {
   let staged;
   try {
     staged = stageDesktopProject({
       bundleDir,
-      outDir: path.resolve(process.cwd(), args.out),
+      outDir: transaction.workPath,
       templateDir: TEMPLATE_DIR,
       targets: args.targets.length > 0 ? args.targets : defaultTargets(),
       repoRoot: REPO_ROOT,
@@ -289,8 +298,9 @@ async function main(): Promise<void> {
   console.log(color.dim('  Verified the staged project'));
 
   if (args.stageOnly) {
-    console.log(color.green(`\n✔ Staged: ${staged.outDir}`));
-    console.log(color.dim(`  Build it with:  cd ${path.relative(process.cwd(), staged.outDir)} && tauri build\n`));
+    transaction.commit();
+    console.log(color.green(`\n✔ Staged: ${finalOutDir}`));
+    console.log(color.dim(`  Build it with:  cd ${path.relative(process.cwd(), finalOutDir)} && tauri build\n`));
     return;
   }
 
@@ -311,11 +321,24 @@ async function main(): Promise<void> {
     ]);
   }
 
+  const artifactSummaries = artifacts.map((artifact) => ({
+    relative: path.relative(staged.outDir, artifact),
+    bytes: fs.statSync(artifact).size,
+  }));
+  transaction.commit();
+
   console.log(color.green('\n✔ Desktop build complete'));
-  for (const artifact of artifacts) {
-    console.log(`    ${artifact} ${color.dim(describeBytes(fs.statSync(artifact).size))}`);
+  for (const artifact of artifactSummaries) {
+    console.log(`    ${path.join(finalOutDir, artifact.relative)} ${color.dim(describeBytes(artifact.bytes))}`);
   }
   console.log('');
+  } catch (error) {
+    transaction.abort();
+    throw error;
+  }
 }
 
-void main();
+void main().catch((error) => {
+  if (!(error instanceof CliFailure)) console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+});

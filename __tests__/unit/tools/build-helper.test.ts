@@ -8,7 +8,7 @@
  * driven the way a browser would drive it rather than by calling methods.
  */
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { WebSocket } from 'ws';
@@ -22,6 +22,7 @@ import type { BuildRequest } from '../../../lib/release/build-request';
 const ORIGIN = 'http://localhost:8081';
 const RELEASE_BYTES = new TextEncoder().encode('pretend this is a .vnerelease');
 const PAYLOAD_HASH = createHash('sha256').update(RELEASE_BYTES).digest('hex');
+const EAS_PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 
 function request(overrides: Partial<BuildRequest> = {}): BuildRequest {
   return {
@@ -136,6 +137,26 @@ describe('the build helper', () => {
     expect(artifact.headers.get('content-disposition')).toContain('release_1-7.apk');
     expect((await artifact.arrayBuffer()).byteLength).toBe(completed.job.artifact.bytes);
     client.close();
+  });
+
+  it('recovers an archive renamed just before a crash persisted uploadedBytes', async () => {
+    await startServer();
+    const first = await TestClient.connect(port, server.token);
+    first.send({ type: 'submit', request: request() });
+    await first.waitFor((m) => m.type === 'progress' && m.job.state === 'queued');
+    first.close();
+    await server.close();
+
+    const archive = path.join(workDir, 'uploads', 'req_one.vnerelease');
+    writeFileSync(archive, RELEASE_BYTES);
+
+    await startServer();
+    const rejoined = await TestClient.connect(port, server.token);
+    rejoined.send({ type: 'status', requestId: 'req_one' });
+    const completed = await rejoined.waitFor((m) => m.type === 'completed');
+    expect(completed.job.state).toBe('succeeded');
+    expect(existsSync(archive)).toBe(true);
+    rejoined.close();
   });
 
   it('refuses an unavailable builder before creating a job or accepting bytes', async () => {
@@ -424,6 +445,74 @@ describe('the build helper', () => {
     expect(expired.job.state).toBe('expired');
     expect(existsSync(path.join(workDir, 'artifacts', 'req_one'))).toBe(false);
     client.close();
+  });
+});
+
+describe('the EAS builder adapter', () => {
+  let root: string;
+  beforeEach(() => { root = mkdtempSync(path.join(tmpdir(), 'vne-eas-builder-')); });
+  afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+
+  it('stages, inspects, submits, polls and downloads one artifact', async () => {
+    const calls: string[][] = [];
+    const builder = new EasBuilder({
+      repoRoot: root,
+      easProjectId: EAS_PROJECT_ID,
+      pollIntervalMs: 0,
+      stage: async ({ outDir }) => {
+        mkdirSync(outDir, { recursive: true });
+        return {} as never;
+      },
+      runCommand: async (args) => {
+        calls.push(args);
+        if (
+          args[0] === '--version'
+          || args[0] === 'whoami'
+          || args[0] === 'project:init'
+          || args[0] === 'build:inspect'
+        ) {
+          return { status: 0, stdout: 'ok', stderr: '' };
+        }
+        if (args[0] === 'build') {
+          return { status: 0, stdout: JSON.stringify([{ id: 'build-1', status: 'IN_QUEUE' }]), stderr: '' };
+        }
+        return {
+          status: 0,
+          stdout: JSON.stringify({
+            id: 'build-1',
+            status: 'FINISHED',
+            artifacts: { applicationArchiveUrl: 'https://expo.dev/artifacts/eas/app.apk' },
+          }),
+          stderr: '',
+        };
+      },
+      download: async (_url, target) => { writeFileSync(target, RELEASE_BYTES); },
+    });
+
+    expect(await builder.readiness()).toEqual({ ready: true });
+    const outputDirectory = path.join(root, 'out');
+    mkdirSync(outputDirectory);
+    const result = await builder.build({
+      request: request(),
+      archivePath: path.join(root, 'release.vnerelease'),
+      outputDirectory,
+      onLog: () => {},
+      signal: new AbortController().signal,
+    });
+
+    expect(result.fileName).toBe('req_one.apk');
+    expect(existsSync(result.artifactPath)).toBe(true);
+    expect(calls.some((args) => args[0] === 'build:inspect' && args.includes('archive'))).toBe(true);
+    expect(calls.some((args) => args[0] === 'project:init' && args.includes(EAS_PROJECT_ID))).toBe(true);
+    expect(calls.some((args) => args[0] === 'build' && args.includes('--no-wait'))).toBe(true);
+    expect(calls.some((args) => args[0] === 'build:view' && args.includes('build-1'))).toBe(true);
+  });
+
+  it('is unavailable before an immutable EAS project id is configured', async () => {
+    const readiness = await new EasBuilder({ runCommand: async () => {
+      throw new Error('must not run');
+    } }).readiness();
+    expect(readiness).toMatchObject({ ready: false });
   });
 });
 

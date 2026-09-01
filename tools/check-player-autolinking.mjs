@@ -23,7 +23,10 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
-const { PLAYER_AUTOLINKING_EXCLUDE } = require('../player-profile.js');
+const {
+  PLAYER_AUTOLINKING_ALLOWED,
+  PLAYER_AUTOLINKING_EXCLUDE,
+} = require('../player-profile.js');
 
 const platformFlag = process.argv.indexOf('--platform');
 const platform = platformFlag >= 0 ? process.argv[platformFlag + 1] : 'android';
@@ -64,11 +67,12 @@ for (const name of PLAYER_AUTOLINKING_EXCLUDE) {
   }
 }
 
-// Nothing else may disappear: an exclusion that takes a dependency of something
-// the reader needs with it would be found on a device, not here.
-for (const name of linked) {
-  if (!excluded.has(name) && !PLAYER_AUTOLINKING_EXCLUDE.includes(name)) {
-    problems.push(`excluding the list also removed "${name}", which is not on it`);
+for (const name of PLAYER_AUTOLINKING_ALLOWED) {
+  if (!excluded.has(name)) problems.push(`required player module "${name}" is missing`);
+}
+for (const name of excluded) {
+  if (!PLAYER_AUTOLINKING_ALLOWED.includes(name)) {
+    problems.push(`unapproved native module "${name}" leaks into the player`);
   }
 }
 

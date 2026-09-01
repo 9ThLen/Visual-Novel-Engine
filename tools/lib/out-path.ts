@@ -144,9 +144,10 @@ export function beginOutPath(outPath: string, options: OutPathOptions): OutPathT
     commit() {
       if (finished) throw new Error('The output transaction is already finished.');
       assertSafeOutPath(finalPath, options);
-      fs.writeFileSync(path.join(workPath, OUTPUT_MARKER), expectedMarkerContents(finalPath), {
-        flag: 'wx',
-      });
+      // workPath is a fresh directory owned by this transaction. It may itself
+      // contain the marker of a nested staging transaction; replace that marker
+      // with the identity of the final destination before the atomic rename.
+      fs.writeFileSync(path.join(workPath, OUTPUT_MARKER), expectedMarkerContents(finalPath));
 
       const backup = `${finalPath}.previous-${randomUUID()}`;
       const hadPrevious = fs.existsSync(finalPath);

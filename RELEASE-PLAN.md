@@ -18,7 +18,9 @@ Corrections to earlier steps are recorded inline rather than edited away: R2's
 object store and R4's autolinking exclusions were both marked done before they
 worked, and R6's offline claim rested on a test that never left HTTP. In the same
 spirit, R7, R8 and R9 each say which of their steps has never been executed, and
-R9 replaces this plan's version-code design with a simpler one and says why.
+R9 replaces this plan's version-code design with a simpler one and says why. R8's
+Windows build has since been run for real; its section says exactly how far that
+went and where the evidence stops.
 
 ---
 
@@ -1242,10 +1244,27 @@ the staged copy, offline, with zero network requests** — Tauri serves the
 frontend from the root of its own origin, which is strictly easier than the
 `file://` page those tests use.
 
-**Not verified — no machine involved had a Rust toolchain, so `tauri build` has
-never run and neither has the CI workflow.** Everything the script decides before
-that line is tested; the line itself is not. Recorded rather than smoothed over:
-the "Done when" below is not yet met.
+**`tauri build` has now run.** A Rust toolchain was installed on 2026-09-01 and
+the pipeline was exercised end to end against the demo release:
+
+- `tauri icon` generated the icon set from the engine icon (the demo story has no
+  square cover);
+- `cargo` compiled the shell in 5m16s and produced
+  `The Enchanted Museum_1.0.0_x64-setup.exe`, **107 MB** — of which about 96 MB is
+  the release's own media, embedded in the binary rather than sitting beside it;
+- the staged `tauri.conf.json` that produced it carries the story's product name,
+  its derived identifier and its version, with `installMode: currentUser`;
+- launching the binary opens a **visible window titled from that config**, and it
+  spawns the WebView2 child that hosts the page.
+
+**Still not verified:** that a reader *sees the story* in that window, and that
+the installer installs. Both need a person to look — the automated evidence stops
+at "a window opens with the right title", and a blank webview looks the same from
+outside. What is known is that the identical frontend plays from `file://` with
+zero network requests (`pnpm test:player-e2e`), and Tauri serves it from an
+easier origin than that.
+
+**The CI workflow has still never run**, so Linux and macOS remain unproven.
 
 **Done when:** the same release that plays on the project page also installs and
 runs offline from a Windows installer, with no browser involved.

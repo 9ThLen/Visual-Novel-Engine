@@ -10,7 +10,12 @@
  *
  * Free of React Native imports on purpose: the script runs this under Node.
  */
-import { PLAYER_CONFIG_GLOBAL, PLAYER_CONFIG_VERSION } from '@/lib/player-mode';
+import {
+  parsePlayerConfig,
+  PLAYER_CONFIG_GLOBAL,
+  PLAYER_CONFIG_VERSION,
+  type PlayerConfig,
+} from '@/lib/player-mode';
 import { buildReleaseAssetMap, type ReleaseAssetMap } from '@/lib/release/asset-map';
 import type { ReleaseManifestV1, ReleasePayloadV1 } from '@/lib/release/types';
 
@@ -136,13 +141,13 @@ export function findUnpackagedBundledReferences(
 }
 
 /** Read a config back out of a built page. Used by the smoke checks. */
-export function readInlinedPlayerConfig(html: string): PlayerBootConfig | null {
+export function readInlinedPlayerConfig(html: string): PlayerConfig | null {
   const match = html.match(
     new RegExp(`<script data-vne-player-config>window\\.${PLAYER_CONFIG_GLOBAL}=([\\s\\S]*?)</script>`),
   );
   if (!match) return null;
   try {
-    return JSON.parse(match[1].replace(/\\u003c/g, '<')) as PlayerBootConfig;
+    return parsePlayerConfig(JSON.parse(match[1].replace(/\\u003c/g, '<')));
   } catch {
     return null;
   }

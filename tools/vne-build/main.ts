@@ -26,6 +26,7 @@ import {
 } from './stage-android';
 
 import playerProfile from '../../player-profile.js';
+import { beginOutPath } from '../lib/out-path';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..');
@@ -41,8 +42,10 @@ function fail(message: string, details: string[] = []): never {
   console.error(color.red(`\n✖ ${message}`));
   for (const line of details) console.error(color.red(`    • ${line}`));
   console.error('');
-  process.exit(1);
+  throw new CliFailure(message);
 }
+
+class CliFailure extends Error {}
 
 interface Args {
   release?: string;
@@ -209,15 +212,11 @@ function resolveAutolinkedModules(projectDir: string): CheckResult & { modules?:
 }
 
 function checkAutolinking(outDir: string): CheckResult {
-  const engine = resolveAutolinkedModules(REPO_ROOT);
-  if (!engine.ok || !engine.modules) return engine;
   const staged = resolveAutolinkedModules(outDir);
   if (!staged.ok || !staged.modules) return staged;
 
   const linked = staged.modules;
-  const expected = engine.modules.filter(
-    (name) => !playerProfile.PLAYER_AUTOLINKING_EXCLUDE.includes(name),
-  );
+  const expected = playerProfile.PLAYER_AUTOLINKING_ALLOWED as string[];
 
   const leaked = playerProfile.PLAYER_AUTOLINKING_EXCLUDE.filter((name) => linked.includes(name));
   const missing = expected.filter((name) => !linked.includes(name));
@@ -240,26 +239,20 @@ async function main(): Promise<void> {
   if (args.help) { printHelp(); return; }
   if (!args.release) fail('--release is required (a .vnerelease file)');
   if (!args.out) fail('--out is required (where the staged project goes)');
-  if (!args.easProjectId && !args.allowEngineProject) {
-    // Refused rather than warned. Android holds an app to the key that signed
-    // it for the life of the story, and the account that owns that key should be
-    // the author's — a warning on a command that then prints `eas build` and
-    // exits 0 is an invitation to publish from someone else's account.
-    fail('--eas-project-id is required', [
-      "A build belongs to the author's own EAS project, because the signing",
-      'credentials it creates are what every future update has to match.',
-      'Run `eas init` in the staged project to make one, or pass',
-      "--allow-engine-project to try the pipeline against the engine's.",
-    ]);
-  }
-
   console.log(color.green('▸ Staging an Android player project\n'));
 
+  const releaseFile = path.resolve(process.cwd(), args.release);
+  const finalOutDir = path.resolve(process.cwd(), args.out);
+  const transaction = beginOutPath(finalOutDir, {
+    repoRoot: REPO_ROOT,
+    inputs: [releaseFile, ...(args.icon ? [path.resolve(args.icon)] : [])],
+  });
+  try {
   let staged;
   try {
     staged = await stageAndroidProject({
-      releaseFile: path.resolve(process.cwd(), args.release),
-      outDir: path.resolve(process.cwd(), args.out),
+      releaseFile,
+      outDir: transaction.workPath,
       repoRoot: REPO_ROOT,
       easProjectId: args.easProjectId,
       allowEngineProject: args.allowEngineProject,
@@ -280,7 +273,7 @@ async function main(): Promise<void> {
     `  Dropped ${staged.prunedAssets} bundled asset(s) the player never shows, `
     + `${describeBytes(staged.prunedBytes)}`,
   ));
-  if (!args.easProjectId) {
+  if (args.allowEngineProject && !args.easProjectId) {
     console.log(color.yellow('  ⚠ --allow-engine-project: this build would go to the engine\'s EAS project,'));
     console.log(color.yellow('    and be signed with credentials that are not the author\'s.'));
   }
@@ -301,7 +294,8 @@ async function main(): Promise<void> {
 
   if (args.skipChecks) {
     console.log(color.yellow('  ⚠ --skip-checks: the resolved config and the native cut were not verified.'));
-    console.log(color.green(`\n✔ Staged: ${staged.outDir}`));
+    transaction.commit();
+    console.log(color.green(`\n✔ Staged: ${finalOutDir}`));
     return;
   }
 
@@ -331,10 +325,18 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(color.green(`\n✔ Staged: ${staged.outDir}`));
+  transaction.commit();
+  console.log(color.green(`\n✔ Staged: ${finalOutDir}`));
   console.log(color.dim('  Build it with:'));
-  console.log(color.dim(`    cd ${path.relative(process.cwd(), staged.outDir)}`));
+  console.log(color.dim(`    cd ${path.relative(process.cwd(), finalOutDir)}`));
   console.log(color.dim('    eas build --platform android --profile player-apk\n'));
+  } catch (error) {
+    transaction.abort();
+    throw error;
+  }
 }
 
-void main();
+void main().catch((error) => {
+  if (!(error instanceof CliFailure)) console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+});

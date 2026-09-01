@@ -16,12 +16,14 @@ import path from 'node:path';
 import {
   BUNDLEABLE_MEDIA_EXTENSIONS,
   GENERATED_MODULE,
+  NATIVE_IDENTITY_FILE,
   STAGED_ICON,
   STAGED_MEDIA_DIR,
   STAGED_RELEASE_JSON,
   assertEveryReferencePackaged,
   generatedReleaseModule,
   parseAutolinkedModulesOutput,
+  pruneUnreachableSource,
   referencedStudioRoutes,
   stageAndroidProject,
   stagedEasJson,
@@ -33,6 +35,8 @@ import { deriveAndroidIdentity } from '@/lib/release/native-identity';
 import playerProfile from '../../../player-profile.js';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
+const PROJECT_A = '11111111-1111-4111-8111-111111111111';
+const PROJECT_B = '22222222-2222-4222-8222-222222222222';
 
 const identity = deriveAndroidIdentity({
   storyId: 'story_42',
@@ -67,11 +71,17 @@ function stagedProject(overrides: { skip?: string[] } = {}): string {
   if (!skip.has('eas.json')) {
     write(root, 'eas.json', JSON.stringify(stagedEasJson({
       VNE_PROFILE: 'player',
-      VNE_EAS_PROJECT_ID: 'project-1',
+      VNE_EAS_PROJECT_ID: PROJECT_A,
       VNE_PLAYER_APP_ID: identity.applicationId,
       VNE_PLAYER_VERSION_CODE: String(identity.androidVersionCode),
     })));
   }
+  write(root, NATIVE_IDENTITY_FILE, JSON.stringify({
+    version: 1,
+    storyId: 'story_42',
+    applicationId: identity.applicationId,
+    easProjectId: PROJECT_A,
+  }));
   if (!skip.has('release')) {
     // A config the *runtime* accepts, not merely one the verifier reads: the
     // story needs a start scene and a non-empty scene table, or the app builds,
@@ -119,6 +129,29 @@ describe('the staged package.json', () => {
       { name: string; version: string };
     expect(staged.name).toBe(identity.applicationId.split('.').join('-'));
     expect(staged.version).toBe('2.1.0');
+  });
+});
+
+describe('source upload pruning', () => {
+  it('keeps only Android-reachable source files', () => {
+    const root = tempDir();
+    write(root, 'app-player/index.tsx', 'keep');
+    write(root, 'components/Reader.tsx', 'keep');
+    write(root, 'components/Editor.tsx', 'remove');
+    write(root, 'lib/helper.android.ts', 'keep');
+    write(root, 'lib/helper.web.ts', 'remove');
+    write(root, 'assets/config.ts', 'outside prunable roots');
+
+    const removed = pruneUnreachableSource(root, new Set([
+      'app-player/index.tsx',
+      'components/Reader.tsx',
+      'lib/helper.android.ts',
+    ]));
+
+    expect(removed.sort()).toEqual(['components/Editor.tsx', 'lib/helper.web.ts']);
+    expect(fs.existsSync(path.join(root, 'components', 'Reader.tsx'))).toBe(true);
+    expect(fs.existsSync(path.join(root, 'assets', 'config.ts'))).toBe(true);
+    fs.rmSync(root, { recursive: true, force: true });
   });
 });
 
@@ -315,7 +348,7 @@ export const PACKAGED_RELEASE: PackagedRelease | null = null;
     root = stagedProject({ skip: ['eas.json'] });
     const eas = stagedEasJson({
       VNE_PROFILE: 'player',
-      VNE_EAS_PROJECT_ID: 'project-a',
+      VNE_EAS_PROJECT_ID: PROJECT_A,
       VNE_PLAYER_APP_ID: 'com.a.b',
       VNE_PLAYER_APP_NAME: 'Rain',
       VNE_PLAYER_VERSION: '2.1.0',
@@ -326,7 +359,7 @@ export const PACKAGED_RELEASE: PackagedRelease | null = null;
     }) as { build: Record<string, { env: Record<string, string> }> };
     eas.build['player-aab'].env = {
       ...eas.build['player-aab'].env,
-      VNE_EAS_PROJECT_ID: 'project-b',
+      VNE_EAS_PROJECT_ID: PROJECT_B,
       VNE_PLAYER_ICON: './other.png',
     };
     write(root, 'eas.json', JSON.stringify(eas));
@@ -390,6 +423,17 @@ describe('the staging API EAS ownership invariant', () => {
       outDir,
       repoRoot: REPO_ROOT,
     })).rejects.toThrow('EAS project id is required');
+    expect(fs.existsSync(outDir)).toBe(false);
+  });
+
+  it('refuses a non-UUID project id before touching the output', async () => {
+    const outDir = path.join(tempDir(), 'stage');
+    await expect(stageAndroidProject({
+      releaseFile: path.join(REPO_ROOT, 'e2e', 'player', '.demo.vnerelease'),
+      outDir,
+      repoRoot: REPO_ROOT,
+      easProjectId: 'project-from-a-typo',
+    })).rejects.toThrow('canonical UUID');
     expect(fs.existsSync(outDir)).toBe(false);
   });
 });
