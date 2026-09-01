@@ -174,7 +174,14 @@ describe('BuildClient artifact download', () => {
       expiresAt: '2026-09-08T10:00:00.000Z',
     };
 
-    await expect(client.downloadArtifact('req_one', expected)).resolves.toBeInstanceOf(Blob);
+    // Checked by content, not by `instanceof Blob`. A `Response` built here
+    // yields Node's Blob while the test's global is jsdom's, and on Node 20 —
+    // which is what CI runs — those are two different classes, so a perfectly
+    // good artifact fails the type check. What the caller actually needs is
+    // that the bytes came back intact, which is also the stronger assertion.
+    const artifact = await client.downloadArtifact('req_one', expected);
+    expect(artifact.size).toBe(bytes.byteLength);
+    expect([...new Uint8Array(await artifact.arrayBuffer())]).toEqual([...bytes]);
     await expect(client.downloadArtifact('req_one', { ...expected, bytes: 4 }))
       .rejects.toThrow('expected 4');
     await expect(client.downloadArtifact('req_one', { ...expected, sha256: 'f'.repeat(64) }))
