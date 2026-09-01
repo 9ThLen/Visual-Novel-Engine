@@ -13,13 +13,24 @@
  * build client into the media library or the same three lines written twice.
  */
 export async function readBlobBytes(blob: Blob): Promise<Uint8Array> {
-  const source = await blob.arrayBuffer();
-  const view = ArrayBuffer.isView(source)
-    ? new Uint8Array(
-      (source as ArrayBufferView).buffer,
-      (source as ArrayBufferView).byteOffset,
-      (source as ArrayBufferView).byteLength,
-    )
-    : new Uint8Array(source as ArrayBuffer);
-  return new Uint8Array(view);
+  const source: unknown = await blob.arrayBuffer();
+
+  if (ArrayBuffer.isView(source)) {
+    const view = source as ArrayBufferView;
+    return new Uint8Array(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+  }
+  // Checked by shape, not by `instanceof`: an ArrayBuffer from another realm is
+  // still an ArrayBuffer, and `instanceof` would reject it. What must not pass
+  // is something that is not a buffer at all.
+  if (typeof (source as ArrayBuffer)?.byteLength === 'number') {
+    return new Uint8Array(new Uint8Array(source as ArrayBuffer));
+  }
+
+  // Loudly, on purpose. `new Uint8Array(undefined)` is an empty array, so a
+  // silent fallback here would hash zero bytes and hand back a plausible digest
+  // for the wrong content — a worse failure than the one this function exists
+  // to avoid, and one no test would catch.
+  throw new TypeError(
+    `A Blob returned ${Object.prototype.toString.call(source)} from arrayBuffer(); expected a buffer.`,
+  );
 }
