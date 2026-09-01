@@ -458,7 +458,10 @@ export async function stageAndroidProject(
   // last one only in a comment is a build nobody can compare.
   const generatedAt = input.generatedAt;
 
-  if (!fs.existsSync(releaseFile)) throw new Error(`No such release file: ${releaseFile}`);
+  // Arguments before I/O. Which of two bad inputs a caller hears about should not
+  // depend on what happens to be on their disk — and a test that asserts this
+  // check passed locally only because an e2e fixture happened to be lying around,
+  // then failed on a clean checkout where the release file was absent.
   const previousIdentity = readStoredNativeIdentity(outDir);
   const easProjectId = input.easProjectId
     ?? previousIdentity?.easProjectId
@@ -469,6 +472,8 @@ export async function stageAndroidProject(
   if (!isEasProjectId(easProjectId)) {
     throw new Error('The EAS project id must be a canonical UUID from `eas project:info`.');
   }
+
+  if (!fs.existsSync(releaseFile)) throw new Error(`No such release file: ${releaseFile}`);
 
   // Read and check the manifest before anything is written. A corrupt archive
   // must fail here rather than after twenty minutes of cloud build.
