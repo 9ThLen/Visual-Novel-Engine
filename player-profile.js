@@ -198,6 +198,14 @@ function playerAutolinkingPackageJson() {
  * post notifications.
  */
 const PLAYER_BLOCKED_PERMISSIONS = [
+  // Both come from React Native's dev support and survived into a *release*
+  // APK — read out of the built artifact, not guessed. SYSTEM_ALERT_WINDOW is
+  // "draw over other apps": a permission Android warns about by name and Play
+  // scrutinises, and a novel that asks for it is a novel nobody installs. DUMP
+  // reads other processes' state. Neither has anything to do with reading a
+  // story.
+  'android.permission.SYSTEM_ALERT_WINDOW',
+  'android.permission.DUMP',
   'android.permission.CAMERA',
   'android.permission.RECORD_AUDIO',
   'android.permission.READ_EXTERNAL_STORAGE',

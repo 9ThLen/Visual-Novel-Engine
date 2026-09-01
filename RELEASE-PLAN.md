@@ -1335,8 +1335,34 @@ blocked permissions; and **`expo-modules-autolinking resolve -p android` reports
 27 linked modules against this repository's 31** — the check R4 wrote and had
 nowhere to apply.
 
-**Not verified, and not pretended:** the APK, its size and its permission list on
-a device; the launch splash, which only behaves faithfully in a release build;
+**The APK exists.** Built on 2026-09-02 through the staged project, after four
+attempts that each found something real (git repository required; the
+`node_modules` junction versus the fingerprint step; and a substitution source
+pruned as unreachable). `com.vne.story.demoadvanced001.s1vjtdn9`, version 1.0.0,
+version code 1000000, **168.9 MB, signed**, built in 20 minutes.
+
+What the artifact itself shows, read out of the APK rather than assumed:
+
+- **The media is inside it.** Under `res/` with minified names — an 11.3 MB
+  `res/fG.mp3`, a 6.6 MB `res/xP.png` — which is where Metro's Android assets
+  land, not `assets/media/`.
+- **The permission cut holds.** No CAMERA, RECORD_AUDIO, READ/WRITE_EXTERNAL_
+  STORAGE, READ_MEDIA_IMAGES/VIDEO/AUDIO, POST_NOTIFICATIONS. This is the
+  acceptance test R4 wrote and could only ever run against a real artifact.
+- **And it found two that should not be there.** `SYSTEM_ALERT_WINDOW` — draw
+  over other apps — and `DUMP`, both from React Native's dev support, both alive
+  in a release build. Added to `PLAYER_BLOCKED_PERMISSIONS`; the next build is
+  what proves they are gone.
+- **`INTERNET` and `ACCESS_NETWORK_STATE` are still declared**, and a novel whose
+  media ships inside it does not need either. Left alone deliberately: removing
+  them could break `expo-asset` or `expo-updates` at runtime in ways no test here
+  can see. A decision, not an oversight.
+- **Four ABIs** (arm64-v8a, armeabi-v7a, x86, x86_64) make 72 MB of native
+  libraries, of which any one device uses about a quarter. `player-aab` exists
+  for exactly this; a sideload APK could also be restricted to arm64.
+
+**Not verified, and not pretended:** the APK on a device — that it installs,
+opens on the engine splash, plays offline and exposes nothing else; the launch splash, which only behaves faithfully in a release build;
 v2 installing over v1 with saves intact; and the post-build certificate check,
 which needs a real signed artifact. `EasBuilder` now performs readiness,
 staging, archive inspection, submit, polling/cancellation and HTTPS download;

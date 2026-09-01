@@ -187,6 +187,25 @@ concludes the file is malware, which is the correct instinct.
 The app asks for no permissions. It reads a story; it does not pick files, take
 photos, or post notifications, and the manifest says so.
 
+## What the first real APK looked like
+
+Built 2026-09-02 from the demo release: 168.9 MB, signed, `1.0.0` / version code
+`1000000`, twenty minutes. Read out of the artifact rather than assumed:
+
+| | |
+| --- | --- |
+| media | inside, under `res/` with minified names (`res/fG.mp3`, 11.3 MB) |
+| native libraries | 72 MB across four ABIs; one device uses about a quarter |
+| permissions removed | CAMERA, RECORD_AUDIO, READ/WRITE_EXTERNAL_STORAGE, READ_MEDIA_*, POST_NOTIFICATIONS |
+| permissions found and now blocked | `SYSTEM_ALERT_WINDOW`, `DUMP` — React Native dev support, alive in a release build |
+| permissions still declared | `INTERNET`, `ACCESS_NETWORK_STATE` |
+
+The last row is a decision rather than an oversight: a novel whose media ships
+inside it needs neither, but removing them could break `expo-asset` or
+`expo-updates` at runtime in ways nothing here can test. Reach for `player-aab`
+before worrying about the size — the four ABIs are most of what a single device
+never uses.
+
 ## What has and has not happened
 
 **No APK has ever been built.** No machine involved in writing this had an
