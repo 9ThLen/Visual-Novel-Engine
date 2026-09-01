@@ -1228,9 +1228,9 @@ rather than to blur their acceptance criteria.
   a `.vnerelease`. The desktop channel consumes exactly what the web channel
   publishes, so there is one reader of the container and the two channels cannot
   drift into being different novels. `--stage-only` needs no toolchain.
-- `scripts/lib/out-path.mjs` — the "is this directory safe to empty" guard,
-  extracted from the web exporter. A destructive guard in two copies is a guard
-  that will eventually exist in one.
+- `tools/lib/out-path.ts` — one physical-path guard and atomic output transaction
+  shared by web, desktop and Android staging. It rejects files, reparse points,
+  forged markers and input overlap, and keeps the last complete output on failure.
 - `.github/workflows/desktop.yml` — Windows, Linux and macOS, macOS
   `continue-on-error` until there is a Developer ID.
 - `wiki/releases-desktop.md`, `tools/desktop-shell/README.md`.
@@ -1321,8 +1321,8 @@ nowhere to apply.
 **Not verified, and not pretended:** the APK, its size and its permission list on
 a device; the launch splash, which only behaves faithfully in a release build;
 v2 installing over v1 with saves intact; and the post-build certificate check,
-which needs an artifact to check. `EasBuilder` refuses, and the job never leaves
-`queued`; staging is `pnpm stage:android`.
+which needs an artifact to check. `EasBuilder` refuses at submit, before a job or
+upload exists; staging is `pnpm stage:android`.
 
 **Five things a review found afterwards, all real, all fixed:**
 
@@ -1345,6 +1345,13 @@ which needs an artifact to check. `EasBuilder` refuses, and the job never leaves
 5. **`--eas-project-id` was optional**, so a build would have gone to the
    engine's own EAS project and been signed with credentials that are not the
    author's. Now required, with `--allow-engine-project` to opt in deliberately.
+
+Also fixed after a second pass: **every novel registered the engine's own URL
+scheme**, so two installed on one phone fought over the same links — and a
+player could sit in front of the studio's OAuth redirect. It is derived from the
+application id now, checked through the resolved config. And the desktop CI job
+named `libappindicator3-dev` where the wiki said `libayatana-appindicator3-dev`;
+the second is the one that exists on the runner.
 
 Also fixed: the config and autolinking checks failed *open* when the
 `node_modules` junction could not be created, printing a green tick for checks
@@ -1436,8 +1443,8 @@ and `pnpm test:player-e2e`):
 - an out-of-range version is refused rather than clamped;
 - no template value survives staging — identifier, product name, version, window
   title;
-- the staged directory is emptied first, so nothing from the previous story
-  ships inside this one;
+- the staged directory is atomically replaced after verification, so nothing
+  from the previous story ships and a failed run keeps the last good output;
 - the staged copy carries every media file the bundle had, byte for byte;
 - the staged frontend plays offline from a `file://` page with zero network
   requests, which is strictly harder than Tauri's own origin;

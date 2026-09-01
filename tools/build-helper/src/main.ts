@@ -76,13 +76,6 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const builder = makeBuilder(options);
 
-  const readiness = await builder.readiness();
-  if (!readiness.ready) {
-    // Said at startup rather than at the end of an upload: an author on an
-    // unconfigured machine should learn it before sending a release.
-    console.warn(`! The ${builder.name} builder is not ready: ${readiness.reason}`);
-  }
-
   const server = new BuildHelperServer({
     port: options.port,
     token: options.token,
@@ -93,6 +86,10 @@ async function main(): Promise<void> {
   });
 
   const port = await server.start();
+  const readiness = server.builderStatus;
+  if (readiness && !readiness.ready) {
+    console.warn(`! The ${builder.name} builder is not ready: ${readiness.reason}`);
+  }
   console.log(`Build helper listening on http://127.0.0.1:${port}`);
   console.log(`Builder: ${builder.name}`);
   console.log(`Work directory: ${options.workDirectory}`);

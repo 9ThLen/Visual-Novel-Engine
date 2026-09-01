@@ -50,10 +50,10 @@ player profile substitutes an empty bundled-asset map and staging then deletes
 the files, so an unpackaged reference is a guaranteed blank image on a stranger's
 phone.
 
-**The output directory is not emptied unless it is safe to empty.** A directory
-that already holds files no build command wrote is refused outright — naming a
-path is not consenting to lose what is in it. An earlier guard only caught
-`--out .` and `--out ..`, so `--out ./assets` would have deleted the art.
+**The output directory is replaced only after the new project verifies.** A
+regular file, symlink/junction, input overlap, forged marker, or directory with
+unowned files is refused outright. Staging happens in a fresh sibling and the
+last complete output remains intact if staging fails.
 
 **The editor is not in the upload.** The authoring component trees are removed,
 and so is every route under `app/` that the player root does not re-export.
@@ -93,6 +93,17 @@ slugify alike would install over each other and inherit each other's saved games
 
 The rules are in [`lib/release/native-identity.ts`](../lib/release/native-identity.ts),
 shared with the desktop channel.
+
+## The URL scheme
+
+Derived from the application id, so every novel registers its own.
+
+Every build used to carry the engine's. Two novels installed on one phone
+therefore registered the same custom scheme, and the OS resolves duplicate
+registrations arbitrarily — a link meant for one opens the other, and a player
+can end up in front of the studio's own OAuth redirect on a device that has both.
+The scheme is part of an application's identity, so it comes from the application
+id like the rest of it.
 
 ## The version code
 
@@ -177,8 +188,9 @@ that reads it. Everything below it is not:
 - the post-build certificate check, which needs an artifact to check.
 
 `EasBuilder` in [`tools/build-helper`](../tools/build-helper/README.md) **refuses
-outright**, and the job never leaves `queued` — the helper asks a builder whether
-it is ready before staging anything, which is the right order. Staging is
+outright at submit**, before creating a job or accepting an upload — the helper
+asks a builder whether it is ready before staging anything, which is the right
+order. Staging is
 `pnpm stage:android`; wiring it into the helper is part of the submit half that
 does not exist yet.
 

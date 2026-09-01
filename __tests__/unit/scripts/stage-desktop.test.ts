@@ -224,7 +224,7 @@ describe('staging a desktop project', () => {
 
     expect(() => stageDesktopProject({
       bundleDir: bundle, outDir: source, templateDir: TEMPLATE_DIR, repoRoot: REPO_ROOT,
-    })).toThrow('no build command wrote');
+    })).toThrow('without a valid build marker');
     expect(fs.existsSync(path.join(source, 'keep.png'))).toBe(true);
   });
 
@@ -264,7 +264,7 @@ describe('staging a desktop project', () => {
     }
     expect(() => stageDesktopProject({
       bundleDir: bundle, outDir: bundle, templateDir: TEMPLATE_DIR, repoRoot: REPO_ROOT,
-    })).toThrow('must not be the bundle directory');
+    })).toThrow('contains input');
   });
 
   it('refuses a bundle with no release before it writes anything', () => {

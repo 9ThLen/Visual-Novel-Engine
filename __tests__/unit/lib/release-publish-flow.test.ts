@@ -25,6 +25,34 @@ function memoryStorage(): StorageLike & { dump: () => string } {
   };
 }
 
+function storageWithConcurrentHigherRelease(): StorageLike {
+  const map = new Map<string, string>();
+  let injected = false;
+  return {
+    getItem: async (key) => map.get(key) ?? null,
+    setItem: async (key, value) => {
+      map.set(key, value);
+      if (key !== 'vne_release_objects' || injected) return;
+      injected = true;
+      map.set(`vne_release_index_${STORY_ID}`, JSON.stringify({
+        version: 1,
+        storyId: STORY_ID,
+        releases: [{
+          releaseId: 'release_from_other_tab',
+          storyId: STORY_ID,
+          version: '2.0.0',
+          channel: 'both',
+          releasedAt: '2026-09-01T12:00:00.000Z',
+          published: true,
+          sceneCount: 2,
+          totalBytes: 1,
+        }],
+      }));
+    },
+    removeItem: async (key) => { map.delete(key); },
+  };
+}
+
 function blobStore(): void {
   const blobs = new Map<string, Blob>();
   setMediaBlobStorageAdapterForTests({
@@ -161,6 +189,43 @@ describe('publishing a story end to end', () => {
     expect(currentPublishedRelease(releases)?.releaseId).toBe(second.releaseId);
     // The older artifact survives: someone may still be reading it.
     expect(await readReleasePayload(storage, STORY_ID, releases[1].releaseId)).not.toBeNull();
+  });
+
+  it('rejects duplicate and lower versions without securing another artifact', async () => {
+    const storage = memoryStorage();
+    await publishStoryRelease({ storyId: STORY_ID, version: '2.0.0', channel: 'both', storage });
+    const before = await readReleaseObjectIndex(storage);
+
+    await expect(publishStoryRelease({
+      storyId: STORY_ID,
+      version: '2.0.0',
+      channel: 'both',
+      storage,
+    })).rejects.toThrow(/strictly newer/);
+    await expect(publishStoryRelease({
+      storyId: STORY_ID,
+      version: '1.9.9',
+      channel: 'both',
+      storage,
+    })).rejects.toThrow(/strictly newer/);
+
+    expect(await listReleases(storage, STORY_ID)).toHaveLength(1);
+    expect(await readReleaseObjectIndex(storage)).toEqual(before);
+  });
+
+  it('rolls back secured objects when another tab publishes a newer version first', async () => {
+    const storage = storageWithConcurrentHigherRelease();
+
+    await expect(publishStoryRelease({
+      storyId: STORY_ID,
+      version: '1.0.0',
+      channel: 'both',
+      storage,
+    })).rejects.toThrow(/strictly newer/);
+
+    expect((await readReleaseObjectIndex(storage)).objects).toEqual({});
+    expect((await listReleases(storage, STORY_ID)).map((release) => release.releaseId))
+      .toEqual(['release_from_other_tab']);
   });
 
   it('can compile without publishing to the showcase', async () => {

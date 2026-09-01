@@ -32,6 +32,23 @@ function memoryStorage(): StorageLike {
   } as StorageLike;
 }
 
+function storageWithDelayControl(): StorageLike & { delayNextIndexWrite: () => void } {
+  const values = new Map<string, string>();
+  let delayNext = false;
+  return {
+    getItem: async (key: string) => values.get(key) ?? null,
+    setItem: async (key: string, value: string) => {
+      if (key === 'vne_release_objects' && delayNext) {
+        delayNext = false;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      values.set(key, value);
+    },
+    removeItem: async (key: string) => { values.delete(key); },
+    delayNextIndexWrite: () => { delayNext = true; },
+  };
+}
+
 /** Stands in for IndexedDB, which jsdom does not provide. */
 function blobStore() {
   const blobs = new Map<string, Blob>();
@@ -118,6 +135,20 @@ describe('the release object store', () => {
     expect(index.objects[hashOf('a')].releaseIds).toEqual(['release_1', 'release_2']);
   });
 
+  it('keeps both references when releases store the same object concurrently', async () => {
+    const storage = storageWithDelayControl();
+    storage.delayNextIndexWrite();
+
+    await Promise.all([
+      saveReleaseObjects('release_1', [asset('a', 'shared art')], storage),
+      saveReleaseObjects('release_2', [asset('a', 'shared art')], storage),
+    ]);
+
+    expect((await readReleaseObjectIndex(storage)).objects[hashOf('a')].releaseIds)
+      .toEqual(['release_1', 'release_2']);
+    expect(blobs.size).toBe(1);
+  });
+
   it('writes one copy however many scenes point at it', async () => {
     const storage = memoryStorage();
     const result = await saveReleaseObjects(
@@ -155,6 +186,21 @@ describe('the release object store', () => {
     expect(blobs.size).toBe(1);
     expect((await readReleaseObjectIndex(storage)).objects[hashOf('a')].releaseIds)
       .toEqual(['release_2']);
+  });
+
+  it('does not collect an object while another release concurrently claims it', async () => {
+    const storage = storageWithDelayControl();
+    await saveReleaseObjects('release_1', [asset('a', 'shared art')], storage);
+    storage.delayNextIndexWrite();
+
+    await Promise.all([
+      saveReleaseObjects('release_2', [asset('a', 'shared art')], storage),
+      forgetReleaseObjects('release_1', storage),
+    ]);
+
+    const entry = (await readReleaseObjectIndex(storage)).objects[hashOf('a')];
+    expect(entry.releaseIds).toEqual(['release_2']);
+    expect(blobs.has(releaseObjectStorageKey(hashOf('a')))).toBe(true);
   });
 
   /**

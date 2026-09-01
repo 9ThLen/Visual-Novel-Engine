@@ -14,7 +14,7 @@ import path from 'node:path';
 import { WebSocket } from 'ws';
 
 import { BuildHelperServer } from '../../../tools/build-helper/src/server';
-import { FakeBuilder } from '../../../tools/build-helper/src/builder';
+import { EasBuilder, FakeBuilder } from '../../../tools/build-helper/src/builder';
 import { sweepAbandonedUploads } from '../../../tools/build-helper/src/upload';
 import { BUILD_PROTOCOL_VERSION } from '../../../lib/release/build-protocol';
 import type { BuildRequest } from '../../../lib/release/build-request';
@@ -135,6 +135,21 @@ describe('the build helper', () => {
     expect(artifact.status).toBe(200);
     expect(artifact.headers.get('content-disposition')).toContain('release_1-7.apk');
     expect((await artifact.arrayBuffer()).byteLength).toBe(completed.job.artifact.bytes);
+    client.close();
+  });
+
+  it('refuses an unavailable builder before creating a job or accepting bytes', async () => {
+    await startServer({ builder: new EasBuilder() });
+    const client = await TestClient.connect(port, server.token);
+
+    client.send({ type: 'submit', request: request() });
+    const refused = await client.waitFor((message) => message.type === 'error');
+    expect(refused).toMatchObject({ code: 'BUILDER_UNAVAILABLE', requestId: 'req_one' });
+    expect(readdirSync(path.join(workDir, 'jobs'))).toEqual([]);
+
+    const uploaded = await upload(port, server.token, 'req_one');
+    expect(uploaded.status).toBe(404);
+    expect(existsSync(path.join(workDir, 'uploads', 'req_one.vnerelease'))).toBe(false);
     client.close();
   });
 

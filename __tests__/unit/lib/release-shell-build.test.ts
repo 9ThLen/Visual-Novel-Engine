@@ -366,7 +366,10 @@ describe('exporting a playable folder', () => {
       audioLibrary: [],
     };
     await saveRelease(storage, {
-      manifest: { ...manifest, release: { ...manifest.release, releaseId: 'release_2' } },
+      manifest: {
+        ...manifest,
+        release: { ...manifest.release, releaseId: 'release_2', version: '1.2.1' },
+      },
       payload: withDanglingReference,
     });
 

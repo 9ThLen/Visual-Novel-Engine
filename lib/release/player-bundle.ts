@@ -42,6 +42,15 @@ export interface BuildPlayerBootConfigInput {
   generatedAt?: string;
 }
 
+function buildPlayerStory(manifest: ReleaseManifestV1, payload: ReleasePayloadV1): unknown {
+  return {
+    ...manifest.story,
+    scenes: payload.scenes,
+    characterLibrary: payload.characters,
+    audioLibrary: payload.audioLibrary,
+  };
+}
+
 /**
  * The canonical story shape the reader seeds from: frozen scenes and cast out of
  * the payload, everything else out of the manifest's story block.
@@ -51,12 +60,7 @@ export function buildPlayerBootConfig(input: BuildPlayerBootConfigInput): Player
   const config: PlayerBootConfig = {
     version: PLAYER_CONFIG_VERSION,
     generatedAt: input.generatedAt ?? new Date().toISOString(),
-    story: {
-      ...manifest.story,
-      scenes: payload.scenes,
-      characterLibrary: payload.characters,
-      audioLibrary: payload.audioLibrary,
-    },
+    story: buildPlayerStory(manifest, payload),
     release: {
       releaseId: manifest.release.releaseId,
       version: manifest.release.version,
@@ -109,8 +113,9 @@ export function inlinePlayerConfig(html: string, config: PlayerBootConfig): stri
  * stranger's copy — a defect the author never sees, because their own device
  * still has the file.
  *
- * A string scan rather than a traversal on purpose: it asks exactly the question
- * the exclusion raises, and cannot drift from a walk it does not perform.
+ * Scan the exact story object the player boots, not only the payload. Fields
+ * such as the cover live in the manifest and are merged into that object;
+ * checking only scenes would approve a release whose launcher art disappears.
  */
 export function findUnpackagedBundledReferences(
   payload: ReleasePayloadV1,
@@ -122,8 +127,9 @@ export function findUnpackagedBundledReferences(
     for (const reference of asset.sourceReferences) answered.add(reference);
   }
 
+  const playerStory = buildPlayerStory(manifest, payload);
   const missing = new Set<string>();
-  for (const match of JSON.stringify(payload).matchAll(/"(assets\/[^"]+)"/g)) {
+  for (const match of JSON.stringify(playerStory).matchAll(/"(assets\/[^"]+)"/g)) {
     if (!answered.has(match[1])) missing.add(match[1]);
   }
   return [...missing];

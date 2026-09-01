@@ -17,14 +17,14 @@
  * twenty-minute cloud build.
  *
  * Everything here runs on a machine with no Android SDK. What it cannot do is
- * build: that needs EAS, an account and a paid queue, so `eas build` is invoked
- * by the helper (`tools/build-helper`) and never from a test.
+ * build: that needs EAS, an account and a paid queue. Today the author invokes
+ * `eas build` manually; the helper refuses before accepting an upload.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { chooseIconSource, type IconCandidate, type IconChoice } from '../lib/icon-source';
-import { prepareOutPath } from '../lib/out-path';
+import { beginOutPath } from '../lib/out-path';
 
 import { RELEASE_MEDIA_DIR, releaseObjectFileName } from '@/lib/release/asset-map';
 import {
@@ -47,6 +47,7 @@ import type { StoryArchiveBinarySource, StoryBackupAsset } from '@/lib/story-bac
  * as CommonJS under the test runner, and `import.meta` would break the second.
  */
 import playerProfileModule from '../../player-profile.js';
+import { ENGINE_EAS_PROJECT_ID } from '../../app.config.js';
 
 const playerProfile = playerProfileModule as unknown as {
   PLAYER_BLOCKED_TREES: string[];
@@ -114,14 +115,16 @@ export const BUNDLEABLE_MEDIA_EXTENSIONS = new Set([
 export interface StageAndroidInput {
   /** The `.vnerelease` to build. */
   releaseFile: string;
-  /** Where the staged project goes. Emptied first. */
+  /** Where the staged project goes. Replaced atomically after verification. */
   outDir: string;
   repoRoot: string;
   cwd?: string;
   /** Overrides the identity derived from the release. Tests use it. */
   identity?: AndroidIdentity;
-  /** The author's own EAS project. Absent leaves the engine's default. */
+  /** The author's own EAS project. Required unless engine use is explicitly allowed. */
   easProjectId?: string;
+  /** Explicit test-only escape hatch; never inferred from a missing project id. */
+  allowEngineProject?: boolean;
   /** A square PNG of at least 512px to use instead of the story cover. */
   iconOverride?: string;
   /** Injectable so a staged project can be byte-identical across runs. */
@@ -304,6 +307,9 @@ function buildEnv(identity: AndroidIdentity, easProjectId?: string): Record<stri
     VNE_PLAYER_VERSION: identity.version,
     VNE_PLAYER_VERSION_CODE: String(identity.androidVersionCode),
     VNE_PLAYER_SLUG: identity.applicationId.split('.').join('-'),
+    // Unique per application. Two novels used to register the engine's own
+    // scheme, and duplicate registrations are resolved arbitrarily by the OS.
+    VNE_PLAYER_SCHEME: identity.urlScheme,
     VNE_PLAYER_ICON: `./${STAGED_ICON}`,
     VNE_PLAYER_SPLASH: `./${STAGED_SPLASH}`,
   };
@@ -363,6 +369,21 @@ export function stagedPackageJson(source: Record<string, unknown>, identity: And
   };
 }
 
+/** Parse the real autolinking CLI schema; empty or changed output is not success. */
+export function parseAutolinkedModulesOutput(output: string): string[] {
+  const parsed = JSON.parse(output) as { modules?: unknown };
+  if (!Array.isArray(parsed.modules) || parsed.modules.length === 0) {
+    throw new Error('autolinking JSON has no non-empty modules array');
+  }
+  return parsed.modules.map((module) => {
+    const packageName = (module as { packageName?: unknown })?.packageName;
+    if (typeof packageName !== 'string' || packageName.length === 0) {
+      throw new Error('autolinking module has no packageName');
+    }
+    return packageName;
+  });
+}
+
 const EAS_IGNORE = `# Uploaded to EAS: everything the staging step wrote, and nothing else.
 node_modules/
 .expo/
@@ -387,6 +408,9 @@ export async function stageAndroidProject(
   const generatedAt = input.generatedAt;
 
   if (!fs.existsSync(releaseFile)) throw new Error(`No such release file: ${releaseFile}`);
+  if (!input.easProjectId && !input.allowEngineProject) {
+    throw new Error('An EAS project id is required unless engine-project use is explicitly allowed.');
+  }
 
   // Read and check the manifest before anything is written. A corrupt archive
   // must fail here rather than after twenty minutes of cloud build.
@@ -404,84 +428,100 @@ export async function stageAndroidProject(
     version: manifest.release.version,
   });
 
-  prepareOutPath(outDir, { repoRoot, cwd: input.cwd });
+  const transaction = beginOutPath(outDir, {
+    repoRoot,
+    cwd: input.cwd,
+    inputs: [releaseFile, ...(input.iconOverride ? [path.resolve(input.iconOverride)] : [])],
+  });
+  const stageDir = transaction.workPath;
 
-  for (const file of STAGED_ROOT_FILES) {
-    copyIfPresent(path.join(repoRoot, file), path.join(outDir, file));
+  try {
+    for (const file of STAGED_ROOT_FILES) {
+      copyIfPresent(path.join(repoRoot, file), path.join(stageDir, file));
+    }
+    for (const dir of STAGED_ROOT_DIRS) {
+      copyIfPresent(path.join(repoRoot, dir), path.join(stageDir, dir));
+    }
+
+    pruneBlockedTrees(stageDir);
+    pruneStudioRoutes(stageDir, repoRoot);
+
+    // Before the release's own media lands, so the walk is over source and the
+    // engine's art rather than over a hundred megabytes of the author's.
+    const graph = await inspectStagedGraph(stageDir);
+    const pruned = pruneUnreferencedAssets(stageDir, graph.assetFiles);
+
+    // Media, streamed out of the archive and verified as it goes.
+    const mediaDir = path.join(stageDir, ...STAGED_MEDIA_DIR.split('/'));
+    fs.rmSync(mediaDir, { recursive: true, force: true });
+    fs.mkdirSync(mediaDir, { recursive: true });
+    const { payload } = await extractReleaseArchive(
+      fileSource(releaseFile),
+      manifest,
+      (asset) => mediaFileSink(mediaDir, asset),
+    );
+
+    // A reference to art the release did not package. Nothing rescues it in the
+    // player profile, so refuse before replacing the destination.
+    assertEveryReferencePackaged(payload, manifest);
+
+    const stamp = generatedAt ?? manifest.release.releasedAt;
+    const bootConfig = buildPlayerBootConfig({ manifest, payload, generatedAt: stamp });
+    fs.writeFileSync(
+      path.join(stageDir, ...STAGED_RELEASE_JSON.split('/')),
+      JSON.stringify(bootConfig),
+    );
+
+    const mediaFiles = fs.readdirSync(mediaDir).sort();
+    const generatedFile = path.join(stageDir, ...GENERATED_MODULE.split('/'));
+    fs.mkdirSync(path.dirname(generatedFile), { recursive: true });
+    fs.writeFileSync(generatedFile, generatedReleaseModule(mediaFiles, stamp));
+
+    const icon = stageIcons(stageDir, repoRoot, bootConfig, input.iconOverride);
+    const env = buildEnv(identity, input.easProjectId ?? ENGINE_EAS_PROJECT_ID);
+    fs.writeFileSync(
+      path.join(stageDir, 'package.json'),
+      `${JSON.stringify(
+        stagedPackageJson(
+          JSON.parse(fs.readFileSync(path.join(stageDir, 'package.json'), 'utf8')),
+          identity,
+        ),
+        null,
+        2,
+      )}\n`,
+    );
+    fs.writeFileSync(path.join(stageDir, 'eas.json'), `${JSON.stringify(stagedEasJson(env), null, 2)}\n`);
+    fs.writeFileSync(path.join(stageDir, '.easignore'), EAS_IGNORE);
+
+    const structuralProblems = verifyStagedAndroidProject(stageDir);
+    if (structuralProblems.length > 0) {
+      throw new Error(`The staged Android project failed verification:\n${structuralProblems.join('\n')}`);
+    }
+    const mediaBytes = mediaFiles.reduce(
+      (total, file) => total + fs.statSync(path.join(mediaDir, file)).size,
+      0,
+    );
+    const finalIcon = icon.file.startsWith(`${stageDir}${path.sep}`)
+      ? { ...icon, file: path.join(outDir, path.relative(stageDir, icon.file)) }
+      : icon;
+    transaction.commit();
+
+    return {
+      outDir,
+      identity,
+      manifest,
+      icon: finalIcon,
+      mediaFiles,
+      mediaBytes,
+      env,
+      prunedAssets: pruned.files,
+      prunedBytes: pruned.bytes,
+      unresolvedModules: graph.unresolved,
+    };
+  } catch (error) {
+    transaction.abort();
+    throw error;
   }
-  for (const dir of STAGED_ROOT_DIRS) {
-    copyIfPresent(path.join(repoRoot, dir), path.join(outDir, dir));
-  }
-
-  pruneBlockedTrees(outDir);
-  pruneStudioRoutes(outDir, repoRoot);
-
-  // Before the release's own media lands, so the walk is over source and the
-  // engine's art rather than over a hundred megabytes of the author's.
-  const graph = await inspectStagedGraph(outDir);
-  const pruned = pruneUnreferencedAssets(outDir, graph.assetFiles);
-
-  // Media, streamed out of the archive and verified as it goes.
-  const mediaDir = path.join(outDir, ...STAGED_MEDIA_DIR.split('/'));
-  fs.rmSync(mediaDir, { recursive: true, force: true });
-  fs.mkdirSync(mediaDir, { recursive: true });
-  const { payload } = await extractReleaseArchive(
-    fileSource(releaseFile),
-    manifest,
-    (asset) => mediaFileSink(mediaDir, asset),
-  );
-
-  // A reference to art the release did not package.
-  //
-  // The web exporter warns about these, because a `--dist` pointing at a full
-  // Expo build still carries the app's own `assets/` tree and the picture would
-  // still appear. Nothing rescues them here: the player profile substitutes an
-  // empty bundled-asset map and staging then deletes the files, so an unpackaged
-  // reference is a guaranteed blank image on a stranger's phone. Fatal, and
-  // fatal before the media is written rather than after.
-  assertEveryReferencePackaged(payload, manifest);
-
-  const stamp = generatedAt ?? manifest.release.releasedAt;
-  const bootConfig = buildPlayerBootConfig({ manifest, payload, generatedAt: stamp });
-  fs.writeFileSync(
-    path.join(outDir, ...STAGED_RELEASE_JSON.split('/')),
-    JSON.stringify(bootConfig),
-  );
-
-  const mediaFiles = fs.readdirSync(mediaDir).sort();
-  const generatedFile = path.join(outDir, ...GENERATED_MODULE.split('/'));
-  fs.mkdirSync(path.dirname(generatedFile), { recursive: true });
-  fs.writeFileSync(generatedFile, generatedReleaseModule(mediaFiles, stamp));
-
-  const icon = stageIcons(outDir, repoRoot, bootConfig, input.iconOverride);
-
-  const env = buildEnv(identity, input.easProjectId);
-  fs.writeFileSync(
-    path.join(outDir, 'package.json'),
-    `${JSON.stringify(
-      stagedPackageJson(
-        JSON.parse(fs.readFileSync(path.join(outDir, 'package.json'), 'utf8')),
-        identity,
-      ),
-      null,
-      2,
-    )}\n`,
-  );
-  fs.writeFileSync(path.join(outDir, 'eas.json'), `${JSON.stringify(stagedEasJson(env), null, 2)}\n`);
-  fs.writeFileSync(path.join(outDir, '.easignore'), EAS_IGNORE);
-
-  return {
-    outDir,
-    identity,
-    manifest,
-    icon,
-    mediaFiles,
-    mediaBytes: mediaFiles.reduce((total, file) => total + fs.statSync(path.join(mediaDir, file)).size, 0),
-    env,
-    prunedAssets: pruned.files,
-    prunedBytes: pruned.bytes,
-    unresolvedModules: graph.unresolved,
-  };
 }
 
 /**
@@ -609,11 +649,25 @@ export function verifyStagedAndroidProject(outDir: string): string[] {
       if (!entry.env?.VNE_PLAYER_APP_ID) {
         problems.push(`eas.json profile "${profile}" carries no application id.`);
       }
+      if (!entry.env?.VNE_EAS_PROJECT_ID) {
+        problems.push(`eas.json profile "${profile}" carries no EAS project id.`);
+      }
     }
     // One release, one application. Two profiles that disagree would sideload
     // and list as different apps, and only one of them could take an update.
     const [apk, aab] = ['player-apk', 'player-aab'].map((name) => eas.build?.[name]?.env ?? {});
-    for (const key of ['VNE_PLAYER_APP_ID', 'VNE_PLAYER_VERSION', 'VNE_PLAYER_VERSION_CODE']) {
+    for (const key of [
+      'VNE_PROFILE',
+      'VNE_EAS_PROJECT_ID',
+      'VNE_PLAYER_APP_ID',
+      'VNE_PLAYER_APP_NAME',
+      'VNE_PLAYER_VERSION',
+      'VNE_PLAYER_VERSION_CODE',
+      'VNE_PLAYER_SLUG',
+      'VNE_PLAYER_SCHEME',
+      'VNE_PLAYER_ICON',
+      'VNE_PLAYER_SPLASH',
+    ]) {
       if (apk[key] !== aab[key]) {
         problems.push(`The two build profiles disagree about ${key}: "${apk[key]}" and "${aab[key]}".`);
       }

@@ -1,8 +1,9 @@
 # Build helper
 
-A local service that turns a `.vnerelease` into a native artifact. The app never
-runs a toolchain and never holds a signing credential; it submits a request and
-follows it.
+A local service kernel for native builds. The app never runs a toolchain and
+never holds a signing credential; it submits a request and follows it. The fake
+builder exercises that contract today. The EAS builder is intentionally
+unavailable until submit/poll/download/signature verification is implemented.
 
 ```bash
 pnpm build-helper --allow-origin http://localhost:8081
@@ -96,8 +97,8 @@ that says when it will.
   Android build that can be checked without a cloud account: `pnpm stage:android`
   turns a verified `.vnerelease` into an Expo project with the story inside it,
   the editor out of it and the file pickers unlinked. Submitting that project has
-  never run through this helper, so readiness says no and the job never leaves
-  `queued`. `build()` briefly staged and then threw; it was taken back out,
+  never run through this helper, so readiness says no and a new job is refused
+  at `submit`, before a job record or upload exists. `build()` briefly staged and then threw; it was taken back out,
   because the server never reaches it while readiness is false, and an
   unreachable branch that reads like a working feature is worse than an honest
   refusal.

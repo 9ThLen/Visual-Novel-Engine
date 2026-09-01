@@ -21,7 +21,9 @@ import {
   STAGED_RELEASE_JSON,
   assertEveryReferencePackaged,
   generatedReleaseModule,
+  parseAutolinkedModulesOutput,
   referencedStudioRoutes,
+  stageAndroidProject,
   stagedEasJson,
   stagedPackageJson,
   verifyStagedAndroidProject,
@@ -65,6 +67,7 @@ function stagedProject(overrides: { skip?: string[] } = {}): string {
   if (!skip.has('eas.json')) {
     write(root, 'eas.json', JSON.stringify(stagedEasJson({
       VNE_PROFILE: 'player',
+      VNE_EAS_PROJECT_ID: 'project-1',
       VNE_PLAYER_APP_ID: identity.applicationId,
       VNE_PLAYER_VERSION_CODE: String(identity.androidVersionCode),
     })));
@@ -116,6 +119,19 @@ describe('the staged package.json', () => {
       { name: string; version: string };
     expect(staged.name).toBe(identity.applicationId.split('.').join('-'));
     expect(staged.version).toBe('2.1.0');
+  });
+});
+
+describe('autolinking CLI output', () => {
+  it('fails closed when the JSON schema is empty or changes', () => {
+    for (const output of ['{}', '{"modules":[]}', '{"modules":[{}]}']) {
+      expect(() => parseAutolinkedModulesOutput(output), output).toThrow();
+    }
+  });
+
+  it('returns package names from the real schema', () => {
+    expect(parseAutolinkedModulesOutput('{"modules":[{"packageName":"expo-asset"}]}'))
+      .toEqual(['expo-asset']);
   });
 });
 
@@ -295,6 +311,30 @@ export const PACKAGED_RELEASE: PackagedRelease | null = null;
     expect(verifyStagedAndroidProject(root).join('\n')).toContain('disagree about VNE_PLAYER_APP_ID');
   });
 
+  it('compares signing project and every visible identity field across profiles', () => {
+    root = stagedProject({ skip: ['eas.json'] });
+    const eas = stagedEasJson({
+      VNE_PROFILE: 'player',
+      VNE_EAS_PROJECT_ID: 'project-a',
+      VNE_PLAYER_APP_ID: 'com.a.b',
+      VNE_PLAYER_APP_NAME: 'Rain',
+      VNE_PLAYER_VERSION: '2.1.0',
+      VNE_PLAYER_VERSION_CODE: '2001000',
+      VNE_PLAYER_SLUG: 'com-a-b',
+      VNE_PLAYER_ICON: './assets/player-icon.png',
+      VNE_PLAYER_SPLASH: './assets/player-splash.png',
+    }) as { build: Record<string, { env: Record<string, string> }> };
+    eas.build['player-aab'].env = {
+      ...eas.build['player-aab'].env,
+      VNE_EAS_PROJECT_ID: 'project-b',
+      VNE_PLAYER_ICON: './other.png',
+    };
+    write(root, 'eas.json', JSON.stringify(eas));
+    const problems = verifyStagedAndroidProject(root).join('\n');
+    expect(problems).toContain('disagree about VNE_EAS_PROJECT_ID');
+    expect(problems).toContain('disagree about VNE_PLAYER_ICON');
+  });
+
   it('says so when there is no project at all', () => {
     root = tempDir();
     expect(verifyStagedAndroidProject(root)).toEqual(['The staged project has no package.json.']);
@@ -324,12 +364,33 @@ describe('art the release does not carry', () => {
       .toThrow('assets/background/missing.png');
   });
 
+  it('also checks manifest-level cover art merged into the player story', () => {
+    const withMissingCover = {
+      assets: [{ assetId: 'a1', sourceReferences: ['assets/background/kept.png'] }],
+      story: { thumbnailUri: 'assets/background/missing-cover.png' },
+    } as never;
+    expect(() => assertEveryReferencePackaged({ scenes: {} } as never, withMissingCover))
+      .toThrow('assets/background/missing-cover.png');
+  });
+
   it('names a few and counts the rest rather than printing hundreds', () => {
     const scenes = Object.fromEntries(
       Array.from({ length: 9 }, (_, i) => [`s${i}`, { bg: `assets/background/m${i}.png` }]),
     );
     expect(() => assertEveryReferencePackaged({ scenes } as never, manifest))
       .toThrow('and 4 more');
+  });
+});
+
+describe('the staging API EAS ownership invariant', () => {
+  it('refuses a missing project id unless engine use is explicit', async () => {
+    const outDir = path.join(tempDir(), 'stage');
+    await expect(stageAndroidProject({
+      releaseFile: path.join(REPO_ROOT, 'e2e', 'player', '.demo.vnerelease'),
+      outDir,
+      repoRoot: REPO_ROOT,
+    })).rejects.toThrow('EAS project id is required');
+    expect(fs.existsSync(outDir)).toBe(false);
   });
 });
 

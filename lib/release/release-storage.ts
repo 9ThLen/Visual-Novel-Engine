@@ -20,10 +20,15 @@
  */
 import { parseReleaseManifest } from '@/lib/release/manifest';
 import type { ReleaseChannel, ReleaseManifestV1, ReleasePayloadV1 } from '@/lib/release/types';
-import { compareReleaseVersions, isReleaseVersion } from '@/lib/release/version';
+import {
+  compareReleaseVersions,
+  isNewerReleaseVersion,
+  isReleaseVersion,
+} from '@/lib/release/version';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { StorageLike } from '@/lib/persistent-storage';
 import { forgetReleaseObjects } from '@/lib/release/object-store';
+import { withReleaseStorageLock } from '@/lib/release/storage-lock';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
 
 export const RELEASE_STORAGE_VERSION = 1;
@@ -197,7 +202,7 @@ export async function readReleasePayload(
 }
 
 /** Delete every key belonging to one release. Safe to call for a missing one. */
-export async function deleteRelease(
+async function deleteReleaseUnlocked(
   storage: StorageLike,
   storyId: string,
   releaseId: string,
@@ -219,6 +224,16 @@ export async function deleteRelease(
     .filter((release) => release.releaseId !== releaseId);
   await writeIndex(storage, storyId, remaining);
   return remaining;
+}
+
+export async function deleteRelease(
+  storage: StorageLike,
+  storyId: string,
+  releaseId: string,
+): Promise<ReleaseMeta[]> {
+  return withReleaseStorageLock(`release-index:${storyId}`, () => (
+    deleteReleaseUnlocked(storage, storyId, releaseId)
+  ));
 }
 
 /**
@@ -244,10 +259,49 @@ export async function saveRelease(
   storage: StorageLike,
   input: SaveReleaseInput,
 ): Promise<ReleaseMeta> {
+  const storyId = input.manifest.release.storyId;
+  return withReleaseStorageLock(`release-index:${storyId}`, () => (
+    saveReleaseUnlocked(storage, input)
+  ));
+}
+
+async function saveReleaseUnlocked(
+  storage: StorageLike,
+  input: SaveReleaseInput,
+): Promise<ReleaseMeta> {
   const { manifest, payload } = input;
   const storyId = manifest.release.storyId;
   const releaseId = manifest.release.releaseId;
   const sceneIds = Object.keys(payload.scenes);
+
+  const releases = await listReleases(storage, storyId);
+  const existingRelease = releases.find((release) => release.releaseId === releaseId);
+  if (existingRelease) {
+    if (existingRelease.version !== manifest.release.version) {
+      throw new Error(`Release ID ${releaseId} already belongs to another version.`);
+    }
+
+    // Retrying the exact same write is safe and repairs an interrupted body
+    // write. Reusing an ID for different bytes would make an immutable release
+    // silently change underneath downloaded artifacts.
+    const [storedManifest, storedPayload] = await Promise.all([
+      readReleaseManifest(storage, storyId, releaseId),
+      readReleasePayload(storage, storyId, releaseId),
+    ]);
+    if (
+      (storedManifest && JSON.stringify(storedManifest) !== JSON.stringify(manifest))
+      || (storedPayload && JSON.stringify(storedPayload) !== JSON.stringify(payload))
+    ) {
+      throw new Error(`Release ID ${releaseId} already belongs to a different immutable artifact.`);
+    }
+  } else {
+    const previousVersion = highestReleaseVersion(releases);
+    if (!isNewerReleaseVersion(manifest.release.version, previousVersion)) {
+      throw new Error(
+        `Release version ${manifest.release.version} must be strictly newer than ${previousVersion}.`,
+      );
+    }
+  }
 
   // Bodies first, index last: a crash mid-write leaves orphaned bodies that
   // nothing lists, which is recoverable. The reverse order would leave the
@@ -300,7 +354,7 @@ export async function saveRelease(
     const victim = selectEvictionVictim(next.filter((release) => release.releaseId !== releaseId));
     if (!victim) break;
     next = next.filter((release) => release.releaseId !== victim.releaseId);
-    await deleteRelease(storage, storyId, victim.releaseId);
+    await deleteReleaseUnlocked(storage, storyId, victim.releaseId);
     input.onEvict?.(victim.releaseId);
     // deleteRelease rewrote the index from what it read; rewrite below wins.
   }
@@ -315,14 +369,16 @@ export async function setReleasePublished(
   releaseId: string,
   published: boolean,
 ): Promise<ReleaseMeta[]> {
-  const releases = await listReleases(storage, storyId);
-  if (!releases.some((release) => release.releaseId === releaseId)) return releases;
+  return withReleaseStorageLock(`release-index:${storyId}`, async () => {
+    const releases = await listReleases(storage, storyId);
+    if (!releases.some((release) => release.releaseId === releaseId)) return releases;
 
-  const next = releases.map((release) => (
-    release.releaseId === releaseId ? { ...release, published } : release
-  ));
-  await writeIndex(storage, storyId, next);
-  return sortReleases(next);
+    const next = releases.map((release) => (
+      release.releaseId === releaseId ? { ...release, published } : release
+    ));
+    await writeIndex(storage, storyId, next);
+    return sortReleases(next);
+  });
 }
 
 /** The release the showcase should render: the highest published version. */

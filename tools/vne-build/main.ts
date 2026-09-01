@@ -20,6 +20,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import {
+  parseAutolinkedModulesOutput,
   stageAndroidProject,
   verifyStagedAndroidProject,
 } from './stage-android';
@@ -132,9 +133,10 @@ function checkExpoConfig(outDir: string, env: Record<string, string>): CheckResu
   }
 
   let config: {
-    name?: string; version?: string; slug?: string;
+    name?: string; version?: string; slug?: string; scheme?: string; icon?: string;
     android?: { package?: string; versionCode?: number; blockedPermissions?: string[] };
-    extra?: { router?: { root?: string } };
+    extra?: { router?: { root?: string }; eas?: { projectId?: string } };
+    plugins?: (string | [string, Record<string, unknown>])[];
   };
   try {
     config = JSON.parse(result.stdout);
@@ -148,8 +150,14 @@ function checkExpoConfig(outDir: string, env: Record<string, string>): CheckResu
   };
   expect(config.name, env.VNE_PLAYER_APP_NAME, 'name');
   expect(config.version, env.VNE_PLAYER_VERSION, 'version');
+  expect(config.slug, env.VNE_PLAYER_SLUG, 'slug');
+  expect(config.icon, env.VNE_PLAYER_ICON, 'icon');
+  // Its own, not the engine's: duplicate scheme registrations are resolved
+  // arbitrarily, so two installed novels would fight over the same links.
+  expect(config.scheme, env.VNE_PLAYER_SCHEME, 'scheme');
   expect(config.android?.package, env.VNE_PLAYER_APP_ID, 'android.package');
   expect(config.android?.versionCode, env.VNE_PLAYER_VERSION_CODE, 'android.versionCode');
+  expect(config.extra?.eas?.projectId, env.VNE_EAS_PROJECT_ID, 'extra.eas.projectId');
   // The router root is the whole reason the editor is not in this build.
   expect(config.extra?.router?.root, './app-player', 'router root');
   for (const permission of playerProfile.PLAYER_BLOCKED_PERMISSIONS) {
@@ -157,6 +165,10 @@ function checkExpoConfig(outDir: string, env: Record<string, string>): CheckResu
       problems.push(`android.blockedPermissions is missing ${permission}`);
     }
   }
+  const splash = config.plugins?.find(
+    (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-splash-screen',
+  );
+  expect(Array.isArray(splash) ? splash[1]?.image : undefined, env.VNE_PLAYER_SPLASH, 'splash image');
   return {
     ok: problems.length === 0,
     detail: problems.length > 0 ? problems : [
@@ -174,14 +186,14 @@ function checkExpoConfig(outDir: string, env: Record<string, string>): CheckResu
  * own, so here the exclusions finally mean something, and here is where that
  * stops being a claim.
  */
-function checkAutolinking(outDir: string): CheckResult {
+function resolveAutolinkedModules(projectDir: string): CheckResult & { modules?: string[] } {
   const result = spawnSync(
     process.execPath,
     [
       path.join(REPO_ROOT, 'node_modules', 'expo-modules-autolinking', 'bin', 'expo-modules-autolinking.js'),
       'resolve', '-p', 'android', '--json',
     ],
-    { cwd: outDir, encoding: 'utf8' },
+    { cwd: projectDir, encoding: 'utf8' },
   );
   if (result.status !== 0) {
     return { ok: false, detail: ['autolinking resolve failed', ...(result.stderr ?? '').trim().split('\n').slice(-4)] };
@@ -189,17 +201,36 @@ function checkAutolinking(outDir: string): CheckResult {
 
   let linked: string[];
   try {
-    const parsed = JSON.parse(result.stdout) as { modules?: { packageName?: string }[] };
-    linked = (parsed.modules ?? []).map((module) => module.packageName ?? '').filter(Boolean);
+    linked = parseAutolinkedModulesOutput(result.stdout);
   } catch {
-    return { ok: false, detail: ['autolinking resolve did not print JSON'] };
+    return { ok: false, detail: ['autolinking resolve did not print the expected JSON schema'] };
   }
+  return { ok: true, detail: [], modules: linked };
+}
+
+function checkAutolinking(outDir: string): CheckResult {
+  const engine = resolveAutolinkedModules(REPO_ROOT);
+  if (!engine.ok || !engine.modules) return engine;
+  const staged = resolveAutolinkedModules(outDir);
+  if (!staged.ok || !staged.modules) return staged;
+
+  const linked = staged.modules;
+  const expected = engine.modules.filter(
+    (name) => !playerProfile.PLAYER_AUTOLINKING_EXCLUDE.includes(name),
+  );
 
   const leaked = playerProfile.PLAYER_AUTOLINKING_EXCLUDE.filter((name) => linked.includes(name));
+  const missing = expected.filter((name) => !linked.includes(name));
+  const unexpected = linked.filter((name) => !expected.includes(name));
+  const problems = [
+    ...leaked.map((name) => `${name} is still linked into the APK`),
+    ...missing.map((name) => `${name} disappeared from the staged native graph`),
+    ...unexpected.map((name) => `${name} appears only in the staged native graph`),
+  ];
   return {
-    ok: leaked.length === 0,
-    detail: leaked.length > 0
-      ? leaked.map((name) => `${name} is still linked into the APK`)
+    ok: problems.length === 0,
+    detail: problems.length > 0
+      ? problems
       : [`${linked.length} native module(s) linked; ${playerProfile.PLAYER_AUTOLINKING_EXCLUDE.length} excluded`],
   };
 }
@@ -231,6 +262,7 @@ async function main(): Promise<void> {
       outDir: path.resolve(process.cwd(), args.out),
       repoRoot: REPO_ROOT,
       easProjectId: args.easProjectId,
+      allowEngineProject: args.allowEngineProject,
       iconOverride: args.icon,
     });
   } catch (error) {
@@ -282,10 +314,17 @@ async function main(): Promise<void> {
       'Pass --skip-checks to stage anyway, knowing neither was verified.',
     ]);
   } else {
-    for (const [label, check] of [
-      ['Expo config', () => checkExpoConfig(staged.outDir, staged.env)],
+    const eas = JSON.parse(fs.readFileSync(path.join(staged.outDir, 'eas.json'), 'utf8')) as {
+      build?: Record<string, { env?: Record<string, string> }>;
+    };
+    const checks: [string, () => CheckResult][] = [
+      ...['player-apk', 'player-aab'].map((profile): [string, () => CheckResult] => [
+        `Expo config (${profile})`,
+        () => checkExpoConfig(staged.outDir, eas.build?.[profile]?.env ?? {}),
+      ]),
       ['Native modules', () => checkAutolinking(staged.outDir)],
-    ] as const) {
+    ];
+    for (const [label, check] of checks) {
       const result = check();
       if (!result.ok) fail(`${label} check failed`, result.detail);
       console.log(color.dim(`  ${label}: ${result.detail.join('; ')}`));

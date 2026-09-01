@@ -90,6 +90,7 @@ export class BuildHelperServer {
   private readonly uploading = new Set<string>();
   private readonly sockets = new Set<WebSocket>();
   private readonly subscriptions = new Map<WebSocket, Set<string>>();
+  private builderReadiness: Awaited<ReturnType<Builder['readiness']>> | null = null;
   private http: Server | null = null;
   private wss: WebSocketServer | null = null;
 
@@ -119,11 +120,16 @@ export class BuildHelperServer {
     return new Date(this.now()).toISOString();
   }
 
+  get builderStatus(): Awaited<ReturnType<Builder['readiness']>> | null {
+    return this.builderReadiness;
+  }
+
   async start(): Promise<number> {
     // Anything left behind by a previous run, before accepting new work.
     sweepAbandonedUploads(this.uploadsDir, BUILD_LIMITS.abandonedUploadMs, this.now());
 
     const resumable = this.reconcilePersistedJobs();
+    this.builderReadiness = await this.builder.readiness();
     this.http = createServer((request, response) => {
       void this.handleHttp(request, response).catch((error) => {
         const [reason] = sanitizeBuildLog(
@@ -147,7 +153,9 @@ export class BuildHelperServer {
       this.http?.listen(this.options.port ?? 0, '127.0.0.1', resolve);
     });
     const address = this.http?.address();
-    for (const requestId of resumable) void this.runBuild(requestId);
+    if (this.builderReadiness.ready) {
+      for (const requestId of resumable) void this.runBuild(requestId);
+    }
     return typeof address === 'object' && address ? address.port : (this.options.port ?? 0);
   }
 
@@ -453,6 +461,15 @@ export class BuildHelperServer {
       return this.announce(existing);
     }
 
+    if (!this.builderReadiness?.ready) {
+      return this.fail(
+        socket,
+        'BUILDER_UNAVAILABLE',
+        this.builderReadiness?.reason ?? 'The builder readiness check has not completed',
+        request.requestId,
+      );
+    }
+
     const job = createBuildJob(request, this.stamp());
     this.store.write(job);
     // The operator's view. Deliberately the request id and target only: the
@@ -484,6 +501,14 @@ export class BuildHelperServer {
     this.subscribe(socket, requestId);
     const job = this.store.read(requestId);
     if (!job) return this.fail(socket, 'UNKNOWN_REQUEST', 'No such build', requestId);
+    if (!this.builderReadiness?.ready) {
+      return this.fail(
+        socket,
+        'BUILDER_UNAVAILABLE',
+        this.builderReadiness?.reason ?? 'The builder readiness check has not completed',
+        requestId,
+      );
+    }
     if (this.running.has(requestId) || this.uploading.has(requestId)) {
       return this.fail(
         socket,

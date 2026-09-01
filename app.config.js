@@ -51,6 +51,7 @@ const playerAppName = playerProfile ? env("VNE_PLAYER_APP_NAME") : undefined;
 const playerVersion = playerProfile ? env("VNE_PLAYER_VERSION") : undefined;
 const playerVersionCode = playerProfile ? env("VNE_PLAYER_VERSION_CODE") : undefined;
 const playerSlug = playerProfile ? env("VNE_PLAYER_SLUG") : undefined;
+const playerScheme = playerProfile ? env("VNE_PLAYER_SCHEME") : undefined;
 const playerIcon = playerProfile ? env("VNE_PLAYER_ICON") : undefined;
 const playerSplash = playerProfile ? env("VNE_PLAYER_SPLASH") : undefined;
 
@@ -59,7 +60,8 @@ const playerSplash = playerProfile ? env("VNE_PLAYER_SPLASH") : undefined;
  * belong to the author's account, which is also who should own the signing
  * credentials Android will hold them to for the life of the story.
  */
-const easProjectId = env("VNE_EAS_PROJECT_ID") ?? "1c9703fa-b3eb-4cac-ba94-536a07fa2443";
+export const ENGINE_EAS_PROJECT_ID = "1c9703fa-b3eb-4cac-ba94-536a07fa2443";
+const easProjectId = env("VNE_EAS_PROJECT_ID") ?? ENGINE_EAS_PROJECT_ID;
 
 const appConfig = {
   name: playerAppName ?? "Visual Novel Engine",
@@ -67,7 +69,12 @@ const appConfig = {
   version: playerVersion ?? "1.0.0",
   orientation: "default",
   icon: playerIcon ?? "./assets/images/icon.png",
-  scheme: schemeFromBundleId,
+  // A player build gets its own, derived from its application id. Every build
+  // used to carry the engine's, so two novels on one phone registered the same
+  // custom scheme — and the OS picks between duplicate registrations
+  // arbitrarily, which is a link for one novel opening another, or a player
+  // sitting in front of the studio's own OAuth redirect.
+  scheme: playerScheme ?? schemeFromBundleId,
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
   ios: {

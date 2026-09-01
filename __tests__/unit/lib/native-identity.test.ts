@@ -17,6 +17,7 @@ import {
   androidVersionCode,
   androidVersionCodeProblem,
   deriveAndroidIdentity,
+  deriveUrlScheme,
   isSameSigningCertificate,
   normalizeSigningFingerprint,
   MAX_ANDROID_VERSION_CODE,
@@ -229,6 +230,7 @@ describe('the Android identity', () => {
       productName: 'Rain',
       version: '2.1.0',
       androidVersionCode: 2_001_000,
+      urlScheme: deriveUrlScheme(deriveApplicationId('story_42')),
     });
   });
 
@@ -236,5 +238,40 @@ describe('the Android identity', () => {
   it('refuses a version the desktop one accepts', () => {
     expect(deriveNativeIdentity({ storyId: 's1', version: '1.0.1000' }).version).toBe('1.0.1000');
     expect(() => deriveAndroidIdentity({ storyId: 's1', version: '1.0.1000' })).toThrow('does not fit');
+  });
+});
+
+describe('the URL scheme', () => {
+  /**
+   * Every build used to carry the engine's own scheme, so two novels installed
+   * on one phone registered the same one — and duplicate registrations are
+   * resolved arbitrarily. A link meant for one novel opens another, and a player
+   * can sit in front of the studio's own OAuth redirect on a device with both.
+   */
+  it('is different for every application', () => {
+    const schemes = ['story_a', 'story_b', 'my-story', 'my_story']
+      .map((id) => deriveUrlScheme(deriveApplicationId(id)));
+    expect(new Set(schemes).size).toBe(schemes.length);
+  });
+
+  it('is stable for one application', () => {
+    const id = deriveApplicationId('story_42');
+    expect(deriveUrlScheme(id)).toBe(deriveUrlScheme(id));
+  });
+
+  /** Letters and digits only: mobile linking handles the rest inconsistently. */
+  it('is letters and digits, starting with a letter', () => {
+    for (const storyId of ['story_42', '99999', 'кирилиця', 'MyStory']) {
+      expect(deriveUrlScheme(deriveApplicationId(storyId)), storyId).toMatch(/^[a-z][a-z0-9]*$/);
+    }
+  });
+
+  it('refuses to derive one from an id no platform would accept', () => {
+    expect(() => deriveUrlScheme('com.my_story.s1')).toThrow('not a usable part');
+  });
+
+  it('travels with the rest of the Android identity', () => {
+    const identity = deriveAndroidIdentity({ storyId: 'story_42', title: 'Rain', version: '2.1.0' });
+    expect(identity.urlScheme).toBe(deriveUrlScheme(identity.applicationId));
   });
 });

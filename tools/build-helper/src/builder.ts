@@ -108,9 +108,9 @@ export class FakeBuilder implements Builder {
  *
  * Submitting does not run. `eas build` needs an Expo account, credentials the
  * account owns, and a paid queue; no build has ever gone through this helper. So
- * this refuses, and the job never leaves `queued` — the server asks
- * {@link readiness} before staging anything, which is the right order: an author
- * on an unconfigured machine should be told before an upload, not after.
+ * this refuses — the server asks {@link readiness} at startup and rejects a new
+ * `submit` before creating a job, which is the right order: an author on an
+ * unconfigured machine should be told before an upload, not after.
  *
  * It would have been easy to have `build()` stage and then throw. It was written
  * that way and taken back out: the server never reaches `build()` while

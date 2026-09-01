@@ -15,6 +15,7 @@ const PLAYER_ENV = {
   VNE_PLAYER_VERSION: '2.1.0',
   VNE_PLAYER_VERSION_CODE: '2001000',
   VNE_PLAYER_SLUG: 'com-vne-story-rain-s1',
+  VNE_PLAYER_SCHEME: 'rains1',
   VNE_PLAYER_ICON: './assets/player-icon.png',
 };
 
@@ -23,6 +24,7 @@ interface AppConfig {
   slug: string;
   version: string;
   icon: string;
+  scheme: string;
   android: { package: string; versionCode?: number };
   ios: { bundleIdentifier: string };
   extra: { eas: { projectId: string } };
@@ -57,6 +59,8 @@ describe('the app config under the player profile', () => {
     expect(config.android.versionCode).toBe(2_001_000);
     expect(config.ios.bundleIdentifier).toBe('com.vne.story.rain.s1');
     expect(config.icon).toBe('./assets/player-icon.png');
+    // Its own, so two novels on one phone do not register the same one.
+    expect(config.scheme).toBe('rains1');
   });
 
   /**
@@ -72,6 +76,7 @@ describe('the app config under the player profile', () => {
     expect(config.version).toBe('1.0.0');
     expect(config.android.package).not.toBe('com.vne.story.rain.s1');
     expect(config.android.versionCode).toBeUndefined();
+    expect(config.scheme).not.toBe('rains1');
   });
 
   /**

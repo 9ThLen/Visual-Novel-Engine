@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { prepareOutPath } from '../../tools/lib/out-path';
+import { beginOutPath } from '../../tools/lib/out-path';
 
 import {
   chooseIconSource,
@@ -146,9 +146,6 @@ export function stageDesktopProject(input: StageDesktopInput): StagedDesktopProj
   if (!fs.existsSync(path.join(templateDir, 'src-tauri', 'tauri.conf.json'))) {
     throw new Error(`No desktop template at ${templateDir}`);
   }
-  if (outDir === bundleDir) {
-    throw new Error('The staged project must not be the bundle directory: it is emptied first.');
-  }
   // Everything that can refuse happens before anything is emptied: a bundle with
   // no release must not cost the author the directory they pointed at.
   const release = readBundleRelease(bundleDir);
@@ -158,31 +155,47 @@ export function stageDesktopProject(input: StageDesktopInput): StagedDesktopProj
     version: release.version,
   });
 
-  prepareOutPath(outDir, { repoRoot: input.repoRoot, cwd: input.cwd });
-  fs.cpSync(templateDir, outDir, { recursive: true });
+  const transaction = beginOutPath(outDir, {
+    repoRoot: input.repoRoot,
+    cwd: input.cwd,
+    inputs: [bundleDir, templateDir],
+  });
+  try {
+    const workDir = transaction.workPath;
+    fs.cpSync(templateDir, workDir, { recursive: true });
 
-  const frontendDir = path.join(outDir, FRONTEND_DIR_NAME);
-  fs.cpSync(bundleDir, frontendDir, { recursive: true });
+    const workFrontendDir = path.join(workDir, FRONTEND_DIR_NAME);
+    fs.cpSync(bundleDir, workFrontendDir, { recursive: true });
 
-  const srcTauriDir = path.join(outDir, 'src-tauri');
-  const configFile = path.join(srcTauriDir, 'tauri.conf.json');
-  const targets = input.targets && input.targets.length > 0 ? [...input.targets] : undefined;
-  writeTauriConfig(configFile, identity, targets);
-  writeCargoVersion(path.join(srcTauriDir, 'Cargo.toml'), identity.version);
+    const workSrcTauriDir = path.join(workDir, 'src-tauri');
+    const workConfigFile = path.join(workSrcTauriDir, 'tauri.conf.json');
+    const targets = input.targets && input.targets.length > 0 ? [...input.targets] : undefined;
+    writeTauriConfig(workConfigFile, identity, targets);
+    writeCargoVersion(path.join(workSrcTauriDir, 'Cargo.toml'), identity.version);
 
-  const frontendFiles = listFiles(frontendDir);
-  return {
-    outDir,
-    srcTauriDir,
-    frontendDir,
-    configFile,
-    identity,
-    release,
-    targets: readTauriConfig(configFile).bundle.targets,
-    frontendFileCount: frontendFiles.length,
-    frontendBytes: frontendFiles.reduce((total, file) => total + fs.statSync(file).size, 0),
-    iconsGenerated: hasGeneratedIcons(srcTauriDir),
-  };
+    const frontendFiles = listFiles(workFrontendDir);
+    const result = {
+      identity,
+      release,
+      targets: readTauriConfig(workConfigFile).bundle.targets,
+      frontendFileCount: frontendFiles.length,
+      frontendBytes: frontendFiles.reduce((total, file) => total + fs.statSync(file).size, 0),
+      iconsGenerated: hasGeneratedIcons(workSrcTauriDir),
+    };
+    transaction.commit();
+
+    const srcTauriDir = path.join(outDir, 'src-tauri');
+    return {
+      outDir,
+      srcTauriDir,
+      frontendDir: path.join(outDir, FRONTEND_DIR_NAME),
+      configFile: path.join(srcTauriDir, 'tauri.conf.json'),
+      ...result,
+    };
+  } catch (error) {
+    transaction.abort();
+    throw error;
+  }
 }
 
 interface TauriConfig {

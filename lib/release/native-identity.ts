@@ -321,9 +321,34 @@ export function isSameSigningCertificate(a: unknown, b: unknown): boolean {
   return left !== null && left === right;
 }
 
+/**
+ * The custom URL scheme a player app registers.
+ *
+ * Every build used to carry the engine's own — so two novels installed on one
+ * phone registered the same scheme, and the OS picks between duplicate
+ * registrations arbitrarily. A link meant for one novel could open another, and
+ * a player could sit in front of the studio's own OAuth redirect on a device
+ * that had both. The scheme is part of an application's identity, so it comes
+ * from the application id like the rest of it.
+ *
+ * Letters and digits only, starting with a letter: dots and hyphens are legal in
+ * a URI scheme and are handled inconsistently enough by mobile linking that they
+ * are not worth the risk.
+ */
+export function deriveUrlScheme(applicationId: string): string {
+  const problem = applicationIdProblem(applicationId);
+  if (problem) throw new Error(problem);
+  // The prefix segments are shared by every story and say nothing; the tail is
+  // the slug and the hash, which is exactly what makes one app distinct.
+  const scheme = applicationId.split('.').slice(-2).join('');
+  return /^[a-z]/.test(scheme) ? scheme : `s${scheme}`;
+}
+
 export interface AndroidIdentity extends NativeIdentity {
   /** Also the Android package name; `applicationId` already satisfies its rules. */
   androidVersionCode: number;
+  /** Unique per application; see {@link deriveUrlScheme}. */
+  urlScheme: string;
 }
 
 /**
@@ -334,5 +359,9 @@ export interface AndroidIdentity extends NativeIdentity {
  */
 export function deriveAndroidIdentity(input: DeriveNativeIdentityInput): AndroidIdentity {
   const identity = deriveNativeIdentity(input);
-  return { ...identity, androidVersionCode: androidVersionCode(identity.version) };
+  return {
+    ...identity,
+    androidVersionCode: androidVersionCode(identity.version),
+    urlScheme: deriveUrlScheme(identity.applicationId),
+  };
 }
