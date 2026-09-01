@@ -100,6 +100,13 @@ function stagedProject(overrides: { skip?: string[] } = {}): string {
   }
   write(root, STAGED_ICON, 'icon');
   write(root, 'assets/player-splash.png', 'splash');
+  // Metro resolves a substituted module before swapping it, so a properly
+  // staged project still carries the originals.
+  if (!skip.has('substitutions')) {
+    for (const entry of playerProfile.PLAYER_MODULE_SUBSTITUTIONS as { from: string }[]) {
+      write(root, entry.from, 'export const x = 1;');
+    }
+  }
   return root;
 }
 
@@ -488,6 +495,72 @@ describe('the extensions the verifier will accept', () => {
     const bundled = new Set(JSON.parse(probe.stdout) as string[]);
     for (const extension of BUNDLEABLE_MEDIA_EXTENSIONS) {
       expect(bundled.has(extension.replace('.', '')), extension).toBe(true);
+    }
+  });
+});
+
+/**
+ * The substitution is the player build's whole mechanism, and it is fragile in
+ * one specific way: Metro resolves a request and *then* swaps the resolved file,
+ * so the module being replaced has to still be on disk. A staging step that
+ * prunes what the module graph cannot reach will not reach it — the graph walk
+ * applies the same substitution — and deleting it breaks the bundle with
+ * "Unable to resolve module" rather than shrinking it.
+ *
+ * This is the failure that killed the first real EAS build, at 87% of the way
+ * through bundling, twenty minutes in.
+ */
+describe('modules the player build substitutes', () => {
+  const substituted = (playerProfile.PLAYER_MODULE_SUBSTITUTIONS as { from: string; to: string }[])
+    .map((entry) => entry.from);
+
+  it('has some, and they are the ones the profile names', () => {
+    expect(substituted).toContain('stores/use-app-store.ts');
+    expect(substituted.length).toBeGreaterThan(0);
+  });
+
+  it('survive the prune that removes everything unreachable', () => {
+    const root = tempDir();
+    try {
+      for (const file of [...substituted, 'lib/orphan.ts', 'lib/kept.ts']) {
+        write(root, file, 'export const x = 1;');
+      }
+      const removed = pruneUnreachableSource(root, new Set(['lib/kept.ts']));
+
+      for (const file of substituted) {
+        expect(fs.existsSync(path.join(root, ...file.split('/'))), file).toBe(true);
+        expect(removed, file).not.toContain(file);
+      }
+      expect(removed).toContain('lib/orphan.ts');
+      expect(fs.existsSync(path.join(root, 'lib', 'kept.ts'))).toBe(true);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * `stores/use-app-store.ts` is on both lists: forbidden from the player's
+   * module graph, and required on disk for the swap. The verifier used to read
+   * the first as "must not exist" and failed the project that satisfied the
+   * second.
+   */
+  it('are not reported as authoring code that came along', () => {
+    const root = stagedProject();
+    try {
+      expect(verifyStagedAndroidProject(root).join('\n')).not.toContain('is still in the staged project');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('are reported when they are missing, naming what the bundler would say', () => {
+    const root = stagedProject({ skip: ['substitutions'] });
+    try {
+      const problems = verifyStagedAndroidProject(root).join('\n');
+      expect(problems).toContain('Unable to resolve module');
+      expect(problems).toContain('stores/use-app-store.ts');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 });

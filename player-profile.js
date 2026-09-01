@@ -43,6 +43,14 @@ const PLAYER_STORE_SUBSTITUTION = {
  *   inside every artifact. A release carries its own bytes, so a player needs
  *   none of it — but Metro bundles what it can see, and the only way to not ship
  *   a file is to stop naming it.
+ *
+ * **The original has to stay on disk.** Metro resolves the request first and
+ * swaps the resolved file afterwards (see `metro.config.js`), so removing the
+ * module being replaced is the same as blocking it: resolution fails before the
+ * swap can happen. R9's Android staging learned this by deleting
+ * `stores/use-app-store.ts` as unreachable — the graph walk applies these
+ * substitutions, so it never visits it — and watching a cloud build die at 87%
+ * of bundling with "Unable to resolve module @/stores/use-app-store".
  */
 const PLAYER_MODULE_SUBSTITUTIONS = [
   PLAYER_STORE_SUBSTITUTION,

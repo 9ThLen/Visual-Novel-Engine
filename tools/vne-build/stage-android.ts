@@ -849,8 +849,22 @@ export function verifyStagedAndroidProject(outDir: string): string[] {
   for (const tree of playerProfile.PLAYER_BLOCKED_TREES) {
     if (exists(...tree.split('/'))) problems.push(`${tree} is still in the staged project.`);
   }
+  // "Forbidden" means unreachable from the player root, not absent from disk.
+  // A substituted module has to remain: Metro resolves the original and swaps
+  // the result, so removing it breaks the bundle instead of shrinking it. These
+  // two rules contradicted each other once, and the build died on it.
+  const substituted = substitutionSources();
   for (const module of playerProfile.PLAYER_FORBIDDEN_MODULES) {
+    if (substituted.has(module)) continue;
     if (exists(...module.split('/'))) problems.push(`${module} is still in the staged project.`);
+  }
+  for (const module of substituted) {
+    if (!exists(...module.split('/'))) {
+      problems.push(
+        `${module} was removed, but Metro substitutes it by resolving it first — `
+        + 'the bundle will fail with "Unable to resolve module".',
+      );
+    }
   }
 
   // 6. Branding.
@@ -922,8 +936,26 @@ export async function inspectStagedGraph(outDir: string): Promise<StagedGraph> {
 const PRUNABLE_SOURCE_ROOTS = ['app', 'app-player', 'components', 'hooks', 'lib', 'stores'];
 const SOURCE_FILE_PATTERN = /\.(?:[cm]?[jt]sx?)$/;
 
+/**
+ * Files that must stay on disk even though nothing reaches them.
+ *
+ * Metro substitutes a module by resolving the request *first* and swapping the
+ * resolved file afterwards (`metro.config.js`). So the original has to exist:
+ * delete it and resolution fails before the swap can happen, with "Unable to
+ * resolve module @/stores/use-app-store" — which is the same failure
+ * `player-profile.js` warns about when it says the store is substituted rather
+ * than blocked, because blocking it only breaks the build.
+ *
+ * The graph walk applies the substitutions, so it never visits these and they
+ * look unreachable. They are not; they are the door the swap goes through.
+ */
+function substitutionSources(): Set<string> {
+  return new Set(moduleSubstitutions().map((entry) => entry.from));
+}
+
 /** Remove source EAS would upload even though Android Metro cannot reach it. */
 export function pruneUnreachableSource(outDir: string, reachable: Set<string>): string[] {
+  const keep = substitutionSources();
   const removed: string[] = [];
   const walk = (dir: string) => {
     if (!fs.existsSync(dir)) return;
@@ -932,7 +964,7 @@ export function pruneUnreachableSource(outDir: string, reachable: Set<string>): 
       if (entry.isDirectory()) { walk(full); continue; }
       if (!SOURCE_FILE_PATTERN.test(entry.name)) continue;
       const relative = path.relative(outDir, full).split(path.sep).join('/');
-      if (reachable.has(relative)) continue;
+      if (reachable.has(relative) || keep.has(relative)) continue;
       fs.rmSync(full);
       removed.push(relative);
     }
