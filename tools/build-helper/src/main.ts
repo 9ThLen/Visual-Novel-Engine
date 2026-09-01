@@ -12,13 +12,12 @@ import path from 'node:path';
 import process from 'node:process';
 
 import { BuildHelperServer } from './server';
-import { EasBuilder, FakeBuilder, type Builder } from './builder';
+import { EasBuilder, type Builder } from './builder';
 
 interface Options {
   port: number;
   workDirectory: string;
   allowedOrigins: string[];
-  builder: 'fake' | 'eas';
   easProjectId?: string;
   token?: string;
 }
@@ -28,7 +27,6 @@ function parseArgs(argv: string[]): Options {
     port: 8790,
     workDirectory: path.resolve(process.cwd(), '.vne-builds'),
     allowedOrigins: [],
-    builder: 'eas',
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -36,15 +34,6 @@ function parseArgs(argv: string[]): Options {
       case '--port': options.port = Number(argv[++i]); break;
       case '--work-dir': options.workDirectory = path.resolve(argv[++i]); break;
       case '--allow-origin': options.allowedOrigins.push(argv[++i]); break;
-      case '--builder': {
-        const value = argv[++i];
-        if (value !== 'fake' && value !== 'eas') {
-          console.error(`--builder must be fake or eas, got "${value}"`);
-          process.exit(1);
-        }
-        options.builder = value;
-        break;
-      }
       case '--eas-project-id': options.easProjectId = argv[++i]; break;
       case '--token': options.token = argv[++i]; break;
       case '--help':
@@ -56,11 +45,12 @@ Local build helper for Visual Novel Engine.
   --work-dir <dir>        Jobs, uploads and artifacts (default ./.vne-builds).
   --allow-origin <origin> Loopback origin the browser will connect from.
                           Repeatable; defaults to the AI bridge's.
-  --builder <fake|eas>    Which builder to use. Default eas; fake is test-only.
   --eas-project-id <uuid> Author's immutable EAS project for this novel.
   --token <value>         Pairing token. A fresh one is generated otherwise.
 `);
         process.exit(0);
+      default:
+        throw new Error(`Unknown build-helper option: ${argv[i]}`);
     }
   }
 
@@ -68,9 +58,11 @@ Local build helper for Visual Novel Engine.
 }
 
 function makeBuilder(options: Options): Builder {
-  return options.builder === 'eas'
-    ? new EasBuilder({ repoRoot: process.cwd(), easProjectId: options.easProjectId })
-    : new FakeBuilder({ stepMs: 400 });
+  return new EasBuilder({
+    repoRoot: process.cwd(),
+    stateDirectory: path.join(options.workDirectory, 'eas-identities'),
+    easProjectId: options.easProjectId,
+  });
 }
 
 async function main(): Promise<void> {

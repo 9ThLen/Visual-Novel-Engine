@@ -11,6 +11,12 @@ import type { StoryMetadata } from '@/lib/story-domain';
 import { useAppStore } from '@/stores/use-app-store';
 import { setMediaBlobStorageAdapterForTests } from '@/lib/idb-storage';
 import { readReleaseObjectIndex } from '@/lib/release/object-store';
+import {
+  buildStoredReleaseArchive,
+  releaseBuildRequestId,
+} from '@/lib/release/archive-build';
+import { readReleaseManifest as readPackagedReleaseManifest } from '@/lib/release/package';
+import { sourceFromBytes } from '@/lib/story-backup/hash';
 
 const STORY_ID = 'publish-flow-story';
 const COVER_URI = 'data:image/png;base64,AQID';
@@ -158,6 +164,27 @@ describe('publishing a story end to end', () => {
 
     const payload = await readReleasePayload(storage, STORY_ID, meta.releaseId);
     expect(Object.keys(payload?.scenes ?? {}).sort()).toEqual(['finish', 'start']);
+  });
+
+  it('rebuilds the immutable stored release as the exact helper upload', async () => {
+    const storage = memoryStorage();
+    const meta = await publishStoryRelease({
+      storyId: STORY_ID,
+      version: '1.0.0',
+      channel: 'both',
+      storage,
+    });
+
+    const archive = await buildStoredReleaseArchive({
+      storyId: STORY_ID,
+      releaseId: meta.releaseId,
+      storage,
+    });
+    const packaged = await readPackagedReleaseManifest(sourceFromBytes(archive.bytes));
+
+    expect(packaged.release.releaseId).toBe(meta.releaseId);
+    expect(archive.fileName).toBe('A_Publishable_Novel-v1.0.0.vnerelease');
+    expect(releaseBuildRequestId(archive.sha256, 'apk')).toMatch(/^build_[a-f0-9]{48}_apk$/);
   });
 
   it('does not ship the author\'s disabled drafts', async () => {

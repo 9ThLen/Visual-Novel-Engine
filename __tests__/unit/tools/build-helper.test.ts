@@ -446,12 +446,45 @@ describe('the build helper', () => {
     expect(existsSync(path.join(workDir, 'artifacts', 'req_one'))).toBe(false);
     client.close();
   });
+
+  it('rejects a non-ZIP response instead of offering it as an Android artifact', async () => {
+    await startServer({
+      builder: {
+        name: 'invalid-artifact',
+        readiness: async () => ({ ready: true as const }),
+        build: async ({ outputDirectory }) => {
+          mkdirSync(outputDirectory, { recursive: true });
+          const artifactPath = path.join(outputDirectory, 'response.apk');
+          writeFileSync(artifactPath, '<html>upstream error</html>');
+          return { artifactPath, fileName: 'response.apk' };
+        },
+      },
+    });
+    const client = await TestClient.connect(port, server.token);
+    client.send({ type: 'submit', request: request() });
+    await client.waitFor((m) => m.type === 'progress');
+    await upload(port, server.token, 'req_one');
+    const failed = await client.waitFor((m) => m.type === 'failed');
+
+    expect(failed.job.failureReason).toContain('not an APK/AAB ZIP');
+    client.close();
+  });
 });
 
 describe('the EAS builder adapter', () => {
   let root: string;
   beforeEach(() => { root = mkdtempSync(path.join(tmpdir(), 'vne-eas-builder-')); });
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+
+  function stageIdentity(outDir: string, storyId = 'story-one'): void {
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(path.join(outDir, '.vne-native-identity.json'), JSON.stringify({
+      version: 1,
+      storyId,
+      applicationId: `com.vne.story.${storyId}`,
+      easProjectId: EAS_PROJECT_ID,
+    }));
+  }
 
   it('stages, inspects, submits, polls and downloads one artifact', async () => {
     const calls: string[][] = [];
@@ -460,7 +493,7 @@ describe('the EAS builder adapter', () => {
       easProjectId: EAS_PROJECT_ID,
       pollIntervalMs: 0,
       stage: async ({ outDir }) => {
-        mkdirSync(outDir, { recursive: true });
+        stageIdentity(outDir);
         return {} as never;
       },
       runCommand: async (args) => {
@@ -513,6 +546,98 @@ describe('the EAS builder adapter', () => {
       throw new Error('must not run');
     } }).readiness();
     expect(readiness).toMatchObject({ ready: false });
+  });
+
+  it('cancels the remote EAS job when a local cancel interrupts polling', async () => {
+    const calls: string[][] = [];
+    let polling!: () => void;
+    const pollingStarted = new Promise<void>((resolve) => { polling = resolve; });
+    const builder = new EasBuilder({
+      repoRoot: root,
+      easProjectId: EAS_PROJECT_ID,
+      pollIntervalMs: 0,
+      stage: async ({ outDir }) => {
+        stageIdentity(outDir);
+        return {} as never;
+      },
+      runCommand: async (args, options) => {
+        calls.push(args);
+        if (args[0] === 'build') {
+          return { status: 0, stdout: JSON.stringify([{ id: 'build-cancel', status: 'IN_QUEUE' }]), stderr: '' };
+        }
+        if (args[0] === 'build:view') {
+          polling();
+          return new Promise((resolve, reject) => {
+            options.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+          });
+        }
+        return { status: 0, stdout: 'ok', stderr: '' };
+      },
+    });
+    const controller = new AbortController();
+    const outputDirectory = path.join(root, 'out');
+    mkdirSync(outputDirectory);
+    const building = builder.build({
+      request: request(),
+      archivePath: path.join(root, 'release.vnerelease'),
+      outputDirectory,
+      onLog: () => {},
+      signal: controller.signal,
+    });
+
+    await pollingStarted;
+    controller.abort();
+    await expect(building).rejects.toThrow('Build cancelled');
+    expect(calls.some((args) => args[0] === 'build:cancel' && args[1] === 'build-cancel')).toBe(true);
+  });
+
+  it('does not let one EAS project become two different applications', async () => {
+    let storyId = 'story-one';
+    const builder = new EasBuilder({
+      repoRoot: root,
+      stateDirectory: path.join(root, 'identity-state'),
+      easProjectId: EAS_PROJECT_ID,
+      pollIntervalMs: 0,
+      stage: async ({ outDir }) => {
+        stageIdentity(outDir, storyId);
+        return {} as never;
+      },
+      runCommand: async (args) => {
+        if (args[0] === 'build') {
+          return {
+            status: 0,
+            stdout: JSON.stringify([{
+              id: `build-${storyId}`,
+              status: 'FINISHED',
+              artifacts: { applicationArchiveUrl: 'https://expo.dev/artifact.apk' },
+            }]),
+            stderr: '',
+          };
+        }
+        return { status: 0, stdout: 'ok', stderr: '' };
+      },
+      download: async (_url, target) => { writeFileSync(target, RELEASE_BYTES); },
+    });
+    const firstOut = path.join(root, 'first');
+    mkdirSync(firstOut);
+    await builder.build({
+      request: request(),
+      archivePath: path.join(root, 'one.vnerelease'),
+      outputDirectory: firstOut,
+      onLog: () => {},
+      signal: new AbortController().signal,
+    });
+
+    storyId = 'story-two';
+    const secondOut = path.join(root, 'second');
+    mkdirSync(secondOut);
+    await expect(builder.build({
+      request: request({ requestId: 'req_two', releaseId: 'release_2' }),
+      archivePath: path.join(root, 'two.vnerelease'),
+      outputDirectory: secondOut,
+      onLog: () => {},
+      signal: new AbortController().signal,
+    })).rejects.toThrow('already bound to another novel');
   });
 });
 

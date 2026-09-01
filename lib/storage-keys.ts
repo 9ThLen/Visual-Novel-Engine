@@ -87,6 +87,8 @@ export const STORAGE_KEYS = {
    * are written down.
    */
   RELEASE_OBJECTS: `${PREFIX}release_objects`,
+  BUILD_HELPER_SETTINGS: `${PREFIX}build_helper_settings`,
+  BUILD_SESSION: (storyId: string) => `${PREFIX}build_session_${encodeURIComponent(storyId)}`,
   RELEASE_SCENE: (storyId: string, releaseId: string, sceneId: string) =>
     `${PREFIX}release_scene_${encodeURIComponent(storyId)}_${encodeURIComponent(
       releaseId,

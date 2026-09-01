@@ -2,8 +2,9 @@
 
 How a finished novel leaves the editor and reaches a reader.
 
-Status: in progress. **R0–R7 are implemented; R8 and R9 are implemented up to
-the point where each needs a toolchain nobody here has** — R0–R3 complete
+Status: in progress. **R0–R7 are implemented; R8 has produced a Windows
+installer; R9 is implemented through the EAS adapter and still needs a paid
+build/device acceptance run** — R0–R3 complete
 Channel A, R4 is the build profile every native channel stands on, R5 is the
 first shippable artifact of Channel B, R6 puts it behind a button, R7 is the
 build kernel every native channel submits through, R8 stages a desktop
@@ -11,8 +12,9 @@ application from the same bundle R5 publishes, and R9 stages an Android project
 and proves the native cut R4 could only specify. R10 is still a proposal,
 alongside the parts marked **exists** in [Current state](#1-current-state).
 
-Neither `tauri build` nor `eas build` has ever run. Each stage says so in its own
-section rather than in a footnote.
+`tauri build` has run on Windows. `eas build` has not been submitted against a
+real account; the distinction between implemented code and physical acceptance
+is recorded in each stage rather than hidden in a footnote.
 
 Corrections to earlier steps are recorded inline rather than edited away: R2's
 object store and R4's autolinking exclusions were both marked done before they
@@ -1186,11 +1188,9 @@ running build, and an artifact past its expiry.
   (atomic writes), log sanitizer, `Builder` seam, `FakeBuilder`, `EasBuilder`,
   CLI. `pnpm build-helper`.
 
-**Honest about what is not proved.** No build has ever run. `EasBuilder` refuses
-with a reason rather than pretending, because a build command that has never met
-a real project would be a guess in the shape of working code. R7 delivers the
-kernel; R9 plugs in the builder and is where "a real APK exists" becomes
-checkable.
+**Honest about what is not proved.** The service kernel is proven against its
+fake builder. R9 now plugs in `EasBuilder` and the browser UI, but no paid build
+has run against a real Expo account, so a real APK remains physical acceptance.
 
 **One rule the plan named that turned out to matter more than expected:** the
 upload endpoint must know the expected hash *before* it accepts bytes. Taking the
@@ -1198,14 +1198,11 @@ upload first and being told afterwards what it should have hashed to would mean
 trusting the uploader to grade its own work — so an upload for a request nobody
 submitted is a 404, not a staging area.
 
-**Deliberately not here:** a real EAS build. That needs the staged Android
-project from R9, and requiring it here would make R7 unacceptable until R9
-shipped. R7 delivers the kernel and proves it without a cloud account; R9 plugs
-the real builder into it. If that separation ever feels artificial in practice,
-the honest alternative is to merge R7 and R9 into one vertical Android stage
-rather than to blur their acceptance criteria.
+**Deliberately not in R7's acceptance:** a real EAS build. R7 delivers and tests
+the durable kernel without a cloud account; R9 supplies the Android staging and
+EAS adapter. The paid/device acceptance gate remains in R9.
 
-### R8 — Channel B3: desktop installer (Tauri) — **implemented up to `tauri build`**
+### R8 — Channel B3: desktop installer (Tauri) — **Windows installer built; install/visual acceptance open**
 
 - `tools/desktop-shell/` — Tauri v2 template: `src-tauri/` with
   `tauri.conf.json`, `Cargo.toml`, `build.rs`, `src/main.rs` and
@@ -1269,11 +1266,12 @@ easier origin than that.
 **Done when:** the same release that plays on the project page also installs and
 runs offline from a Windows installer, with no browser involved.
 
-### R9 — Channel B4: Android player app — **staged and checked; never built**
+### R9 — Channel B4: Android player app — **EAS path implemented; paid/device acceptance open**
 
-Everything up to `eas build` is implemented and verified. `eas build` itself has
-never run: no machine involved had an Android SDK, and a cloud build spends money
-on an account and signs with credentials that outlive it.
+The whole software path through `eas build --no-wait`, polling and artifact
+download is implemented and verified against an injected CLI. The command has
+never been submitted against a real account: a cloud build spends money and
+signs with credentials that outlive it.
 
 - `lib/release/native-identity.ts` — the Android half: `androidVersionCode`,
   distribution mode, and one normalizer for signing-certificate fingerprints so
@@ -1340,8 +1338,10 @@ nowhere to apply.
 **Not verified, and not pretended:** the APK, its size and its permission list on
 a device; the launch splash, which only behaves faithfully in a release build;
 v2 installing over v1 with saves intact; and the post-build certificate check,
-which needs an artifact to check. `EasBuilder` refuses at submit, before a job or
-upload exists; staging is `pnpm stage:android`.
+which needs a real signed artifact. `EasBuilder` now performs readiness,
+staging, archive inspection, submit, polling/cancellation and HTTPS download;
+the helper and browser both check the returned bytes. This path is covered by a
+simulated EAS CLI, not by a paid account.
 
 **Five things a review found afterwards, all real, all fixed:**
 
@@ -1357,10 +1357,9 @@ upload exists; staging is `pnpm stage:android`.
 3. **Android staging never checked for unpackaged bundled references.** The web
    exporter warns; here it must be fatal, because the asset cut above deletes the
    very files a warning would have been survivable against.
-4. **The claim that `EasBuilder` stages through the helper was false.** The
-   server asks `readiness()` before staging, and it answers no, so `build()` was
-   unreachable. The staging in it has been removed rather than left to read like
-   a working path.
+4. **The earlier claim that `EasBuilder` staged through the helper was false at
+   the time.** It has since been implemented as the R9 adapter and is exercised
+   with an injected EAS CLI: stage → inspect → submit → poll/cancel → download.
 5. **`--eas-project-id` was optional**, so a build would have gone to the
    engine's own EAS project and been signed with credentials that are not the
    author's. Now required, with `--allow-engine-project` to opt in deliberately.
@@ -1383,10 +1382,11 @@ staging is deterministic, stamped from the release rather than from the clock.
 - `wiki/releases-android.md` — sideload instructions, the Play checklist, and
   what losing a signing key costs.
 
-Still to do for the **Done when** below: EAS onboarding (CLI check → login →
-`eas init` → interactive credentials), submit-and-poll, artifact download,
-certificate verification against the stored fingerprint, and `bundletool
-get-size total` for the AAB.
+Still to do for the **Done when** below: complete the one-time interactive EAS
+project/signing setup, run the paid build, verify its signing certificate
+against the stored fingerprint, run `bundletool get-size total` for the AAB, and
+perform the device lifecycle checks. Submit/poll/cancel/download and resumable
+browser status are implemented.
 
 **Done when:** an author who has completed the one-time onboarding presses
 Release → Android and receives an APK that installs on a phone, opens on the
@@ -1506,8 +1506,9 @@ tests are the right base to extend.
 5. **The app authors native builds; a local helper stages and submits them; EAS
    executes them.** An APK cannot be produced or signed in a browser, and `eas
    build` needs a local staging and upload step that no browser adapter can
-   replace. The helper rides the existing `tools/ai-bridge` transport, so an
-   Expo token never enters a web page.
+   replace. The helper reuses the AI bridge's loopback pairing model but has its
+   own small protocol and streamed HTTP upload; an Expo token never enters a web
+   page.
 6. **One builder for v1: EAS.** GitHub Actions and local Gradle stay behind the
    same interface as later implementations. Three credential models and three
    failure surfaces are worth less than one proven end-to-end path.

@@ -7,16 +7,31 @@ launch splash.
 An APK cannot be produced by the app itself, or by the browser, or by any trick
 of injecting a story into a prebuilt one — the package id, the app name and the
 icon live in compiled binary resources, and editing them invalidates the
-signature. So the work splits: **the app authors the build, a local step stages
-it, and EAS compiles and signs it.**
+signature. So the work splits: **the app authors the build, the local helper
+stages and follows it, and EAS compiles and signs it.** After one-time EAS setup,
+the normal path is the Android block on the story's Release card. The command
+below remains the diagnostic/manual staging path.
 
-```bash
-pnpm stage:android --release novel.vnerelease --out ./novel-android \
-  --eas-project-id <your own EAS project>   # required, and it should be yours
-
-cd ./novel-android
+```powershell
+pnpm stage:android --release novel.vnerelease --out ./novel-android --eas-project-id <your-own-eas-project-uuid>
+Set-Location ./novel-android
+$env:EAS_SKIP_AUTO_FINGERPRINT = '1'
 eas build --platform android --profile player-apk
 ```
+
+Two things about that command, both found by running it rather than by reading:
+
+- **The staged project is a git repository**, created by staging. `eas build`
+  refuses to run outside one, and asks on stdin whether it may run `git init` —
+  a question an automated staging run cannot answer. Nothing is committed: the
+  project carries `.easignore`, so the CLI archives the working directory rather
+  than the git index.
+- **`EAS_SKIP_AUTO_FINGERPRINT=1` is not optional.** Staging links `node_modules`
+  into the staged project as a junction, because the EAS CLI reads the app config
+  locally before uploading and cannot resolve config plugins without it. That
+  same junction crosses onto another drive, and the fingerprint step follows it
+  and produces a path that is the staged directory with an absolute path
+  concatenated onto the end. The junction has to stay; the fingerprint has to go.
 
 ## What staging does, and why each part exists
 
@@ -172,31 +187,29 @@ concludes the file is malware, which is the correct instinct.
 The app asks for no permissions. It reads a story; it does not pick files, take
 photos, or post notifications, and the manifest says so.
 
-## What has not happened
+## What has and has not happened
 
 **No APK has ever been built.** No machine involved in writing this had an
 Android SDK, and no Expo account was used: `eas build` costs money on someone
 else's account and signs with credentials that outlive the build.
 
-So everything above the `eas build` line is implemented and checked — staging,
-the identity, the native cut, the asset cut, the generated module and the runtime
-that reads it. Everything below it is not:
+The EAS adapter is implemented: readiness, staging, archive inspection, submit,
+poll, remote cancel, HTTPS artifact download, server-side hash/ZIP checks and a
+second size/hash check in the browser. It also persists the binding between one
+EAS project and one novel. It has been exercised against a simulated EAS CLI,
+not against a paid account. The following therefore remains physical acceptance,
+not an implemented-code gap:
 
 - the APK itself, its size, and its permission list on a device;
 - the launch splash, which only behaves faithfully in a release build;
 - installing v2 over v1 with the saves intact;
 - the post-build certificate check, which needs an artifact to check.
 
-`EasBuilder` in [`tools/build-helper`](../tools/build-helper/README.md) **refuses
-outright at submit**, before creating a job or accepting an upload — the helper
-asks a builder whether it is ready before staging anything, which is the right
-order. Staging is
-`pnpm stage:android`; wiring it into the helper is part of the submit half that
-does not exist yet.
-
-An earlier version of this page said the helper staged for real. It did not: the
-server never reaches `build()` while readiness is false, so that code could not
-run. It has been removed rather than left to read like a working path.
+`EasBuilder` in [`tools/build-helper`](../tools/build-helper/README.md) refuses a
+new request before accepting its archive when EAS CLI, login, or the novel's
+project UUID is unavailable. Signing credentials are deliberately configured
+outside the browser; builds use `--freeze-credentials` so a click cannot replace
+a keystore.
 
 ## The launcher icon
 

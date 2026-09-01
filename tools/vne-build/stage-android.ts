@@ -16,10 +16,11 @@
  * The reader would launch to a story with no pictures, on a device, after a
  * twenty-minute cloud build.
  *
- * Everything here runs on a machine with no Android SDK. What it cannot do is
- * build: that needs EAS, an account and a paid queue. Today the author invokes
- * `eas build` manually; the helper refuses before accepting an upload.
+ * Everything here runs on a machine with no Android SDK. The build helper calls
+ * it before submitting the verified project to EAS; an Expo account, an EAS
+ * project and preconfigured signing credentials are the external boundary.
  */
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -29,6 +30,7 @@ import { beginOutPath } from '../lib/out-path';
 import { RELEASE_MEDIA_DIR, releaseObjectFileName } from '@/lib/release/asset-map';
 import {
   deriveAndroidIdentity,
+  isValidApplicationId,
   type AndroidIdentity,
 } from '@/lib/release/native-identity';
 import { extractReleaseArchive, readReleaseManifest } from '@/lib/release/package';
@@ -577,6 +579,13 @@ export async function stageAndroidProject(
     const finalIcon = icon.file.startsWith(`${stageDir}${path.sep}`)
       ? { ...icon, file: path.join(outDir, path.relative(stageDir, icon.file)) }
       : icon;
+    // EAS refuses a project that is not a git repository, and asks — on stdin,
+    // which a staging run does not have — whether it may run `git init` itself.
+    // No commit is needed: the staged project carries `.easignore`, so the CLI
+    // archives the working directory rather than the git index. Found by running
+    // a build, which is the only way it could have been found.
+    initGitRepository(stageDir);
+
     transaction.commit();
 
     return {
@@ -696,6 +705,14 @@ export function verifyStagedAndroidProject(outDir: string): string[] {
       storedIdentity = JSON.parse(
         fs.readFileSync(read(NATIVE_IDENTITY_FILE), 'utf8'),
       ) as StoredNativeIdentity;
+      if (
+        storedIdentity.version !== 1
+        || typeof storedIdentity.storyId !== 'string'
+        || storedIdentity.storyId.length === 0
+        || !isValidApplicationId(storedIdentity.applicationId)
+      ) {
+        problems.push('The stored native identity has invalid story/application fields.');
+      }
       if (!isEasProjectId(storedIdentity.easProjectId)) {
         problems.push('The stored EAS project id is not a UUID.');
       }
@@ -782,6 +799,18 @@ export function verifyStagedAndroidProject(outDir: string): string[] {
       problems.push('The staged release is not one the player could boot from.');
     }
     const config = raw;
+    const storyId = (config.story as { id?: unknown } | null)?.id;
+    if (storedIdentity && storedIdentity.storyId !== storyId) {
+      problems.push('The stored native identity belongs to a different story than the packaged release.');
+    }
+    if (exists('eas.json')) {
+      const eas = JSON.parse(fs.readFileSync(read('eas.json'), 'utf8')) as StagedEasJson;
+      const env = eas.build?.['player-apk']?.env ?? {};
+      const releaseVersion = (config.release as { version?: unknown } | undefined)?.version;
+      if (typeof releaseVersion === 'string' && env.VNE_PLAYER_VERSION !== releaseVersion) {
+        problems.push('The native version disagrees with the packaged release version.');
+      }
+    }
     for (const file of new Set(Object.values(config.assets ?? {}))) {
       if (!exists('assets', ...file.split('/'))) {
         problems.push(`The asset map names ${file}, which is not in the staged project.`);
@@ -986,4 +1015,22 @@ function removeEmptyDirectories(dir: string): boolean {
   }
   if (empty) fs.rmdirSync(dir);
   return empty;
+}
+
+/**
+ * Make the staged project a git repository.
+ *
+ * Not for history — nothing is committed — but because `eas build` will not run
+ * outside one. Failure is fatal before the atomic replacement: reporting a
+ * staged project that EAS will immediately refuse would make the green result
+ * misleading, while the previous complete output is still preserved.
+ */
+function initGitRepository(dir: string): void {
+  const result = spawnSync('git', ['init', '--quiet'], { cwd: dir, encoding: 'utf8' });
+  if (result.status !== 0) {
+    throw new Error(
+      'Could not make the staged project a git repository, and `eas build` requires one: '
+      + (result.stderr || result.error?.message || 'git init failed'),
+    );
+  }
 }

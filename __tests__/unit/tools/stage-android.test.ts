@@ -73,6 +73,7 @@ function stagedProject(overrides: { skip?: string[] } = {}): string {
       VNE_PROFILE: 'player',
       VNE_EAS_PROJECT_ID: PROJECT_A,
       VNE_PLAYER_APP_ID: identity.applicationId,
+      VNE_PLAYER_VERSION: identity.version,
       VNE_PLAYER_VERSION_CODE: String(identity.androidVersionCode),
     })));
   }
@@ -342,6 +343,30 @@ export const PACKAGED_RELEASE: PackagedRelease | null = null;
     eas.build['player-aab'].env = { VNE_PROFILE: 'player', VNE_PLAYER_APP_ID: 'com.other.app' };
     write(root, 'eas.json', JSON.stringify(eas));
     expect(verifyStagedAndroidProject(root).join('\n')).toContain('disagree about VNE_PLAYER_APP_ID');
+  });
+
+  it('catches a native identity or version that belongs to another release', () => {
+    root = stagedProject();
+    write(root, NATIVE_IDENTITY_FILE, JSON.stringify({
+      version: 1,
+      storyId: 'another-story',
+      applicationId: identity.applicationId,
+      easProjectId: PROJECT_A,
+    }));
+    let problems = verifyStagedAndroidProject(root).join('\n');
+    expect(problems).toContain('different story');
+    fs.rmSync(root, { recursive: true, force: true });
+
+    root = stagedProject({ skip: ['eas.json'] });
+    write(root, 'eas.json', JSON.stringify(stagedEasJson({
+      VNE_PROFILE: 'player',
+      VNE_EAS_PROJECT_ID: PROJECT_A,
+      VNE_PLAYER_APP_ID: identity.applicationId,
+      VNE_PLAYER_VERSION: '2.2.0',
+      VNE_PLAYER_VERSION_CODE: String(identity.androidVersionCode),
+    })));
+    problems = verifyStagedAndroidProject(root).join('\n');
+    expect(problems).toContain('native version disagrees');
   });
 
   it('compares signing project and every visible identity field across profiles', () => {

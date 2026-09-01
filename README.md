@@ -9,7 +9,7 @@
 
 Visual Novel Engine is a browser-based editor and player for creating interactive visual novels on a PC. It gives writers a focused place to write scenes, build branching dialogue, add characters and media, preview changes, and play the result from a reader's perspective.
 
-> **Current testing scope:** authoring and testing happen on a PC in a desktop browser. Android tooling, emulators, and native builds are not required. Android is planned as a way for readers to experience a finished novel, not as part of the current local setup.
+> **Current testing scope:** authoring and testing happen on a PC in a desktop browser. Android tooling, emulators, and native builds are not required for authoring. A finished release can be sent through the optional local EAS build helper; its real-device acceptance is still pending.
 
 ## Features
 
@@ -207,4 +207,4 @@ Canonical scene data uses `SceneRecord + TimelineStep`. Legacy `Story`, `StorySc
 
 ## Project status
 
-Visual Novel Engine is under active development. The current acceptance workflow covers the PC web editor and web reader. Cloud integrations and AI providers are optional, while Android remains a future distribution target for finished novels.
+Visual Novel Engine is under active development. The current acceptance workflow covers the PC web editor, web reader, web bundle, and the locally built Windows shell. Cloud integrations and AI providers are optional. The Android EAS path is implemented but has not yet completed its paid-build and real-device acceptance run.

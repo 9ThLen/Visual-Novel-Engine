@@ -157,3 +157,27 @@ describe('BuildClient reconnects', () => {
     expect(sockets).toHaveLength(1);
   });
 });
+
+describe('BuildClient artifact download', () => {
+  it('checks the returned bytes before exposing a signed artifact', async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const client = new BuildClient({
+      endpoint: 'http://127.0.0.1:8790',
+      token: 'paired',
+      onMessage: () => {},
+      fetch: async () => new Response(bytes),
+    });
+    const expected = {
+      fileName: 'release.apk',
+      bytes: bytes.byteLength,
+      sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+      expiresAt: '2026-09-08T10:00:00.000Z',
+    };
+
+    await expect(client.downloadArtifact('req_one', expected)).resolves.toBeInstanceOf(Blob);
+    await expect(client.downloadArtifact('req_one', { ...expected, bytes: 4 }))
+      .rejects.toThrow('expected 4');
+    await expect(client.downloadArtifact('req_one', { ...expected, sha256: 'f'.repeat(64) }))
+      .rejects.toThrow('verified hash');
+  });
+});

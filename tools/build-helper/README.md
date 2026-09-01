@@ -1,12 +1,13 @@
 # Build helper
 
-A local service kernel for native builds. The app never runs a toolchain and
-never holds a signing credential; it submits a request and follows it. The fake
-builder exercises that contract today. The EAS builder is intentionally
-unavailable until submit/poll/download/signature verification is implemented.
+A local service for native builds. The app never runs a toolchain and never
+holds a signing credential; it submits a frozen release and follows it. The EAS
+builder stages the player, checks the upload archive, submits, polls, cancels the
+remote job when asked, downloads the result and verifies its bytes before the
+browser saves them.
 
 ```bash
-pnpm build-helper --allow-origin http://localhost:8081
+pnpm build-helper --eas-project-id <the-novel-eas-project-uuid> --allow-origin http://localhost:8081
 ```
 
 It prints a port and a pairing token. The token is fresh per run unless `--token`
@@ -93,17 +94,27 @@ that says when it will.
   because a reload, a cancel, a retry and a resubmitted key are all answerable
   without a cloud account, and requiring one would mean the kernel could not be
   tested until R9 shipped.
-- `EasBuilder` — the CLI default, and it **refuses**. R9 built the half of an
-  Android build that can be checked without a cloud account: `pnpm stage:android`
-  turns a verified `.vnerelease` into an Expo project with the story inside it,
-  the editor out of it and the file pickers unlinked. Submitting that project has
-  never run through this helper, so readiness says no and a new job is refused
-  at `submit`, before a job record or upload exists. `build()` briefly staged and then threw; it was taken back out,
-  because the server never reaches it while readiness is false, and an
-  unreachable branch that reads like a working feature is worse than an honest
-  refusal.
+- `EasBuilder` — the CLI default. Readiness checks the immutable project UUID,
+  `eas --version` and `eas whoami` before an upload is accepted. It then stages,
+  runs `eas build:inspect`, submits with `--no-wait`, follows `build:view`, and
+  downloads the HTTPS artifact. The helper persists a project/novel identity
+  binding, so one EAS project cannot silently become two applications.
 
 `github-actions` and `local` plug into the same interface when they are wanted.
+
+## One-time EAS setup
+
+Install EAS CLI, sign in, create a separate EAS project for this novel, and
+configure its Android signing credentials before starting the helper. Pass that
+project's UUID as `--eas-project-id`. The build itself runs non-interactively
+with `--freeze-credentials`: a browser click may use an existing signing key,
+but must never mint or replace one without the author seeing it. Expo documents
+the current commands in its [EAS CLI reference](https://docs.expo.dev/eas/cli/)
+and [Android signing guide](https://docs.expo.dev/deploy/build-project/).
+
+Keep `.vne-builds/eas-identities/`. It is not a signing key, but it is the local
+record that prevents reusing one EAS project for a different novel. EAS-managed
+credentials remain on EAS; the browser receives neither them nor an Expo token.
 
 ## Logs
 

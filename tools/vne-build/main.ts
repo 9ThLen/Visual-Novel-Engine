@@ -329,7 +329,17 @@ async function main(): Promise<void> {
   console.log(color.green(`\n✔ Staged: ${finalOutDir}`));
   console.log(color.dim('  Build it with:'));
   console.log(color.dim(`    cd ${path.relative(process.cwd(), finalOutDir)}`));
-  console.log(color.dim('    eas build --platform android --profile player-apk\n'));
+  console.log(color.dim(process.platform === 'win32'
+    ? "    $env:EAS_SKIP_AUTO_FINGERPRINT='1'; eas build --platform android --profile player-apk"
+    : '    EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform android --profile player-apk'));
+  console.log('');
+  // Found by running a build; neither announces itself. The EAS CLI reads the
+  // app config locally before uploading, so `node_modules` has to be there — and
+  // the junction that puts it there is exactly what the fingerprint step cannot
+  // walk, because it crosses onto another drive.
+  console.log(color.dim('  That variable is not optional: node_modules here is a junction into the'));
+  console.log(color.dim('  engine repository, and EAS\'s fingerprint step cannot follow it. The'));
+  console.log(color.dim('  junction has to stay — the CLI resolves config plugins through it.\n'));
   } catch (error) {
     transaction.abort();
     throw error;

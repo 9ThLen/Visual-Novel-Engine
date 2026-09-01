@@ -5,7 +5,7 @@
  * dialog. A browser reports that as an exception, and treating it as one meant
  * the studio answered "I changed my mind" with a red error line.
  */
-import { savePlayerBundle } from '@/lib/release/bundle-file';
+import { saveAndroidBuildArtifact, savePlayerBundle } from '@/lib/release/bundle-file';
 
 const BYTES = new Uint8Array([1, 2, 3]);
 
@@ -86,6 +86,24 @@ describe('saving a player bundle', () => {
       HTMLAnchorElement.prototype.click = originalClick;
       URL.createObjectURL = originalCreate;
       URL.revokeObjectURL = originalRevoke;
+    }
+  });
+
+  it('saves a downloaded Android artifact without converting its bytes', async () => {
+    const artifact = new Blob([BYTES], { type: 'application/vnd.android.package-archive' });
+    const written: Blob[] = [];
+    const restore = stubPicker(async () => ({
+      createWritable: async () => ({
+        write: async (data: Blob) => { written.push(data); },
+        close: async () => {},
+      }),
+    }));
+
+    try {
+      await expect(saveAndroidBuildArtifact('novel.apk', artifact)).resolves.toBe(true);
+      expect(written).toEqual([artifact]);
+    } finally {
+      restore();
     }
   });
 });

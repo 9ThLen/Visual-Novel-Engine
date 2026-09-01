@@ -3,8 +3,8 @@
  *
  * One interface, so `eas`, `github-actions` and `local` are three
  * implementations of the same contract rather than three shapes the helper has
- * to know about. Only two exist here: a fake one, which is what R7's acceptance
- * runs against, and EAS, which refuses until R9 has produced a project to build.
+ * to know about. Two exist here: a fake one for the service contract and the
+ * EAS implementation that stages, submits, follows and downloads an R9 project.
  *
  * The interface is deliberately narrow. A builder is handed a staged file and a
  * target and reports back; it is not given the socket, the job store or the
@@ -14,13 +14,20 @@
  */
 import type { BuildRequest } from '../../../lib/release/build-request';
 import { spawn } from 'node:child_process';
-import { createWriteStream, mkdirSync, rmSync } from 'node:fs';
+import {
+  createWriteStream,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 import {
   isEasProjectId,
+  NATIVE_IDENTITY_FILE,
   stageAndroidProject,
 } from '../../vne-build/stage-android';
 
@@ -103,31 +110,14 @@ export class FakeBuilder implements Builder {
     mkdirSync(input.outputDirectory, { recursive: true });
     const fileName = `${input.request.requestId}.${input.request.target}`;
     const artifactPath = path.join(input.outputDirectory, fileName);
-    writeFileSync(artifactPath, new Uint8Array(this.options.artifactBytes ?? 1024).fill(7));
+    const bytes = new Uint8Array(Math.max(4, this.options.artifactBytes ?? 1024)).fill(7);
+    bytes.set([0x50, 0x4b, 0x03, 0x04]);
+    writeFileSync(artifactPath, bytes);
     return { artifactPath, fileName };
   }
 }
 
-/**
- * The real one, once there is something to submit.
- *
- * R9 built the half that can be checked: `tools/vne-build` turns a verified
- * `.vnerelease` into an Expo project with the story inside it, the editor out of
- * it and the file pickers unlinked. That runs, and it is tested — through
- * `pnpm stage:android`, which is the command that exists today.
- *
- * Submitting does not run. `eas build` needs an Expo account, credentials the
- * account owns, and a paid queue; no build has ever gone through this helper. So
- * this refuses — the server asks {@link readiness} at startup and rejects a new
- * `submit` before creating a job, which is the right order: an author on an
- * unconfigured machine should be told before an upload, not after.
- *
- * It would have been easy to have `build()` stage and then throw. It was written
- * that way and taken back out: the server never reaches `build()` while
- * readiness is false, so that code could not run, and the documentation around
- * it claimed a path the helper does not have. An unreachable branch that reads
- * like a working feature is worse than an honest refusal.
- */
+/** The real EAS path. Readiness fails before upload when CLI/account/project are unavailable. */
 export interface EasCommandResult {
   status: number;
   stdout: string;
@@ -136,6 +126,8 @@ export interface EasCommandResult {
 
 export interface EasBuilderOptions {
   repoRoot?: string;
+  /** Durable helper-owned state; keeps one EAS project tied to one novel. */
+  stateDirectory?: string;
   easProjectId?: string;
   command?: string;
   pollIntervalMs?: number;
@@ -185,6 +177,7 @@ export class EasBuilder implements Builder {
 
   private readonly repoRoot: string;
   private readonly easProjectId?: string;
+  private readonly stateDirectory: string;
   private readonly command: string;
   private readonly pollIntervalMs: number;
   private readonly runCommand: NonNullable<EasBuilderOptions['runCommand']>;
@@ -193,6 +186,7 @@ export class EasBuilder implements Builder {
 
   constructor(options: EasBuilderOptions = {}) {
     this.repoRoot = path.resolve(options.repoRoot ?? process.cwd());
+    this.stateDirectory = path.resolve(options.stateDirectory ?? path.join(this.repoRoot, '.vne-builds'));
     this.easProjectId = options.easProjectId;
     this.command = options.command ?? (process.platform === 'win32' ? 'eas.cmd' : 'eas');
     this.pollIntervalMs = options.pollIntervalMs ?? 15_000;
@@ -228,6 +222,7 @@ export class EasBuilder implements Builder {
       repoRoot: this.repoRoot,
       easProjectId: this.easProjectId,
     });
+    this.assertImmutableProjectIdentity(projectDir);
     input.onLog('Staged and verified the Android player project');
 
     const linked = await this.runCommand([
@@ -256,42 +251,122 @@ export class EasBuilder implements Builder {
     if (!buildId) throw new Error('EAS build submission returned no build id.');
     input.onLog('Submitted the build to EAS');
 
-    let build = submittedBuild;
-    let lastStatus = '';
-    for (;;) {
+    let remoteFinished = false;
+    let cancellation: Promise<void> | null = null;
+    const cancelRemote = (): Promise<void> => {
+      if (remoteFinished) return Promise.resolve();
+      cancellation ??= this.runCommand(
+        ['build:cancel', buildId, '--non-interactive'],
+        { cwd: projectDir },
+      ).then(() => undefined, () => undefined);
+      return cancellation;
+    };
+    const onAbort = () => { void cancelRemote(); };
+    input.signal.addEventListener('abort', onAbort, { once: true });
+
+    try {
+      let build = submittedBuild;
+      let lastStatus = '';
+      for (;;) {
+        if (input.signal.aborted) throw new Error('Build cancelled');
+        const status = typeof build.status === 'string' ? build.status.toUpperCase() : '';
+        if (status && status !== lastStatus) {
+          input.onLog(`EAS build state: ${status.toLowerCase().replaceAll('_', ' ')}`);
+          lastStatus = status;
+        }
+        if (status === 'FINISHED') {
+          remoteFinished = true;
+          break;
+        }
+        if (['ERRORED', 'CANCELED'].includes(status)) throw new Error(`EAS build ${status.toLowerCase()}.`);
+
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(done, this.pollIntervalMs);
+          function done() {
+            clearTimeout(timer);
+            input.signal.removeEventListener('abort', done);
+            resolve();
+          }
+          input.signal.addEventListener('abort', done, { once: true });
+        });
+        if (input.signal.aborted) throw new Error('Build cancelled');
+        const viewed = await this.runCommand(['build:view', buildId, '--json'], {
+          cwd: projectDir,
+          signal: input.signal,
+          onLog: input.onLog,
+        });
+        if (viewed.status !== 0) throw new Error(`Could not read EAS build status: ${viewed.stderr}`);
+        build = firstBuild(jsonFromCli(viewed.stdout));
+      }
+
+      const url = buildArtifactUrl(build);
+      if (!url) throw new Error('Finished EAS build carries no application artifact URL.');
+      const fileName = `${input.request.requestId}.${input.request.target}`;
+      const artifactPath = path.join(input.outputDirectory, fileName);
+      await this.download(url, artifactPath, input.signal);
+      input.onLog('Downloaded the signed build artifact');
+      return { artifactPath, fileName };
+    } catch (error) {
       if (input.signal.aborted) {
-        await this.runCommand(['build:cancel', buildId, '--non-interactive'], { cwd: projectDir });
+        await cancelRemote();
         throw new Error('Build cancelled');
       }
-      const status = typeof build.status === 'string' ? build.status.toUpperCase() : '';
-      if (status && status !== lastStatus) {
-        input.onLog(`EAS build state: ${status.toLowerCase().replaceAll('_', ' ')}`);
-        lastStatus = status;
-      }
-      if (status === 'FINISHED') break;
-      if (['ERRORED', 'CANCELED'].includes(status)) throw new Error(`EAS build ${status.toLowerCase()}.`);
+      throw error;
+    } finally {
+      input.signal.removeEventListener('abort', onAbort);
+    }
+  }
 
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, this.pollIntervalMs);
-        input.signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
-      });
-      if (input.signal.aborted) continue;
-      const viewed = await this.runCommand(['build:view', buildId, '--json'], {
-        cwd: projectDir,
-        signal: input.signal,
-        onLog: input.onLog,
-      });
-      if (viewed.status !== 0) throw new Error(`Could not read EAS build status: ${viewed.stderr}`);
-      build = firstBuild(jsonFromCli(viewed.stdout));
+  private assertImmutableProjectIdentity(projectDir: string): void {
+    if (!this.easProjectId) throw new Error('The EAS project id is missing.');
+    const raw = JSON.parse(readFileSync(path.join(projectDir, NATIVE_IDENTITY_FILE), 'utf8')) as {
+      version?: unknown;
+      storyId?: unknown;
+      applicationId?: unknown;
+      easProjectId?: unknown;
+    };
+    if (
+      raw.version !== 1
+      || typeof raw.storyId !== 'string'
+      || typeof raw.applicationId !== 'string'
+      || raw.easProjectId !== this.easProjectId
+    ) {
+      throw new Error(`The staged ${NATIVE_IDENTITY_FILE} does not match this EAS project.`);
     }
 
-    const url = buildArtifactUrl(build);
-    if (!url) throw new Error('Finished EAS build carries no application artifact URL.');
-    const fileName = `${input.request.requestId}.${input.request.target}`;
-    const artifactPath = path.join(input.outputDirectory, fileName);
-    await this.download(url, artifactPath, input.signal);
-    input.onLog('Downloaded the signed build artifact');
-    return { artifactPath, fileName };
+    mkdirSync(this.stateDirectory, { recursive: true });
+    const registryFile = path.join(this.stateDirectory, `${this.easProjectId}.identity.json`);
+    const expected = {
+      version: 1,
+      easProjectId: this.easProjectId,
+      storyId: raw.storyId,
+      applicationId: raw.applicationId,
+    };
+    try {
+      writeFileSync(registryFile, `${JSON.stringify(expected, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+
+    let existing: unknown;
+    try {
+      existing = JSON.parse(readFileSync(registryFile, 'utf8'));
+    } catch {
+      throw new Error(`The EAS identity registry is unreadable: ${registryFile}`);
+    }
+    const record = existing as Partial<typeof expected> | null;
+    if (
+      !record
+      || record.version !== expected.version
+      || record.easProjectId !== expected.easProjectId
+      || record.storyId !== expected.storyId
+      || record.applicationId !== expected.applicationId
+    ) {
+      throw new Error(
+        `EAS project ${this.easProjectId} is already bound to another novel; create a separate EAS project.`,
+      );
+    }
   }
 
   private spawnCommand(
@@ -302,15 +377,23 @@ export class EasBuilder implements Builder {
       const child = spawn(this.command, args, {
         cwd: options.cwd,
         windowsHide: true,
-        env: { ...process.env, EAS_NO_VCS: '1' },
+        env: {
+          ...process.env,
+          EAS_NO_VCS: '1',
+          // Staging links the repository's installed dependencies into a
+          // project on an arbitrary drive. EAS fingerprinting follows that
+          // junction and constructs an invalid concatenated path on Windows.
+          EAS_SKIP_AUTO_FINGERPRINT: '1',
+        },
         signal: options.signal,
       });
+      const outputLimit = 4 * 1024 * 1024;
       let stdout = '';
       let stderr = '';
       const append = (kind: 'stdout' | 'stderr', chunk: unknown) => {
         const text = String(chunk);
-        if (kind === 'stdout') stdout += text;
-        else stderr += text;
+        if (kind === 'stdout') stdout = (stdout + text).slice(-outputLimit);
+        else stderr = (stderr + text).slice(-outputLimit);
         if (kind === 'stderr') {
           for (const line of text.split(/\r?\n/).filter(Boolean)) options.onLog?.(line);
         }

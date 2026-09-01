@@ -17,7 +17,7 @@ import {
   type BuildServerMessage,
 } from '@/lib/release/build-protocol';
 import type { BuildRequest } from '@/lib/release/build-request';
-import type { BuildJobSummary } from '@/lib/release/build-job';
+import type { BuildArtifact, BuildJobSummary } from '@/lib/release/build-job';
 
 export interface BuildClientOptions {
   /** e.g. `http://127.0.0.1:8790`. The socket url is derived from it. */
@@ -296,7 +296,7 @@ export class BuildClient {
     }
   }
 
-  async downloadArtifact(requestId: string): Promise<Blob> {
+  async downloadArtifact(requestId: string, expected?: BuildArtifact): Promise<Blob> {
     const doFetch = this.options.fetch ?? fetch;
     const response = await doFetch(
       `${this.options.endpoint.replace(/\/$/, '')}/build-artifacts/${encodeURIComponent(requestId)}`,
@@ -306,7 +306,19 @@ export class BuildClient {
       const detail = await response.json().catch(() => null) as { message?: string } | null;
       throw new Error(detail?.message ?? `The artifact is unavailable (${response.status})`);
     }
-    return response.blob();
+    const artifact = await response.blob();
+    if (expected) {
+      if (artifact.size !== expected.bytes) {
+        throw new Error(`The downloaded artifact is ${artifact.size} bytes; expected ${expected.bytes}.`);
+      }
+      if (!globalThis.crypto?.subtle) throw new Error('This browser cannot verify the downloaded artifact.');
+      const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', await artifact.arrayBuffer()));
+      const sha256 = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      if (sha256 !== expected.sha256) {
+        throw new Error('The downloaded artifact does not match the helper\'s verified hash.');
+      }
+    }
+    return artifact;
   }
 
   close(): void {

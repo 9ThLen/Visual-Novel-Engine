@@ -24,6 +24,9 @@ import {
 } from '@/lib/release/release-storage';
 import type { ReleasePreflightReport } from '@/lib/release/preflight';
 import type { PlayerBundleProgress } from '@/lib/release/shell-build';
+import type { BuildJobSummary } from '@/lib/release/build-job';
+import type { BuildTarget } from '@/lib/release/build-request';
+import type { BuildHelperSettings } from '@/lib/release/build-session';
 import type { ReleaseChannel } from '@/lib/release/types';
 import { isNewerReleaseVersion, nextReleaseVersion } from '@/lib/release/version';
 import type { StoryMetadata } from '@/lib/story-domain';
@@ -61,6 +64,13 @@ interface ReleaseCardProps {
   exportProgress?: PlayerBundleProgress | null;
   /** Already localized by the caller: the reasons are not all from one place. */
   exportMessage?: { tone: 'error' | 'done'; text: string } | null;
+  buildSettings?: BuildHelperSettings;
+  onBuildSettingsChange?: (settings: BuildHelperSettings) => void;
+  buildSummary?: BuildJobSummary | null;
+  buildError?: string | null;
+  onBuildAndroid?: (releaseId: string, target: BuildTarget) => void;
+  onCancelBuild?: (requestId: string) => void;
+  onDownloadBuild?: (summary: BuildJobSummary) => void;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -84,6 +94,13 @@ export function ReleaseCard({
   onExportBundle,
   exportProgress = null,
   exportMessage = null,
+  buildSettings,
+  onBuildSettingsChange,
+  buildSummary = null,
+  buildError = null,
+  onBuildAndroid,
+  onCancelBuild,
+  onDownloadBuild,
   style,
 }: ReleaseCardProps) {
   const { t, language } = useI18n();
@@ -108,6 +125,7 @@ export function ReleaseCard({
   // off the showcase is still a release they can hand to someone.
   const exportable = published ?? releases.find((release) => release.version === highest) ?? null;
   const exporting = exportProgress !== null;
+  const buildBusy = Boolean(buildSummary && !['succeeded', 'failed', 'cancelled', 'expired'].includes(buildSummary.state));
 
   const openSheet = () => {
     setVersion(nextReleaseVersion(highest, 'minor'));
@@ -234,6 +252,68 @@ export function ReleaseCard({
         >
           {exportMessage.text}
         </Text>
+      ) : null}
+
+      {onBuildAndroid && buildSettings && exportable ? (
+        <View style={[styles.buildBox, { borderColor: colors['border-subtle'] }]}>
+          <Text style={[styles.fieldLabel, { color: colors.muted }]}>{t('release.android.title')}</Text>
+          <TextInput
+            value={buildSettings.endpoint}
+            onChangeText={(endpoint) => onBuildSettingsChange?.({ ...buildSettings, endpoint })}
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel={t('release.android.endpoint')}
+            placeholder={t('release.android.endpoint')}
+            placeholderTextColor={colors.muted}
+            style={[styles.input, { color: colors.foreground, borderColor: colors.border }]}
+          />
+          <TextInput
+            value={buildSettings.token}
+            onChangeText={(token) => onBuildSettingsChange?.({ ...buildSettings, token })}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+            accessibilityLabel={t('release.android.token')}
+            placeholder={t('release.android.token')}
+            placeholderTextColor={colors.muted}
+            style={[styles.input, { color: colors.foreground, borderColor: colors.border }]}
+          />
+          <View style={styles.buildActions}>
+            {(['apk', 'aab'] as const).map((target) => (
+              <Pressable
+                key={target}
+                onPress={() => onBuildAndroid(exportable.releaseId, target)}
+                disabled={buildBusy || !buildSettings.token.trim()}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: buildBusy || !buildSettings.token.trim(), busy: buildBusy }}
+                style={({ pressed }) => [styles.secondaryButton, {
+                  borderColor: colors.border,
+                  opacity: buildBusy || !buildSettings.token.trim() ? 0.45 : pressed ? 0.7 : 1,
+                }]}
+              >
+                <Text style={[styles.primaryLabel, { color: colors.primary }]}>
+                  {t(`release.android.build.${target}`)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {buildSummary ? (
+            <Text style={[styles.hint, { color: colors.muted }]}>
+              {t('release.android.state', { state: t(`release.android.state.${buildSummary.state}`) })}
+            </Text>
+          ) : null}
+          {buildBusy && buildSummary && onCancelBuild ? (
+            <Pressable onPress={() => onCancelBuild(buildSummary.requestId)} style={styles.linkButton}>
+              <Text style={[styles.linkLabel, { color: colors.danger }]}>{t('release.android.cancel')}</Text>
+            </Pressable>
+          ) : null}
+          {buildSummary?.state === 'succeeded' && buildSummary.artifact && onDownloadBuild ? (
+            <Pressable onPress={() => onDownloadBuild(buildSummary)} style={styles.linkButton}>
+              <Text style={[styles.linkLabel, { color: colors.primary }]}>{t('release.android.download')}</Text>
+            </Pressable>
+          ) : null}
+          {buildError ? <Text style={[styles.hint, { color: colors.error }]}>{buildError}</Text> : null}
+        </View>
       ) : null}
 
       <AppModal visible={sheetOpen} transparent animationType="fade" onRequestClose={() => setSheetOpen(false)}>
@@ -431,6 +511,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: spacing.xs,
+  },
+  buildBox: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  buildActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   sheetPrimary: {
     marginTop: spacing.xs,

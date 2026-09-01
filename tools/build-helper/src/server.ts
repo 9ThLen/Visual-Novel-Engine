@@ -18,9 +18,12 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import {
+  closeSync,
   createReadStream,
   existsSync,
   mkdirSync,
+  openSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -60,6 +63,23 @@ import { buildArchivePath, receiveBuildInput, sweepAbandonedUploads } from './up
 const UPLOAD_ROUTE = /^\/build-inputs\/([A-Za-z0-9_-]{1,64})$/;
 const ARTIFACT_ROUTE = /^\/build-artifacts\/([A-Za-z0-9_-]{1,64})$/;
 const HANDSHAKE_TIMEOUT_MS = 5_000;
+
+function hasZipSignature(filePath: string): boolean {
+  // `new Uint8Array`, not `Buffer.alloc`: the ambient `Buffer` in this project
+  // is React Native's shim, which has `from` and nothing else.
+  const bytes = new Uint8Array(4);
+  const handle = openSync(filePath, 'r');
+  try {
+    if (readSync(handle, bytes, 0, bytes.length, 0) !== bytes.length) return false;
+  } finally {
+    closeSync(handle);
+  }
+  return bytes[0] === 0x50 && bytes[1] === 0x4b && (
+    (bytes[2] === 0x03 && bytes[3] === 0x04)
+    || (bytes[2] === 0x05 && bytes[3] === 0x06)
+    || (bytes[2] === 0x07 && bytes[3] === 0x08)
+  );
+}
 
 interface ActiveRun {
   controller: AbortController;
@@ -626,6 +646,9 @@ export class BuildHelperServer {
       // non-empty file from the directory assigned to this request.
       if (!existsSync(result.artifactPath) || statSync(result.artifactPath).size === 0) {
         return this.finishWith(job, 'The build produced no artifact');
+      }
+      if (!hasZipSignature(result.artifactPath)) {
+        return this.finishWith(job, 'The build artifact is not an APK/AAB ZIP container');
       }
       const outputRoot = realpathSync(outputDirectory);
       const builtPath = realpathSync(result.artifactPath);
