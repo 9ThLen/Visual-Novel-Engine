@@ -15,7 +15,7 @@ import demoStoryAdvanced from '@/assets/demo-story-advanced.json';
 import { shouldUpsertBundledStory } from '@/lib/bundled-story-sync';
 import { createBundledStorySyncPayload, upsertBundledStory } from '@/lib/bundled-story-upsert';
 import { ErrorCategory, ErrorHandler } from '@/lib/error-handler';
-import type { Story } from '@/lib/scene-operations';
+import { collectBundledAssetReferences, type Story } from '@/lib/scene-operations';
 import { migrateStoryImageAssetIds } from '@/lib/story-image-library';
 import { migrateStoryMediaAssetIds } from '@/lib/story-media-library';
 import { StoryValidator } from '@/lib/story-validator';
@@ -74,20 +74,34 @@ export function useLibraryBootstrap(): { isInitialized: boolean } {
     // Ensure every bundled demo asset exists. This is intentionally idempotent:
     // existing user uploads and previously seeded assets are preserved.
     try {
-      const bundledAssets = [
-        ['assets/background/bg-ancient-library.png', 'Ancient Library', 'image'],
-        ['assets/background/bg-grand-hall.png', 'Grand Hall', 'image'],
-        ['assets/background/bg-hall-mirrors.png', 'Hall of Mirrors', 'image'],
-        ['assets/background/bg-museum-entrance.png', 'Museum Entrance', 'image'],
-        ['assets/background/bg-treasure-chamber.png', 'Treasure Chamber', 'image'],
-        ['assets/background/bg-upper-library.png', 'Upper Library', 'image'],
-        ['assets/images/img-reflection-hint.png', 'Reflection Hint', 'image'],
-        ['assets/images/img-phoenix-illustration.png', 'Phoenix Illustration', 'image'],
-        ['assets/images/img-constellation-phoenix.png', 'Phoenix Constellation', 'image'],
-        ['assets/sounds-sample/music-magical.mp3', 'Magical Music', 'audio'],
-        ['assets/sounds-sample/music-mysterious-adventure.mp3', 'Mysterious Adventure', 'audio'],
-        ['assets/sounds-sample/sfx-door-open.mp3', 'Door Open SFX', 'audio'],
-      ] as const;
+      // Named where a curated name reads better than a filename; the *set* is
+      // derived from what the stories reference, never listed. A hand-written
+      // list had twelve entries and the demos referenced twenty-seven, so seven
+      // asset links were broken and neither demo could be released.
+      const curatedNames: Record<string, string> = {
+        'assets/background/bg-ancient-library.png': 'Ancient Library',
+        'assets/background/bg-grand-hall.png': 'Grand Hall',
+        'assets/background/bg-hall-mirrors.png': 'Hall of Mirrors',
+        'assets/background/bg-museum-entrance.png': 'Museum Entrance',
+        'assets/background/bg-treasure-chamber.png': 'Treasure Chamber',
+        'assets/background/bg-upper-library.png': 'Upper Library',
+        'assets/images/img-reflection-hint.png': 'Reflection Hint',
+        'assets/images/img-phoenix-illustration.png': 'Phoenix Illustration',
+        'assets/images/img-constellation-phoenix.png': 'Phoenix Constellation',
+        'assets/sounds-sample/music-magical.mp3': 'Magical Music',
+        'assets/sounds-sample/music-mysterious-adventure.mp3': 'Mysterious Adventure',
+        'assets/sounds-sample/sfx-door-open.mp3': 'Door Open SFX',
+      };
+      const bundledAssets = [demoStory, demoStoryAdvanced]
+        .flatMap((story) => collectBundledAssetReferences(story))
+        .filter((reference, index, all) =>
+          all.findIndex((other) => other.uri === reference.uri) === index)
+        .map(({ uri, type }) => [
+          uri,
+          curatedNames[uri] ?? uri.split('/').pop() ?? uri,
+          type,
+        ] as const);
+
       for (const [uri, name, type] of bundledAssets) {
         await addAssetToLibrary(uri, name, type);
       }

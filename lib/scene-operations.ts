@@ -598,3 +598,55 @@ export function deriveCharacterLibraryFromLegacyStory(story: Story): Character[]
 
   return [...byId.values()].map((entry) => entry.character);
 }
+
+/** Media kinds the library stores, decided by extension. */
+const BUNDLED_ASSET_KIND: Record<string, 'image' | 'audio' | 'video'> = {
+  png: 'image', jpg: 'image', jpeg: 'image', webp: 'image', gif: 'image',
+  avif: 'image', bmp: 'image', svg: 'image',
+  mp3: 'audio', wav: 'audio', m4a: 'audio', aac: 'audio', ogg: 'audio', weba: 'audio',
+  mp4: 'video', webm: 'video', mov: 'video',
+};
+
+export interface BundledAssetReference {
+  uri: string;
+  type: 'image' | 'audio' | 'video';
+}
+
+/**
+ * Every `assets/…` file a bundled story refers to, wherever it sits.
+ *
+ * A recursive walk over strings rather than a list of fields, for the reason
+ * `scripts/lib/collect-story-assets.mjs` gives: references hide in interactive
+ * objects, splash screens and choice branches, and a field list is wrong the
+ * first time someone adds one. The exporter has always worked this way; the app
+ * seeded its media library from a hand-written list of twelve instead, which is
+ * why the bundled demos showed seven broken asset links and could not be
+ * released.
+ *
+ * Deduplicated, and in first-seen order so the library is stable between runs.
+ */
+export function collectBundledAssetReferences(story: unknown): BundledAssetReference[] {
+  const found = new Map<string, BundledAssetReference>();
+
+  const walk = (node: unknown): void => {
+    if (node == null) return;
+    if (typeof node === 'string') {
+      if (!node.startsWith('assets/') || found.has(node)) return;
+      const extension = node.split('.').pop()?.toLowerCase() ?? '';
+      const type = BUNDLED_ASSET_KIND[extension];
+      // Anything else is not media the library can hold — a JSON path, say.
+      if (type) found.set(node, { uri: node, type });
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    if (typeof node === 'object') {
+      for (const value of Object.values(node as Record<string, unknown>)) walk(value);
+    }
+  };
+
+  walk(story);
+  return [...found.values()];
+}
