@@ -1381,12 +1381,25 @@ What the artifact itself shows, read out of the APK rather than assumed:
   acceptance test R4 wrote and could only ever run against a real artifact.
 - **And it found two that should not be there.** `SYSTEM_ALERT_WINDOW` — draw
   over other apps — and `DUMP`, both from React Native's dev support, both alive
-  in a release build. Added to `PLAYER_BLOCKED_PERMISSIONS`, and the staged
-  project's resolved config now carries all ten, which `pnpm stage:android`
-  asserts. That the block *works* is not inference either: `RECORD_AUDIO` is
-  declared by the `expo-audio` plugin, blocked the same way, and absent from the
-  APK that was actually built. What is still unproven is only that these two
-  specific names follow it, and one build settles that.
+  in a release build. Both were added to `PLAYER_BLOCKED_PERMISSIONS`, and a
+  second APK was built to check. **One went, one stayed.**
+
+  `SYSTEM_ALERT_WINDOW` is gone from the new artifact — the permission Android
+  warns about by name, and the one that mattered. `DUMP` is still there, and the
+  interesting part is that it is not our mistake: `expo prebuild` on the staged
+  project generates `<uses-permission android:name="android.permission.DUMP"
+  tools:node="remove"/>`, character for character the same rule that removed
+  `SYSTEM_ALERT_WINDOW` two lines below it. The manifest merger honoured one and
+  not the other, and Gradle does not print its reasoning to the build log —
+  the merger report is a file on the builder.
+
+  Left as an open question with its evidence rather than guessed at. In
+  proportion: `DUMP` is a signature-level permission, so an ordinary app is never
+  granted it; what it costs is a line in the manifest a curious reader can see,
+  not a capability a novel actually has. Worth finishing, not worth blocking on.
+
+  Two APKs of the same release also confirm the version code is stable: both are
+  `1000000`, both 168.9 MB.
 - **`INTERNET` and `ACCESS_NETWORK_STATE` are still declared**, and a novel whose
   media ships inside it does not need either. Left alone deliberately: removing
   them could break `expo-asset` or `expo-updates` at runtime in ways no test here

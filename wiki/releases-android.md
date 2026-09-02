@@ -225,8 +225,11 @@ EAS project and one novel. It has been exercised against a simulated EAS
 CLI only. The following therefore remains physical acceptance rather than an
 implemented-code gap:
 
-- a second artifact proving the newly blocked `SYSTEM_ALERT_WINDOW` and `DUMP`
-  permissions are gone;
+- why the manifest merger removes `SYSTEM_ALERT_WINDOW` and keeps `DUMP` when
+  the generated manifest carries the identical `tools:node="remove"` rule for
+  both. A second APK settled the first half: `SYSTEM_ALERT_WINDOW` is gone.
+  `DUMP` is signature-level, so no ordinary app holds it — untidy rather than
+  dangerous, and the merger report on the builder is where the answer is;
 - the complete browser → helper → EAS → browser path;
 - installing v2 over v1 with the saves intact — the case the whole
   application-id design exists for;
