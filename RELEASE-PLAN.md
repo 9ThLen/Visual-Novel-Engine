@@ -2,9 +2,9 @@
 
 How a finished novel leaves the editor and reaches a reader.
 
-Status: in progress. **R0–R7 are implemented; R8 has produced a Windows
-installer; R9 has produced a real signed APK and still needs helper-path/device
-acceptance** — R0–R3 complete
+Status: in progress. **R0–R7 are implemented; R8 has produced installers for
+Windows, Linux and macOS; R9 has produced a real signed APK and still needs
+helper-path and device acceptance** — R0–R3 complete
 Channel A, R4 is the build profile every native channel stands on, R5 is the
 first shippable artifact of Channel B, R6 puts it behind a button, R7 is the
 build kernel every native channel submits through, R8 stages a desktop
@@ -12,10 +12,19 @@ application from the same bundle R5 publishes, and R9 stages an Android project
 and proves the native cut R4 could only specify. R10 is still a proposal,
 alongside the parts marked **exists** in [Current state](#1-current-state).
 
-`tauri build` has run on Windows. A manually staged `eas build` has run against a
-real account; the browser → helper → EAS path and device lifecycle still need
-physical acceptance. The distinction is recorded in each stage rather than
-hidden in a footnote.
+`tauri build` has run on Windows locally and, through CI, on all three
+platforms. A manually staged `eas build` has run against a real account and
+produced a signed APK. What has still never happened is physical: nobody has
+installed either artifact, watched a story render in a desktop window, or taken
+an update over an earlier install. The browser → helper → EAS path has not been
+driven end to end either. Each stage records its own line between what ran and
+what is inferred, rather than hiding it in a footnote.
+
+**Publishing works by clicking.** `pnpm test:studio-e2e` opens a bundled story's
+project page, presses Release, confirms, and finds the card that says the story
+is published. That had never been possible: no bundled demo passed the gate, so
+every test of the publish path wrote a release into storage itself and asserted
+on what it had written.
 
 Corrections to earlier steps are recorded inline rather than edited away: R2's
 object store and R4's autolinking exclusions were both marked done before they
@@ -1365,8 +1374,12 @@ What the artifact itself shows, read out of the APK rather than assumed:
   acceptance test R4 wrote and could only ever run against a real artifact.
 - **And it found two that should not be there.** `SYSTEM_ALERT_WINDOW` — draw
   over other apps — and `DUMP`, both from React Native's dev support, both alive
-  in a release build. Added to `PLAYER_BLOCKED_PERMISSIONS`; the next build is
-  what proves they are gone.
+  in a release build. Added to `PLAYER_BLOCKED_PERMISSIONS`, and the staged
+  project's resolved config now carries all ten, which `pnpm stage:android`
+  asserts. That the block *works* is not inference either: `RECORD_AUDIO` is
+  declared by the `expo-audio` plugin, blocked the same way, and absent from the
+  APK that was actually built. What is still unproven is only that these two
+  specific names follow it, and one build settles that.
 - **`INTERNET` and `ACCESS_NETWORK_STATE` are still declared**, and a novel whose
   media ships inside it does not need either. Left alone deliberately: removing
   them could break `expo-asset` or `expo-updates` at runtime in ways no test here
