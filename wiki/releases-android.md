@@ -13,6 +13,19 @@ the normal path is the Android block on the story's Release card. The command
 below remains the diagnostic/manual staging path.
 
 ```powershell
+pnpm stage:android --release novel.vnerelease --out ./novel-android --eas-project-id <your-own-eas-project-uuid> --build
+```
+
+`--build` stages, runs all four checks, and only then submits. It is a flag and
+never implied: it is the only step in this pipeline that spends money, and it
+uses the signing credentials Android will hold the story to for the life of the
+work. It also carries the two easily-forgotten details — the working directory
+and `EAS_SKIP_AUTO_FINGERPRINT` — so they live in one place rather than in
+whoever remembers to type them.
+
+The same thing by hand, which is what the two notes below are about:
+
+```powershell
 pnpm stage:android --release novel.vnerelease --out ./novel-android --eas-project-id <your-own-eas-project-uuid>
 Set-Location ./novel-android
 $env:EAS_SKIP_AUTO_FINGERPRINT = '1'
@@ -232,7 +245,11 @@ implemented-code gap:
   dangerous, and the merger report on the builder is where the answer is;
 - the complete browser → helper → EAS → browser path;
 - installing v2 over v1 with the saves intact — the case the whole
-  application-id design exists for;
+  application-id design exists for. Everything Android checks first is now
+  verified rather than assumed: two APKs of the same story, `1.0.0` and `1.0.1`,
+  carry the same application id, version codes `1000000` and `1000001`, and EAS
+  reports the same keystore (`Build Credentials 3Xs4et9yvN`) for both. Untested
+  is the install itself, and whether a reader's saves survive it;
 - the permission surface as a device reports it, rather than as the APK declares
   it.
 - the post-build certificate check, which needs an artifact to check.
