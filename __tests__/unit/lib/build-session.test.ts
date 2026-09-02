@@ -60,4 +60,27 @@ describe('build helper session persistence', () => {
     }));
     await expect(loadBuildSession('story', storage)).resolves.toBeNull();
   });
+
+  it('keeps a valid durable request but drops an untrusted display snapshot', async () => {
+    const storage = memoryStorage();
+    await storage.setItem(STORAGE_KEYS.BUILD_SESSION('story'), JSON.stringify({
+      request,
+      summary: {
+        requestId: request.requestId,
+        releaseId: request.releaseId,
+        target: request.target,
+        state: 'succeeded',
+        attempt: 1,
+        updatedAt: '2026-09-02T10:00:00.000Z',
+        artifact: {
+          fileName: '../other.apk',
+          bytes: 4,
+          sha256: 'b'.repeat(64),
+          expiresAt: '2026-09-03T10:00:00.000Z',
+        },
+      },
+    }));
+
+    await expect(loadBuildSession('story', storage)).resolves.toEqual({ request });
+  });
 });
