@@ -184,8 +184,10 @@ Android asks permission to install apps from outside Play, once, per source. Say
 so on the download page — a reader who meets that prompt with no warning
 concludes the file is malware, which is the correct instinct.
 
-The app asks for no permissions. It reads a story; it does not pick files, take
-photos, or post notifications, and the manifest says so.
+The app asks for no sensitive runtime permissions. It reads a story; it does not
+pick files, take photos, record audio, read shared storage, or post
+notifications. `INTERNET` and `ACCESS_NETWORK_STATE` remain for Expo runtime
+compatibility, as recorded below.
 
 ## What the first real APK looked like
 
@@ -208,18 +210,22 @@ never uses.
 
 ## What has and has not happened
 
-**No APK has ever been built.** No machine involved in writing this had an
-Android SDK, and no Expo account was used: `eas build` costs money on someone
-else's account and signs with credentials that outlive the build.
+**One real APK has been built from the staged project.** It proves that EAS can
+compile and sign the generated project and that the release media is packaged.
+It was submitted manually, not through the browser/helper path.
 
 The EAS adapter is implemented: readiness, staging, archive inspection, submit,
-poll, remote cancel, HTTPS artifact download, server-side hash/ZIP checks and a
-second size/hash check in the browser. It also persists the binding between one
+poll, remote cancel, HTTPS artifact download, EAS identity/version matching,
+server-side hash/Android-structure checks and a second size/hash check in the
+browser. It also persists the binding between one
 EAS project and one novel. It has been exercised against a simulated EAS CLI,
-not against a paid account. The following therefore remains physical acceptance,
-not an implemented-code gap:
+and against a simulated EAS CLI. The following therefore remains physical
+acceptance, not an implemented-code gap:
 
-- the APK itself, its size, and its permission list on a device;
+- a second artifact proving the newly blocked `SYSTEM_ALERT_WINDOW` and `DUMP`
+  permissions are gone;
+- the complete browser → helper → EAS → browser path;
+- the APK's install/runtime behaviour and permission surface on a device;
 - the launch splash, which only behaves faithfully in a release build;
 - installing v2 over v1 with the saves intact;
 - the post-build certificate check, which needs an artifact to check.

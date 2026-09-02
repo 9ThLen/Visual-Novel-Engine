@@ -366,10 +366,13 @@ export default function StoryHomeScreen() {
   const buildClientKeyRef = useRef('');
   const buildSessionRef = useRef<PersistedBuildSession | null>(null);
   const buildSessionWriteRef = useRef<Promise<void>>(Promise.resolve());
+  const buildPreparingRef = useRef(false);
+  const buildUploadRequestRef = useRef<string | null>(null);
   const [buildSettings, setBuildSettings] = useState<BuildHelperSettings>(DEFAULT_BUILD_HELPER_SETTINGS);
   const [buildResumeSettings, setBuildResumeSettings] = useState<BuildHelperSettings>(DEFAULT_BUILD_HELPER_SETTINGS);
   const [buildSession, setBuildSession] = useState<PersistedBuildSession | null>(null);
   const [buildSummary, setBuildSummary] = useState<BuildJobSummary | null>(null);
+  const [buildSummaryLive, setBuildSummaryLive] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
   const [buildStateLoaded, setBuildStateLoaded] = useState(false);
   const [buildPreparing, setBuildPreparing] = useState(false);
@@ -391,9 +394,16 @@ export default function StoryHomeScreen() {
   const receiveBuildSummary = useCallback((summary: BuildJobSummary) => {
     const session = buildSessionRef.current;
     if (!session || summary.requestId !== session.request.requestId) return;
+    setBuildSummaryLive(true);
     setBuildSummary(summary);
+    if (!summary.needsUpload && buildUploadRequestRef.current === summary.requestId) {
+      buildUploadRequestRef.current = null;
+      buildPreparingRef.current = false;
+      setBuildPreparing(false);
+    }
     rememberBuildSession({ ...session, summary });
     if (summary.failureReason) setBuildError(summary.failureReason);
+    else setBuildError(null);
   }, [rememberBuildSession]);
 
   const ensureBuildClient = useCallback(async (settings: BuildHelperSettings): Promise<BuildClient> => {
@@ -426,8 +436,12 @@ export default function StoryHomeScreen() {
     buildClientRef.current = null;
     buildClientKeyRef.current = '';
     buildSessionRef.current = null;
+    buildUploadRequestRef.current = null;
+    buildPreparingRef.current = false;
+    setBuildPreparing(false);
     setBuildSession(null);
     setBuildSummary(null);
+    setBuildSummaryLive(false);
     setBuildError(null);
     setBuildStateLoaded(false);
     Promise.all([
@@ -440,6 +454,7 @@ export default function StoryHomeScreen() {
       buildSessionRef.current = session;
       setBuildSession(session);
       setBuildSummary(session?.summary ?? null);
+      setBuildSummaryLive(false);
       setBuildStateLoaded(true);
     }).catch((error) => {
       if (active) {
@@ -462,6 +477,61 @@ export default function StoryHomeScreen() {
       .then((client) => client.status(requestId))
       .catch((error) => setBuildError(error instanceof Error ? error.message : String(error)));
   }, [buildSession?.request.requestId, buildResumeSettings, buildStateLoaded, ensureBuildClient]);
+
+  // A reload can land after the durable request was submitted but before its
+  // HTTP body finished. The helper says so explicitly; reconstruct the exact
+  // immutable archive and resume instead of leaving a paid workflow queued
+  // forever with no button capable of completing it.
+  useEffect(() => {
+    const session = buildSessionRef.current;
+    const requestId = buildSummary?.requestId;
+    if (
+      Platform.OS !== 'web'
+      || !storyId
+      || !session
+      || !requestId
+      || !buildSummaryLive
+      || !buildSummary.needsUpload
+      || session.request.requestId !== requestId
+      || !buildResumeSettings.token.trim()
+      || buildUploadRequestRef.current === requestId
+      || !buildStorageRef.current
+    ) return;
+
+    buildUploadRequestRef.current = requestId;
+    buildPreparingRef.current = true;
+    setBuildPreparing(true);
+    let active = true;
+    void (async () => {
+      const archive = await buildStoredReleaseArchive({
+        storyId,
+        releaseId: session.request.releaseId,
+        storage: buildStorageRef.current!,
+      });
+      if (archive.sha256 !== session.request.payloadHash) {
+        throw new Error('The stored release no longer matches the build request.');
+      }
+      const client = await ensureBuildClient(buildResumeSettings);
+      await client.upload(requestId, archive.blob);
+      client.status(requestId);
+    })().catch((error) => {
+      if (buildUploadRequestRef.current === requestId) buildUploadRequestRef.current = null;
+      if (active) setBuildError(error instanceof Error ? error.message : String(error));
+    }).finally(() => {
+      if (active) {
+        buildPreparingRef.current = false;
+        setBuildPreparing(false);
+      }
+    });
+    return () => { active = false; };
+  }, [
+    buildResumeSettings,
+    buildSummary?.needsUpload,
+    buildSummary?.requestId,
+    buildSummaryLive,
+    ensureBuildClient,
+    storyId,
+  ]);
 
   useEffect(() => () => {
     buildClientRef.current?.close();
@@ -536,14 +606,21 @@ export default function StoryHomeScreen() {
     }
   }, [storyId, t]);
 
+  const connectBuildHelperFromForm = useCallback(async (): Promise<BuildClient> => {
+    if (!buildStorageRef.current) throw new Error('Build settings storage is unavailable.');
+    const settings = await saveBuildHelperSettings(buildSettings, buildStorageRef.current);
+    setBuildSettings(settings);
+    setBuildResumeSettings(settings);
+    return ensureBuildClient(settings);
+  }, [buildSettings, ensureBuildClient]);
+
   const handleBuildAndroid = useCallback(async (releaseId: string, target: BuildTarget) => {
-    if (!storyId || !buildStorageRef.current || buildPreparing) return;
+    if (!storyId || !buildStorageRef.current || buildPreparingRef.current) return;
+    buildPreparingRef.current = true;
     setBuildPreparing(true);
     setBuildError(null);
     try {
-      const settings = await saveBuildHelperSettings(buildSettings, buildStorageRef.current);
-      setBuildSettings(settings);
-      setBuildResumeSettings(settings);
+      const client = await connectBuildHelperFromForm();
       const archive = await buildStoredReleaseArchive({ storyId, releaseId, storage: buildStorageRef.current });
       const identity = deriveAndroidIdentity({
         storyId: archive.manifest.story.id,
@@ -560,42 +637,55 @@ export default function StoryHomeScreen() {
       const session: PersistedBuildSession = {
         request,
       };
+      buildUploadRequestRef.current = request.requestId;
       setBuildSummary(null);
+      setBuildSummaryLive(false);
       rememberBuildSession(session);
 
-      const client = await ensureBuildClient(settings);
       const summary = await client.submit(request);
       receiveBuildSummary(summary);
       await client.upload(request.requestId, archive.blob);
       client.status(request.requestId);
     } catch (error) {
+      buildUploadRequestRef.current = null;
       setBuildError(error instanceof Error ? error.message : String(error));
     } finally {
+      buildPreparingRef.current = false;
       setBuildPreparing(false);
     }
-  }, [buildPreparing, buildSettings, ensureBuildClient, receiveBuildSummary, rememberBuildSession, storyId]);
+  }, [connectBuildHelperFromForm, receiveBuildSummary, rememberBuildSession, storyId]);
 
   const handleCancelBuild = useCallback(async (requestId: string) => {
     setBuildError(null);
     try {
-      const client = await ensureBuildClient(buildResumeSettings);
+      const client = await connectBuildHelperFromForm();
       client.cancel(requestId);
     } catch (error) {
       setBuildError(error instanceof Error ? error.message : String(error));
     }
-  }, [buildResumeSettings, ensureBuildClient]);
+  }, [connectBuildHelperFromForm]);
+
+  const handleRetryBuild = useCallback(async (requestId: string) => {
+    setBuildError(null);
+    try {
+      const client = await connectBuildHelperFromForm();
+      client.retry(requestId);
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : String(error));
+    }
+  }, [connectBuildHelperFromForm]);
 
   const handleDownloadBuild = useCallback(async (summary: BuildJobSummary) => {
     if (!summary.artifact) return;
     setBuildError(null);
     try {
-      const client = await ensureBuildClient(buildResumeSettings);
+      const client = await connectBuildHelperFromForm();
       const blob = await client.downloadArtifact(summary.requestId, summary.artifact);
       await saveAndroidBuildArtifact(summary.artifact.fileName, blob);
     } catch (error) {
       setBuildError(error instanceof Error ? error.message : String(error));
     }
-  }, [buildResumeSettings, ensureBuildClient]);
+  }, [connectBuildHelperFromForm]);
 
   const handleSetPublished = useCallback((releaseId: string, published: boolean) => {
     if (!storyId) return;
@@ -1395,6 +1485,9 @@ export default function StoryHomeScreen() {
               : undefined}
             onCancelBuild={Platform.OS === 'web'
               ? (requestId) => void handleCancelBuild(requestId)
+              : undefined}
+            onRetryBuild={Platform.OS === 'web'
+              ? (requestId) => void handleRetryBuild(requestId)
               : undefined}
             onDownloadBuild={Platform.OS === 'web'
               ? (summary) => void handleDownloadBuild(summary)

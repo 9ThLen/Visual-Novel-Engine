@@ -24,6 +24,7 @@ import {
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { zipSync } from 'fflate';
 
 import {
   isEasProjectId,
@@ -110,8 +111,15 @@ export class FakeBuilder implements Builder {
     mkdirSync(input.outputDirectory, { recursive: true });
     const fileName = `${input.request.requestId}.${input.request.target}`;
     const artifactPath = path.join(input.outputDirectory, fileName);
-    const bytes = new Uint8Array(Math.max(4, this.options.artifactBytes ?? 1024)).fill(7);
-    bytes.set([0x50, 0x4b, 0x03, 0x04]);
+    const entries: Record<string, Uint8Array> = input.request.target === 'apk'
+      ? { 'AndroidManifest.xml': new Uint8Array([1]), 'classes.dex': new Uint8Array([2]) }
+      : {
+          'BundleConfig.pb': new Uint8Array([1]),
+          'base/manifest/AndroidManifest.xml': new Uint8Array([2]),
+          'base/dex/classes.dex': new Uint8Array([3]),
+        };
+    entries['assets/fake-padding.bin'] = new Uint8Array(this.options.artifactBytes ?? 1024).fill(7);
+    const bytes = zipSync(entries, { level: 0 });
     writeFileSync(artifactPath, bytes);
     return { artifactPath, fileName };
   }
@@ -222,7 +230,7 @@ export class EasBuilder implements Builder {
       repoRoot: this.repoRoot,
       easProjectId: this.easProjectId,
     });
-    this.assertImmutableProjectIdentity(projectDir);
+    const identity = this.assertImmutableProjectIdentity(projectDir);
     input.onLog('Staged and verified the Android player project');
 
     const linked = await this.runCommand([
@@ -301,6 +309,7 @@ export class EasBuilder implements Builder {
 
       const url = buildArtifactUrl(build);
       if (!url) throw new Error('Finished EAS build carries no application artifact URL.');
+      this.assertFinishedBuildIdentity(build, identity, input.request);
       const fileName = `${input.request.requestId}.${input.request.target}`;
       const artifactPath = path.join(input.outputDirectory, fileName);
       await this.download(url, artifactPath, input.signal);
@@ -317,7 +326,10 @@ export class EasBuilder implements Builder {
     }
   }
 
-  private assertImmutableProjectIdentity(projectDir: string): void {
+  private assertImmutableProjectIdentity(projectDir: string): {
+    applicationId: string;
+    easProjectId: string;
+  } {
     if (!this.easProjectId) throw new Error('The EAS project id is missing.');
     const raw = JSON.parse(readFileSync(path.join(projectDir, NATIVE_IDENTITY_FILE), 'utf8')) as {
       version?: unknown;
@@ -344,7 +356,7 @@ export class EasBuilder implements Builder {
     };
     try {
       writeFileSync(registryFile, `${JSON.stringify(expected, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
-      return;
+      return expected;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     }
@@ -366,6 +378,29 @@ export class EasBuilder implements Builder {
       throw new Error(
         `EAS project ${this.easProjectId} is already bound to another novel; create a separate EAS project.`,
       );
+    }
+    return expected;
+  }
+
+  private assertFinishedBuildIdentity(
+    build: Record<string, unknown>,
+    identity: { applicationId: string; easProjectId: string },
+    request: BuildRequest,
+  ): void {
+    const project = build.project && typeof build.project === 'object'
+      ? build.project as Record<string, unknown>
+      : null;
+    const applicationId = typeof build.appIdentifier === 'string'
+      ? build.appIdentifier
+      : typeof build.applicationIdentifier === 'string'
+        ? build.applicationIdentifier
+        : null;
+    if (
+      project?.id !== identity.easProjectId
+      || applicationId !== identity.applicationId
+      || String(build.appBuildVersion ?? '') !== String(request.versionCode)
+    ) {
+      throw new Error('The finished EAS build metadata does not match the staged novel identity.');
     }
   }
 

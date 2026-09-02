@@ -29,7 +29,10 @@ import {
 } from '@/lib/release/build-request';
 import { BUILD_STATES, type BuildJobSummary, type BuildState } from '@/lib/release/build-job';
 
-export const BUILD_PROTOCOL_VERSION = 1;
+// v2 adds `needsUpload` to queued summaries so a reloaded browser can finish a
+// request whose HTTP body was interrupted. An old helper would otherwise pair
+// successfully and leave that job queued forever.
+export const BUILD_PROTOCOL_VERSION = 2;
 
 /** A socket frame is small by construction; the payload goes over HTTP. */
 export const MAX_BUILD_MESSAGE_BYTES = 64 * 1024;
@@ -154,6 +157,8 @@ export function parseBuildServerMessage(raw: string): BuildServerMessage {
     || (job.attempt as number) < 1
     || typeof job.updatedAt !== 'string'
     || !Number.isFinite(Date.parse(job.updatedAt))
+    || (job.needsUpload !== undefined && typeof job.needsUpload !== 'boolean')
+    || (job.needsUpload === true && job.state !== 'queued')
     || (job.failureReason !== undefined && typeof job.failureReason !== 'string')
   ) {
     throw new Error('Invalid build job summary');

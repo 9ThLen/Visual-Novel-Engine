@@ -3,8 +3,8 @@
 How a finished novel leaves the editor and reaches a reader.
 
 Status: in progress. **R0–R7 are implemented; R8 has produced a Windows
-installer; R9 is implemented through the EAS adapter and still needs a paid
-build/device acceptance run** — R0–R3 complete
+installer; R9 has produced a real signed APK and still needs helper-path/device
+acceptance** — R0–R3 complete
 Channel A, R4 is the build profile every native channel stands on, R5 is the
 first shippable artifact of Channel B, R6 puts it behind a button, R7 is the
 build kernel every native channel submits through, R8 stages a desktop
@@ -12,9 +12,10 @@ application from the same bundle R5 publishes, and R9 stages an Android project
 and proves the native cut R4 could only specify. R10 is still a proposal,
 alongside the parts marked **exists** in [Current state](#1-current-state).
 
-`tauri build` has run on Windows. `eas build` has not been submitted against a
-real account; the distinction between implemented code and physical acceptance
-is recorded in each stage rather than hidden in a footnote.
+`tauri build` has run on Windows. A manually staged `eas build` has run against a
+real account; the browser → helper → EAS path and device lifecycle still need
+physical acceptance. The distinction is recorded in each stage rather than
+hidden in a footnote.
 
 Corrections to earlier steps are recorded inline rather than edited away: R2's
 object store and R4's autolinking exclusions were both marked done before they
@@ -1189,8 +1190,9 @@ running build, and an artifact past its expiry.
   CLI. `pnpm build-helper`.
 
 **Honest about what is not proved.** The service kernel is proven against its
-fake builder. R9 now plugs in `EasBuilder` and the browser UI, but no paid build
-has run against a real Expo account, so a real APK remains physical acceptance.
+fake builder. R9 plugs in `EasBuilder` and the browser UI, while the first paid
+build was submitted manually from the same staged project. The complete
+browser → helper → EAS path remains physical acceptance.
 
 **One rule the plan named that turned out to matter more than expected:** the
 upload endpoint must know the expected hash *before* it accepts bytes. Taking the
@@ -1366,7 +1368,8 @@ opens on the engine splash, plays offline and exposes nothing else; the launch s
 v2 installing over v1 with saves intact; and the post-build certificate check,
 which needs a real signed artifact. `EasBuilder` now performs readiness,
 staging, archive inspection, submit, polling/cancellation and HTTPS download;
-the helper and browser both check the returned bytes. This path is covered by a
+the helper matches EAS project/application/version metadata, checks the target's
+required APK/AAB entries, and the helper and browser both check the returned bytes. This path is covered by a
 simulated EAS CLI, not by a paid account.
 
 **Five things a review found afterwards, all real, all fixed:**
@@ -1408,11 +1411,12 @@ staging is deterministic, stamped from the release rather than from the clock.
 - `wiki/releases-android.md` — sideload instructions, the Play checklist, and
   what losing a signing key costs.
 
-Still to do for the **Done when** below: complete the one-time interactive EAS
-project/signing setup, run the paid build, verify its signing certificate
-against the stored fingerprint, run `bundletool get-size total` for the AAB, and
-perform the device lifecycle checks. Submit/poll/cancel/download and resumable
-browser status are implemented.
+Still to do for the **Done when** below: run a build through the browser/helper,
+verify its signing certificate against the stored fingerprint, build the AAB and
+run `bundletool get-size total`, rebuild once to prove the newly blocked dev
+permissions are gone, and perform the device lifecycle checks. The one-time EAS
+setup and a manual APK build have happened; submit/poll/cancel/download and
+resumable browser status are implemented.
 
 **Done when:** an author who has completed the one-time onboarding presses
 Release → Android and receives an APK that installs on a phone, opens on the
@@ -1466,8 +1470,10 @@ every one of them corresponds to a way this can ship broken and look fine.
   repository's 31; the authoring trees and every unreferenced studio route are
   absent from the staged tree, which is stronger than inspecting the archive for
   them; the staged project's whole module graph resolves.
-- **R9, still open:** the installed APK's permission list on a device; APK size
-  and `bundletool get-size total` for the AAB. Both need a build.
+- **R9, measured:** the first APK was 168.9 MB and its manifest was inspected.
+- **R9, still open:** rebuild once to verify `SYSTEM_ALERT_WINDOW` and `DUMP` are
+  gone; inspect the installed app on a device; and run `bundletool get-size
+  total` for a real AAB.
 
 **Install lifecycle** (a real device or emulator):
 
@@ -1595,7 +1601,7 @@ tests are the right base to extend.
 | A republish breaks readers' saves | `releaseId` + version on every save slot, explicit continue/restart choice |
 | Sub-path hosting silently 404s | `--base-url` plumbed to `experiments.baseUrl`; smoke test serves the bundle from a sub-path |
 | `file://` delivery breaks on `fetch` | Boot config inlined into `index.html`; media referenced by relative path |
-| A lost signing key strands every installed copy | Sideload updates have no recovery path, unlike a Play upload key — EAS holds credentials in v1, and a mismatched signing certificate is caught when the artifact returns, before it reaches the author |
+| A lost signing key strands every installed copy | Sideload updates have no recovery path, unlike a Play upload key — EAS holds credentials in v1; certificate pinning on returned artifacts remains an explicit R9 acceptance blocker |
 | A failed build burns a `versionCode`, or two builds share one | Codes are reserved atomically before submit and never returned on failure; concurrent reservation is an acceptance test |
 | Native modules survive the JS cut because they are installed, not configured | `expo.autolinking.android.exclude` plus `android.blockedPermissions`, asserted through `expo-modules-autolinking resolve` |
 | AAB measured as a file instead of as a download | `bundletool get-size total`, not the `.aab` byte count |

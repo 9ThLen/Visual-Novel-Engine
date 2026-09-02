@@ -173,6 +173,8 @@ export interface BuildJobSummary {
   state: BuildState;
   attempt: number;
   updatedAt: string;
+  /** A queued job whose archive never finished uploading can be resumed by the browser. */
+  needsUpload?: boolean;
   artifact?: BuildArtifact;
   failureReason?: string;
 }
@@ -187,6 +189,7 @@ export function summarizeBuildJob(job: BuildJob): BuildJobSummary {
     attempt: job.attempt,
     updatedAt: job.updatedAt,
   };
+  if (job.state === 'queued' && job.uploadedBytes === undefined) summary.needsUpload = true;
   if (job.artifact) summary.artifact = job.artifact;
   if (job.failureReason) summary.failureReason = job.failureReason;
   return summary;

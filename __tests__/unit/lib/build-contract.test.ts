@@ -163,6 +163,7 @@ describe('the build state machine', () => {
     const summary = summarizeBuildJob(withBuildLog(job(), ['secret-ish'], now));
     expect(summary).not.toHaveProperty('log');
     expect(summary.requestId).toBe('req_one');
+    expect(summary.needsUpload).toBe(true);
   });
 });
 
@@ -247,5 +248,9 @@ describe('the build message set', () => {
       type: 'progress',
       job,
     }))).toThrow('does not match job state');
+    expect(() => parseBuildServerMessage(JSON.stringify({
+      type: 'completed',
+      job: { ...job, needsUpload: true },
+    }))).toThrow('Invalid build job summary');
   });
 });

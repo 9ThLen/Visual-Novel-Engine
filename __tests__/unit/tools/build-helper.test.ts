@@ -12,6 +12,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync,
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { WebSocket } from 'ws';
+import { zipSync } from 'fflate';
 
 import { BuildHelperServer } from '../../../tools/build-helper/src/server';
 import { EasBuilder, FakeBuilder } from '../../../tools/build-helper/src/builder';
@@ -369,6 +370,21 @@ describe('the build helper', () => {
     client.close();
   });
 
+  it('asks for the immutable archive again when retry storage was removed', async () => {
+    await startServer({ builder: new FakeBuilder({ failAfterSteps: 1 }) });
+    const client = await TestClient.connect(port, server.token);
+    client.send({ type: 'submit', request: request() });
+    await client.waitFor((m) => m.type === 'progress');
+    await upload(port, server.token, 'req_one');
+    await client.waitFor((m) => m.type === 'failed' && m.job.state === 'failed');
+    rmSync(path.join(workDir, 'uploads', 'req_one.vnerelease'));
+
+    client.send({ type: 'retry', requestId: 'req_one' });
+    const waiting = await client.waitFor((m) => m.job?.attempt === 2 && m.job.needsUpload === true);
+    expect(waiting.job.state).toBe('queued');
+    client.close();
+  });
+
   it('refuses to retry a build that is still running', async () => {
     await startServer({ builder: new FakeBuilder({ stepMs: 60 }) });
     const client = await TestClient.connect(port, server.token);
@@ -485,7 +501,30 @@ describe('the build helper', () => {
     await upload(port, server.token, 'req_one');
     const failed = await client.waitFor((m) => m.type === 'failed');
 
-    expect(failed.job.failureReason).toContain('not an APK/AAB ZIP');
+    expect(failed.job.failureReason).toContain('no valid ZIP directory');
+    client.close();
+  });
+
+  it('rejects an ordinary ZIP that is not an Android application', async () => {
+    await startServer({
+      builder: {
+        name: 'ordinary-zip',
+        readiness: async () => ({ ready: true as const }),
+        build: async ({ outputDirectory }) => {
+          mkdirSync(outputDirectory, { recursive: true });
+          const artifactPath = path.join(outputDirectory, 'response.apk');
+          writeFileSync(artifactPath, zipSync({ 'readme.txt': new Uint8Array([1, 2, 3]) }));
+          return { artifactPath, fileName: 'response.apk' };
+        },
+      },
+    });
+    const client = await TestClient.connect(port, server.token);
+    client.send({ type: 'submit', request: request() });
+    await client.waitFor((m) => m.type === 'progress');
+    await upload(port, server.token, 'req_one');
+    const failed = await client.waitFor((m) => m.type === 'failed');
+
+    expect(failed.job.failureReason).toContain('missing required entries');
     client.close();
   });
 });
@@ -503,6 +542,17 @@ describe('the EAS builder adapter', () => {
       applicationId: `com.vne.story.${storyId}`,
       easProjectId: EAS_PROJECT_ID,
     }));
+  }
+
+  function finishedBuild(id: string, storyId = 'story-one'): Record<string, unknown> {
+    return {
+      id,
+      status: 'FINISHED',
+      project: { id: EAS_PROJECT_ID },
+      appIdentifier: `com.vne.story.${storyId}`,
+      appBuildVersion: '7',
+      artifacts: { applicationArchiveUrl: 'https://expo.dev/artifacts/eas/app.apk' },
+    };
   }
 
   it('stages, inspects, submits, polls and downloads one artifact', async () => {
@@ -530,11 +580,7 @@ describe('the EAS builder adapter', () => {
         }
         return {
           status: 0,
-          stdout: JSON.stringify({
-            id: 'build-1',
-            status: 'FINISHED',
-            artifacts: { applicationArchiveUrl: 'https://expo.dev/artifacts/eas/app.apk' },
-          }),
+          stdout: JSON.stringify(finishedBuild('build-1')),
           stderr: '',
         };
       },
@@ -625,11 +671,7 @@ describe('the EAS builder adapter', () => {
         if (args[0] === 'build') {
           return {
             status: 0,
-            stdout: JSON.stringify([{
-              id: `build-${storyId}`,
-              status: 'FINISHED',
-              artifacts: { applicationArchiveUrl: 'https://expo.dev/artifact.apk' },
-            }]),
+            stdout: JSON.stringify([finishedBuild(`build-${storyId}`, storyId)]),
             stderr: '',
           };
         }
@@ -657,6 +699,42 @@ describe('the EAS builder adapter', () => {
       onLog: () => {},
       signal: new AbortController().signal,
     })).rejects.toThrow('already bound to another novel');
+  });
+
+  it('refuses a finished EAS build for a different application id', async () => {
+    const builder = new EasBuilder({
+      repoRoot: root,
+      easProjectId: EAS_PROJECT_ID,
+      pollIntervalMs: 0,
+      stage: async ({ outDir }) => {
+        stageIdentity(outDir);
+        return {} as never;
+      },
+      runCommand: async (args) => {
+        if (args[0] === 'build') {
+          return {
+            status: 0,
+            stdout: JSON.stringify([{
+              ...finishedBuild('wrong-app'),
+              appIdentifier: 'com.example.someoneelse',
+            }]),
+            stderr: '',
+          };
+        }
+        return { status: 0, stdout: 'ok', stderr: '' };
+      },
+      download: async () => { throw new Error('must not download'); },
+    });
+    const outputDirectory = path.join(root, 'wrong-app-out');
+    mkdirSync(outputDirectory);
+
+    await expect(builder.build({
+      request: request(),
+      archivePath: path.join(root, 'wrong.vnerelease'),
+      outputDirectory,
+      onLog: () => {},
+      signal: new AbortController().signal,
+    })).rejects.toThrow('does not match the staged novel identity');
   });
 });
 
