@@ -46,6 +46,17 @@ export function getGalleryColumns(width: number): number {
 const GAP = spacing.sm;
 const SECTION_HEADER_HEIGHT = 40;
 
+/**
+ * How many tiles a row holds, for the width the browser is actually given.
+ *
+ * Exported because the screen needs the same answer: arrow-key navigation moves
+ * by one row, and a row is however many tiles the grid drew.
+ */
+export function mediaBrowserColumns(width: number, reservedWidth: number, dense: boolean): number {
+  const available = Math.max(240, width - reservedWidth - spacing.lg * 2);
+  return getGalleryColumns(available) + (dense ? 2 : 0);
+}
+
 function headerText(label: SectionLabel): string {
   if (label.source === 'kind') return `mediaLibrary.section.${label.kind}`;
   if (label.source === 'category') return `mediaLibrary.audio.group.${label.category}`;
@@ -66,6 +77,14 @@ interface MediaBrowserProps {
   emptyLabel: string;
   usageState: UsageState;
   onSelect: (item: StoryMediaItem) => void;
+  /**
+   * Select mode. A press means "tick this" rather than "open this", which is
+   * the screen's decision to make — the browser only reports the press and
+   * draws the state it is handed.
+   */
+  picking?: boolean;
+  checkedKeys?: ReadonlySet<string>;
+  onLongPress?: (item: StoryMediaItem) => void;
   /** Reserved width taken by a side panel, so tiles size to what is left. */
   reservedWidth?: number;
   /** Extra tiles per row, for authors who would rather see more at once. */
@@ -88,6 +107,9 @@ export function MediaBrowser({
   emptyLabel,
   usageState,
   onSelect,
+  picking = false,
+  checkedKeys,
+  onLongPress,
   reservedWidth = 0,
   dense = false,
   onTogglePlayback,
@@ -99,7 +121,7 @@ export function MediaBrowser({
   const { width } = useWindowDimensions();
 
   const available = Math.max(240, width - reservedWidth - spacing.lg * 2);
-  const columns = getGalleryColumns(available) + (dense ? 2 : 0);
+  const columns = mediaBrowserColumns(width, reservedWidth, dense);
   const tileSize = Math.floor((available - GAP * (columns - 1)) / columns);
   const gridRowHeight = tileSize + TILE_CAPTION_HEIGHT + GAP;
   const compact = available < COMPACT_MAX_WIDTH;
@@ -142,6 +164,9 @@ export function MediaBrowser({
           selected={row.item.key === selectedKey}
           usageState={usageState}
           onSelect={onSelect}
+          onLongPress={onLongPress}
+          picking={picking}
+          checked={checkedKeys?.has(row.item.key) ?? false}
           onTogglePlayback={onTogglePlayback}
           previewState={row.item.key === activeAudioKey ? previewState : null}
           // Only the active row draws a fill, so the rest stay memo-stable
@@ -161,19 +186,25 @@ export function MediaBrowser({
             colors={colors}
             selected={item.key === selectedKey}
             usageState={usageState}
+            picking={picking}
+            checked={checkedKeys?.has(item.key) ?? false}
             onPress={onSelect}
+            onLongPress={onLongPress}
           />
         ))}
       </View>
     );
   }, [
     activeAudioKey,
+    checkedKeys,
     colors,
     compact,
     gridRowHeight,
     heightOf,
+    onLongPress,
     onSelect,
     onTogglePlayback,
+    picking,
     previewState,
     progress,
     selectedKey,

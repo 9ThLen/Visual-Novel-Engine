@@ -44,6 +44,14 @@ interface TrackRowProps {
   selected: boolean;
   usageState: UsageState;
   onSelect: (item: StoryMediaItem) => void;
+  onLongPress?: (item: StoryMediaItem) => void;
+  /**
+   * Select mode: the row ticks the file instead of opening it, and the disc
+   * becomes the tick. Nothing plays while files are being picked — the one
+   * preview controller has no row left to belong to.
+   */
+  picking?: boolean;
+  checked?: boolean;
   onTogglePlayback?: (item: StoryMediaItem) => void;
   /** What the one preview controller is doing, when it is on this item. */
   previewState?: AudioPreviewState | null;
@@ -58,6 +66,9 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
   selected,
   usageState,
   onSelect,
+  onLongPress,
+  picking = false,
+  checked = false,
   onTogglePlayback,
   previewState = null,
   progress = 0,
@@ -88,6 +99,7 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
     formatDate(item.addedAt, language),
   ].filter(Boolean).join('  ·  ');
 
+  const highlighted = picking ? checked : selected;
   const badge = audioUsageBadge(item, usageState);
   const usageLabel = badge.kind === 'used'
     ? t('mediaLibrary.audio.usage.used', {
@@ -152,8 +164,9 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
     <View style={{ height: compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT }}>
       <Pressable
         onPress={() => onSelect(item)}
-        accessibilityRole="button"
-        accessibilityState={{ selected }}
+        onLongPress={onLongPress ? () => onLongPress(item) : undefined}
+        accessibilityRole={picking ? 'checkbox' : 'button'}
+        accessibilityState={picking ? { checked } : { selected }}
         accessibilityLabel={t('mediaLibrary.tile.label', {
           kind: t(`mediaLibrary.kind.${item.kind}`),
           name: item.name,
@@ -162,8 +175,8 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
           styles.row,
           compact ? styles.rowCompact : styles.rowWide,
           {
-            backgroundColor: selected ? colors['surface-1'] : 'transparent',
-            borderColor: selected ? accent : 'transparent',
+            backgroundColor: highlighted ? colors['surface-1'] : 'transparent',
+            borderColor: highlighted ? accent : 'transparent',
           },
         ]}
       >
@@ -186,7 +199,23 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
         )}
       </Pressable>
 
-      {onTogglePlayback ? (
+      {picking ? (
+        // The tick is drawn, not pressed: the row is the checkbox, and a second
+        // control inside it would be a second thing to explain.
+        <View style={styles.discSlot} pointerEvents="none">
+          <View
+            style={[
+              styles.disc,
+              {
+                borderColor: checked ? colors.primary : colors['border-subtle'],
+                backgroundColor: checked ? colors.primary : 'transparent',
+              },
+            ]}
+          >
+            {checked ? <IconSymbol name="checkmark" size={20} color={colors['foreground-on-primary']} /> : null}
+          </View>
+        </View>
+      ) : onTogglePlayback ? (
         // A sibling of the row, not a child of it: a button inside a button is
         // one control to a screen reader and invalid markup on web.
         <View style={styles.discSlot} pointerEvents="box-none">

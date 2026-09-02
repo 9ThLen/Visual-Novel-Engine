@@ -5,11 +5,16 @@
  * backgrounds unreadable — nothing but the picture told two of them apart. The
  * caption under it carries the name and what the library knows about the file,
  * so the grid can be scanned rather than hovered one tile at a time.
+ *
+ * In select mode the tile is a checkbox rather than a button: pressing it ticks
+ * the file instead of opening it. The tick is drawn, not pressed — a control
+ * inside a control is one control to a screen reader and invalid markup on web.
  */
 
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { VideoPoster } from '@/components/media-library/VideoPoster';
 import { ResolvedAssetImage } from '@/components/resolved-asset-image';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useI18n } from '@/hooks/use-i18n';
@@ -33,7 +38,11 @@ interface TileProps {
    * until then.
    */
   usageState?: UsageState;
+  /** Select mode: a press ticks the file rather than opening it. */
+  picking?: boolean;
+  checked?: boolean;
   onPress: (item: StoryMediaItem) => void;
+  onLongPress?: (item: StoryMediaItem) => void;
 }
 
 export const MediaTile = React.memo(function MediaTile({
@@ -42,13 +51,17 @@ export const MediaTile = React.memo(function MediaTile({
   colors,
   selected,
   usageState = 'pending',
+  picking = false,
+  checked = false,
   onPress,
+  onLongPress,
 }: TileProps) {
   const { t } = useI18n();
   const owner = item.owners[0];
   const accent = owner?.color || colors.primary;
   const kindLabel = t(`mediaLibrary.kind.${item.kind}`);
   const unused = usageState === 'ready' && item.usage.enabled + item.usage.disabled === 0;
+  const highlighted = picking ? checked : selected;
 
   // Size identifies the file; duration is what a clip is actually measured in,
   // and it already has a badge on the square, so the caption does not repeat it.
@@ -57,8 +70,9 @@ export const MediaTile = React.memo(function MediaTile({
   return (
     <Pressable
       onPress={() => onPress(item)}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
+      onLongPress={onLongPress ? () => onLongPress(item) : undefined}
+      accessibilityRole={picking ? 'checkbox' : 'button'}
+      accessibilityState={picking ? { checked } : { selected }}
       accessibilityLabel={owner
         ? t('mediaLibrary.tile.labelWithCharacter', { kind: kindLabel, name: item.name, character: owner.characterName })
         : t('mediaLibrary.tile.label', { kind: kindLabel, name: item.name })}
@@ -71,35 +85,41 @@ export const MediaTile = React.memo(function MediaTile({
             width: size,
             height: size,
             backgroundColor: colors['surface-1'],
-            borderColor: selected ? accent : 'transparent',
+            borderColor: highlighted ? accent : 'transparent',
           },
         ]}
       >
-        {item.kind === 'video' ? (
-          // A clip has no still frame to show: the asset carries no poster, and
-          // handing an .mp4 to <Image> just renders an empty square. The name
-          // used to be printed here because nothing else told two clips apart;
-          // the caption says it now, so the square is left to the glyph.
-          <View style={[styles.videoPlaceholder, { backgroundColor: colors.background }]}>
-            <IconSymbol name="movie" size={28} color={colors.muted} />
-          </View>
-        ) : (
-          <ResolvedAssetImage
-            thumbnail
-            uri={item.uri}
-            style={styles.image}
-            // Sprites are cut-outs whose shape carries the meaning; wide
-            // backgrounds read better filling the square than letterboxed in it.
-            resizeMode={item.owners.length ? 'contain' : 'cover'}
-          />
-        )}
+        {item.kind === 'video'
+          ? <VideoPoster item={item} colors={colors} />
+          : (
+            <ResolvedAssetImage
+              thumbnail
+              uri={item.uri}
+              style={styles.image}
+              // Sprites are cut-outs whose shape carries the meaning; wide
+              // backgrounds read better filling the square than letterboxed in it.
+              resizeMode={item.owners.length ? 'contain' : 'cover'}
+            />
+          )}
         {item.durationSeconds !== undefined ? (
           <View style={styles.durationBadge}>
             <Text style={styles.duration}>{formatDuration(item.durationSeconds)}</Text>
           </View>
         ) : null}
         {owner ? <View style={[styles.ownerDot, { backgroundColor: accent }]} /> : null}
-        {unused ? (
+        {picking ? (
+          <View
+            style={[
+              styles.check,
+              {
+                backgroundColor: checked ? colors.primary : 'rgba(0,0,0,0.35)',
+                borderColor: checked ? colors.primary : '#ffffff',
+              },
+            ]}
+          >
+            {checked ? <IconSymbol name="checkmark" size={14} color={colors['foreground-on-primary']} /> : null}
+          </View>
+        ) : unused ? (
           <View style={[styles.unused, { backgroundColor: colors['warning-bg'], borderColor: colors.warning }]}>
             <Text style={[typeScale.micro, { color: colors.warning }]}>{t('mediaLibrary.tile.unused')}</Text>
           </View>
@@ -117,14 +137,6 @@ export const MediaTile = React.memo(function MediaTile({
 const styles = StyleSheet.create({
   square: { borderRadius: radius.md, overflow: 'hidden', borderWidth: 2 },
   image: { width: '100%', height: '100%' },
-  videoPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    padding: spacing.sm,
-  },
   durationBadge: {
     position: 'absolute',
     left: spacing.xs,
@@ -151,6 +163,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     paddingHorizontal: spacing.xs,
     paddingVertical: 1,
+  },
+  check: {
+    position: 'absolute',
+    left: spacing.xs,
+    top: spacing.xs,
+    width: 22,
+    height: 22,
+    borderRadius: radius.sm,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   caption: { height: TILE_CAPTION_HEIGHT, paddingTop: spacing.xs },
   name: { ...typeScale.caption },

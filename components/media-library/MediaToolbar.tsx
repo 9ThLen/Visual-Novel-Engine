@@ -95,6 +95,9 @@ interface MediaToolbarProps {
   onChangeSort: (sort: MediaSort) => void;
   dense: boolean;
   onToggleDense: () => void;
+  /** Select mode, so a press ticks files instead of opening them. */
+  picking: boolean;
+  onTogglePicking: () => void;
   onBack: () => void;
   onAdd: () => void;
   /** Narrow screens put the search field on its own line. */
@@ -110,6 +113,8 @@ export function MediaToolbar({
   onChangeSort,
   dense,
   onToggleDense,
+  picking,
+  onTogglePicking,
   onBack,
   onAdd,
   compact,
@@ -159,6 +164,20 @@ export function MediaToolbar({
         </View>
 
         {compact ? null : search}
+
+        <Pressable
+          onPress={onTogglePicking}
+          accessibilityRole="button"
+          accessibilityLabel={t(picking ? 'mediaLibrary.selectDone' : 'mediaLibrary.select')}
+          accessibilityState={{ selected: picking }}
+          style={styles.iconButton}
+        >
+          <IconSymbol
+            name="checkmark"
+            size={20}
+            color={picking ? colors.primary : colors['foreground-secondary']}
+          />
+        </Pressable>
 
         {compact ? null : (
           <>

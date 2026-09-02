@@ -799,4 +799,102 @@ describe('media library route', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(await acceptedByDialog()).toContain('image/');
   });
+
+  // Clearing a dozen unused backgrounds used to be a dozen rounds of
+  // select → inspector → delete → confirm.
+  it('ticks several files and removes them in one go', async () => {
+    const removeImageAssetFromStory = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'spare' }), asset({ id: 'other' })],
+      imageAssetIdsByStory: { 'story-1': ['spare', 'other'] },
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      removeImageAssetFromStory,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Select files' }));
+
+    // In select mode a tile is a checkbox: pressing it ticks the file rather
+    // than opening it.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Image, spare.png' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Image, other.png' }));
+
+    await waitFor(() => expect(screen.getByText('2 files selected')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Remove 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(removeImageAssetFromStory).toHaveBeenCalledWith('story-1', 'spare');
+    expect(removeImageAssetFromStory).toHaveBeenCalledWith('story-1', 'other');
+  });
+
+  // Story membership is re-derived from scene references on every hydration,
+  // so a file a scene still names would come back on the next launch. The
+  // button says the smaller number rather than promising the larger one.
+  it('counts only the files it may actually remove', async () => {
+    seedStore({
+      mediaLibrary: [asset({ id: 'spare' }), asset({ id: 'bg' })],
+      imageAssetIdsByStory: { 'story-1': ['spare', 'bg'] },
+      sceneRecordsByStory: {
+        'story-1': {
+          'scene-1': scene([
+            { id: 'step-1', blockType: 'background', enabled: true, data: { assetId: 'bg' } } as TimelineStep,
+          ]),
+        },
+      },
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Select files' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Image, spare.png' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Image, bg.png' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove 1' })).toBeTruthy());
+    expect(screen.getByText('1 are used in scenes and stay.')).toBeTruthy();
+  });
+
+  it('moves the selection with the arrow keys and drops it on escape', async () => {
+    seedStore({
+      mediaLibrary: [
+        asset({ id: 'bg', addedAt: 2000 }),
+        asset({ id: 'sprite', uri: 'file://alice.png', addedAt: 1000 }),
+      ],
+      imageAssetIdsByStory: { 'story-1': ['bg', 'sprite'] },
+      characterLibraries: { 'story-1': [alice] },
+    });
+
+    render(<StoryGalleryRoute />);
+
+    // Nothing is selected yet, so the first arrow starts at the newest file
+    // rather than scrolling the page, which is what the browser would do.
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(screen.queryByText('Alice · Happy')).toBeNull();
+
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByText('Alice · Happy')).toBeNull());
+  });
+
+  // A screen with both a search field and a delete key has to tell them apart,
+  // or clearing a query deletes a file.
+  it('leaves the keys alone while the author is typing a search', async () => {
+    seedStore({
+      mediaLibrary: [asset({ id: 'spare' })],
+      imageAssetIdsByStory: { 'story-1': ['spare'] },
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, spare.png' }));
+    await waitFor(() => expect(screen.getByText('Not used in any scene')).toBeTruthy());
+
+    const search = screen.getByPlaceholderText('Search by file, character or sprite');
+    fireEvent.keyDown(search, { key: 'Delete' });
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+
+    // The same key outside the field is the shortcut it was meant to be.
+    fireEvent.keyDown(document.body, { key: 'Delete' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy());
+  });
 });

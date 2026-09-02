@@ -83,10 +83,11 @@ function readDurationSeconds(objectUrl: string): Promise<number | undefined> {
   });
 }
 
-async function pickAudioWeb(): Promise<PickAudioResult> {
-  const file = await openWebFileDialog('audio/*,.mp3,.wav,.ogg,.m4a');
-  if (!file) return { status: 'cancelled' };
-
+/**
+ * Describe a File the browser already handed us — from the dialog, or dropped
+ * onto the library. Same validation either way.
+ */
+export async function describePickedAudioFile(file: File): Promise<PickAudioResult> {
   const mimeType = mimeTypeForName(file.name, file.type);
   const rejected = checkFile(file.size, mimeType);
   if (rejected) return rejected;
@@ -105,6 +106,12 @@ async function pickAudioWeb(): Promise<PickAudioResult> {
       release: () => URL.revokeObjectURL(uri),
     },
   };
+}
+
+async function pickAudioWeb(): Promise<PickAudioResult> {
+  const file = await openWebFileDialog('audio/*,.mp3,.wav,.ogg,.m4a');
+  if (!file) return { status: 'cancelled' };
+  return describePickedAudioFile(file);
 }
 
 async function pickAudioNative(): Promise<PickAudioResult> {
