@@ -6,11 +6,11 @@ import {
 } from '@/lib/release/release-storage';
 import type { ReleaseManifestV1 } from '@/lib/release/types';
 import { createPersistentStorage, type StorageLike } from '@/lib/persistent-storage';
-import { sha256Chunks, sourceFromBytes } from '@/lib/story-backup/hash';
+import { sha256Chunks, sourceFromBlob, sourceFromBytes } from '@/lib/story-backup/hash';
 import type { StoryArchiveBinarySink } from '@/lib/story-backup/types';
 
 export interface BuiltReleaseArchive {
-  bytes: Uint8Array;
+  blob: Blob;
   sha256: string;
   fileName: string;
   manifest: ReleaseManifestV1;
@@ -25,21 +25,17 @@ function safeFileName(title: string, version: string): string {
   return `${base || 'story'}-v${version}.vnerelease`;
 }
 
-function memorySink(): { sink: StoryArchiveBinarySink; bytes: () => Uint8Array } {
+function blobSink(): { sink: StoryArchiveBinarySink; blob: () => Blob } {
   const chunks: Uint8Array[] = [];
-  let size = 0;
   return {
     sink: {
-      async write(chunk) { chunks.push(chunk.slice()); size += chunk.byteLength; },
+      async write(chunk) { chunks.push(chunk.slice()); },
       async close() {},
-      async abort() { chunks.length = 0; size = 0; },
+      async abort() { chunks.length = 0; },
     },
-    bytes: () => {
-      const result = new Uint8Array(size);
-      let offset = 0;
-      for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
-      return result;
-    },
+    // Blob adopts the already-produced chunks without allocating the extra
+    // archive-sized Uint8Array that the previous concatenation required.
+    blob: () => new Blob(chunks, { type: 'application/zip' }),
   };
 }
 
@@ -76,12 +72,12 @@ export async function buildStoredReleaseArchive(input: {
       return { metadata, source: sourceFromBytes(object.bytes) };
     });
 
-  const output = memorySink();
+  const output = blobSink();
   await writeReleaseArchive({ manifest, payloadBytes, assets }, output.sink);
-  const bytes = output.bytes();
-  const digest = await sha256Chunks(sourceFromBytes(bytes).open());
+  const blob = output.blob();
+  const digest = await sha256Chunks(sourceFromBlob(blob).open());
   return {
-    bytes,
+    blob,
     sha256: digest.sha256,
     fileName: safeFileName(manifest.story.title, manifest.release.version),
     manifest,

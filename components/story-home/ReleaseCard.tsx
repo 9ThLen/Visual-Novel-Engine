@@ -67,6 +67,7 @@ interface ReleaseCardProps {
   buildSettings?: BuildHelperSettings;
   onBuildSettingsChange?: (settings: BuildHelperSettings) => void;
   buildSummary?: BuildJobSummary | null;
+  buildPreparing?: boolean;
   buildError?: string | null;
   onBuildAndroid?: (releaseId: string, target: BuildTarget) => void;
   onCancelBuild?: (requestId: string) => void;
@@ -97,6 +98,7 @@ export function ReleaseCard({
   buildSettings,
   onBuildSettingsChange,
   buildSummary = null,
+  buildPreparing = false,
   buildError = null,
   onBuildAndroid,
   onCancelBuild,
@@ -125,7 +127,8 @@ export function ReleaseCard({
   // off the showcase is still a release they can hand to someone.
   const exportable = published ?? releases.find((release) => release.version === highest) ?? null;
   const exporting = exportProgress !== null;
-  const buildBusy = Boolean(buildSummary && !['succeeded', 'failed', 'cancelled', 'expired'].includes(buildSummary.state));
+  const buildBusy = buildPreparing
+    || Boolean(buildSummary && !['succeeded', 'failed', 'cancelled', 'expired'].includes(buildSummary.state));
 
   const openSheet = () => {
     setVersion(nextReleaseVersion(highest, 'minor'));

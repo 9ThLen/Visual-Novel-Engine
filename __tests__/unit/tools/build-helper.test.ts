@@ -74,6 +74,23 @@ class TestClient {
   }
 }
 
+/**
+ * Poll until a path is gone.
+ *
+ * The helper deletes a refused `.part` synchronously, but it gets there after
+ * the client has already seen the connection drop — so a check in the same tick
+ * as the client's error is a race the test loses on a loaded runner and wins on
+ * a fast laptop. What the contract promises is that nothing is kept, not that it
+ * is unlinked before the caller notices.
+ */
+async function waitUntilGone(file: string, timeoutMs = 2_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (existsSync(file) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return !existsSync(file);
+}
+
 async function upload(
   port: number,
   token: string,
@@ -313,8 +330,10 @@ describe('the build helper', () => {
     );
 
     expect(refused).toBe(true);
+    // The finished name must never appear at all; the partial one must not
+    // survive, which is a promise about the end state rather than about timing.
     expect(existsSync(path.join(workDir, 'uploads', 'req_one.vnerelease'))).toBe(false);
-    expect(existsSync(path.join(workDir, 'uploads', 'req_one.vnerelease.part'))).toBe(false);
+    expect(await waitUntilGone(path.join(workDir, 'uploads', 'req_one.vnerelease.part'))).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(client.messages.some((m) => m.job?.state === 'building')).toBe(false);
     client.close();

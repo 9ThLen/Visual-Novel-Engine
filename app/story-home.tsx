@@ -365,18 +365,24 @@ export default function StoryHomeScreen() {
   const buildClientRef = useRef<BuildClient | null>(null);
   const buildClientKeyRef = useRef('');
   const buildSessionRef = useRef<PersistedBuildSession | null>(null);
+  const buildSessionWriteRef = useRef<Promise<void>>(Promise.resolve());
   const [buildSettings, setBuildSettings] = useState<BuildHelperSettings>(DEFAULT_BUILD_HELPER_SETTINGS);
   const [buildResumeSettings, setBuildResumeSettings] = useState<BuildHelperSettings>(DEFAULT_BUILD_HELPER_SETTINGS);
   const [buildSession, setBuildSession] = useState<PersistedBuildSession | null>(null);
   const [buildSummary, setBuildSummary] = useState<BuildJobSummary | null>(null);
   const [buildError, setBuildError] = useState<string | null>(null);
   const [buildStateLoaded, setBuildStateLoaded] = useState(false);
+  const [buildPreparing, setBuildPreparing] = useState(false);
 
   const rememberBuildSession = useCallback((session: PersistedBuildSession) => {
     buildSessionRef.current = session;
     setBuildSession(session);
     if (storyId && buildStorageRef.current) {
-      void saveBuildSession(storyId, session, buildStorageRef.current).catch((error) => {
+      const storage = buildStorageRef.current;
+      buildSessionWriteRef.current = buildSessionWriteRef.current
+        .catch(() => undefined)
+        .then(() => saveBuildSession(storyId, session, storage));
+      void buildSessionWriteRef.current.catch((error) => {
         setBuildError(error instanceof Error ? error.message : String(error));
       });
     }
@@ -531,7 +537,8 @@ export default function StoryHomeScreen() {
   }, [storyId, t]);
 
   const handleBuildAndroid = useCallback(async (releaseId: string, target: BuildTarget) => {
-    if (!storyId || !buildStorageRef.current) return;
+    if (!storyId || !buildStorageRef.current || buildPreparing) return;
+    setBuildPreparing(true);
     setBuildError(null);
     try {
       const settings = await saveBuildHelperSettings(buildSettings, buildStorageRef.current);
@@ -559,12 +566,14 @@ export default function StoryHomeScreen() {
       const client = await ensureBuildClient(settings);
       const summary = await client.submit(request);
       receiveBuildSummary(summary);
-      await client.upload(request.requestId, archive.bytes);
+      await client.upload(request.requestId, archive.blob);
       client.status(request.requestId);
     } catch (error) {
       setBuildError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBuildPreparing(false);
     }
-  }, [buildSettings, ensureBuildClient, receiveBuildSummary, rememberBuildSession, storyId]);
+  }, [buildPreparing, buildSettings, ensureBuildClient, receiveBuildSummary, rememberBuildSession, storyId]);
 
   const handleCancelBuild = useCallback(async (requestId: string) => {
     setBuildError(null);
@@ -1379,6 +1388,7 @@ export default function StoryHomeScreen() {
             buildSettings={Platform.OS === 'web' ? buildSettings : undefined}
             onBuildSettingsChange={Platform.OS === 'web' ? setBuildSettings : undefined}
             buildSummary={buildSummary}
+            buildPreparing={buildPreparing}
             buildError={buildError}
             onBuildAndroid={Platform.OS === 'web'
               ? (releaseId, target) => void handleBuildAndroid(releaseId, target)
