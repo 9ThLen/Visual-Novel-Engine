@@ -25,6 +25,12 @@ import {
   type AudioCategory,
 } from '@/lib/audio-category';
 import type { AudioLibraryItem } from '@/lib/audio-types';
+import {
+  EMPTY_MEDIA_ORGANIZATION,
+  matchesOrganizationFilter,
+  type OrganizationFilter,
+  type StoryMediaOrganization,
+} from '@/lib/media-organization';
 import type { Character, CharacterSprite } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import type { LibraryAsset } from '@/lib/media-library-service';
@@ -262,7 +268,7 @@ export function buildStoryMediaGallery(input: StoryMediaGalleryInput): StoryMedi
   };
 
   const fromAsset = (asset: LibraryAsset, kind: MediaKind): StoryMediaItem => ({
-    key: `asset:${asset.id}`,
+    key: mediaKeyForAsset(asset.id),
     kind,
     uri: asset.uri,
     name: asset.name,
@@ -284,7 +290,7 @@ export function buildStoryMediaGallery(input: StoryMediaGalleryInput): StoryMedi
     for (const sprite of character.sprites) {
       const uri = canonicalSpriteUri(sprite);
       const asset = findSpriteAsset(sprite, assetById, assetByUri);
-      const key = asset ? `asset:${asset.id}` : `sprite-uri:${uri}`;
+      const key = asset ? mediaKeyForAsset(asset.id) : `sprite-uri:${uri}`;
       const owner: MediaOwner = {
         characterId: character.id,
         characterName: character.name,
@@ -396,9 +402,23 @@ export type ImageFilter =
   | { kind: 'used' }
   | { kind: 'unused' }
   | { kind: 'character'; characterId: string }
-  | { kind: 'audioCategory'; category: AudioCategory };
+  | { kind: 'audioCategory'; category: AudioCategory }
+  // Where the author filed it. Unlike every other filter here, these are not
+  // derived from the story — they are the one thing it cannot know on its own.
+  | OrganizationFilter;
 
 export type VideoFilter = 'all' | 'used' | 'unused';
+
+/**
+ * The key a library asset appears under in this gallery.
+ *
+ * Exported because the store has to name a file it is removing without
+ * building the whole gallery to find it — and the key shape must be decided
+ * in exactly one place.
+ */
+export function mediaKeyForAsset(assetId: string): string {
+  return `asset:${assetId}`;
+}
 
 export function isMediaItemUsed(item: StoryMediaItem): boolean {
   return item.usage.enabled + item.usage.disabled > 0;
@@ -496,6 +516,11 @@ export function filterMediaItems(
   items: StoryMediaItem[],
   filter: ImageFilter | VideoFilter,
   query = '',
+  /**
+   * The author's filing. Only the folder and tag filters read it; without one
+   * they filter nothing, which is what an unfiled story should look like.
+   */
+  organization: StoryMediaOrganization = EMPTY_MEDIA_ORGANIZATION,
 ): StoryMediaItem[] {
   const normalized: ImageFilter = typeof filter === 'string' ? { kind: filter } : filter;
   return items.filter((item) => {
@@ -505,6 +530,10 @@ export function filterMediaItems(
       case 'unused': return !isMediaItemUsed(item);
       case 'character': return item.owners.some((owner) => owner.characterId === normalized.characterId);
       case 'audioCategory': return item.audioCategory === normalized.category;
+      case 'folder':
+      case 'unfiled':
+      case 'tag':
+        return matchesOrganizationFilter(item.key, normalized, organization);
       default: return true;
     }
   });

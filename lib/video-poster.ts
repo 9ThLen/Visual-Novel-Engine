@@ -5,14 +5,22 @@
  * .mp4 to `<Image>` renders an empty square, so every clip in the library
  * looked alike — and, worse, looked like an image that had failed to load.
  *
- * The frame is grabbed the same way `pick-video` reads a duration: a detached
- * `<video>` element, seeked a little past the start, drawn once into a canvas.
- * Seeking past zero on purpose — the first frame of a fade-in is black, which
- * is a poster that says nothing.
+ * On the web the frame is grabbed the same way `pick-video` reads a duration:
+ * a detached `<video>` element, seeked a little past the start, drawn once into
+ * a canvas. On a phone the player does it — `expo-video` can hand back a frame
+ * at a given time without anything being on screen, which is the same answer
+ * from the platform that is already decoding the story's clips.
  *
- * Web-only by construction, like `thumbnails`: everywhere else this returns
- * null and the tile shows the glyph it showed before.
+ * Seeking past zero on purpose, on both: the first frame of a fade-in is black,
+ * which is a poster that says nothing.
+ *
+ * What comes back differs by platform and callers must not care: the web has an
+ * object URL, a phone has a native image reference. Both go straight into
+ * `expo-image`, which is why this returns a source rather than a URI.
  */
+
+import { Platform } from 'react-native';
+import type { SharedRefType } from 'expo';
 
 /** Long side in CSS pixels: 2× the widest tile the grid lays out. */
 const POSTER_MAX_SIDE = 320;
@@ -24,10 +32,13 @@ const MAX_CACHED_POSTERS = 64;
 /** Decoding video frames is the expensive part; only one runs at a time. */
 const MAX_CONCURRENT = 1;
 
-type PosterGrabber = (loadableUri: string) => Promise<Blob | null>;
+/** An object URL on the web, a native image reference on a phone. */
+export type PosterSource = string | SharedRefType<'image'>;
 
-const cache = new Map<string, string>();
-const inFlight = new Map<string, Promise<string | null>>();
+type PosterGrabber = (loadableUri: string) => Promise<PosterSource | null>;
+
+const cache = new Map<string, PosterSource>();
+const inFlight = new Map<string, Promise<PosterSource | null>>();
 /** Sources that produced no frame: asking again would decode again. */
 const refused = new Set<string>();
 
@@ -64,7 +75,8 @@ export function posterDimensions(
   };
 }
 
-function grabFrame(loadableUri: string): Promise<Blob | null> {
+/** The browser's answer: a canvas frame, kept alive as an object URL. */
+function grabFrameOnWeb(loadableUri: string): Promise<PosterSource | null> {
   return new Promise((resolve) => {
     if (typeof document === 'undefined') {
       resolve(null);
@@ -79,7 +91,7 @@ function grabFrame(loadableUri: string): Promise<Blob | null> {
       clearTimeout(timer);
       video.removeAttribute('src');
       video.load?.();
-      resolve(blob);
+      resolve(blob ? URL.createObjectURL(blob) : null);
     };
 
     const timer = setTimeout(() => finish(null), POSTER_TIMEOUT_MS);
@@ -131,31 +143,69 @@ function grabFrame(loadableUri: string): Promise<Blob | null> {
   });
 }
 
+/**
+ * The phone's answer: the same player that would show the clip, asked for one
+ * frame and then let go. Imported at the call rather than at the top, the way
+ * the pickers reach for their native modules — nothing here should load a
+ * player on a platform that will never build one.
+ */
+async function grabFrameOnNative(loadableUri: string): Promise<PosterSource | null> {
+  const { createVideoPlayer } = await import('expo-video');
+  const player = createVideoPlayer(loadableUri);
+  try {
+    // A clip shorter than the offset still has a frame at its own start; the
+    // player clamps rather than refusing, and reports the time it really used.
+    const [thumbnail] = await player.generateThumbnailsAsync(POSTER_SECONDS, {
+      maxWidth: POSTER_MAX_SIDE,
+      maxHeight: POSTER_MAX_SIDE,
+    });
+    return thumbnail ?? null;
+  } finally {
+    // A player per clip is the expensive part of this; it is held exactly as
+    // long as the one frame takes.
+    player.release();
+  }
+}
+
+function grabFrame(loadableUri: string): Promise<PosterSource | null> {
+  return Platform.OS === 'web' ? grabFrameOnWeb(loadableUri) : grabFrameOnNative(loadableUri);
+}
+
 let grab: PosterGrabber = grabFrame;
 
-/** Test seam: jsdom decodes no video, so the grab is substituted wholesale. */
+/**
+ * Test seam: jsdom decodes no video and there is no player to ask, so the grab
+ * is substituted wholesale.
+ */
 export function setPosterGrabberForTests(grabber?: PosterGrabber): void {
   grab = grabber ?? grabFrame;
 }
 
-function remember(source: string, objectUrl: string): void {
-  cache.set(source, objectUrl);
+/** Only the web's posters are object URLs, and only those must be revoked. */
+function releasePoster(poster: PosterSource): void {
+  if (typeof poster === 'string') URL.revokeObjectURL(poster);
+  else poster.release?.();
+}
+
+function remember(source: string, poster: PosterSource): void {
+  cache.set(source, poster);
   while (cache.size > MAX_CACHED_POSTERS) {
-    const [oldest, url] = cache.entries().next().value as [string, string];
+    const [oldest, evicted] = cache.entries().next().value as [string, PosterSource];
     cache.delete(oldest);
-    URL.revokeObjectURL(url);
+    releasePoster(evicted);
   }
 }
 
 /**
- * A loadable URI for a still from `loadableUri`, or null to show the glyph.
+ * A source `expo-image` can draw for a still from `loadableUri`, or null to
+ * show the glyph.
  *
  * `loadableUri` must already be loadable — resolve asset ids and `idb://`
  * handles before calling. Null covers every reason there is no poster: no
- * canvas, a clip that would not decode, a frame the browser would not hand
- * over. Callers treat them all the same way.
+ * canvas, no player, a clip that would not decode, a frame the platform would
+ * not hand over. Callers treat them all the same way.
  */
-export async function getVideoPosterUri(loadableUri: string): Promise<string | null> {
+export async function getVideoPosterSource(loadableUri: string): Promise<PosterSource | null> {
   if (!loadableUri || refused.has(loadableUri)) return null;
 
   const cached = cache.get(loadableUri);
@@ -165,14 +215,13 @@ export async function getVideoPosterUri(loadableUri: string): Promise<string | n
   if (pending) return pending;
 
   const work = withSlot(() => grab(loadableUri))
-    .then((blob) => {
-      if (!blob) {
+    .then((poster) => {
+      if (!poster) {
         refused.add(loadableUri);
         return null;
       }
-      const objectUrl = URL.createObjectURL(blob);
-      remember(loadableUri, objectUrl);
-      return objectUrl;
+      remember(loadableUri, poster);
+      return poster;
     })
     .catch((error) => {
       if (__DEV__) console.warn('[video-poster] no poster for', loadableUri, error);
@@ -188,7 +237,7 @@ export async function getVideoPosterUri(loadableUri: string): Promise<string | n
 }
 
 export function resetVideoPostersForTests(): void {
-  for (const url of cache.values()) URL.revokeObjectURL(url);
+  for (const poster of cache.values()) releasePoster(poster);
   cache.clear();
   inFlight.clear();
   refused.clear();

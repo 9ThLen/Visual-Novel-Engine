@@ -3,18 +3,23 @@
  * had, and the film glyph where it cannot.
  *
  * The lease is what keeps the resolver from revoking the clip's object URL
- * while the frame is being grabbed; it is released as soon as the poster exists,
- * because the poster is an object URL of its own and no longer depends on it.
+ * while the frame is being grabbed; it is released as soon as the poster
+ * exists, because the poster is a reference of its own and no longer depends
+ * on it.
+ *
+ * `expo-image` rather than the RN one: a phone's poster is a native image
+ * reference, not a URI, and only this component can draw both.
  */
 
 import React, { useEffect, useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { acquireResolvedAssetUri } from '@/lib/asset-resolver';
 import type { ThemeColorPalette } from '@/lib/_core/theme';
 import { spacing } from '@/lib/design-tokens';
-import { getVideoPosterUri } from '@/lib/video-poster';
+import { getVideoPosterSource, type PosterSource } from '@/lib/video-poster';
 import type { StoryMediaItem } from '@/lib/story-media-gallery';
 
 export function VideoPoster({
@@ -26,7 +31,7 @@ export function VideoPoster({
   colors: ThemeColorPalette;
   glyphSize?: number;
 }) {
-  const [poster, setPoster] = useState<string | null>(null);
+  const [poster, setPoster] = useState<PosterSource | null>(null);
   const reference = item.assetId ?? item.uri;
 
   useEffect(() => {
@@ -37,10 +42,10 @@ export function VideoPoster({
       .then(async (lease) => {
         try {
           // A number is a bundled asset the packager already sized; there is no
-          // URL to hand a <video>, and nothing to grab a frame from.
+          // URI to hand a player, and nothing to grab a frame from.
           if (typeof lease.source !== 'string') return;
-          const uri = await getVideoPosterUri(lease.source);
-          if (active && uri) setPoster(uri);
+          const source = await getVideoPosterSource(lease.source);
+          if (active && source) setPoster(source);
         } finally {
           lease.release();
         }
@@ -53,7 +58,7 @@ export function VideoPoster({
   }, [reference]);
 
   if (poster) {
-    return <Image source={{ uri: poster }} style={styles.fill} resizeMode="cover" />;
+    return <Image source={poster} style={styles.fill} contentFit="cover" />;
   }
 
   return (

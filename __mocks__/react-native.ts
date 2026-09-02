@@ -54,6 +54,17 @@ export const Platform = {
 export const NativeModules = {};
 export const DeviceInfo = {};
 export const Dimensions = { get: () => ({ width: 390, height: 844 }) };
+
+/**
+ * Enough of PanResponder to mount a component that uses one, and to drive it.
+ *
+ * jsdom has no touch system, so the handlers are never called by an event —
+ * the config is handed back instead, and a test that wants to drag calls the
+ * callbacks itself with the positions it means.
+ */
+export const PanResponder = {
+  create: (config: any) => ({ panHandlers: {}, __config: config }),
+};
 export const PixelRatio = { get: () => 2 };
 export const StyleSheet = {
   absoluteFillObject: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
@@ -63,11 +74,18 @@ export const View = createElement('div');
 export const Text = createElement('span');
 export const Pressable = createElement('button');
 export const TextInput = React.forwardRef((props: any, ref: any) => {
-  const { onChangeText, value, editable, onSubmitEditing, placeholderTextColor, style, testID, ...rest } = props;
+  const {
+    onChangeText, value, editable, onSubmitEditing, placeholderTextColor, style, testID,
+    // RNW renders this as `aria-label`; leaving it raw made every labelled
+    // field unreachable by the query a screen reader's user would rely on.
+    accessibilityLabel,
+    ...rest
+  } = props;
   return React.createElement('input', {
     ...rest,
     ref,
     value,
+    ...(accessibilityLabel ? { 'aria-label': accessibilityLabel } : {}),
     disabled: editable === false || undefined,
     style: flattenStyle(style),
     ...(testID ? { 'data-testid': testID } : {}),

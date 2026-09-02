@@ -31,6 +31,9 @@ interface MediaBatchBarProps {
   /** False while the scenes are still being read: usage is not known yet. */
   usageReady: boolean;
   busy: boolean;
+  /** Filing applies to every kind, so these sit before the image-only ones. */
+  onMoveToFolder: () => void;
+  onAddTag: () => void;
   onAttachToCharacter: () => void;
   onRemoveBackground: () => void;
   onRemove: () => void;
@@ -45,6 +48,8 @@ export function MediaBatchBar({
   canRemoveBackground,
   usageReady,
   busy,
+  onMoveToFolder,
+  onAddTag,
   onAttachToCharacter,
   onRemoveBackground,
   onRemove,
@@ -104,6 +109,18 @@ export function MediaBatchBar({
         style={styles.actionsScroll}
         contentContainerStyle={styles.actions}
       >
+        {action({
+          key: 'folder',
+          label: t('mediaLibrary.folder.move'),
+          icon: 'files',
+          onPress: onMoveToFolder,
+        })}
+        {action({
+          key: 'tag',
+          label: t('mediaLibrary.tag.add'),
+          icon: 'tag',
+          onPress: onAddTag,
+        })}
         {imagesOnly ? action({
           key: 'attach',
           label: t('mediaLibrary.action.addToCharacter'),
