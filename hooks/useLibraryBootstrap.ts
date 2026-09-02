@@ -25,9 +25,12 @@ import { ensureStorageBootstrap } from '@/stores/storage-bootstrap';
 import { useAppStore } from '@/stores/use-app-store';
 
 function syncBundledStory(story: Story): void {
-  const { metadata, sceneRecords } = createBundledStorySyncPayload(story);
+  const { metadata, sceneRecords, characterLibrary } = createBundledStorySyncPayload(story);
 
-  upsertBundledStory(metadata, sceneRecords);
+  // The cast travels too. Without it a bundled story plays but cannot be
+  // published: every scene with a character in it fails the release gate on a
+  // sprite nothing can find.
+  upsertBundledStory(metadata, sceneRecords, characterLibrary);
 }
 
 export function useLibraryBootstrap(): { isInitialized: boolean } {

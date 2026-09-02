@@ -4,7 +4,7 @@ import type { StoryMetadata } from '@/lib/story-domain';
 import type { SplashScreenConfig } from '@/lib/splash-types';
 import type { InteractiveObject } from '@/lib/interactive-types';
 import type { AudioLibraryItem, AudioTrigger } from '@/lib/audio-types';
-import type { CharacterSprite } from '@/lib/character-types';
+import type { Character, CharacterSprite } from '@/lib/character-types';
 import {
   getSceneRecordFromAccess,
   getSceneRecordsForStoryFromAccess,
@@ -543,4 +543,58 @@ export function replaceConnectionByOutputPort(
     ...connections.filter((item) => item.outputPort !== connection.outputPort),
     connection,
   ];
+}
+
+/**
+ * The cast a bundled story declares inline, as a character library.
+ *
+ * A legacy scene names its characters in place — `{ id, uri, name, expression }`
+ * — and `buildCanonicalSceneRecordsFromLegacyScenes` turns each into a reference
+ * whose `spriteId` is that uri. Nothing then created the library those
+ * references point at, so every bundled demo failed the release gate with
+ * `asset.missingCharacterSprite` on every scene with a character in it: the
+ * story played, because the uri was right there, but nothing could confirm the
+ * sprite existed. Publishing one had never been possible.
+ *
+ * The sprite id is the uri on purpose: that is what the converter writes into
+ * the scene, and the doctor matches on `[sprite.id, sprite.uri]`. Deriving a
+ * prettier id here would produce a library that looks right and answers nothing.
+ */
+export function deriveCharacterLibraryFromLegacyStory(story: Story): Character[] {
+  const byId = new Map<string, { character: Character; spriteIds: Set<string> }>();
+
+  for (const scene of Object.values(story.scenes ?? {})) {
+    for (const appearance of (scene as { characters?: unknown[] }).characters ?? []) {
+      const entry = appearance as { id?: unknown; uri?: unknown; name?: unknown; expression?: unknown };
+      if (typeof entry.id !== 'string' || !entry.id) continue;
+      const uri = typeof entry.uri === 'string' && entry.uri ? entry.uri : entry.id;
+
+      let existing = byId.get(entry.id);
+      if (!existing) {
+        existing = {
+          character: {
+            id: entry.id,
+            name: typeof entry.name === 'string' && entry.name ? entry.name : entry.id,
+            sprites: [],
+            createdAt: story.createdAt ?? 0,
+          },
+          spriteIds: new Set(),
+        };
+        byId.set(entry.id, existing);
+      }
+      if (existing.spriteIds.has(uri)) continue;
+      existing.spriteIds.add(uri);
+
+      const sprite: CharacterSprite = {
+        id: uri,
+        name: typeof entry.expression === 'string' && entry.expression ? entry.expression : 'Default',
+        uri,
+        createdAt: story.createdAt ?? 0,
+      };
+      existing.character.sprites.push(sprite);
+      existing.character.defaultSpriteId ??= sprite.id;
+    }
+  }
+
+  return [...byId.values()].map((entry) => entry.character);
 }

@@ -3,6 +3,12 @@
   "title": "The Forgotten Library",
   "description": "A mysterious tale of discovery in an ancient library",
   "author": "Visual Novel Engine Demo",
+  "thumbnailUri": "assets/background/bg-ancient-library.png",
+  "contentRating": "everyone",
+  "languages": [
+    "en"
+  ],
+  "aiAssisted": false,
   "startSceneId": "scene_1",
   "createdAt": 1711900000000,
   "updatedAt": 1783425600000,
