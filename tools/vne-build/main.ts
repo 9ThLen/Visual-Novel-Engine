@@ -53,6 +53,7 @@ interface Args {
   easProjectId?: string;
   icon?: string;
   skipChecks: boolean;
+  build?: 'player-apk' | 'player-aab';
   allowEngineProject: boolean;
   help: boolean;
 }
@@ -66,6 +67,12 @@ function parseArgs(argv: string[]): Args {
       case '--eas-project-id': args.easProjectId = argv[++i]; break;
       case '--icon': args.icon = argv[++i]; break;
       case '--skip-checks': args.skipChecks = true; break;
+      case '--build': {
+        const value = argv[i + 1];
+        if (value === 'player-apk' || value === 'player-aab') { args.build = value; i += 1; }
+        else args.build = 'player-apk';
+        break;
+      }
       case '--allow-engine-project': args.allowEngineProject = true; break;
       case '--help': case '-h': args.help = true; break;
       default:
@@ -90,6 +97,10 @@ Options:
                           cover when it is square, and to the engine icon
                           otherwise.
   --skip-checks           Stage only. The checks need this repo's node_modules.
+  --build [profile]       Submit the staged project to EAS once it verifies.
+                          player-apk (default) or player-aab. This spends a
+                          build on the author's account; nothing else here costs
+                          anything, which is why it is a flag and never implied.
   --allow-engine-project  Build against the engine's own EAS project. Only for
                           trying the pipeline out: the credentials Android holds
                           a story to for its whole life would not be yours.
@@ -234,6 +245,37 @@ function checkAutolinking(outDir: string): CheckResult {
   };
 }
 
+/**
+ * Hand the staged project to EAS.
+ *
+ * The two things that have to be right were each found by a failed build rather
+ * than by reading anything: the working directory has to be the staged project,
+ * and `EAS_SKIP_AUTO_FINGERPRINT` has to be set, because the `node_modules`
+ * junction the config check needs is the same junction the fingerprint step
+ * cannot walk. They live here now instead of in whoever remembers to type them.
+ *
+ * Never a default and never inferred: this spends a build on the author's
+ * account and uses the signing credentials Android will hold the story to for
+ * the life of the work.
+ */
+function runEasBuild(projectDir: string, profile: 'player-apk' | 'player-aab'): void {
+  console.log(color.yellow(`  Submitting to EAS (${profile}). This spends a build.\n`));
+  const result = spawnSync(
+    process.platform === 'win32' ? 'eas.cmd' : 'eas',
+    ['build', '--platform', 'android', '--profile', profile, '--non-interactive'],
+    {
+      cwd: projectDir,
+      stdio: 'inherit',
+      env: { ...process.env, EAS_SKIP_AUTO_FINGERPRINT: '1' },
+    },
+  );
+  if (result.status !== 0) {
+    fail('eas build failed', [
+      'The staged project is still on disk; none of the staging needs redoing.',
+    ]);
+  }
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) { printHelp(); return; }
@@ -340,6 +382,8 @@ async function main(): Promise<void> {
   console.log(color.dim('  That variable is not optional: node_modules here is a junction into the'));
   console.log(color.dim('  engine repository, and EAS\'s fingerprint step cannot follow it. The'));
   console.log(color.dim('  junction has to stay — the CLI resolves config plugins through it.\n'));
+
+  if (args.build) runEasBuild(finalOutDir, args.build);
   } catch (error) {
     transaction.abort();
     throw error;
