@@ -77,6 +77,9 @@ const MAPPING = {
   globe: "language",
   cloud: "cloud",
   storage: "data-usage",
+  sort: "sort",
+  density: "grid-view",
+  unused: "hide-source",
   lock: "lock",
 } satisfies Record<string, ComponentProps<typeof MaterialIcons>["name"]>;
 

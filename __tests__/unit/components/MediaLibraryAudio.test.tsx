@@ -9,7 +9,7 @@
 import React from 'react';
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 
-import { AudioTrackList } from '@/components/media-library/AudioTrackList';
+import { MediaBrowser } from '@/components/media-library/MediaBrowser';
 import { MediaInspector } from '@/components/media-library/MediaInspector';
 import { useAudioPreview } from '@/hooks/useAudioPreview';
 import { acquireResolvedAssetUri } from '@/lib/asset-resolver';
@@ -50,15 +50,19 @@ function Screen({ items }: { items: StoryMediaItem[] }) {
   const preview = useAudioPreview();
   const onSelect = vi.fn();
   return (
-    <AudioTrackList
-      items={items}
+    <MediaBrowser
+      view="audio"
+      images={[]}
+      videos={[]}
+      audios={items}
       colors={colors}
       selectedKey={null}
       grouped={false}
+      now={Date.now()}
       emptyLabel="No sounds in this story yet."
       usageState="ready"
       onSelect={onSelect}
-      onTogglePlayback={(item) => preview.toggle({ key: item.key, assetId: item.assetId, uri: item.uri })}
+      onTogglePlayback={(item: StoryMediaItem) => preview.toggle({ key: item.key, assetId: item.assetId, uri: item.uri })}
       activeAudioKey={preview.activeKey}
       previewState={preview.state}
       progress={preview.progress}

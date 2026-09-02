@@ -124,7 +124,9 @@ describe('media library route', () => {
     expect(screen.getByRole('button', { name: 'Image, bg.png' })).toBeTruthy();
   });
 
-  it('keeps videos out of the image tab', () => {
+  // The library opens on everything it holds: three kind-tabs made a story of a
+  // few files read as three empty rooms. Picking one source still narrows to it.
+  it('opens on every kind, and each source narrows to its own', () => {
     seedStore({
       mediaLibrary: [asset({ id: 'bg' }), asset({ id: 'clip', type: 'video', uri: 'file://clip.mp4', name: 'clip.mp4' })],
       imageAssetIdsByStory: { 'story-1': ['bg'] },
@@ -132,12 +134,16 @@ describe('media library route', () => {
     });
 
     render(<StoryGalleryRoute />);
-    expect(screen.queryByRole('button', { name: 'Video, clip.mp4' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Image, bg.png' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Video, clip.mp4' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('tab', { name: /Videos/ }));
-
     expect(screen.getByRole('button', { name: 'Video, clip.mp4' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Image, bg.png' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Images/ }));
+    expect(screen.getByRole('button', { name: 'Image, bg.png' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Video, clip.mp4' })).toBeNull();
   });
 
   it('searches across file, character and sprite names', () => {
@@ -763,13 +769,13 @@ describe('media library route', () => {
 
   // `+` used to pick an image whichever tab was open, so on the video tab it
   // offered the author a file the tab could not even show. What the dialog
-  // accepts is the observable end of that decision.
-  it('adds what the open tab shows rather than always an image', async () => {
+  // accepts is the observable end of that decision — and in the combined view,
+  // where all three kinds are on screen, the button has to ask first.
+  it('asks which kind to add in the combined view, and follows the source elsewhere', async () => {
     seedStore();
     render(<StoryGalleryRoute />);
 
-    const acceptAfterAdd = async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    const acceptedByDialog = async () => {
       const input = await waitFor(() => {
         const element = document.querySelector('input[type="file"]') as HTMLInputElement | null;
         if (!element) throw new Error('expected a file dialog');
@@ -780,12 +786,17 @@ describe('media library route', () => {
       return accept;
     };
 
-    expect(await acceptAfterAdd()).toContain('image/');
-
-    fireEvent.click(screen.getByRole('tab', { name: /Sounds/ }));
-    expect(await acceptAfterAdd()).toContain('audio/');
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    // The menu options are buttons; the type switcher above them is tabs.
+    fireEvent.click(screen.getByRole('button', { name: 'Sounds' }));
+    expect(await acceptedByDialog()).toContain('audio/');
 
     fireEvent.click(screen.getByRole('tab', { name: /Videos/ }));
-    expect(await acceptAfterAdd()).toContain('video/');
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(await acceptedByDialog()).toContain('video/');
+
+    fireEvent.click(screen.getByRole('tab', { name: /Images/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(await acceptedByDialog()).toContain('image/');
   });
 });
