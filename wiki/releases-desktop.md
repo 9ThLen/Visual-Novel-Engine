@@ -148,8 +148,10 @@ NSIS bundler produced a 107 MB installer whose name, identifier and version came
 from the staged config. Launching the built binary opens a visible window titled
 from that config, with a WebView2 child hosting the page.
 
-Where the evidence stops, on every platform: nobody has watched the story render
-in one of these windows, and nobody has run an installer or opened the `.dmg`.
+The Windows build has been run and it plays — the author's own report, on
+2026-09-02, not a measurement taken here. Where the evidence still stops: nobody
+has run the Linux or macOS artifacts, and nobody has installed an update over an
+earlier version.
 A blank webview looks identical from outside. The
 same frontend does play from `file://` with zero network requests under
 `pnpm test:player-e2e`, and Tauri serves it from an easier origin than that — but

@@ -210,24 +210,28 @@ never uses.
 
 ## What has and has not happened
 
-**One real APK has been built from the staged project.** It proves that EAS can
-compile and sign the generated project and that the release media is packaged.
-It was submitted manually, not through the browser/helper path.
+**One real APK has been built from the staged project, and it runs.** The build
+proves that EAS can compile and sign the generated project and that the release
+media is packaged; the author installed it on 2026-09-02 and reports that it
+plays. That is their observation, not a measurement taken here — but it is the
+first evidence about the artifact on a device rather than about the pipeline
+that made it. It was submitted manually, not through the browser/helper path.
 
 The EAS adapter is implemented: readiness, staging, archive inspection, submit,
 poll, remote cancel, HTTPS artifact download, EAS identity/version matching,
 server-side hash/Android-structure checks and a second size/hash check in the
 browser. It also persists the binding between one
-EAS project and one novel. It has been exercised against a simulated EAS CLI,
-and against a simulated EAS CLI. The following therefore remains physical
-acceptance, not an implemented-code gap:
+EAS project and one novel. It has been exercised against a simulated EAS
+CLI only. The following therefore remains physical acceptance rather than an
+implemented-code gap:
 
 - a second artifact proving the newly blocked `SYSTEM_ALERT_WINDOW` and `DUMP`
   permissions are gone;
 - the complete browser → helper → EAS → browser path;
-- the APK's install/runtime behaviour and permission surface on a device;
-- the launch splash, which only behaves faithfully in a release build;
-- installing v2 over v1 with the saves intact;
+- installing v2 over v1 with the saves intact — the case the whole
+  application-id design exists for;
+- the permission surface as a device reports it, rather than as the APK declares
+  it.
 - the post-build certificate check, which needs an artifact to check.
 
 `EasBuilder` in [`tools/build-helper`](../tools/build-helper/README.md) refuses a

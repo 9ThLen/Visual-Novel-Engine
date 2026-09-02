@@ -14,11 +14,18 @@ alongside the parts marked **exists** in [Current state](#1-current-state).
 
 `tauri build` has run on Windows locally and, through CI, on all three
 platforms. A manually staged `eas build` has run against a real account and
-produced a signed APK. What has still never happened is physical: nobody has
-installed either artifact, watched a story render in a desktop window, or taken
-an update over an earlier install. The browser → helper → EAS path has not been
-driven end to end either. Each stage records its own line between what ran and
-what is inferred, rather than hiding it in a footnote.
+produced a signed APK.
+
+**Both artifacts have been run, and both worked** — the author installed the APK
+and opened the desktop build on 2026-09-02 and reports that each plays. That is
+their observation rather than a measurement taken here, and it is worth more
+than the argument it replaces: until then the strongest thing that could be said
+was that the same frontend plays from a `file://` page.
+
+What has still never happened: taking an update over an earlier install, which
+is the case the whole application-id design exists for, and driving the
+browser → helper → EAS path end to end. Each stage records its own line between
+what ran and what is inferred, rather than hiding it in a footnote.
 
 **Publishing works by clicking.** `pnpm test:studio-e2e` opens a bundled story's
 project page, presses Release, confirms, and finds the card that says the story
