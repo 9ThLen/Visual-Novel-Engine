@@ -1,6 +1,9 @@
 {
   "name": "app-template",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=24"
+  },
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
