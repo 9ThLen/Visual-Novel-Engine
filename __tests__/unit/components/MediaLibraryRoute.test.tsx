@@ -808,6 +808,10 @@ describe('media library route', () => {
       mediaLibrary: [asset({ id: 'spare' }), asset({ id: 'other' })],
       imageAssetIdsByStory: { 'story-1': ['spare', 'other'] },
       sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      // The real thing reads storage; until it answers, nothing is known to be
+      // safe to remove and the button says so. Resolving a tick late is what
+      // the screen actually faces.
+      hydrateSceneRecordsForStory: vi.fn(() => new Promise<void>((resolve) => { setTimeout(resolve, 0); })),
       removeImageAssetFromStory,
     });
 
@@ -819,7 +823,9 @@ describe('media library route', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Image, spare.png' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Image, other.png' }));
 
-    await waitFor(() => expect(screen.getByText('2 files selected')).toBeTruthy());
+    expect(screen.getByText('2 files selected')).toBeTruthy();
+    // The count on the button is what usage says, so it arrives with usage.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove 2' })).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Remove 2' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
@@ -883,11 +889,15 @@ describe('media library route', () => {
       mediaLibrary: [asset({ id: 'spare' })],
       imageAssetIdsByStory: { 'story-1': ['spare'] },
       sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      hydrateSceneRecordsForStory: vi.fn(() => new Promise<void>((resolve) => { setTimeout(resolve, 0); })),
     });
 
     render(<StoryGalleryRoute />);
     fireEvent.click(screen.getByRole('button', { name: 'Image, spare.png' }));
-    await waitFor(() => expect(screen.getByText('Not used in any scene')).toBeTruthy());
+    // The key is behind the same gate as the button: until the scenes have been
+    // read, nothing is known to be safe to remove. The button appearing is that
+    // gate opening.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove imported file' })).toBeTruthy());
 
     const search = screen.getByPlaceholderText('Search by file, character or sprite');
     fireEvent.keyDown(search, { key: 'Delete' });
