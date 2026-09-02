@@ -65,6 +65,13 @@ function seedStore(overrides: StoreSeed = {}) {
     removeMediaAssetFromStory: vi.fn(),
     setCharacterLibrary: vi.fn(),
     setAudioLibrary: vi.fn(),
+    mediaOrganizationByStory: {},
+    createMediaFolder: vi.fn(() => 'folder-new'),
+    renameMediaFolder: vi.fn(),
+    deleteMediaFolder: vi.fn(),
+    moveMediaToFolder: vi.fn(),
+    addMediaTag: vi.fn(),
+    removeMediaTag: vi.fn(),
     ...overrides,
   };
   (useAppStore as unknown as { setState: (value: StoreSeed) => void }).setState(seed);
@@ -906,5 +913,141 @@ describe('media library route', () => {
     // The same key outside the field is the shortcut it was meant to be.
     fireEvent.keyDown(document.body, { key: 'Delete' });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy());
+  });
+
+  // Folders and tags are the one thing in this library the story cannot answer
+  // for itself, so they are also the one thing it can get wrong silently.
+  it('files a picture into a folder from the inspector', async () => {
+    const moveMediaToFolder = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'bg' })],
+      imageAssetIdsByStory: { 'story-1': ['bg'] },
+      mediaOrganizationByStory: {
+        'story-1': {
+          folders: [{ id: 'folder-1', name: 'Chapter two', createdAt: 1 }],
+          folderByKey: {},
+          tagsByKey: {},
+        },
+      },
+      moveMediaToFolder,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, bg.png' }));
+
+    // The chip says where it is now, which is nowhere.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Move to folder…' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
+    // The folder is both a filter chip and a menu option by now; the menu is
+    // the one that just opened.
+    const options = screen.getAllByRole('button', { name: 'Chapter two' });
+    fireEvent.click(options[options.length - 1]);
+
+    expect(moveMediaToFolder).toHaveBeenCalledWith('story-1', ['asset:bg'], 'folder-1');
+  });
+
+  // On a phone the move menu is the only way to reach a new folder, so it has
+  // to both make one and put the files in it.
+  it('makes a folder from the move menu and files the picture into it', async () => {
+    const createMediaFolder = vi.fn(() => 'folder-new');
+    const moveMediaToFolder = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'bg' })],
+      imageAssetIdsByStory: { 'story-1': ['bg'] },
+      createMediaFolder,
+      moveMediaToFolder,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, bg.png' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Move to folder…' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New folder' }));
+
+    fireEvent.change(screen.getByLabelText('Name the folder'), { target: { value: 'Chapter two' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    expect(createMediaFolder).toHaveBeenCalledWith('story-1', 'Chapter two');
+    expect(moveMediaToFolder).toHaveBeenCalledWith('story-1', ['asset:bg'], 'folder-new');
+  });
+
+  it('tags a picture and takes the tag off again', async () => {
+    const addMediaTag = vi.fn();
+    const removeMediaTag = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'bg' })],
+      imageAssetIdsByStory: { 'story-1': ['bg'] },
+      mediaOrganizationByStory: {
+        'story-1': { folders: [], folderByKey: {}, tagsByKey: { 'asset:bg': ['night'] } },
+      },
+      addMediaTag,
+      removeMediaTag,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, bg.png' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add tag…' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Add tag…' }));
+    fireEvent.change(screen.getByLabelText('Add a tag'), { target: { value: 'rain' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect(addMediaTag).toHaveBeenCalledWith('story-1', ['asset:bg'], 'rain');
+
+    // The tag it already carries is a chip, and pressing it takes it off.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove tag night' }));
+    expect(removeMediaTag).toHaveBeenCalledWith('story-1', ['asset:bg'], 'night');
+  });
+
+  it('narrows the library to one folder, and to one tag', () => {
+    seedStore({
+      mediaLibrary: [asset({ id: 'bg' }), asset({ id: 'spare' })],
+      imageAssetIdsByStory: { 'story-1': ['bg', 'spare'] },
+      mediaOrganizationByStory: {
+        'story-1': {
+          folders: [{ id: 'folder-1', name: 'Chapter two', createdAt: 1 }],
+          folderByKey: { 'asset:bg': 'folder-1' },
+          tagsByKey: { 'asset:spare': ['night'] },
+        },
+      },
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Chapter two' }));
+    expect(screen.getByRole('button', { name: 'Image, bg.png' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Image, spare.png' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'night' }));
+    expect(screen.getByRole('button', { name: 'Image, spare.png' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Image, bg.png' })).toBeNull();
+  });
+
+  it('refuses a second folder with a name the story already uses', async () => {
+    const createMediaFolder = vi.fn(() => 'folder-new');
+    seedStore({
+      mediaLibrary: [asset({ id: 'bg' })],
+      imageAssetIdsByStory: { 'story-1': ['bg'] },
+      mediaOrganizationByStory: {
+        'story-1': {
+          folders: [{ id: 'folder-1', name: 'Chapter two', createdAt: 1 }],
+          folderByKey: {},
+          tagsByKey: {},
+        },
+      },
+      createMediaFolder,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, bg.png' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Move to folder…' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New folder' }));
+
+    // Case is not a difference, and the model would refuse this silently.
+    fireEvent.change(screen.getByLabelText('Name the folder'), { target: { value: 'chapter TWO' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    expect(createMediaFolder).not.toHaveBeenCalled();
+    // The dialog stays open rather than closing on nothing.
+    expect(screen.getByLabelText('Name the folder')).toBeTruthy();
   });
 });

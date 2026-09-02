@@ -8,6 +8,10 @@ import type { Character } from '@/lib/character-types';
 import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { SceneRecord } from '@/lib/engine/types';
 import { canConvertDataUri, type AssetType, type LibraryAsset } from '@/lib/media-library-service';
+import {
+  normalizeMediaOrganizations,
+  type MediaOrganizationByStory,
+} from '@/lib/media-organization';
 import { normalizeStoryMetadata, type SaveSlot, type StoryMetadata } from '@/lib/story-domain';
 import type { Language } from '@/lib/translations';
 import type { UserSettings } from '@/lib/user-settings';
@@ -24,7 +28,7 @@ import {
   type StoryMediaAssetIds,
 } from '@/lib/story-media-library';
 
-export const APP_STORE_PERSIST_VERSION = 8;
+export const APP_STORE_PERSIST_VERSION = 9;
 
 export type AppStorePersistenceState = {
   storiesMetadata: StoryMetadata[];
@@ -41,6 +45,7 @@ export type AppStorePersistenceState = {
   mediaLibrary: LibraryAsset[];
   imageAssetIdsByStory: StoryImageAssetIds;
   mediaAssetIdsByStory: StoryMediaAssetIds;
+  mediaOrganizationByStory: MediaOrganizationByStory;
   endingsReachedByStory: Record<string, string[]>;
   lastEditedSceneByStory: Record<string, string>;
 };
@@ -180,6 +185,9 @@ export function buildPersistedAppState(state: AppStorePersistenceState): AppStor
     mediaLibrary: getPersistableMediaLibrary(state.mediaLibrary),
     imageAssetIdsByStory: state.imageAssetIdsByStory,
     mediaAssetIdsByStory: state.mediaAssetIdsByStory,
+    // Folders and tags are the author's own answer, derivable from nothing:
+    // losing them loses work rather than a cache.
+    mediaOrganizationByStory: state.mediaOrganizationByStory,
     // Which endings a reader has reached is progress, not cache: losing it would
     // silently re-ask for a review and reset their collection.
     endingsReachedByStory: state.endingsReachedByStory,
@@ -277,6 +285,8 @@ export function migratePersistedAppState(
   if ('mediaLibrary' in migrated) {
     migrated.mediaLibrary = getHydratableMediaLibrary(migrated.mediaLibrary);
   }
+  // Absent before version 9, and anything at all in a hand-edited backup.
+  migrated.mediaOrganizationByStory = normalizeMediaOrganizations(migrated.mediaOrganizationByStory);
   if ('characterLibraries' in migrated) {
     migrated.characterLibraries = migrateCharacterLibraries(migrated.characterLibraries);
   }

@@ -29,8 +29,9 @@ import {
 } from '@/components/media-library/MediaRail';
 import { MediaMenu, MediaToolbar } from '@/components/media-library/MediaToolbar';
 import { ScreenContainer } from '@/components/screen-container';
-import { ConfirmDialog } from '@/components/ui';
+import { ConfirmDialog, PromptDialog } from '@/components/ui';
 import { useAudioPreview } from '@/hooks/useAudioPreview';
+import { useFolderDrag } from '@/hooks/use-folder-drag';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
@@ -44,6 +45,16 @@ import {
 import { setAudioCategoryInLibrary, type AudioCategory } from '@/lib/audio-category';
 import { spacing } from '@/lib/design-tokens';
 import { classifyDroppedFiles } from '@/lib/media-drop';
+import {
+  MAX_FOLDER_NAME_LENGTH,
+  MAX_TAGS_PER_FILE,
+  MAX_TAG_LENGTH,
+  sameLabel,
+  folderForMedia,
+  organizationForStory,
+  summarizeOrganization,
+  tagsForMedia,
+} from '@/lib/media-organization';
 import { sortMediaItems, type MediaSort, type MediaView } from '@/lib/media-browser-rows';
 import { summarizeStoryMedia } from '@/lib/media-library-overview';
 import { describePickedAudioFile, pickAudioFromDevice, type PickAudioResult } from '@/lib/pick-audio';
@@ -98,6 +109,13 @@ export default function StoryGalleryRoute() {
   const removeMedia = useAppStore((state) => state.removeMediaAssetFromStory);
   const setAudioLibrary = useAppStore((state) => state.setAudioLibrary);
   const setCharacterLibrary = useAppStore((state) => state.setCharacterLibrary);
+  const mediaOrganizationByStory = useAppStore((state) => state.mediaOrganizationByStory);
+  const createMediaFolder = useAppStore((state) => state.createMediaFolder);
+  const renameMediaFolder = useAppStore((state) => state.renameMediaFolder);
+  const deleteMediaFolder = useAppStore((state) => state.deleteMediaFolder);
+  const moveMediaToFolder = useAppStore((state) => state.moveMediaToFolder);
+  const addMediaTag = useAppStore((state) => state.addMediaTag);
+  const removeMediaTag = useAppStore((state) => state.removeMediaTag);
 
   // The library opens on everything it holds. Three kind-tabs made a story with
   // a handful of files look like three empty rooms; the combined view is the
@@ -117,6 +135,18 @@ export default function StoryGalleryRoute() {
   const [pendingRemoval, setPendingRemoval] = useState<StoryMediaItem[]>([]);
   const [removingBackgroundKey, setRemovingBackgroundKey] = useState<string | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  /**
+   * Filing, which is the one part of this screen the story cannot answer for
+   * itself. `folderPrompt` covers both naming a new folder and renaming one;
+   * `tagTarget` is the files a typed tag will land on.
+   */
+  const [folderPrompt, setFolderPrompt] = useState<
+    { folderId: string | null; moveKeys?: string[] } | null
+  >(null);
+  const [folderMenuFor, setFolderMenuFor] = useState<string | null>(null);
+  const [pendingFolderDeletion, setPendingFolderDeletion] = useState<string | null>(null);
+  const [tagTarget, setTagTarget] = useState<string[] | null>(null);
+  const [moveTarget, setMoveTarget] = useState<string[] | null>(null);
   // One player for the screen: the rows and the inspector drive the same
   // controller, so two files can never sound at once.
   const preview = useAudioPreview();
@@ -185,10 +215,24 @@ export default function StoryGalleryRoute() {
     : view === 'image' ? gallery.images : view === 'video' ? gallery.videos : gallery.audios),
   [gallery, view]);
 
+  const organization = useMemo(
+    () => organizationForStory(mediaOrganizationByStory, storyId ?? ''),
+    [mediaOrganizationByStory, storyId],
+  );
+
   const shown = useMemo(() => {
-    const kept = filterMediaItems(source, filter, query);
+    const kept = filterMediaItems(source, filter, query, organization);
     return sortMediaItems(kept, sort);
-  }, [filter, query, sort, source]);
+  }, [filter, organization, query, sort, source]);
+
+  /**
+   * Counted over the open view rather than the whole story: a 12 beside a
+   * folder holding one of the clips on screen reads as a filter that is broken.
+   */
+  const organizationSummary = useMemo(
+    () => summarizeOrganization(source, organization),
+    [organization, source],
+  );
 
   const images = useMemo(() => shown.filter((item) => item.kind === 'image'), [shown]);
   const videos = useMemo(() => shown.filter((item) => item.kind === 'video'), [shown]);
@@ -641,6 +685,120 @@ export default function StoryGalleryRoute() {
   const panelDocked = !isPhone && (selected !== null || showOverview);
   const reservedWidth = railWidth + (panelDocked ? MEDIA_INSPECTOR_WIDTH : 0);
 
+  // ── Filing ───────────────────────────────────────────────────────────
+  /**
+   * Naming a folder and renaming one are the same dialog; which it is depends
+   * only on whether an id came with it.
+   */
+  const submitFolderName = useCallback((name: string) => {
+    if (!storyId || !folderPrompt) return;
+    const taken = organization.folders.some(
+      (folder) => folder.id !== folderPrompt.folderId && sameLabel(folder.name, name),
+    );
+    if (taken) {
+      // The model would refuse this silently; silence looks like a dialog that
+      // did nothing.
+      showToast(t('mediaLibrary.folder.taken', { name }), 'error');
+      return;
+    }
+    if (folderPrompt.folderId) {
+      renameMediaFolder(storyId, folderPrompt.folderId, name);
+    } else {
+      const folderId = createMediaFolder(storyId, name);
+      // Reached from the move menu: the files go in rather than the author
+      // being sent back to find the folder they just named.
+      if (folderId && folderPrompt.moveKeys?.length) {
+        moveMediaToFolder(storyId, folderPrompt.moveKeys, folderId);
+        showToast(
+          t('mediaLibrary.folder.moved', { count: folderPrompt.moveKeys.length, name }),
+          'success',
+        );
+        if (folderPrompt.moveKeys.length > 1) clearPicking();
+      }
+    }
+    setFolderPrompt(null);
+  }, [
+    clearPicking,
+    createMediaFolder,
+    folderPrompt,
+    moveMediaToFolder,
+    organization.folders,
+    renameMediaFolder,
+    storyId,
+    t,
+  ]);
+
+  const confirmFolderDeletion = useCallback(() => {
+    if (!storyId || !pendingFolderDeletion) return;
+    deleteMediaFolder(storyId, pendingFolderDeletion);
+    // The filter would otherwise keep hiding everything on the strength of a
+    // folder that is gone.
+    setFilter((current) => (current.kind === 'folder' && current.folderId === pendingFolderDeletion
+      ? { kind: 'all' }
+      : current));
+    setPendingFolderDeletion(null);
+  }, [deleteMediaFolder, pendingFolderDeletion, storyId]);
+
+  const submitMove = useCallback((folderId: string | null) => {
+    if (!storyId || !moveTarget) return;
+    moveMediaToFolder(storyId, moveTarget, folderId);
+    const folder = organization.folders.find((entry) => entry.id === folderId);
+    showToast(
+      folder
+        ? t('mediaLibrary.folder.moved', { count: moveTarget.length, name: folder.name })
+        : t('mediaLibrary.folder.removedFrom'),
+      'success',
+    );
+    setMoveTarget(null);
+    if (moveTarget.length > 1) clearPicking();
+  }, [clearPicking, moveMediaToFolder, moveTarget, organization.folders, storyId, t]);
+
+  const submitTag = useCallback((tag: string) => {
+    if (!storyId || !tagTarget) return;
+    // One file already carrying its dozen would take the tag nowhere, and the
+    // dialog closing on nothing is the least honest thing this screen could do.
+    const full = tagTarget.length === 1
+      && tagsForMedia(organization, tagTarget[0]).length >= MAX_TAGS_PER_FILE;
+    if (full) {
+      showToast(t('mediaLibrary.tag.full', { count: MAX_TAGS_PER_FILE }), 'error');
+      return;
+    }
+    addMediaTag(storyId, tagTarget, tag);
+    showToast(t('mediaLibrary.tag.added', { count: tagTarget.length, tag }), 'success');
+    setTagTarget(null);
+    if (tagTarget.length > 1) clearPicking();
+  }, [addMediaTag, clearPicking, organization, storyId, t, tagTarget]);
+
+  const handleRemoveTag = useCallback((item: StoryMediaItem, tag: string) => {
+    if (!storyId) return;
+    removeMediaTag(storyId, [item.key], tag);
+  }, [removeMediaTag, storyId]);
+
+  /** Dropping a tile on a folder row is the same move the menu makes. */
+  const handleDropOnFolder = useCallback((keys: string[], folderId: string | null) => {
+    if (!storyId || !keys.length) return;
+    moveMediaToFolder(storyId, keys, folderId);
+    const folder = organization.folders.find((entry) => entry.id === folderId);
+    showToast(
+      folder
+        ? t('mediaLibrary.folder.moved', { count: keys.length, name: folder.name })
+        : t('mediaLibrary.folder.removedFrom'),
+      'success',
+    );
+  }, [moveMediaToFolder, organization.folders, storyId, t]);
+
+  /**
+   * Dragging a tile sideways onto a folder. Only where there is a rail to drop
+   * onto: a phone files through the inspector and the batch bar instead.
+   */
+  const folderDrag = useFolderDrag(handleDropOnFolder, width >= PHONE_MAX_WIDTH);
+
+  /** A drag from a ticked tile carries everything ticked; otherwise, just it. */
+  const keysForDrag = useCallback(
+    (item: StoryMediaItem) => (checked.includes(item.key) ? checked : [item.key]),
+    [checked],
+  );
+
   // ── Keyboard ─────────────────────────────────────────────────────────
   /**
    * Selection is the cursor here: the arrows move it, and the panel follows,
@@ -716,9 +874,15 @@ export default function StoryGalleryRoute() {
         })
       : filter.kind === 'audioCategory'
         ? t(`mediaLibrary.empty.${filter.category}`)
-        : filter.kind === 'used' || filter.kind === 'unused'
-          ? t(`mediaLibrary.empty.${filter.kind}`)
-          : t(`mediaLibrary.empty.${view === 'image' ? 'images' : view === 'video' ? 'videos' : view === 'audio' ? 'audio' : 'all'}`);
+        : filter.kind === 'folder'
+          ? t('mediaLibrary.empty.folder', {
+              name: organizationSummary.folders.find((folder) => folder.id === filter.folderId)?.name ?? '',
+            })
+          : filter.kind === 'tag'
+            ? t('mediaLibrary.empty.tag', { tag: filter.tag })
+            : filter.kind === 'used' || filter.kind === 'unused' || filter.kind === 'unfiled'
+              ? t(`mediaLibrary.empty.${filter.kind}`)
+              : t(`mediaLibrary.empty.${view === 'image' ? 'images' : view === 'video' ? 'videos' : view === 'audio' ? 'audio' : 'all'}`);
 
   const browser = (
     <MediaBrowser
@@ -742,6 +906,8 @@ export default function StoryGalleryRoute() {
       activeAudioKey={preview.activeKey}
       previewState={preview.state}
       progress={preview.progress}
+      drag={folderDrag}
+      keysForDrag={keysForDrag}
     />
   );
 
@@ -767,6 +933,10 @@ export default function StoryGalleryRoute() {
             usageReady={usageReady}
             totalBytes={summary.bytes.total}
             unsizedCount={summary.unsizedCount}
+            organization={organizationSummary}
+            onCreateFolder={() => setFolderPrompt({ folderId: null })}
+            onEditFolder={setFolderMenuFor}
+            drag={folderDrag}
             collapsed={width < RAIL_LABELS_WIDTH}
           />
         )}
@@ -810,6 +980,7 @@ export default function StoryGalleryRoute() {
                 usageReady={usageReady}
                 characters={characterFilters}
                 audioCategories={audioCategories}
+                organization={organizationSummary}
                 onChange={(next) => { setFilter(next); setSelectedKey(null); }}
               />
             </>
@@ -824,6 +995,8 @@ export default function StoryGalleryRoute() {
               canRemoveBackground={isBackgroundRemovalSupported()}
               usageReady={usageReady}
               busy={batchBusy}
+              onMoveToFolder={() => setMoveTarget(checked)}
+              onAddTag={() => setTagTarget(checked)}
               onAttachToCharacter={() => setBatchAttachOpen(true)}
               onRemoveBackground={() => { void handleBatchRemoveBackground(); }}
               onRemove={() => setPendingRemoval(removableChecked)}
@@ -858,6 +1031,11 @@ export default function StoryGalleryRoute() {
             durationSeconds={preview.durationSeconds}
             playbackFailed={preview.failedKey === selected.key}
             onSetAudioCategory={selected.kind === 'audio' ? handleSetAudioCategory : undefined}
+            folderName={folderForMedia(organization, selected.key)?.name ?? null}
+            tags={tagsForMedia(organization, selected.key)}
+            onMoveToFolder={(item) => setMoveTarget([item.key])}
+            onAddTag={(item) => setTagTarget([item.key])}
+            onRemoveTag={handleRemoveTag}
           />
         ) : showOverview ? (
           <View
@@ -908,6 +1086,83 @@ export default function StoryGalleryRoute() {
           handleBatchAttach(key);
         }}
         onClose={() => setBatchAttachOpen(false)}
+      />
+
+      <PromptDialog
+        visible={folderPrompt !== null}
+        title={t(folderPrompt?.folderId ? 'mediaLibrary.folder.rename' : 'mediaLibrary.folder.createTitle')}
+        initialValue={folderPrompt?.folderId
+          ? organization.folders.find((folder) => folder.id === folderPrompt.folderId)?.name ?? ''
+          : ''}
+        placeholder={t('mediaLibrary.folder.namePlaceholder')}
+        maxLength={MAX_FOLDER_NAME_LENGTH}
+        onConfirm={submitFolderName}
+        onCancel={() => setFolderPrompt(null)}
+      />
+
+      <PromptDialog
+        visible={tagTarget !== null}
+        title={t('mediaLibrary.tag.addTitle')}
+        placeholder={t('mediaLibrary.tag.placeholder')}
+        maxLength={MAX_TAG_LENGTH}
+        onConfirm={submitTag}
+        onCancel={() => setTagTarget(null)}
+      />
+
+      <MediaMenu
+        visible={folderMenuFor !== null}
+        title={organization.folders.find((folder) => folder.id === folderMenuFor)?.name ?? ''}
+        colors={colors}
+        options={[
+          { key: 'rename', label: t('mediaLibrary.folder.rename'), icon: 'editor' as const },
+          { key: 'delete', label: t('mediaLibrary.folder.delete'), icon: 'delete' as const },
+        ]}
+        onPick={(key) => {
+          const folderId = folderMenuFor;
+          setFolderMenuFor(null);
+          if (!folderId) return;
+          if (key === 'rename') setFolderPrompt({ folderId });
+          else setPendingFolderDeletion(folderId);
+        }}
+        onClose={() => setFolderMenuFor(null)}
+      />
+
+      <MediaMenu
+        visible={moveTarget !== null}
+        title={t('mediaLibrary.folder.move')}
+        colors={colors}
+        options={[
+          ...organization.folders.map((folder) => ({
+            key: folder.id,
+            label: folder.name,
+            icon: 'files' as const,
+          })),
+          { key: '', label: t('mediaLibrary.folder.none'), icon: 'question' as const },
+          { key: 'new', label: t('mediaLibrary.folder.create'), icon: 'add' as const },
+        ]}
+        onPick={(key) => {
+          if (key === 'new') {
+            // The files follow the name into the folder it makes.
+            setFolderPrompt({ folderId: null, moveKeys: moveTarget ?? [] });
+            setMoveTarget(null);
+            return;
+          }
+          submitMove(key || null);
+        }}
+        onClose={() => setMoveTarget(null)}
+      />
+
+      <ConfirmDialog
+        visible={pendingFolderDeletion !== null}
+        title={t('mediaLibrary.folder.deleteTitle')}
+        message={t('mediaLibrary.folder.deleteMessage', {
+          name: organization.folders.find((folder) => folder.id === pendingFolderDeletion)?.name ?? '',
+          count: organizationSummary.folders.find((folder) => folder.id === pendingFolderDeletion)?.count ?? 0,
+        })}
+        confirmLabel={t('common.delete')}
+        onConfirm={confirmFolderDeletion}
+        onCancel={() => setPendingFolderDeletion(null)}
+        destructive
       />
 
       <ConfirmDialog

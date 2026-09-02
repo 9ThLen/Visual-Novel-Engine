@@ -7,13 +7,18 @@
  * failure reaches the tile as anything but "show the glyph".
  */
 import {
-  getVideoPosterUri,
+  getVideoPosterSource,
   posterDimensions,
   resetVideoPostersForTests,
   setPosterGrabberForTests,
 } from '@/lib/video-poster';
 
-const blob = () => new Blob(['frame'], { type: 'image/webp' });
+/**
+ * What a grab hands back: the web makes an object URL of its canvas frame, a
+ * phone hands over a native image reference. The cache only has to keep
+ * whatever it was given, so a string stands in for both here.
+ */
+const frame = (name = 'blob:poster') => name;
 
 // jsdom implements no object URLs at all, so they are installed rather than
 // spied on; the identity of each is what the tests read.
@@ -50,11 +55,11 @@ describe('poster dimensions', () => {
 
 describe('poster cache', () => {
   it('decodes a clip once, however many tiles ask', async () => {
-    const grab = vi.fn(async () => blob());
+    const grab = vi.fn(async () => frame('blob:poster-1'));
     setPosterGrabberForTests(grab);
 
-    const first = await getVideoPosterUri('blob:clip');
-    const second = await getVideoPosterUri('blob:clip');
+    const first = await getVideoPosterSource('blob:clip');
+    const second = await getVideoPosterSource('blob:clip');
 
     expect(first).toBe('blob:poster-1');
     expect(second).toBe('blob:poster-1');
@@ -62,12 +67,12 @@ describe('poster cache', () => {
   });
 
   it('shares one decode between callers that ask at the same time', async () => {
-    const grab = vi.fn(async () => blob());
+    const grab = vi.fn(async () => frame());
     setPosterGrabberForTests(grab);
 
     const [first, second] = await Promise.all([
-      getVideoPosterUri('blob:clip'),
-      getVideoPosterUri('blob:clip'),
+      getVideoPosterSource('blob:clip'),
+      getVideoPosterSource('blob:clip'),
     ]);
 
     expect(first).toBe(second);
@@ -80,8 +85,8 @@ describe('poster cache', () => {
     const grab = vi.fn(async () => null);
     setPosterGrabberForTests(grab);
 
-    expect(await getVideoPosterUri('blob:silent')).toBeNull();
-    expect(await getVideoPosterUri('blob:silent')).toBeNull();
+    expect(await getVideoPosterSource('blob:silent')).toBeNull();
+    expect(await getVideoPosterSource('blob:silent')).toBeNull();
     expect(grab).toHaveBeenCalledTimes(1);
   });
 
@@ -91,15 +96,15 @@ describe('poster cache', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     setPosterGrabberForTests(async () => { throw new Error('tainted canvas'); });
 
-    await expect(getVideoPosterUri('blob:cross-origin')).resolves.toBeNull();
+    await expect(getVideoPosterSource('blob:cross-origin')).resolves.toBeNull();
     warn.mockRestore();
   });
 
   it('says no to nothing at all', async () => {
-    const grab = vi.fn(async () => blob());
+    const grab = vi.fn(async () => frame());
     setPosterGrabberForTests(grab);
 
-    expect(await getVideoPosterUri('')).toBeNull();
+    expect(await getVideoPosterSource('')).toBeNull();
     expect(grab).not.toHaveBeenCalled();
   });
 });

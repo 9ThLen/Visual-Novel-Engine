@@ -80,6 +80,8 @@ const MAPPING = {
   sort: "sort",
   density: "grid-view",
   unused: "hide-source",
+  tag: "label",
+  "folder.open": "folder-open",
   lock: "lock",
 } satisfies Record<string, ComponentProps<typeof MaterialIcons>["name"]>;
 

@@ -12,7 +12,7 @@
  * built from `AudioTrackRowView`, exactly as the audio view is.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { FlatList, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import {
@@ -33,6 +33,7 @@ import {
   type MediaView,
   type SectionLabel,
 } from '@/lib/media-browser-rows';
+import type { FolderDrag } from '@/hooks/use-folder-drag';
 import type { StoryMediaItem, UsageState } from '@/lib/story-media-gallery';
 
 /** Phone / tablet / desktop, matching the concept's 3 / 5 / 6-8 columns. */
@@ -61,6 +62,64 @@ function headerText(label: SectionLabel): string {
   if (label.source === 'kind') return `mediaLibrary.section.${label.kind}`;
   if (label.source === 'category') return `mediaLibrary.audio.group.${label.category}`;
   return `mediaLibrary.group.${label.label}`;
+}
+
+/**
+ * One row of tiles, and the gesture that carries them.
+ *
+ * The responder lives on the row rather than on each tile: a row already
+ * re-renders as a unit, and which tile a drag started on is arithmetic on the
+ * touch position rather than a prop every tile has to carry.
+ */
+function GridRow({
+  items,
+  height,
+  tileSize,
+  gap,
+  drag,
+  keysFor,
+  children,
+}: {
+  items: StoryMediaItem[];
+  height: number;
+  tileSize: number;
+  gap: number;
+  drag?: FolderDrag;
+  keysFor?: (item: StoryMediaItem) => string[];
+  children: React.ReactNode;
+}) {
+  const rowRef = useRef<View | null>(null);
+  /**
+   * Where the row starts on screen. Measured on layout rather than on the
+   * drag: a vertical scroll does not move it sideways, and the grant that
+   * needs it is synchronous.
+   */
+  const originX = useRef(0);
+
+  const resolve = useRef<(touchX: number) => string[] | null>(() => null);
+  resolve.current = (touchX: number) => {
+    const index = Math.floor((touchX - originX.current) / (tileSize + gap));
+    const item = index >= 0 ? items[index] : undefined;
+    return item && keysFor ? keysFor(item) : null;
+  };
+
+  // Stable for the life of the row: the responder reads through the ref, so a
+  // re-render never rebuilds the gesture mid-drag.
+  const responder = useMemo(
+    () => drag?.createResponder((touchX) => resolve.current(touchX)),
+    [drag],
+  );
+
+  return (
+    <View
+      ref={rowRef}
+      onLayout={() => rowRef.current?.measureInWindow?.((x) => { originX.current = x; })}
+      style={[styles.gridRow, { height }]}
+      {...(responder?.panHandlers ?? {})}
+    >
+      {children}
+    </View>
+  );
 }
 
 interface MediaBrowserProps {
@@ -93,6 +152,10 @@ interface MediaBrowserProps {
   activeAudioKey?: string | null;
   previewState?: AudioPreviewState;
   progress?: number;
+  /** Absent where there is no rail to drop onto, which is every narrow screen. */
+  drag?: FolderDrag;
+  /** What a drag from this tile carries: the ticked set, or just this file. */
+  keysForDrag?: (item: StoryMediaItem) => string[];
 }
 
 export function MediaBrowser({
@@ -116,6 +179,8 @@ export function MediaBrowser({
   activeAudioKey = null,
   previewState = 'loading',
   progress = 0,
+  drag,
+  keysForDrag,
 }: MediaBrowserProps) {
   const { t } = useI18n();
   const { width } = useWindowDimensions();
@@ -177,7 +242,14 @@ export function MediaBrowser({
     }
 
     return (
-      <View style={[styles.gridRow, { height: gridRowHeight }]}>
+      <GridRow
+        items={row.items}
+        height={gridRowHeight}
+        tileSize={tileSize}
+        gap={GAP}
+        drag={drag}
+        keysFor={keysForDrag}
+      >
         {row.items.map((item) => (
           <MediaTile
             key={item.key}
@@ -192,15 +264,17 @@ export function MediaBrowser({
             onLongPress={onLongPress}
           />
         ))}
-      </View>
+      </GridRow>
     );
   }, [
     activeAudioKey,
     checkedKeys,
     colors,
     compact,
+    drag,
     gridRowHeight,
     heightOf,
+    keysForDrag,
     onLongPress,
     onSelect,
     onTogglePlayback,

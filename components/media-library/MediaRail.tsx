@@ -22,6 +22,8 @@ import type { ThemeColorPalette } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { formatBytes } from '@/lib/media-format';
 import type { MediaView } from '@/lib/media-browser-rows';
+import { UNFILED_DROP_TARGET, type FolderDrag } from '@/hooks/use-folder-drag';
+import { sameLabel, type OrganizationSummary } from '@/lib/media-organization';
 import type { AudioCategory, CharacterMediaFilter, ImageFilter } from '@/lib/story-media-gallery';
 
 export const MEDIA_RAIL_WIDTH = 236;
@@ -57,6 +59,19 @@ interface MediaRailProps {
   totalBytes: number;
   /** How many it could not weigh, so the footer can stop short of claiming. */
   unsizedCount: number;
+  /**
+   * The author's own filing, counted over the files the view is showing. The
+   * one axis here that the story cannot answer for itself.
+   */
+  organization: OrganizationSummary;
+  onCreateFolder: () => void;
+  /** Long-press a folder: rename it or take it away. */
+  onEditFolder: (folderId: string) => void;
+  /**
+   * Files being dragged in from the grid. Absent on a screen with no rail —
+   * there is nothing to drop onto there.
+   */
+  drag?: FolderDrag;
   collapsed?: boolean;
 }
 
@@ -73,6 +88,10 @@ export function MediaRail({
   usageReady,
   totalBytes,
   unsizedCount,
+  organization,
+  onCreateFolder,
+  onEditFolder,
+  drag,
   collapsed = false,
 }: MediaRailProps) {
   const { t } = useI18n();
@@ -86,10 +105,15 @@ export function MediaRail({
     role: 'tab' | 'button';
     disabled?: boolean;
     icon?: React.ReactNode;
+    onLongPress?: () => void;
+    /** Registers the row as somewhere files can be dropped. */
+    dropTargetId?: string;
   }) => (
     <Pressable
       key={options.key}
+      ref={options.dropTargetId ? drag?.registerTarget(options.dropTargetId) : undefined}
       onPress={options.onPress}
+      onLongPress={options.onLongPress}
       disabled={options.disabled}
       accessibilityRole={options.role}
       // Explicit, because an avatar's initials would otherwise join the name a
@@ -103,6 +127,10 @@ export function MediaRail({
           backgroundColor: options.active ? colors.selected : 'transparent',
           opacity: options.disabled ? 0.5 : 1,
         },
+        // Where the files would land if the finger let go here.
+        options.dropTargetId && drag?.hoveredTargetId === options.dropTargetId
+          ? { backgroundColor: colors.hover, borderColor: colors.primary, borderWidth: 1 }
+          : null,
       ]}
     >
       {options.icon}
@@ -124,8 +152,20 @@ export function MediaRail({
     </Pressable>
   );
 
-  const heading = (label: string) => (
-    <Text style={[typeScale.micro, styles.heading, { color: colors.muted }]}>{t(label)}</Text>
+  const heading = (label: string, action?: { label: string; onPress: () => void }) => (
+    <View style={styles.headingRow}>
+      <Text style={[typeScale.micro, styles.heading, { color: colors.muted }]}>{t(label)}</Text>
+      {action && !collapsed ? (
+        <Pressable
+          onPress={action.onPress}
+          accessibilityRole="button"
+          accessibilityLabel={action.label}
+          style={styles.headingAction}
+        >
+          <IconSymbol name="add" size={16} color={colors.muted} />
+        </Pressable>
+      ) : null}
+    </View>
   );
 
   const avatar = (character: CharacterMediaFilter) => (character.avatarUri
@@ -212,6 +252,75 @@ export function MediaRail({
         ) : null}
 
         <View style={styles.group}>
+          {heading('mediaLibrary.rail.folders', {
+            label: t('mediaLibrary.folder.create'),
+            onPress: onCreateFolder,
+          })}
+          {organization.folders.map((folder) => item({
+            key: `folder-${folder.id}`,
+            label: folder.name,
+            count: folder.count,
+            active: filter.kind === 'folder' && filter.folderId === folder.id,
+            onPress: () => onChangeFilter({ kind: 'folder', folderId: folder.id }),
+            onLongPress: () => onEditFolder(folder.id),
+            dropTargetId: folder.id,
+            role: 'button',
+            icon: (
+              <IconSymbol
+                name="files"
+                size={20}
+                color={filter.kind === 'folder' && filter.folderId === folder.id
+                  ? colors.primary
+                  : colors.muted}
+              />
+            ),
+          }))}
+          {/* Offered when something is actually unfiled — on a story that files
+              everything it is a row that can never return a result — and while
+              a drag is in the air, because taking a file back out of a folder
+              needs somewhere to drop it. */}
+          {organization.unfiled > 0 || drag?.dragging ? item({
+            key: 'unfiled',
+            label: t('mediaLibrary.folder.unfiled'),
+            count: organization.unfiled,
+            active: filter.kind === 'unfiled',
+            onPress: () => onChangeFilter({ kind: 'unfiled' }),
+            dropTargetId: UNFILED_DROP_TARGET,
+            role: 'button',
+            icon: (
+              <IconSymbol
+                name="question"
+                size={20}
+                color={filter.kind === 'unfiled' ? colors.primary : colors.muted}
+              />
+            ),
+          }) : null}
+        </View>
+
+        {organization.tags.length ? (
+          <View style={styles.group}>
+            {heading('mediaLibrary.rail.tags')}
+            {organization.tags.map(({ tag, count }) => item({
+              key: `tag-${tag}`,
+              label: tag,
+              count,
+              active: filter.kind === 'tag' && sameLabel(filter.tag, tag),
+              onPress: () => onChangeFilter({ kind: 'tag', tag }),
+              role: 'button',
+              icon: (
+                <IconSymbol
+                  name="tag"
+                  size={20}
+                  color={filter.kind === 'tag' && sameLabel(filter.tag, tag)
+                    ? colors.primary
+                    : colors.muted}
+                />
+              ),
+            }))}
+          </View>
+        ) : null}
+
+        <View style={styles.group}>
           {heading('mediaLibrary.rail.state')}
           {item({
             key: 'all',
@@ -263,7 +372,10 @@ const styles = StyleSheet.create({
   rail: { borderRightWidth: 1 },
   scroll: { paddingVertical: spacing.md, paddingHorizontal: spacing.sm, gap: spacing.lg },
   group: { gap: 2 },
+  headingRow: { flexDirection: 'row', alignItems: 'center', minHeight: 24 },
+  headingAction: { minWidth: 28, minHeight: 28, alignItems: 'center', justifyContent: 'center' },
   heading: {
+    flex: 1,
     textTransform: 'uppercase',
     letterSpacing: 1,
     paddingHorizontal: spacing.sm,
