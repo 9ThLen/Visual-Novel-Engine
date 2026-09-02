@@ -1263,7 +1263,19 @@ outside. What is known is that the identical frontend plays from `file://` with
 zero network requests (`pnpm test:player-e2e`), and Tauri serves it from an
 easier origin than that.
 
-**The CI workflow has still never run**, so Linux and macOS remain unproven.
+**All three platforms have now been built by CI** (run 33560229214, green):
+
+| | |
+| --- | --- |
+| Windows | NSIS installer, 102 MB artifact |
+| Linux | `.deb` 101.8 MB **and** AppImage 173.6 MB — the AppImage carries more runtime |
+| macOS | `.dmg` 105.7 MB, unsigned, **`aarch64` only** |
+
+Two things that follow, neither of them obvious before the run: macOS builds for
+Apple Silicon alone, so an Intel Mac needs an `x86_64` or universal build that
+nothing currently produces; and the `continue-on-error` on macOS was not needed —
+the job genuinely passed, so a future failure there will be masked rather than
+reported, which is worth reconsidering now that it works.
 
 **Done when:** the same release that plays on the project page also installs and
 runs offline from a Windows installer, with no browser involved.

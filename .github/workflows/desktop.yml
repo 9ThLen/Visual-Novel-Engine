@@ -21,11 +21,12 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    # macOS produces an unsigned .dmg: Gatekeeper refuses it on a reader's
-    # machine until there is a Developer ID to sign with. Built anyway so the
-    # pipeline is known to work there, and allowed to fail so a missing
-    # certificate does not block the two channels that do ship.
-    continue-on-error: ${{ matrix.os == 'macos-latest' }}
+    # macOS was allowed to fail while nobody knew whether it could build at all.
+    # It can: run 33560229214 produced an unsigned aarch64 .dmg. Leaving the
+    # escape hatch in would now mask a real breakage behind a green tick, and
+    # signing is not attempted here, so there is no certificate step to forgive.
+    # Gatekeeper still refuses the artifact on a reader's machine; that is a
+    # property of the .dmg, not a reason to ignore the job that produced it.
     strategy:
       fail-fast: false
       matrix:

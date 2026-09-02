@@ -136,17 +136,21 @@ that it works offline.
 three platforms from a real release through the committed tools. It runs on
 demand, and by itself when the desktop pipeline changes.
 
-**The workflow has never run**, so Linux and macOS are unproven.
+**The workflow has run, and all three platforms built** (run 33560229214):
+Windows NSIS, Linux `.deb` (101.8 MB) and AppImage (173.6 MB), macOS `.dmg`
+(105.7 MB, unsigned). The macOS runner is Apple Silicon, so that `.dmg` is
+`aarch64` only — an Intel Mac needs an `x86_64` or universal build, which nothing
+here produces yet.
 
-Windows is not. On 2026-09-01 the whole pipeline ran locally against the demo
-release: `tauri icon` generated the icons, `cargo` compiled the shell in about
-five minutes, and the NSIS bundler produced a 107 MB installer whose name,
-identifier and version came from the staged config. Launching the built binary
-opens a visible window titled from that config, with a WebView2 child hosting the
-page.
+The same pipeline also ran locally on Windows on 2026-09-01: `tauri icon`
+generated the icons, `cargo` compiled the shell in about five minutes, and the
+NSIS bundler produced a 107 MB installer whose name, identifier and version came
+from the staged config. Launching the built binary opens a visible window titled
+from that config, with a WebView2 child hosting the page.
 
-Where the evidence stops: nobody has watched the story render in that window, and
-nobody has run the installer. A blank webview looks identical from outside. The
+Where the evidence stops, on every platform: nobody has watched the story render
+in one of these windows, and nobody has run an installer or opened the `.dmg`.
+A blank webview looks identical from outside. The
 same frontend does play from `file://` with zero network requests under
 `pnpm test:player-e2e`, and Tauri serves it from an easier origin than that — but
 that is an argument, not an observation.
