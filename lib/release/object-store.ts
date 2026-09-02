@@ -34,6 +34,7 @@ import type {
   StoryArchiveBinarySource,
 } from '@/lib/story-backup/types';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
+import { withReleaseStorageLock } from '@/lib/release/storage-lock';
 
 export const RELEASE_OBJECT_STORAGE_VERSION = 1;
 
@@ -145,45 +146,47 @@ export async function saveReleaseObjects(
   assets: PreparedStoryBackupAsset[],
   storage: StorageLike = createPersistentStorage(),
 ): Promise<SaveReleaseObjectsResult> {
-  const index = await readReleaseObjectIndex(storage);
-  const seen = new Set<string>();
-  const stored: string[] = [];
-  const failed: string[] = [];
+  return withReleaseStorageLock('release-objects', async () => {
+    const index = await readReleaseObjectIndex(storage);
+    const seen = new Set<string>();
+    const stored: string[] = [];
+    const failed: string[] = [];
 
-  for (const asset of assets) {
-    const { sha256 } = asset.metadata;
-    if (seen.has(sha256)) continue;
-    seen.add(sha256);
+    for (const asset of assets) {
+      const { sha256 } = asset.metadata;
+      if (seen.has(sha256)) continue;
+      seen.add(sha256);
 
-    const existing = index.objects[sha256];
-    let uri = existing?.uri;
-    if (!uri) {
-      try {
-        uri = await writeObject(asset);
-      } catch {
-        // A device with no blob storage — a private window, a browser with
-        // site data switched off — must still be able to publish. The release
-        // is saved either way and exporting falls back to the media library,
-        // which is what every release did before this store existed. Failing
-        // the publish would trade a weaker guarantee for no release at all.
-        failed.push(sha256);
-        continue;
+      const existing = index.objects[sha256];
+      let uri = existing?.uri;
+      if (!uri) {
+        try {
+          uri = await writeObject(asset);
+        } catch {
+          // A device with no blob storage — a private window, a browser with
+          // site data switched off — must still be able to publish. The release
+          // is saved either way and exporting falls back to the media library,
+          // which is what every release did before this store existed. Failing
+          // the publish would trade a weaker guarantee for no release at all.
+          failed.push(sha256);
+          continue;
+        }
       }
+
+      const releaseIds = new Set(existing?.releaseIds ?? []);
+      releaseIds.add(releaseId);
+      index.objects[sha256] = {
+        uri,
+        size: asset.metadata.size,
+        mimeType: asset.metadata.mimeType,
+        releaseIds: [...releaseIds],
+      };
+      stored.push(sha256);
     }
 
-    const releaseIds = new Set(existing?.releaseIds ?? []);
-    releaseIds.add(releaseId);
-    index.objects[sha256] = {
-      uri,
-      size: asset.metadata.size,
-      mimeType: asset.metadata.mimeType,
-      releaseIds: [...releaseIds],
-    };
-    stored.push(sha256);
-  }
-
-  await writeIndex(storage, index);
-  return { index, stored, failed };
+    await writeIndex(storage, index);
+    return { index, stored, failed };
+  });
 }
 
 /** The bytes of one object, or `null` when this release predates the store. */
@@ -232,23 +235,28 @@ export async function forgetReleaseObjects(
   releaseId: string,
   storage: StorageLike = createPersistentStorage(),
 ): Promise<{ deleted: string[]; kept: string[] }> {
-  const index = await readReleaseObjectIndex(storage);
-  const deleted: string[] = [];
-  const kept: string[] = [];
+  return withReleaseStorageLock('release-objects', async () => {
+    const index = await readReleaseObjectIndex(storage);
+    const deleted: Array<{ sha256: string; uri: string }> = [];
+    const kept: string[] = [];
 
-  for (const [sha256, entry] of Object.entries(index.objects)) {
-    if (!entry.releaseIds.includes(releaseId)) continue;
-    const remaining = entry.releaseIds.filter((id) => id !== releaseId);
-    if (remaining.length > 0) {
-      index.objects[sha256] = { ...entry, releaseIds: remaining };
-      kept.push(sha256);
-      continue;
+    for (const [sha256, entry] of Object.entries(index.objects)) {
+      if (!entry.releaseIds.includes(releaseId)) continue;
+      const remaining = entry.releaseIds.filter((id) => id !== releaseId);
+      if (remaining.length > 0) {
+        index.objects[sha256] = { ...entry, releaseIds: remaining };
+        kept.push(sha256);
+        continue;
+      }
+      delete index.objects[sha256];
+      deleted.push({ sha256, uri: entry.uri });
     }
-    await removeObject(sha256, entry.uri);
-    delete index.objects[sha256];
-    deleted.push(sha256);
-  }
 
-  await writeIndex(storage, index);
-  return { deleted, kept };
+    // Commit the reference-count update first. A crash after this write can
+    // leave an orphaned blob for cleanup, but never an index that promises
+    // bytes we already deleted.
+    await writeIndex(storage, index);
+    for (const entry of deleted) await removeObject(entry.sha256, entry.uri);
+    return { deleted: deleted.map((entry) => entry.sha256), kept };
+  });
 }

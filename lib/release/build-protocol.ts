@@ -54,6 +54,7 @@ export const BUILD_ERROR_CODES = [
   'MALFORMED',
   'UNKNOWN_REQUEST',
   'PAYLOAD_MISMATCH',
+  'BUILDER_UNAVAILABLE',
   'UPLOAD_MISSING',
   'NOT_RETRYABLE',
   'INTERNAL',
@@ -162,7 +163,9 @@ export function parseBuildServerMessage(raw: string): BuildServerMessage {
       !isRecord(job.artifact)
       || typeof job.artifact.fileName !== 'string'
       || job.artifact.fileName.length === 0
-      || /[\r\n]/.test(job.artifact.fileName)
+      || job.artifact.fileName.length > 255
+      || /[\\/\r\n]/.test(job.artifact.fileName)
+      || !job.artifact.fileName.toLowerCase().endsWith(`.${String(job.target)}`)
       || !Number.isSafeInteger(job.artifact.bytes)
       || (job.artifact.bytes as number) < 0
       || typeof job.artifact.sha256 !== 'string'

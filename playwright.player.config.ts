@@ -10,7 +10,7 @@ const isCI = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: './e2e/player',
-  testMatch: /bundle[.]spec[.]ts/,
+  testMatch: /(bundle|desktop)[.]spec[.]ts/,
   timeout: isCI ? 180_000 : 90_000,
   globalSetup: './e2e/player/global-setup.ts',
   fullyParallel: false,

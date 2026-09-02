@@ -32,6 +32,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { collectStoryAssetRefs } from './lib/collect-story-assets.mjs';
+import { beginOutPath } from '../tools/lib/out-path';
 import { hardenWebOutput } from './lib/harden-web-output.mjs';
 import { inlineBundleFonts } from './lib/inline-bundle-fonts.mjs';
 import { validateStoryGraph } from './lib/validate-story-graph.mjs';
@@ -82,8 +83,10 @@ function fail(message: string, details: string[] = []): never {
   console.error(color.red(`\n✖ ${message}`));
   for (const line of details) console.error(color.red(`    • ${line}`));
   console.error('');
-  process.exit(1);
+  throw new CliFailure(message);
 }
+
+class CliFailure extends Error {}
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
@@ -291,42 +294,17 @@ function ensureWebBuild(distDir: string, args: Args): string {
   return distPath;
 }
 
-/** True when `ancestor` strictly contains `descendant` on the filesystem. */
-function isAncestor(ancestor: string, descendant: string): boolean {
-  const rel = path.relative(ancestor, descendant);
-  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
-}
-
-/**
- * `copyBuild` empties the output directory before writing, so guard against a
- * destructive `--out`. Refuse a drive/filesystem root, the repo root, the
- * current directory, or any directory that *contains* the repo or cwd (which
- * `--out .` / `--out ..` resolve to). The bundle must go to its own folder.
- */
-function assertSafeOutPath(outPath: string) {
-  const cwd = process.cwd();
-  const unsafe =
-    outPath === path.parse(outPath).root ||
-    outPath === REPO_ROOT ||
-    outPath === cwd ||
-    isAncestor(outPath, REPO_ROOT) ||
-    isAncestor(outPath, cwd);
-  if (unsafe) {
-    fail(`Refusing to use --out "${outPath}"`, [
-      'The output directory is emptied before writing, so it must be a dedicated',
-      'folder — not a drive root, the repo root, the current directory, or a parent.',
-      'Pass a dedicated path such as  --out ./story-dist',
-    ]);
-  }
-}
-
 function copyBuild(distPath: string, outArg: string): string {
   const outPath = path.resolve(process.cwd(), outArg);
-  if (outPath === distPath) fail('--out must differ from the build (--dist) directory');
-  assertSafeOutPath(outPath);
-  fs.rmSync(outPath, { recursive: true, force: true });
-  fs.mkdirSync(outPath, { recursive: true });
-  fs.cpSync(distPath, outPath, { recursive: true });
+  let transaction: ReturnType<typeof beginOutPath> | undefined;
+  try {
+    transaction = beginOutPath(outPath, { repoRoot: REPO_ROOT, inputs: [distPath] });
+    fs.cpSync(distPath, transaction.workPath, { recursive: true });
+    transaction.commit();
+  } catch (error) {
+    transaction?.abort();
+    fail((error as Error).message, ['Pass a dedicated path such as  --out ./story-dist']);
+  }
   return outPath;
 }
 
@@ -446,8 +424,14 @@ async function exportFromRelease(args: Args): Promise<void> {
   const distPath = ensureWebBuild(args.dist ?? defaultDistDir(args.profile), args);
   // No CSP on a player bundle: `default-src 'self'` is unsatisfiable from a
   // `file://` page, and this folder is meant to be opened by double-clicking it.
-  hardenWebOutput(distPath, { csp: args.profile !== 'player', fileProtocol: args.profile === 'player' });
-  const outPath = copyBuild(distPath, args.out as string);
+  const finalOutPath = path.resolve(process.cwd(), args.out as string);
+  const transaction = beginOutPath(finalOutPath, {
+    repoRoot: REPO_ROOT,
+    inputs: [distPath, releasePath],
+  });
+  try {
+  const outPath = copyBuild(distPath, transaction.workPath);
+  hardenWebOutput(outPath, { csp: args.profile !== 'player', fileProtocol: args.profile === 'player' });
 
   // Fonts are CORS-restricted even from the same directory, and a `file://`
   // page has no origin to satisfy that — so they travel inside the code.
@@ -486,11 +470,21 @@ async function exportFromRelease(args: Args): Promise<void> {
   inlinePlayerConfig(outPath, buildPlayerBootConfig({ manifest, payload }));
   smokeCheck(outPath, { expectInline: true });
 
+  // Counted before the swap: `mediaDir` lives inside the work directory, which
+  // stops existing under that name the moment the transaction commits. Counting
+  // afterwards reported that a bundle carrying 25 files had written none.
   const mediaFiles = listFilesRecursive(mediaDir);
+
+  transaction.commit();
+
   console.log(color.dim(`  Wrote ${mediaFiles.length} media file(s) to ${RELEASE_MEDIA_DIR}/`));
   console.log(color.dim(`  Inlined the boot config into index.html`));
-  console.log(color.green(`\n✔ Published bundle ready: ${outPath}`));
-  console.log(color.dim(`  Serve it with any static host, e.g.  npx serve ${path.relative(process.cwd(), outPath)}\n`));
+  console.log(color.green(`\n✔ Published bundle ready: ${finalOutPath}`));
+  console.log(color.dim(`  Serve it with any static host, e.g.  npx serve ${path.relative(process.cwd(), finalOutPath)}\n`));
+  } catch (error) {
+    transaction.abort();
+    throw error;
+  }
 }
 
 // ── Legacy story-JSON path ──────────────────────────────────────────────────
@@ -508,8 +502,11 @@ function exportFromStoryJson(args: Args): void {
   );
 
   const distPath = ensureWebBuild(args.dist ?? defaultDistDir(args.profile), args);
-  hardenWebOutput(distPath, { csp: args.profile !== 'player', fileProtocol: args.profile === 'player' });
-  const outPath = copyBuild(distPath, args.out as string);
+  const finalOutPath = path.resolve(process.cwd(), args.out as string);
+  const transaction = beginOutPath(finalOutPath, { repoRoot: REPO_ROOT, inputs: [distPath] });
+  try {
+  const outPath = copyBuild(distPath, transaction.workPath);
+  hardenWebOutput(outPath, { csp: args.profile !== 'player', fileProtocol: args.profile === 'player' });
 
   const config: PlayerConfigFile = {
     version: PLAYER_CONFIG_VERSION,
@@ -526,8 +523,14 @@ function exportFromStoryJson(args: Args): void {
   verifyEmittedAssets(outPath, assetSummary.bundled, args);
   smokeCheck(outPath, { expectInline: true });
 
-  console.log(color.green(`\n✔ Published bundle ready: ${outPath}`));
-  console.log(color.dim(`  Serve it with any static host, e.g.  npx serve ${path.relative(process.cwd(), outPath)}\n`));
+  transaction.commit();
+
+  console.log(color.green(`\n✔ Published bundle ready: ${finalOutPath}`));
+  console.log(color.dim(`  Serve it with any static host, e.g.  npx serve ${path.relative(process.cwd(), finalOutPath)}\n`));
+  } catch (error) {
+    transaction.abort();
+    throw error;
+  }
 }
 
 /**
@@ -562,4 +565,7 @@ async function main(): Promise<void> {
   else exportFromStoryJson(args);
 }
 
-void main();
+void main().catch((error) => {
+  if (!(error instanceof CliFailure)) console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+});

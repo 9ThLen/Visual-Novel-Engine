@@ -416,8 +416,12 @@ describe('media library route', () => {
 
     render(<StoryGalleryRoute />);
     fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
-    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
-    const detach = screen.getByRole('button', { name: 'Remove from Alice' });
+    // Waited for by the control the test is about to use, not by a neighbour.
+    // `Alice · Happy` is drawn synchronously by the click, so a `waitFor` on it
+    // resolves on its first check and awaits nothing — while this button is
+    // gated on a promise-driven `sceneLoad`. Under CI load the button lost that
+    // race and a synchronous query threw. `findBy*` retries until it is there.
+    const detach = await screen.findByRole('button', { name: 'Remove from Alice' });
 
     act(() => {
       arriveWithScenes([characterStep]);
@@ -441,8 +445,8 @@ describe('media library route', () => {
 
     render(<StoryGalleryRoute />);
     fireEvent.click(screen.getByRole('button', { name: 'Image, bg.png' }));
-    await waitFor(() => expect(screen.getByText('Not used in any scene')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Add to character…' }));
+    // Same shape as the detach case above, and the same latent race.
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to character…' }));
 
     await act(async () => {
       (useAppStore as unknown as { setState: (value: StoreSeed) => void }).setState({

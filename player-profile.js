@@ -31,6 +31,33 @@ const PLAYER_STORE_SUBSTITUTION = {
 };
 
 /**
+ * Every module the player build swaps for a reader-only one.
+ *
+ * Two so far, and they exist for the same reason: the module is *needed*, so
+ * blocking it would only break the build, and what has to change is what it
+ * contains.
+ *
+ * - the store, which the reader pulls all of but must not be able to write
+ *   through;
+ * - the bundled-asset map, whose static `require` calls put ~110 MB of demo art
+ *   inside every artifact. A release carries its own bytes, so a player needs
+ *   none of it — but Metro bundles what it can see, and the only way to not ship
+ *   a file is to stop naming it.
+ *
+ * **The original has to stay on disk.** Metro resolves the request first and
+ * swaps the resolved file afterwards (see `metro.config.js`), so removing the
+ * module being replaced is the same as blocking it: resolution fails before the
+ * swap can happen. R9's Android staging learned this by deleting
+ * `stores/use-app-store.ts` as unreachable — the graph walk applies these
+ * substitutions, so it never visits it — and watching a cloud build die at 87%
+ * of bundling with "Unable to resolve module @/stores/use-app-store".
+ */
+const PLAYER_MODULE_SUBSTITUTIONS = [
+  PLAYER_STORE_SUBSTITUTION,
+  { from: 'lib/bundled-assets.ts', to: 'lib/bundled-assets.player.ts' },
+];
+
+/**
  * Whole trees the player bundler refuses to resolve. Coarse on purpose: every
  * entry here is authoring UI or authoring logic with no reader caller, so a
  * failed resolve is a real mistake rather than a false alarm.
@@ -109,10 +136,45 @@ const PLAYER_EXCLUDED_PLUGINS = ['expo-document-picker', 'expo-image-picker'];
  * known to be correct before R9 has anywhere to apply it.
  */
 const PLAYER_AUTOLINKING_EXCLUDE = [
+  'expo-dev-client',
+  'expo-dev-launcher',
+  'expo-dev-menu',
+  'expo-dev-menu-interface',
   'expo-document-picker',
   'expo-image-picker',
   'expo-secure-store',
   'expo-notifications',
+];
+
+/**
+ * Exact native graph the current player is allowed to link. A "full engine
+ * minus exclusions" assertion cannot discover a newly added studio-only native
+ * dependency; an allowlist fails as soon as one leaks into the staged app.
+ */
+const PLAYER_AUTOLINKING_ALLOWED = [
+  'expo',
+  'expo-application',
+  'expo-asset',
+  'expo-audio',
+  'expo-blur',
+  'expo-constants',
+  'expo-crypto',
+  'expo-file-system',
+  'expo-font',
+  'expo-haptics',
+  'expo-image',
+  'expo-image-loader',
+  'expo-json-utils',
+  'expo-keep-awake',
+  'expo-linking',
+  'expo-manifests',
+  'expo-modules-core',
+  'expo-sharing',
+  'expo-splash-screen',
+  'expo-system-ui',
+  'expo-updates-interface',
+  'expo-video',
+  'expo-web-browser',
 ];
 
 /**
@@ -136,6 +198,14 @@ function playerAutolinkingPackageJson() {
  * post notifications.
  */
 const PLAYER_BLOCKED_PERMISSIONS = [
+  // Both come from React Native's dev support and survived into a *release*
+  // APK — read out of the built artifact, not guessed. SYSTEM_ALERT_WINDOW is
+  // "draw over other apps": a permission Android warns about by name and Play
+  // scrutinises, and a novel that asks for it is a novel nobody installs. DUMP
+  // reads other processes' state. Neither has anything to do with reading a
+  // story.
+  'android.permission.SYSTEM_ALERT_WINDOW',
+  'android.permission.DUMP',
   'android.permission.CAMERA',
   'android.permission.RECORD_AUDIO',
   'android.permission.READ_EXTERNAL_STORAGE',
@@ -148,6 +218,7 @@ const PLAYER_BLOCKED_PERMISSIONS = [
 
 module.exports = {
   playerAutolinkingPackageJson,
+  PLAYER_MODULE_SUBSTITUTIONS,
   PLAYER_PROFILE,
   isPlayerProfile,
   PLAYER_ROUTER_ROOT,
@@ -156,5 +227,6 @@ module.exports = {
   PLAYER_FORBIDDEN_MODULES,
   PLAYER_EXCLUDED_PLUGINS,
   PLAYER_AUTOLINKING_EXCLUDE,
+  PLAYER_AUTOLINKING_ALLOWED,
   PLAYER_BLOCKED_PERMISSIONS,
 };

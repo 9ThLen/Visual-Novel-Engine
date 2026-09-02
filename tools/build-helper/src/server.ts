@@ -18,9 +18,12 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import {
+  closeSync,
   createReadStream,
   existsSync,
   mkdirSync,
+  openSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -61,6 +64,23 @@ const UPLOAD_ROUTE = /^\/build-inputs\/([A-Za-z0-9_-]{1,64})$/;
 const ARTIFACT_ROUTE = /^\/build-artifacts\/([A-Za-z0-9_-]{1,64})$/;
 const HANDSHAKE_TIMEOUT_MS = 5_000;
 
+function hasZipSignature(filePath: string): boolean {
+  // `new Uint8Array`, not `Buffer.alloc`: the ambient `Buffer` in this project
+  // is React Native's shim, which has `from` and nothing else.
+  const bytes = new Uint8Array(4);
+  const handle = openSync(filePath, 'r');
+  try {
+    if (readSync(handle, bytes, 0, bytes.length, 0) !== bytes.length) return false;
+  } finally {
+    closeSync(handle);
+  }
+  return bytes[0] === 0x50 && bytes[1] === 0x4b && (
+    (bytes[2] === 0x03 && bytes[3] === 0x04)
+    || (bytes[2] === 0x05 && bytes[3] === 0x06)
+    || (bytes[2] === 0x07 && bytes[3] === 0x08)
+  );
+}
+
 interface ActiveRun {
   controller: AbortController;
   attempt: number;
@@ -90,6 +110,7 @@ export class BuildHelperServer {
   private readonly uploading = new Set<string>();
   private readonly sockets = new Set<WebSocket>();
   private readonly subscriptions = new Map<WebSocket, Set<string>>();
+  private builderReadiness: Awaited<ReturnType<Builder['readiness']>> | null = null;
   private http: Server | null = null;
   private wss: WebSocketServer | null = null;
 
@@ -119,11 +140,16 @@ export class BuildHelperServer {
     return new Date(this.now()).toISOString();
   }
 
+  get builderStatus(): Awaited<ReturnType<Builder['readiness']>> | null {
+    return this.builderReadiness;
+  }
+
   async start(): Promise<number> {
     // Anything left behind by a previous run, before accepting new work.
     sweepAbandonedUploads(this.uploadsDir, BUILD_LIMITS.abandonedUploadMs, this.now());
 
-    const resumable = this.reconcilePersistedJobs();
+    const resumable = await this.reconcilePersistedJobs();
+    this.builderReadiness = await this.builder.readiness();
     this.http = createServer((request, response) => {
       void this.handleHttp(request, response).catch((error) => {
         const [reason] = sanitizeBuildLog(
@@ -147,7 +173,9 @@ export class BuildHelperServer {
       this.http?.listen(this.options.port ?? 0, '127.0.0.1', resolve);
     });
     const address = this.http?.address();
-    for (const requestId of resumable) void this.runBuild(requestId);
+    if (this.builderReadiness.ready) {
+      for (const requestId of resumable) void this.runBuild(requestId);
+    }
     return typeof address === 'object' && address ? address.port : (this.options.port ?? 0);
   }
 
@@ -258,6 +286,20 @@ export class BuildHelperServer {
     this.uploading.add(requestId);
     const attempt = job.attempt;
     try {
+      // A crash can happen after the verified .part file is renamed but before
+      // uploadedBytes reaches the durable job record. Reuse that already
+      // verified archive instead of making retries fail on an existing target.
+      if (await this.reconcileQueuedArchive(job)) {
+        const recovered = this.store.read(requestId);
+        this.respond(response, 200, {
+          ok: true,
+          bytes: recovered?.uploadedBytes ?? statSync(buildArchivePath(this.uploadsDir, requestId)).size,
+          sha256: job.request.payloadHash,
+        }, origin);
+        void this.runBuild(requestId);
+        return;
+      }
+
       const outcome = await receiveBuildInput(request, {
         directory: this.uploadsDir,
         requestId,
@@ -453,6 +495,15 @@ export class BuildHelperServer {
       return this.announce(existing);
     }
 
+    if (!this.builderReadiness?.ready) {
+      return this.fail(
+        socket,
+        'BUILDER_UNAVAILABLE',
+        this.builderReadiness?.reason ?? 'The builder readiness check has not completed',
+        request.requestId,
+      );
+    }
+
     const job = createBuildJob(request, this.stamp());
     this.store.write(job);
     // The operator's view. Deliberately the request id and target only: the
@@ -484,6 +535,14 @@ export class BuildHelperServer {
     this.subscribe(socket, requestId);
     const job = this.store.read(requestId);
     if (!job) return this.fail(socket, 'UNKNOWN_REQUEST', 'No such build', requestId);
+    if (!this.builderReadiness?.ready) {
+      return this.fail(
+        socket,
+        'BUILDER_UNAVAILABLE',
+        this.builderReadiness?.reason ?? 'The builder readiness check has not completed',
+        requestId,
+      );
+    }
     if (this.running.has(requestId) || this.uploading.has(requestId)) {
       return this.fail(
         socket,
@@ -588,6 +647,9 @@ export class BuildHelperServer {
       if (!existsSync(result.artifactPath) || statSync(result.artifactPath).size === 0) {
         return this.finishWith(job, 'The build produced no artifact');
       }
+      if (!hasZipSignature(result.artifactPath)) {
+        return this.finishWith(job, 'The build artifact is not an APK/AAB ZIP container');
+      }
       const outputRoot = realpathSync(outputDirectory);
       const builtPath = realpathSync(result.artifactPath);
       const relative = path.relative(outputRoot, builtPath);
@@ -657,13 +719,12 @@ export class BuildHelperServer {
   }
 
   /** Reconcile durable records before accepting traffic after a restart. */
-  private reconcilePersistedJobs(): string[] {
+  private async reconcilePersistedJobs(): Promise<string[]> {
     const resumable: string[] = [];
     for (const raw of this.store.list()) {
       const job = this.expireIfDue(raw);
       if (job.state === 'queued') {
-        const archive = buildArchivePath(this.uploadsDir, job.request.requestId);
-        if (job.uploadedBytes !== undefined && existsSync(archive)) resumable.push(job.request.requestId);
+        if (await this.reconcileQueuedArchive(job)) resumable.push(job.request.requestId);
         continue;
       }
       if (['staging', 'submitted', 'building', 'verifying'].includes(job.state)) {
@@ -676,6 +737,36 @@ export class BuildHelperServer {
       }
     }
     return resumable;
+  }
+
+  /** Repair the only non-atomic boundary shared by the upload and job files. */
+  private async reconcileQueuedArchive(job: BuildJob): Promise<boolean> {
+    if (job.state !== 'queued') return false;
+    const archive = buildArchivePath(this.uploadsDir, job.request.requestId);
+    if (!existsSync(archive)) {
+      // The archive may have been removed manually after a completed upload.
+      // Clear the marker so the request can accept the bytes again.
+      if (job.uploadedBytes !== undefined) {
+        this.store.write({ ...job, uploadedBytes: undefined, updatedAt: this.stamp() });
+      }
+      return false;
+    }
+    if (job.uploadedBytes !== undefined) return true;
+
+    const sha256 = await this.hashFile(archive);
+    if (sha256 !== job.request.payloadHash) {
+      rmSync(archive, { force: true });
+      return false;
+    }
+
+    const current = this.store.read(job.request.requestId);
+    if (!current || current.state !== 'queued' || current.attempt !== job.attempt) return false;
+    this.store.write({
+      ...current,
+      uploadedBytes: statSync(archive).size,
+      updatedAt: this.stamp(),
+    });
+    return true;
   }
 
   private async hashFile(file: string): Promise<string> {

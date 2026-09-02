@@ -237,6 +237,12 @@ describe('the build message set', () => {
       type: 'completed',
       job: { ...job, artifact: { ...job.artifact, fileName: 'bad\r\nname.apk' } },
     }))).toThrow('Invalid build artifact');
+    for (const fileName of ['../release.apk', 'folder/release.apk', 'folder\\release.apk', 'release.aab']) {
+      expect(() => parseBuildServerMessage(JSON.stringify({
+        type: 'completed',
+        job: { ...job, artifact: { ...job.artifact, fileName } },
+      })), fileName).toThrow('Invalid build artifact');
+    }
     expect(() => parseBuildServerMessage(JSON.stringify({
       type: 'progress',
       job,

@@ -42,7 +42,24 @@ import { runReleasePreflight } from '@/lib/release/preflight';
 import type { ReleaseChannel } from '@/lib/release/types';
 import { highestReleaseVersion, type ReleaseMeta } from '@/lib/release/release-storage';
 import { publishStoryRelease, resolveEngineVersion } from '@/lib/release/service';
-import { savePlayerBundle } from '@/lib/release/bundle-file';
+import { saveAndroidBuildArtifact, savePlayerBundle } from '@/lib/release/bundle-file';
+import { BuildClient } from '@/lib/release/build-client';
+import type { BuildJobSummary } from '@/lib/release/build-job';
+import type { BuildTarget } from '@/lib/release/build-request';
+import {
+  buildStoredReleaseArchive,
+  releaseBuildRequestId,
+} from '@/lib/release/archive-build';
+import {
+  DEFAULT_BUILD_HELPER_SETTINGS,
+  loadBuildHelperSettings,
+  loadBuildSession,
+  saveBuildHelperSettings,
+  saveBuildSession,
+  type BuildHelperSettings,
+  type PersistedBuildSession,
+} from '@/lib/release/build-session';
+import { deriveAndroidIdentity } from '@/lib/release/native-identity';
 import {
   buildPlayerBundle,
   PlayerShellUnavailableError,
@@ -343,6 +360,107 @@ export default function StoryHomeScreen() {
   const [exportMessage, setExportMessage] = useState<
     { tone: 'error' | 'done'; text: string } | null
   >(null);
+  const buildStorageRef = useRef<ReturnType<typeof createPersistentStorage> | null>(null);
+  if (!buildStorageRef.current) buildStorageRef.current = createPersistentStorage();
+  const buildClientRef = useRef<BuildClient | null>(null);
+  const buildClientKeyRef = useRef('');
+  const buildSessionRef = useRef<PersistedBuildSession | null>(null);
+  const [buildSettings, setBuildSettings] = useState<BuildHelperSettings>(DEFAULT_BUILD_HELPER_SETTINGS);
+  const [buildResumeSettings, setBuildResumeSettings] = useState<BuildHelperSettings>(DEFAULT_BUILD_HELPER_SETTINGS);
+  const [buildSession, setBuildSession] = useState<PersistedBuildSession | null>(null);
+  const [buildSummary, setBuildSummary] = useState<BuildJobSummary | null>(null);
+  const [buildError, setBuildError] = useState<string | null>(null);
+  const [buildStateLoaded, setBuildStateLoaded] = useState(false);
+
+  const rememberBuildSession = useCallback((session: PersistedBuildSession) => {
+    buildSessionRef.current = session;
+    setBuildSession(session);
+    if (storyId && buildStorageRef.current) {
+      void saveBuildSession(storyId, session, buildStorageRef.current).catch((error) => {
+        setBuildError(error instanceof Error ? error.message : String(error));
+      });
+    }
+  }, [storyId]);
+
+  const receiveBuildSummary = useCallback((summary: BuildJobSummary) => {
+    const session = buildSessionRef.current;
+    if (!session || summary.requestId !== session.request.requestId) return;
+    setBuildSummary(summary);
+    rememberBuildSession({ ...session, summary });
+    if (summary.failureReason) setBuildError(summary.failureReason);
+  }, [rememberBuildSession]);
+
+  const ensureBuildClient = useCallback(async (settings: BuildHelperSettings): Promise<BuildClient> => {
+    const key = `${settings.endpoint}\n${settings.token}`;
+    let client = buildClientRef.current;
+    if (!client || buildClientKeyRef.current !== key) {
+      client?.close();
+      client = new BuildClient({
+        endpoint: settings.endpoint,
+        token: settings.token,
+        onMessage: (message) => {
+          if ('job' in message) receiveBuildSummary(message.job);
+          if (message.type === 'error') setBuildError(message.message);
+        },
+        onClose: (reason) => {
+          if (reason && reason !== 'closed') setBuildError(reason);
+        },
+      });
+      buildClientRef.current = client;
+      buildClientKeyRef.current = key;
+    }
+    await client.connect();
+    return client;
+  }, [receiveBuildSummary]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !storyId || !buildStorageRef.current) return;
+    let active = true;
+    buildClientRef.current?.close();
+    buildClientRef.current = null;
+    buildClientKeyRef.current = '';
+    buildSessionRef.current = null;
+    setBuildSession(null);
+    setBuildSummary(null);
+    setBuildError(null);
+    setBuildStateLoaded(false);
+    Promise.all([
+      loadBuildHelperSettings(buildStorageRef.current),
+      loadBuildSession(storyId, buildStorageRef.current),
+    ]).then(([settings, session]) => {
+      if (!active) return;
+      setBuildSettings(settings);
+      setBuildResumeSettings(settings);
+      buildSessionRef.current = session;
+      setBuildSession(session);
+      setBuildSummary(session?.summary ?? null);
+      setBuildStateLoaded(true);
+    }).catch((error) => {
+      if (active) {
+        setBuildError(error instanceof Error ? error.message : String(error));
+        setBuildStateLoaded(true);
+      }
+    });
+    return () => { active = false; };
+  }, [storyId]);
+
+  useEffect(() => {
+    const requestId = buildSession?.request.requestId;
+    if (
+      Platform.OS !== 'web'
+      || !buildStateLoaded
+      || !requestId
+      || !buildResumeSettings.token.trim()
+    ) return;
+    void ensureBuildClient(buildResumeSettings)
+      .then((client) => client.status(requestId))
+      .catch((error) => setBuildError(error instanceof Error ? error.message : String(error)));
+  }, [buildSession?.request.requestId, buildResumeSettings, buildStateLoaded, ensureBuildClient]);
+
+  useEffect(() => () => {
+    buildClientRef.current?.close();
+    buildClientRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (!storyId) return;
@@ -411,6 +529,64 @@ export default function StoryHomeScreen() {
       setExportProgress(null);
     }
   }, [storyId, t]);
+
+  const handleBuildAndroid = useCallback(async (releaseId: string, target: BuildTarget) => {
+    if (!storyId || !buildStorageRef.current) return;
+    setBuildError(null);
+    try {
+      const settings = await saveBuildHelperSettings(buildSettings, buildStorageRef.current);
+      setBuildSettings(settings);
+      setBuildResumeSettings(settings);
+      const archive = await buildStoredReleaseArchive({ storyId, releaseId, storage: buildStorageRef.current });
+      const identity = deriveAndroidIdentity({
+        storyId: archive.manifest.story.id,
+        title: archive.manifest.story.title,
+        version: archive.manifest.release.version,
+      });
+      const request = {
+        requestId: releaseBuildRequestId(archive.sha256, target),
+        releaseId: archive.manifest.release.releaseId,
+        target,
+        versionCode: identity.androidVersionCode,
+        payloadHash: archive.sha256,
+      } as const;
+      const session: PersistedBuildSession = {
+        request,
+      };
+      setBuildSummary(null);
+      rememberBuildSession(session);
+
+      const client = await ensureBuildClient(settings);
+      const summary = await client.submit(request);
+      receiveBuildSummary(summary);
+      await client.upload(request.requestId, archive.bytes);
+      client.status(request.requestId);
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : String(error));
+    }
+  }, [buildSettings, ensureBuildClient, receiveBuildSummary, rememberBuildSession, storyId]);
+
+  const handleCancelBuild = useCallback(async (requestId: string) => {
+    setBuildError(null);
+    try {
+      const client = await ensureBuildClient(buildResumeSettings);
+      client.cancel(requestId);
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : String(error));
+    }
+  }, [buildResumeSettings, ensureBuildClient]);
+
+  const handleDownloadBuild = useCallback(async (summary: BuildJobSummary) => {
+    if (!summary.artifact) return;
+    setBuildError(null);
+    try {
+      const client = await ensureBuildClient(buildResumeSettings);
+      const blob = await client.downloadArtifact(summary.requestId, summary.artifact);
+      await saveAndroidBuildArtifact(summary.artifact.fileName, blob);
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : String(error));
+    }
+  }, [buildResumeSettings, ensureBuildClient]);
 
   const handleSetPublished = useCallback((releaseId: string, published: boolean) => {
     if (!storyId) return;
@@ -1200,6 +1376,19 @@ export default function StoryHomeScreen() {
             onExportBundle={Platform.OS === 'web' ? (releaseId) => void handleExportBundle(releaseId) : undefined}
             exportProgress={exportProgress}
             exportMessage={exportMessage}
+            buildSettings={Platform.OS === 'web' ? buildSettings : undefined}
+            onBuildSettingsChange={Platform.OS === 'web' ? setBuildSettings : undefined}
+            buildSummary={buildSummary}
+            buildError={buildError}
+            onBuildAndroid={Platform.OS === 'web'
+              ? (releaseId, target) => void handleBuildAndroid(releaseId, target)
+              : undefined}
+            onCancelBuild={Platform.OS === 'web'
+              ? (requestId) => void handleCancelBuild(requestId)
+              : undefined}
+            onDownloadBuild={Platform.OS === 'web'
+              ? (summary) => void handleDownloadBuild(summary)
+              : undefined}
             style={[styles.band, bandSurface, shadowCard]}
           />
 

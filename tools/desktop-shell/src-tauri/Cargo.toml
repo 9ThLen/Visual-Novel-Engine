@@ -1,0 +1,28 @@
+[package]
+# Constant on purpose: the crate name is not the product name. Two stories build
+# in two directories, so nothing collides, and a name derived per story would be
+# one more thing that has to be a valid Cargo identifier.
+name = "vne-desktop-player"
+# Overwritten by the staging step to match the release; Tauri reads the version
+# it bundles from tauri.conf.json, but a Cargo manifest that disagrees is a
+# needless second answer to the same question.
+version = "0.0.0"
+description = "Visual Novel Engine desktop player"
+edition = "2021"
+rust-version = "1.77.2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+# The player is a window around a prebuilt web bundle: no plugins, no commands,
+# no IPC surface. Anything added here is a new thing a story could reach.
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

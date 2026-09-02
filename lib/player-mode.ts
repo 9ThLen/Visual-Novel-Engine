@@ -151,6 +151,21 @@ export function readInlinePlayerConfig(): PlayerConfig | null {
 
 let configPromise: Promise<PlayerConfig | null> | undefined;
 let activeConfig: PlayerConfig | null = null;
+let packagedLoader: (() => Promise<PlayerConfig | null>) | null = null;
+
+/**
+ * Where a native build finds its release.
+ *
+ * A registration rather than an import, because the module that knows how —
+ * `lib/release/packaged-release.ts` — needs `expo-asset`, and this file is
+ * loaded by Node scripts that have no React Native to give it. The player root
+ * calls it; nothing else does, and a studio build never registers anything.
+ */
+export function registerPackagedReleaseLoader(
+  loader: (() => Promise<PlayerConfig | null>) | null,
+): void {
+  packagedLoader = loader;
+}
 
 function playerConfigUrl(): string {
   return resolveWebUrl(PLAYER_CONFIG_PATH);
@@ -169,6 +184,15 @@ export function loadPlayerConfig(): Promise<PlayerConfig | null> {
     if (inline) {
       activeConfig = inline;
       return inline;
+    }
+    // A native player build has no page to inline into and no file to fetch:
+    // its release is a module Metro bundled. Nothing registers this on web.
+    if (packagedLoader) {
+      const packaged = await packagedLoader();
+      if (packaged) {
+        activeConfig = packaged;
+        return packaged;
+      }
     }
     if (typeof fetch !== 'function' || typeof document === 'undefined') return null;
     try {
@@ -202,4 +226,5 @@ export function isPlayerModeActive(): boolean {
 export function __resetPlayerModeForTests(): void {
   configPromise = undefined;
   activeConfig = null;
+  packagedLoader = null;
 }
