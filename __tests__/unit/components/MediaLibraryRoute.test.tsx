@@ -124,7 +124,9 @@ describe('media library route', () => {
     expect(screen.getByRole('button', { name: 'Image, bg.png' })).toBeTruthy();
   });
 
-  it('keeps videos out of the image tab', () => {
+  // The library opens on everything it holds: three kind-tabs made a story of a
+  // few files read as three empty rooms. Picking one source still narrows to it.
+  it('opens on every kind, and each source narrows to its own', () => {
     seedStore({
       mediaLibrary: [asset({ id: 'bg' }), asset({ id: 'clip', type: 'video', uri: 'file://clip.mp4', name: 'clip.mp4' })],
       imageAssetIdsByStory: { 'story-1': ['bg'] },
@@ -132,12 +134,16 @@ describe('media library route', () => {
     });
 
     render(<StoryGalleryRoute />);
-    expect(screen.queryByRole('button', { name: 'Video, clip.mp4' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Image, bg.png' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Video, clip.mp4' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('tab', { name: /Videos/ }));
-
     expect(screen.getByRole('button', { name: 'Video, clip.mp4' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Image, bg.png' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Images/ }));
+    expect(screen.getByRole('button', { name: 'Image, bg.png' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Video, clip.mp4' })).toBeNull();
   });
 
   it('searches across file, character and sprite names', () => {
@@ -763,13 +769,13 @@ describe('media library route', () => {
 
   // `+` used to pick an image whichever tab was open, so on the video tab it
   // offered the author a file the tab could not even show. What the dialog
-  // accepts is the observable end of that decision.
-  it('adds what the open tab shows rather than always an image', async () => {
+  // accepts is the observable end of that decision — and in the combined view,
+  // where all three kinds are on screen, the button has to ask first.
+  it('asks which kind to add in the combined view, and follows the source elsewhere', async () => {
     seedStore();
     render(<StoryGalleryRoute />);
 
-    const acceptAfterAdd = async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    const acceptedByDialog = async () => {
       const input = await waitFor(() => {
         const element = document.querySelector('input[type="file"]') as HTMLInputElement | null;
         if (!element) throw new Error('expected a file dialog');
@@ -780,12 +786,125 @@ describe('media library route', () => {
       return accept;
     };
 
-    expect(await acceptAfterAdd()).toContain('image/');
-
-    fireEvent.click(screen.getByRole('tab', { name: /Sounds/ }));
-    expect(await acceptAfterAdd()).toContain('audio/');
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    // The menu options are buttons; the type switcher above them is tabs.
+    fireEvent.click(screen.getByRole('button', { name: 'Sounds' }));
+    expect(await acceptedByDialog()).toContain('audio/');
 
     fireEvent.click(screen.getByRole('tab', { name: /Videos/ }));
-    expect(await acceptAfterAdd()).toContain('video/');
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(await acceptedByDialog()).toContain('video/');
+
+    fireEvent.click(screen.getByRole('tab', { name: /Images/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(await acceptedByDialog()).toContain('image/');
+  });
+
+  // Clearing a dozen unused backgrounds used to be a dozen rounds of
+  // select → inspector → delete → confirm.
+  it('ticks several files and removes them in one go', async () => {
+    const removeImageAssetFromStory = vi.fn();
+    seedStore({
+      mediaLibrary: [asset({ id: 'spare' }), asset({ id: 'other' })],
+      imageAssetIdsByStory: { 'story-1': ['spare', 'other'] },
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      // The real thing reads storage; until it answers, nothing is known to be
+      // safe to remove and the button says so. Resolving a tick late is what
+      // the screen actually faces.
+      hydrateSceneRecordsForStory: vi.fn(() => new Promise<void>((resolve) => { setTimeout(resolve, 0); })),
+      removeImageAssetFromStory,
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Select files' }));
+
+    // In select mode a tile is a checkbox: pressing it ticks the file rather
+    // than opening it.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Image, spare.png' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Image, other.png' }));
+
+    expect(screen.getByText('2 files selected')).toBeTruthy();
+    // The count on the button is what usage says, so it arrives with usage.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove 2' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Remove 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(removeImageAssetFromStory).toHaveBeenCalledWith('story-1', 'spare');
+    expect(removeImageAssetFromStory).toHaveBeenCalledWith('story-1', 'other');
+  });
+
+  // Story membership is re-derived from scene references on every hydration,
+  // so a file a scene still names would come back on the next launch. The
+  // button says the smaller number rather than promising the larger one.
+  it('counts only the files it may actually remove', async () => {
+    seedStore({
+      mediaLibrary: [asset({ id: 'spare' }), asset({ id: 'bg' })],
+      imageAssetIdsByStory: { 'story-1': ['spare', 'bg'] },
+      sceneRecordsByStory: {
+        'story-1': {
+          'scene-1': scene([
+            { id: 'step-1', blockType: 'background', enabled: true, data: { assetId: 'bg' } } as TimelineStep,
+          ]),
+        },
+      },
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Select files' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Image, spare.png' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Image, bg.png' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove 1' })).toBeTruthy());
+    expect(screen.getByText('1 are used in scenes and stay.')).toBeTruthy();
+  });
+
+  it('moves the selection with the arrow keys and drops it on escape', async () => {
+    seedStore({
+      mediaLibrary: [
+        asset({ id: 'bg', addedAt: 2000 }),
+        asset({ id: 'sprite', uri: 'file://alice.png', addedAt: 1000 }),
+      ],
+      imageAssetIdsByStory: { 'story-1': ['bg', 'sprite'] },
+      characterLibraries: { 'story-1': [alice] },
+    });
+
+    render(<StoryGalleryRoute />);
+
+    // Nothing is selected yet, so the first arrow starts at the newest file
+    // rather than scrolling the page, which is what the browser would do.
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(screen.queryByText('Alice · Happy')).toBeNull();
+
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByText('Alice · Happy')).toBeNull());
+  });
+
+  // A screen with both a search field and a delete key has to tell them apart,
+  // or clearing a query deletes a file.
+  it('leaves the keys alone while the author is typing a search', async () => {
+    seedStore({
+      mediaLibrary: [asset({ id: 'spare' })],
+      imageAssetIdsByStory: { 'story-1': ['spare'] },
+      sceneRecordsByStory: { 'story-1': { 'scene-1': scene([]) } },
+      hydrateSceneRecordsForStory: vi.fn(() => new Promise<void>((resolve) => { setTimeout(resolve, 0); })),
+    });
+
+    render(<StoryGalleryRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Image, spare.png' }));
+    // The key is behind the same gate as the button: until the scenes have been
+    // read, nothing is known to be safe to remove. The button appearing is that
+    // gate opening.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove imported file' })).toBeTruthy());
+
+    const search = screen.getByPlaceholderText('Search by file, character or sprite');
+    fireEvent.keyDown(search, { key: 'Delete' });
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+
+    // The same key outside the field is the shortcut it was meant to be.
+    fireEvent.keyDown(document.body, { key: 'Delete' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy());
   });
 });

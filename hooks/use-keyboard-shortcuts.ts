@@ -16,6 +16,21 @@ export interface ShortcutConfig {
   preventDefault?: boolean;
 }
 
+/**
+ * Whether the keystroke belongs to something the user is typing into.
+ *
+ * A screen with both a search field and a `delete` shortcut has to tell the two
+ * apart, or backspacing a query deletes a file. Escape is the exception: it
+ * means "get me out of this" wherever it is pressed.
+ */
+function isTypingTarget(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  if (!element || typeof element.tagName !== 'string') return false;
+  if (element.isContentEditable) return true;
+  const tag = element.tagName.toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select';
+}
+
 export interface UseKeyboardShortcutsOptions {
   shortcuts: Record<string, ShortcutConfig & { handler: () => void }>;
   enabled?: boolean;
@@ -42,6 +57,7 @@ export function useKeyboardShortcuts({
     if (!enabled) return;
     const kbEvent = event as unknown as KeyboardEvent;
     const key = kbEvent.key.toLowerCase();
+    if (key !== 'escape' && isTypingTarget(kbEvent.target)) return;
 
     for (const [id, config] of Object.entries(shortcutsRef.current)) {
       const {

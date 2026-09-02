@@ -11,7 +11,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { MediaFilterRail, MediaTypeTabs, initialsOf, sameFilter } from '@/components/media-library/MediaFilters';
-import { MediaGrid, buildGridRows, getGalleryColumns } from '@/components/media-library/MediaGrid';
+import { MediaBrowser, getGalleryColumns } from '@/components/media-library/MediaBrowser';
 import { MediaInspector } from '@/components/media-library/MediaInspector';
 import { acquireResolvedAssetUri } from '@/lib/asset-resolver';
 import {
@@ -21,6 +21,7 @@ import {
 import { Colors } from '@/lib/_core/theme';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
+import { buildBrowserRows, type BrowserRow } from '@/lib/media-browser-rows';
 import {
   buildStoryMediaGallery,
   filterMediaItems,
@@ -81,19 +82,29 @@ const alice = {
 
 function renderGrid(items: StoryMediaItem[], overrides: Record<string, unknown> = {}) {
   const onSelect = vi.fn();
+  // One kind at a time here: the combined view is exercised through the route.
+  const video = items[0]?.kind === 'video';
   render(
-    <MediaGrid
-      items={items}
+    <MediaBrowser
+      view={video ? 'video' : 'image'}
+      images={video ? [] : items}
+      videos={video ? items : []}
+      audios={[]}
       colors={colors}
       selectedKey={null}
       grouped={false}
       now={NOW}
       emptyLabel="No images in this story yet."
+      usageState="ready"
       onSelect={onSelect}
       {...overrides}
     />,
   );
   return onSelect;
+}
+
+function rowsFor(items: StoryMediaItem[], columns: number, grouped: boolean): BrowserRow[] {
+  return buildBrowserRows({ view: 'image', images: items, videos: [], audios: [], columns, grouped, now: NOW });
 }
 
 describe('grid layout maths', () => {
@@ -105,16 +116,49 @@ describe('grid layout maths', () => {
   });
 
   // FlatList cannot do numColumns and sections at once, so rows are pre-chunked
-  // and date headers become ordinary list entries.
+  // and headers become ordinary list entries.
   it('chunks rows and adds date headers only when grouped', () => {
     const items = Array.from({ length: 5 }, (_, index) => ({ key: `k${index}`, addedAt: NOW })) as StoryMediaItem[];
 
-    const flat = buildGridRows(items, 3, false, NOW);
-    expect(flat.map((row) => row.type)).toEqual(['row', 'row']);
-    expect(flat[0].type === 'row' && flat[0].items).toHaveLength(3);
-    expect(flat[1].type === 'row' && flat[1].items).toHaveLength(2);
+    const flat = rowsFor(items, 3, false);
+    expect(flat.map((row) => row.type)).toEqual(['grid', 'grid']);
+    expect(flat[0].type === 'grid' && flat[0].items).toHaveLength(3);
+    expect(flat[1].type === 'grid' && flat[1].items).toHaveLength(2);
 
-    expect(buildGridRows(items, 3, true, NOW)[0].type).toBe('header');
+    expect(rowsFor(items, 3, true)[0].type).toBe('header');
+  });
+
+  // The combined view is what a story of four files opens on, so it has to put
+  // all three kinds in one list — and a sound must not become a square on the
+  // way: the audio section is rows, whatever sits above it.
+  it('puts every kind in one list and keeps sounds as rows', () => {
+    const picture = { key: 'i1', kind: 'image', addedAt: NOW } as StoryMediaItem;
+    const clip = { key: 'v1', kind: 'video', addedAt: NOW } as StoryMediaItem;
+    const sound = { key: 'a1', kind: 'audio', addedAt: NOW } as StoryMediaItem;
+
+    const rows = buildBrowserRows({
+      view: 'all',
+      images: [picture],
+      videos: [clip],
+      audios: [sound],
+      columns: 3,
+      grouped: true,
+      now: NOW,
+    });
+
+    expect(rows.map((row) => row.type)).toEqual(['header', 'grid', 'header', 'grid', 'header', 'track']);
+    // A kind with nothing in it contributes no header at all, rather than an
+    // empty section that says the story is missing something.
+    const withoutVideo = buildBrowserRows({
+      view: 'all',
+      images: [picture],
+      videos: [],
+      audios: [sound],
+      columns: 3,
+      grouped: true,
+      now: NOW,
+    });
+    expect(withoutVideo.map((row) => row.type)).toEqual(['header', 'grid', 'header', 'track']);
   });
 
   it('falls back to initials for a character with no sprite', () => {

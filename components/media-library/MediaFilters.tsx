@@ -1,7 +1,10 @@
 /**
- * The two rails above the grid: the media type tabs, then the filter row where
- * character portraits (images) or the two audio categories sit next to the
- * usage filters.
+ * The narrow-screen stand-in for the rail: the media type tabs, then the filter
+ * row where character portraits (images) or the two audio categories sit next
+ * to the usage filters.
+ *
+ * A phone has room for one column, so these two bands are what a screen too
+ * narrow for `MediaRail` gets instead — the same three axes, laid sideways.
  */
 
 import React from 'react';
@@ -11,11 +14,11 @@ import { ResolvedAssetImage } from '@/components/resolved-asset-image';
 import { useI18n } from '@/hooks/use-i18n';
 import type { ThemeColorPalette } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
+import type { MediaView } from '@/lib/media-browser-rows';
 import type {
   AudioCategory,
   CharacterMediaFilter,
   ImageFilter,
-  MediaKind,
 } from '@/lib/story-media-gallery';
 
 export function sameFilter(a: ImageFilter, b: ImageFilter): boolean {
@@ -35,7 +38,8 @@ export function initialsOf(name: string): string {
     .join('') || '?';
 }
 
-const TAB_LABELS: Record<MediaKind, string> = {
+const TAB_LABELS: Record<MediaView, string> = {
+  all: 'mediaLibrary.tab.all',
   image: 'mediaLibrary.tab.images',
   video: 'mediaLibrary.tab.videos',
   audio: 'mediaLibrary.tab.audio',
@@ -43,18 +47,27 @@ const TAB_LABELS: Record<MediaKind, string> = {
 
 interface TabsProps {
   colors: ThemeColorPalette;
-  kind: MediaKind;
-  counts: { images: number; videos: number; audios: number };
-  onChange: (kind: MediaKind) => void;
+  kind: MediaView;
+  /**
+   * `all` is optional: the tabs are the narrow-screen stand-in for the rail,
+   * and a caller that has no combined view to offer simply omits it.
+   */
+  counts: { all?: number; images: number; videos: number; audios: number };
+  onChange: (kind: MediaView) => void;
 }
 
 export function MediaTypeTabs({ colors, kind, counts, onChange }: TabsProps) {
   const { t } = useI18n();
+  const views: MediaView[] = counts.all === undefined
+    ? ['image', 'video', 'audio']
+    : ['all', 'image', 'video', 'audio'];
   return (
     <View style={[styles.tabs, { backgroundColor: colors.background }]}>
-      {(['image', 'video', 'audio'] as MediaKind[]).map((value) => {
+      {views.map((value) => {
         const active = value === kind;
-        const count = value === 'image' ? counts.images : value === 'video' ? counts.videos : counts.audios;
+        const count = value === 'all'
+          ? counts.all ?? 0
+          : value === 'image' ? counts.images : value === 'video' ? counts.videos : counts.audios;
         return (
           <Pressable
             key={value}

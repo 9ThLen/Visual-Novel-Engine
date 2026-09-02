@@ -1,23 +1,37 @@
 /**
- * The story media library: one full-screen grid over every image and video the
+ * The story media library: one screen over every image, clip and sound the
  * story owns, with characters as filters rather than as a separate list.
  *
  * The route keeps its `/story-gallery` name and `storyId` param — three screens
  * link here — while the visible name is now the media library.
+ *
+ * Three zones on a wide screen: the rail down the left (which kind, whose,
+ * used or not), the browser in the middle, and a panel on the right that shows
+ * the selected file — or, when nothing is selected, what the story's media adds
+ * up to. Narrow screens have room for one column, so the rail becomes the type
+ * tabs and the chip row above the browser, and the panel becomes a sheet.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { AudioTrackList } from '@/components/media-library/AudioTrackList';
+import { MediaBatchBar } from '@/components/media-library/MediaBatchBar';
+import { MediaBrowser, mediaBrowserColumns } from '@/components/media-library/MediaBrowser';
+import { MediaDropZone } from '@/components/media-library/MediaDropZone';
 import { MediaFilterRail, MediaTypeTabs } from '@/components/media-library/MediaFilters';
-import { MediaGrid } from '@/components/media-library/MediaGrid';
 import { MEDIA_INSPECTOR_WIDTH, MediaInspector } from '@/components/media-library/MediaInspector';
+import { MediaOverviewPanel } from '@/components/media-library/MediaOverviewPanel';
+import {
+  MEDIA_RAIL_COLLAPSED_WIDTH,
+  MEDIA_RAIL_WIDTH,
+  MediaRail,
+} from '@/components/media-library/MediaRail';
+import { MediaMenu, MediaToolbar } from '@/components/media-library/MediaToolbar';
 import { ScreenContainer } from '@/components/screen-container';
 import { ConfirmDialog } from '@/components/ui';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useAudioPreview } from '@/hooks/useAudioPreview';
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { resolveAssetUri } from '@/lib/asset-resolver';
@@ -28,14 +42,18 @@ import {
   spriteNameFromFileName,
 } from '@/lib/character-media';
 import { setAudioCategoryInLibrary, type AudioCategory } from '@/lib/audio-category';
-import { spacing, radius, typeScale } from '@/lib/design-tokens';
-import { pickAudioFromDevice } from '@/lib/pick-audio';
-import { pickImageFromDevice } from '@/lib/pick-image';
-import { pickVideoFromDevice } from '@/lib/pick-video';
+import { spacing } from '@/lib/design-tokens';
+import { classifyDroppedFiles } from '@/lib/media-drop';
+import { sortMediaItems, type MediaSort, type MediaView } from '@/lib/media-browser-rows';
+import { summarizeStoryMedia } from '@/lib/media-library-overview';
+import { describePickedAudioFile, pickAudioFromDevice, type PickAudioResult } from '@/lib/pick-audio';
+import { describePickedImageFile, pickImageFromDevice, type PickedImage } from '@/lib/pick-image';
+import { describePickedVideoFile, pickVideoFromDevice, type PickVideoResult } from '@/lib/pick-video';
 import { isBackgroundRemovalSupported, removeImageBackground } from '@/lib/remove-background';
 import {
   buildStoryMediaGallery,
   canDetachOwner,
+  canRemoveFromStory,
   filterMediaItems,
   findOwnerInGallery,
   usageIsKnowable,
@@ -49,8 +67,15 @@ import { showToast } from '@/lib/toast-store';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
 import { selectSceneRecordsForStory, selectStoryMetadata, useAppStore } from '@/stores/use-app-store';
 
-/** Below this the inspector is a bottom sheet rather than a docked panel. */
+/** Below this the inspector is a bottom sheet and the rail becomes chips. */
 const PHONE_MAX_WIDTH = 768;
+/** Below this the rail is icons and counts: enough for a column, not a wide one. */
+const RAIL_LABELS_WIDTH = 1100;
+/**
+ * Below this the side panel only appears for a selection. Keeping the overview
+ * permanently would cost the grid two columns on a screen that has few to give.
+ */
+const OVERVIEW_MIN_WIDTH = 1100;
 
 export default function StoryGalleryRoute() {
   const { storyId, sceneId } = useLocalSearchParams<{ storyId: string; sceneId?: string }>();
@@ -74,13 +99,25 @@ export default function StoryGalleryRoute() {
   const setAudioLibrary = useAppStore((state) => state.setAudioLibrary);
   const setCharacterLibrary = useAppStore((state) => state.setCharacterLibrary);
 
-  const [kind, setKind] = useState<MediaKind>('image');
+  // The library opens on everything it holds. Three kind-tabs made a story with
+  // a handful of files look like three empty rooms; the combined view is the
+  // answer to "what does this story have", which is why the screen is opened.
+  const [view, setView] = useState<MediaView>('all');
   const [filter, setFilter] = useState<ImageFilter>({ kind: 'all' });
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<MediaSort>('date');
+  const [dense, setDense] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [pendingRemoval, setPendingRemoval] = useState<StoryMediaItem | null>(null);
+  /** Files the author has ticked, and whether ticking is what a press does. */
+  const [checked, setChecked] = useState<string[]>([]);
+  const [pickMode, setPickMode] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchAttachOpen, setBatchAttachOpen] = useState(false);
+  /** Removal is confirmed for a list, so one dialog serves one file or twelve. */
+  const [pendingRemoval, setPendingRemoval] = useState<StoryMediaItem[]>([]);
   const [removingBackgroundKey, setRemovingBackgroundKey] = useState<string | null>(null);
-  // One player for the screen: the grid tiles and the inspector drive the same
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  // One player for the screen: the rows and the inspector drive the same
   // controller, so two files can never sound at once.
   const preview = useAudioPreview();
 
@@ -140,53 +177,66 @@ export default function StoryGalleryRoute() {
     [audioLibraries, characters, imageAssetIdsByStory, mediaAssetIdsByStory, mediaLibrary, scenes, storyId],
   );
 
-  const source = kind === 'image'
-    ? gallery.images
-    : kind === 'video' ? gallery.videos : gallery.audios;
-  const visible = useMemo(() => filterMediaItems(source, filter, query), [filter, query, source]);
+  const summary = useMemo(() => summarizeStoryMedia(gallery), [gallery]);
+
+  /** Everything the open view could show, before the filter and the search. */
+  const source = useMemo(() => (view === 'all'
+    ? [...gallery.images, ...gallery.videos, ...gallery.audios]
+    : view === 'image' ? gallery.images : view === 'video' ? gallery.videos : gallery.audios),
+  [gallery, view]);
+
+  const shown = useMemo(() => {
+    const kept = filterMediaItems(source, filter, query);
+    return sortMediaItems(kept, sort);
+  }, [filter, query, sort, source]);
+
+  const images = useMemo(() => shown.filter((item) => item.kind === 'image'), [shown]);
+  const videos = useMemo(() => shown.filter((item) => item.kind === 'video'), [shown]);
+  const audios = useMemo(() => shown.filter((item) => item.kind === 'audio'), [shown]);
+
   const selected = useMemo(
-    () => visible.find((item) => item.key === selectedKey) ?? null,
-    [selectedKey, visible],
+    () => shown.find((item) => item.key === selectedKey) ?? null,
+    [selectedKey, shown],
   );
 
-  // Character filters belong to images only: the store does not associate clips
-  // with characters, and inventing that link would be a new data model.
-  const characterFilters = kind === 'image' ? gallery.characterFilters : [];
-  // Music and sound are what the audio tab has instead: the two roles a
+  // Character filters belong to images: the store does not associate clips or
+  // sounds with characters, and inventing that link would be a new data model.
+  const characterFilters = view === 'image' || view === 'all' ? gallery.characterFilters : [];
+  // Music and sound are what the audio view has instead: the two roles a
   // timeline actually plays a file in.
   const audioCategories = useMemo(
-    () => kind === 'audio'
+    () => (view === 'audio'
       ? ([
         { category: 'music' as const, count: source.filter((item) => item.audioCategory === 'music').length },
         { category: 'sound' as const, count: source.filter((item) => item.audioCategory === 'sound').length },
       ])
-      : [],
-    [kind, source],
+      : []),
+    [source, view],
   );
-  const counts = useMemo(() => ({
+  const filterCounts = useMemo(() => ({
     all: source.length,
     used: source.filter((item) => item.usage.enabled + item.usage.disabled > 0).length,
     unused: source.filter((item) => item.usage.enabled + item.usage.disabled === 0).length,
   }), [source]);
 
   /**
-   * A sound whose tile is gone has no controller left on screen: removing it,
+   * A sound whose row is gone has no controller left on screen: removing it,
    * searching, or picking a filter it does not match would otherwise leave it
    * playing with nothing anywhere to stop it.
    */
   const { activeKey: activePreviewKey, stop: stopPreview } = preview;
   useEffect(() => {
     if (!activePreviewKey) return;
-    if (visible.some((item) => item.key === activePreviewKey)) return;
+    if (shown.some((item) => item.key === activePreviewKey)) return;
     stopPreview();
-  }, [activePreviewKey, stopPreview, visible]);
+  }, [activePreviewKey, shown, stopPreview]);
 
-  const handleSwitchKind = useCallback((next: MediaKind) => {
-    setKind(next);
+  const handleSwitchView = useCallback((next: MediaView) => {
+    setView(next);
     setFilter({ kind: 'all' });
     setSelectedKey(null);
-    // Leaving the audio tab has to silence it: the tile that was playing is
-    // about to be unmounted, and nothing else offers a way to stop it.
+    // Leaving a view that was sounding has to silence it: the row that was
+    // playing is about to be unmounted, and nothing else offers a way to stop it.
     preview.stop();
   }, [preview]);
 
@@ -196,54 +246,27 @@ export default function StoryGalleryRoute() {
   );
 
   /**
-   * What `+` adds is whatever the open tab shows. It used to pick an image
-   * whichever tab was open, so on the video tab it added something the tab
-   * could not even display.
+   * Persisting one picked file, whichever way it was picked. The dialog and a
+   * drop hand over the same three shapes, so the store writes and the toasts
+   * live here and both callers reuse them.
    */
-  const handleAdd = useCallback(async () => {
-    if (!storyId) return;
-    if (kind === 'image') {
-      try {
-        const picked = await pickImageFromDevice();
-        if (!picked) return;
-        const asset = await addAssetToLibrary(picked.uri, picked.name, 'image');
-        addImage(storyId, asset.id);
-        showToast(t('storyHome.imageAdded'), 'success');
-      } catch {
-        showToast(t('storyHome.imageAddFailed'), 'error');
-      }
-      return;
+  const applyPickedImage = useCallback(async (picked: PickedImage | null) => {
+    if (!storyId || !picked) return false;
+    try {
+      const asset = await addAssetToLibrary(picked.uri, picked.name, 'image');
+      addImage(storyId, asset.id);
+      return true;
+    } catch {
+      showToast(t('storyHome.imageAddFailed'), 'error');
+      return false;
     }
+  }, [addImage, storyId, t]);
 
-    if (kind === 'audio') {
-      const picked = await pickAudioFromDevice();
-      if (picked.status === 'cancelled') return;
-      if (picked.status !== 'picked') {
-        showToast(t(`mediaLibrary.audio.${picked.status}`), 'error');
-        return;
-      }
-      try {
-        const asset = await addAssetToLibrary(picked.audio.uri, picked.audio.name, 'audio', {
-          mimeType: picked.audio.mimeType,
-          size: picked.audio.size,
-          durationSeconds: picked.audio.durationSeconds,
-        });
-        addMedia(storyId, asset.id);
-        showToast(t('mediaLibrary.audio.added'), 'success');
-      } catch {
-        showToast(t('mediaLibrary.audio.addFailed'), 'error');
-      } finally {
-        // The object URL only had to survive the copy into storage.
-        picked.audio.release?.();
-      }
-      return;
-    }
-
-    const picked = await pickVideoFromDevice();
-    if (picked.status === 'cancelled') return;
+  const applyPickedVideo = useCallback(async (picked: PickVideoResult) => {
+    if (!storyId || picked.status === 'cancelled') return false;
     if (picked.status !== 'picked') {
       showToast(t(`mediaLibrary.video.${picked.status}`), 'error');
-      return;
+      return false;
     }
     try {
       const asset = await addAssetToLibrary(picked.video.uri, picked.video.name, 'video', {
@@ -252,13 +275,98 @@ export default function StoryGalleryRoute() {
         durationSeconds: picked.video.durationSeconds,
       });
       addMedia(storyId, asset.id);
-      showToast(t('mediaLibrary.video.added'), 'success');
+      return true;
     } catch {
       showToast(t('mediaLibrary.video.addFailed'), 'error');
+      return false;
     } finally {
+      // The object URL only had to survive the copy into storage.
       picked.video.release?.();
     }
-  }, [addImage, addMedia, kind, storyId, t]);
+  }, [addMedia, storyId, t]);
+
+  const applyPickedAudio = useCallback(async (picked: PickAudioResult) => {
+    if (!storyId || picked.status === 'cancelled') return false;
+    if (picked.status !== 'picked') {
+      showToast(t(`mediaLibrary.audio.${picked.status}`), 'error');
+      return false;
+    }
+    try {
+      const asset = await addAssetToLibrary(picked.audio.uri, picked.audio.name, 'audio', {
+        mimeType: picked.audio.mimeType,
+        size: picked.audio.size,
+        durationSeconds: picked.audio.durationSeconds,
+      });
+      addMedia(storyId, asset.id);
+      return true;
+    } catch {
+      showToast(t('mediaLibrary.audio.addFailed'), 'error');
+      return false;
+    } finally {
+      picked.audio.release?.();
+    }
+  }, [addMedia, storyId, t]);
+
+  /**
+   * What `+` adds is whatever the open view shows. It used to pick an image
+   * whichever tab was open, so on the video tab it added something the tab
+   * could not even display. The combined view shows all three, so there it is
+   * the one question the button has to ask before it can act.
+   */
+  const addByKind = useCallback(async (kind: MediaKind) => {
+    if (!storyId) return;
+    if (kind === 'image') {
+      try {
+        const picked = await pickImageFromDevice();
+        if (!picked) return;
+        if (await applyPickedImage(picked)) showToast(t('storyHome.imageAdded'), 'success');
+      } catch {
+        showToast(t('storyHome.imageAddFailed'), 'error');
+      }
+      return;
+    }
+    if (kind === 'audio') {
+      if (await applyPickedAudio(await pickAudioFromDevice())) {
+        showToast(t('mediaLibrary.audio.added'), 'success');
+      }
+      return;
+    }
+    if (await applyPickedVideo(await pickVideoFromDevice())) {
+      showToast(t('mediaLibrary.video.added'), 'success');
+    }
+  }, [applyPickedAudio, applyPickedImage, applyPickedVideo, storyId, t]);
+
+  /**
+   * Files dropped onto the library. One gesture can carry a background, a clip
+   * and two sounds, so each is sorted to its own path — and a file of a kind
+   * the library has no place for is said out loud rather than dropped silently.
+   */
+  const handleDropFiles = useCallback(async (files: File[]) => {
+    if (!storyId || !files.length) return;
+    const groups = classifyDroppedFiles(files);
+    let added = 0;
+
+    for (const file of groups.image) {
+      if (await applyPickedImage(await describePickedImageFile(file))) added += 1;
+    }
+    for (const file of groups.video) {
+      if (await applyPickedVideo(await describePickedVideoFile(file))) added += 1;
+    }
+    for (const file of groups.audio) {
+      if (await applyPickedAudio(await describePickedAudioFile(file))) added += 1;
+    }
+
+    if (added) showToast(t('mediaLibrary.drop.added', { count: added }), 'success');
+    if (groups.rejected.length) showToast(t('mediaLibrary.drop.rejected'), 'error');
+  }, [applyPickedAudio, applyPickedImage, applyPickedVideo, storyId, t]);
+
+  const handleAdd = useCallback(() => {
+    if (view === 'all') {
+      setAddMenuOpen(true);
+      return;
+    }
+    void addByKind(view);
+  }, [addByKind, view]);
 
   const handleRemoveBackground = useCallback(async (item: StoryMediaItem) => {
     if (!storyId || removingBackgroundKey) return;
@@ -278,29 +386,38 @@ export default function StoryGalleryRoute() {
     }
   }, [addImage, removingBackgroundKey, storyId, t]);
 
-  const handleConfirmRemoval = useCallback(() => {
-    const assetId = pendingRemoval?.assetId;
-    if (storyId && assetId) {
-      // Images have their own membership list; video and audio share
-      // `mediaAssetIdsByStory`.
-      if (pendingRemoval?.kind === 'image') removeImage(storyId, assetId);
-      else removeMedia(storyId, assetId);
+  /**
+   * Removing one file from the story. Images have their own membership list;
+   * video and audio share `mediaAssetIdsByStory`.
+   */
+  const removeOne = useCallback((item: StoryMediaItem) => {
+    if (!storyId || !item.assetId) return;
+    if (item.kind === 'image') removeImage(storyId, item.assetId);
+    else removeMedia(storyId, item.assetId);
 
-      if (pendingRemoval?.kind === 'audio') {
-        // The story's audio library is re-read into membership on every
-        // hydration, so a leftover entry would quietly bring the file back on
-        // the next launch. The entry describes a file of this story, and the
-        // file is the thing being removed.
-        const entries = useAppStore.getState().audioLibraries[storyId] ?? [];
-        const remaining = entries.filter(
-          (entry) => entry.id !== assetId && entry.uri !== pendingRemoval.uri,
-        );
-        if (remaining.length !== entries.length) setAudioLibrary(storyId, remaining);
-      }
-      setSelectedKey(null);
+    if (item.kind === 'audio') {
+      // The story's audio library is re-read into membership on every
+      // hydration, so a leftover entry would quietly bring the file back on
+      // the next launch. The entry describes a file of this story, and the
+      // file is the thing being removed.
+      const entries = useAppStore.getState().audioLibraries[storyId] ?? [];
+      const remaining = entries.filter(
+        (entry) => entry.id !== item.assetId && entry.uri !== item.uri,
+      );
+      if (remaining.length !== entries.length) setAudioLibrary(storyId, remaining);
     }
-    setPendingRemoval(null);
-  }, [pendingRemoval, removeImage, removeMedia, setAudioLibrary, storyId]);
+  }, [removeImage, removeMedia, setAudioLibrary, storyId]);
+
+  const handleConfirmRemoval = useCallback(() => {
+    pendingRemoval.forEach(removeOne);
+    if (pendingRemoval.length > 1) {
+      showToast(t('mediaLibrary.batch.removed', { count: pendingRemoval.length }), 'success');
+    }
+    setSelectedKey(null);
+    setChecked([]);
+    setPickMode(false);
+    setPendingRemoval([]);
+  }, [pendingRemoval, removeOne, t]);
 
   /**
    * The author's answer outranks both the file name and the scenes, so it is
@@ -399,14 +516,195 @@ export default function StoryGalleryRoute() {
     showToast(t('mediaLibrary.makeDefault.done', { name: owner.characterName }), 'success');
   }, [setCharacterLibrary, storyId, t]);
 
+  // ── Picking files ────────────────────────────────────────────────────
+  const picking = pickMode || checked.length > 0;
+  const checkedKeys = useMemo(() => new Set(checked), [checked]);
+  const checkedItems = useMemo(
+    () => shown.filter((item) => checkedKeys.has(item.key)),
+    [checkedKeys, shown],
+  );
+  /**
+   * What "delete" would actually do. Story membership is re-derived from scene
+   * references on every hydration, so removing a file a scene still names does
+   * not survive a restart — and until the scenes are read, nothing is known to
+   * be safe.
+   */
+  const removableChecked = useMemo(
+    () => (usageReady ? checkedItems.filter(canRemoveFromStory) : []),
+    [checkedItems, usageReady],
+  );
+  const checkedImagesOnly = checkedItems.length > 0
+    && checkedItems.every((item) => item.kind === 'image');
+
+  const clearPicking = useCallback(() => {
+    setChecked([]);
+    setPickMode(false);
+  }, []);
+
+  const toggleChecked = useCallback((item: StoryMediaItem) => {
+    setChecked((current) => (current.includes(item.key)
+      ? current.filter((key) => key !== item.key)
+      : [...current, item.key]));
+  }, []);
+
+  /** A press means "tick this" while picking, and "open this" otherwise. */
+  const handlePressItem = useCallback((item: StoryMediaItem) => {
+    if (picking) toggleChecked(item);
+    else setSelectedKey(item.key);
+  }, [picking, toggleChecked]);
+
+  /** Holding a file is the other way into select mode, with that file ticked. */
+  const handleLongPressItem = useCallback((item: StoryMediaItem) => {
+    setPickMode(true);
+    setSelectedKey(null);
+    setChecked((current) => (current.includes(item.key) ? current : [...current, item.key]));
+  }, []);
+
+  // A file that leaves the view — through a filter, a search, a removal — is no
+  // longer something the batch actions can act on, so it stops being ticked.
+  useEffect(() => {
+    setChecked((current) => {
+      const visible = current.filter((key) => shown.some((item) => item.key === key));
+      return visible.length === current.length ? current : visible;
+    });
+  }, [shown]);
+
+  const handleBatchAttach = useCallback((characterId: string) => {
+    if (!storyId) return;
+    const latestCharacters = useAppStore.getState().characterLibraries[storyId] ?? [];
+    const character = latestCharacters.find((candidate) => candidate.id === characterId);
+    if (!character) return;
+
+    // One write for the whole batch: every attach replaces the entire library,
+    // so applying them one at a time would have each overwrite the last.
+    let next = latestCharacters;
+    let added = 0;
+    for (const item of checkedItems) {
+      if (item.kind !== 'image') continue;
+      const applied = attachSpriteToCharacter({
+        characters: next,
+        characterId,
+        // The asset id outlives the URI, so it is the better reference.
+        ref: item.assetId ?? item.uri,
+        name: spriteNameFromFileName(item.name),
+        now: Date.now(),
+      });
+      if (applied !== next) {
+        next = applied;
+        added += 1;
+      }
+    }
+    if (!added) return;
+    setCharacterLibrary(storyId, next);
+    showToast(t('mediaLibrary.batch.attached', { count: added, name: character.name }), 'success');
+    clearPicking();
+  }, [checkedItems, clearPicking, setCharacterLibrary, storyId, t]);
+
+  const handleBatchRemoveBackground = useCallback(async () => {
+    if (!storyId || batchBusy) return;
+    setBatchBusy(true);
+    let made = 0;
+    try {
+      for (const item of checkedItems) {
+        if (item.kind !== 'image') continue;
+        try {
+          const resolved = await resolveAssetUri(item.uri);
+          if (typeof resolved !== 'string') continue;
+          const uri = await removeImageBackground(resolved);
+          const name = item.name.replace(/\.(png|jpe?g|webp)$/i, '');
+          const created = await addAssetToLibrary(uri, `${name} (cutout).png`, 'image');
+          addImage(storyId, created.id);
+          made += 1;
+        } catch {
+          // One image that will not cut out must not abandon the rest; the
+          // count at the end is what the author is told.
+        }
+      }
+    } finally {
+      setBatchBusy(false);
+    }
+    if (made) {
+      showToast(t('mediaLibrary.batch.cutouts', { count: made }), 'success');
+      clearPicking();
+    } else {
+      showToast(t('storyHome.backgroundRemoveFailed'), 'error');
+    }
+  }, [addImage, batchBusy, checkedItems, clearPicking, storyId, t]);
+
   const isPhone = width < PHONE_MAX_WIDTH;
-  const reservedWidth = !isPhone && selected ? MEDIA_INSPECTOR_WIDTH : 0;
+  const railWidth = isPhone
+    ? 0
+    : width < RAIL_LABELS_WIDTH ? MEDIA_RAIL_COLLAPSED_WIDTH : MEDIA_RAIL_WIDTH;
+  // The panel is the overview until a file is selected, and only where the
+  // grid can spare the width for it to stand open.
+  const showOverview = !isPhone && width >= OVERVIEW_MIN_WIDTH;
+  const panelDocked = !isPhone && (selected !== null || showOverview);
+  const reservedWidth = railWidth + (panelDocked ? MEDIA_INSPECTOR_WIDTH : 0);
+
+  // ── Keyboard ─────────────────────────────────────────────────────────
+  /**
+   * Selection is the cursor here: the arrows move it, and the panel follows,
+   * so there is nothing to explain about a focus ring that means something
+   * different from the file that is open.
+   */
+  const moveSelection = useCallback((delta: number) => {
+    if (!shown.length) return;
+    const current = shown.findIndex((item) => item.key === selectedKey);
+    // Nothing selected yet: an arrow starts at the first file rather than
+    // scrolling the page, which is what the browser would otherwise do.
+    const next = current < 0
+      ? (delta > 0 ? 0 : shown.length - 1)
+      : Math.min(shown.length - 1, Math.max(0, current + delta));
+    setSelectedKey(shown[next].key);
+  }, [selectedKey, shown]);
+
+  // One row is however many tiles the grid actually drew. Sounds are rows of
+  // one, so in the audio view up and down move by a single file.
+  const columns = mediaBrowserColumns(width, reservedWidth, dense);
+  const verticalStep = view === 'audio' ? 1 : columns;
+
+  useKeyboardShortcuts({
+    shortcuts: {
+      previous: { key: 'arrowleft', handler: () => moveSelection(-1) },
+      next: { key: 'arrowright', handler: () => moveSelection(1) },
+      rowUp: { key: 'arrowup', handler: () => moveSelection(-verticalStep) },
+      rowDown: { key: 'arrowdown', handler: () => moveSelection(verticalStep) },
+      play: {
+        key: ' ',
+        handler: () => { if (selected?.kind === 'audio') handleTogglePlayback(selected); },
+      },
+      tick: {
+        key: 'enter',
+        handler: () => { if (selected) toggleChecked(selected); },
+      },
+      remove: {
+        key: 'delete',
+        handler: () => {
+          // The same gate the button is behind: a file a scene still names
+          // would come back on the next hydration.
+          if (selected && usageReady && canRemoveFromStory(selected)) setPendingRemoval([selected]);
+        },
+      },
+      dismiss: {
+        key: 'escape',
+        handler: () => {
+          if (picking) clearPicking();
+          else setSelectedKey(null);
+        },
+      },
+    },
+  });
+
   /**
    * Headers only earn their space in the unfiltered view. Under a filter or a
    * search they name a group holding every visible row, or split a handful of
-   * matches into two lists of one.
+   * matches into two lists of one — and a date header is a lie under any order
+   * but the one it was built from.
    */
-  const grouped = filter.kind === 'all' && !query.trim();
+  const grouped = filter.kind === 'all'
+    && !query.trim()
+    && (view === 'audio' || sort === 'date');
+
   // Each empty state has to say why it is empty. Telling an author with six
   // images that the story has none, just because none are used yet, reads as a
   // bug in the library rather than an answer to the filter they picked.
@@ -420,91 +718,121 @@ export default function StoryGalleryRoute() {
         ? t(`mediaLibrary.empty.${filter.category}`)
         : filter.kind === 'used' || filter.kind === 'unused'
           ? t(`mediaLibrary.empty.${filter.kind}`)
-          : t(`mediaLibrary.empty.${kind === 'image' ? 'images' : kind === 'video' ? 'videos' : 'audio'}`);
+          : t(`mediaLibrary.empty.${view === 'image' ? 'images' : view === 'video' ? 'videos' : view === 'audio' ? 'audio' : 'all'}`);
+
+  const browser = (
+    <MediaBrowser
+      view={view}
+      images={images}
+      videos={videos}
+      audios={audios}
+      colors={colors}
+      selectedKey={selectedKey}
+      grouped={grouped}
+      now={Date.now()}
+      emptyLabel={emptyLabel}
+      usageState={usageState}
+      onSelect={handlePressItem}
+      onLongPress={handleLongPressItem}
+      picking={picking}
+      checkedKeys={checkedKeys}
+      reservedWidth={reservedWidth}
+      dense={dense}
+      onTogglePlayback={handleTogglePlayback}
+      activeAudioKey={preview.activeKey}
+      previewState={preview.state}
+      progress={preview.progress}
+    />
+  );
 
   return (
     <ScreenContainer>
       <View style={styles.screen}>
-        <View style={styles.main}>
-          <View style={styles.header}>
-            <Pressable
-              onPress={() => (sceneId && storyId
-                ? router.push({ pathname: '/document-editor', params: { storyId, sceneId } })
-                : router.back())}
-              accessibilityRole="button"
-              accessibilityLabel={t('menu.back')}
-              style={styles.iconButton}
-            >
-              <IconSymbol name="chevron.left" size={22} color={colors.foreground} />
-            </Pressable>
-            <View style={styles.headerText}>
-              <Text style={[styles.pageTitle, { color: colors.foreground }]}>{t('mediaLibrary.title')}</Text>
-              {story ? <Text style={{ color: colors.muted }}>{story.title}</Text> : null}
-            </View>
-            <Pressable
-              onPress={handleAdd}
-              accessibilityRole="button"
-              accessibilityLabel={t('mediaLibrary.add')}
-              style={styles.iconButton}
-            >
-              <IconSymbol name="add" size={24} color={colors.primary} />
-            </Pressable>
-          </View>
-
-          <MediaTypeTabs colors={colors} kind={kind} counts={gallery.counts} onChange={handleSwitchKind} />
-
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder={t('mediaLibrary.search.placeholder')}
-            placeholderTextColor={colors.muted}
-            accessibilityLabel={t('mediaLibrary.search.placeholder')}
-            style={[styles.search, { borderColor: colors.border, color: colors.foreground }]}
-          />
-
-          <MediaFilterRail
+        {isPhone ? null : (
+          <MediaRail
             colors={colors}
+            view={view}
+            viewCounts={{
+              all: gallery.counts.images + gallery.counts.videos + gallery.counts.audios,
+              images: gallery.counts.images,
+              videos: gallery.counts.videos,
+              audios: gallery.counts.audios,
+            }}
+            onChangeView={handleSwitchView}
             filter={filter}
-            counts={counts}
-            usageReady={usageReady}
+            filterCounts={filterCounts}
+            onChangeFilter={(next) => { setFilter(next); setSelectedKey(null); }}
             characters={characterFilters}
             audioCategories={audioCategories}
-            onChange={(next) => { setFilter(next); setSelectedKey(null); }}
+            usageReady={usageReady}
+            totalBytes={summary.bytes.total}
+            unsizedCount={summary.unsizedCount}
+            collapsed={width < RAIL_LABELS_WIDTH}
+          />
+        )}
+
+        <MediaDropZone colors={colors} onDropFiles={handleDropFiles} style={styles.main}>
+          <MediaToolbar
+            colors={colors}
+            storyTitle={story?.title}
+            query={query}
+            onChangeQuery={setQuery}
+            sort={sort}
+            onChangeSort={setSort}
+            dense={dense}
+            onToggleDense={() => setDense((current) => !current)}
+            picking={picking}
+            onTogglePicking={() => (picking ? clearPicking() : setPickMode(true))}
+            onBack={() => (sceneId && storyId
+              ? router.push({ pathname: '/document-editor', params: { storyId, sceneId } })
+              : router.back())}
+            onAdd={handleAdd}
+            compact={isPhone}
           />
 
-          {kind === 'audio' ? (
-            // A square is the wrong shape for a sound: it has no picture to
-            // fill one, and the row has somewhere to put what the library
-            // already knows about the file.
-            <AudioTrackList
-              items={visible}
+          {isPhone ? (
+            <>
+              <MediaTypeTabs
+                colors={colors}
+                kind={view}
+                counts={{
+                  all: gallery.counts.images + gallery.counts.videos + gallery.counts.audios,
+                  images: gallery.counts.images,
+                  videos: gallery.counts.videos,
+                  audios: gallery.counts.audios,
+                }}
+                onChange={handleSwitchView}
+              />
+              <MediaFilterRail
+                colors={colors}
+                filter={filter}
+                counts={filterCounts}
+                usageReady={usageReady}
+                characters={characterFilters}
+                audioCategories={audioCategories}
+                onChange={(next) => { setFilter(next); setSelectedKey(null); }}
+              />
+            </>
+          ) : null}
+
+          {picking && checked.length ? (
+            <MediaBatchBar
               colors={colors}
-              selectedKey={selectedKey}
-              grouped={grouped}
-              emptyLabel={emptyLabel}
-              usageState={usageState}
-              onSelect={(item) => setSelectedKey(item.key)}
-              reservedWidth={reservedWidth}
-              onTogglePlayback={handleTogglePlayback}
-              activeAudioKey={preview.activeKey}
-              previewState={preview.state}
-              progress={preview.progress}
+              count={checkedItems.length}
+              removableCount={removableChecked.length}
+              imagesOnly={checkedImagesOnly}
+              canRemoveBackground={isBackgroundRemovalSupported()}
+              usageReady={usageReady}
+              busy={batchBusy}
+              onAttachToCharacter={() => setBatchAttachOpen(true)}
+              onRemoveBackground={() => { void handleBatchRemoveBackground(); }}
+              onRemove={() => setPendingRemoval(removableChecked)}
+              onClear={clearPicking}
             />
-          ) : (
-            <MediaGrid
-              items={visible}
-              colors={colors}
-              selectedKey={selectedKey}
-              // Date headers only in the unfiltered view; under a filter they
-              // collapse into groups of one or two tiles.
-              grouped={grouped}
-              now={Date.now()}
-              emptyLabel={emptyLabel}
-              onSelect={(item) => setSelectedKey(item.key)}
-              reservedWidth={reservedWidth}
-            />
-          )}
-        </View>
+          ) : null}
+
+          {browser}
+        </MediaDropZone>
 
         {selected ? (
           <MediaInspector
@@ -519,7 +847,7 @@ export default function StoryGalleryRoute() {
             onClose={() => setSelectedKey(null)}
             onOpenScene={handleOpenScene}
             onRemoveBackground={handleRemoveBackground}
-            onRemoveFromStory={setPendingRemoval}
+            onRemoveFromStory={(item) => setPendingRemoval([item])}
             onAttachToCharacter={handleAttachToCharacter}
             onDetachFromCharacter={handleDetachFromCharacter}
             onMakeDefaultSprite={handleMakeDefaultSprite}
@@ -531,16 +859,66 @@ export default function StoryGalleryRoute() {
             playbackFailed={preview.failedKey === selected.key}
             onSetAudioCategory={selected.kind === 'audio' ? handleSetAudioCategory : undefined}
           />
+        ) : showOverview ? (
+          <View
+            style={[
+              styles.panel,
+              { backgroundColor: colors['surface-1'], borderLeftColor: colors['border-subtle'] },
+            ]}
+          >
+            <MediaOverviewPanel
+              summary={summary}
+              colors={colors}
+              usageState={usageState}
+              onAdd={handleAdd}
+              onShowUnused={() => { setFilter({ kind: 'unused' }); setSelectedKey(null); }}
+              onSelect={(item) => setSelectedKey(item.key)}
+            />
+          </View>
         ) : null}
       </View>
 
+      <MediaMenu
+        visible={addMenuOpen}
+        title={t('mediaLibrary.add.which')}
+        colors={colors}
+        options={[
+          { key: 'image', label: t('mediaLibrary.tab.images'), icon: 'image' },
+          { key: 'video', label: t('mediaLibrary.tab.videos'), icon: 'movie' },
+          { key: 'audio', label: t('mediaLibrary.tab.audio'), icon: 'music' },
+        ]}
+        onPick={(key) => {
+          setAddMenuOpen(false);
+          void addByKind(key as MediaKind);
+        }}
+        onClose={() => setAddMenuOpen(false)}
+      />
+
+      <MediaMenu
+        visible={batchAttachOpen}
+        title={t('mediaLibrary.action.addToCharacter')}
+        colors={colors}
+        options={gallery.characterFilters.map((character) => ({
+          key: character.characterId,
+          label: t('mediaLibrary.attach.option', { name: character.name }),
+          icon: 'character' as const,
+        }))}
+        onPick={(key) => {
+          setBatchAttachOpen(false);
+          handleBatchAttach(key);
+        }}
+        onClose={() => setBatchAttachOpen(false)}
+      />
+
       <ConfirmDialog
-        visible={Boolean(pendingRemoval)}
+        visible={pendingRemoval.length > 0}
         title={t('mediaLibrary.remove.confirmTitle')}
-        message={t('mediaLibrary.remove.confirmMessage', { name: pendingRemoval?.name ?? '' })}
+        message={pendingRemoval.length === 1
+          ? t('mediaLibrary.remove.confirmMessage', { name: pendingRemoval[0]?.name ?? '' })
+          : t('mediaLibrary.remove.confirmManyMessage', { count: pendingRemoval.length })}
         confirmLabel={t('common.delete')}
         onConfirm={handleConfirmRemoval}
-        onCancel={() => setPendingRemoval(null)}
+        onCancel={() => setPendingRemoval([])}
         destructive
       />
     </ScreenContainer>
@@ -549,10 +927,6 @@ export default function StoryGalleryRoute() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, flexDirection: 'row' },
-  main: { flex: 1, paddingHorizontal: spacing.lg, gap: spacing.sm },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingTop: spacing.sm },
-  headerText: { flex: 1 },
-  iconButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  pageTitle: { ...typeScale.pageTitle },
-  search: { minHeight: 44, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: spacing.md },
+  main: { flex: 1, minWidth: 0, paddingHorizontal: spacing.lg, gap: spacing.sm },
+  panel: { width: MEDIA_INSPECTOR_WIDTH, borderLeftWidth: 1 },
 });
