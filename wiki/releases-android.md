@@ -51,7 +51,8 @@ pnpm inspect:apk ./player.apk --release novel.vnerelease
 - **The signature holds over this file**, according to `apksigner verify`, which
   is **required**: without the Android SDK build-tools a build cannot be
   certified here. Set `ANDROID_SDK_ROOT`, or point `APKSIGNER` at the jar or the
-  executable.
+  executable. This is checked *before* a build is submitted, by the app and by
+  the command line, so a missing tool costs nothing rather than a build.
 
   This repository's own reader runs alongside it as a second opinion — signature
   against signed data, public key against certificate, content digest recomputed

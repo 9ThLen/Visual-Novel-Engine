@@ -160,6 +160,43 @@ export function parseApksignerOutput(tool: string, output: string, status: numbe
  * apksigner to guess makes the verdict depend on how well it can read a
  * manifest this repository has already parsed.
  */
+/**
+ * Whether a signature could be verified at all on this machine, and why not.
+ *
+ * Asked before a build is submitted, not after it comes back. Discovering that
+ * the artifact cannot be certified is cheap at that point and expensive later:
+ * an EAS build costs money and twenty minutes, and it ends in a signing key the
+ * story is held to for its life.
+ *
+ * `java` is checked by running it, because apksigner is a jar and a `java` on
+ * PATH that does not start is the same as no apksigner at all.
+ */
+export function apksignerReadiness(): { ready: true } | { ready: false; reason: string } {
+  const tool = findApksigner();
+  if (!tool) {
+    return {
+      ready: false,
+      reason: 'apksigner was not found. It ships with the Android SDK build-tools; install those, '
+        + 'set ANDROID_SDK_ROOT, or point APKSIGNER at the jar or executable. '
+        + 'Without it a signature cannot be verified, and a build cannot be certified.',
+    };
+  }
+  const probe = spawnSync(tool.command, tool.prefix.length > 0 ? ['-version'] : ['version'], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  if (probe.error) {
+    return {
+      ready: false,
+      reason: tool.prefix.length > 0
+        ? `apksigner is at ${tool.label} but Java will not start (${probe.error.message}). `
+          + 'Install a JDK or set JAVA_HOME.'
+        : `apksigner at ${tool.label} will not start: ${probe.error.message}`,
+    };
+  }
+  return { ready: true };
+}
+
 export function runApksigner(file: string, minSdkVersion?: number): ApksignerVerdict {
   const tool = findApksigner();
   if (!tool) {

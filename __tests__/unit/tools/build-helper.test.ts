@@ -21,6 +21,17 @@ import { BUILD_PROTOCOL_VERSION } from '../../../lib/release/build-protocol';
 import type { BuildRequest } from '../../../lib/release/build-request';
 import { fakeManifest } from '../../helpers/android-manifest';
 import { makeSigningKey, signApk } from '../../helpers/apk-signing';
+import { fakeApksigner } from '../../helpers/fake-apksigner';
+
+/**
+ * Both seams onto the Android SDK, injected. The helper requires apksigner in
+ * earnest; requiring it of the suite as well would make these cases pass only
+ * on a machine where somebody had installed build-tools.
+ */
+const SIGNING_SEAMS = {
+  apksignerReadiness: () => ({ ready: true }) as const,
+  signatureAuthority: fakeApksigner(),
+};
 
 const SIGNING_KEY = makeSigningKey('VNE Helper Test');
 
@@ -608,6 +619,7 @@ describe('the EAS builder adapter', () => {
         };
       },
       download: async (_url, target) => { writeFileSync(target, signedApk()); },
+      ...SIGNING_SEAMS,
     });
 
     expect(await builder.readiness()).toEqual({ ready: true });
@@ -630,7 +642,7 @@ describe('the EAS builder adapter', () => {
   });
 
   it('is unavailable before an immutable EAS project id is configured', async () => {
-    const readiness = await new EasBuilder({ runCommand: async () => {
+    const readiness = await new EasBuilder({ ...SIGNING_SEAMS, runCommand: async () => {
       throw new Error('must not run');
     } }).readiness();
     expect(readiness).toMatchObject({ ready: false });
@@ -701,6 +713,7 @@ describe('the EAS builder adapter', () => {
         return { status: 0, stdout: 'ok', stderr: '' };
       },
       download: async (_url, target) => { writeFileSync(target, signedApk(storyId)); },
+      ...SIGNING_SEAMS,
     });
     const firstOut = path.join(root, 'first');
     mkdirSync(firstOut);

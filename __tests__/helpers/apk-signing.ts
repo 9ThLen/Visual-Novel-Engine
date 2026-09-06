@@ -24,6 +24,7 @@ const V3_BLOCK_ID = 0xf05368c0;
 /** The SDK range a v3 signer carries, in the two places it carries it. */
 const MIN_SDK = 24;
 const MAX_SDK = 0x7fffffff;
+const PROOF_OF_ROTATION_ATTRIBUTE = 0x3ba06f8c;
 /** RSASSA-PKCS1-v1_5 with SHA-256, which is what Android's tooling defaults to. */
 const ALGORITHM_ID = 0x0103;
 const CHUNK_SIZE = 1024 * 1024;
@@ -222,13 +223,23 @@ function u32(value: number): Uint8Array {
  * reading a v3 block with the v2 layout land four bytes short at every field
  * after it.
  */
-function signerValue(key: SigningKey, digest: Uint8Array, v3: boolean): Uint8Array {
+function signerValue(
+  key: SigningKey,
+  digest: Uint8Array,
+  v3: boolean,
+  rotation = false,
+): Uint8Array {
   const algorithmId = u32(ALGORITHM_ID);
   const digests = lengthPrefixed(lengthPrefixed(concat([algorithmId, lengthPrefixed(digest)])));
   const certificates = lengthPrefixed(lengthPrefixed(key.certificate));
+  // A proof-of-rotation attribute is the real thing this repository's reader
+  // does not implement, and the case its "unsupported" state exists for.
+  const attributes = rotation
+    ? lengthPrefixed(lengthPrefixed(concat([u32(PROOF_OF_ROTATION_ATTRIBUTE), new Uint8Array(8)])))
+    : lengthPrefixed(new Uint8Array(0));
   const signedData = v3
-    ? concat([digests, certificates, u32(MIN_SDK), u32(MAX_SDK), lengthPrefixed(new Uint8Array(0))])
-    : concat([digests, certificates, lengthPrefixed(new Uint8Array(0))]);
+    ? concat([digests, certificates, u32(MIN_SDK), u32(MAX_SDK), attributes])
+    : concat([digests, certificates, attributes]);
 
   const signer = createSign('sha256');
   signer.update(signedData);
@@ -253,7 +264,7 @@ export function signApk(
   zip: Uint8Array,
   key: SigningKey,
   digest?: Uint8Array,
-  schemes: ('v2' | 'v3')[] = ['v2'],
+  schemes: ('v2' | 'v3' | 'v3-rotated')[] = ['v2'],
 ): Uint8Array {
   const content = digest ?? contentDigest(zip);
   let out = zip;
@@ -261,7 +272,7 @@ export function signApk(
     out = splice(
       out,
       scheme === 'v2' ? V2_BLOCK_ID : V3_BLOCK_ID,
-      signerValue(key, content, scheme === 'v3'),
+      signerValue(key, content, scheme !== 'v2', scheme === 'v3-rotated'),
       scheme !== schemes[0],
     );
   }

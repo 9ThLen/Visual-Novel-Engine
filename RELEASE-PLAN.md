@@ -1523,6 +1523,27 @@ attribute it does not know — and then apksigner's verdict stands alone and the
 log says so. Stepping over an unknown attribute silently, which is how a
 rotation lineage would have gone unnoticed, is now a refusal.
 
+That third state did not work when it was written. Every unverified signature
+became a problem inside `inspectApk`, which does not run apksigner, so an
+artifact the local reader abstained on failed before the authority was asked —
+and the signing key would have been recorded from a fingerprint that was `null`
+exactly then. Judgement moved to one function that sees both answers, and the
+key recorded is the effective one: the local reader's where it has one, and
+apksigner's where it does not. apksigner naming several signers is refused
+rather than reduced to the first.
+
+**The tooling is checked before a build is submitted**, by the helper's
+readiness and by the command line, because discovering that an artifact cannot
+be certified is cheap then and expensive after twenty minutes and a charge.
+`java` is checked by running it, since apksigner is a jar and a `java` that will
+not start is the same as no apksigner.
+
+Requiring the tool made the *suite* require it too, which is a worse trade than
+it looks: a green run that only happens where somebody installed build-tools
+says less than it appears to. The authority is an injected seam, the cases use a
+stand-in, and one case runs the real tool and skips with its reason when absent.
+The whole suite passes with the Android SDK and with it hidden.
+
 Whether the *same* key signed two builds is a separate question, and needs
 something remembered rather than something computed. The first verified build of
 a story records its certificate under
@@ -1558,7 +1579,11 @@ it first, so a failure between the two leaves either the old artifact or the new
 one and never neither — `rename` cannot overwrite on Windows, which is why the
 delete was there. The step-aside copy also needs a name of its own and the whole
 replacement needs a lock, or two processes interleave and one deletes what the
-other is restoring from. Both callers keep a failed artifact as `.unverified`
+other is restoring from. The lock records who holds it and is released only
+by its holder; a lock is taken over only when it is both stale **and** its
+process is gone, since one taken over on age alone can be pulled out from under
+a process that was merely suspended — which would then delete the thief's lock
+on its way out and hand the section to a third. Both callers keep a failed artifact as `.unverified`
 rather than discarding it.
 
 **The tests for those two races were not races.** One called

@@ -21,6 +21,7 @@ import {
 import { fakeManifest } from '../../helpers/android-manifest';
 import { makeSigningKey, signApk, type SigningKey } from '../../helpers/apk-signing';
 import playerProfile from '../../../player-profile.js';
+import { fakeApksigner } from '../../helpers/fake-apksigner';
 
 const KEY = makeSigningKey('The Author');
 const STOLEN = makeSigningKey('Somebody Else');
@@ -43,6 +44,7 @@ describe('verifying a finished build', () => {
     permissions?: string[];
     applicationId?: string;
     name?: string;
+    rotation?: boolean;
   } = {}): string {
     const file = path.join(workspace, options.name ?? `player-${Math.random().toString(36).slice(2)}.apk`);
     fs.writeFileSync(file, signApk(zipSync({
@@ -52,15 +54,19 @@ describe('verifying a finished build', () => {
         permissions: options.permissions ?? ['android.permission.INTERNET'],
       }),
       'classes.dex': new Uint8Array([1, 2, 3]),
-    }), options.key ?? KEY));
+    }), options.key ?? KEY, undefined, options.rotation ? ['v3-rotated'] : ['v2']));
     return file;
   }
 
-  const verify = (file: string, expected = {}) => verifyBuiltArtifact({
+  // The authority is injected throughout: these cases are about what this
+  // repository does with a verdict, and requiring the Android SDK to ask them
+  // would make the suite pass only where somebody had installed it.
+  const verify = (file: string, expected = {}, authority = fakeApksigner()) => verifyBuiltArtifact({
     file,
     target: 'apk',
     expected: { applicationId: APPLICATION_ID, ...expected },
     repoRoot,
+    signatureAuthority: authority,
   });
 
   describe('remembering the signing key', () => {
@@ -110,6 +116,7 @@ describe('verifying a finished build', () => {
         target: 'apk',
         expected: { applicationId: other },
         repoRoot,
+        signatureAuthority: fakeApksigner(),
       });
       expect(readSigningRecord(repoRoot, APPLICATION_ID)?.fingerprint).toBe(KEY.fingerprint);
       expect(readSigningRecord(repoRoot, other)?.fingerprint).toBe(STOLEN.fingerprint);
@@ -164,6 +171,42 @@ describe('verifying a finished build', () => {
 
   describe('what it refuses', () => {
 
+  /**
+   * The state that existed and could not be reached. Any unverified signature
+   * became a problem before apksigner was consulted, so an artifact this
+   * repository's reader abstained on failed no matter what the authority said
+   * -- and the key would have been recorded from a fingerprint that was null
+   * precisely then.
+   */
+  describe('when this reader abstains', () => {
+    const rotated = () => artifact({ rotation: true });
+
+    it('accepts the artifact on the authority', async () => {
+      const report = await verify(rotated(), {}, fakeApksigner({ fingerprints: [KEY.fingerprint] }));
+      expect(report.signing.unsupported).toBe(true);
+      expect(report.signing.certificateFingerprint).toBeNull();
+      expect(report.problems).toEqual([]);
+    });
+
+    it('records the key apksigner named, not the null it had', async () => {
+      await verify(rotated(), {}, fakeApksigner({ fingerprints: [KEY.fingerprint] }));
+      expect(readSigningRecord(repoRoot, APPLICATION_ID)?.fingerprint).toBe(KEY.fingerprint);
+    });
+
+    it('still refuses a later build under a different key', async () => {
+      await verify(rotated(), {}, fakeApksigner({ fingerprints: [KEY.fingerprint] }));
+      await expect(verify(rotated(), {}, fakeApksigner({ fingerprints: [STOLEN.fingerprint] })))
+        .rejects.toThrow(/losing their saves/);
+    });
+
+    /** Which of several signers a device holds an app to is not a coin toss. */
+    it('refuses when apksigner names more than one signer', async () => {
+      await expect(verify(rotated(), {}, fakeApksigner({
+        fingerprints: [KEY.fingerprint, STOLEN.fingerprint],
+      }))).rejects.toThrow(/could not choose/);
+    });
+  });
+
   it('refuses an artifact whose identity is not the one expected', async () => {
     await expect(verify(artifact({ versionCode: 1_000_000 }), { versionCode: 1_000_001 }))
       .rejects.toThrow(/does not increase/);
@@ -179,6 +222,7 @@ describe('verifying a finished build', () => {
       file: artifact({ name: 'player.aab' }),
       target: 'aab',
       repoRoot,
+      signatureAuthority: fakeApksigner(),
     })).rejects.toThrow(/bundletool/);
   });
   });

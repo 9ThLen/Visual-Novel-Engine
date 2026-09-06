@@ -16,7 +16,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { zipSync } from 'fflate';
 
-import { inspectApk, KNOWN_UNREMOVABLE_PERMISSIONS } from '../../../tools/vne-build/inspect-apk';
+import {
+  inspectApk,
+  signatureProblems,
+  KNOWN_UNREMOVABLE_PERMISSIONS,
+} from '../../../tools/vne-build/inspect-apk';
+import { fakeApksigner } from '../../helpers/fake-apksigner';
+import { apksignerReadiness, runApksigner } from '../../../tools/vne-build/apksigner';
 import { fakeManifest } from '../../helpers/android-manifest';
 import {
   makeSigningKey,
@@ -165,11 +171,21 @@ describe('inspecting a built APK', () => {
       expect(report.signing.subject).toContain('VNE Test');
     });
 
-    /** An unsigned artifact cannot install, and used to be reported in green. */
+    /**
+     * An unsigned artifact cannot install, and used to be reported in green.
+     *
+     * The verdict is not `inspectApk`'s to give any more: apksigner is the
+     * authority, and this function does not run it. `signatureProblems` is
+     * where the two answers meet, so that is what these cases ask.
+     */
     it('fails an unsigned artifact', () => {
       const report = inspectApk(apk({ unsigned: true }));
       expect(report.signing.verified).toBe(false);
-      expect(report.problems.join(' ')).toMatch(/refuse to install/);
+      const problems = signatureProblems(report, fakeApksigner({
+        verifies: false,
+        output: 'DOES NOT VERIFY / ERROR: No signature',
+      })());
+      expect(problems.join(' ')).toMatch(/does not verify/);
     });
 
     /**
@@ -219,7 +235,11 @@ describe('inspecting a built APK', () => {
       const report = inspectApk(apk({ junkBlock: true }));
       expect(report.signing.schemes).toEqual(['v2', 'v3']);
       expect(report.signing.verified).toBe(false);
-      expect(report.problems.join(' ')).toMatch(/does not verify/);
+      expect(report.signing.unsupported).toBe(false);
+      // Even with the authority satisfied, a reader that failed where the tool
+      // passed is a disagreement, and a disagreement is a refusal.
+      expect(signatureProblems(report, fakeApksigner()()).join(' '))
+        .toMatch(/own reader does not/);
     });
 
     /** Two blocks naming two keys describe two apps, and the device picks. */
@@ -230,33 +250,61 @@ describe('inspecting a built APK', () => {
     });
 
     it('fails when the key is not the one the story is already signed with', () => {
-      const report = inspectApk(apk(), { certificateFingerprint: OTHER_KEY.fingerprint });
-      expect(report.problems.join(' ')).toMatch(/losing their saves/);
+      const report = inspectApk(apk());
+      const problems = signatureProblems(report, fakeApksigner({
+        fingerprints: [KEY.fingerprint],
+      })(), OTHER_KEY.fingerprint);
+      expect(problems.join(' ')).toMatch(/losing their saves/);
     });
 
     /** Two builds of one story, and the check that they can update each other. */
     it('passes when the same key signed both', () => {
       const first = inspectApk(apk({ versionCode: 1_000_000 }));
-      const second = inspectApk(apk({ versionCode: 1_000_001 }), {
-        // Spelled without colons, as some tools print it: the comparison
-        // normalises rather than matching raw strings.
-        certificateFingerprint: first.signing.certificateFingerprint!.replaceAll(':', '').toLowerCase(),
-      });
-      expect(second.problems).toEqual([]);
+      const second = inspectApk(apk({ versionCode: 1_000_001 }));
+      // Spelled without colons, as some tools print it: the comparison
+      // normalises rather than matching raw strings.
+      const problems = signatureProblems(
+        second,
+        fakeApksigner({ fingerprints: [KEY.fingerprint] })(),
+        first.signing.certificateFingerprint!.replaceAll(':', '').toLowerCase(),
+      );
+      expect(problems).toEqual([]);
     });
 
     it('catches a story rebuilt with a different key', () => {
       const first = inspectApk(apk());
-      const second = inspectApk(apk({ key: OTHER_KEY }), {
-        certificateFingerprint: first.signing.certificateFingerprint!,
-      });
+      const second = inspectApk(apk({ key: OTHER_KEY }));
       expect(second.signing.verified).toBe(true); // the new key signs fine
-      expect(second.problems.join(' ')).toMatch(/losing their saves/); // and is the wrong key
+      const problems = signatureProblems(
+        second,
+        fakeApksigner({ fingerprints: [OTHER_KEY.fingerprint] })(),
+        first.signing.certificateFingerprint!,
+      );
+      expect(problems.join(' ')).toMatch(/losing their saves/); // and is the wrong key
     });
 
     it('refuses a fingerprint that is not one', () => {
       const report = inspectApk(apk(), { certificateFingerprint: 'probably-fine' });
       expect(report.problems.join(' ')).toContain('not a SHA-256 certificate fingerprint');
+    });
+
+    /**
+     * The stub the rest of these use stands for a real program, and a stand-in
+     * nothing checks drifts. This runs the real one where it exists and says so
+     * where it does not, rather than pretending the coverage is unconditional.
+     */
+    it('agrees with the real apksigner, where there is one', () => {
+      const readiness = apksignerReadiness();
+      if (!readiness.ready) {
+        console.warn(`skipped: ${readiness.reason}`);
+        return;
+      }
+      const file = apk();
+      const report = inspectApk(file);
+      const authority = runApksigner(file, report.minSdkVersion ?? undefined);
+      expect(authority.verifies, authority.output).toBe(true);
+      expect(authority.fingerprints).toContain(KEY.fingerprint);
+      expect(signatureProblems(report, authority)).toEqual([]);
     });
   });
 

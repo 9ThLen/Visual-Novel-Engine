@@ -96,6 +96,68 @@ describe('two builds at once', () => {
 });
 
 /**
+ * Taking a lock over.
+ *
+ * The first version took one by age alone. A process suspended past the stale
+ * window — a lid closed, a long pause under a debugger — would have its lock
+ * stolen while it was still inside the critical section, and on waking would
+ * delete the thief's lock on its way out and hand the section to a third.
+ */
+describe('a lock somebody else is holding', () => {
+  let workspace: string;
+  beforeEach(() => { workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vne-lock-')); });
+  afterEach(() => fs.rmSync(workspace, { recursive: true, force: true }));
+
+  function staleLockFor(pid: number, target: string): string {
+    const lock = `${target}.lock`;
+    fs.writeFileSync(lock, `${pid}.abcdef01
+`);
+    const old = new Date(Date.now() - 10 * 60_000);
+    fs.utimesSync(lock, old, old);
+    return lock;
+  }
+
+  it('is not taken over while that process is alive', () => {
+    const target = path.join(workspace, 'player.apk');
+    fs.writeFileSync(target, 'the last good build');
+    // This very process: old enough to look abandoned, and plainly is not.
+    staleLockFor(process.pid, target);
+
+    const incoming = pendingPath(target);
+    fs.writeFileSync(incoming, 'the new one');
+    expect(() => replaceFile(incoming, target)).toThrow(/still replacing/);
+    expect(fs.readFileSync(target, 'utf8')).toBe('the last good build');
+  });
+
+  it('is taken over once its process is gone', () => {
+    const target = path.join(workspace, 'player.apk');
+    fs.writeFileSync(target, 'the last good build');
+    // A pid that cannot be running: nothing is ever process 0 here.
+    staleLockFor(0, target);
+
+    const incoming = pendingPath(target);
+    fs.writeFileSync(incoming, 'the new one');
+    replaceFile(incoming, target);
+    expect(fs.readFileSync(target, 'utf8')).toBe('the new one');
+    expect(fs.existsSync(`${target}.lock`)).toBe(false);
+  });
+
+  /** Releasing is by token, so nobody removes a lock that is not theirs. */
+  it('leaves a lock that is not the one it took', () => {
+    const target = path.join(workspace, 'player.apk');
+    const incoming = pendingPath(target);
+    fs.writeFileSync(incoming, 'the new one');
+    replaceFile(incoming, target); // takes and releases its own
+
+    const someoneElse = staleLockFor(process.pid, target);
+    const second = pendingPath(target);
+    fs.writeFileSync(second, 'another');
+    expect(() => replaceFile(second, target)).toThrow(/still replacing/);
+    expect(fs.existsSync(someoneElse)).toBe(true);
+  });
+});
+
+/**
  * The other test that did not test what it said. `replaceFile` is meant to keep
  * the incumbent when the move fails, and the case was only ever run with a move
  * that succeeded.

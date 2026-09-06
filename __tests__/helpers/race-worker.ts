@@ -16,6 +16,7 @@ import { zipSync } from 'fflate';
 
 import { pendingPath, replaceFile, verifyBuiltArtifact } from '../../tools/vne-build/verify-artifact';
 import { fakeManifest } from './android-manifest';
+import { fakeApksigner } from './fake-apksigner';
 import { makeSigningKey, signApk } from './apk-signing';
 
 const RACE_APPLICATION_ID = 'com.vne.story.race.s1';
@@ -52,6 +53,9 @@ async function record(repoRoot: string, outDirectory: string): Promise<void> {
       target: 'apk',
       expected: { applicationId: RACE_APPLICATION_ID },
       repoRoot,
+      // The race is about the record, not the signature, and the child must run
+      // on a machine without the Android SDK like everything else here.
+      signatureAuthority: fakeApksigner({ fingerprints: [key.fingerprint] }),
     });
     console.log(`ACCEPTED ${key.fingerprint}`);
   } catch (error) {

@@ -28,7 +28,12 @@ import process from 'node:process';
 import { unzipSync } from 'fflate';
 
 import { readReleaseManifest } from '@/lib/release/package';
-import { deriveAndroidIdentity, normalizeSigningFingerprint } from '@/lib/release/native-identity';
+import {
+  deriveAndroidIdentity,
+  isSameSigningCertificate,
+  normalizeSigningFingerprint,
+} from '@/lib/release/native-identity';
+import { runApksigner, type ApksignerVerdict } from './apksigner';
 import playerProfileModule from '../../player-profile.js';
 import { attribute, elementsNamed, parseBinaryXml } from './axml';
 import { readApkSigning, type ApkSigning } from './apk-signature';
@@ -170,12 +175,12 @@ export function inspectApk(file: string, expected: ExpectedIdentity = {}): ApkRe
   for (const permission of leaked) {
     problems.push(`Declares ${permission}, which the player profile blocks.`);
   }
-  // Not "is there a block" but "does the signature hold over these bytes".
-  if (!signing.verified) {
-    problems.push(signing.present
-      ? `Its signature does not verify: ${signing.problem}`
-      : `Carries no verifiable signature; Android will refuse to install it (${signing.problem}).`);
-  }
+  // Nothing about the signature is decided here. `apksigner` is the authority
+  // and this function does not run it, so judging on the local reader alone
+  // produced a verdict that ignored the tool -- which is how the "unsupported,
+  // defer to apksigner" case became unreachable: an artifact this reader could
+  // not judge failed here before anyone asked the one that could.
+  // {@link signatureProblems} decides, once, where both answers are in hand.
   if (expected.applicationId && identity.applicationId !== expected.applicationId) {
     problems.push(
       `Application id is ${identity.applicationId ?? 'absent'}, expected ${expected.applicationId}. `
@@ -191,14 +196,9 @@ export function inspectApk(file: string, expected: ExpectedIdentity = {}): ApkRe
   if (expected.versionName && identity.versionName !== expected.versionName) {
     problems.push(`Version name is ${identity.versionName ?? 'absent'}, expected ${expected.versionName}.`);
   }
-  const wanted = normalizeSigningFingerprint(expected.certificateFingerprint);
-  if (expected.certificateFingerprint !== undefined && wanted === null) {
+  if (expected.certificateFingerprint !== undefined
+    && normalizeSigningFingerprint(expected.certificateFingerprint) === null) {
     problems.push(`${expected.certificateFingerprint} is not a SHA-256 certificate fingerprint.`);
-  } else if (wanted && signing.certificateFingerprint !== wanted) {
-    problems.push(
-      `Signed by ${signing.certificateFingerprint ?? 'no readable key'}, expected ${wanted}. `
-      + 'A different key means readers must uninstall, losing their saves.',
-    );
   }
 
   return {
@@ -216,6 +216,87 @@ export function inspectApk(file: string, expected: ExpectedIdentity = {}): ApkRe
       .map((name) => name.split('/')[1]))].sort(),
     problems,
   };
+}
+
+/**
+ * The signer this artifact is to be held to.
+ *
+ * The local reader's answer when it has one, and apksigner's when it does not
+ * -- which is the case that made the whole "unsupported" state pointless
+ * before: the record was written from a fingerprint that was `null` exactly
+ * when the local reader had abstained.
+ *
+ * apksigner naming more than one signer is refused rather than reduced to the
+ * first. Which of several a device holds an app to depends on the schemes
+ * involved, and guessing here would pin a story to a key on a coin toss.
+ */
+export function effectiveFingerprint(
+  report: ApkReport,
+  authority: ApksignerVerdict,
+): { fingerprint: string | null; problem: string | null } {
+  if (report.signing.certificateFingerprint) {
+    return { fingerprint: report.signing.certificateFingerprint, problem: null };
+  }
+  if (authority.fingerprints.length === 1) return { fingerprint: authority.fingerprints[0], problem: null };
+  if (authority.fingerprints.length === 0) {
+    return { fingerprint: null, problem: 'Neither reader could name the signing certificate.' };
+  }
+  return {
+    fingerprint: null,
+    problem: `apksigner names ${authority.fingerprints.length} signers `
+      + `(${authority.fingerprints.join(', ')}) and this reader could not choose between them.`,
+  };
+}
+
+/**
+ * Everything wrong with the signature, decided once, with both answers present.
+ *
+ * `apksigner` is the authority. The local reader is a second opinion, and the
+ * only thing it may do on its own is fail the artifact when the two disagree.
+ * Where it says outright that it does not implement something, apksigner's
+ * verdict stands alone -- but the artifact still has to be held to a key, which
+ * is what {@link effectiveFingerprint} is for.
+ */
+export function signatureProblems(
+  report: ApkReport,
+  authority: ApksignerVerdict,
+  expectedFingerprint?: string,
+): string[] {
+  const problems: string[] = [];
+  if (!authority.verifies) {
+    return [`apksigner does not verify this artifact:\n${authority.output
+      .split(/\r?\n/).map((line) => `    ${line}`).join('\n')}`];
+  }
+
+  const signing = report.signing;
+  if (!signing.verified && !signing.unsupported) {
+    return [
+      `apksigner verifies this artifact and this repository's own reader does not: ${signing.problem}. `
+      + 'One of the two is wrong, and neither may be assumed to be the tool.',
+    ];
+  }
+
+  const effective = effectiveFingerprint(report, authority);
+  if (effective.problem) problems.push(effective.problem);
+  if (
+    effective.fingerprint
+    && authority.fingerprints.length > 0
+    && !authority.fingerprints.includes(effective.fingerprint)
+  ) {
+    problems.push(
+      `apksigner reports the signer as ${authority.fingerprints.join(', ')} `
+      + `and this reader reports ${effective.fingerprint}.`,
+    );
+  }
+
+  const wanted = normalizeSigningFingerprint(expectedFingerprint);
+  if (wanted && effective.fingerprint && !isSameSigningCertificate(effective.fingerprint, wanted)) {
+    problems.push(
+      `Signed by ${effective.fingerprint}, expected ${wanted}. `
+      + 'A different key means readers must uninstall, losing their saves.',
+    );
+  }
+  return problems;
 }
 
 /**
@@ -250,16 +331,19 @@ const color = {
 };
 
 /** Printed by the CLI and by `--build`, so both say the same things. */
-export function printApkReport(report: ApkReport): void {
+export function printApkReport(report: ApkReport, authority?: ApksignerVerdict): void {
   console.log(`\n${path.basename(report.file)}  ${describeBytes(report.bytes)}`);
   console.log(color.dim(`  identity:     ${report.applicationId ?? '—'} `
     + `v${report.versionName ?? '?'} (code ${report.versionCode ?? '?'})`));
-  if (report.signing.verified) {
-    console.log(color.dim(`  signed:       ${report.signing.schemes.join(', ')} verified, key ${report.signing.certificateFingerprint}`));
-  } else if (report.signing.unsupported) {
-    console.log(color.yellow(`  signed:       left to apksigner — ${report.signing.problem}`));
+  const key = authority ? effectiveFingerprint(report, authority).fingerprint : report.signing.certificateFingerprint;
+  if (authority?.verifies && report.signing.unsupported) {
+    console.log(color.yellow(`  signed:       ${authority.schemes.join(', ')} by apksigner alone, key ${key}`));
+    console.log(color.yellow(`                this reader abstained: ${report.signing.problem}`));
+  } else if (authority?.verifies || (!authority && report.signing.verified)) {
+    console.log(color.dim(`  signed:       ${(authority?.schemes ?? report.signing.schemes).join(', ')} verified, key ${key}`));
   } else {
-    console.log(color.red(`  signed:       NOT VERIFIED — ${report.signing.problem}`));
+    console.log(color.red(`  signed:       NOT VERIFIED — ${authority?.verifies === false
+      ? 'apksigner rejected it' : report.signing.problem}`));
   }
   if (report.signing.subject) console.log(color.dim(`  certificate:  ${report.signing.subject.replace(/\n/g, ', ')}`));
   console.log(color.dim(`  media inside: ${report.mediaEntries} file(s), ${describeBytes(report.mediaBytes)}`));
@@ -298,7 +382,11 @@ async function main(): Promise<void> {
   if (fingerprintAt >= 0) expected.certificateFingerprint = argv[fingerprintAt + 1];
 
   const report = inspectApk(path.resolve(process.cwd(), file), expected);
-  printApkReport(report);
+  // The same authority the build path uses. A command that reported on the
+  // signature without it would make a weaker claim under the same words.
+  const authority = runApksigner(report.file, report.minSdkVersion ?? undefined);
+  report.problems.push(...signatureProblems(report, authority, expected.certificateFingerprint));
+  printApkReport(report, authority);
   if (report.problems.length > 0) process.exit(1);
 }
 

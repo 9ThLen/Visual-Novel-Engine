@@ -28,7 +28,13 @@ import {
   type EasCommandResult,
   type RunEasCommand,
 } from '../../vne-build/eas-run';
-import { pendingPath, replaceFile, verifyBuiltArtifact } from '../../vne-build/verify-artifact';
+import { apksignerReadiness } from '../../vne-build/apksigner';
+import {
+  pendingPath,
+  replaceFile,
+  verifyBuiltArtifact,
+  type VerifyOptions,
+} from '../../vne-build/verify-artifact';
 
 import {
   isEasProjectId,
@@ -143,6 +149,13 @@ export interface EasBuilderOptions {
   runCommand?: RunEasCommand;
   stage?: typeof stageAndroidProject;
   download?: (url: string, target: string, signal: AbortSignal) => Promise<void>;
+  /**
+   * The two seams onto the Android SDK. Injected only so the suite can run on a
+   * machine without it -- the defaults are the real thing, and a helper started
+   * without either is a helper that cannot certify what it builds.
+   */
+  apksignerReadiness?: typeof apksignerReadiness;
+  signatureAuthority?: VerifyOptions['signatureAuthority'];
 }
 
 export class EasBuilder implements Builder {
@@ -156,6 +169,8 @@ export class EasBuilder implements Builder {
   private readonly runCommand: NonNullable<EasBuilderOptions['runCommand']>;
   private readonly stage: typeof stageAndroidProject;
   private readonly download: NonNullable<EasBuilderOptions['download']>;
+  private readonly signingReadiness: typeof apksignerReadiness;
+  private readonly signatureAuthority?: VerifyOptions['signatureAuthority'];
 
   constructor(options: EasBuilderOptions = {}) {
     this.repoRoot = path.resolve(options.repoRoot ?? process.cwd());
@@ -166,6 +181,8 @@ export class EasBuilder implements Builder {
     this.stage = options.stage ?? stageAndroidProject;
     this.download = options.download ?? downloadArtifact;
     this.runCommand = options.runCommand ?? spawnEas(this.command);
+    this.signingReadiness = options.apksignerReadiness ?? apksignerReadiness;
+    this.signatureAuthority = options.signatureAuthority;
   }
 
   async readiness(): Promise<{ ready: true } | { ready: false; reason: string }> {
@@ -177,6 +194,11 @@ export class EasBuilder implements Builder {
       if (version.status !== 0) return { ready: false, reason: 'EAS CLI is not available. Install it with npm install -g eas-cli.' };
       const account = await this.runCommand(['whoami'], { cwd: this.repoRoot });
       if (account.status !== 0) return { ready: false, reason: 'EAS CLI is not signed in. Run eas login once.' };
+      // Asked here rather than after the build: an artifact that cannot be
+      // verified is not one this may hand back, and finding that out afterwards
+      // means the author has already paid for it.
+      const signing = this.signingReadiness();
+      if (!signing.ready) return signing;
       return { ready: true };
     } catch {
       return { ready: false, reason: 'EAS CLI is not available. Install it with npm install -g eas-cli.' };
@@ -261,6 +283,11 @@ export class EasBuilder implements Builder {
           versionCode: input.request.versionCode,
         },
         repoRoot: this.repoRoot,
+        // Where this helper kept records before they had one home. Its work
+        // directory is chosen at startup and can be anywhere, so it is the one
+        // legacy location nothing could have guessed.
+        legacyStateDirectories: [this.stateDirectory],
+        signatureAuthority: this.signatureAuthority,
         onLog: input.onLog,
       });
       input.onLog(`Verified the artifact: ${report.permissions.length} permission(s), `

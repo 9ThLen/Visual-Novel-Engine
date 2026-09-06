@@ -37,6 +37,7 @@ import {
   spawnEas,
 } from './eas-run';
 import { printApkReport } from './inspect-apk';
+import { apksignerReadiness } from './apksigner';
 import { pendingPath, replaceFile, verifyBuiltArtifact } from './verify-artifact';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -263,6 +264,17 @@ function checkAutolinking(outDir: string): CheckResult {
 }
 
 /**
+ * Refuse to spend a build that could not be certified when it came back.
+ *
+ * The check belongs before the submission for the same reason the staging
+ * checks do: everything else here is free, and this is the step that is not.
+ */
+function requireSignatureTooling(): void {
+  const signing = apksignerReadiness();
+  if (!signing.ready) fail('Cannot verify a signature on this machine', [signing.reason]);
+}
+
+/**
  * Hand the staged project to EAS.
  *
  * The two things that have to be right were each found by a failed build rather
@@ -282,6 +294,7 @@ async function runEasBuild(
 ): Promise<void> {
   const runCommand = spawnEas();
   const target = profile === 'player-aab' ? 'aab' : 'apk';
+  requireSignatureTooling();
   console.log(color.yellow(`  Submitting to EAS (${profile}). This spends a build.\n`));
 
   const submitted = await runCommand([
@@ -386,6 +399,7 @@ async function main(): Promise<void> {
         '--from-build reads a build through the project it was submitted from.',
       ]);
     }
+    requireSignatureTooling();
     console.log(color.green(`\nCollecting build ${args.fromBuild}\n`));
     await followAndVerify(
       projectDir,
