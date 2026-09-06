@@ -2,22 +2,37 @@
  * Read a built APK and say what is actually in it.
  *
  *   pnpm inspect:apk ./player.apk
+ *   pnpm inspect:apk ./player.apk --release ./novel.vnerelease
  *
- * The plan asks for one thing no test can answer: the permission list of the
- * artifact a reader installs. That was checked three times by hand with
- * throwaway scripts, which is how a check stops happening. This is the same
- * questions, committed.
+ * The plan asks for things no test of the pipeline can answer, because they are
+ * properties of what came out rather than of what went in: the permission list
+ * of the artifact a reader installs, the identity Android will hold the story
+ * to, and the key it was signed with.
  *
- * It reports, and it *fails* when the artifact carries a permission the player
- * profile declared must not be in it — a report nobody can fail is a report
- * nobody reads.
+ * Those were checked by hand with throwaway scripts, which is how a check stops
+ * happening, so they are a command. The first version of that command was too
+ * weak to carry the claim: it matched permission names against the whole
+ * manifest decoded as one string, and called an APK signed if the bytes
+ * `APK Sig Block 42` appeared anywhere in it. Both now go through real parsers
+ * ({@link ./axml}, {@link ./apk-signature}), which fail loudly on a format they
+ * do not understand instead of reporting nothing and passing.
+ *
+ * Given `--release`, it also answers the question that matters for an update:
+ * does this artifact carry the application id and version code that release
+ * should have produced? EAS metadata is not a substitute — it describes what
+ * was asked for, and this describes what arrived.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { unzipSync } from 'fflate';
 
+import { readReleaseManifest } from '@/lib/release/package';
+import { deriveAndroidIdentity, normalizeSigningFingerprint } from '@/lib/release/native-identity';
 import playerProfileModule from '../../player-profile.js';
+import { attribute, elementsNamed, parseBinaryXml } from './axml';
+import { readApkSigning, type ApkSigning } from './apk-signature';
+import { fileSource } from './stage-android';
 
 const playerProfile = playerProfileModule as unknown as {
   PLAYER_BLOCKED_PERMISSIONS: string[];
@@ -25,66 +40,92 @@ const playerProfile = playerProfileModule as unknown as {
 
 /**
  * Permissions the profile blocks, the manifest asks to remove, and the artifact
- * has anyway.
+ * declares anyway — each with the reason it is tolerated rather than fixed.
  *
- * `android.permission.DUMP` survives a `tools:node="remove"` that is character
- * for character the rule which successfully removes `SYSTEM_ALERT_WINDOW` two
- * lines below it in the same generated manifest. Why the manifest merger treats
- * them differently is unanswered — the merger report is a file on the build
- * machine, and Gradle does not print the reasoning.
+ * Empty, and worth saying why it is empty.
  *
- * Listed rather than quietly filtered, with the reason, so that it is an
- * acknowledged exception instead of a check that silently means less than it
- * says. `DUMP` is signature-level, so no ordinary app is granted it.
+ * It used to hold `android.permission.DUMP`, recorded as surviving a
+ * `tools:node="remove"` identical to the rule that successfully removed
+ * `SYSTEM_ALERT_WINDOW` beside it — a mystery the plan carried as an open
+ * question against the manifest merger. There was no mystery. The old check
+ * matched permission names against the manifest decoded as one string, and
+ * `DUMP` is in the string pool of all three artifacts while being declared by
+ * none of them: `aapt` does not collect pool entries whose element the merger
+ * removed. The removal rule always worked, and the exception excused a
+ * permission that was never there.
+ *
+ * The mechanism stays because a genuinely unremovable permission is a thing
+ * that can happen. It stays empty until one is demonstrated against a parsed
+ * manifest — the evidence that was missing the first time.
  */
-export const KNOWN_UNREMOVABLE_PERMISSIONS: Record<string, string> = {
-  'android.permission.DUMP':
-    'survives its own tools:node="remove"; signature-level, so never granted. '
-    + 'See RELEASE-PLAN.md R9.',
-};
+export const KNOWN_UNREMOVABLE_PERMISSIONS: Record<string, string> = {};
+
+/** What the artifact must match. Every field is optional; each given one is checked. */
+export interface ExpectedIdentity {
+  applicationId?: string;
+  versionCode?: number;
+  versionName?: string;
+  /** A SHA-256 certificate fingerprint, in any of the spellings keytool prints. */
+  certificateFingerprint?: string;
+}
 
 export interface ApkReport {
   file: string;
   bytes: number;
-  signed: boolean;
+  applicationId: string | null;
+  versionCode: number | null;
+  versionName: string | null;
+  signing: ApkSigning;
   permissions: string[];
-  /** Blocked, present, and not a known exception. Any of these is a failure. */
+  /** Blocked, declared, and not a known exception. Any of these is a failure. */
   leaked: string[];
-  /** Blocked, present, and acknowledged. */
+  /** Blocked, declared, and acknowledged. */
   tolerated: string[];
   mediaEntries: number;
   mediaBytes: number;
   nativeAbis: string[];
+  /**
+   * Everything that makes this artifact unfit to hand a reader. Empty means the
+   * checks ran and found nothing — never that they were skipped, because
+   * anything unreadable throws rather than landing here.
+   */
+  problems: string[];
 }
 
 /**
- * Permission names as they appear in the binary manifest's string pool.
+ * Permissions as *declared*, not as mentioned.
  *
- * A string scan rather than an AXML parse. It cannot describe *how* a permission
- * is declared, which is the question this tool does not need to answer — and it
- * has been checked against reality: it reported `SYSTEM_ALERT_WINDOW` before the
- * block and not after, on two artifacts that differ only by that block.
+ * `uses-permission` and `uses-permission-sdk-23` both grant; a name that only
+ * appears in the string pool grants nothing and used to count.
  */
-function permissionsFromManifest(manifest: Uint8Array): string[] {
-  // `TextDecoder`, not `Buffer`: the ambient Buffer in this project is React
-  // Native's shim and has `from` and nothing else.
-  const text = new TextDecoder('utf-16le').decode(manifest);
-  return [...new Set(text.match(/android\.permission\.[A-Z_]+/g) ?? [])].sort();
-}
-
-/** Whether `haystack` contains `needle`, without decoding 170 MB to a string. */
-function containsBytes(haystack: Uint8Array, needle: string): boolean {
-  const pattern = new TextEncoder().encode(needle);
-  outer: for (let start = 0; start <= haystack.length - pattern.length; start += 1) {
-    for (let offset = 0; offset < pattern.length; offset += 1) {
-      if (haystack[start + offset] !== pattern[offset]) continue outer;
-    }
-    return true;
+function declaredPermissions(manifest: Uint8Array): string[] {
+  const root = parseBinaryXml(manifest);
+  if (root.name !== 'manifest') {
+    throw new Error(`AndroidManifest.xml has <${root.name}> at its root, not <manifest>.`);
   }
-  return false;
+  const names = [...elementsNamed(root, 'uses-permission'), ...elementsNamed(root, 'uses-permission-sdk-23')]
+    .map((element) => attribute(element, 'name')?.value)
+    .filter((value): value is string => typeof value === 'string');
+  return [...new Set(names)].sort();
 }
 
-export function inspectApk(file: string): ApkReport {
+function manifestIdentity(manifest: Uint8Array): {
+  applicationId: string | null;
+  versionCode: number | null;
+  versionName: string | null;
+} {
+  const root = parseBinaryXml(manifest);
+  const packageName = attribute(root, 'package')?.value;
+  const versionCode = attribute(root, 'versionCode')?.value;
+  const versionName = attribute(root, 'versionName')?.value;
+  return {
+    applicationId: typeof packageName === 'string' ? packageName : null,
+    versionCode: typeof versionCode === 'number' ? versionCode : null,
+    versionName: typeof versionName === 'string' ? versionName : null,
+  };
+}
+
+export function inspectApk(file: string, expected: ExpectedIdentity = {}): ApkReport {
   const bytes = new Uint8Array(fs.readFileSync(file));
   const entries = unzipSync(bytes);
   const names = Object.keys(entries);
@@ -92,28 +133,85 @@ export function inspectApk(file: string): ApkReport {
   const manifest = entries['AndroidManifest.xml'];
   if (!manifest) throw new Error(`${file} has no AndroidManifest.xml — not an APK.`);
 
-  const permissions = permissionsFromManifest(manifest);
+  const permissions = declaredPermissions(manifest);
+  const identity = manifestIdentity(manifest);
+  const signing = readApkSigning(bytes);
+
   const blocked = new Set(playerProfile.PLAYER_BLOCKED_PERMISSIONS);
   const present = permissions.filter((permission) => blocked.has(permission));
+  const leaked = present.filter((permission) => !(permission in KNOWN_UNREMOVABLE_PERMISSIONS));
+  const tolerated = present.filter((permission) => permission in KNOWN_UNREMOVABLE_PERMISSIONS);
 
   // Media lands under `res/` on Android with minified names, not `assets/`.
   const media = names.filter((name) => /^res\/[^/]+\.(png|jpe?g|webp|gif|mp3|wav|m4a|aac|ogg|mp4|webm)$/i.test(name));
 
+  const problems: string[] = [];
+  for (const permission of leaked) {
+    problems.push(`Declares ${permission}, which the player profile blocks.`);
+  }
+  // An unsigned artifact cannot be installed and must never have been a pass.
+  if (!signing.present) {
+    problems.push('Carries no readable signing certificate; Android will refuse to install it.');
+  }
+  if (expected.applicationId && identity.applicationId !== expected.applicationId) {
+    problems.push(
+      `Application id is ${identity.applicationId ?? 'absent'}, expected ${expected.applicationId}. `
+      + 'An update only installs over a matching id.',
+    );
+  }
+  if (expected.versionCode !== undefined && identity.versionCode !== expected.versionCode) {
+    problems.push(
+      `Version code is ${identity.versionCode ?? 'absent'}, expected ${expected.versionCode}. `
+      + 'Android refuses an update whose code does not increase.',
+    );
+  }
+  if (expected.versionName && identity.versionName !== expected.versionName) {
+    problems.push(`Version name is ${identity.versionName ?? 'absent'}, expected ${expected.versionName}.`);
+  }
+  const wanted = normalizeSigningFingerprint(expected.certificateFingerprint);
+  if (expected.certificateFingerprint !== undefined && wanted === null) {
+    problems.push(`${expected.certificateFingerprint} is not a SHA-256 certificate fingerprint.`);
+  } else if (wanted && signing.certificateFingerprint !== wanted) {
+    problems.push(
+      `Signed by ${signing.certificateFingerprint ?? 'no readable key'}, expected ${wanted}. `
+      + 'A different key means readers must uninstall, losing their saves.',
+    );
+  }
+
   return {
     file,
     bytes: bytes.length,
-    // v2+ signatures live in the signing block, which is outside the zip entries;
-    // a v1 signature is a file. Either way an unsigned APK has neither.
-    signed: names.some((name) => /^META-INF\/.*\.(RSA|EC|DSA)$/i.test(name))
-      || containsBytes(bytes, 'APK Sig Block 42'),
+    ...identity,
+    signing,
     permissions,
-    leaked: present.filter((permission) => !(permission in KNOWN_UNREMOVABLE_PERMISSIONS)),
-    tolerated: present.filter((permission) => permission in KNOWN_UNREMOVABLE_PERMISSIONS),
+    leaked,
+    tolerated,
     mediaEntries: media.length,
     mediaBytes: media.reduce((total, name) => total + entries[name].length, 0),
     nativeAbis: [...new Set(names
       .filter((name) => name.startsWith('lib/'))
       .map((name) => name.split('/')[1]))].sort(),
+    problems,
+  };
+}
+
+/**
+ * What the release under `--release` should have produced.
+ *
+ * Derived through the same call staging makes, so this cannot drift into
+ * agreeing with a wrong answer.
+ */
+export async function expectedFromRelease(releaseFile: string): Promise<ExpectedIdentity> {
+  const manifest = await readReleaseManifest(fileSource(releaseFile));
+  const identity = deriveAndroidIdentity({
+    storyId: manifest.story.id,
+    title: manifest.story.title,
+    version: manifest.release.version,
+  });
+  return {
+    applicationId: identity.applicationId,
+    versionCode: identity.androidVersionCode,
+    versionName: identity.version,
   };
 }
 
@@ -128,32 +226,53 @@ const color = {
   dim: (s: string) => `\x1b[2m${s}\x1b[0m`,
 };
 
-function main(): void {
-  const file = process.argv[2];
-  if (!file) {
-    console.error('Usage: pnpm inspect:apk <file.apk>');
-    process.exit(1);
-  }
-
-  const report = inspectApk(path.resolve(process.cwd(), file));
-  console.log(`\n${path.basename(report.file)}  ${describeBytes(report.bytes)}  `
-    + `${report.signed ? color.green('signed') : color.red('UNSIGNED')}`);
+/** Printed by the CLI and by `--build`, so both say the same things. */
+export function printApkReport(report: ApkReport): void {
+  console.log(`\n${path.basename(report.file)}  ${describeBytes(report.bytes)}`);
+  console.log(color.dim(`  identity:     ${report.applicationId ?? '—'} `
+    + `v${report.versionName ?? '?'} (code ${report.versionCode ?? '?'})`));
+  console.log(report.signing.present
+    ? color.dim(`  signed:       ${report.signing.schemes.join(', ')}, key ${report.signing.certificateFingerprint}`)
+    : color.red('  signed:       NO'));
   console.log(color.dim(`  media inside: ${report.mediaEntries} file(s), ${describeBytes(report.mediaBytes)}`));
   console.log(color.dim(`  native ABIs:  ${report.nativeAbis.join(', ') || 'none'}`));
   console.log(color.dim('  permissions:'));
   for (const permission of report.permissions) {
     const short = permission.replace('android.permission.', '');
-    if (report.leaked.includes(permission)) console.log(color.red(`    ✖ ${short}  — blocked, but present`));
+    if (report.leaked.includes(permission)) console.log(color.red(`    ✖ ${short}  — blocked, but declared`));
     else if (report.tolerated.includes(permission)) console.log(color.yellow(`    ! ${short}  — ${KNOWN_UNREMOVABLE_PERMISSIONS[permission]}`));
     else console.log(color.dim(`      ${short}`));
   }
 
-  if (report.leaked.length > 0) {
-    console.error(color.red(`\n✖ ${report.leaked.length} blocked permission(s) reached the artifact.\n`));
+  if (report.problems.length > 0) {
+    console.error(color.red(`\n✖ ${report.problems.length} problem(s):`));
+    for (const problem of report.problems) console.error(color.red(`    ${problem}`));
+    console.error('');
+    return;
+  }
+  const excused = report.tolerated.length > 0 ? ', beyond the acknowledged one' : '';
+  console.log(color.green(`\n✔ Signed, correctly identified, and exposing nothing blocked${excused}.\n`));
+}
+
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2);
+  const file = argv.find((arg) => !arg.startsWith('--'));
+  if (!file) {
+    console.error('Usage: pnpm inspect:apk <file.apk> [--release <file.vnerelease>] [--fingerprint <SHA-256>]');
     process.exit(1);
   }
-  console.log(color.green('\n✔ No blocked permission reached the artifact, beyond the acknowledged one.\n'));
+  const releaseAt = argv.indexOf('--release');
+  const fingerprintAt = argv.indexOf('--fingerprint');
+
+  const expected: ExpectedIdentity = releaseAt >= 0
+    ? await expectedFromRelease(path.resolve(process.cwd(), argv[releaseAt + 1]))
+    : {};
+  if (fingerprintAt >= 0) expected.certificateFingerprint = argv[fingerprintAt + 1];
+
+  const report = inspectApk(path.resolve(process.cwd(), file), expected);
+  printApkReport(report);
+  if (report.problems.length > 0) process.exit(1);
 }
 
 // Only when run as a command; the inspection itself is importable and tested.
-if (process.argv[1]?.endsWith('inspect-apk.ts')) main();
+if (process.argv[1]?.endsWith('inspect-apk.ts')) void main();

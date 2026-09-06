@@ -1380,23 +1380,35 @@ What the artifact itself shows, read out of the APK rather than assumed:
   STORAGE, READ_MEDIA_IMAGES/VIDEO/AUDIO, POST_NOTIFICATIONS. This is the
   acceptance test R4 wrote and could only ever run against a real artifact.
 - **And it found two that should not be there.** `SYSTEM_ALERT_WINDOW` — draw
-  over other apps — and `DUMP`, both from React Native's dev support, both alive
-  in a release build. Both were added to `PLAYER_BLOCKED_PERMISSIONS`, and a
-  second APK was built to check. **One went, one stayed.**
+  over other apps — and `DUMP`, both from React Native's dev support, both
+  reported as alive in a release build. Both were added to
+  `PLAYER_BLOCKED_PERMISSIONS`, and a second APK was built to check.
 
-  `SYSTEM_ALERT_WINDOW` is gone from the new artifact — the permission Android
-  warns about by name, and the one that mattered. `DUMP` is still there, and the
-  interesting part is that it is not our mistake: `expo prebuild` on the staged
-  project generates `<uses-permission android:name="android.permission.DUMP"
-  tools:node="remove"/>`, character for character the same rule that removed
-  `SYSTEM_ALERT_WINDOW` two lines below it. The manifest merger honoured one and
-  not the other, and Gradle does not print its reasoning to the build log —
-  the merger report is a file on the builder.
+  For a while the answer here was "one went, one stayed", and this section
+  carried an open question about why the manifest merger honoured a
+  `tools:node="remove"` for one and not for the other. **That question was
+  wrong, and so was half the finding.**
 
-  Left as an open question with its evidence rather than guessed at. In
-  proportion: `DUMP` is a signature-level permission, so an ordinary app is never
-  granted it; what it costs is a line in the manifest a curious reader can see,
-  not a capability a novel actually has. Worth finishing, not worth blocking on.
+  The check that produced it decoded the whole binary manifest as one UTF-16
+  string and matched permission names against it. `aapt` does not collect string
+  pool entries whose element the merger removed, so `android.permission.DUMP`
+  sits in the pool of every artifact built so far while being declared by none
+  of them. The removal rule always worked. What was reported as a permission
+  surviving its own removal was a name with nothing attached to it.
+
+  It is not a small thing to have got wrong. It put a mystery in this plan,
+  earned a standing exception in the tooling for a permission that was never
+  granted, and it did so in the direction that flatters: a check too weak to
+  tell a declaration from a mention is also too weak to notice a real one. The
+  first version of it would have reported an empty permission list — and passed
+  — for any manifest encoding it did not understand.
+
+  The verifier now parses the manifest's chunk structure and reads
+  `uses-permission` elements. Re-run against all three artifacts on disk, it
+  reports `DUMP` in none of them, `SYSTEM_ALERT_WINDOW` in the pre-fix build
+  only, and it fails that build. `KNOWN_UNREMOVABLE_PERMISSIONS` is empty, and
+  the mechanism stays for a permission that is one day demonstrated stuck
+  against a parsed manifest rather than a searched one.
 
   Two APKs of the same release also confirm the version code is stable: both are
   `1000000`, both 168.9 MB.
@@ -1456,12 +1468,30 @@ staging is deterministic, stamped from the release rather than from the clock.
 - `wiki/releases-android.md` — sideload instructions, the Play checklist, and
   what losing a signing key costs.
 
-Still to do for the **Done when** below: run a build through the browser/helper,
-verify its signing certificate against the stored fingerprint, build the AAB and
-run `bundletool get-size total`, rebuild once to prove the newly blocked dev
-permissions are gone, and perform the device lifecycle checks. The one-time EAS
-setup and a manual APK build have happened; submit/poll/cancel/download and
-resumable browser status are implemented.
+**One path to an artifact, and it checks what arrives.** Submitting, following,
+cancelling and downloading were implemented twice: properly in the helper the
+browser drives, and not at all in `stage:android --build`, which shelled out to
+`eas build` and finished holding nothing — no artifact, and no way back to a
+build whose terminal had closed. Both now call `tools/vne-build/eas-run.ts`, and
+the command ends by reading the APK it downloaded against the identity the
+release derives: application id, version code, version name, signing
+certificate, declared permissions. Pointed at the wrong release it says so and
+exits non-zero, which is how that check is known to be running.
+
+`--from-build <id>` collects and verifies a build that already exists. A build
+costs money and an interrupted download used to cost a second one; the id is
+printed before the wait starts, not after it.
+
+What the verifier does **not** do: check a signature against the file's
+contents. It reads which certificate the signing block names — enough to prove
+three artifacts share one key, and to catch a key that changed — and cannot
+prove an artifact is untampered. Real verification is `apksigner verify`.
+
+Still to do for the **Done when** below: run a build through the browser/helper
+rather than the command line; build the AAB and run `bundletool get-size total`,
+which needs a reader this tool deliberately refuses to fake; and perform the
+device lifecycle checks. The one-time EAS setup and three APK builds have
+happened.
 
 **Done when:** an author who has completed the one-time onboarding presses
 Release → Android and receives an APK that installs on a phone, opens on the
@@ -1515,10 +1545,15 @@ every one of them corresponds to a way this can ship broken and look fine.
   repository's 31; the authoring trees and every unreferenced studio route are
   absent from the staged tree, which is stronger than inspecting the archive for
   them; the staged project's whole module graph resolves.
-- **R9, measured:** the first APK was 168.9 MB and its manifest was inspected.
-- **R9, still open:** rebuild once to verify `SYSTEM_ALERT_WINDOW` and `DUMP` are
-  gone; inspect the installed app on a device; and run `bundletool get-size
-  total` for a real AAB.
+- **R9, measured:** three APKs at 168.9 MB, each read back by `pnpm inspect:apk`
+  — declared permissions, application id, version code and signing certificate.
+  All three carry the same certificate, `2A:F8:D1:42:…:6B:61`, read out of the
+  artifacts themselves rather than taken from EAS metadata; the pre-fix build
+  fails the check and the two after it pass.
+- **R9, still open:** run a build through the browser/helper rather than the
+  command line; install on a device and play offline; install v2 over v1 and
+  confirm the saves survive; and build an AAB, which this verifier deliberately
+  refuses to read — that needs `bundletool`.
 
 **Install lifecycle** (a real device or emulator):
 

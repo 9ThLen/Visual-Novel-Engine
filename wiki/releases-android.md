@@ -23,6 +23,34 @@ work. It also carries the two easily-forgotten details — the working directory
 and `EAS_SKIP_AUTO_FINGERPRINT` — so they live in one place rather than in
 whoever remembers to type them.
 
+`--build` waits for the build, downloads the APK, and **reads it back** —
+declared permissions, application id, version code, version name and signing
+certificate, checked against what the release derives. A build whose artifact
+does not match exits non-zero and says which field is wrong.
+
+The build id is printed **before** the wait, not after it, because a closed
+terminal or a dropped connection must not cost a second build:
+
+```powershell
+pnpm stage:android --release novel.vnerelease --out ./novel-android --from-build <build-id>
+```
+
+That skips staging and submitting entirely: it follows, downloads and verifies a
+build already paid for. It never cancels the build — you may be watching one
+somebody else started.
+
+To read an APK already on disk:
+
+```powershell
+pnpm inspect:apk ./player.apk --release novel.vnerelease
+```
+
+Without `--release` it reports and checks permissions and signing; with it, it
+also checks the identity. What it does not do is verify the signature against
+the file's contents — it reads *which* certificate the signing block names, so
+it can prove two artifacts share a key and catch a key that changed, but not
+that an artifact is untampered. That is `apksigner verify`.
+
 The same thing by hand, which is what the two notes below are about:
 
 ```powershell
@@ -212,7 +240,7 @@ Built 2026-09-02 from the demo release: 168.9 MB, signed, `1.0.0` / version code
 | media | inside, under `res/` with minified names (`res/fG.mp3`, 11.3 MB) |
 | native libraries | 72 MB across four ABIs; one device uses about a quarter |
 | permissions removed | CAMERA, RECORD_AUDIO, READ/WRITE_EXTERNAL_STORAGE, READ_MEDIA_*, POST_NOTIFICATIONS |
-| permissions found and now blocked | `SYSTEM_ALERT_WINDOW`, `DUMP` — React Native dev support, alive in a release build |
+| permissions found and now blocked | `SYSTEM_ALERT_WINDOW` — React Native dev support, alive in a release build |
 | permissions still declared | `INTERNET`, `ACCESS_NETWORK_STATE` |
 
 The last row is a decision rather than an oversight: a novel whose media ships
@@ -223,7 +251,7 @@ never uses.
 
 ## What has and has not happened
 
-**One real APK has been built from the staged project, and it runs.** The build
+**Three real APKs have been built from the staged project, and one has run.** The build
 proves that EAS can compile and sign the generated project and that the release
 media is packaged; the author installed it on 2026-09-02 and reports that it
 plays. That is their observation, not a measurement taken here — but it is the
@@ -238,11 +266,6 @@ EAS project and one novel. It has been exercised against a simulated EAS
 CLI only. The following therefore remains physical acceptance rather than an
 implemented-code gap:
 
-- why the manifest merger removes `SYSTEM_ALERT_WINDOW` and keeps `DUMP` when
-  the generated manifest carries the identical `tools:node="remove"` rule for
-  both. A second APK settled the first half: `SYSTEM_ALERT_WINDOW` is gone.
-  `DUMP` is signature-level, so no ordinary app holds it — untidy rather than
-  dangerous, and the merger report on the builder is where the answer is;
 - the complete browser → helper → EAS → browser path;
 - installing v2 over v1 with the saves intact — the case the whole
   application-id design exists for. Everything Android checks first is now

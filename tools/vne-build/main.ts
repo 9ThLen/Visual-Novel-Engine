@@ -28,6 +28,16 @@ import {
 import playerProfile from '../../player-profile.js';
 import { beginOutPath } from '../lib/out-path';
 
+import {
+  buildArtifactUrl,
+  downloadArtifact,
+  firstBuild,
+  followEasBuild,
+  jsonFromCli,
+  spawnEas,
+} from './eas-run';
+import { expectedFromRelease, inspectApk, printApkReport } from './inspect-apk';
+
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..');
 
@@ -54,6 +64,7 @@ interface Args {
   icon?: string;
   skipChecks: boolean;
   build?: 'player-apk' | 'player-aab';
+  fromBuild?: string;
   allowEngineProject: boolean;
   help: boolean;
 }
@@ -73,6 +84,7 @@ function parseArgs(argv: string[]): Args {
         else args.build = 'player-apk';
         break;
       }
+      case '--from-build': args.fromBuild = argv[++i]; break;
       case '--allow-engine-project': args.allowEngineProject = true; break;
       case '--help': case '-h': args.help = true; break;
       default:
@@ -101,6 +113,10 @@ Options:
                           player-apk (default) or player-aab. This spends a
                           build on the author's account; nothing else here costs
                           anything, which is why it is a flag and never implied.
+  --from-build <id>       Skip staging and submitting: follow, download and
+                          verify a build that already exists. Use it when a
+                          download failed or a terminal was closed, so a build
+                          already paid for is never paid for twice.
   --allow-engine-project  Build against the engine's own EAS project. Only for
                           trying the pipeline out: the credentials Android holds
                           a story to for its whole life would not be yours.
@@ -258,21 +274,90 @@ function checkAutolinking(outDir: string): CheckResult {
  * account and uses the signing credentials Android will hold the story to for
  * the life of the work.
  */
-function runEasBuild(projectDir: string, profile: 'player-apk' | 'player-aab'): void {
+async function runEasBuild(
+  projectDir: string,
+  releaseFile: string,
+  profile: 'player-apk' | 'player-aab',
+): Promise<void> {
+  const runCommand = spawnEas();
+  const target = profile === 'player-aab' ? 'aab' : 'apk';
   console.log(color.yellow(`  Submitting to EAS (${profile}). This spends a build.\n`));
-  const result = spawnSync(
-    process.platform === 'win32' ? 'eas.cmd' : 'eas',
-    ['build', '--platform', 'android', '--profile', profile, '--non-interactive'],
-    {
-      cwd: projectDir,
-      stdio: 'inherit',
-      env: { ...process.env, EAS_SKIP_AUTO_FINGERPRINT: '1' },
-    },
-  );
-  if (result.status !== 0) {
-    fail('eas build failed', [
+
+  const submitted = await runCommand([
+    'build', '--platform', 'android', '--profile', profile,
+    '--json', '--non-interactive', '--no-wait', '--freeze-credentials',
+  ], { cwd: projectDir, onLog: (line) => console.log(color.dim(`    ${line}`)) });
+  if (submitted.status !== 0) {
+    fail('eas build submission failed', [
       'The staged project is still on disk; none of the staging needs redoing.',
     ]);
+  }
+  const record = firstBuild(jsonFromCli(submitted.stdout));
+  const buildId = typeof record.id === 'string' ? record.id : null;
+  if (!buildId) fail('EAS accepted the build but returned no id.');
+
+  // Printed before the wait, not after it. A closed terminal or a dropped
+  // connection must not cost a second build, and this id is what buys it back.
+  console.log(color.green(`\n  Build ${buildId}`));
+  console.log(color.dim(`    Resume with: --from-build ${buildId}\n`));
+
+  await followAndVerify(projectDir, releaseFile, buildId, target, { cancelOnAbort: true });
+}
+
+/**
+ * Follow a build to its artifact and check the artifact, rather than the
+ * metadata describing it.
+ *
+ * The distinction is the whole point of doing this here: EAS can report a
+ * finished build whose application id or version code is not what this release
+ * derives, and the only way to know is to read what arrived.
+ */
+async function followAndVerify(
+  projectDir: string,
+  releaseFile: string,
+  buildId: string,
+  target: 'apk' | 'aab',
+  options: { cancelOnAbort?: boolean } = {},
+): Promise<void> {
+  const runCommand = spawnEas();
+  const controller = new AbortController();
+  const onInterrupt = () => controller.abort();
+  process.once('SIGINT', onInterrupt);
+
+  try {
+    const build = await followEasBuild({
+      runCommand,
+      buildId,
+      cwd: projectDir,
+      signal: controller.signal,
+      onLog: (line) => console.log(color.dim(`    ${line}`)),
+      pollIntervalMs: 15_000,
+      cancelOnAbort: options.cancelOnAbort,
+    });
+
+    const url = buildArtifactUrl(build);
+    if (!url) fail('The finished build carries no artifact URL.');
+    const artifact = path.join(projectDir, `player-${buildId.slice(0, 8)}.${target}`);
+    if (fs.existsSync(artifact)) fs.rmSync(artifact);
+    await downloadArtifact(url, artifact, controller.signal);
+    console.log(color.dim(`\n  Downloaded ${path.relative(process.cwd(), artifact)}`));
+
+    if (target !== 'apk') {
+      // An AAB is not a zip full of the same things and this verifier would
+      // read it wrongly. Saying so is better than a check that quietly passes.
+      console.log(color.yellow('\n  Not verified: reading an AAB needs bundletool. See RELEASE-PLAN.md R9.\n'));
+      return;
+    }
+
+    const report = inspectApk(artifact, await expectedFromRelease(releaseFile));
+    printApkReport(report);
+    if (report.problems.length > 0) {
+      fail('The artifact that came back is not fit to hand a reader', [
+        `It is still on disk at ${artifact} if you want to look.`,
+      ]);
+    }
+  } finally {
+    process.off('SIGINT', onInterrupt);
   }
 }
 
@@ -281,6 +366,26 @@ async function main(): Promise<void> {
   if (args.help) { printHelp(); return; }
   if (!args.release) fail('--release is required (a .vnerelease file)');
   if (!args.out) fail('--out is required (where the staged project goes)');
+  if (args.fromBuild) {
+    // Deliberately before any staging: this exists so a build already paid for
+    // can be collected again, and re-staging would waste the time while risking
+    // an artifact checked against something other than what was submitted.
+    const projectDir = path.resolve(process.cwd(), args.out);
+    if (!fs.existsSync(path.join(projectDir, 'eas.json'))) {
+      fail(`${projectDir} is not a staged project.`, [
+        '--from-build reads a build through the project it was submitted from.',
+      ]);
+    }
+    console.log(color.green(`\nCollecting build ${args.fromBuild}\n`));
+    await followAndVerify(
+      projectDir,
+      path.resolve(process.cwd(), args.release),
+      args.fromBuild,
+      args.build === 'player-aab' ? 'aab' : 'apk',
+    );
+    return;
+  }
+
   console.log(color.green('▸ Staging an Android player project\n'));
 
   const releaseFile = path.resolve(process.cwd(), args.release);
@@ -383,7 +488,7 @@ async function main(): Promise<void> {
   console.log(color.dim('  engine repository, and EAS\'s fingerprint step cannot follow it. The'));
   console.log(color.dim('  junction has to stay — the CLI resolves config plugins through it.\n'));
 
-  if (args.build) runEasBuild(finalOutDir, args.build);
+  if (args.build) await runEasBuild(finalOutDir, releaseFile, args.build);
   } catch (error) {
     transaction.abort();
     throw error;

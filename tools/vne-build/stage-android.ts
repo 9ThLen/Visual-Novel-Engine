@@ -200,7 +200,12 @@ export interface StagedAndroidProject {
 
 // ── Reading the release ─────────────────────────────────────────────────────
 
-function fileSource(file: string): StoryArchiveBinarySource {
+/**
+ * Exported so the APK verifier can derive the identity a release *should* have
+ * produced by exactly the path staging took, rather than by a second
+ * implementation that could drift from this one and agree with a wrong answer.
+ */
+export function fileSource(file: string): StoryArchiveBinarySource {
   const size = fs.statSync(file).size;
   return {
     size,
