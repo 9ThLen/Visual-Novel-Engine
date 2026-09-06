@@ -19,6 +19,10 @@ import { EasBuilder, FakeBuilder } from '../../../tools/build-helper/src/builder
 import { sweepAbandonedUploads } from '../../../tools/build-helper/src/upload';
 import { BUILD_PROTOCOL_VERSION } from '../../../lib/release/build-protocol';
 import type { BuildRequest } from '../../../lib/release/build-request';
+import { fakeManifest } from '../../helpers/android-manifest';
+import { makeSigningKey, signApk } from '../../helpers/apk-signing';
+
+const SIGNING_KEY = makeSigningKey('VNE Helper Test');
 
 const ORIGIN = 'http://localhost:8081';
 const RELEASE_BYTES = new TextEncoder().encode('pretend this is a .vnerelease');
@@ -534,6 +538,25 @@ describe('the EAS builder adapter', () => {
   beforeEach(() => { root = mkdtempSync(path.join(tmpdir(), 'vne-eas-builder-')); });
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
+  /**
+   * A properly signed APK carrying the identity the request asks for.
+   *
+   * The download stub used to write the release bytes, which was fine while the
+   * helper only handed the file back. It verifies now — the same check the
+   * command line runs — so a fixture that is not an APK is refused, which is
+   * the point.
+   */
+  function signedApk(storyId = 'story-one', versionCode = 7): Uint8Array {
+    return signApk(zipSync({
+      'AndroidManifest.xml': fakeManifest({
+        applicationId: `com.vne.story.${storyId}`,
+        versionCode,
+        permissions: ['android.permission.INTERNET'],
+      }),
+      'classes.dex': new Uint8Array([1, 2, 3]),
+    }), SIGNING_KEY);
+  }
+
   function stageIdentity(outDir: string, storyId = 'story-one'): void {
     mkdirSync(outDir, { recursive: true });
     writeFileSync(path.join(outDir, '.vne-native-identity.json'), JSON.stringify({
@@ -584,7 +607,7 @@ describe('the EAS builder adapter', () => {
           stderr: '',
         };
       },
-      download: async (_url, target) => { writeFileSync(target, RELEASE_BYTES); },
+      download: async (_url, target) => { writeFileSync(target, signedApk()); },
     });
 
     expect(await builder.readiness()).toEqual({ ready: true });
@@ -677,7 +700,7 @@ describe('the EAS builder adapter', () => {
         }
         return { status: 0, stdout: 'ok', stderr: '' };
       },
-      download: async (_url, target) => { writeFileSync(target, RELEASE_BYTES); },
+      download: async (_url, target) => { writeFileSync(target, signedApk(storyId)); },
     });
     const firstOut = path.join(root, 'first');
     mkdirSync(firstOut);

@@ -36,7 +36,8 @@ import {
   jsonFromCli,
   spawnEas,
 } from './eas-run';
-import { expectedFromRelease, inspectApk, printApkReport } from './inspect-apk';
+import { printApkReport } from './inspect-apk';
+import { verifyBuiltArtifact } from './verify-artifact';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..');
@@ -338,22 +339,34 @@ async function followAndVerify(
     const url = buildArtifactUrl(build);
     if (!url) fail('The finished build carries no artifact URL.');
     const artifact = path.join(projectDir, `player-${buildId.slice(0, 8)}.${target}`);
-    if (fs.existsSync(artifact)) fs.rmSync(artifact);
-    await downloadArtifact(url, artifact, controller.signal);
-    console.log(color.dim(`\n  Downloaded ${path.relative(process.cwd(), artifact)}`));
 
-    if (target !== 'apk') {
-      // An AAB is not a zip full of the same things and this verifier would
-      // read it wrongly. Saying so is better than a check that quietly passes.
-      console.log(color.yellow('\n  Not verified: reading an AAB needs bundletool. See RELEASE-PLAN.md R9.\n'));
-      return;
-    }
+    // Downloaded to a sibling and moved only after it verifies. A dropped
+    // connection used to leave a truncated file where the previous good one
+    // had been, because the old path deleted that first.
+    const pending = `${artifact}.part`;
+    fs.rmSync(pending, { force: true });
+    await downloadArtifact(url, pending, controller.signal);
 
-    const report = inspectApk(artifact, await expectedFromRelease(releaseFile));
-    printApkReport(report);
-    if (report.problems.length > 0) {
-      fail('The artifact that came back is not fit to hand a reader', [
-        `It is still on disk at ${artifact} if you want to look.`,
+    try {
+      const report = await verifyBuiltArtifact({
+        file: pending,
+        target,
+        releaseFile,
+        stateDirectory: path.join(REPO_ROOT, '.vne-builds'),
+        onLog: (line) => console.log(color.dim(`    ${line}`)),
+      });
+      fs.rmSync(artifact, { force: true });
+      fs.renameSync(pending, artifact);
+      printApkReport(report);
+      console.log(color.dim(`  ${path.relative(process.cwd(), artifact)}`));
+    } catch (error) {
+      // Kept, named for what it is: an artifact worth looking at is often the
+      // point of the failure, and deleting it would take the evidence with it.
+      const rejected = `${artifact}.unverified`;
+      fs.rmSync(rejected, { force: true });
+      fs.renameSync(pending, rejected);
+      fail(error instanceof Error ? error.message : String(error), [
+        `The artifact is at ${rejected}, named so nothing mistakes it for a checked one.`,
       ]);
     }
   } finally {

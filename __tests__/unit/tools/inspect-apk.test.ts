@@ -11,7 +11,6 @@
  * The first version of that command was too weak to carry the claim, and the
  * cases that would have caught it are the ones marked below.
  */
-import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -19,62 +18,11 @@ import { zipSync } from 'fflate';
 
 import { inspectApk, KNOWN_UNREMOVABLE_PERMISSIONS } from '../../../tools/vne-build/inspect-apk';
 import { fakeManifest } from '../../helpers/android-manifest';
+import { makeSigningKey, signApk, signApkBadly } from '../../helpers/apk-signing';
 import playerProfile from '../../../player-profile.js';
 
-const V2_BLOCK_ID = 0x7109871a;
-const CERTIFICATE = new TextEncoder().encode('a certificate, in the sense that matters here');
-
-function fingerprintOf(der: Uint8Array): string {
-  const hex = createHash('sha256').update(der).digest('hex').toUpperCase();
-  return (hex.match(/../g) as string[]).join(':');
-}
-
-/** A v2 signing block value: length-prefixed all the way down to the cert. */
-function signerBlock(certificate: Uint8Array): Uint8Array {
-  const digests = new Uint8Array(8); // stepped over, never read
-  const total = 24 + digests.length + certificate.length;
-  const out = new Uint8Array(total);
-  const view = new DataView(out.buffer);
-  view.setUint32(0, total - 4, true);   // all signers
-  view.setUint32(4, total - 8, true);   // this signer
-  view.setUint32(8, total - 12, true);  // its signed data
-  view.setUint32(12, digests.length, true);
-  out.set(digests, 16);
-  view.setUint32(16 + digests.length, 4 + certificate.length, true); // all certificates
-  view.setUint32(20 + digests.length, certificate.length, true);     // the first
-  out.set(certificate, 24 + digests.length);
-  return out;
-}
-
-/**
- * Splice a real signing block into a zip, between the entries and the central
- * directory, and correct the offset the end record holds — which is how a
- * signed APK is actually shaped, and why merely containing the magic is not.
- */
-function sign(zip: Uint8Array, value: Uint8Array, id = V2_BLOCK_ID): Uint8Array {
-  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
-  let eocd = zip.length - 22;
-  while (view.getUint32(eocd, true) !== 0x06054b50) eocd -= 1;
-  const centralDirectory = view.getUint32(eocd + 16, true);
-
-  const pair = 8 + 4 + value.length;
-  const size = pair + 8 + 16;
-  const block = new Uint8Array(8 + size);
-  const blockView = new DataView(block.buffer);
-  blockView.setBigUint64(0, BigInt(size), true);
-  blockView.setBigUint64(8, BigInt(4 + value.length), true);
-  blockView.setUint32(16, id, true);
-  block.set(value, 20);
-  blockView.setBigUint64(8 + pair, BigInt(size), true);
-  block.set(new TextEncoder().encode('APK Sig Block 42'), 16 + pair);
-
-  const out = new Uint8Array(zip.length + block.length);
-  out.set(zip.subarray(0, centralDirectory), 0);
-  out.set(block, centralDirectory);
-  out.set(zip.subarray(centralDirectory), centralDirectory + block.length);
-  new DataView(out.buffer).setUint32(eocd + block.length + 16, centralDirectory + block.length, true);
-  return out;
-}
+const KEY = makeSigningKey();
+const OTHER_KEY = makeSigningKey('Somebody Else');
 
 describe('inspecting a built APK', () => {
   const directories: string[] = [];
@@ -98,14 +46,17 @@ describe('inspecting a built APK', () => {
     versionName?: string;
     entries?: Record<string, Uint8Array>;
     unsigned?: boolean;
-    certificate?: Uint8Array;
+    tampered?: boolean;
+    key?: typeof KEY;
   } = {}): string {
     const zip = zipSync({
       'AndroidManifest.xml': fakeManifest(options),
       'classes.dex': new Uint8Array([1, 2, 3]),
       ...options.entries,
     });
-    return write(options.unsigned ? zip : sign(zip, signerBlock(options.certificate ?? CERTIFICATE)));
+    if (options.unsigned) return write(zip);
+    const key = options.key ?? KEY;
+    return write(options.tampered ? signApkBadly(zip, key) : signApk(zip, key));
   }
 
   it('reports the declared permissions and the identity', () => {
@@ -194,23 +145,24 @@ describe('inspecting a built APK', () => {
   });
 
   describe('the signing key', () => {
-    it('reports the certificate the block actually names', () => {
+    it('reports the certificate the signature actually used', () => {
       const report = inspectApk(apk());
-      expect(report.signing.present).toBe(true);
+      expect(report.signing.verified).toBe(true);
       expect(report.signing.schemes).toEqual(['v2']);
-      expect(report.signing.certificateFingerprint).toBe(fingerprintOf(CERTIFICATE));
+      expect(report.signing.certificateFingerprint).toBe(KEY.fingerprint);
+      expect(report.signing.subject).toContain('VNE Test');
     });
 
     /** An unsigned artifact cannot install, and used to be reported in green. */
     it('fails an unsigned artifact', () => {
       const report = inspectApk(apk({ unsigned: true }));
-      expect(report.signing.present).toBe(false);
+      expect(report.signing.verified).toBe(false);
       expect(report.problems.join(' ')).toMatch(/refuse to install/);
     });
 
     /**
-     * The old check looked for this text anywhere in the file, so an unsigned
-     * APK that merely shipped the string passed.
+     * The first version of this check looked for the block's magic anywhere in
+     * the file, so an unsigned APK that merely shipped the string passed.
      */
     it('is not fooled by the magic sitting in an asset', () => {
       const report = inspectApk(apk({
@@ -220,18 +172,42 @@ describe('inspecting a built APK', () => {
       expect(report.signing.present).toBe(false);
     });
 
+    /**
+     * The case that separates verifying from reading. A signature block copied
+     * from a real APK parses perfectly; only recomputing the digest over these
+     * bytes can tell that it describes a different file.
+     */
+    it('fails when the file no longer matches what was signed', () => {
+      const report = inspectApk(apk({ tampered: true }));
+      expect(report.signing.present).toBe(true);
+      expect(report.signing.verified).toBe(false);
+      expect(report.signing.problem).toMatch(/content digest|does not verify/);
+      expect(report.signing.certificateFingerprint).toBeNull();
+    });
+
     it('fails when the key is not the one the story is already signed with', () => {
-      const report = inspectApk(apk(), { certificateFingerprint: fingerprintOf(new Uint8Array([9])) });
+      const report = inspectApk(apk(), { certificateFingerprint: OTHER_KEY.fingerprint });
       expect(report.problems.join(' ')).toMatch(/losing their saves/);
     });
 
-    it('passes when it is', () => {
-      // Spelled without colons, as some tools print it: the comparison
-      // normalises rather than matching raw strings.
-      const report = inspectApk(apk(), {
-        certificateFingerprint: fingerprintOf(CERTIFICATE).replaceAll(':', '').toLowerCase(),
+    /** Two builds of one story, and the check that they can update each other. */
+    it('passes when the same key signed both', () => {
+      const first = inspectApk(apk({ versionCode: 1_000_000 }));
+      const second = inspectApk(apk({ versionCode: 1_000_001 }), {
+        // Spelled without colons, as some tools print it: the comparison
+        // normalises rather than matching raw strings.
+        certificateFingerprint: first.signing.certificateFingerprint!.replaceAll(':', '').toLowerCase(),
       });
-      expect(report.problems).toEqual([]);
+      expect(second.problems).toEqual([]);
+    });
+
+    it('catches a story rebuilt with a different key', () => {
+      const first = inspectApk(apk());
+      const second = inspectApk(apk({ key: OTHER_KEY }), {
+        certificateFingerprint: first.signing.certificateFingerprint!,
+      });
+      expect(second.signing.verified).toBe(true); // the new key signs fine
+      expect(second.problems.join(' ')).toMatch(/losing their saves/); // and is the wrong key
     });
 
     it('refuses a fingerprint that is not one', () => {
@@ -264,7 +240,7 @@ describe('inspecting a built APK', () => {
           applicationId: 'com.vne.story.museum.s7abc',
           versionCode: 1_000_001,
           versionName: '1.0.1',
-          certificateFingerprint: fingerprintOf(CERTIFICATE),
+          certificateFingerprint: KEY.fingerprint,
         },
       );
       expect(report.problems).toEqual([]);

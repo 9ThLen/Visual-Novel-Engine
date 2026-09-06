@@ -95,6 +95,42 @@ describe('parsing a binary AndroidManifest', () => {
       expect(() => parseBinaryXml(tampered)).toThrow('unrecognised chunk type');
     });
 
+    /**
+     * These three used to come back as ordinary absences — a null namespace, a
+     * skipped attribute, a mismatched close nobody compared — which is the same
+     * failure direction as the string scan: damage arriving as "nothing here".
+     */
+    it('rejects a string index outside the pool', () => {
+      const document = fakeManifest({ permissions: ['android.permission.INTERNET'] });
+      const view = new DataView(document.buffer, document.byteOffset, document.byteLength);
+      // The root element's name index, pointed past the end of the pool.
+      const start = view.getUint16(2, true) + view.getUint32(view.getUint16(2, true) + 4, true);
+      view.setUint32(start + 16 + 20 + 4, 9999, true);
+      expect(() => parseBinaryXml(document)).toThrow(/outside a pool/);
+    });
+
+    it('rejects an attribute whose name will not resolve', () => {
+      const document = fakeManifest({ permissions: ['android.permission.INTERNET'] });
+      const view = new DataView(document.buffer, document.byteOffset, document.byteLength);
+      const poolStart = view.getUint16(2, true);
+      const bodyStart = poolStart + view.getUint32(poolStart + 4, true);
+      // First element, first attribute, its name index.
+      const attribute = bodyStart + 24 + 16 + 20;
+      view.setUint32(attribute + 4, 0xffffffff, true);
+      expect(() => parseBinaryXml(document)).toThrow(/attribute has no name/);
+    });
+
+    it('rejects a close tag that names a different element', () => {
+      const document = fakeManifest({ permissions: ['android.permission.INTERNET'] });
+      const view = new DataView(document.buffer, document.byteOffset, document.byteLength);
+      const poolStart = view.getUint16(2, true);
+      let at = poolStart + view.getUint32(poolStart + 4, true);
+      // Walk to the first end-element chunk and rename what it closes.
+      while (view.getUint16(at, true) !== 0x0103) at += view.getUint32(at + 4, true);
+      view.setUint32(at + 20, 0, true); // 'android', which opened nothing
+      expect(() => parseBinaryXml(document)).toThrow(/is closed by/);
+    });
+
     it('rejects a chunk whose declared size runs past the file', () => {
       const document = fakeManifest({});
       const view = new DataView(document.buffer, document.byteOffset, document.byteLength);

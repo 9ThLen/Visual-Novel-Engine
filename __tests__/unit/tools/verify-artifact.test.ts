@@ -1,0 +1,135 @@
+/**
+ * The check both build paths must go through.
+ *
+ * It was optional and therefore skipped on the route most authors take: the
+ * helper the browser drives downloaded a file and handed it back, with only a
+ * zip-structure check between EAS and the reader. These cases pin the two
+ * properties that fixes that — nothing passes unverified, and a story's signing
+ * key is remembered so the second build can be compared to the first.
+ */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { zipSync } from 'fflate';
+
+import {
+  readSigningRecord,
+  signingRecordFile,
+  UnverifiableArtifact,
+  verifyBuiltArtifact,
+} from '../../../tools/vne-build/verify-artifact';
+import { fakeManifest } from '../../helpers/android-manifest';
+import { makeSigningKey, signApk, type SigningKey } from '../../helpers/apk-signing';
+import playerProfile from '../../../player-profile.js';
+
+const KEY = makeSigningKey('The Author');
+const STOLEN = makeSigningKey('Somebody Else');
+
+const APPLICATION_ID = 'com.vne.story.museum.s7abc';
+
+describe('verifying a finished build', () => {
+  let state: string;
+  let workspace: string;
+  beforeEach(() => {
+    workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vne-verify-'));
+    state = path.join(workspace, 'state');
+  });
+  afterEach(() => fs.rmSync(workspace, { recursive: true, force: true }));
+
+  function artifact(options: {
+    key?: SigningKey;
+    versionCode?: number;
+    permissions?: string[];
+    applicationId?: string;
+    name?: string;
+  } = {}): string {
+    const file = path.join(workspace, options.name ?? `player-${Math.random().toString(36).slice(2)}.apk`);
+    fs.writeFileSync(file, signApk(zipSync({
+      'AndroidManifest.xml': fakeManifest({
+        applicationId: options.applicationId ?? APPLICATION_ID,
+        versionCode: options.versionCode ?? 1_000_000,
+        permissions: options.permissions ?? ['android.permission.INTERNET'],
+      }),
+      'classes.dex': new Uint8Array([1, 2, 3]),
+    }), options.key ?? KEY));
+    return file;
+  }
+
+  const verify = (file: string, expected = {}) => verifyBuiltArtifact({
+    file,
+    target: 'apk',
+    expected: { applicationId: APPLICATION_ID, ...expected },
+    stateDirectory: state,
+  });
+
+  describe('remembering the signing key', () => {
+    it('records it on the first verified build', async () => {
+      const report = await verify(artifact());
+      const record = readSigningRecord(state, APPLICATION_ID);
+      expect(record?.fingerprint).toBe(KEY.fingerprint);
+      expect(record?.fingerprint).toBe(report.signing.certificateFingerprint);
+    });
+
+    it('accepts a later build signed with the same key', async () => {
+      await verify(artifact({ versionCode: 1_000_000 }));
+      await expect(verify(artifact({ versionCode: 1_000_001 }), { versionCode: 1_000_001 }))
+        .resolves.toBeTruthy();
+    });
+
+    /**
+     * The failure the whole application-id design exists to prevent, caught
+     * before the artifact reaches anyone rather than by a reader whose update
+     * will not install.
+     */
+    it('refuses a later build signed with a different key', async () => {
+      await verify(artifact());
+      await expect(verify(artifact({ key: STOLEN })))
+        .rejects.toThrow(/losing their saves/);
+    });
+
+    it('does not record a key from an artifact that failed', async () => {
+      const blocked = (playerProfile.PLAYER_BLOCKED_PERMISSIONS as string[])[0];
+      await expect(verify(artifact({ permissions: [blocked] }))).rejects.toThrow(UnverifiableArtifact);
+      // A record minted here would pin the story to this key for good, on the
+      // strength of an artifact that was rejected.
+      expect(readSigningRecord(state, APPLICATION_ID)).toBeNull();
+    });
+
+    it('refuses a damaged record rather than minting a new one', async () => {
+      await verify(artifact());
+      fs.writeFileSync(signingRecordFile(state, APPLICATION_ID), '{"version":1}');
+      await expect(verify(artifact())).rejects.toThrow(/invalid/);
+    });
+
+    it('keeps one story per record, not one per machine', async () => {
+      await verify(artifact());
+      const other = 'com.vne.story.other.s9zzz';
+      await verifyBuiltArtifact({
+        file: artifact({ applicationId: other, key: STOLEN }),
+        target: 'apk',
+        expected: { applicationId: other },
+        stateDirectory: state,
+      });
+      expect(readSigningRecord(state, APPLICATION_ID)?.fingerprint).toBe(KEY.fingerprint);
+      expect(readSigningRecord(state, other)?.fingerprint).toBe(STOLEN.fingerprint);
+    });
+  });
+
+  it('refuses an artifact whose identity is not the one expected', async () => {
+    await expect(verify(artifact({ versionCode: 1_000_000 }), { versionCode: 1_000_001 }))
+      .rejects.toThrow(/does not increase/);
+  });
+
+  /**
+   * An AAB used to print a warning and return successfully. Nothing here can
+   * read one — the manifest is protobuf and the signing is not an installed
+   * app's — so passing it was a build reporting success having checked nothing.
+   */
+  it('refuses an AAB rather than passing it unchecked', async () => {
+    await expect(verifyBuiltArtifact({
+      file: artifact({ name: 'player.aab' }),
+      target: 'aab',
+      stateDirectory: state,
+    })).rejects.toThrow(/bundletool/);
+  });
+});

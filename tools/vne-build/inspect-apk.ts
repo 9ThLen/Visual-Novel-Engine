@@ -103,9 +103,20 @@ function declaredPermissions(manifest: Uint8Array): string[] {
   if (root.name !== 'manifest') {
     throw new Error(`AndroidManifest.xml has <${root.name}> at its root, not <manifest>.`);
   }
-  const names = [...elementsNamed(root, 'uses-permission'), ...elementsNamed(root, 'uses-permission-sdk-23')]
-    .map((element) => attribute(element, 'name')?.value)
-    .filter((value): value is string => typeof value === 'string');
+  const names: string[] = [];
+  for (const element of [
+    ...elementsNamed(root, 'uses-permission'),
+    ...elementsNamed(root, 'uses-permission-sdk-23'),
+  ]) {
+    const value = attribute(element, 'name')?.value;
+    // A grant whose name is a resource reference or an integer is a grant this
+    // cannot read, and dropping it would report an artifact as clean because
+    // the one permission it could not name was the one that mattered.
+    if (typeof value !== 'string') {
+      throw new Error(`AndroidManifest.xml declares a permission whose name is ${JSON.stringify(value ?? null)}.`);
+    }
+    names.push(value);
+  }
   return [...new Set(names)].sort();
 }
 
@@ -149,9 +160,11 @@ export function inspectApk(file: string, expected: ExpectedIdentity = {}): ApkRe
   for (const permission of leaked) {
     problems.push(`Declares ${permission}, which the player profile blocks.`);
   }
-  // An unsigned artifact cannot be installed and must never have been a pass.
-  if (!signing.present) {
-    problems.push('Carries no readable signing certificate; Android will refuse to install it.');
+  // Not "is there a block" but "does the signature hold over these bytes".
+  if (!signing.verified) {
+    problems.push(signing.present
+      ? `Its signature does not verify: ${signing.problem}`
+      : `Carries no verifiable signature; Android will refuse to install it (${signing.problem}).`);
   }
   if (expected.applicationId && identity.applicationId !== expected.applicationId) {
     problems.push(
@@ -231,9 +244,10 @@ export function printApkReport(report: ApkReport): void {
   console.log(`\n${path.basename(report.file)}  ${describeBytes(report.bytes)}`);
   console.log(color.dim(`  identity:     ${report.applicationId ?? '—'} `
     + `v${report.versionName ?? '?'} (code ${report.versionCode ?? '?'})`));
-  console.log(report.signing.present
-    ? color.dim(`  signed:       ${report.signing.schemes.join(', ')}, key ${report.signing.certificateFingerprint}`)
-    : color.red('  signed:       NO'));
+  console.log(report.signing.verified
+    ? color.dim(`  signed:       ${report.signing.schemes.join(', ')} verified, key ${report.signing.certificateFingerprint}`)
+    : color.red(`  signed:       NOT VERIFIED — ${report.signing.problem}`));
+  if (report.signing.subject) console.log(color.dim(`  certificate:  ${report.signing.subject.replace(/\n/g, ', ')}`));
   console.log(color.dim(`  media inside: ${report.mediaEntries} file(s), ${describeBytes(report.mediaBytes)}`));
   console.log(color.dim(`  native ABIs:  ${report.nativeAbis.join(', ') || 'none'}`));
   console.log(color.dim('  permissions:'));

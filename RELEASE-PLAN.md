@@ -1468,30 +1468,55 @@ staging is deterministic, stamped from the release rather than from the clock.
 - `wiki/releases-android.md` — sideload instructions, the Play checklist, and
   what losing a signing key costs.
 
-**One path to an artifact, and it checks what arrives.** Submitting, following,
-cancelling and downloading were implemented twice: properly in the helper the
-browser drives, and not at all in `stage:android --build`, which shelled out to
-`eas build` and finished holding nothing — no artifact, and no way back to a
-build whose terminal had closed. Both now call `tools/vne-build/eas-run.ts`, and
-the command ends by reading the APK it downloaded against the identity the
-release derives: application id, version code, version name, signing
-certificate, declared permissions. Pointed at the wrong release it says so and
-exits non-zero, which is how that check is known to be running.
+**One path to an artifact, one check, and it is not optional.** Submitting,
+following, cancelling and downloading were implemented twice: properly in the
+helper the browser drives, and not at all in `stage:android --build`, which
+shelled out to `eas build` and finished holding nothing. Both call
+`tools/vne-build/eas-run.ts` now.
 
-`--from-build <id>` collects and verifies a build that already exists. A build
-costs money and an interrupted download used to cost a second one; the id is
-printed before the wait starts, not after it.
+Verification had the mirror-image problem. The command line read what it
+downloaded; the helper handed the file back with only a zip-structure check
+between EAS and the reader — so the route most authors take, pressing Release,
+was the one route that returned an artifact nobody had looked inside. Both go
+through `verifyBuiltArtifact` now, which throws rather than reports: a builder
+that returns an artifact it cannot vouch for is a builder whose success means
+nothing.
 
-What the verifier does **not** do: check a signature against the file's
-contents. It reads which certificate the signing block names — enough to prove
-three artifacts share one key, and to catch a key that changed — and cannot
-prove an artifact is untampered. Real verification is `apksigner verify`.
+**What "signed" means here, corrected.** An earlier version of this hashed the
+signer's certificate and concluded from three matching hashes that one key had
+signed all three. That reads the evidence backwards. A certificate is public;
+identical certificate bytes prove somebody copied a certificate. The check now
+verifies the signature against the signed data with the public key, checks that
+public key against the one in the certificate, and recomputes the content
+digest — the chunked digest over the entries, the central directory and the end
+record — against the file's own bytes. Flipping a single byte in the middle of
+a 168.9 MB APK is caught. All three artifacts verify, and now that means what
+it sounds like.
+
+Whether the *same* key signed two builds is a separate question, and needs
+something remembered rather than something computed. The first verified build of
+a story records its certificate under `.vne-builds/<application id>.signing.json`;
+every later build is checked against it, and a mismatch fails with the reason.
+Trust on first use — which is what Android does, pinning an app to whatever key
+signed the install it already has. A record is written only after everything
+else passed, so a rejected artifact cannot pin a story to the wrong key.
+
+An AAB is refused rather than passed. It printed a warning and exited zero
+before, which made "success" mean "downloaded" for one of the two targets. Its
+manifest is protobuf and its signing is not an installed app's, so nothing here
+applies to it; checking one needs `bundletool`.
+
+`--from-build <id>` collects and verifies a build that already exists. The id is
+printed before the wait, not after it. Downloads land in a `.part` beside the
+destination and are moved only once verified — a dropped connection used to
+leave a truncated file where the last good one had been — and a build that
+fails verification is kept as `.unverified`, because the artifact is usually the
+evidence.
 
 Still to do for the **Done when** below: run a build through the browser/helper
-rather than the command line; build the AAB and run `bundletool get-size total`,
-which needs a reader this tool deliberately refuses to fake; and perform the
-device lifecycle checks. The one-time EAS setup and three APK builds have
-happened.
+rather than the command line; build the AAB and measure it with `bundletool`;
+and perform the device lifecycle checks. The one-time EAS setup and three APK
+builds have happened.
 
 **Done when:** an author who has completed the one-time onboarding presses
 Release → Android and receives an APK that installs on a phone, opens on the
@@ -1545,11 +1570,11 @@ every one of them corresponds to a way this can ship broken and look fine.
   repository's 31; the authoring trees and every unreferenced studio route are
   absent from the staged tree, which is stronger than inspecting the archive for
   them; the staged project's whole module graph resolves.
-- **R9, measured:** three APKs at 168.9 MB, each read back by `pnpm inspect:apk`
-  — declared permissions, application id, version code and signing certificate.
-  All three carry the same certificate, `2A:F8:D1:42:…:6B:61`, read out of the
-  artifacts themselves rather than taken from EAS metadata; the pre-fix build
-  fails the check and the two after it pass.
+- **R9, measured:** three APKs at 168.9 MB, each read back by `pnpm inspect:apk`.
+  Each one's v2 signature verifies against its own bytes, under
+  `2A:F8:D1:42:…:6B:61`; the pre-fix build fails on `SYSTEM_ALERT_WINDOW`, and
+  a good artifact pointed at the wrong release fails on its version code, which
+  is how the checks are known to run rather than to pass by default.
 - **R9, still open:** run a build through the browser/helper rather than the
   command line; install on a device and play offline; install v2 over v1 and
   confirm the saves survive; and build an AAB, which this verifier deliberately

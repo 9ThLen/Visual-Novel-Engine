@@ -13,7 +13,7 @@
  * writing to the client directly would make the sanitizer decorative.
  */
 import type { BuildRequest } from '../../../lib/release/build-request';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { zipSync } from 'fflate';
 
@@ -28,6 +28,7 @@ import {
   type EasCommandResult,
   type RunEasCommand,
 } from '../../vne-build/eas-run';
+import { verifyBuiltArtifact } from '../../vne-build/verify-artifact';
 
 import {
   isEasProjectId,
@@ -240,8 +241,37 @@ export class EasBuilder implements Builder {
     this.assertFinishedBuildIdentity(build, identity, input.request);
     const fileName = `${input.request.requestId}.${input.request.target}`;
     const artifactPath = path.join(input.outputDirectory, fileName);
-    await this.download(url, artifactPath, input.signal);
-    input.onLog('Downloaded the signed build artifact');
+
+    // Downloaded beside its destination and moved there only once it has been
+    // read: a connection that drops mid-transfer must not leave a truncated
+    // file where a verified one is supposed to be.
+    const pending = `${artifactPath}.part`;
+    rmSync(pending, { force: true });
+    await this.download(url, pending, input.signal);
+    input.onLog('Downloaded the build artifact');
+
+    try {
+      // The same check the command line runs. It was missing here, so the route
+      // most authors take — pressing Release — was the one route that returned
+      // an artifact nobody had looked inside.
+      const report = await verifyBuiltArtifact({
+        file: pending,
+        target: input.request.target === 'aab' ? 'aab' : 'apk',
+        expected: {
+          applicationId: identity.applicationId,
+          versionCode: input.request.versionCode,
+        },
+        stateDirectory: this.stateDirectory,
+        onLog: input.onLog,
+      });
+      input.onLog(`Verified the artifact: ${report.permissions.length} permission(s), `
+        + `signature checked against the file, key ${report.signing.certificateFingerprint}`);
+    } catch (error) {
+      rmSync(pending, { force: true });
+      throw error;
+    }
+
+    renameSync(pending, artifactPath);
     return { artifactPath, fileName };
   }
 

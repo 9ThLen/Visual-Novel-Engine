@@ -23,10 +23,10 @@ work. It also carries the two easily-forgotten details — the working directory
 and `EAS_SKIP_AUTO_FINGERPRINT` — so they live in one place rather than in
 whoever remembers to type them.
 
-`--build` waits for the build, downloads the APK, and **reads it back** —
-declared permissions, application id, version code, version name and signing
-certificate, checked against what the release derives. A build whose artifact
-does not match exits non-zero and says which field is wrong.
+`--build` waits for the build, downloads the APK, and **verifies it** before it
+will call the build a success — declared permissions, application id, version
+code, version name, and the signature checked against the file's own bytes. The
+same check runs when a build is made from the app; neither path can skip it.
 
 The build id is printed **before** the wait, not after it, because a closed
 terminal or a dropped connection must not cost a second build:
@@ -35,9 +35,10 @@ terminal or a dropped connection must not cost a second build:
 pnpm stage:android --release novel.vnerelease --out ./novel-android --from-build <build-id>
 ```
 
-That skips staging and submitting entirely: it follows, downloads and verifies a
-build already paid for. It never cancels the build — you may be watching one
-somebody else started.
+That skips staging and submitting: it follows, downloads and verifies a build
+already paid for. It never cancels the build — you may be watching one somebody
+else started. Downloads land in a `.part` file and are renamed only once they
+verify; a build that fails is kept as `.unverified`.
 
 To read an APK already on disk:
 
@@ -45,11 +46,27 @@ To read an APK already on disk:
 pnpm inspect:apk ./player.apk --release novel.vnerelease
 ```
 
-Without `--release` it reports and checks permissions and signing; with it, it
-also checks the identity. What it does not do is verify the signature against
-the file's contents — it reads *which* certificate the signing block names, so
-it can prove two artifacts share a key and catch a key that changed, but not
-that an artifact is untampered. That is `apksigner verify`.
+### What "verified" covers
+
+- **The signature holds over this file.** Not "a signing block is present" — the
+  signature is checked against the signed data with the signer's public key,
+  that key is checked against the certificate, and the content digest is
+  recomputed over the archive. A byte changed anywhere fails.
+- **The permissions are what is declared**, read from `uses-permission`
+  elements in the parsed manifest rather than matched against its text.
+- **The identity is the one the release derives** — application id, version
+  code, version name.
+- **The key is the one this story has always used.** The first verified build
+  records its certificate under `.vne-builds/<application id>.signing.json`;
+  later builds are compared to it. Delete that file and the next build silently
+  becomes the new reference, so keep it — it is the local memory of the key
+  your readers' installs are pinned to.
+
+What it does not cover: certificate chains and trust, which Android does not use
+for this — an app is pinned to whatever key signed its first install, so a
+self-signed certificate is the normal case. And **AABs are refused, not
+checked**: the manifest inside one is protobuf and its signing is not an
+installed app's. Verifying one needs `bundletool`.
 
 The same thing by hand, which is what the two notes below are about:
 

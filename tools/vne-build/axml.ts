@@ -103,9 +103,27 @@ function readStringPool(bytes: Uint8Array, view: DataView, start: number): strin
   return strings;
 }
 
+/**
+ * A pool entry, or null when the field genuinely says "no string".
+ *
+ * An index that is neither `NO_STRING` nor in range is corruption, and it threw
+ * nothing here at first: it came back as null and read downstream as an absent
+ * namespace or a skipped attribute. That is the same shape of mistake this
+ * parser replaced — damage arriving as an ordinary "nothing there".
+ */
 function stringAt(pool: string[], index: number): string | null {
-  // 0xFFFFFFFF is "no string" — how an absent namespace is written.
-  return index === NO_STRING || index >= pool.length ? null : pool[index];
+  if (index === NO_STRING) return null;
+  if (index >= pool.length) {
+    throw new Error(`Binary XML: string index ${index} is outside a pool of ${pool.length}.`);
+  }
+  return pool[index];
+}
+
+/** Where the format requires a string and its absence is corruption. */
+function requiredStringAt(pool: string[], index: number, what: string): string {
+  const value = stringAt(pool, index);
+  if (value === null) throw new Error(`Binary XML: ${what} has no name.`);
+  return value;
 }
 
 function decodeValue(
@@ -161,8 +179,7 @@ export function parseBinaryXml(bytes: Uint8Array): AxmlElement {
       case RES_XML_START_ELEMENT_TYPE: {
         if (!pool) throw new Error('Binary XML: an element appears before the string pool.');
         const namespace = stringAt(pool, view.getUint32(offset + 16, true));
-        const name = stringAt(pool, view.getUint32(offset + 20, true));
-        if (name === null) throw new Error('Binary XML: an element has no name.');
+        const name = requiredStringAt(pool, view.getUint32(offset + 20, true), 'an element');
 
         const attributeStart = view.getUint16(offset + 24, true);
         const attributeSize = view.getUint16(offset + 26, true);
@@ -178,8 +195,10 @@ export function parseBinaryXml(bytes: Uint8Array): AxmlElement {
           if (at + 20 > offset + size) {
             throw new Error('Binary XML: attributes run past the element that holds them.');
           }
-          const attributeName = stringAt(pool, view.getUint32(at + 4, true));
-          if (attributeName === null) continue;
+          // Refused, not skipped: an attribute whose name will not resolve
+          // could be the `android:name` that decides whether this element is a
+          // permission grant, and dropping it would answer "no" by omission.
+          const attributeName = requiredStringAt(pool, view.getUint32(at + 4, true), 'an attribute');
           attributes.push({
             namespace: stringAt(pool, view.getUint32(at, true)),
             name: attributeName,
@@ -200,10 +219,17 @@ export function parseBinaryXml(bytes: Uint8Array): AxmlElement {
         break;
       }
 
-      case RES_XML_END_ELEMENT_TYPE:
+      case RES_XML_END_ELEMENT_TYPE: {
+        if (!pool) throw new Error('Binary XML: an element closes before the string pool.');
         if (stack.length === 0) throw new Error('Binary XML: an element closes that never opened.');
+        const closing = requiredStringAt(pool, view.getUint32(offset + 20, true), 'a closing element');
+        const open = stack[stack.length - 1];
+        if (closing !== open.name) {
+          throw new Error(`Binary XML: <${open.name}> is closed by </${closing}>.`);
+        }
         stack.pop();
         break;
+      }
 
       case RES_XML_START_NAMESPACE_TYPE:
       case RES_XML_END_NAMESPACE_TYPE:
