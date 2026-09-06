@@ -51,22 +51,31 @@ pnpm inspect:apk ./player.apk --release novel.vnerelease
 - **The signature holds over this file.** Not "a signing block is present" — the
   signature is checked against the signed data with the signer's public key,
   that key is checked against the certificate, and the content digest is
-  recomputed over the archive. A byte changed anywhere fails.
+  recomputed over the archive. A byte changed anywhere fails. Every signing
+  scheme in the artifact is checked, and every signer in each: a sound v2 block
+  does not excuse a broken v3 one, and the two must name the same certificate.
 - **The permissions are what is declared**, read from `uses-permission`
   elements in the parsed manifest rather than matched against its text.
 - **The identity is the one the release derives** — application id, version
   code, version name.
 - **The key is the one this story has always used.** The first verified build
-  records its certificate under `.vne-builds/<application id>.signing.json`;
-  later builds are compared to it. Delete that file and the next build silently
-  becomes the new reference, so keep it — it is the local memory of the key
-  your readers' installs are pinned to.
+  records its certificate under
+  `.vne-builds/signing/<application id>.signing.json`; later builds are compared
+  to it, whether they came from the app or the command line. Delete that file
+  and the next build silently becomes the new reference, so keep it — it is the
+  local memory of the key your readers' installs are pinned to.
 
 What it does not cover: certificate chains and trust, which Android does not use
 for this — an app is pinned to whatever key signed its first install, so a
-self-signed certificate is the normal case. And **AABs are refused, not
+self-signed certificate is the normal case. Nor v3's key-rotation lineage or the
+platform's rules about which scheme governs which Android version; `apksigner
+verify` is the tool that implements all of it, and this refuses anything it
+cannot fully check rather than passing it. And **AABs are refused, not
 checked**: the manifest inside one is protobuf and its signing is not an
 installed app's. Verifying one needs `bundletool`.
+
+A build that fails verification is kept beside the destination as `.unverified`,
+by both paths — the artifact is usually what you need to look at.
 
 The same thing by hand, which is what the two notes below are about:
 

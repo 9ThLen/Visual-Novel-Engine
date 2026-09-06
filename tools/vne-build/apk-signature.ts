@@ -17,12 +17,22 @@
  * data are recomputed over the file's own bytes. A file that fails any of those
  * is reported as unverified with the reason — never as "signed".
  *
- * What remains outside this: certificate chain and trust. Android pins the app
- * to whatever key signed the first install, so a self-signed certificate is the
- * normal and correct case, and "is this the same key as last time" is a
- * question about a *stored* fingerprint rather than about a chain.
+ * And it was wrong a third time, more quietly: it returned as soon as one
+ * scheme verified. An artifact with a good v2 block and a broken v3 one came
+ * back verified, having never looked at v3 -- the block a modern device
+ * actually prefers. Every scheme present is checked now, and every signer in
+ * each, and they must agree on the certificate.
  *
- * Format reference: source.android.com/security/apksigning/v2.
+ * What remains outside this: certificate chains and trust, which Android does
+ * not use here -- it pins an app to whatever key signed the first install, so a
+ * self-signed certificate is the normal case, and "is this the same key as last
+ * time" is a question about a *stored* fingerprint. Also outside: v3's key
+ * rotation lineage and the platform's scheme-per-SDK rules. `apksigner verify`
+ * is the tool that implements all of it. This refuses whatever it cannot fully
+ * check, so those gaps read as failures rather than as passes.
+ *
+ * Format reference: source.android.com/docs/security/features/apksigning/v2
+ * and .../v3.
  */
 import { createHash, createPublicKey, verify as verifySignature, X509Certificate } from 'node:crypto';
 import { constants as cryptoConstants } from 'node:crypto';
@@ -229,9 +239,18 @@ interface SignerFields {
   digests: { algorithmId: number; digest: Uint8Array }[];
 }
 
-function readSigner(block: Uint8Array, scheme: string): SignerFields {
-  const signers = new Reader(new Reader(block, scheme).block(), `${scheme} signers`);
-  const signer = new Reader(signers.block(), `${scheme} signer`);
+/**
+ * A signer, in whichever layout its scheme uses.
+ *
+ * v3 is not v2 with a different id. It carries an SDK range in two places -- in
+ * the signed data and again in the signer -- and reading it with the v2 layout
+ * lands four bytes short at every field after that, so the signatures come back
+ * as an SDK number and the public key as something else again. That is how a v3
+ * block was being read here. It never showed, because v2 was checked first and
+ * every artifact so far carries one.
+ */
+function readSigner(block: Uint8Array, scheme: string, v3: boolean): SignerFields {
+  const signer = new Reader(block, `${scheme} signer`);
 
   const signedData = signer.block();
   const signedDataReader = new Reader(signedData, `${scheme} signed data`);
@@ -243,8 +262,13 @@ function readSigner(block: Uint8Array, scheme: string): SignerFields {
   }
 
   const certificatesReader = new Reader(signedDataReader.block(), `${scheme} certificates`);
-  if (certificatesReader.done) throw new Error(`${scheme}: the signer has no certificate.`);
+  if (certificatesReader.done) throw new Error(`${scheme}: a signer has no certificate.`);
   const certificate = certificatesReader.block();
+
+  if (v3) {
+    signer.u32(); // minSdk, repeated from inside the signed data
+    signer.u32(); // maxSdk
+  }
 
   const signaturesReader = new Reader(signer.block(), `${scheme} signatures`);
   const signatures: SignerFields['signatures'] = [];
@@ -256,20 +280,21 @@ function readSigner(block: Uint8Array, scheme: string): SignerFields {
   return { signedData, signatures, publicKey: signer.block(), certificate, digests };
 }
 
-function verifyOne(
+function verifySigner(
   bytes: Uint8Array,
   block: SigningBlock,
-  value: Uint8Array,
+  signerBytes: Uint8Array,
   scheme: string,
+  v3: boolean,
 ): { fingerprint: string; subject: string } {
-  const signer = readSigner(value, scheme);
+  const signer = readSigner(signerBytes, scheme, v3);
 
   // A real certificate object rather than a hashed blob: this throws on bytes
   // that are not a certificate, which hashing them silently would not.
   const certificate = new X509Certificate(signer.certificate);
   const publicKey = createPublicKey({ key: signer.publicKey, format: 'der', type: 'spki' });
   if (!certificate.publicKey.equals(publicKey)) {
-    throw new Error(`${scheme}: the signing key does not match the certificate's key.`);
+    throw new Error(`${scheme}: the signing key does not match the certificate.`);
   }
 
   const usable = signer.signatures.filter(({ algorithmId }) => algorithmId in SIGNATURE_ALGORITHMS);
@@ -288,7 +313,7 @@ function verifyOne(
       }
       : publicKey;
     if (!verifySignature(algorithm.digest, signer.signedData, options, signature)) {
-      throw new Error(`${scheme}: the signature does not verify against the signed data.`);
+      throw new Error(`${scheme}: a signature does not verify against the signed data.`);
     }
 
     // And the signed data has to be about this file, not some other one.
@@ -302,6 +327,42 @@ function verifyOne(
   return { fingerprint: certificate.fingerprint256, subject: certificate.subject };
 }
 
+/**
+ * Every signer in one scheme's block.
+ *
+ * All of them, not the first. A block may name several, and one that does not
+ * hold is a failing signature over this file -- which is what `apksigner` would
+ * report and what a device would act on.
+ */
+function verifyScheme(
+  bytes: Uint8Array,
+  block: SigningBlock,
+  value: Uint8Array,
+  scheme: string,
+  v3: boolean,
+): { fingerprint: string; subject: string } {
+  const signers = new Reader(new Reader(value, scheme).block(), `${scheme} signers`);
+  const results: { fingerprint: string; subject: string }[] = [];
+  while (!signers.done) {
+    results.push(verifySigner(bytes, block, signers.block(), scheme, v3));
+  }
+  if (results.length === 0) throw new Error(`${scheme}: the block names no signer.`);
+  return results[0];
+}
+
+/**
+ * Read and verify an APK's signatures.
+ *
+ * **Every** scheme present is verified, not the first that works. Returning as
+ * soon as v2 held meant a corrupt or forged v3 block rode inside an artifact
+ * this called verified -- and v3 is the block a modern device prefers, so the
+ * one being skipped was the one that would actually be used.
+ *
+ * This is still not `apksigner`. It does not implement v3's key-rotation
+ * lineage, nor the platform's rules about which scheme governs which SDK range.
+ * What it does instead is refuse everything it cannot fully check, so the gap
+ * surfaces as a failure rather than as a pass.
+ */
 export function readApkSigning(bytes: Uint8Array): ApkSigning {
   const empty: ApkSigning = {
     schemes: [],
@@ -320,38 +381,51 @@ export function readApkSigning(bytes: Uint8Array): ApkSigning {
   }
   if (!block) return { ...empty, problem: 'No APK signing block; the artifact is unsigned.' };
 
-  const schemes = [V2_BLOCK_ID, V3_BLOCK_ID, V31_BLOCK_ID]
-    .filter((id) => block.pairs.has(id))
-    .map((id) => SCHEME_NAMES[id]);
-  if (schemes.length === 0) {
+  const found = block;
+  const present = [V2_BLOCK_ID, V3_BLOCK_ID, V31_BLOCK_ID].filter((id) => found.pairs.has(id));
+  const schemes = present.map((id) => SCHEME_NAMES[id]);
+  if (present.length === 0) {
     return { ...empty, problem: 'The signing block carries no signature scheme this understands.' };
   }
 
-  // v2 first when both are present: it is the scheme every supported Android
-  // version enforces, so it is the one whose failure would actually be felt.
-  for (const id of [V2_BLOCK_ID, V3_BLOCK_ID, V31_BLOCK_ID]) {
-    const value = block.pairs.get(id);
-    if (!value) continue;
+  const failed = (problem: string): ApkSigning => ({
+    schemes,
+    certificateFingerprint: null,
+    subject: null,
+    present: true,
+    verified: false,
+    problem,
+  });
+
+  const verified: { fingerprint: string; subject: string }[] = [];
+  for (const id of present) {
     try {
-      const { fingerprint, subject } = verifyOne(bytes, block, value, SCHEME_NAMES[id]);
-      return {
-        schemes,
-        certificateFingerprint: fingerprint,
-        subject,
-        present: true,
-        verified: true,
-        problem: null,
-      };
+      verified.push(verifyScheme(
+        bytes,
+        found,
+        found.pairs.get(id) as Uint8Array,
+        SCHEME_NAMES[id],
+        id !== V2_BLOCK_ID,
+      ));
     } catch (error) {
-      return {
-        schemes,
-        certificateFingerprint: null,
-        subject: null,
-        present: true,
-        verified: false,
-        problem: error instanceof Error ? error.message : String(error),
-      };
+      return failed(error instanceof Error ? error.message : String(error));
     }
   }
-  return { ...empty, problem: 'The signing block carries no signature scheme this understands.' };
+
+  // Schemes that disagree about the signer describe two different apps, and
+  // which one a device believes depends on its version.
+  const fingerprints = [...new Set(verified.map((entry) => entry.fingerprint))];
+  if (fingerprints.length > 1) {
+    return failed(`The ${schemes.join(' and ')} blocks name different certificates `
+      + `(${fingerprints.join(', ')}).`);
+  }
+
+  return {
+    schemes,
+    certificateFingerprint: verified[0].fingerprint,
+    subject: verified[0].subject,
+    present: true,
+    verified: true,
+    problem: null,
+  };
 }

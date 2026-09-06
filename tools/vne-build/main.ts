@@ -37,7 +37,7 @@ import {
   spawnEas,
 } from './eas-run';
 import { printApkReport } from './inspect-apk';
-import { verifyBuiltArtifact } from './verify-artifact';
+import { pendingPath, replaceFile, verifyBuiltArtifact } from './verify-artifact';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..');
@@ -340,11 +340,10 @@ async function followAndVerify(
     if (!url) fail('The finished build carries no artifact URL.');
     const artifact = path.join(projectDir, `player-${buildId.slice(0, 8)}.${target}`);
 
-    // Downloaded to a sibling and moved only after it verifies. A dropped
-    // connection used to leave a truncated file where the previous good one
-    // had been, because the old path deleted that first.
-    const pending = `${artifact}.part`;
-    fs.rmSync(pending, { force: true });
+    // Downloaded under a name of its own and put in place only once verified,
+    // so a dropped connection cannot leave a truncated file where the last good
+    // artifact was, and two runs collecting the same build cannot collide.
+    const pending = pendingPath(artifact);
     await downloadArtifact(url, pending, controller.signal);
 
     try {
@@ -352,19 +351,17 @@ async function followAndVerify(
         file: pending,
         target,
         releaseFile,
-        stateDirectory: path.join(REPO_ROOT, '.vne-builds'),
+        repoRoot: REPO_ROOT,
         onLog: (line) => console.log(color.dim(`    ${line}`)),
       });
-      fs.rmSync(artifact, { force: true });
-      fs.renameSync(pending, artifact);
+      replaceFile(pending, artifact);
       printApkReport(report);
       console.log(color.dim(`  ${path.relative(process.cwd(), artifact)}`));
     } catch (error) {
-      // Kept, named for what it is: an artifact worth looking at is often the
-      // point of the failure, and deleting it would take the evidence with it.
+      // Kept, named for what it is: an artifact that failed is usually the
+      // evidence, and deleting it would take the evidence with it.
       const rejected = `${artifact}.unverified`;
-      fs.rmSync(rejected, { force: true });
-      fs.renameSync(pending, rejected);
+      replaceFile(pending, rejected);
       fail(error instanceof Error ? error.message : String(error), [
         `The artifact is at ${rejected}, named so nothing mistakes it for a checked one.`,
       ]);

@@ -18,7 +18,13 @@ import { zipSync } from 'fflate';
 
 import { inspectApk, KNOWN_UNREMOVABLE_PERMISSIONS } from '../../../tools/vne-build/inspect-apk';
 import { fakeManifest } from '../../helpers/android-manifest';
-import { makeSigningKey, signApk, signApkBadly } from '../../helpers/apk-signing';
+import {
+  makeSigningKey,
+  signApk,
+  signApkBadly,
+  signApkWithTwoKeys,
+  withJunkBlock,
+} from '../../helpers/apk-signing';
 import playerProfile from '../../../player-profile.js';
 
 const KEY = makeSigningKey();
@@ -48,6 +54,9 @@ describe('inspecting a built APK', () => {
     unsigned?: boolean;
     tampered?: boolean;
     key?: typeof KEY;
+    schemes?: ('v2' | 'v3')[];
+    junkBlock?: boolean;
+    secondKey?: typeof KEY;
   } = {}): string {
     const zip = zipSync({
       'AndroidManifest.xml': fakeManifest(options),
@@ -56,7 +65,10 @@ describe('inspecting a built APK', () => {
     });
     if (options.unsigned) return write(zip);
     const key = options.key ?? KEY;
-    return write(options.tampered ? signApkBadly(zip, key) : signApk(zip, key));
+    if (options.secondKey) return write(signApkWithTwoKeys(zip, key, options.secondKey));
+    if (options.tampered) return write(signApkBadly(zip, key));
+    const signed = signApk(zip, key, undefined, options.schemes ?? ['v2']);
+    return write(options.junkBlock ? withJunkBlock(signed) : signed);
   }
 
   it('reports the declared permissions and the identity', () => {
@@ -183,6 +195,38 @@ describe('inspecting a built APK', () => {
       expect(report.signing.verified).toBe(false);
       expect(report.signing.problem).toMatch(/content digest|does not verify/);
       expect(report.signing.certificateFingerprint).toBeNull();
+    });
+
+    it('verifies a v3 block, which is not v2 with another id', () => {
+      const report = inspectApk(apk({ schemes: ['v3'] }));
+      expect(report.signing.schemes).toEqual(['v3']);
+      expect(report.signing.verified).toBe(true);
+      expect(report.signing.certificateFingerprint).toBe(KEY.fingerprint);
+    });
+
+    it('verifies both blocks when an artifact carries both', () => {
+      const report = inspectApk(apk({ schemes: ['v2', 'v3'] }));
+      expect(report.signing.schemes).toEqual(['v2', 'v3']);
+      expect(report.signing.verified).toBe(true);
+    });
+
+    /**
+     * The one that used to pass. A good v2 block satisfied the check and it
+     * returned, so a v3 block — the one a modern device prefers — travelled
+     * inside an artifact nothing had looked at.
+     */
+    it('fails on a broken v3 block even when v2 is sound', () => {
+      const report = inspectApk(apk({ junkBlock: true }));
+      expect(report.signing.schemes).toEqual(['v2', 'v3']);
+      expect(report.signing.verified).toBe(false);
+      expect(report.problems.join(' ')).toMatch(/does not verify/);
+    });
+
+    /** Two blocks naming two keys describe two apps, and the device picks. */
+    it('fails when the schemes disagree about who signed', () => {
+      const report = inspectApk(apk({ secondKey: OTHER_KEY }));
+      expect(report.signing.verified).toBe(false);
+      expect(report.signing.problem).toMatch(/different certificates/);
     });
 
     it('fails when the key is not the one the story is already signed with', () => {

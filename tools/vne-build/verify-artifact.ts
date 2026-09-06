@@ -21,12 +21,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { normalizeSigningFingerprint } from '@/lib/release/native-identity';
+import { isSameSigningCertificate, normalizeSigningFingerprint } from '@/lib/release/native-identity';
 import { expectedFromRelease, inspectApk, type ApkReport, type ExpectedIdentity } from './inspect-apk';
 
-/** Where a story's signing certificate is remembered, keyed by application id. */
-export function signingRecordFile(stateDirectory: string, applicationId: string): string {
-  return path.join(stateDirectory, `${applicationId}.signing.json`);
+/**
+ * Where signing records live, derived rather than passed.
+ *
+ * It used to be a parameter, and the two callers gave it different values: the
+ * command line kept records in `.vne-builds/`, and the helper -- which puts its
+ * own job state under a `--work-dir` -- kept them in
+ * `.vne-builds/eas-identities/`. So building once from the app and once from
+ * the terminal meant two first builds, and the second key to arrive was
+ * recorded as though nothing had been seen before. A check against a
+ * remembered value is worth exactly as much as the agreement on where the value
+ * is remembered, so this is no longer something a caller can choose.
+ */
+export function signingStateDirectory(repoRoot: string): string {
+  return path.join(repoRoot, '.vne-builds', 'signing');
+}
+
+/** A story's signing record, keyed by the application id Android holds it to. */
+export function signingRecordFile(repoRoot: string, applicationId: string): string {
+  return path.join(signingStateDirectory(repoRoot), `${applicationId}.signing.json`);
 }
 
 interface SigningRecord {
@@ -36,8 +52,8 @@ interface SigningRecord {
   firstSeen: string;
 }
 
-export function readSigningRecord(stateDirectory: string, applicationId: string): SigningRecord | null {
-  const file = signingRecordFile(stateDirectory, applicationId);
+export function readSigningRecord(repoRoot: string, applicationId: string): SigningRecord | null {
+  const file = signingRecordFile(repoRoot, applicationId);
   if (!fs.existsSync(file)) return null;
   let raw: unknown;
   try {
@@ -56,22 +72,78 @@ export function readSigningRecord(stateDirectory: string, applicationId: string)
   return { version: 1, applicationId, fingerprint, firstSeen: String(record.firstSeen ?? '') };
 }
 
-function writeSigningRecord(stateDirectory: string, applicationId: string, fingerprint: string): void {
-  fs.mkdirSync(stateDirectory, { recursive: true });
+/**
+ * Record a story's key, once.
+ *
+ * Exclusive creation, and on collision a re-read rather than a retry: two
+ * builds of the same story can finish together, and a plain write let each of
+ * them find no record, accept its own artifact, and overwrite the other. The
+ * loser of that race decided which key the story was pinned to, which is the
+ * one thing this file exists to make impossible.
+ *
+ * A record that already exists and names a different key is a failure, not
+ * something to replace -- by then two artifacts signed by different keys have
+ * both been accepted, and the honest answer is to say so.
+ */
+function recordSigningKey(repoRoot: string, applicationId: string, fingerprint: string): void {
+  const file = signingRecordFile(repoRoot, applicationId);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   const record: SigningRecord = {
     version: 1,
     applicationId,
     fingerprint,
     firstSeen: new Date().toISOString(),
   };
-  fs.writeFileSync(
-    signingRecordFile(stateDirectory, applicationId),
-    `${JSON.stringify(record, null, 2)}\n`,
-    { mode: 0o600 },
-  );
+  try {
+    fs.writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+
+  const existing = readSigningRecord(repoRoot, applicationId);
+  if (!existing || !isSameSigningCertificate(existing.fingerprint, fingerprint)) {
+    throw new UnverifiableArtifact(
+      `Another build recorded ${existing?.fingerprint ?? 'a different key'} for ${applicationId} `
+      + `while this one was being checked, and this artifact is signed by ${fingerprint}. `
+      + 'Two keys cannot both be the first; work out which is the story\'s and remove the other build.',
+    );
+  }
 }
 
 export class UnverifiableArtifact extends Error {}
+
+/**
+ * Move `from` onto `to` without a moment where neither exists.
+ *
+ * The previous version deleted the destination and then renamed, which loses
+ * the last good artifact if anything fails in between -- and `rename` cannot
+ * simply overwrite on Windows. So the incumbent is stepped aside first and only
+ * removed once the new file is in place: a crash at any point leaves either the
+ * old artifact or the new one, and at worst a `.previous` beside it.
+ */
+export function replaceFile(from: string, to: string): void {
+  if (!fs.existsSync(to)) {
+    fs.renameSync(from, to);
+    return;
+  }
+  const previous = `${to}.previous`;
+  fs.rmSync(previous, { force: true });
+  fs.renameSync(to, previous);
+  try {
+    fs.renameSync(from, to);
+  } catch (error) {
+    fs.renameSync(previous, to); // put back what was there
+    throw error;
+  }
+  fs.rmSync(previous, { force: true });
+}
+
+/** A scratch name no concurrent run of this can collide with. */
+export function pendingPath(target: string): string {
+  return `${target}.${process.pid}.${Math.random().toString(36).slice(2, 8)}.part`;
+}
+
 
 export interface VerifyOptions {
   /** The downloaded artifact. */
@@ -81,8 +153,11 @@ export interface VerifyOptions {
   releaseFile?: string;
   /** Or the expected identity directly, for callers that already have it. */
   expected?: ExpectedIdentity;
-  /** Where signing records live. */
-  stateDirectory: string;
+  /**
+   * The engine repository. Signing records hang off it, so both callers reach
+   * the same ones without either naming a path.
+   */
+  repoRoot: string;
   onLog?: (line: string) => void;
 }
 
@@ -118,7 +193,7 @@ export async function verifyBuiltArtifact(options: VerifyOptions): Promise<ApkRe
     throw new UnverifiableArtifact(`${path.basename(options.file)} declares no application id.`);
   }
 
-  const remembered = readSigningRecord(options.stateDirectory, applicationId);
+  const remembered = readSigningRecord(options.repoRoot, applicationId);
   const report = remembered
     ? inspectApk(options.file, { ...expected, certificateFingerprint: remembered.fingerprint })
     : first;
@@ -135,7 +210,7 @@ export async function verifyBuiltArtifact(options: VerifyOptions): Promise<ApkRe
   } else if (report.signing.certificateFingerprint) {
     // Only after everything else passed: a record minted from a bad artifact
     // would pin the story to the wrong key for the rest of its life.
-    writeSigningRecord(options.stateDirectory, applicationId, report.signing.certificateFingerprint);
+    recordSigningKey(options.repoRoot, applicationId, report.signing.certificateFingerprint);
     log(`Recorded the signing key for ${applicationId}; later builds are checked against it`);
   }
   return report;

@@ -1482,24 +1482,44 @@ through `verifyBuiltArtifact` now, which throws rather than reports: a builder
 that returns an artifact it cannot vouch for is a builder whose success means
 nothing.
 
-**What "signed" means here, corrected.** An earlier version of this hashed the
+**What "signed" means here, corrected twice.** An earlier version hashed the
 signer's certificate and concluded from three matching hashes that one key had
-signed all three. That reads the evidence backwards. A certificate is public;
-identical certificate bytes prove somebody copied a certificate. The check now
-verifies the signature against the signed data with the public key, checks that
-public key against the one in the certificate, and recomputes the content
-digest — the chunked digest over the entries, the central directory and the end
-record — against the file's own bytes. Flipping a single byte in the middle of
-a 168.9 MB APK is caught. All three artifacts verify, and now that means what
-it sounds like.
+signed all three. That reads the evidence backwards: a certificate is public,
+so identical certificate bytes prove somebody copied a certificate. The check
+verifies now — signature against signed data with the public key, that key
+against the certificate's, and the content digest (chunked over the entries,
+the central directory and the end record) recomputed from the file's own bytes.
+A single byte flipped in the middle of a 168.9 MB APK is caught.
+
+Then it turned out to be verifying less than it looked: it returned as soon as
+one scheme held. An artifact with a sound v2 block and a broken v3 one came
+back verified, having never read v3 — the block a modern device prefers, so the
+skipped one was the one that would be used. Worse, the v3 layout was being read
+as v2, which is four bytes short at every field after the SDK range it carries
+and v2 does not. Every present scheme is verified now, every signer within it,
+and they must name the same certificate.
+
+This is still not `apksigner`, and the difference is written down rather than
+implied: no v3 rotation lineage, no scheme-per-SDK rules. What it does instead
+is refuse whatever it cannot fully check, so those gaps read as failures.
 
 Whether the *same* key signed two builds is a separate question, and needs
 something remembered rather than something computed. The first verified build of
-a story records its certificate under `.vne-builds/<application id>.signing.json`;
-every later build is checked against it, and a mismatch fails with the reason.
-Trust on first use — which is what Android does, pinning an app to whatever key
-signed the install it already has. A record is written only after everything
-else passed, so a rejected artifact cannot pin a story to the wrong key.
+a story records its certificate under
+`.vne-builds/signing/<application id>.signing.json`; every later build is
+checked against it, and a mismatch fails with the reason. Trust on first use —
+which is what Android does, pinning an app to whatever key signed the install it
+already has.
+
+Two details that decide whether that is worth anything. **Where** the record
+lives is derived from the repository rather than passed in: the two callers were
+given different directories, so building once from the app and once from the
+terminal meant two first builds, and the second key to arrive was accepted as
+though nothing had been seen. And the record is created **exclusively** — two
+builds finishing together each found no record, accepted its own artifact and
+overwrote the other, so the loser of the race chose the key. On collision it
+re-reads and refuses if the keys differ. A record is written only after every
+other check passed, so a rejected artifact cannot pin a story to a wrong key.
 
 An AAB is refused rather than passed. It printed a warning and exited zero
 before, which made "success" mean "downloaded" for one of the two targets. Its
@@ -1507,11 +1527,15 @@ manifest is protobuf and its signing is not an installed app's, so nothing here
 applies to it; checking one needs `bundletool`.
 
 `--from-build <id>` collects and verifies a build that already exists. The id is
-printed before the wait, not after it. Downloads land in a `.part` beside the
-destination and are moved only once verified — a dropped connection used to
-leave a truncated file where the last good one had been — and a build that
-fails verification is kept as `.unverified`, because the artifact is usually the
-evidence.
+printed before the wait, not after it.
+
+Downloads land under a name unique to the process and are put in place only once
+verified. Putting them in place steps the incumbent aside rather than deleting
+it first, so a failure between the two leaves either the old artifact or the new
+one and never neither — `rename` cannot overwrite on Windows, which is why the
+delete was there. Both callers keep a failed artifact as `.unverified` rather
+than discarding it; the helper used to delete its copy, which the previous note
+here described wrongly.
 
 Still to do for the **Done when** below: run a build through the browser/helper
 rather than the command line; build the AAB and measure it with `bundletool`;

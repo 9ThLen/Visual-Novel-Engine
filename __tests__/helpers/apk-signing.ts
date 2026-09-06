@@ -19,6 +19,11 @@
 import { createHash, createSign, generateKeyPairSync, type KeyObject } from 'node:crypto';
 
 const V2_BLOCK_ID = 0x7109871a;
+const V3_BLOCK_ID = 0xf05368c0;
+
+/** The SDK range a v3 signer carries, in the two places it carries it. */
+const MIN_SDK = 24;
+const MAX_SDK = 0x7fffffff;
 /** RSASSA-PKCS1-v1_5 with SHA-256, which is what Android's tooling defaults to. */
 const ALGORITHM_ID = 0x0103;
 const CHUNK_SIZE = 1024 * 1024;
@@ -160,56 +165,128 @@ function contentDigest(bytes: Uint8Array): Uint8Array {
   return new Uint8Array(hash.digest());
 }
 
-/** Splice an id-value pair in as an APK Signing Block, correcting the end record. */
-function splice(zip: Uint8Array, id: number, value: Uint8Array): Uint8Array {
+/**
+ * Splice an id-value pair into the signing block, correcting the end record.
+ *
+ * With `existing`, the pair joins the block already there rather than starting
+ * a new one — which is how an APK carries v2 and v3 at once.
+ */
+function splice(zip: Uint8Array, id: number, value: Uint8Array, existing = false): Uint8Array {
   const eocd = findEocd(zip);
   const centralDirectory = new DataView(zip.buffer, zip.byteOffset, zip.byteLength)
     .getUint32(eocd + 16, true);
 
-  const pair = 8 + 4 + value.length;
-  const size = pair + 8 + 16;
+  let before = centralDirectory;
+  let pairs = new Uint8Array(0);
+  if (existing) {
+    const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+    const trailing = Number(view.getBigUint64(centralDirectory - 24, true));
+    const start = centralDirectory - 8 - trailing;
+    pairs = new Uint8Array(zip.subarray(start + 8, centralDirectory - 24));
+    before = start;
+  }
+
+  const pair = concat([
+    (() => { const l = new Uint8Array(8); new DataView(l.buffer).setBigUint64(0, BigInt(4 + value.length), true); return l; })(),
+    u32(id),
+    value,
+  ]);
+  const body = concat([pairs, pair]);
+  const size = body.length + 8 + 16;
   const block = new Uint8Array(8 + size);
   const view = new DataView(block.buffer);
   view.setBigUint64(0, BigInt(size), true);
-  view.setBigUint64(8, BigInt(4 + value.length), true);
-  view.setUint32(16, id, true);
-  block.set(value, 20);
-  view.setBigUint64(8 + pair, BigInt(size), true);
-  block.set(new TextEncoder().encode('APK Sig Block 42'), 16 + pair);
+  block.set(body, 8);
+  view.setBigUint64(8 + body.length, BigInt(size), true);
+  block.set(new TextEncoder().encode('APK Sig Block 42'), 16 + body.length);
 
-  const out = new Uint8Array(zip.length + block.length);
-  out.set(zip.subarray(0, centralDirectory), 0);
-  out.set(block, centralDirectory);
-  out.set(zip.subarray(centralDirectory), centralDirectory + block.length);
-  new DataView(out.buffer).setUint32(eocd + block.length + 16, centralDirectory + block.length, true);
+  const out = new Uint8Array(before + block.length + (zip.length - centralDirectory));
+  out.set(zip.subarray(0, before), 0);
+  out.set(block, before);
+  out.set(zip.subarray(centralDirectory), before + block.length);
+  const movedEocd = eocd - centralDirectory + before + block.length;
+  new DataView(out.buffer).setUint32(movedEocd + 16, before + block.length, true);
   return out;
+}
+
+function u32(value: number): Uint8Array {
+  const out = new Uint8Array(4);
+  new DataView(out.buffer).setUint32(0, value, true);
+  return out;
+}
+
+/**
+ * One signer's block value, in the layout its scheme uses.
+ *
+ * v3 repeats an SDK range in two places, which is the difference that made
+ * reading a v3 block with the v2 layout land four bytes short at every field
+ * after it.
+ */
+function signerValue(key: SigningKey, digest: Uint8Array, v3: boolean): Uint8Array {
+  const algorithmId = u32(ALGORITHM_ID);
+  const digests = lengthPrefixed(lengthPrefixed(concat([algorithmId, lengthPrefixed(digest)])));
+  const certificates = lengthPrefixed(lengthPrefixed(key.certificate));
+  const signedData = v3
+    ? concat([digests, certificates, u32(MIN_SDK), u32(MAX_SDK), lengthPrefixed(new Uint8Array(0))])
+    : concat([digests, certificates, lengthPrefixed(new Uint8Array(0))]);
+
+  const signer = createSign('sha256');
+  signer.update(signedData);
+  const signatures = lengthPrefixed(lengthPrefixed(
+    concat([algorithmId, lengthPrefixed(new Uint8Array(signer.sign(key.privateKey)))]),
+  ));
+
+  const body = v3
+    ? concat([lengthPrefixed(signedData), u32(MIN_SDK), u32(MAX_SDK), signatures, lengthPrefixed(key.publicKeyDer)])
+    : concat([lengthPrefixed(signedData), signatures, lengthPrefixed(key.publicKeyDer)]);
+  return lengthPrefixed(lengthPrefixed(body));
 }
 
 /**
  * Sign a zip as an APK, properly: the digest covers the file, the signature
  * covers the signed data, and the certificate carries the key that made it.
+ *
+ * `schemes` decides which blocks are written, because an artifact with more
+ * than one is the ordinary case and was the case the verifier skipped.
  */
-export function signApk(zip: Uint8Array, key: SigningKey, digest?: Uint8Array): Uint8Array {
-  const algorithmId = new Uint8Array(4);
-  new DataView(algorithmId.buffer).setUint32(0, ALGORITHM_ID, true);
+export function signApk(
+  zip: Uint8Array,
+  key: SigningKey,
+  digest?: Uint8Array,
+  schemes: ('v2' | 'v3')[] = ['v2'],
+): Uint8Array {
+  const content = digest ?? contentDigest(zip);
+  let out = zip;
+  for (const scheme of schemes) {
+    out = splice(
+      out,
+      scheme === 'v2' ? V2_BLOCK_ID : V3_BLOCK_ID,
+      signerValue(key, content, scheme === 'v3'),
+      scheme !== schemes[0],
+    );
+  }
+  return out;
+}
 
-  const digests = lengthPrefixed(lengthPrefixed(
-    concat([algorithmId, lengthPrefixed(digest ?? contentDigest(zip))]),
-  ));
-  const certificates = lengthPrefixed(lengthPrefixed(key.certificate));
-  const signedData = concat([digests, certificates, lengthPrefixed(new Uint8Array(0))]);
+/**
+ * Add a block whose contents are not a signer at all, leaving the rest intact.
+ *
+ * This is the artifact that used to pass: a good v2 block, and beside it a v3
+ * block — the one a modern device prefers — that nothing looked at.
+ */
+export function withJunkBlock(signed: Uint8Array, id = V3_BLOCK_ID): Uint8Array {
+  return splice(signed, id, Uint8Array.from([9, 9, 9, 9, 1, 2, 3]), true);
+}
 
-  const signer = createSign('sha256');
-  signer.update(signedData);
-  const signature = new Uint8Array(signer.sign(key.privateKey));
-
-  const signatures = lengthPrefixed(lengthPrefixed(
-    concat([algorithmId, lengthPrefixed(signature)]),
-  ));
-  const signer_ = concat([lengthPrefixed(signedData), signatures, lengthPrefixed(key.publicKeyDer)]);
-  const value = lengthPrefixed(lengthPrefixed(signer_));
-
-  return splice(zip, V2_BLOCK_ID, value);
+/** Sign the same file twice, under two different keys. */
+export function signApkWithTwoKeys(zip: Uint8Array, first: SigningKey, second: SigningKey): Uint8Array {
+  const content = contentDigest(zip);
+  return splice(
+    splice(zip, V2_BLOCK_ID, signerValue(first, content, false)),
+    V3_BLOCK_ID,
+    signerValue(second, content, true),
+    true,
+  );
 }
 
 /**

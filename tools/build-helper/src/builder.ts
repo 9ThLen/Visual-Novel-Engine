@@ -13,7 +13,7 @@
  * writing to the client directly would make the sanitizer decorative.
  */
 import type { BuildRequest } from '../../../lib/release/build-request';
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { zipSync } from 'fflate';
 
@@ -28,7 +28,7 @@ import {
   type EasCommandResult,
   type RunEasCommand,
 } from '../../vne-build/eas-run';
-import { verifyBuiltArtifact } from '../../vne-build/verify-artifact';
+import { pendingPath, replaceFile, verifyBuiltArtifact } from '../../vne-build/verify-artifact';
 
 import {
   isEasProjectId,
@@ -242,18 +242,17 @@ export class EasBuilder implements Builder {
     const fileName = `${input.request.requestId}.${input.request.target}`;
     const artifactPath = path.join(input.outputDirectory, fileName);
 
-    // Downloaded beside its destination and moved there only once it has been
-    // read: a connection that drops mid-transfer must not leave a truncated
-    // file where a verified one is supposed to be.
-    const pending = `${artifactPath}.part`;
-    rmSync(pending, { force: true });
+    // Downloaded under a name of its own and put in place only once verified,
+    // so a connection that drops mid-transfer cannot leave a truncated file
+    // where a checked one belongs, and two jobs cannot share a scratch name.
+    const pending = pendingPath(artifactPath);
     await this.download(url, pending, input.signal);
     input.onLog('Downloaded the build artifact');
 
     try {
-      // The same check the command line runs. It was missing here, so the route
-      // most authors take — pressing Release — was the one route that returned
-      // an artifact nobody had looked inside.
+      // The same check the command line runs, reached the same way. It was
+      // missing here, so pressing Release — the route most authors take — was
+      // the one route that returned an artifact nobody had looked inside.
       const report = await verifyBuiltArtifact({
         file: pending,
         target: input.request.target === 'aab' ? 'aab' : 'apk',
@@ -261,17 +260,19 @@ export class EasBuilder implements Builder {
           applicationId: identity.applicationId,
           versionCode: input.request.versionCode,
         },
-        stateDirectory: this.stateDirectory,
+        repoRoot: this.repoRoot,
         onLog: input.onLog,
       });
       input.onLog(`Verified the artifact: ${report.permissions.length} permission(s), `
         + `signature checked against the file, key ${report.signing.certificateFingerprint}`);
     } catch (error) {
-      rmSync(pending, { force: true });
+      // Kept rather than deleted, and named so nothing serves it: the same
+      // choice the command line makes, because a failed artifact is evidence.
+      replaceFile(pending, `${artifactPath}.unverified`);
       throw error;
     }
 
-    renameSync(pending, artifactPath);
+    replaceFile(pending, artifactPath);
     return { artifactPath, fileName };
   }
 

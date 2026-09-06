@@ -13,7 +13,9 @@ import path from 'node:path';
 import { zipSync } from 'fflate';
 
 import {
+  pendingPath,
   readSigningRecord,
+  replaceFile,
   signingRecordFile,
   UnverifiableArtifact,
   verifyBuiltArtifact,
@@ -28,11 +30,12 @@ const STOLEN = makeSigningKey('Somebody Else');
 const APPLICATION_ID = 'com.vne.story.museum.s7abc';
 
 describe('verifying a finished build', () => {
-  let state: string;
+  let repoRoot: string;
   let workspace: string;
   beforeEach(() => {
     workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vne-verify-'));
-    state = path.join(workspace, 'state');
+    repoRoot = path.join(workspace, 'repo');
+    fs.mkdirSync(repoRoot, { recursive: true });
   });
   afterEach(() => fs.rmSync(workspace, { recursive: true, force: true }));
 
@@ -59,13 +62,13 @@ describe('verifying a finished build', () => {
     file,
     target: 'apk',
     expected: { applicationId: APPLICATION_ID, ...expected },
-    stateDirectory: state,
+    repoRoot,
   });
 
   describe('remembering the signing key', () => {
     it('records it on the first verified build', async () => {
       const report = await verify(artifact());
-      const record = readSigningRecord(state, APPLICATION_ID);
+      const record = readSigningRecord(repoRoot, APPLICATION_ID);
       expect(record?.fingerprint).toBe(KEY.fingerprint);
       expect(record?.fingerprint).toBe(report.signing.certificateFingerprint);
     });
@@ -92,12 +95,12 @@ describe('verifying a finished build', () => {
       await expect(verify(artifact({ permissions: [blocked] }))).rejects.toThrow(UnverifiableArtifact);
       // A record minted here would pin the story to this key for good, on the
       // strength of an artifact that was rejected.
-      expect(readSigningRecord(state, APPLICATION_ID)).toBeNull();
+      expect(readSigningRecord(repoRoot, APPLICATION_ID)).toBeNull();
     });
 
     it('refuses a damaged record rather than minting a new one', async () => {
       await verify(artifact());
-      fs.writeFileSync(signingRecordFile(state, APPLICATION_ID), '{"version":1}');
+      fs.writeFileSync(signingRecordFile(repoRoot, APPLICATION_ID), '{"version":1}');
       await expect(verify(artifact())).rejects.toThrow(/invalid/);
     });
 
@@ -108,12 +111,56 @@ describe('verifying a finished build', () => {
         file: artifact({ applicationId: other, key: STOLEN }),
         target: 'apk',
         expected: { applicationId: other },
-        stateDirectory: state,
+        repoRoot,
       });
-      expect(readSigningRecord(state, APPLICATION_ID)?.fingerprint).toBe(KEY.fingerprint);
-      expect(readSigningRecord(state, other)?.fingerprint).toBe(STOLEN.fingerprint);
+      expect(readSigningRecord(repoRoot, APPLICATION_ID)?.fingerprint).toBe(KEY.fingerprint);
+      expect(readSigningRecord(repoRoot, other)?.fingerprint).toBe(STOLEN.fingerprint);
+    });
+
+    /**
+     * Two builds of one story can finish together. A plain write let each find
+     * no record, accept its own artifact and overwrite the other, so whichever
+     * lost the race decided which key the story was pinned to.
+     */
+    it('refuses to let a second key win a race for the first record', async () => {
+      const [first, second] = await Promise.allSettled([
+        verify(artifact()),
+        verify(artifact({ key: STOLEN })),
+      ]);
+      const outcomes = [first.status, second.status].sort();
+      expect(outcomes).toEqual(['fulfilled', 'rejected']);
+
+      // And whichever won, the record names its key and nothing else.
+      const record = readSigningRecord(repoRoot, APPLICATION_ID);
+      expect([KEY.fingerprint, STOLEN.fingerprint]).toContain(record?.fingerprint);
+      await expect(verify(artifact({
+        key: record?.fingerprint === KEY.fingerprint ? STOLEN : KEY,
+      }))).rejects.toThrow(/losing their saves/);
     });
   });
+
+  describe('putting the artifact in place', () => {
+    it('keeps the previous artifact when the new one cannot be moved in', () => {
+      const destination = path.join(workspace, 'player.apk');
+      fs.writeFileSync(destination, 'the last good build');
+      const incoming = pendingPath(destination);
+      fs.writeFileSync(incoming, 'the new one');
+
+      replaceFile(incoming, destination);
+      expect(fs.readFileSync(destination, 'utf8')).toBe('the new one');
+      expect(fs.existsSync(`${destination}.previous`)).toBe(false);
+      expect(fs.existsSync(incoming)).toBe(false);
+    });
+
+    /** Two runs collecting the same build must not share a scratch name. */
+    it('gives every download a name of its own', () => {
+      const target = path.join(workspace, 'player.apk');
+      expect(pendingPath(target)).not.toBe(pendingPath(target));
+      expect(pendingPath(target).startsWith(target)).toBe(true);
+    });
+  });
+
+  describe('what it refuses', () => {
 
   it('refuses an artifact whose identity is not the one expected', async () => {
     await expect(verify(artifact({ versionCode: 1_000_000 }), { versionCode: 1_000_001 }))
@@ -129,7 +176,8 @@ describe('verifying a finished build', () => {
     await expect(verifyBuiltArtifact({
       file: artifact({ name: 'player.aab' }),
       target: 'aab',
-      stateDirectory: state,
+      repoRoot,
     })).rejects.toThrow(/bundletool/);
+  });
   });
 });
