@@ -13,9 +13,7 @@ import path from 'node:path';
 import { zipSync } from 'fflate';
 
 import {
-  pendingPath,
   readSigningRecord,
-  replaceFile,
   signingRecordFile,
   UnverifiableArtifact,
   verifyBuiltArtifact,
@@ -118,45 +116,49 @@ describe('verifying a finished build', () => {
     });
 
     /**
-     * Two builds of one story can finish together. A plain write let each find
-     * no record, accept its own artifact and overwrite the other, so whichever
-     * lost the race decided which key the story was pinned to.
+     * The old locations, which a story may already have a record in. Reading
+     * only the new one would have quietly undone the fix that introduced it: a
+     * story with a known key would look unbuilt, and any artifact would be
+     * taken as its first.
      */
-    it('refuses to let a second key win a race for the first record', async () => {
-      const [first, second] = await Promise.allSettled([
-        verify(artifact()),
-        verify(artifact({ key: STOLEN })),
-      ]);
-      const outcomes = [first.status, second.status].sort();
-      expect(outcomes).toEqual(['fulfilled', 'rejected']);
+    describe('records written by earlier versions', () => {
+      const legacy = (...segments: string[]) => path.join(repoRoot, '.vne-builds', ...segments);
 
-      // And whichever won, the record names its key and nothing else.
-      const record = readSigningRecord(repoRoot, APPLICATION_ID);
-      expect([KEY.fingerprint, STOLEN.fingerprint]).toContain(record?.fingerprint);
-      await expect(verify(artifact({
-        key: record?.fingerprint === KEY.fingerprint ? STOLEN : KEY,
-      }))).rejects.toThrow(/losing their saves/);
-    });
-  });
+      function writeLegacy(where: string, fingerprint: string): void {
+        fs.mkdirSync(path.dirname(where), { recursive: true });
+        fs.writeFileSync(where, JSON.stringify({
+          version: 1,
+          applicationId: APPLICATION_ID,
+          fingerprint,
+          firstSeen: '2026-01-01T00:00:00.000Z',
+        }));
+      }
 
-  describe('putting the artifact in place', () => {
-    it('keeps the previous artifact when the new one cannot be moved in', () => {
-      const destination = path.join(workspace, 'player.apk');
-      fs.writeFileSync(destination, 'the last good build');
-      const incoming = pendingPath(destination);
-      fs.writeFileSync(incoming, 'the new one');
+      it.each([
+        ['the command line\'s', () => legacy(`${APPLICATION_ID}.signing.json`)],
+        ['the helper\'s', () => legacy('eas-identities', `${APPLICATION_ID}.signing.json`)],
+      ])('still compares against %s', async (_name, where) => {
+        writeLegacy(where(), KEY.fingerprint);
+        await expect(verify(artifact({ key: STOLEN }))).rejects.toThrow(/losing their saves/);
+      });
 
-      replaceFile(incoming, destination);
-      expect(fs.readFileSync(destination, 'utf8')).toBe('the new one');
-      expect(fs.existsSync(`${destination}.previous`)).toBe(false);
-      expect(fs.existsSync(incoming)).toBe(false);
-    });
+      it('carries the record forward on the way past', async () => {
+        writeLegacy(legacy(`${APPLICATION_ID}.signing.json`), KEY.fingerprint);
+        await verify(artifact());
+        expect(fs.existsSync(signingRecordFile(repoRoot, APPLICATION_ID))).toBe(true);
+        expect(readSigningRecord(repoRoot, APPLICATION_ID)?.fingerprint).toBe(KEY.fingerprint);
+      });
 
-    /** Two runs collecting the same build must not share a scratch name. */
-    it('gives every download a name of its own', () => {
-      const target = path.join(workspace, 'player.apk');
-      expect(pendingPath(target)).not.toBe(pendingPath(target));
-      expect(pendingPath(target).startsWith(target)).toBe(true);
+      /**
+       * Two old locations naming two keys means the machine has already
+       * accepted both. Picking one here would hide that rather than settle it.
+       */
+      it('refuses when the old locations disagree', () => {
+        writeLegacy(legacy(`${APPLICATION_ID}.signing.json`), KEY.fingerprint);
+        writeLegacy(legacy('eas-identities', `${APPLICATION_ID}.signing.json`), STOLEN.fingerprint);
+        expect(() => readSigningRecord(repoRoot, APPLICATION_ID))
+          .toThrow(/2 different keys/);
+      });
     });
   });
 

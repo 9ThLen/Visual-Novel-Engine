@@ -75,6 +75,8 @@ export interface ApkReport {
   applicationId: string | null;
   versionCode: number | null;
   versionName: string | null;
+  /** Declared by `uses-sdk`; decides whether a v1 signature is required. */
+  minSdkVersion: number | null;
   signing: ApkSigning;
   permissions: string[];
   /** Blocked, declared, and not a known exception. Any of these is a failure. */
@@ -124,15 +126,23 @@ function manifestIdentity(manifest: Uint8Array): {
   applicationId: string | null;
   versionCode: number | null;
   versionName: string | null;
+  minSdkVersion: number | null;
 } {
   const root = parseBinaryXml(manifest);
   const packageName = attribute(root, 'package')?.value;
   const versionCode = attribute(root, 'versionCode')?.value;
   const versionName = attribute(root, 'versionName')?.value;
+  // Read because apksigner's verdict depends on it: a v1 JAR signature is
+  // required below API 24 and not above, so this is part of the question rather
+  // than a detail.
+  const minSdkVersion = elementsNamed(root, 'uses-sdk')
+    .map((element) => attribute(element, 'minSdkVersion')?.value)
+    .find((value) => typeof value === 'number');
   return {
     applicationId: typeof packageName === 'string' ? packageName : null,
     versionCode: typeof versionCode === 'number' ? versionCode : null,
     versionName: typeof versionName === 'string' ? versionName : null,
+    minSdkVersion: typeof minSdkVersion === 'number' ? minSdkVersion : null,
   };
 }
 
@@ -244,9 +254,13 @@ export function printApkReport(report: ApkReport): void {
   console.log(`\n${path.basename(report.file)}  ${describeBytes(report.bytes)}`);
   console.log(color.dim(`  identity:     ${report.applicationId ?? '—'} `
     + `v${report.versionName ?? '?'} (code ${report.versionCode ?? '?'})`));
-  console.log(report.signing.verified
-    ? color.dim(`  signed:       ${report.signing.schemes.join(', ')} verified, key ${report.signing.certificateFingerprint}`)
-    : color.red(`  signed:       NOT VERIFIED — ${report.signing.problem}`));
+  if (report.signing.verified) {
+    console.log(color.dim(`  signed:       ${report.signing.schemes.join(', ')} verified, key ${report.signing.certificateFingerprint}`));
+  } else if (report.signing.unsupported) {
+    console.log(color.yellow(`  signed:       left to apksigner — ${report.signing.problem}`));
+  } else {
+    console.log(color.red(`  signed:       NOT VERIFIED — ${report.signing.problem}`));
+  }
   if (report.signing.subject) console.log(color.dim(`  certificate:  ${report.signing.subject.replace(/\n/g, ', ')}`));
   console.log(color.dim(`  media inside: ${report.mediaEntries} file(s), ${describeBytes(report.mediaBytes)}`));
   console.log(color.dim(`  native ABIs:  ${report.nativeAbis.join(', ') || 'none'}`));

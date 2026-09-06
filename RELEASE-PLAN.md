@@ -1499,9 +1499,29 @@ as v2, which is four bytes short at every field after the SDK range it carries
 and v2 does not. Every present scheme is verified now, every signer within it,
 and they must name the same certificate.
 
-This is still not `apksigner`, and the difference is written down rather than
-implied: no v3 rotation lineage, no scheme-per-SDK rules. What it does instead
-is refuse whatever it cannot fully check, so those gaps read as failures.
+That was the third correction, and it did not hold either. The next pass found
+a v3 signer whose SDK range outside the signed data — the range a device reads
+when deciding whether the signer applies to it, and which nothing signs — was
+never compared to the one inside it. And "all schemes name the same
+certificate" compared one signer per scheme, because the function returned only
+the first.
+
+Four rounds of review, four things the local reader did not implement, each
+found only because somebody looked. So it is no longer the authority.
+**`apksigner verify` is required**, and a machine without it cannot certify a
+build. That is a real cost, and it is smaller than a "verified" that means "the
+parts we implemented agreed". It is invoked as its jar under `java` rather than
+through the `.bat` wrapper, and told the artifact's own declared
+`minSdkVersion`, because below API 24 a v1 JAR signature is required and above
+it is not — so leaving that to be guessed makes the verdict depend on the guess.
+
+The local reader still runs, as a second opinion, and now reports three states
+rather than two: verified, failed, or **unsupported**. Disagreement between the
+two is itself a failure. The one place the local one may be quiet is where it
+says outright that it does not implement something — a key-rotation lineage, an
+attribute it does not know — and then apksigner's verdict stands alone and the
+log says so. Stepping over an unknown attribute silently, which is how a
+rotation lineage would have gone unnoticed, is now a refusal.
 
 Whether the *same* key signed two builds is a separate question, and needs
 something remembered rather than something computed. The first verified build of
@@ -1511,13 +1531,16 @@ checked against it, and a mismatch fails with the reason. Trust on first use —
 which is what Android does, pinning an app to whatever key signed the install it
 already has.
 
-Two details that decide whether that is worth anything. **Where** the record
-lives is derived from the repository rather than passed in: the two callers were
-given different directories, so building once from the app and once from the
-terminal meant two first builds, and the second key to arrive was accepted as
-though nothing had been seen. And the record is created **exclusively** — two
-builds finishing together each found no record, accepted its own artifact and
-overwrote the other, so the loser of the race chose the key. On collision it
+Three details decide whether that is worth anything. **Where** the record lives
+is derived from the repository rather than passed in: the two callers were given
+different directories, so building once from the app and once from the terminal
+meant two first builds, and the second key to arrive was accepted as though
+nothing had been seen. Moving it also had to **read the two old locations**,
+since a location change that forgets what was recorded silently undoes the fix
+it belongs to; records found there are carried forward, and two that disagree
+are a refusal rather than a choice. And the record is created **exclusively** —
+two builds finishing together each found no record, accepted its own artifact
+and overwrote the other, so the loser of the race chose the key. On collision it
 re-reads and refuses if the keys differ. A record is written only after every
 other check passed, so a rejected artifact cannot pin a story to a wrong key.
 
@@ -1533,9 +1556,19 @@ Downloads land under a name unique to the process and are put in place only once
 verified. Putting them in place steps the incumbent aside rather than deleting
 it first, so a failure between the two leaves either the old artifact or the new
 one and never neither — `rename` cannot overwrite on Windows, which is why the
-delete was there. Both callers keep a failed artifact as `.unverified` rather
-than discarding it; the helper used to delete its copy, which the previous note
-here described wrongly.
+delete was there. The step-aside copy also needs a name of its own and the whole
+replacement needs a lock, or two processes interleave and one deletes what the
+other is restoring from. Both callers keep a failed artifact as `.unverified`
+rather than discarding it.
+
+**The tests for those two races were not races.** One called
+`Promise.allSettled` on synchronous work, which runs it in order; the other was
+named after a failure it never provoked. They asserted the happy path in the
+shape of a race, which is worse than no test, because the bug each was written
+for would have passed. `__tests__/unit/tools/build-races.test.ts` spawns real
+processes: three replacing one artifact in a loop and checking it is never
+missing, and two racing to record a first key. Removing the lock makes the first
+fail — checked, rather than assumed.
 
 Still to do for the **Done when** below: run a build through the browser/helper
 rather than the command line; build the AAB and measure it with `bundletool`;

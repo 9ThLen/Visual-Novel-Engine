@@ -162,6 +162,7 @@ export function fakeManifest(input: {
   permissions?: string[];
   /** Names present in the string pool but declared by nothing. */
   mentionedOnly?: string[];
+  minSdkVersion?: number;
 }): Uint8Array {
   return encodeBinaryXml({
     name: 'manifest',
@@ -171,6 +172,17 @@ export function fakeManifest(input: {
       { name: 'versionName', value: input.versionName ?? '1.0.0', android: true },
     ],
     children: [
+      // Real player builds declare this, and it is not decoration here:
+      // apksigner requires a v1 JAR signature below API 24 and skips it above,
+      // so a fixture without it is refused for a reason the artifact under test
+      // does not have.
+      {
+        name: 'uses-sdk',
+        attributes: [
+          { name: 'minSdkVersion', value: input.minSdkVersion ?? 24, android: true },
+          { name: 'targetSdkVersion', value: 34, android: true },
+        ],
+      },
       ...(input.permissions ?? []).map((name) => ({
         name: 'uses-permission',
         attributes: [{ name: 'name', value: name, android: true }],

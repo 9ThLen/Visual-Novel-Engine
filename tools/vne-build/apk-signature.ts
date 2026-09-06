@@ -90,7 +90,14 @@ export interface ApkSigning {
    * field licenses the word "signed" about an artifact.
    */
   verified: boolean;
-  /** Why verification did not hold, when it did not. */
+  /**
+   * The artifact uses a real feature this does not implement, so it neither
+   * verified nor failed. `apksigner` is the authority in that case; this exists
+   * so an unimplemented corner cannot be mistaken for either a pass or a fault
+   * in the artifact.
+   */
+  unsupported: boolean;
+  /** Why verification did not hold, or what is not supported. */
   problem: string | null;
 }
 
@@ -231,6 +238,19 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((byte, index) => byte === b[index]);
 }
 
+/** Additional-attribute ids this understands. Anything else is unsupported. */
+const PROOF_OF_ROTATION_ATTRIBUTE = 0x3ba06f8c;
+
+/**
+ * Raised when the artifact uses something real that this does not implement.
+ *
+ * Distinct from a signature that fails, because the two deserve opposite
+ * treatment: a failure is the artifact's problem, and this is ours. It lets the
+ * caller defer to `apksigner` on that point instead of either pretending to
+ * have checked or calling a good artifact broken.
+ */
+export class UnsupportedSignature extends Error {}
+
 interface SignerFields {
   signedData: Uint8Array;
   signatures: { algorithmId: number; signature: Uint8Array }[];
@@ -265,9 +285,42 @@ function readSigner(block: Uint8Array, scheme: string, v3: boolean): SignerField
   if (certificatesReader.done) throw new Error(`${scheme}: a signer has no certificate.`);
   const certificate = certificatesReader.block();
 
+  let signedMinSdk = 0;
+  let signedMaxSdk = 0;
   if (v3) {
-    signer.u32(); // minSdk, repeated from inside the signed data
-    signer.u32(); // maxSdk
+    signedMinSdk = signedDataReader.u32();
+    signedMaxSdk = signedDataReader.u32();
+  }
+
+  // Everything after the certificates is attributes, and an attribute this does
+  // not know can change what the signature means -- key rotation, most of all.
+  // Stepping over them silently is how a v3 lineage would have been ignored.
+  const attributes = new Reader(signedDataReader.block(), `${scheme} attributes`);
+  while (!attributes.done) {
+    const attribute = new Reader(attributes.block(), `${scheme} attribute`);
+    const id = attribute.u32();
+    if (id === PROOF_OF_ROTATION_ATTRIBUTE) {
+      throw new UnsupportedSignature(
+        `${scheme}: the signer carries a key-rotation lineage, which apksigner evaluates and this does not.`,
+      );
+    }
+    throw new UnsupportedSignature(
+      `${scheme}: the signer carries an attribute this does not understand (0x${id.toString(16)}).`,
+    );
+  }
+
+  if (v3) {
+    // The range outside the signed data is the one a device reads when deciding
+    // whether this signer applies to it, and nothing signs it. Left uncompared,
+    // it could say anything while the signature still checked out.
+    const minSdk = signer.u32();
+    const maxSdk = signer.u32();
+    if (minSdk !== signedMinSdk || maxSdk !== signedMaxSdk) {
+      throw new Error(
+        `${scheme}: the signer's SDK range (${minSdk}–${maxSdk}) is not the one it signed `
+        + `(${signedMinSdk}–${signedMaxSdk}).`,
+      );
+    }
   }
 
   const signaturesReader = new Reader(signer.block(), `${scheme} signatures`);
@@ -328,11 +381,12 @@ function verifySigner(
 }
 
 /**
- * Every signer in one scheme's block.
+ * Every signer in one scheme's block, and every one of them returned.
  *
  * All of them, not the first. A block may name several, and one that does not
- * hold is a failing signature over this file -- which is what `apksigner` would
- * report and what a device would act on.
+ * hold is a failing signature over this file. Returning only the first also
+ * made the "all schemes name the same certificate" check a lie: it compared one
+ * signer per scheme and never saw the rest.
  */
 function verifyScheme(
   bytes: Uint8Array,
@@ -340,14 +394,14 @@ function verifyScheme(
   value: Uint8Array,
   scheme: string,
   v3: boolean,
-): { fingerprint: string; subject: string } {
+): { fingerprint: string; subject: string }[] {
   const signers = new Reader(new Reader(value, scheme).block(), `${scheme} signers`);
   const results: { fingerprint: string; subject: string }[] = [];
   while (!signers.done) {
     results.push(verifySigner(bytes, block, signers.block(), scheme, v3));
   }
   if (results.length === 0) throw new Error(`${scheme}: the block names no signer.`);
-  return results[0];
+  return results;
 }
 
 /**
@@ -370,6 +424,7 @@ export function readApkSigning(bytes: Uint8Array): ApkSigning {
     subject: null,
     present: false,
     verified: false,
+    unsupported: false,
     problem: null,
   };
 
@@ -388,19 +443,20 @@ export function readApkSigning(bytes: Uint8Array): ApkSigning {
     return { ...empty, problem: 'The signing block carries no signature scheme this understands.' };
   }
 
-  const failed = (problem: string): ApkSigning => ({
+  const failed = (problem: string, unsupported = false): ApkSigning => ({
     schemes,
     certificateFingerprint: null,
     subject: null,
     present: true,
     verified: false,
+    unsupported,
     problem,
   });
 
   const verified: { fingerprint: string; subject: string }[] = [];
   for (const id of present) {
     try {
-      verified.push(verifyScheme(
+      verified.push(...verifyScheme(
         bytes,
         found,
         found.pairs.get(id) as Uint8Array,
@@ -408,15 +464,17 @@ export function readApkSigning(bytes: Uint8Array): ApkSigning {
         id !== V2_BLOCK_ID,
       ));
     } catch (error) {
-      return failed(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      return failed(message, error instanceof UnsupportedSignature);
     }
   }
 
-  // Schemes that disagree about the signer describe two different apps, and
-  // which one a device believes depends on its version.
+  // Every signer of every scheme, not one per scheme. Blocks that disagree
+  // about who signed describe two different apps, and which one a device
+  // believes depends on its version.
   const fingerprints = [...new Set(verified.map((entry) => entry.fingerprint))];
   if (fingerprints.length > 1) {
-    return failed(`The ${schemes.join(' and ')} blocks name different certificates `
+    return failed(`The signature blocks name ${fingerprints.length} different certificates `
       + `(${fingerprints.join(', ')}).`);
   }
 
@@ -426,6 +484,7 @@ export function readApkSigning(bytes: Uint8Array): ApkSigning {
     subject: verified[0].subject,
     present: true,
     verified: true,
+    unsupported: false,
     problem: null,
   };
 }

@@ -48,12 +48,16 @@ pnpm inspect:apk ./player.apk --release novel.vnerelease
 
 ### What "verified" covers
 
-- **The signature holds over this file.** Not "a signing block is present" — the
-  signature is checked against the signed data with the signer's public key,
-  that key is checked against the certificate, and the content digest is
-  recomputed over the archive. A byte changed anywhere fails. Every signing
-  scheme in the artifact is checked, and every signer in each: a sound v2 block
-  does not excuse a broken v3 one, and the two must name the same certificate.
+- **The signature holds over this file**, according to `apksigner verify`, which
+  is **required**: without the Android SDK build-tools a build cannot be
+  certified here. Set `ANDROID_SDK_ROOT`, or point `APKSIGNER` at the jar or the
+  executable.
+
+  This repository's own reader runs alongside it as a second opinion — signature
+  against signed data, public key against certificate, content digest recomputed
+  over the archive, every scheme and every signer — and a disagreement between
+  the two is a failure. Where it knows it does not implement something, such as
+  a key-rotation lineage, it says so and apksigner's verdict stands alone.
 - **The permissions are what is declared**, read from `uses-permission`
   elements in the parsed manifest rather than matched against its text.
 - **The identity is the one the release derives** — application id, version
@@ -61,9 +65,11 @@ pnpm inspect:apk ./player.apk --release novel.vnerelease
 - **The key is the one this story has always used.** The first verified build
   records its certificate under
   `.vne-builds/signing/<application id>.signing.json`; later builds are compared
-  to it, whether they came from the app or the command line. Delete that file
-  and the next build silently becomes the new reference, so keep it — it is the
-  local memory of the key your readers' installs are pinned to.
+  to it, whether they came from the app or the command line. Records left by
+  earlier versions in `.vne-builds/` or `.vne-builds/eas-identities/` are still
+  read and carried forward. Delete the file and the next build silently becomes
+  the new reference, so keep it — it is the local memory of the key your
+  readers' installs are pinned to.
 
 What it does not cover: certificate chains and trust, which Android does not use
 for this — an app is pinned to whatever key signed its first install, so a

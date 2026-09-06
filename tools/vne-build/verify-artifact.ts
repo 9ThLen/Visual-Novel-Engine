@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { isSameSigningCertificate, normalizeSigningFingerprint } from '@/lib/release/native-identity';
+import { runApksigner, type ApksignerVerdict } from './apksigner';
 import { expectedFromRelease, inspectApk, type ApkReport, type ExpectedIdentity } from './inspect-apk';
 
 /**
@@ -45,6 +46,21 @@ export function signingRecordFile(repoRoot: string, applicationId: string): stri
   return path.join(signingStateDirectory(repoRoot), `${applicationId}.signing.json`);
 }
 
+/**
+ * The two places records were written before they were written in one place.
+ *
+ * Moving the location without reading these would have quietly undone the fix
+ * it was part of: a story with a key already recorded would come back from an
+ * update looking like it had never been built, and the next artifact -- any
+ * artifact -- would be accepted as its first.
+ */
+function legacyRecordFiles(repoRoot: string, applicationId: string): string[] {
+  return [
+    path.join(repoRoot, '.vne-builds', `${applicationId}.signing.json`),
+    path.join(repoRoot, '.vne-builds', 'eas-identities', `${applicationId}.signing.json`),
+  ];
+}
+
 interface SigningRecord {
   version: 1;
   applicationId: string;
@@ -52,8 +68,7 @@ interface SigningRecord {
   firstSeen: string;
 }
 
-export function readSigningRecord(repoRoot: string, applicationId: string): SigningRecord | null {
-  const file = signingRecordFile(repoRoot, applicationId);
+function readRecordFile(file: string, applicationId: string): SigningRecord | null {
   if (!fs.existsSync(file)) return null;
   let raw: unknown;
   try {
@@ -70,6 +85,42 @@ export function readSigningRecord(repoRoot: string, applicationId: string): Sign
     throw new Error(`The signing record for ${applicationId} is invalid: ${file}`);
   }
   return { version: 1, applicationId, fingerprint, firstSeen: String(record.firstSeen ?? '') };
+}
+
+/**
+ * A story's remembered key, wherever a past version of this put it.
+ *
+ * Records found in an old location are carried forward on the way past. If two
+ * of them disagree the answer is a refusal rather than a choice: the machine
+ * has accepted two keys for one story already, and picking one here would hide
+ * that rather than settle it.
+ */
+export function readSigningRecord(repoRoot: string, applicationId: string): SigningRecord | null {
+  const current = signingRecordFile(repoRoot, applicationId);
+  const found = [current, ...legacyRecordFiles(repoRoot, applicationId)]
+    .map((file) => ({ file, record: readRecordFile(file, applicationId) }))
+    .filter((entry): entry is { file: string; record: SigningRecord } => entry.record !== null);
+  if (found.length === 0) return null;
+
+  const fingerprints = [...new Set(found.map((entry) => entry.record.fingerprint))];
+  if (fingerprints.length > 1) {
+    throw new Error(
+      `${applicationId} has signing records naming ${fingerprints.length} different keys:\n`
+      + found.map((entry) => `  ${entry.record.fingerprint}  ${entry.file}`).join('\n')
+      + '\nOnly one can be the key this story is installed under. Remove the others once you know which.',
+    );
+  }
+
+  const record = found[0].record;
+  if (found[0].file !== current) {
+    fs.mkdirSync(path.dirname(current), { recursive: true });
+    try {
+      fs.writeFileSync(current, `${JSON.stringify(record, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+  }
+  return record;
 }
 
 /**
@@ -114,29 +165,111 @@ function recordSigningKey(repoRoot: string, applicationId: string, fingerprint: 
 export class UnverifiableArtifact extends Error {}
 
 /**
+ * What `apksigner` says, against what this repository's own reader said.
+ *
+ * Both run. Two implementations disagreeing is itself a finding, and the only
+ * place the local one is allowed to be quiet is where it says outright that it
+ * does not support something -- then apksigner's verdict stands alone and the
+ * report says so, rather than an unimplemented corner passing as a check.
+ */
+function disagreements(report: ApkReport, authority: ApksignerVerdict): string[] {
+  const problems: string[] = [];
+  if (!authority.verifies) {
+    problems.push(`apksigner does not verify this artifact:\n${indent(authority.output)}`);
+    return problems;
+  }
+
+  const signing = report.signing;
+  if (!signing.verified && !signing.unsupported) {
+    problems.push(
+      `apksigner verifies this artifact and this repository's own reader does not: ${signing.problem}. `
+      + 'One of the two is wrong, and neither may be assumed to be the tool.',
+    );
+    return problems;
+  }
+
+  const ours = signing.certificateFingerprint;
+  if (ours && authority.fingerprints.length > 0 && !authority.fingerprints.includes(ours)) {
+    problems.push(
+      `apksigner reports the signer as ${authority.fingerprints.join(', ')} and this reader reports ${ours}.`,
+    );
+  }
+  return problems;
+}
+
+function indent(text: string): string {
+  return text.split(/\r?\n/).map((line) => `    ${line}`).join('\n');
+}
+
+/**
+ * Hold the right to replace one path, or fail.
+ *
+ * Exclusive creation is the lock. Without one, two processes replacing the same
+ * destination interleave: one steps the incumbent aside while the other deletes
+ * that copy or restores from it, and the artifact that survives is whichever
+ * lost the race -- or none.
+ *
+ * A lock left by a process that died is taken over after it goes stale, because
+ * the alternative is a build that can never run again after one crash.
+ */
+const LOCK_STALE_MS = 60_000;
+const LOCK_ATTEMPTS = 50;
+
+function acquireLock(target: string): string {
+  const lock = `${target}.lock`;
+  for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt += 1) {
+    try {
+      fs.writeFileSync(lock, `${process.pid}\n`, { flag: 'wx' });
+      return lock;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      let age = 0;
+      try {
+        age = Date.now() - fs.statSync(lock).mtimeMs;
+      } catch {
+        continue; // it went away between the two calls; try again
+      }
+      if (age > LOCK_STALE_MS) {
+        fs.rmSync(lock, { force: true });
+        continue;
+      }
+      // Busy-wait rather than await: every caller of this is already inside a
+      // synchronous replace, and the hold is a rename or two.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+    }
+  }
+  throw new Error(`Another process is still replacing ${path.basename(target)} (${lock}).`);
+}
+
+/**
  * Move `from` onto `to` without a moment where neither exists.
  *
- * The previous version deleted the destination and then renamed, which loses
- * the last good artifact if anything fails in between -- and `rename` cannot
- * simply overwrite on Windows. So the incumbent is stepped aside first and only
- * removed once the new file is in place: a crash at any point leaves either the
- * old artifact or the new one, and at worst a `.previous` beside it.
+ * An earlier version deleted the destination and then renamed, which loses the
+ * last good artifact if anything fails between the two -- and `rename` cannot
+ * simply overwrite on Windows, which is why the delete was there. The incumbent
+ * is stepped aside under a name of this process's own and removed only once the
+ * new file is in place, so a crash leaves one artifact or the other and never
+ * neither.
  */
 export function replaceFile(from: string, to: string): void {
-  if (!fs.existsSync(to)) {
-    fs.renameSync(from, to);
-    return;
-  }
-  const previous = `${to}.previous`;
-  fs.rmSync(previous, { force: true });
-  fs.renameSync(to, previous);
+  const lock = acquireLock(to);
   try {
-    fs.renameSync(from, to);
-  } catch (error) {
-    fs.renameSync(previous, to); // put back what was there
-    throw error;
+    if (!fs.existsSync(to)) {
+      fs.renameSync(from, to);
+      return;
+    }
+    const previous = pendingPath(`${to}.previous`);
+    fs.renameSync(to, previous);
+    try {
+      fs.renameSync(from, to);
+    } catch (error) {
+      fs.renameSync(previous, to); // put back what was there
+      throw error;
+    }
+    fs.rmSync(previous, { force: true });
+  } finally {
+    fs.rmSync(lock, { force: true });
   }
-  fs.rmSync(previous, { force: true });
 }
 
 /** A scratch name no concurrent run of this can collide with. */
@@ -198,12 +331,23 @@ export async function verifyBuiltArtifact(options: VerifyOptions): Promise<ApkRe
     ? inspectApk(options.file, { ...expected, certificateFingerprint: remembered.fingerprint })
     : first;
 
+  // The authority on the signature, and required rather than preferred. The
+  // local implementation has been found short four times; the tool Android
+  // ships is what a device's behaviour is defined against.
+  const authority = runApksigner(options.file, report.minSdkVersion ?? undefined);
+  report.problems.push(...disagreements(report, authority));
+
   if (report.problems.length > 0) {
     throw new UnverifiableArtifact(
       `${path.basename(options.file)} is not fit to hand a reader:\n`
       + report.problems.map((problem) => `  • ${problem}`).join('\n'),
     );
   }
+
+  if (report.signing.unsupported) {
+    log(`Signature accepted on apksigner's verdict alone: ${report.signing.problem}`);
+  }
+  log(`Signature verified by ${authority.tool} (${authority.schemes.join(', ') || 'no scheme'})`);
 
   if (remembered) {
     log(`Signing key matches the one recorded for ${applicationId}`);
