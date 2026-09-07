@@ -71,15 +71,15 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
   } = visible ? props : lastContent.current;
   const dense = layoutPreset !== "classic";
   const [contentHeight, setContentHeight] = useState<number | null>(null);
-  const height = useRef(new Animated.Value(0)).current;
+  /** 1 while open, 0 while collapsed; only ever constrains a closing panel. */
+  const openness = useRef(new Animated.Value(visible ? 1 : 0)).current;
   const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
   const lineHeight =
     StyleSheet.flatten(dialogueTextStyle)?.lineHeight ?? choicesFontSize * 1.65;
 
   useEffect(() => {
-    if (contentHeight === null) return;
-    const resize = Animated.timing(height, {
-      toValue: visible ? contentHeight + 2 : 0,
+    const collapse = Animated.timing(openness, {
+      toValue: visible ? 1 : 0,
       duration: 240,
       easing: Easing.ease,
       useNativeDriver: false,
@@ -89,44 +89,64 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
       duration: 240,
       useNativeDriver: false,
     });
-    resize.start();
+    collapse.start();
     fade.start();
     return () => {
-      resize.stop();
+      collapse.stop();
       fade.stop();
     };
-  }, [contentHeight, height, opacity, visible]);
+  }, [opacity, openness, visible]);
+
+  /**
+   * A ceiling, and only while closing.
+   *
+   * The first version animated `height` to a measured value and made the
+   * content absolute so that height would govern the box. That inverted the
+   * measurement: an out-of-flow child cannot tell its parent how tall to be, so
+   * the panel kept whatever height was measured once and the content grew past
+   * it. At a large font on a narrow screen the controls row ended up outside
+   * the panel's own background, hanging off the bottom of the screen.
+   *
+   * So an open panel is not constrained at all — its height is its content's,
+   * and a longer line or a bigger font simply makes it taller. The measured
+   * height is used for one thing: the ceiling to animate down from when the
+   * panel closes.
+   */
+  const closingMaxHeight = openness.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, contentHeight ?? 0],
+  });
 
   return (
-    <Animated.View
-      className="rounded-2xl border overflow-hidden"
-      testID={`reader-dialogue-panel-${layoutPreset}`}
-      pointerEvents={visible ? "auto" : "none"}
-      accessibilityElementsHidden={!visible}
-      importantForAccessibility={visible ? "auto" : "no-hide-descendants"}
-      aria-hidden={!visible}
-      style={{
-        height: contentHeight === null && visible ? undefined : height,
-        opacity,
-        backgroundColor: colors.dialogueBg,
-        borderColor: colors.dialogueBorder,
-        marginHorizontal: dense ? 8 : 12,
-        marginBottom: dense ? 12 : DIALOGUE_MARGIN_BOTTOM,
-      }}
+    <View
+      testID={`reader-dialogue-${layoutPreset}`}
+      style={{ marginBottom: dense ? 12 : DIALOGUE_MARGIN_BOTTOM }}
     >
-      <View
-        onLayout={(event) => {
-          const measuredHeight = Math.ceil(event.nativeEvent.layout.height);
-          if (contentHeight === null)
-            height.setValue(visible ? measuredHeight + 2 : 0);
-          setContentHeight(measuredHeight);
+      <Animated.View
+        className="rounded-2xl border"
+        testID={`reader-dialogue-panel-${layoutPreset}`}
+        pointerEvents={visible ? "auto" : "none"}
+        accessibilityElementsHidden={!visible}
+        importantForAccessibility={visible ? "auto" : "no-hide-descendants"}
+        aria-hidden={!visible}
+        style={{
+          // Unconstrained while open. `overflow` is set in the style rather
+          // than through the class name because the class was not producing it
+          // on web at all, which is the only reason the overflowing controls
+          // were visible instead of cut off.
+          maxHeight: visible ? undefined : closingMaxHeight,
+          overflow: "hidden",
+          opacity,
+          backgroundColor: colors.dialogueBg,
+          borderColor: colors.dialogueBorder,
+          marginHorizontal: dense ? 8 : 12,
         }}
-        style={
-          contentHeight === null
-            ? undefined
-            : { position: "absolute", top: 0, left: 0, right: 0 }
-        }
       >
+        <View
+          onLayout={(event) => {
+            setContentHeight(Math.ceil(event.nativeEvent.layout.height));
+          }}
+        >
         <View style={{ minHeight: 28 }}>
           {speaker ? (
             <View
@@ -177,42 +197,54 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
           />
         )}
 
-        <View
-          className={
-            dense
-              ? "flex-row items-center justify-between"
-              : "flex-row items-center justify-between px-4 pb-3 pt-1"
-          }
-          style={
-            dense
-              ? { paddingHorizontal: 12, paddingBottom: 8, paddingTop: 2 }
-              : undefined
-          }
-        >
-          {false && pagesLength > 1 ? (
-            <View className="flex-row gap-1">
-              {Array.from({ length: pagesLength }).map((_, i) => (
-                <View
-                  key={`dot-${i}`}
-                  className={
-                    i === pageIndex
-                      ? "rounded-full w-4 h-1.5"
-                      : "rounded-full w-1.5 h-1.5"
-                  }
-                  style={{
-                    backgroundColor:
-                      i === pageIndex ? colors.primary : colors.border,
-                  }}
-                />
-              ))}
-            </View>
-          ) : (
-            <View />
-          )}
-
-          {readerControls}
         </View>
+      </Animated.View>
+
+      {/*
+        Outside the panel, deliberately.
+
+        Auto, Back and History were inside it, so a scene with no text and no
+        choices — which an author can write, and which nothing stops them
+        writing — collapsed the panel and took the reader's only way out with
+        it. There is no gesture that brings them back. They belong to the
+        reader, not to the line, so they stay whatever the line is doing.
+      */}
+      <View
+        testID="reader-controls-row"
+        className={
+          dense
+            ? "flex-row items-center justify-between"
+            : "flex-row items-center justify-between px-4 pb-3 pt-1"
+        }
+        style={
+          dense
+            ? { paddingHorizontal: 12, paddingBottom: 8, paddingTop: 2 }
+            : undefined
+        }
+      >
+        {false && pagesLength > 1 ? (
+          <View className="flex-row gap-1">
+            {Array.from({ length: pagesLength }).map((_, i) => (
+              <View
+                key={`dot-${i}`}
+                className={
+                  i === pageIndex
+                    ? "rounded-full w-4 h-1.5"
+                    : "rounded-full w-1.5 h-1.5"
+                }
+                style={{
+                  backgroundColor:
+                    i === pageIndex ? colors.primary : colors.border,
+                }}
+              />
+            ))}
+          </View>
+        ) : (
+          <View />
+        )}
+
+        {readerControls}
       </View>
-    </Animated.View>
+    </View>
   );
 });

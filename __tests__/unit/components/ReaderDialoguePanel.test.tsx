@@ -46,7 +46,7 @@ function measure(height: number) {
   );
 }
 
-it("keeps the same panel mounted and animates measured expansion and contraction", () => {
+it("keeps the same panel mounted and animates only the collapse", () => {
   const timing = vi.spyOn(Animated, "timing");
   const { rerender } = render(<ReaderDialoguePanel {...props} />);
   const panel = screen.getByTestId("reader-dialogue-panel-classic");
@@ -59,35 +59,66 @@ it("keeps the same panel mounted and animates measured expansion and contraction
     />,
   );
   expect(screen.getByTestId("reader-dialogue-panel-classic")).toBe(panel);
-  const choices = [
-    {
-      id: "go",
-      text: "Go",
-      targetSceneId: "next",
-      nextSceneId: "next",
-      index: 0,
-    },
-  ];
-  rerender(<ReaderDialoguePanel {...props} choices={choices} />);
-  measure(260);
-  expect(timing).toHaveBeenCalledWith(
-    expect.anything(),
-    expect.objectContaining({ toValue: 262, duration: 240 }),
-  );
-  rerender(<ReaderDialoguePanel {...props} />);
-  measure(180);
+
+  // Closing animates to 0, opening back to 1. The panel's height while open is
+  // its content's, so growing it is not an animation any more — which is the
+  // point: an animated height that lags the content is a clipped panel.
+  rerender(<ReaderDialoguePanel {...props} displayedText="" speaker={null} />);
   expect(timing).toHaveBeenLastCalledWith(
     expect.anything(),
-    expect.objectContaining({ toValue: 1 }),
+    expect.objectContaining({ toValue: 0, duration: 240 }),
   );
-  expect(timing).toHaveBeenCalledWith(
+  rerender(<ReaderDialoguePanel {...props} />);
+  expect(timing).toHaveBeenLastCalledWith(
     expect.anything(),
-    expect.objectContaining({ toValue: 182, duration: 240 }),
+    expect.objectContaining({ toValue: 1, duration: 240 }),
   );
   timing.mockRestore();
 });
 
-it("retains outgoing text while collapsing and removes hidden controls from accessibility", () => {
+/**
+ * The property a browser run found broken: at a large font on a narrow screen
+ * the panel kept a height measured earlier and its own controls ended up
+ * outside its background. An open panel must carry no height ceiling at all.
+ */
+it("puts no height ceiling on an open panel", () => {
+  const { rerender } = render(<ReaderDialoguePanel {...props} />);
+  measure(180);
+  const panel = screen.getByTestId("reader-dialogue-panel-classic");
+  expect(panel.style.maxHeight).toBe("");
+  expect(panel.style.height).toBe("");
+
+  // And it still does not acquire one when the content grows.
+  rerender(
+    <ReaderDialoguePanel {...props} displayedText="A much longer line." />,
+  );
+  measure(420);
+  expect(screen.getByTestId("reader-dialogue-panel-classic").style.maxHeight)
+    .toBe("");
+});
+
+/**
+ * Auto, Back and History were inside the collapsing panel, so a scene with no
+ * text and no choices took the reader's only way out with it, and nothing
+ * brings them back.
+ */
+it("keeps the reader controls outside the panel that collapses", () => {
+  const { rerender } = render(<ReaderDialoguePanel {...props} />);
+  measure(180);
+  const panel = screen.getByTestId("reader-dialogue-panel-classic");
+  const controls = screen.getByTestId("reader-controls-row");
+  expect(panel.contains(controls)).toBe(false);
+
+  rerender(<ReaderDialoguePanel {...props} displayedText="" speaker={null} />);
+  const collapsed = screen.getByTestId("reader-dialogue-panel-classic");
+  expect(collapsed.getAttribute("aria-hidden")).toBe("true");
+  // Still there, still reachable, while the panel is hidden.
+  const stillThere = screen.getByTestId("reader-controls-row");
+  expect(collapsed.contains(stillThere)).toBe(false);
+  expect(stillThere.closest("[aria-hidden=\"true\"]")).toBeNull();
+});
+
+it("retains outgoing text while collapsing", () => {
   const timing = vi.spyOn(Animated, "timing");
   const { rerender } = render(<ReaderDialoguePanel {...props} />);
   measure(180);
