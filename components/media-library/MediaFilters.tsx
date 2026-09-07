@@ -1,7 +1,10 @@
 /**
- * The two rails above the grid: the media type tabs, then the filter row where
- * character portraits (images) or the two audio categories sit next to the
- * usage filters.
+ * The narrow-screen stand-in for the rail: the media type tabs, then the filter
+ * row where character portraits (images) or the two audio categories sit next
+ * to the usage filters.
+ *
+ * A phone has room for one column, so these two bands are what a screen too
+ * narrow for `MediaRail` gets instead — the same three axes, laid sideways.
  */
 
 import React from 'react';
@@ -11,17 +14,20 @@ import { ResolvedAssetImage } from '@/components/resolved-asset-image';
 import { useI18n } from '@/hooks/use-i18n';
 import type { ThemeColorPalette } from '@/lib/_core/theme';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
+import type { MediaView } from '@/lib/media-browser-rows';
+import { sameLabel, type OrganizationSummary } from '@/lib/media-organization';
 import type {
   AudioCategory,
   CharacterMediaFilter,
   ImageFilter,
-  MediaKind,
 } from '@/lib/story-media-gallery';
 
 export function sameFilter(a: ImageFilter, b: ImageFilter): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === 'character' && b.kind === 'character') return a.characterId === b.characterId;
   if (a.kind === 'audioCategory' && b.kind === 'audioCategory') return a.category === b.category;
+  if (a.kind === 'folder' && b.kind === 'folder') return a.folderId === b.folderId;
+  if (a.kind === 'tag' && b.kind === 'tag') return sameLabel(a.tag, b.tag);
   return true;
 }
 
@@ -35,7 +41,8 @@ export function initialsOf(name: string): string {
     .join('') || '?';
 }
 
-const TAB_LABELS: Record<MediaKind, string> = {
+const TAB_LABELS: Record<MediaView, string> = {
+  all: 'mediaLibrary.tab.all',
   image: 'mediaLibrary.tab.images',
   video: 'mediaLibrary.tab.videos',
   audio: 'mediaLibrary.tab.audio',
@@ -43,18 +50,27 @@ const TAB_LABELS: Record<MediaKind, string> = {
 
 interface TabsProps {
   colors: ThemeColorPalette;
-  kind: MediaKind;
-  counts: { images: number; videos: number; audios: number };
-  onChange: (kind: MediaKind) => void;
+  kind: MediaView;
+  /**
+   * `all` is optional: the tabs are the narrow-screen stand-in for the rail,
+   * and a caller that has no combined view to offer simply omits it.
+   */
+  counts: { all?: number; images: number; videos: number; audios: number };
+  onChange: (kind: MediaView) => void;
 }
 
 export function MediaTypeTabs({ colors, kind, counts, onChange }: TabsProps) {
   const { t } = useI18n();
+  const views: MediaView[] = counts.all === undefined
+    ? ['image', 'video', 'audio']
+    : ['all', 'image', 'video', 'audio'];
   return (
     <View style={[styles.tabs, { backgroundColor: colors.background }]}>
-      {(['image', 'video', 'audio'] as MediaKind[]).map((value) => {
+      {views.map((value) => {
         const active = value === kind;
-        const count = value === 'image' ? counts.images : value === 'video' ? counts.videos : counts.audios;
+        const count = value === 'all'
+          ? counts.all ?? 0
+          : value === 'image' ? counts.images : value === 'video' ? counts.videos : counts.audios;
         return (
           <Pressable
             key={value}
@@ -92,6 +108,12 @@ interface FilterRailProps {
    * scenes have not been read — so the two filters are not offered.
    */
   usageReady: boolean;
+  /**
+   * The author's filing. A phone has no rail to list it down the side, so the
+   * folders and tags ride along here — without them, filing on a phone would
+   * be something you can do and never see.
+   */
+  organization?: OrganizationSummary;
   onChange: (filter: ImageFilter) => void;
 }
 
@@ -102,6 +124,7 @@ export function MediaFilterRail({
   characters,
   audioCategories = [],
   usageReady,
+  organization,
   onChange,
 }: FilterRailProps) {
   const { t } = useI18n();
@@ -118,7 +141,10 @@ export function MediaFilterRail({
     return (
       <Pressable
         key={`${value.kind}:${
-          value.kind === 'character' ? value.characterId : value.kind === 'audioCategory' ? value.category : ''
+          value.kind === 'character' ? value.characterId
+            : value.kind === 'audioCategory' ? value.category
+              : value.kind === 'folder' ? value.folderId
+                : value.kind === 'tag' ? value.tag : ''
         }`}
         onPress={() => onChange(value)}
         disabled={disabled}
@@ -158,6 +184,17 @@ export function MediaFilterRail({
       ))}
       {chip({ kind: 'used' }, t('mediaLibrary.filter.used'), counts.used, undefined, undefined, !usageReady)}
       {chip({ kind: 'unused' }, t('mediaLibrary.filter.unused'), counts.unused, undefined, undefined, !usageReady)}
+      {organization?.folders.map((folder) => chip(
+        { kind: 'folder', folderId: folder.id },
+        folder.name,
+        folder.count,
+      ))}
+      {organization && organization.unfiled > 0 ? chip(
+        { kind: 'unfiled' },
+        t('mediaLibrary.folder.unfiled'),
+        organization.unfiled,
+      ) : null}
+      {organization?.tags.map(({ tag, count }) => chip({ kind: 'tag', tag }, tag, count))}
       {characters.map((character) => chip(
         { kind: 'character', characterId: character.characterId },
         character.name,

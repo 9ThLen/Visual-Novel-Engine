@@ -1,4 +1,10 @@
 import { migrateCharacterLibrary } from '@/lib/character-migration';
+import {
+  forgetMedia,
+  organizationForStory,
+  type StoryMediaOrganization,
+} from '@/lib/media-organization';
+import { mediaKeyForAsset } from '@/lib/story-media-gallery';
 import { keepOrphanedSpriteImages } from '@/lib/orphaned-sprite-images';
 import {
   addImageAssetToStory,
@@ -17,6 +23,25 @@ export type LibrariesSliceActions = Pick<
   | 'addImageAssetToStory' | 'removeImageAssetFromStory'
   | 'addMediaAssetToStory' | 'removeMediaAssetFromStory'
 >;
+
+/**
+ * A file leaving the story takes its folder and tags with it.
+ *
+ * Left behind, they would be invisible until the same asset id came back — and
+ * then they would file a different picture into a folder nobody chose for it.
+ */
+function forgetOrganization(
+  state: { mediaOrganizationByStory: Record<string, StoryMediaOrganization> },
+  storyId: string,
+  assetId: string,
+) {
+  const current = organizationForStory(state.mediaOrganizationByStory, storyId);
+  const next = forgetMedia(current, [mediaKeyForAsset(assetId)]);
+  if (next === current) return {};
+  return {
+    mediaOrganizationByStory: { ...state.mediaOrganizationByStory, [storyId]: next },
+  };
+}
 
 export function createLibrariesSlice(set: AppStateSet): LibrariesSliceActions {
   return {
@@ -73,6 +98,7 @@ export function createLibrariesSlice(set: AppStateSet): LibrariesSliceActions {
       set((state) => ({
         imageAssetIdsByStory: removeImageAssetFromStory(state.imageAssetIdsByStory, storyId, assetId),
         mediaAssetIdsByStory: removeMediaAssetFromStory(state.mediaAssetIdsByStory, storyId, assetId),
+        ...forgetOrganization(state, storyId, assetId),
       })),
 
     addMediaAssetToStory: (storyId, assetId) =>
@@ -83,6 +109,7 @@ export function createLibrariesSlice(set: AppStateSet): LibrariesSliceActions {
     removeMediaAssetFromStory: (storyId, assetId) =>
       set((state) => ({
         mediaAssetIdsByStory: removeMediaAssetFromStory(state.mediaAssetIdsByStory, storyId, assetId),
+        ...forgetOrganization(state, storyId, assetId),
       })),
   };
 }

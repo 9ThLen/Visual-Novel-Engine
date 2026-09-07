@@ -12,6 +12,7 @@ export const initialAppState: AppState = {
   aiBridgeSettings: { url: '', token: '', disabled: false, preferredProvider: 'openai' },
   saveSlots: [],
   audioLibraries: {},
+  mediaOrganizationByStory: {},
   characterLibraries: {},
   language: 'en',
   mediaLibrary: [],

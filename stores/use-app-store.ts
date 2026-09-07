@@ -37,6 +37,7 @@ import {
   type AppStore,
 } from '@/stores/app-store-types';
 import { createLibrariesSlice } from '@/stores/app-store-slices/libraries-slice';
+import { createMediaOrganizationSlice } from '@/stores/app-store-slices/media-organization-slice';
 import { createPlaybackSlice } from '@/stores/app-store-slices/playback-slice';
 import { createPreferencesSlice } from '@/stores/app-store-slices/preferences-slice';
 import { createSavesSlice } from '@/stores/app-store-slices/saves-slice';
@@ -91,6 +92,7 @@ export const useAppStore = create<AppStore>()(
       ...createPlaybackSlice(set),
       ...createPreferencesSlice(set),
       ...createLibrariesSlice(set),
+      ...createMediaOrganizationSlice(set),
       ...createSavesSlice(set, get),
       ...createStorySlice(set),
       ...createSceneSlice(set, get),

@@ -9,7 +9,7 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import { AudioTrackList } from '@/components/media-library/AudioTrackList';
+import { MediaBrowser } from '@/components/media-library/MediaBrowser';
 import { Colors } from '@/lib/_core/theme';
 import type { AudioLibraryItem } from '@/lib/audio-types';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
@@ -72,11 +72,15 @@ function renderList(
 ) {
   const onSelect = vi.fn();
   render(
-    <AudioTrackList
-      items={items}
+    <MediaBrowser
+      view="audio"
+      images={[]}
+      videos={[]}
+      audios={items}
       colors={colors}
       selectedKey={null}
       grouped={false}
+      now={NOW}
       emptyLabel="No sounds in this story yet."
       usageState="ready"
       onSelect={onSelect}

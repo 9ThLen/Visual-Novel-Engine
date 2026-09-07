@@ -117,6 +117,7 @@ function makeState(): AppStorePersistenceState {
     ],
     imageAssetIdsByStory: {},
     mediaAssetIdsByStory: {},
+    mediaOrganizationByStory: {},
     endingsReachedByStory: { 'story-1': ['scene-1'] },
     lastEditedSceneByStory: { 'story-1': 'scene-1' },
   };
@@ -432,7 +433,10 @@ describe('app store persistence helpers', () => {
       0,
     ) as Partial<AppStorePersistenceState>;
 
-    expect(APP_STORE_PERSIST_VERSION).toBe(8);
+    expect(APP_STORE_PERSIST_VERSION).toBe(9);
+    // Folders and tags arrived with version 9; a payload from before it has
+    // none, and must come back with an empty filing system rather than none.
+    expect(migrated.mediaOrganizationByStory).toEqual({});
     expect(migrated.mediaLibrary?.map((asset) => asset.id)).toEqual(['image-file', 'image-data']);
     expect(migrated.imageAssetIdsByStory).toEqual({});
     expect(migrated.mediaAssetIdsByStory).toEqual({ 'story-1': [] });

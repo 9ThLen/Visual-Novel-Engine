@@ -11,6 +11,7 @@ import type { ReaderReleaseSource } from '@/lib/scene-access';
 import type { Character } from '@/lib/character-types';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { AudioLibraryItem } from '@/lib/audio-types';
+import type { MediaOrganizationByStory } from '@/lib/media-organization';
 import type { StoryImageAssetIds } from '@/lib/story-image-library';
 import type { StoryMediaAssetIds } from '@/lib/story-media-library';
 import type { AiChangeSetApplyResult } from '@/lib/ai/change-set';
@@ -42,6 +43,12 @@ export interface AppState {
   mediaLibrary: LibraryAsset[];
   imageAssetIdsByStory: StoryImageAssetIds;
   mediaAssetIdsByStory: StoryMediaAssetIds;
+  /**
+   * storyId → how the author has filed that story's media. The only thing in
+   * the media library that is stored rather than derived: no scene records
+   * which chapter a background belongs to.
+   */
+  mediaOrganizationByStory: MediaOrganizationByStory;
   /** storyId → ids of terminal scenes the reader has reached. */
   endingsReachedByStory: Record<string, string[]>;
   /**
@@ -116,6 +123,15 @@ export interface AppActions {
   removeImageAssetFromStory: (storyId: string, assetId: string) => void;
   addMediaAssetToStory: (storyId: string, assetId: string) => void;
   removeMediaAssetFromStory: (storyId: string, assetId: string) => void;
+  /** The new folder's id, or null when the name was blank or already taken. */
+  createMediaFolder: (storyId: string, name: string) => string | null;
+  renameMediaFolder: (storyId: string, folderId: string, name: string) => void;
+  /** The folder goes; what was in it becomes unfiled. */
+  deleteMediaFolder: (storyId: string, folderId: string) => void;
+  /** `null` takes the files out of whatever folder they were in. */
+  moveMediaToFolder: (storyId: string, keys: string[], folderId: string | null) => void;
+  addMediaTag: (storyId: string, keys: string[], tag: string) => void;
+  removeMediaTag: (storyId: string, keys: string[], tag: string) => void;
 
   hydrateReaderSceneWindow: (
     storyId: string,

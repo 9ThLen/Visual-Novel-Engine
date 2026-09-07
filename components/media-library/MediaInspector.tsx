@@ -238,6 +238,12 @@ interface MediaInspectorProps {
   playbackFailed?: boolean;
   /** Audio only: the author's own answer about what this file is. */
   onSetAudioCategory?: (item: StoryMediaItem, category: AudioCategory) => void;
+  /** Where the author filed this file, and what they called it. */
+  folderName?: string | null;
+  tags?: string[];
+  onMoveToFolder: (item: StoryMediaItem) => void;
+  onAddTag: (item: StoryMediaItem) => void;
+  onRemoveTag: (item: StoryMediaItem, tag: string) => void;
 }
 
 function InspectorBody({
@@ -262,6 +268,11 @@ function InspectorBody({
   durationSeconds = 0,
   playbackFailed = false,
   onSetAudioCategory,
+  folderName = null,
+  tags = [],
+  onMoveToFolder,
+  onAddTag,
+  onRemoveTag,
 }: Omit<MediaInspectorProps, 'asSheet'>) {
   const { t, language } = useI18n();
   const [pickingCharacter, setPickingCharacter] = useState(false);
@@ -346,6 +357,52 @@ function InspectorBody({
       <Text style={[typeScale.caption, { color: colors.muted }]}>
         {t('mediaLibrary.inspector.addedAt', { date: formatDate(item.addedAt, language) })}
       </Text>
+
+      {/* Filing sits above ownership: it is the author's own note about the
+          file, and the one thing on this panel nothing else can tell them. */}
+      <View style={styles.filingRow}>
+        <Text style={[typeScale.caption, { color: colors.muted }]}>
+          {t('mediaLibrary.inspector.folder')}
+        </Text>
+        <Pressable
+          onPress={() => onMoveToFolder(item)}
+          accessibilityRole="button"
+          accessibilityLabel={t('mediaLibrary.folder.move')}
+          style={[styles.filingChip, { borderColor: colors.border }]}
+        >
+          <IconSymbol name={folderName ? 'files' : 'question'} size={15} color={colors.muted} />
+          <Text style={[typeScale.label, { color: folderName ? colors.foreground : colors.muted }]}>
+            {folderName ?? t('mediaLibrary.folder.none')}
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.filingRow}>
+        <Text style={[typeScale.caption, { color: colors.muted }]}>
+          {t('mediaLibrary.inspector.tags')}
+        </Text>
+        {tags.map((tag) => (
+          <Pressable
+            key={tag}
+            onPress={() => onRemoveTag(item, tag)}
+            accessibilityRole="button"
+            accessibilityLabel={t('mediaLibrary.tag.remove', { tag })}
+            style={[styles.filingChip, { borderColor: colors.primary }]}
+          >
+            <Text style={[typeScale.label, { color: colors.primary }]}>{tag}</Text>
+            <IconSymbol name="close" size={14} color={colors.primary} />
+          </Pressable>
+        ))}
+        <Pressable
+          onPress={() => onAddTag(item)}
+          accessibilityRole="button"
+          accessibilityLabel={t('mediaLibrary.tag.add')}
+          style={[styles.filingChip, { borderColor: colors.border }]}
+        >
+          <IconSymbol name="add" size={15} color={colors.muted} />
+          <Text style={[typeScale.label, { color: colors.muted }]}>{t('mediaLibrary.tag.add')}</Text>
+        </Pressable>
+      </View>
 
       {item.owners.length ? (
         <View style={styles.ownerRow}>
@@ -611,6 +668,16 @@ const styles = StyleSheet.create({
   video: { width: '100%', height: 180, borderRadius: radius.md },
   videoFallback: { width: '100%', height: 180, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   retry: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },
+  filingRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
+  filingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: 32,
+    paddingHorizontal: spacing.sm,
+    borderWidth: 1,
+    borderRadius: radius.full,
+  },
   ownerRow: { gap: spacing.xs },
   ownerBlock: { gap: spacing.xs, paddingBottom: spacing.xs },
   owner: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
