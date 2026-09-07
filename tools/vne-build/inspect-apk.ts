@@ -234,18 +234,24 @@ export function effectiveFingerprint(
   report: ApkReport,
   authority: ApksignerVerdict,
 ): { fingerprint: string | null; problem: string | null } {
+  // Checked before anything else, not only when the local reader abstained.
+  // Which of several signers a device holds an app to depends on the schemes
+  // and the platform version, so there is no answer to record — and the guard
+  // was standing behind a branch that a verified local read walked straight
+  // past, which made the refusal conditional on the thing it does not concern.
+  if (authority.fingerprints.length > 1) {
+    return {
+      fingerprint: null,
+      problem: `apksigner names ${authority.fingerprints.length} signers `
+        + `(${authority.fingerprints.join(', ')}), and which of them a device holds the app to `
+        + 'depends on its version. There is no single key to hold this story to.',
+    };
+  }
   if (report.signing.certificateFingerprint) {
     return { fingerprint: report.signing.certificateFingerprint, problem: null };
   }
   if (authority.fingerprints.length === 1) return { fingerprint: authority.fingerprints[0], problem: null };
-  if (authority.fingerprints.length === 0) {
-    return { fingerprint: null, problem: 'Neither reader could name the signing certificate.' };
-  }
-  return {
-    fingerprint: null,
-    problem: `apksigner names ${authority.fingerprints.length} signers `
-      + `(${authority.fingerprints.join(', ')}) and this reader could not choose between them.`,
-  };
+  return { fingerprint: null, problem: 'Neither reader could name the signing certificate.' };
 }
 
 /**

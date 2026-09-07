@@ -37,8 +37,10 @@ pnpm stage:android --release novel.vnerelease --out ./novel-android --from-build
 
 That skips staging and submitting: it follows, downloads and verifies a build
 already paid for. It never cancels the build — you may be watching one somebody
-else started. Downloads land in a `.part` file and are renamed only once they
-verify; a build that fails is kept as `.unverified`.
+else started. Downloads land in a file of their own and are renamed into place only once they
+verify; the rename overwrites atomically, so the artifact is never absent or
+half-written even if two builds finish at once. A build that fails verification
+is kept as `.unverified`.
 
 To read an APK already on disk:
 

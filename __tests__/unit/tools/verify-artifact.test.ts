@@ -203,7 +203,8 @@ describe('verifying a finished build', () => {
     it('refuses when apksigner names more than one signer', async () => {
       await expect(verify(rotated(), {}, fakeApksigner({
         fingerprints: [KEY.fingerprint, STOLEN.fingerprint],
-      }))).rejects.toThrow(/could not choose/);
+      }))).rejects.toThrow(/apksigner names 2 signers/);
+      expect(readSigningRecord(repoRoot, APPLICATION_ID)).toBeNull();
     });
   });
 

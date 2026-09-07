@@ -185,126 +185,42 @@ function recordSigningKey(repoRoot: string, applicationId: string, fingerprint: 
 export class UnverifiableArtifact extends Error {}
 
 /**
- * Hold the right to replace one path, or fail.
+ * Move `from` onto `to`.
  *
- * Exclusive creation is the lock. Without one, two processes replacing the same
- * destination interleave: one steps the incumbent aside while the other deletes
- * that copy or restores from it, and the artifact that survives is whichever
- * lost the race -- or none.
+ * One rename, and everything else here was built on a mistake.
  *
- * A lock left by a process that died is taken over after it goes stale, because
- * the alternative is a build that can never run again after one crash.
- */
-const LOCK_STALE_MS = 60_000;
-const LOCK_ATTEMPTS = 50;
-
-interface Lock { file: string; token: string }
-
-function pause(milliseconds: number): void {
-  // Busy-wait rather than await: every caller is already inside a synchronous
-  // replace, and the hold is a rename or two.
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
-}
-
-function holderIsAlive(pid: number): boolean {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0); // signal 0 asks about the process without touching it
-    return true;
-  } catch (error) {
-    // EPERM means it exists and belongs to somebody else, which is still alive.
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
-
-/**
- * Take the right to replace one path, and be able to prove it later.
+ * The original bug was real: the destination was deleted and then renamed over,
+ * so anything failing between the two lost the last good artifact. The fix was
+ * not. It assumed `rename` cannot overwrite on Windows, and so grew a
+ * step-aside copy, then a lock, then ownership tokens on the lock, then a
+ * protocol for taking an abandoned one over -- each layer added because the one
+ * below it had a race, and every one of them resting on that assumption.
  *
- * The first version took a lock over by age alone. A process suspended for a
- * minute -- a laptop lid, a long GC, a debugger -- would find its lock stolen
- * while it was still inside the critical section, and on waking would delete
- * the thief's lock on its way out, handing the section to a third. So age is
- * not enough on its own: the holder has to be gone as well, and the file
- * carries a token so nobody removes a lock that is not theirs.
- */
-function acquireLock(target: string): Lock {
-  const file = `${target}.lock`;
-  // Dot-separated, not colon: the token becomes part of a filename when an
-  // abandoned lock is claimed, and a colon is illegal in one on Windows -- the
-  // rename failed silently, the takeover never happened, and the wait ran out.
-  const token = `${process.pid}.${Math.random().toString(36).slice(2, 10)}`;
-  for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt += 1) {
-    try {
-      fs.writeFileSync(file, `${token}\n`, { flag: 'wx' });
-      return { file, token };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-
-      let held: string;
-      let age: number;
-      try {
-        held = fs.readFileSync(file, 'utf8').trim();
-        age = Date.now() - fs.statSync(file).mtimeMs;
-      } catch {
-        continue; // it went away between the two calls; try for it
-      }
-
-      const pid = Number.parseInt(held.split('.')[0], 10);
-      if (age > LOCK_STALE_MS && !holderIsAlive(pid)) {
-        // Claim by rename rather than delete-then-create: two processes
-        // clearing the same abandoned lock cannot both succeed at a rename.
-        try {
-          fs.renameSync(file, `${file}.stale.${token}`);
-          fs.rmSync(`${file}.stale.${token}`, { force: true });
-        } catch {
-          // Somebody else got there first, which is fine.
-        }
-        continue;
-      }
-      pause(100);
-    }
-  }
-  throw new Error(`Another process is still replacing ${path.basename(target)} (${file}).`);
-}
-
-/** Release a lock only if it is still the one taken here. */
-function releaseLock(lock: Lock): void {
-  try {
-    if (fs.readFileSync(lock.file, 'utf8').trim() !== lock.token) return;
-  } catch {
-    return; // already gone
-  }
-  fs.rmSync(lock.file, { force: true });
-}
-
-/**
- * Move `from` onto `to` without a moment where neither exists.
+ * `fs.renameSync` overwrites on Windows. libuv calls `MoveFileExW` with
+ * `MOVEFILE_REPLACE_EXISTING`, and the swap is atomic within a volume. So the
+ * destination is never absent, never half-written, and two processes racing
+ * leave one whole artifact rather than none -- which is the property all of
+ * that machinery was trying and failing to reconstruct.
  *
- * An earlier version deleted the destination and then renamed, which loses the
- * last good artifact if anything fails between the two -- and `rename` cannot
- * simply overwrite on Windows, which is why the delete was there. The incumbent
- * is stepped aside under a name of this process's own and removed only once the
- * new file is in place, so a crash leaves one artifact or the other and never
- * neither.
+ * The lesson is not about Windows. Three rounds of review found races in a
+ * design whose premise nobody had checked, and checking it took one line.
  */
 export function replaceFile(from: string, to: string): void {
-  const lock = acquireLock(to);
-  try {
-    if (!fs.existsSync(to)) {
-      fs.renameSync(from, to);
-      return;
-    }
-    const previous = pendingPath(`${to}.previous`);
-    fs.renameSync(to, previous);
+  // Retried only for the codes Windows raises when two renames land on one
+  // destination at the same instant, or a scanner has the file open for a
+  // moment. They are transient by nature: the rename either happened or did
+  // not, and the destination is whole either way. Anything else is a real
+  // failure and is thrown.
+  const transient = new Set(['EPERM', 'EBUSY', 'EACCES']);
+  for (let attempt = 0; ; attempt += 1) {
     try {
       fs.renameSync(from, to);
+      return;
     } catch (error) {
-      fs.renameSync(previous, to); // put back what was there
-      throw error;
+      const code = (error as NodeJS.ErrnoException).code ?? '';
+      if (!transient.has(code) || attempt >= 20) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
     }
-    fs.rmSync(previous, { force: true });
-  } finally {
-    releaseLock(lock);
   }
 }
 

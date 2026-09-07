@@ -41,6 +41,11 @@ export interface ApksignerVerdict {
 
 export class ApksignerMissing extends Error {}
 
+/** The first line of whatever a failing invocation had to say for itself. */
+function firstLine(text: string): string {
+  return text.trim().split(/\r?\n/)[0] ?? '';
+}
+
 /**
  * How to start apksigner: the jar under a real `java`, or the wrapper itself.
  *
@@ -168,8 +173,11 @@ export function parseApksignerOutput(tool: string, output: string, status: numbe
  * an EAS build costs money and twenty minutes, and it ends in a signing key the
  * story is held to for its life.
  *
- * `java` is checked by running it, because apksigner is a jar and a `java` on
- * PATH that does not start is the same as no apksigner at all.
+ * It runs **apksigner**, not the interpreter under it. Asking `java -version`
+ * proves a Java exists and nothing about the jar beside it: a truncated
+ * download, a build-tools release this JDK is too old for, or a jar with no
+ * main class all answer that question happily and fail the one that matters.
+ * The exit code is part of the answer too, and was not being read at all.
  */
 export function apksignerReadiness(): { ready: true } | { ready: false; reason: string } {
   const tool = findApksigner();
@@ -181,17 +189,23 @@ export function apksignerReadiness(): { ready: true } | { ready: false; reason: 
         + 'Without it a signature cannot be verified, and a build cannot be certified.',
     };
   }
-  const probe = spawnSync(tool.command, tool.prefix.length > 0 ? ['-version'] : ['version'], {
+  const probe = spawnSync(tool.command, [...tool.prefix, 'version'], {
     encoding: 'utf8',
     windowsHide: true,
   });
   if (probe.error) {
     return {
       ready: false,
-      reason: tool.prefix.length > 0
-        ? `apksigner is at ${tool.label} but Java will not start (${probe.error.message}). `
-          + 'Install a JDK or set JAVA_HOME.'
-        : `apksigner at ${tool.label} will not start: ${probe.error.message}`,
+      reason: `apksigner at ${tool.label} will not run: ${probe.error.message}`
+        + (tool.prefix.length > 0 ? ' Install a JDK, or set JAVA_HOME.' : ''),
+    };
+  }
+  if (probe.status !== 0) {
+    const said = firstLine(`${probe.stdout ?? ''}${probe.stderr ?? ''}`);
+    return {
+      ready: false,
+      reason: `apksigner at ${tool.label} exited ${probe.status}${said ? `: ${said}` : ''}. `
+        + 'It is present but not usable, so no signature can be verified.',
     };
   }
   return { ready: true };

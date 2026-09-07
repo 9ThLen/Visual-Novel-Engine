@@ -1574,17 +1574,28 @@ applies to it; checking one needs `bundletool`.
 printed before the wait, not after it.
 
 Downloads land under a name unique to the process and are put in place only once
-verified. Putting them in place steps the incumbent aside rather than deleting
-it first, so a failure between the two leaves either the old artifact or the new
-one and never neither — `rename` cannot overwrite on Windows, which is why the
-delete was there. The step-aside copy also needs a name of its own and the whole
-replacement needs a lock, or two processes interleave and one deletes what the
-other is restoring from. The lock records who holds it and is released only
-by its holder; a lock is taken over only when it is both stale **and** its
-process is gone, since one taken over on age alone can be pulled out from under
-a process that was merely suspended — which would then delete the thief's lock
-on its way out and hand the section to a third. Both callers keep a failed artifact as `.unverified`
-rather than discarding it.
+verified.
+
+**And the way they are put in place was over-engineered on a false premise.**
+The original bug was real — the destination was deleted and then renamed over,
+so a failure between the two lost the last good artifact. The fix was not. It
+assumed `rename` cannot overwrite on Windows, and grew a step-aside copy, then a
+lock, then ownership tokens on the lock, then a protocol for taking an abandoned
+lock over; each layer answered a race in the layer below, and all of them rested
+on that assumption. Three rounds of review found races in it. Checking the
+premise took one line: `fs.renameSync` **does** overwrite on Windows, because
+libuv calls `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING`, and the swap is
+atomic within a volume.
+
+So it is one rename, plus a short retry for the transient `EPERM` Windows raises
+when two renames land on one destination at the same instant. The destination is
+never absent and never half-written, and two processes racing leave one whole
+artifact rather than none — which is the property all that machinery was trying
+and failing to reconstruct. The lesson is not about Windows: it is that a design
+can be defended through three reviews without anybody testing the sentence it
+rests on.
+
+Both callers keep a failed artifact as `.unverified` rather than discarding it.
 
 **The tests for those two races were not races.** One called
 `Promise.allSettled` on synchronous work, which runs it in order; the other was
@@ -1592,8 +1603,12 @@ named after a failure it never provoked. They asserted the happy path in the
 shape of a race, which is worse than no test, because the bug each was written
 for would have passed. `__tests__/unit/tools/build-races.test.ts` spawns real
 processes: three replacing one artifact in a loop and checking it is never
-missing, and two racing to record a first key. Removing the lock makes the first
-fail — checked, rather than assumed.
+missing, and two racing to record a first key.
+
+Those tests are also what settled the paragraph above. An earlier version of the
+first one passed against the very takeover it was written to reject, and a later
+one was flaky against the code it was meant to bless — which is what sent
+somebody to check whether the lock was needed at all.
 
 Still to do for the **Done when** below: run a build through the browser/helper
 rather than the command line; build the AAB and measure it with `bundletool`;
