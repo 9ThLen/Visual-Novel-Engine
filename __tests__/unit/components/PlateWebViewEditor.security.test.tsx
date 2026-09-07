@@ -81,7 +81,12 @@ describe('PlateWebViewEditor message boundary', () => {
 
     expect(hostSource).not.toMatch(/postMessage\([\s\S]*?,\s*['"]\*['"]\)/);
     expect(hostSource).toContain('window.location.origin');
-    expect(embeddedSource).toContain('window.parent.postMessage(full, window.location.origin)');
+    // The frame addresses the host's origin, which the host passes in. Its own
+    // window.location is about:srcdoc — origin "null", an invalid target that
+    // throws and takes the whole bridge down with it.
+    expect(hostSource).toMatch(/hostOrigin:[^\n]*window\.location\.origin/);
+    expect(embeddedSource).toContain('window.parent.postMessage(full, hostOrigin)');
+    expect(embeddedSource).not.toContain('window.parent.postMessage(full, window.location.origin)');
   });
 
   it('rejects a flush immediately while the iframe is not ready', async () => {

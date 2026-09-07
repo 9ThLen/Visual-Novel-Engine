@@ -339,6 +339,51 @@ describe('createEmbeddedScript', () => {
     expect(api.getCharacters()).toEqual([]);
   });
 
+  /*
+   * Regression: every message the frame sends was addressed to
+   * window.location.origin, which inside an about:srcdoc iframe serializes to
+   * the opaque "null" — an invalid postMessage target. The call threw on the
+   * first resize, so the frame never reported its height (pages stayed at the
+   * 760px minimum with their content cut off) and never reported a save,
+   * ready, history or format state either.
+   */
+  it('addresses the origin the host named rather than its own srcdoc origin', () => {
+    document.body.innerHTML = '<main class="paper"><input id="title" value="Scene 1"><div id="editor"></div></main><div id="slashMenu"></div>';
+    const postMessage = vi.spyOn(window, 'postMessage').mockImplementation(() => {});
+
+    evalEmbeddedScriptForHarness({
+      editorId: 'editor_origin',
+      scene: { sceneId: 'scene_1', sceneName: 'Scene 1', blocks: [] },
+      characters: [],
+      isPhone: false,
+      hostOrigin: 'https://studio.example',
+    });
+
+    // Booting alone posts resize/ready/history/format — all of them, and every
+    // later message, at the one origin the host gave.
+    const targets = postMessage.mock.calls.map((call) => call[1]);
+    expect(targets.length).toBeGreaterThan(0);
+    expect([...new Set(targets)]).toEqual(['https://studio.example']);
+    postMessage.mockRestore();
+  });
+
+  it('falls back to the inherited document origin when the host names none', () => {
+    document.body.innerHTML = '<main class="paper"><input id="title" value="Scene 1"><div id="editor"></div></main><div id="slashMenu"></div>';
+    const postMessage = vi.spyOn(window, 'postMessage').mockImplementation(() => {});
+
+    evalEmbeddedScriptForHarness({
+      editorId: 'editor_origin_fallback',
+      scene: { sceneId: 'scene_1', sceneName: 'Scene 1', blocks: [] },
+      characters: [],
+      isPhone: false,
+    });
+
+    const targets = [...new Set(postMessage.mock.calls.map((call) => call[1]))];
+    expect(targets).toEqual([window.origin]);
+    expect(targets).not.toContain('null');
+    postMessage.mockRestore();
+  });
+
   it('creates, edits, validates, and serializes an interactive object without browser prompts', () => {
     const harness = createVoidBlockHarness([{
       id: 'scene_background',

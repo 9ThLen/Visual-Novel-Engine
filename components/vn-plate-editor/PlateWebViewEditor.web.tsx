@@ -173,6 +173,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
           scenes,
           isPhone,
           language,
+          hostOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
           theme: {
             background: colors.background,
             surface: colors.surface,
