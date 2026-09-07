@@ -18,12 +18,9 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import {
-  closeSync,
   createReadStream,
   existsSync,
   mkdirSync,
-  openSync,
-  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -56,6 +53,7 @@ import {
 } from '../../../lib/release/build-request';
 import { normalizeAllowedOrigins } from '../../ai-bridge/src/origin-policy';
 import { BuildJobStore } from './job-store';
+import { verifyAndroidArtifactStructure } from './android-artifact';
 import { EasBuilder, type Builder } from './builder';
 import { sanitizeBuildLog } from './log-sanitizer';
 import { buildArchivePath, receiveBuildInput, sweepAbandonedUploads } from './upload';
@@ -63,23 +61,6 @@ import { buildArchivePath, receiveBuildInput, sweepAbandonedUploads } from './up
 const UPLOAD_ROUTE = /^\/build-inputs\/([A-Za-z0-9_-]{1,64})$/;
 const ARTIFACT_ROUTE = /^\/build-artifacts\/([A-Za-z0-9_-]{1,64})$/;
 const HANDSHAKE_TIMEOUT_MS = 5_000;
-
-function hasZipSignature(filePath: string): boolean {
-  // `new Uint8Array`, not `Buffer.alloc`: the ambient `Buffer` in this project
-  // is React Native's shim, which has `from` and nothing else.
-  const bytes = new Uint8Array(4);
-  const handle = openSync(filePath, 'r');
-  try {
-    if (readSync(handle, bytes, 0, bytes.length, 0) !== bytes.length) return false;
-  } finally {
-    closeSync(handle);
-  }
-  return bytes[0] === 0x50 && bytes[1] === 0x4b && (
-    (bytes[2] === 0x03 && bytes[3] === 0x04)
-    || (bytes[2] === 0x05 && bytes[3] === 0x06)
-    || (bytes[2] === 0x07 && bytes[3] === 0x08)
-  );
-}
 
 interface ActiveRun {
   controller: AbortController;
@@ -559,9 +540,28 @@ export class BuildHelperServer {
     this.store.write(retried);
     this.announce(retried);
 
-    // The archive is still on disk from the first attempt, so a retry does not
-    // ask the author to upload a release they already sent.
-    if (existsSync(buildArchivePath(this.uploadsDir, requestId))) void this.runBuild(requestId);
+    void this.resumeRetriedBuild(requestId, retried.attempt);
+  }
+
+  private async resumeRetriedBuild(requestId: string, attempt: number): Promise<void> {
+    try {
+      const snapshot = this.store.read(requestId);
+      if (!snapshot || snapshot.state !== 'queued' || snapshot.attempt !== attempt) return;
+
+      // Usually the first attempt's verified archive is still present and no
+      // second upload is needed. If it was removed, reconcile clears the stale
+      // marker and the next summary explicitly asks the browser to resume it.
+      const hasArchive = await this.reconcileQueuedArchive(snapshot);
+      const current = this.store.read(requestId);
+      if (!current || current.state !== 'queued' || current.attempt !== attempt) return;
+      if (hasArchive) void this.runBuild(requestId);
+      else this.announce(current);
+    } catch (error) {
+      const current = this.store.read(requestId);
+      if (current?.state === 'queued' && current.attempt === attempt) {
+        this.finishWith(current, error instanceof Error ? error.message : String(error));
+      }
+    }
   }
 
   // ── Running one build ────────────────────────────────────────────────────
@@ -647,8 +647,10 @@ export class BuildHelperServer {
       if (!existsSync(result.artifactPath) || statSync(result.artifactPath).size === 0) {
         return this.finishWith(job, 'The build produced no artifact');
       }
-      if (!hasZipSignature(result.artifactPath)) {
-        return this.finishWith(job, 'The build artifact is not an APK/AAB ZIP container');
+      try {
+        verifyAndroidArtifactStructure(result.artifactPath, job.request.target);
+      } catch (error) {
+        return this.finishWith(job, error instanceof Error ? error.message : String(error));
       }
       const outputRoot = realpathSync(outputDirectory);
       const builtPath = realpathSync(result.artifactPath);

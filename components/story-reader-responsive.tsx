@@ -337,7 +337,7 @@ export function StoryReaderResponsive({
   }));
 
   const dialogueAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: sceneOpacity.value * uiOpacity.value,
+    opacity: uiOpacity.value,
   }));
 
   // ── Speaker + font size ────────────────────────────────────────────────

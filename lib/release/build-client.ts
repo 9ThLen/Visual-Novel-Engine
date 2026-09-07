@@ -17,8 +17,8 @@ import {
   type BuildServerMessage,
 } from '@/lib/release/build-protocol';
 import type { BuildRequest } from '@/lib/release/build-request';
-import { readBlobBytes } from '@/lib/blob-bytes';
 import type { BuildArtifact, BuildJobSummary } from '@/lib/release/build-job';
+import { sha256Source, sourceFromBlob } from '@/lib/story-backup/hash';
 
 export interface BuildClientOptions {
   /** e.g. `http://127.0.0.1:8790`. The socket url is derived from it. */
@@ -312,10 +312,8 @@ export class BuildClient {
       if (artifact.size !== expected.bytes) {
         throw new Error(`The downloaded artifact is ${artifact.size} bytes; expected ${expected.bytes}.`);
       }
-      if (!globalThis.crypto?.subtle) throw new Error('This browser cannot verify the downloaded artifact.');
-      const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', await readBlobBytes(artifact)));
-      const sha256 = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
-      if (sha256 !== expected.sha256) {
+      const digest = await sha256Source(sourceFromBlob(artifact), expected.bytes);
+      if (digest.sha256 !== expected.sha256) {
         throw new Error('The downloaded artifact does not match the helper\'s verified hash.');
       }
     }

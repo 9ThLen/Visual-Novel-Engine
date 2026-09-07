@@ -28,6 +28,18 @@ import {
 import playerProfile from '../../player-profile.js';
 import { beginOutPath } from '../lib/out-path';
 
+import {
+  buildArtifactUrl,
+  downloadArtifact,
+  firstBuild,
+  followEasBuild,
+  jsonFromCli,
+  spawnEas,
+} from './eas-run';
+import { printApkReport } from './inspect-apk';
+import { apksignerReadiness } from './apksigner';
+import { pendingPath, replaceFile, verifyBuiltArtifact } from './verify-artifact';
+
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..');
 
@@ -53,6 +65,8 @@ interface Args {
   easProjectId?: string;
   icon?: string;
   skipChecks: boolean;
+  build?: 'player-apk' | 'player-aab';
+  fromBuild?: string;
   allowEngineProject: boolean;
   help: boolean;
 }
@@ -66,6 +80,13 @@ function parseArgs(argv: string[]): Args {
       case '--eas-project-id': args.easProjectId = argv[++i]; break;
       case '--icon': args.icon = argv[++i]; break;
       case '--skip-checks': args.skipChecks = true; break;
+      case '--build': {
+        const value = argv[i + 1];
+        if (value === 'player-apk' || value === 'player-aab') { args.build = value; i += 1; }
+        else args.build = 'player-apk';
+        break;
+      }
+      case '--from-build': args.fromBuild = argv[++i]; break;
       case '--allow-engine-project': args.allowEngineProject = true; break;
       case '--help': case '-h': args.help = true; break;
       default:
@@ -90,6 +111,14 @@ Options:
                           cover when it is square, and to the engine icon
                           otherwise.
   --skip-checks           Stage only. The checks need this repo's node_modules.
+  --build [profile]       Submit the staged project to EAS once it verifies.
+                          player-apk (default) or player-aab. This spends a
+                          build on the author's account; nothing else here costs
+                          anything, which is why it is a flag and never implied.
+  --from-build <id>       Skip staging and submitting: follow, download and
+                          verify a build that already exists. Use it when a
+                          download failed or a terminal was closed, so a build
+                          already paid for is never paid for twice.
   --allow-engine-project  Build against the engine's own EAS project. Only for
                           trying the pipeline out: the credentials Android holds
                           a story to for its whole life would not be yours.
@@ -234,11 +263,153 @@ function checkAutolinking(outDir: string): CheckResult {
   };
 }
 
+/**
+ * Refuse to spend a build that could not be certified when it came back.
+ *
+ * The check belongs before the submission for the same reason the staging
+ * checks do: everything else here is free, and this is the step that is not.
+ */
+function requireSignatureTooling(): void {
+  const signing = apksignerReadiness();
+  if (!signing.ready) fail('Cannot verify a signature on this machine', [signing.reason]);
+}
+
+/**
+ * Hand the staged project to EAS.
+ *
+ * The two things that have to be right were each found by a failed build rather
+ * than by reading anything: the working directory has to be the staged project,
+ * and `EAS_SKIP_AUTO_FINGERPRINT` has to be set, because the `node_modules`
+ * junction the config check needs is the same junction the fingerprint step
+ * cannot walk. They live here now instead of in whoever remembers to type them.
+ *
+ * Never a default and never inferred: this spends a build on the author's
+ * account and uses the signing credentials Android will hold the story to for
+ * the life of the work.
+ */
+async function runEasBuild(
+  projectDir: string,
+  releaseFile: string,
+  profile: 'player-apk' | 'player-aab',
+): Promise<void> {
+  const runCommand = spawnEas();
+  const target = profile === 'player-aab' ? 'aab' : 'apk';
+  requireSignatureTooling();
+  console.log(color.yellow(`  Submitting to EAS (${profile}). This spends a build.\n`));
+
+  const submitted = await runCommand([
+    'build', '--platform', 'android', '--profile', profile,
+    '--json', '--non-interactive', '--no-wait', '--freeze-credentials',
+  ], { cwd: projectDir, onLog: (line) => console.log(color.dim(`    ${line}`)) });
+  if (submitted.status !== 0) {
+    fail('eas build submission failed', [
+      'The staged project is still on disk; none of the staging needs redoing.',
+    ]);
+  }
+  const record = firstBuild(jsonFromCli(submitted.stdout));
+  const buildId = typeof record.id === 'string' ? record.id : null;
+  if (!buildId) fail('EAS accepted the build but returned no id.');
+
+  // Printed before the wait, not after it. A closed terminal or a dropped
+  // connection must not cost a second build, and this id is what buys it back.
+  console.log(color.green(`\n  Build ${buildId}`));
+  console.log(color.dim(`    Resume with: --from-build ${buildId}\n`));
+
+  await followAndVerify(projectDir, releaseFile, buildId, target, { cancelOnAbort: true });
+}
+
+/**
+ * Follow a build to its artifact and check the artifact, rather than the
+ * metadata describing it.
+ *
+ * The distinction is the whole point of doing this here: EAS can report a
+ * finished build whose application id or version code is not what this release
+ * derives, and the only way to know is to read what arrived.
+ */
+async function followAndVerify(
+  projectDir: string,
+  releaseFile: string,
+  buildId: string,
+  target: 'apk' | 'aab',
+  options: { cancelOnAbort?: boolean } = {},
+): Promise<void> {
+  const runCommand = spawnEas();
+  const controller = new AbortController();
+  const onInterrupt = () => controller.abort();
+  process.once('SIGINT', onInterrupt);
+
+  try {
+    const build = await followEasBuild({
+      runCommand,
+      buildId,
+      cwd: projectDir,
+      signal: controller.signal,
+      onLog: (line) => console.log(color.dim(`    ${line}`)),
+      pollIntervalMs: 15_000,
+      cancelOnAbort: options.cancelOnAbort,
+    });
+
+    const url = buildArtifactUrl(build);
+    if (!url) fail('The finished build carries no artifact URL.');
+    const artifact = path.join(projectDir, `player-${buildId.slice(0, 8)}.${target}`);
+
+    // Downloaded under a name of its own and put in place only once verified,
+    // so a dropped connection cannot leave a truncated file where the last good
+    // artifact was, and two runs collecting the same build cannot collide.
+    const pending = pendingPath(artifact);
+    await downloadArtifact(url, pending, controller.signal);
+
+    try {
+      const report = await verifyBuiltArtifact({
+        file: pending,
+        target,
+        releaseFile,
+        repoRoot: REPO_ROOT,
+        onLog: (line) => console.log(color.dim(`    ${line}`)),
+      });
+      replaceFile(pending, artifact);
+      printApkReport(report);
+      console.log(color.dim(`  ${path.relative(process.cwd(), artifact)}`));
+    } catch (error) {
+      // Kept, named for what it is: an artifact that failed is usually the
+      // evidence, and deleting it would take the evidence with it.
+      const rejected = `${artifact}.unverified`;
+      replaceFile(pending, rejected);
+      fail(error instanceof Error ? error.message : String(error), [
+        `The artifact is at ${rejected}, named so nothing mistakes it for a checked one.`,
+      ]);
+    }
+  } finally {
+    process.off('SIGINT', onInterrupt);
+  }
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) { printHelp(); return; }
   if (!args.release) fail('--release is required (a .vnerelease file)');
   if (!args.out) fail('--out is required (where the staged project goes)');
+  if (args.fromBuild) {
+    // Deliberately before any staging: this exists so a build already paid for
+    // can be collected again, and re-staging would waste the time while risking
+    // an artifact checked against something other than what was submitted.
+    const projectDir = path.resolve(process.cwd(), args.out);
+    if (!fs.existsSync(path.join(projectDir, 'eas.json'))) {
+      fail(`${projectDir} is not a staged project.`, [
+        '--from-build reads a build through the project it was submitted from.',
+      ]);
+    }
+    requireSignatureTooling();
+    console.log(color.green(`\nCollecting build ${args.fromBuild}\n`));
+    await followAndVerify(
+      projectDir,
+      path.resolve(process.cwd(), args.release),
+      args.fromBuild,
+      args.build === 'player-aab' ? 'aab' : 'apk',
+    );
+    return;
+  }
+
   console.log(color.green('▸ Staging an Android player project\n'));
 
   const releaseFile = path.resolve(process.cwd(), args.release);
@@ -340,6 +511,8 @@ async function main(): Promise<void> {
   console.log(color.dim('  That variable is not optional: node_modules here is a junction into the'));
   console.log(color.dim('  engine repository, and EAS\'s fingerprint step cannot follow it. The'));
   console.log(color.dim('  junction has to stay — the CLI resolves config plugins through it.\n'));
+
+  if (args.build) await runEasBuild(finalOutDir, releaseFile, args.build);
   } catch (error) {
     transaction.abort();
     throw error;

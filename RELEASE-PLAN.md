@@ -2,9 +2,9 @@
 
 How a finished novel leaves the editor and reaches a reader.
 
-Status: in progress. **R0–R7 are implemented; R8 has produced a Windows
-installer; R9 is implemented through the EAS adapter and still needs a paid
-build/device acceptance run** — R0–R3 complete
+Status: in progress. **R0–R7 are implemented; R8 has produced installers for
+Windows, Linux and macOS; R9 has produced a real signed APK and still needs
+helper-path and device acceptance** — R0–R3 complete
 Channel A, R4 is the build profile every native channel stands on, R5 is the
 first shippable artifact of Channel B, R6 puts it behind a button, R7 is the
 build kernel every native channel submits through, R8 stages a desktop
@@ -12,9 +12,26 @@ application from the same bundle R5 publishes, and R9 stages an Android project
 and proves the native cut R4 could only specify. R10 is still a proposal,
 alongside the parts marked **exists** in [Current state](#1-current-state).
 
-`tauri build` has run on Windows. `eas build` has not been submitted against a
-real account; the distinction between implemented code and physical acceptance
-is recorded in each stage rather than hidden in a footnote.
+`tauri build` has run on Windows locally and, through CI, on all three
+platforms. A manually staged `eas build` has run against a real account and
+produced a signed APK.
+
+**Both artifacts have been run, and both worked** — the author installed the APK
+and opened the desktop build on 2026-09-02 and reports that each plays. That is
+their observation rather than a measurement taken here, and it is worth more
+than the argument it replaces: until then the strongest thing that could be said
+was that the same frontend plays from a `file://` page.
+
+What has still never happened: taking an update over an earlier install, which
+is the case the whole application-id design exists for, and driving the
+browser → helper → EAS path end to end. Each stage records its own line between
+what ran and what is inferred, rather than hiding it in a footnote.
+
+**Publishing works by clicking.** `pnpm test:studio-e2e` opens a bundled story's
+project page, presses Release, confirms, and finds the card that says the story
+is published. That had never been possible: no bundled demo passed the gate, so
+every test of the publish path wrote a release into storage itself and asserted
+on what it had written.
 
 Corrections to earlier steps are recorded inline rather than edited away: R2's
 object store and R4's autolinking exclusions were both marked done before they
@@ -1189,8 +1206,9 @@ running build, and an artifact past its expiry.
   CLI. `pnpm build-helper`.
 
 **Honest about what is not proved.** The service kernel is proven against its
-fake builder. R9 now plugs in `EasBuilder` and the browser UI, but no paid build
-has run against a real Expo account, so a real APK remains physical acceptance.
+fake builder. R9 plugs in `EasBuilder` and the browser UI, while the first paid
+build was submitted manually from the same staged project. The complete
+browser → helper → EAS path remains physical acceptance.
 
 **One rule the plan named that turned out to matter more than expected:** the
 upload endpoint must know the expected hash *before* it accepts bytes. Taking the
@@ -1261,7 +1279,19 @@ outside. What is known is that the identical frontend plays from `file://` with
 zero network requests (`pnpm test:player-e2e`), and Tauri serves it from an
 easier origin than that.
 
-**The CI workflow has still never run**, so Linux and macOS remain unproven.
+**All three platforms have now been built by CI** (run 33560229214, green):
+
+| | |
+| --- | --- |
+| Windows | NSIS installer, 102 MB artifact |
+| Linux | `.deb` 101.8 MB **and** AppImage 173.6 MB — the AppImage carries more runtime |
+| macOS | `.dmg` 105.7 MB, unsigned, **`aarch64` only** |
+
+Two things that follow, neither of them obvious before the run: macOS builds for
+Apple Silicon alone, so an Intel Mac needs an `x86_64` or universal build that
+nothing currently produces; and the `continue-on-error` on macOS was not needed —
+the job genuinely passed, so a future failure there will be masked rather than
+reported, which is worth reconsidering now that it works.
 
 **Done when:** the same release that plays on the project page also installs and
 runs offline from a Windows installer, with no browser involved.
@@ -1350,9 +1380,38 @@ What the artifact itself shows, read out of the APK rather than assumed:
   STORAGE, READ_MEDIA_IMAGES/VIDEO/AUDIO, POST_NOTIFICATIONS. This is the
   acceptance test R4 wrote and could only ever run against a real artifact.
 - **And it found two that should not be there.** `SYSTEM_ALERT_WINDOW` — draw
-  over other apps — and `DUMP`, both from React Native's dev support, both alive
-  in a release build. Added to `PLAYER_BLOCKED_PERMISSIONS`; the next build is
-  what proves they are gone.
+  over other apps — and `DUMP`, both from React Native's dev support, both
+  reported as alive in a release build. Both were added to
+  `PLAYER_BLOCKED_PERMISSIONS`, and a second APK was built to check.
+
+  For a while the answer here was "one went, one stayed", and this section
+  carried an open question about why the manifest merger honoured a
+  `tools:node="remove"` for one and not for the other. **That question was
+  wrong, and so was half the finding.**
+
+  The check that produced it decoded the whole binary manifest as one UTF-16
+  string and matched permission names against it. `aapt` does not collect string
+  pool entries whose element the merger removed, so `android.permission.DUMP`
+  sits in the pool of every artifact built so far while being declared by none
+  of them. The removal rule always worked. What was reported as a permission
+  surviving its own removal was a name with nothing attached to it.
+
+  It is not a small thing to have got wrong. It put a mystery in this plan,
+  earned a standing exception in the tooling for a permission that was never
+  granted, and it did so in the direction that flatters: a check too weak to
+  tell a declaration from a mention is also too weak to notice a real one. The
+  first version of it would have reported an empty permission list — and passed
+  — for any manifest encoding it did not understand.
+
+  The verifier now parses the manifest's chunk structure and reads
+  `uses-permission` elements. Re-run against all three artifacts on disk, it
+  reports `DUMP` in none of them, `SYSTEM_ALERT_WINDOW` in the pre-fix build
+  only, and it fails that build. `KNOWN_UNREMOVABLE_PERMISSIONS` is empty, and
+  the mechanism stays for a permission that is one day demonstrated stuck
+  against a parsed manifest rather than a searched one.
+
+  Two APKs of the same release also confirm the version code is stable: both are
+  `1000000`, both 168.9 MB.
 - **`INTERNET` and `ACCESS_NETWORK_STATE` are still declared**, and a novel whose
   media ships inside it does not need either. Left alone deliberately: removing
   them could break `expo-asset` or `expo-updates` at runtime in ways no test here
@@ -1366,7 +1425,8 @@ opens on the engine splash, plays offline and exposes nothing else; the launch s
 v2 installing over v1 with saves intact; and the post-build certificate check,
 which needs a real signed artifact. `EasBuilder` now performs readiness,
 staging, archive inspection, submit, polling/cancellation and HTTPS download;
-the helper and browser both check the returned bytes. This path is covered by a
+the helper matches EAS project/application/version metadata, checks the target's
+required APK/AAB entries, and the helper and browser both check the returned bytes. This path is covered by a
 simulated EAS CLI, not by a paid account.
 
 **Five things a review found afterwards, all real, all fixed:**
@@ -1408,11 +1468,152 @@ staging is deterministic, stamped from the release rather than from the clock.
 - `wiki/releases-android.md` — sideload instructions, the Play checklist, and
   what losing a signing key costs.
 
-Still to do for the **Done when** below: complete the one-time interactive EAS
-project/signing setup, run the paid build, verify its signing certificate
-against the stored fingerprint, run `bundletool get-size total` for the AAB, and
-perform the device lifecycle checks. Submit/poll/cancel/download and resumable
-browser status are implemented.
+**One path to an artifact, one check, and it is not optional.** Submitting,
+following, cancelling and downloading were implemented twice: properly in the
+helper the browser drives, and not at all in `stage:android --build`, which
+shelled out to `eas build` and finished holding nothing. Both call
+`tools/vne-build/eas-run.ts` now.
+
+Verification had the mirror-image problem. The command line read what it
+downloaded; the helper handed the file back with only a zip-structure check
+between EAS and the reader — so the route most authors take, pressing Release,
+was the one route that returned an artifact nobody had looked inside. Both go
+through `verifyBuiltArtifact` now, which throws rather than reports: a builder
+that returns an artifact it cannot vouch for is a builder whose success means
+nothing.
+
+**What "signed" means here, corrected twice.** An earlier version hashed the
+signer's certificate and concluded from three matching hashes that one key had
+signed all three. That reads the evidence backwards: a certificate is public,
+so identical certificate bytes prove somebody copied a certificate. The check
+verifies now — signature against signed data with the public key, that key
+against the certificate's, and the content digest (chunked over the entries,
+the central directory and the end record) recomputed from the file's own bytes.
+A single byte flipped in the middle of a 168.9 MB APK is caught.
+
+Then it turned out to be verifying less than it looked: it returned as soon as
+one scheme held. An artifact with a sound v2 block and a broken v3 one came
+back verified, having never read v3 — the block a modern device prefers, so the
+skipped one was the one that would be used. Worse, the v3 layout was being read
+as v2, which is four bytes short at every field after the SDK range it carries
+and v2 does not. Every present scheme is verified now, every signer within it,
+and they must name the same certificate.
+
+That was the third correction, and it did not hold either. The next pass found
+a v3 signer whose SDK range outside the signed data — the range a device reads
+when deciding whether the signer applies to it, and which nothing signs — was
+never compared to the one inside it. And "all schemes name the same
+certificate" compared one signer per scheme, because the function returned only
+the first.
+
+Four rounds of review, four things the local reader did not implement, each
+found only because somebody looked. So it is no longer the authority.
+**`apksigner verify` is required**, and a machine without it cannot certify a
+build. That is a real cost, and it is smaller than a "verified" that means "the
+parts we implemented agreed". It is invoked as its jar under `java` rather than
+through the `.bat` wrapper, and told the artifact's own declared
+`minSdkVersion`, because below API 24 a v1 JAR signature is required and above
+it is not — so leaving that to be guessed makes the verdict depend on the guess.
+
+The local reader still runs, as a second opinion, and now reports three states
+rather than two: verified, failed, or **unsupported**. Disagreement between the
+two is itself a failure. The one place the local one may be quiet is where it
+says outright that it does not implement something — a key-rotation lineage, an
+attribute it does not know — and then apksigner's verdict stands alone and the
+log says so. Stepping over an unknown attribute silently, which is how a
+rotation lineage would have gone unnoticed, is now a refusal.
+
+That third state did not work when it was written. Every unverified signature
+became a problem inside `inspectApk`, which does not run apksigner, so an
+artifact the local reader abstained on failed before the authority was asked —
+and the signing key would have been recorded from a fingerprint that was `null`
+exactly then. Judgement moved to one function that sees both answers, and the
+key recorded is the effective one: the local reader's where it has one, and
+apksigner's where it does not. apksigner naming several signers is refused
+rather than reduced to the first.
+
+**The tooling is checked before a build is submitted**, by the helper's
+readiness and by the command line, because discovering that an artifact cannot
+be certified is cheap then and expensive after twenty minutes and a charge.
+`java` is checked by running it, since apksigner is a jar and a `java` that will
+not start is the same as no apksigner.
+
+Requiring the tool made the *suite* require it too, which is a worse trade than
+it looks: a green run that only happens where somebody installed build-tools
+says less than it appears to. The authority is an injected seam, the cases use a
+stand-in, and one case runs the real tool and skips with its reason when absent.
+The whole suite passes with the Android SDK and with it hidden.
+
+Whether the *same* key signed two builds is a separate question, and needs
+something remembered rather than something computed. The first verified build of
+a story records its certificate under
+`.vne-builds/signing/<application id>.signing.json`; every later build is
+checked against it, and a mismatch fails with the reason. Trust on first use —
+which is what Android does, pinning an app to whatever key signed the install it
+already has.
+
+Three details decide whether that is worth anything. **Where** the record lives
+is derived from the repository rather than passed in: the two callers were given
+different directories, so building once from the app and once from the terminal
+meant two first builds, and the second key to arrive was accepted as though
+nothing had been seen. Moving it also had to **read the two old locations**,
+since a location change that forgets what was recorded silently undoes the fix
+it belongs to; records found there are carried forward, and two that disagree
+are a refusal rather than a choice. And the record is created **exclusively** —
+two builds finishing together each found no record, accepted its own artifact
+and overwrote the other, so the loser of the race chose the key. On collision it
+re-reads and refuses if the keys differ. A record is written only after every
+other check passed, so a rejected artifact cannot pin a story to a wrong key.
+
+An AAB is refused rather than passed. It printed a warning and exited zero
+before, which made "success" mean "downloaded" for one of the two targets. Its
+manifest is protobuf and its signing is not an installed app's, so nothing here
+applies to it; checking one needs `bundletool`.
+
+`--from-build <id>` collects and verifies a build that already exists. The id is
+printed before the wait, not after it.
+
+Downloads land under a name unique to the process and are put in place only once
+verified.
+
+**And the way they are put in place was over-engineered on a false premise.**
+The original bug was real — the destination was deleted and then renamed over,
+so a failure between the two lost the last good artifact. The fix was not. It
+assumed `rename` cannot overwrite on Windows, and grew a step-aside copy, then a
+lock, then ownership tokens on the lock, then a protocol for taking an abandoned
+lock over; each layer answered a race in the layer below, and all of them rested
+on that assumption. Three rounds of review found races in it. Checking the
+premise took one line: `fs.renameSync` **does** overwrite on Windows, because
+libuv calls `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING`, and the swap is
+atomic within a volume.
+
+So it is one rename, plus a short retry for the transient `EPERM` Windows raises
+when two renames land on one destination at the same instant. The destination is
+never absent and never half-written, and two processes racing leave one whole
+artifact rather than none — which is the property all that machinery was trying
+and failing to reconstruct. The lesson is not about Windows: it is that a design
+can be defended through three reviews without anybody testing the sentence it
+rests on.
+
+Both callers keep a failed artifact as `.unverified` rather than discarding it.
+
+**The tests for those two races were not races.** One called
+`Promise.allSettled` on synchronous work, which runs it in order; the other was
+named after a failure it never provoked. They asserted the happy path in the
+shape of a race, which is worse than no test, because the bug each was written
+for would have passed. `__tests__/unit/tools/build-races.test.ts` spawns real
+processes: three replacing one artifact in a loop and checking it is never
+missing, and two racing to record a first key.
+
+Those tests are also what settled the paragraph above. An earlier version of the
+first one passed against the very takeover it was written to reject, and a later
+one was flaky against the code it was meant to bless — which is what sent
+somebody to check whether the lock was needed at all.
+
+Still to do for the **Done when** below: run a build through the browser/helper
+rather than the command line; build the AAB and measure it with `bundletool`;
+and perform the device lifecycle checks. The one-time EAS setup and three APK
+builds have happened.
 
 **Done when:** an author who has completed the one-time onboarding presses
 Release → Android and receives an APK that installs on a phone, opens on the
@@ -1466,8 +1667,15 @@ every one of them corresponds to a way this can ship broken and look fine.
   repository's 31; the authoring trees and every unreferenced studio route are
   absent from the staged tree, which is stronger than inspecting the archive for
   them; the staged project's whole module graph resolves.
-- **R9, still open:** the installed APK's permission list on a device; APK size
-  and `bundletool get-size total` for the AAB. Both need a build.
+- **R9, measured:** three APKs at 168.9 MB, each read back by `pnpm inspect:apk`.
+  Each one's v2 signature verifies against its own bytes, under
+  `2A:F8:D1:42:…:6B:61`; the pre-fix build fails on `SYSTEM_ALERT_WINDOW`, and
+  a good artifact pointed at the wrong release fails on its version code, which
+  is how the checks are known to run rather than to pass by default.
+- **R9, still open:** run a build through the browser/helper rather than the
+  command line; install on a device and play offline; install v2 over v1 and
+  confirm the saves survive; and build an AAB, which this verifier deliberately
+  refuses to read — that needs `bundletool`.
 
 **Install lifecycle** (a real device or emulator):
 
@@ -1595,7 +1803,7 @@ tests are the right base to extend.
 | A republish breaks readers' saves | `releaseId` + version on every save slot, explicit continue/restart choice |
 | Sub-path hosting silently 404s | `--base-url` plumbed to `experiments.baseUrl`; smoke test serves the bundle from a sub-path |
 | `file://` delivery breaks on `fetch` | Boot config inlined into `index.html`; media referenced by relative path |
-| A lost signing key strands every installed copy | Sideload updates have no recovery path, unlike a Play upload key — EAS holds credentials in v1, and a mismatched signing certificate is caught when the artifact returns, before it reaches the author |
+| A lost signing key strands every installed copy | Sideload updates have no recovery path, unlike a Play upload key — EAS holds credentials in v1; certificate pinning on returned artifacts remains an explicit R9 acceptance blocker |
 | A failed build burns a `versionCode`, or two builds share one | Codes are reserved atomically before submit and never returned on failure; concurrent reservation is an acceptance test |
 | Native modules survive the JS cut because they are installed, not configured | `expo.autolinking.android.exclude` plus `android.blockedPermissions`, asserted through `expo-modules-autolinking resolve` |
 | AAB measured as a file instead of as a download | `bundletool get-size total`, not the `.aab` byte count |

@@ -67,6 +67,7 @@ export const PanResponder = {
 };
 export const PixelRatio = { get: () => 2 };
 export const StyleSheet = {
+  flatten: flattenStyle,
   absoluteFillObject: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
   create: (s: any) => s,
 };

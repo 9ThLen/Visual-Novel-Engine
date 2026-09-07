@@ -13,17 +13,28 @@
  * writing to the client directly would make the sanitizer decorative.
  */
 import type { BuildRequest } from '../../../lib/release/build-request';
-import { spawn } from 'node:child_process';
-import {
-  createWriteStream,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
+import { zipSync } from 'fflate';
+
+import {
+  buildArtifactUrl,
+  downloadArtifact,
+  easExecutable,
+  firstBuild,
+  followEasBuild,
+  jsonFromCli,
+  spawnEas,
+  type EasCommandResult,
+  type RunEasCommand,
+} from '../../vne-build/eas-run';
+import { apksignerReadiness } from '../../vne-build/apksigner';
+import {
+  pendingPath,
+  replaceFile,
+  verifyBuiltArtifact,
+  type VerifyOptions,
+} from '../../vne-build/verify-artifact';
 
 import {
   isEasProjectId,
@@ -110,20 +121,24 @@ export class FakeBuilder implements Builder {
     mkdirSync(input.outputDirectory, { recursive: true });
     const fileName = `${input.request.requestId}.${input.request.target}`;
     const artifactPath = path.join(input.outputDirectory, fileName);
-    const bytes = new Uint8Array(Math.max(4, this.options.artifactBytes ?? 1024)).fill(7);
-    bytes.set([0x50, 0x4b, 0x03, 0x04]);
+    const entries: Record<string, Uint8Array> = input.request.target === 'apk'
+      ? { 'AndroidManifest.xml': new Uint8Array([1]), 'classes.dex': new Uint8Array([2]) }
+      : {
+          'BundleConfig.pb': new Uint8Array([1]),
+          'base/manifest/AndroidManifest.xml': new Uint8Array([2]),
+          'base/dex/classes.dex': new Uint8Array([3]),
+        };
+    entries['assets/fake-padding.bin'] = new Uint8Array(this.options.artifactBytes ?? 1024).fill(7);
+    const bytes = zipSync(entries, { level: 0 });
     writeFileSync(artifactPath, bytes);
     return { artifactPath, fileName };
   }
 }
 
-/** The real EAS path. Readiness fails before upload when CLI/account/project are unavailable. */
-export interface EasCommandResult {
-  status: number;
-  stdout: string;
-  stderr: string;
-}
+/** Re-exported: callers of the helper should not have to know where it moved. */
+export type { EasCommandResult } from '../../vne-build/eas-run';
 
+/** The real EAS path. Readiness fails before upload when CLI/account/project are unavailable. */
 export interface EasBuilderOptions {
   repoRoot?: string;
   /** Durable helper-owned state; keeps one EAS project tied to one novel. */
@@ -131,45 +146,16 @@ export interface EasBuilderOptions {
   easProjectId?: string;
   command?: string;
   pollIntervalMs?: number;
-  runCommand?: (
-    args: string[],
-    options: { cwd: string; signal?: AbortSignal; onLog?: (line: string) => void },
-  ) => Promise<EasCommandResult>;
+  runCommand?: RunEasCommand;
   stage?: typeof stageAndroidProject;
   download?: (url: string, target: string, signal: AbortSignal) => Promise<void>;
-}
-
-function jsonFromCli(output: string): unknown {
-  const array = output.indexOf('[');
-  const object = output.indexOf('{');
-  const start = array < 0 ? object : object < 0 ? array : Math.min(array, object);
-  if (start < 0) throw new Error('EAS CLI returned no JSON.');
-  return JSON.parse(output.slice(start));
-}
-
-function firstBuild(raw: unknown): Record<string, unknown> {
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  if (!value || typeof value !== 'object') throw new Error('EAS CLI returned no build record.');
-  return value as Record<string, unknown>;
-}
-
-function buildArtifactUrl(build: Record<string, unknown>): string | null {
-  const artifacts = build.artifacts;
-  if (!artifacts || typeof artifacts !== 'object') return null;
-  const record = artifacts as Record<string, unknown>;
-  for (const key of ['applicationArchiveUrl', 'buildUrl']) {
-    if (typeof record[key] === 'string' && record[key]) return record[key] as string;
-  }
-  return null;
-}
-
-async function defaultDownload(url: string, target: string, signal: AbortSignal): Promise<void> {
-  const parsed = new URL(url);
-  if (parsed.protocol !== 'https:') throw new Error('EAS returned a non-HTTPS artifact URL.');
-  const response = await fetch(parsed, { signal });
-  if (!response.ok || !response.body) throw new Error(`Artifact download failed (${response.status}).`);
-  mkdirSync(path.dirname(target), { recursive: true });
-  await pipeline(Readable.fromWeb(response.body as never), createWriteStream(target, { flags: 'wx' }));
+  /**
+   * The two seams onto the Android SDK. Injected only so the suite can run on a
+   * machine without it -- the defaults are the real thing, and a helper started
+   * without either is a helper that cannot certify what it builds.
+   */
+  apksignerReadiness?: typeof apksignerReadiness;
+  signatureAuthority?: VerifyOptions['signatureAuthority'];
 }
 
 export class EasBuilder implements Builder {
@@ -183,16 +169,20 @@ export class EasBuilder implements Builder {
   private readonly runCommand: NonNullable<EasBuilderOptions['runCommand']>;
   private readonly stage: typeof stageAndroidProject;
   private readonly download: NonNullable<EasBuilderOptions['download']>;
+  private readonly signingReadiness: typeof apksignerReadiness;
+  private readonly signatureAuthority?: VerifyOptions['signatureAuthority'];
 
   constructor(options: EasBuilderOptions = {}) {
     this.repoRoot = path.resolve(options.repoRoot ?? process.cwd());
     this.stateDirectory = path.resolve(options.stateDirectory ?? path.join(this.repoRoot, '.vne-builds'));
     this.easProjectId = options.easProjectId;
-    this.command = options.command ?? (process.platform === 'win32' ? 'eas.cmd' : 'eas');
+    this.command = options.command ?? easExecutable();
     this.pollIntervalMs = options.pollIntervalMs ?? 15_000;
     this.stage = options.stage ?? stageAndroidProject;
-    this.download = options.download ?? defaultDownload;
-    this.runCommand = options.runCommand ?? ((args, runOptions) => this.spawnCommand(args, runOptions));
+    this.download = options.download ?? downloadArtifact;
+    this.runCommand = options.runCommand ?? spawnEas(this.command);
+    this.signingReadiness = options.apksignerReadiness ?? apksignerReadiness;
+    this.signatureAuthority = options.signatureAuthority;
   }
 
   async readiness(): Promise<{ ready: true } | { ready: false; reason: string }> {
@@ -204,6 +194,11 @@ export class EasBuilder implements Builder {
       if (version.status !== 0) return { ready: false, reason: 'EAS CLI is not available. Install it with npm install -g eas-cli.' };
       const account = await this.runCommand(['whoami'], { cwd: this.repoRoot });
       if (account.status !== 0) return { ready: false, reason: 'EAS CLI is not signed in. Run eas login once.' };
+      // Asked here rather than after the build: an artifact that cannot be
+      // verified is not one this may hand back, and finding that out afterwards
+      // means the author has already paid for it.
+      const signing = this.signingReadiness();
+      if (!signing.ready) return signing;
       return { ready: true };
     } catch {
       return { ready: false, reason: 'EAS CLI is not available. Install it with npm install -g eas-cli.' };
@@ -222,7 +217,7 @@ export class EasBuilder implements Builder {
       repoRoot: this.repoRoot,
       easProjectId: this.easProjectId,
     });
-    this.assertImmutableProjectIdentity(projectDir);
+    const identity = this.assertImmutableProjectIdentity(projectDir);
     input.onLog('Staged and verified the Android player project');
 
     const linked = await this.runCommand([
@@ -251,73 +246,67 @@ export class EasBuilder implements Builder {
     if (!buildId) throw new Error('EAS build submission returned no build id.');
     input.onLog('Submitted the build to EAS');
 
-    let remoteFinished = false;
-    let cancellation: Promise<void> | null = null;
-    const cancelRemote = (): Promise<void> => {
-      if (remoteFinished) return Promise.resolve();
-      cancellation ??= this.runCommand(
-        ['build:cancel', buildId, '--non-interactive'],
-        { cwd: projectDir },
-      ).then(() => undefined, () => undefined);
-      return cancellation;
-    };
-    const onAbort = () => { void cancelRemote(); };
-    input.signal.addEventListener('abort', onAbort, { once: true });
+    const build = await followEasBuild({
+      runCommand: this.runCommand,
+      buildId,
+      cwd: projectDir,
+      signal: input.signal,
+      onLog: input.onLog,
+      pollIntervalMs: this.pollIntervalMs,
+      initial: submittedBuild,
+      // This helper started it, so stopping the job is the helper's to do.
+      cancelOnAbort: true,
+    });
+
+    const url = buildArtifactUrl(build);
+    if (!url) throw new Error('Finished EAS build carries no application artifact URL.');
+    this.assertFinishedBuildIdentity(build, identity, input.request);
+    const fileName = `${input.request.requestId}.${input.request.target}`;
+    const artifactPath = path.join(input.outputDirectory, fileName);
+
+    // Downloaded under a name of its own and put in place only once verified,
+    // so a connection that drops mid-transfer cannot leave a truncated file
+    // where a checked one belongs, and two jobs cannot share a scratch name.
+    const pending = pendingPath(artifactPath);
+    await this.download(url, pending, input.signal);
+    input.onLog('Downloaded the build artifact');
 
     try {
-      let build = submittedBuild;
-      let lastStatus = '';
-      for (;;) {
-        if (input.signal.aborted) throw new Error('Build cancelled');
-        const status = typeof build.status === 'string' ? build.status.toUpperCase() : '';
-        if (status && status !== lastStatus) {
-          input.onLog(`EAS build state: ${status.toLowerCase().replaceAll('_', ' ')}`);
-          lastStatus = status;
-        }
-        if (status === 'FINISHED') {
-          remoteFinished = true;
-          break;
-        }
-        if (['ERRORED', 'CANCELED'].includes(status)) throw new Error(`EAS build ${status.toLowerCase()}.`);
-
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(done, this.pollIntervalMs);
-          function done() {
-            clearTimeout(timer);
-            input.signal.removeEventListener('abort', done);
-            resolve();
-          }
-          input.signal.addEventListener('abort', done, { once: true });
-        });
-        if (input.signal.aborted) throw new Error('Build cancelled');
-        const viewed = await this.runCommand(['build:view', buildId, '--json'], {
-          cwd: projectDir,
-          signal: input.signal,
-          onLog: input.onLog,
-        });
-        if (viewed.status !== 0) throw new Error(`Could not read EAS build status: ${viewed.stderr}`);
-        build = firstBuild(jsonFromCli(viewed.stdout));
-      }
-
-      const url = buildArtifactUrl(build);
-      if (!url) throw new Error('Finished EAS build carries no application artifact URL.');
-      const fileName = `${input.request.requestId}.${input.request.target}`;
-      const artifactPath = path.join(input.outputDirectory, fileName);
-      await this.download(url, artifactPath, input.signal);
-      input.onLog('Downloaded the signed build artifact');
-      return { artifactPath, fileName };
+      // The same check the command line runs, reached the same way. It was
+      // missing here, so pressing Release — the route most authors take — was
+      // the one route that returned an artifact nobody had looked inside.
+      const report = await verifyBuiltArtifact({
+        file: pending,
+        target: input.request.target === 'aab' ? 'aab' : 'apk',
+        expected: {
+          applicationId: identity.applicationId,
+          versionCode: input.request.versionCode,
+        },
+        repoRoot: this.repoRoot,
+        // Where this helper kept records before they had one home. Its work
+        // directory is chosen at startup and can be anywhere, so it is the one
+        // legacy location nothing could have guessed.
+        legacyStateDirectories: [this.stateDirectory],
+        signatureAuthority: this.signatureAuthority,
+        onLog: input.onLog,
+      });
+      input.onLog(`Verified the artifact: ${report.permissions.length} permission(s), `
+        + `signature checked against the file, key ${report.signing.certificateFingerprint}`);
     } catch (error) {
-      if (input.signal.aborted) {
-        await cancelRemote();
-        throw new Error('Build cancelled');
-      }
+      // Kept rather than deleted, and named so nothing serves it: the same
+      // choice the command line makes, because a failed artifact is evidence.
+      replaceFile(pending, `${artifactPath}.unverified`);
       throw error;
-    } finally {
-      input.signal.removeEventListener('abort', onAbort);
     }
+
+    replaceFile(pending, artifactPath);
+    return { artifactPath, fileName };
   }
 
-  private assertImmutableProjectIdentity(projectDir: string): void {
+  private assertImmutableProjectIdentity(projectDir: string): {
+    applicationId: string;
+    easProjectId: string;
+  } {
     if (!this.easProjectId) throw new Error('The EAS project id is missing.');
     const raw = JSON.parse(readFileSync(path.join(projectDir, NATIVE_IDENTITY_FILE), 'utf8')) as {
       version?: unknown;
@@ -344,7 +333,7 @@ export class EasBuilder implements Builder {
     };
     try {
       writeFileSync(registryFile, `${JSON.stringify(expected, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
-      return;
+      return expected;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     }
@@ -367,41 +356,29 @@ export class EasBuilder implements Builder {
         `EAS project ${this.easProjectId} is already bound to another novel; create a separate EAS project.`,
       );
     }
+    return expected;
   }
 
-  private spawnCommand(
-    args: string[],
-    options: { cwd: string; signal?: AbortSignal; onLog?: (line: string) => void },
-  ): Promise<EasCommandResult> {
-    return new Promise((resolve, reject) => {
-      const child = spawn(this.command, args, {
-        cwd: options.cwd,
-        windowsHide: true,
-        env: {
-          ...process.env,
-          EAS_NO_VCS: '1',
-          // Staging links the repository's installed dependencies into a
-          // project on an arbitrary drive. EAS fingerprinting follows that
-          // junction and constructs an invalid concatenated path on Windows.
-          EAS_SKIP_AUTO_FINGERPRINT: '1',
-        },
-        signal: options.signal,
-      });
-      const outputLimit = 4 * 1024 * 1024;
-      let stdout = '';
-      let stderr = '';
-      const append = (kind: 'stdout' | 'stderr', chunk: unknown) => {
-        const text = String(chunk);
-        if (kind === 'stdout') stdout = (stdout + text).slice(-outputLimit);
-        else stderr = (stderr + text).slice(-outputLimit);
-        if (kind === 'stderr') {
-          for (const line of text.split(/\r?\n/).filter(Boolean)) options.onLog?.(line);
-        }
-      };
-      child.stdout?.on('data', (chunk) => append('stdout', chunk));
-      child.stderr?.on('data', (chunk) => append('stderr', chunk));
-      child.once('error', reject);
-      child.once('close', (code) => resolve({ status: code ?? 1, stdout, stderr }));
-    });
+  private assertFinishedBuildIdentity(
+    build: Record<string, unknown>,
+    identity: { applicationId: string; easProjectId: string },
+    request: BuildRequest,
+  ): void {
+    const project = build.project && typeof build.project === 'object'
+      ? build.project as Record<string, unknown>
+      : null;
+    const applicationId = typeof build.appIdentifier === 'string'
+      ? build.appIdentifier
+      : typeof build.applicationIdentifier === 'string'
+        ? build.applicationIdentifier
+        : null;
+    if (
+      project?.id !== identity.easProjectId
+      || applicationId !== identity.applicationId
+      || String(build.appBuildVersion ?? '') !== String(request.versionCode)
+    ) {
+      throw new Error('The finished EAS build metadata does not match the staged novel identity.');
+    }
   }
+
 }

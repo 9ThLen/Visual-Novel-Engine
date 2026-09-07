@@ -3,7 +3,8 @@
 A local service for native builds. The app never runs a toolchain and never
 holds a signing credential; it submits a frozen release and follows it. The EAS
 builder stages the player, checks the upload archive, submits, polls, cancels the
-remote job when asked, downloads the result and verifies its bytes before the
+remote job when asked, downloads the result, matches EAS project/application/
+version metadata, and checks the APK/AAB ZIP structure and bytes before the
 browser saves them.
 
 ```bash

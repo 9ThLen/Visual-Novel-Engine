@@ -180,7 +180,9 @@ describe('publishing a story end to end', () => {
       releaseId: meta.releaseId,
       storage,
     });
-    const packaged = await readPackagedReleaseManifest(sourceFromBytes(archive.bytes));
+    const packaged = await readPackagedReleaseManifest(sourceFromBytes(
+      new Uint8Array(await archive.blob.arrayBuffer()),
+    ));
 
     expect(packaged.release.releaseId).toBe(meta.releaseId);
     expect(archive.fileName).toBe('A_Publishable_Novel-v1.0.0.vnerelease');

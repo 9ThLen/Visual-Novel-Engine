@@ -13,6 +13,82 @@ the normal path is the Android block on the story's Release card. The command
 below remains the diagnostic/manual staging path.
 
 ```powershell
+pnpm stage:android --release novel.vnerelease --out ./novel-android --eas-project-id <your-own-eas-project-uuid> --build
+```
+
+`--build` stages, runs all four checks, and only then submits. It is a flag and
+never implied: it is the only step in this pipeline that spends money, and it
+uses the signing credentials Android will hold the story to for the life of the
+work. It also carries the two easily-forgotten details — the working directory
+and `EAS_SKIP_AUTO_FINGERPRINT` — so they live in one place rather than in
+whoever remembers to type them.
+
+`--build` waits for the build, downloads the APK, and **verifies it** before it
+will call the build a success — declared permissions, application id, version
+code, version name, and the signature checked against the file's own bytes. The
+same check runs when a build is made from the app; neither path can skip it.
+
+The build id is printed **before** the wait, not after it, because a closed
+terminal or a dropped connection must not cost a second build:
+
+```powershell
+pnpm stage:android --release novel.vnerelease --out ./novel-android --from-build <build-id>
+```
+
+That skips staging and submitting: it follows, downloads and verifies a build
+already paid for. It never cancels the build — you may be watching one somebody
+else started. Downloads land in a file of their own and are renamed into place only once they
+verify; the rename overwrites atomically, so the artifact is never absent or
+half-written even if two builds finish at once. A build that fails verification
+is kept as `.unverified`.
+
+To read an APK already on disk:
+
+```powershell
+pnpm inspect:apk ./player.apk --release novel.vnerelease
+```
+
+### What "verified" covers
+
+- **The signature holds over this file**, according to `apksigner verify`, which
+  is **required**: without the Android SDK build-tools a build cannot be
+  certified here. Set `ANDROID_SDK_ROOT`, or point `APKSIGNER` at the jar or the
+  executable. This is checked *before* a build is submitted, by the app and by
+  the command line, so a missing tool costs nothing rather than a build.
+
+  This repository's own reader runs alongside it as a second opinion — signature
+  against signed data, public key against certificate, content digest recomputed
+  over the archive, every scheme and every signer — and a disagreement between
+  the two is a failure. Where it knows it does not implement something, such as
+  a key-rotation lineage, it says so and apksigner's verdict stands alone.
+- **The permissions are what is declared**, read from `uses-permission`
+  elements in the parsed manifest rather than matched against its text.
+- **The identity is the one the release derives** — application id, version
+  code, version name.
+- **The key is the one this story has always used.** The first verified build
+  records its certificate under
+  `.vne-builds/signing/<application id>.signing.json`; later builds are compared
+  to it, whether they came from the app or the command line. Records left by
+  earlier versions in `.vne-builds/` or `.vne-builds/eas-identities/` are still
+  read and carried forward. Delete the file and the next build silently becomes
+  the new reference, so keep it — it is the local memory of the key your
+  readers' installs are pinned to.
+
+What it does not cover: certificate chains and trust, which Android does not use
+for this — an app is pinned to whatever key signed its first install, so a
+self-signed certificate is the normal case. Nor v3's key-rotation lineage or the
+platform's rules about which scheme governs which Android version; `apksigner
+verify` is the tool that implements all of it, and this refuses anything it
+cannot fully check rather than passing it. And **AABs are refused, not
+checked**: the manifest inside one is protobuf and its signing is not an
+installed app's. Verifying one needs `bundletool`.
+
+A build that fails verification is kept beside the destination as `.unverified`,
+by both paths — the artifact is usually what you need to look at.
+
+The same thing by hand, which is what the two notes below are about:
+
+```powershell
 pnpm stage:android --release novel.vnerelease --out ./novel-android --eas-project-id <your-own-eas-project-uuid>
 Set-Location ./novel-android
 $env:EAS_SKIP_AUTO_FINGERPRINT = '1'
@@ -184,8 +260,10 @@ Android asks permission to install apps from outside Play, once, per source. Say
 so on the download page — a reader who meets that prompt with no warning
 concludes the file is malware, which is the correct instinct.
 
-The app asks for no permissions. It reads a story; it does not pick files, take
-photos, or post notifications, and the manifest says so.
+The app asks for no sensitive runtime permissions. It reads a story; it does not
+pick files, take photos, record audio, read shared storage, or post
+notifications. `INTERNET` and `ACCESS_NETWORK_STATE` remain for Expo runtime
+compatibility, as recorded below.
 
 ## What the first real APK looked like
 
@@ -197,7 +275,7 @@ Built 2026-09-02 from the demo release: 168.9 MB, signed, `1.0.0` / version code
 | media | inside, under `res/` with minified names (`res/fG.mp3`, 11.3 MB) |
 | native libraries | 72 MB across four ABIs; one device uses about a quarter |
 | permissions removed | CAMERA, RECORD_AUDIO, READ/WRITE_EXTERNAL_STORAGE, READ_MEDIA_*, POST_NOTIFICATIONS |
-| permissions found and now blocked | `SYSTEM_ALERT_WINDOW`, `DUMP` — React Native dev support, alive in a release build |
+| permissions found and now blocked | `SYSTEM_ALERT_WINDOW` — React Native dev support, alive in a release build |
 | permissions still declared | `INTERNET`, `ACCESS_NETWORK_STATE` |
 
 The last row is a decision rather than an oversight: a novel whose media ships
@@ -208,20 +286,30 @@ never uses.
 
 ## What has and has not happened
 
-**No APK has ever been built.** No machine involved in writing this had an
-Android SDK, and no Expo account was used: `eas build` costs money on someone
-else's account and signs with credentials that outlive the build.
+**Three real APKs have been built from the staged project, and one has run.** The build
+proves that EAS can compile and sign the generated project and that the release
+media is packaged; the author installed it on 2026-09-02 and reports that it
+plays. That is their observation, not a measurement taken here — but it is the
+first evidence about the artifact on a device rather than about the pipeline
+that made it. It was submitted manually, not through the browser/helper path.
 
 The EAS adapter is implemented: readiness, staging, archive inspection, submit,
-poll, remote cancel, HTTPS artifact download, server-side hash/ZIP checks and a
-second size/hash check in the browser. It also persists the binding between one
-EAS project and one novel. It has been exercised against a simulated EAS CLI,
-not against a paid account. The following therefore remains physical acceptance,
-not an implemented-code gap:
+poll, remote cancel, HTTPS artifact download, EAS identity/version matching,
+server-side hash/Android-structure checks and a second size/hash check in the
+browser. It also persists the binding between one
+EAS project and one novel. It has been exercised against a simulated EAS
+CLI only. The following therefore remains physical acceptance rather than an
+implemented-code gap:
 
-- the APK itself, its size, and its permission list on a device;
-- the launch splash, which only behaves faithfully in a release build;
-- installing v2 over v1 with the saves intact;
+- the complete browser → helper → EAS → browser path;
+- installing v2 over v1 with the saves intact — the case the whole
+  application-id design exists for. Everything Android checks first is now
+  verified rather than assumed: two APKs of the same story, `1.0.0` and `1.0.1`,
+  carry the same application id, version codes `1000000` and `1000001`, and EAS
+  reports the same keystore (`Build Credentials 3Xs4et9yvN`) for both. Untested
+  is the install itself, and whether a reader's saves survive it;
+- the permission surface as a device reports it, rather than as the APK declares
+  it.
 - the post-build certificate check, which needs an artifact to check.
 
 `EasBuilder` in [`tools/build-helper`](../tools/build-helper/README.md) refuses a

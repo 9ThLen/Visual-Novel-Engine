@@ -135,6 +135,9 @@ describe('ReaderDisplay', () => {
   it('uses classic rendering when the preset is absent', () => {
     render(<ReaderDisplay {...baseProps} />);
     expect(screen.getByTestId('reader-layout-classic')).toBeTruthy();
-    expect(screen.getByTestId('reader-dialogue-panel-classic').style.marginBottom).toBe('28px');
+    // The spacing below the dialogue sits on the wrapper now: the controls
+    // moved out of the collapsing panel, so the gap belongs to both of them
+    // rather than to the part that disappears.
+    expect(screen.getByTestId('reader-dialogue-classic').style.marginBottom).toBe('28px');
   });
 });

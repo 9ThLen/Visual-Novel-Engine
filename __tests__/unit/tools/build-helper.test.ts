@@ -12,12 +12,28 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync,
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { WebSocket } from 'ws';
+import { zipSync } from 'fflate';
 
 import { BuildHelperServer } from '../../../tools/build-helper/src/server';
 import { EasBuilder, FakeBuilder } from '../../../tools/build-helper/src/builder';
 import { sweepAbandonedUploads } from '../../../tools/build-helper/src/upload';
 import { BUILD_PROTOCOL_VERSION } from '../../../lib/release/build-protocol';
 import type { BuildRequest } from '../../../lib/release/build-request';
+import { fakeManifest } from '../../helpers/android-manifest';
+import { makeSigningKey, signApk } from '../../helpers/apk-signing';
+import { fakeApksigner } from '../../helpers/fake-apksigner';
+
+/**
+ * Both seams onto the Android SDK, injected. The helper requires apksigner in
+ * earnest; requiring it of the suite as well would make these cases pass only
+ * on a machine where somebody had installed build-tools.
+ */
+const SIGNING_SEAMS = {
+  apksignerReadiness: () => ({ ready: true }) as const,
+  signatureAuthority: fakeApksigner(),
+};
+
+const SIGNING_KEY = makeSigningKey('VNE Helper Test');
 
 const ORIGIN = 'http://localhost:8081';
 const RELEASE_BYTES = new TextEncoder().encode('pretend this is a .vnerelease');
@@ -72,6 +88,23 @@ class TestClient {
   close(): void {
     this.socket.close();
   }
+}
+
+/**
+ * Poll until a path is gone.
+ *
+ * The helper deletes a refused `.part` synchronously, but it gets there after
+ * the client has already seen the connection drop — so a check in the same tick
+ * as the client's error is a race the test loses on a loaded runner and wins on
+ * a fast laptop. What the contract promises is that nothing is kept, not that it
+ * is unlinked before the caller notices.
+ */
+async function waitUntilGone(file: string, timeoutMs = 2_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (existsSync(file) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return !existsSync(file);
 }
 
 async function upload(
@@ -313,8 +346,10 @@ describe('the build helper', () => {
     );
 
     expect(refused).toBe(true);
+    // The finished name must never appear at all; the partial one must not
+    // survive, which is a promise about the end state rather than about timing.
     expect(existsSync(path.join(workDir, 'uploads', 'req_one.vnerelease'))).toBe(false);
-    expect(existsSync(path.join(workDir, 'uploads', 'req_one.vnerelease.part'))).toBe(false);
+    expect(await waitUntilGone(path.join(workDir, 'uploads', 'req_one.vnerelease.part'))).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(client.messages.some((m) => m.job?.state === 'building')).toBe(false);
     client.close();
@@ -347,6 +382,21 @@ describe('the build helper', () => {
     client.send({ type: 'retry', requestId: 'req_one' });
     const retried = await client.waitFor((m) => m.job?.attempt === 2);
     expect(retried.job.attempt).toBe(2);
+    client.close();
+  });
+
+  it('asks for the immutable archive again when retry storage was removed', async () => {
+    await startServer({ builder: new FakeBuilder({ failAfterSteps: 1 }) });
+    const client = await TestClient.connect(port, server.token);
+    client.send({ type: 'submit', request: request() });
+    await client.waitFor((m) => m.type === 'progress');
+    await upload(port, server.token, 'req_one');
+    await client.waitFor((m) => m.type === 'failed' && m.job.state === 'failed');
+    rmSync(path.join(workDir, 'uploads', 'req_one.vnerelease'));
+
+    client.send({ type: 'retry', requestId: 'req_one' });
+    const waiting = await client.waitFor((m) => m.job?.attempt === 2 && m.job.needsUpload === true);
+    expect(waiting.job.state).toBe('queued');
     client.close();
   });
 
@@ -466,7 +516,30 @@ describe('the build helper', () => {
     await upload(port, server.token, 'req_one');
     const failed = await client.waitFor((m) => m.type === 'failed');
 
-    expect(failed.job.failureReason).toContain('not an APK/AAB ZIP');
+    expect(failed.job.failureReason).toContain('no valid ZIP directory');
+    client.close();
+  });
+
+  it('rejects an ordinary ZIP that is not an Android application', async () => {
+    await startServer({
+      builder: {
+        name: 'ordinary-zip',
+        readiness: async () => ({ ready: true as const }),
+        build: async ({ outputDirectory }) => {
+          mkdirSync(outputDirectory, { recursive: true });
+          const artifactPath = path.join(outputDirectory, 'response.apk');
+          writeFileSync(artifactPath, zipSync({ 'readme.txt': new Uint8Array([1, 2, 3]) }));
+          return { artifactPath, fileName: 'response.apk' };
+        },
+      },
+    });
+    const client = await TestClient.connect(port, server.token);
+    client.send({ type: 'submit', request: request() });
+    await client.waitFor((m) => m.type === 'progress');
+    await upload(port, server.token, 'req_one');
+    const failed = await client.waitFor((m) => m.type === 'failed');
+
+    expect(failed.job.failureReason).toContain('missing required entries');
     client.close();
   });
 });
@@ -476,6 +549,25 @@ describe('the EAS builder adapter', () => {
   beforeEach(() => { root = mkdtempSync(path.join(tmpdir(), 'vne-eas-builder-')); });
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
+  /**
+   * A properly signed APK carrying the identity the request asks for.
+   *
+   * The download stub used to write the release bytes, which was fine while the
+   * helper only handed the file back. It verifies now — the same check the
+   * command line runs — so a fixture that is not an APK is refused, which is
+   * the point.
+   */
+  function signedApk(storyId = 'story-one', versionCode = 7): Uint8Array {
+    return signApk(zipSync({
+      'AndroidManifest.xml': fakeManifest({
+        applicationId: `com.vne.story.${storyId}`,
+        versionCode,
+        permissions: ['android.permission.INTERNET'],
+      }),
+      'classes.dex': new Uint8Array([1, 2, 3]),
+    }), SIGNING_KEY);
+  }
+
   function stageIdentity(outDir: string, storyId = 'story-one'): void {
     mkdirSync(outDir, { recursive: true });
     writeFileSync(path.join(outDir, '.vne-native-identity.json'), JSON.stringify({
@@ -484,6 +576,17 @@ describe('the EAS builder adapter', () => {
       applicationId: `com.vne.story.${storyId}`,
       easProjectId: EAS_PROJECT_ID,
     }));
+  }
+
+  function finishedBuild(id: string, storyId = 'story-one'): Record<string, unknown> {
+    return {
+      id,
+      status: 'FINISHED',
+      project: { id: EAS_PROJECT_ID },
+      appIdentifier: `com.vne.story.${storyId}`,
+      appBuildVersion: '7',
+      artifacts: { applicationArchiveUrl: 'https://expo.dev/artifacts/eas/app.apk' },
+    };
   }
 
   it('stages, inspects, submits, polls and downloads one artifact', async () => {
@@ -511,15 +614,12 @@ describe('the EAS builder adapter', () => {
         }
         return {
           status: 0,
-          stdout: JSON.stringify({
-            id: 'build-1',
-            status: 'FINISHED',
-            artifacts: { applicationArchiveUrl: 'https://expo.dev/artifacts/eas/app.apk' },
-          }),
+          stdout: JSON.stringify(finishedBuild('build-1')),
           stderr: '',
         };
       },
-      download: async (_url, target) => { writeFileSync(target, RELEASE_BYTES); },
+      download: async (_url, target) => { writeFileSync(target, signedApk()); },
+      ...SIGNING_SEAMS,
     });
 
     expect(await builder.readiness()).toEqual({ ready: true });
@@ -542,7 +642,7 @@ describe('the EAS builder adapter', () => {
   });
 
   it('is unavailable before an immutable EAS project id is configured', async () => {
-    const readiness = await new EasBuilder({ runCommand: async () => {
+    const readiness = await new EasBuilder({ ...SIGNING_SEAMS, runCommand: async () => {
       throw new Error('must not run');
     } }).readiness();
     expect(readiness).toMatchObject({ ready: false });
@@ -606,17 +706,14 @@ describe('the EAS builder adapter', () => {
         if (args[0] === 'build') {
           return {
             status: 0,
-            stdout: JSON.stringify([{
-              id: `build-${storyId}`,
-              status: 'FINISHED',
-              artifacts: { applicationArchiveUrl: 'https://expo.dev/artifact.apk' },
-            }]),
+            stdout: JSON.stringify([finishedBuild(`build-${storyId}`, storyId)]),
             stderr: '',
           };
         }
         return { status: 0, stdout: 'ok', stderr: '' };
       },
-      download: async (_url, target) => { writeFileSync(target, RELEASE_BYTES); },
+      download: async (_url, target) => { writeFileSync(target, signedApk(storyId)); },
+      ...SIGNING_SEAMS,
     });
     const firstOut = path.join(root, 'first');
     mkdirSync(firstOut);
@@ -638,6 +735,42 @@ describe('the EAS builder adapter', () => {
       onLog: () => {},
       signal: new AbortController().signal,
     })).rejects.toThrow('already bound to another novel');
+  });
+
+  it('refuses a finished EAS build for a different application id', async () => {
+    const builder = new EasBuilder({
+      repoRoot: root,
+      easProjectId: EAS_PROJECT_ID,
+      pollIntervalMs: 0,
+      stage: async ({ outDir }) => {
+        stageIdentity(outDir);
+        return {} as never;
+      },
+      runCommand: async (args) => {
+        if (args[0] === 'build') {
+          return {
+            status: 0,
+            stdout: JSON.stringify([{
+              ...finishedBuild('wrong-app'),
+              appIdentifier: 'com.example.someoneelse',
+            }]),
+            stderr: '',
+          };
+        }
+        return { status: 0, stdout: 'ok', stderr: '' };
+      },
+      download: async () => { throw new Error('must not download'); },
+    });
+    const outputDirectory = path.join(root, 'wrong-app-out');
+    mkdirSync(outputDirectory);
+
+    await expect(builder.build({
+      request: request(),
+      archivePath: path.join(root, 'wrong.vnerelease'),
+      outputDirectory,
+      onLog: () => {},
+      signal: new AbortController().signal,
+    })).rejects.toThrow('does not match the staged novel identity');
   });
 });
 

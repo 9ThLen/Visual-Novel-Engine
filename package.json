@@ -1,6 +1,9 @@
 {
   "name": "app-template",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=24"
+  },
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -23,6 +26,7 @@
     "test:coverage": "vitest run --coverage",
     "test:ai-e2e": "playwright test --config=playwright.ai.config.ts",
     "test:player-e2e": "playwright test --config=playwright.player.config.ts",
+    "test:studio-e2e": "playwright test --config=playwright.studio.config.ts",
     "test:ai-live": "playwright test --config=playwright.ai-live.config.ts",
     "test:ai-openai-live": "tsx tools/ai-bridge/smoke-provider.ts openai",
     "test:ai-claude-live": "tsx tools/ai-bridge/smoke-provider.ts claude",
@@ -33,7 +37,8 @@
     "export:story": "tsx scripts/export-story-web.ts",
     "demo:release": "tsx scripts/make-demo-release.ts",
     "build:desktop": "tsx scripts/build-desktop.ts",
-    "stage:android": "tsx tools/vne-build/main.ts"
+    "stage:android": "tsx tools/vne-build/main.ts",
+    "inspect:apk": "tsx tools/vne-build/inspect-apk.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.207",

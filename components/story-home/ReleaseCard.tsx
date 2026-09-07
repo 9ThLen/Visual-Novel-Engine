@@ -67,9 +67,11 @@ interface ReleaseCardProps {
   buildSettings?: BuildHelperSettings;
   onBuildSettingsChange?: (settings: BuildHelperSettings) => void;
   buildSummary?: BuildJobSummary | null;
+  buildPreparing?: boolean;
   buildError?: string | null;
   onBuildAndroid?: (releaseId: string, target: BuildTarget) => void;
   onCancelBuild?: (requestId: string) => void;
+  onRetryBuild?: (requestId: string) => void;
   onDownloadBuild?: (summary: BuildJobSummary) => void;
   style?: StyleProp<ViewStyle>;
 }
@@ -97,9 +99,11 @@ export function ReleaseCard({
   buildSettings,
   onBuildSettingsChange,
   buildSummary = null,
+  buildPreparing = false,
   buildError = null,
   onBuildAndroid,
   onCancelBuild,
+  onRetryBuild,
   onDownloadBuild,
   style,
 }: ReleaseCardProps) {
@@ -125,7 +129,11 @@ export function ReleaseCard({
   // off the showcase is still a release they can hand to someone.
   const exportable = published ?? releases.find((release) => release.version === highest) ?? null;
   const exporting = exportProgress !== null;
-  const buildBusy = Boolean(buildSummary && !['succeeded', 'failed', 'cancelled', 'expired'].includes(buildSummary.state));
+  const buildBusy = buildPreparing || Boolean(
+    buildSummary
+    && !['succeeded', 'failed', 'cancelled', 'expired'].includes(buildSummary.state)
+    && !(buildSummary.needsUpload && buildError),
+  );
 
   const openSheet = () => {
     setVersion(nextReleaseVersion(highest, 'minor'));
@@ -305,6 +313,11 @@ export function ReleaseCard({
           {buildBusy && buildSummary && onCancelBuild ? (
             <Pressable onPress={() => onCancelBuild(buildSummary.requestId)} style={styles.linkButton}>
               <Text style={[styles.linkLabel, { color: colors.danger }]}>{t('release.android.cancel')}</Text>
+            </Pressable>
+          ) : null}
+          {buildSummary && ['failed', 'cancelled', 'expired'].includes(buildSummary.state) && onRetryBuild ? (
+            <Pressable onPress={() => onRetryBuild(buildSummary.requestId)} style={styles.linkButton}>
+              <Text style={[styles.linkLabel, { color: colors.primary }]}>{t('common.retry')}</Text>
             </Pressable>
           ) : null}
           {buildSummary?.state === 'succeeded' && buildSummary.artifact && onDownloadBuild ? (

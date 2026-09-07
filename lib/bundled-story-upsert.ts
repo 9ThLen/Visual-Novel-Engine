@@ -1,3 +1,4 @@
+import type { Character } from '@/lib/character-types';
 import type { Story } from '@/lib/scene-operations';
 import type { CanonicalStory, StoryMetadata } from '@/lib/story-domain';
 import { useAppStore } from '@/stores/use-app-store';
@@ -5,12 +6,14 @@ import type { SceneRecord } from '@/lib/engine/types';
 import { migrateSceneRecordMap } from '@/lib/audio-block-migration';
 import {
   buildCanonicalSceneRecordsFromLegacyScenes,
+  deriveCharacterLibraryFromLegacyStory,
 } from '@/lib/scene-operations';
 import { StoryDomain, normalizeStoryMetadata } from '@/lib/story-domain';
 
 export interface BundledStorySyncPayload {
   metadata: StoryMetadata;
   sceneRecords: Record<string, SceneRecord>;
+  characterLibrary: Character[];
 }
 
 export function upsertBundledStory(rawMetadata: StoryMetadata, sceneRecords: Record<string, SceneRecord>, characterLibrary?: CanonicalStory['characterLibrary']): void {
@@ -39,5 +42,6 @@ export function createBundledStorySyncPayload(
   return {
     metadata: StoryDomain.extractMetadata(bundledStory),
     sceneRecords: migrateSceneRecordMap(sceneRecords),
+    characterLibrary: deriveCharacterLibraryFromLegacyStory(bundledStory),
   };
 }
