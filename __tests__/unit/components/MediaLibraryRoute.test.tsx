@@ -12,6 +12,7 @@ import StoryGalleryRoute from '@/app/story-gallery';
 import type { LibraryAsset } from '@/lib/media-library-service';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import { useAppStore } from '@/stores/use-app-store';
+import { resetThumbnailsForTests, setThumbnailGeneratorForTests } from '@/lib/thumbnails';
 // Test-only helpers come from the mock path: the alias applies at runtime, but
 // the real modules have no such export for tsc to find.
 import { getRouterForTests, setLocalSearchParamsForTests } from '../../../__mocks__/expo-router';
@@ -80,15 +81,31 @@ const alice = {
 };
 
 describe('media library route', () => {
+  const originalFetch = globalThis.fetch;
+
   beforeEach(() => {
     setLocalSearchParamsForTests({ storyId: 'story-1' });
     getRouterForTests().push.mockClear();
     document.querySelectorAll('input[type="file"]').forEach((element) => element.remove());
     resetMockAudioPlayers();
+    // Every tile asks for a thumbnail. Left alone, that is a real fetch of a
+    // `file://` URL, which jsdom rejects on its own schedule — long after the
+    // case that started it — and the module's caches carry the outcome into
+    // the next case. Both are answered here: a stub that resolves in-process,
+    // and a reset so no case inherits another's decisions.
+    resetThumbnailsForTests();
+    globalThis.fetch = vi.fn(
+      async () => ({ ok: true, blob: async () => new Blob(['x']) }) as unknown as Response,
+    ) as unknown as typeof fetch;
+    // No canvas in jsdom: the grid falls back to the original file, which is
+    // what these cases assert against anyway.
+    setThumbnailGeneratorForTests(async () => null);
   });
 
   afterEach(() => {
     setLocalSearchParamsForTests({});
+    resetThumbnailsForTests();
+    globalThis.fetch = originalFetch;
   });
 
   it('shows the story name and its images', () => {
@@ -222,9 +239,8 @@ describe('media library route', () => {
 
     render(<StoryGalleryRoute />);
     fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
-    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove from Alice' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove from Alice' }));
 
     expect(setCharacterLibrary).toHaveBeenCalledWith('story-1', [
       expect.objectContaining({ id: 'alice', sprites: [] }),
@@ -338,7 +354,10 @@ describe('media library route', () => {
 
     render(<StoryGalleryRoute />);
     fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
-    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
+    // The owner row is drawn before the load resolves, so waiting on it would
+    // assert against "still checking" rather than against the partial answer.
+    await waitFor(() =>
+      expect(screen.getAllByText('Could not check where this file is used.').length).toBeGreaterThan(0));
 
     expect(screen.queryByRole('button', { name: 'Remove from Alice' })).toBeNull();
     expect(setCharacterLibrary).not.toHaveBeenCalled();
@@ -353,9 +372,12 @@ describe('media library route', () => {
     });
 
     render(<StoryGalleryRoute />);
+    // The chips are disabled while the load runs too, so the assertion only
+    // means what it says once the load has landed.
+    await act(async () => {});
 
     // The usage filters would claim everything is unused; they are withheld.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Used' })).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Used' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Used' }));
     expect(screen.getByRole('button', { name: 'Image, spare.png' })).toBeTruthy();
   });
@@ -376,7 +398,7 @@ describe('media library route', () => {
 
     render(<StoryGalleryRoute />);
     fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
-    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
+    await screen.findByRole('button', { name: 'Remove from Alice' });
 
     // Somewhere else, Alice gains a second sprite.
     await act(async () => {
@@ -416,8 +438,10 @@ describe('media library route', () => {
 
     render(<StoryGalleryRoute />);
     fireEvent.click(screen.getByRole('button', { name: 'Image, sprite.png, Alice' }));
-    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
-    const detach = screen.getByRole('button', { name: 'Remove from Alice' });
+    // The button is what this test is about, so it is also what it waits for:
+    // the owner row next to it is drawn one render earlier, while the scene
+    // load is still running and no detach is offered at all.
+    const detach = await screen.findByRole('button', { name: 'Remove from Alice' });
 
     act(() => {
       arriveWithScenes([characterStep]);

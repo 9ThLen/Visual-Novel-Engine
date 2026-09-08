@@ -31,6 +31,29 @@ import {
 const colors = Colors.light;
 const NOW = new Date('2026-08-24T12:00:00Z').getTime();
 
+/**
+ * Rendering a tile asks for a thumbnail, which without this is a real fetch of
+ * a `file://` URL: jsdom rejects it on its own schedule, long after the case
+ * that started it, and the module's caches carry that outcome into the next
+ * one. The thumbnail cases below install their own stubs on top of these.
+ */
+const realFetch = globalThis.fetch;
+
+beforeEach(() => {
+  resetThumbnailsForTests();
+  globalThis.fetch = vi.fn(
+    async () => ({ ok: true, blob: async () => new Blob(['x']) }) as unknown as Response,
+  ) as unknown as typeof fetch;
+  // No canvas in jsdom, so the tile shows the original file — which is what
+  // every case outside `grid thumbnails` is about.
+  setThumbnailGeneratorForTests(async () => null);
+});
+
+afterEach(() => {
+  resetThumbnailsForTests();
+  globalThis.fetch = realFetch;
+});
+
 function asset(overrides: Partial<LibraryAsset> & { id: string }): LibraryAsset {
   return {
     type: 'image',
