@@ -115,13 +115,20 @@ type MockProps = Record<string, unknown>;
 
 /** Exposes the imperative handle callers use; a bare div has no scrollTo. */
 export const ScrollView = React.forwardRef((props: MockProps, ref: unknown) => {
-  const { contentContainerStyle, style, onScroll: _onScroll, onContentSizeChange: _onSize, children, ...rest } = props;
+  const { contentContainerStyle, style, testID, onScroll: _onScroll, onContentSizeChange: _onSize, children, ...rest } = props;
   React.useImperativeHandle(ref, () => ({
     scrollTo: () => {},
     scrollToEnd: () => {},
     flashScrollIndicators: () => {},
   }), []);
-  return React.createElement('div', { ...rest, style: flattenStyle([style, contentContainerStyle]) }, children as React.ReactNode);
+  // `testID` has to be spelled the way the queries look for it. Spread raw it
+  // reaches the DOM as `testid`, which `getByTestId` does not match, so a
+  // ScrollView was the one container a test could not address by id.
+  return React.createElement('div', {
+    ...rest,
+    ...(testID ? { 'data-testid': testID } : {}),
+    style: flattenStyle([style, contentContainerStyle]),
+  }, children as React.ReactNode);
 });
 /**
  * Renders its rows eagerly. A stub that ignored `data`/`renderItem` silently

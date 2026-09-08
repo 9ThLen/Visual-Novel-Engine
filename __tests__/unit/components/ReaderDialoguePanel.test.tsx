@@ -130,7 +130,7 @@ it("updates controls and their handlers while the dialogue stays hidden", () => 
   expect(oldAction).not.toHaveBeenCalled();
   rerender(<ReaderDialoguePanel {...props} displayedText=""
     readerControls={<button disabled>Back</button>} />);
-  expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+  expect((screen.getByRole("button", { name: "Back" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 it("bounds a scrollable dialogue without putting controls inside it", () => {
