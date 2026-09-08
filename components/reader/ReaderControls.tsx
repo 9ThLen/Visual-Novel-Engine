@@ -85,8 +85,7 @@ export const ReaderControls = React.memo(function ReaderControls({
   return (
     <>
       <View
-        className="absolute right-4 top-12 flex-row gap-2"
-        style={getPointerEventsStyle('box-none')}
+        style={[{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, getPointerEventsStyle('box-none')]}
       >
         <ControlButton
           label={autoPlayActive ? `Pause ${labels.auto}` : `Play ${labels.auto}`}
@@ -105,7 +104,7 @@ export const ReaderControls = React.memo(function ReaderControls({
         />
       </View>
 
-      <View className="flex-row gap-2 items-center">
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         <Pressable
           style={{
             borderRadius: 6,

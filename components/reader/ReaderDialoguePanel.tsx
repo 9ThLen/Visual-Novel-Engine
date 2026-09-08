@@ -3,9 +3,11 @@ import {
   Animated,
   Easing,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type StyleProp,
   type TextStyle,
 } from "react-native";
@@ -66,10 +68,10 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
     onTap,
     pagesLength,
     pageIndex,
-    readerControls,
     layoutPreset = "classic",
   } = visible ? props : lastContent.current;
   const dense = layoutPreset !== "classic";
+  const { height: windowHeight } = useWindowDimensions();
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   /** 1 while open, 0 while collapsed; only ever constrains a closing panel. */
   const openness = useRef(new Animated.Value(visible ? 1 : 0)).current;
@@ -122,6 +124,11 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
       testID={`reader-dialogue-${layoutPreset}`}
       style={{ marginBottom: dense ? 12 : DIALOGUE_MARGIN_BOTTOM }}
     >
+      <ScrollView
+        testID="reader-dialogue-scroll"
+        style={{ maxHeight: windowHeight * 0.6, flexShrink: 1 }}
+        keyboardShouldPersistTaps="handled"
+      >
       <Animated.View
         className="rounded-2xl border"
         testID={`reader-dialogue-panel-${layoutPreset}`}
@@ -199,6 +206,7 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
 
         </View>
       </Animated.View>
+      </ScrollView>
 
       {/*
         Outside the panel, deliberately.
@@ -211,16 +219,9 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
       */}
       <View
         testID="reader-controls-row"
-        className={
-          dense
-            ? "flex-row items-center justify-between"
-            : "flex-row items-center justify-between px-4 pb-3 pt-1"
-        }
-        style={
-          dense
-            ? { paddingHorizontal: 12, paddingBottom: 8, paddingTop: 2 }
-            : undefined
-        }
+        style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center",
+          justifyContent: "flex-end", gap: 8, paddingHorizontal: dense ? 12 : 16,
+          paddingBottom: dense ? 8 : 12, paddingTop: 4 }}
       >
         {false && pagesLength > 1 ? (
           <View className="flex-row gap-1">
@@ -243,7 +244,7 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
           <View />
         )}
 
-        {readerControls}
+        {props.readerControls}
       </View>
     </View>
   );

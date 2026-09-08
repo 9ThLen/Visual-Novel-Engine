@@ -45,7 +45,8 @@ export function useReaderAutoAdvance(params: UseReaderAutoAdvanceParams) {
   // ── Auto-play: schedule advance after delay if active + not typing + no choices ──
   useEffect(() => {
     if (autoPlayTimer.current) clearTimeout(autoPlayTimer.current);
-    if (!autoPlayActive || isTyping) return;
+    if (!autoPlayActive || isLoading || isTyping || hasChoices
+      || !executor.canAdvance || executor.sceneState.isTransitioning) return;
 
     autoPlayTimer.current = setTimeout(() => {
       if (hasChoices) return;
@@ -56,11 +57,12 @@ export function useReaderAutoAdvance(params: UseReaderAutoAdvanceParams) {
     return () => {
       if (autoPlayTimer.current) clearTimeout(autoPlayTimer.current);
     };
-  }, [autoPlayActive, isTyping, hasChoices, pageIndex]);
+  }, [autoPlayActive, isLoading, isTyping, hasChoices, pageIndex,
+    executor.canAdvance, executor.sceneState.isTransitioning]);
 
   // ── Turbo: aggressive 320ms interval while active ──
   useEffect(() => {
-    if (!turbo) {
+    if (!turbo || isLoading) {
       if (turboInterval.current) clearInterval(turboInterval.current);
       return;
     }
@@ -82,7 +84,7 @@ export function useReaderAutoAdvance(params: UseReaderAutoAdvanceParams) {
     return () => {
       if (turboInterval.current) clearInterval(turboInterval.current);
     };
-  }, [turbo, isTyping, completeTypewriter]);
+  }, [turbo, isLoading, isTyping, completeTypewriter]);
 
   // ── Tap advance: complete text if typing, else advance if can ──
   const handleTapAdvance = useCallback(() => {
