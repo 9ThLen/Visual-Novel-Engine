@@ -1,5 +1,5 @@
 import React from "react";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Animated, type LayoutChangeEvent, type ViewProps } from "react-native";
 import { ReaderDialoguePanel } from "@/components/reader/ReaderDialoguePanel";
 import { mockColors, ReaderControlsStub } from "./reader-test-utils";
@@ -116,6 +116,29 @@ it("keeps the reader controls outside the panel that collapses", () => {
   const stillThere = screen.getByTestId("reader-controls-row");
   expect(collapsed.contains(stillThere)).toBe(false);
   expect(stillThere.closest("[aria-hidden=\"true\"]")).toBeNull();
+});
+
+it("updates controls and their handlers while the dialogue stays hidden", () => {
+  const oldAction = vi.fn();
+  const newAction = vi.fn();
+  const { rerender } = render(<ReaderDialoguePanel {...props}
+    readerControls={<button onClick={oldAction}>Play</button>} />);
+  rerender(<ReaderDialoguePanel {...props} displayedText=""
+    readerControls={<button onClick={newAction}>Pause</button>} />);
+  fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+  expect(newAction).toHaveBeenCalledOnce();
+  expect(oldAction).not.toHaveBeenCalled();
+  rerender(<ReaderDialoguePanel {...props} displayedText=""
+    readerControls={<button disabled>Back</button>} />);
+  expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+});
+
+it("bounds a scrollable dialogue without putting controls inside it", () => {
+  render(<ReaderDialoguePanel {...props} />);
+  const scroll = screen.getByTestId("reader-dialogue-scroll");
+  expect(parseFloat(scroll.style.maxHeight)).toBeGreaterThan(0);
+  expect(scroll.contains(screen.getByTestId("reader-dialogue-text"))).toBe(true);
+  expect(scroll.contains(screen.getByTestId("reader-controls-row"))).toBe(false);
 });
 
 it("retains outgoing text while collapsing", () => {

@@ -24,6 +24,32 @@ describe('useReaderAutoAdvance', () => {
   });
 
   describe('auto-play', () => {
+    it.each(['loading', 'waiting', 'transitioning'] as const)(
+      'waits for %s to finish and then schedules an advance',
+      (blockedBy) => {
+        const advance = vi.fn();
+        const { rerender } = renderHook(({ blocked }) => useReaderAutoAdvance({
+          isLoading: blocked && blockedBy === 'loading',
+          isTyping: false,
+          hasChoices: false,
+          executor: createExecutor({
+            advance,
+            canAdvance: !(blocked && blockedBy === 'waiting'),
+            sceneState: { isTransitioning: blocked && blockedBy === 'transitioning' },
+          }),
+          completeTypewriter: vi.fn(),
+          initialAutoPlay: true,
+          pageIndex: 0,
+        }), { initialProps: { blocked: true } });
+
+        act(() => { vi.advanceTimersByTime(5000); });
+        expect(advance).not.toHaveBeenCalled();
+        rerender({ blocked: false });
+        act(() => { vi.advanceTimersByTime(2400); });
+        expect(advance).toHaveBeenCalledTimes(1);
+      },
+    );
+
     it('does not auto-advance when not active', () => {
       const executor = createExecutor();
       renderHook(() =>
@@ -161,6 +187,25 @@ describe('useReaderAutoAdvance', () => {
   });
 
   describe('turbo', () => {
+    it('pauses during loading and resumes when loading finishes', () => {
+      const executor = createExecutor();
+      const { result, rerender } = renderHook(({ isLoading }) => useReaderAutoAdvance({
+        isLoading,
+        isTyping: false,
+        hasChoices: false,
+        executor,
+        completeTypewriter: vi.fn(),
+        initialAutoPlay: false,
+        pageIndex: 0,
+      }), { initialProps: { isLoading: true } });
+      act(() => { result.current.setTurbo(true); });
+      act(() => { vi.advanceTimersByTime(960); });
+      expect(executor.advance).not.toHaveBeenCalled();
+      rerender({ isLoading: false });
+      act(() => { vi.advanceTimersByTime(320); });
+      expect(executor.advance).toHaveBeenCalledTimes(1);
+    });
+
     it('does not advance when not active', () => {
       const executor = createExecutor();
       renderHook(() =>
