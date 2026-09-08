@@ -81,7 +81,7 @@ describe('PlateWebViewEditor message boundary', () => {
 
     expect(hostSource).not.toMatch(/postMessage\([\s\S]*?,\s*['"]\*['"]\)/);
     expect(hostSource).toContain('window.location.origin');
-    expect(embeddedSource).toContain('window.parent.postMessage(full, window.location.origin)');
+    expect(embeddedSource).toContain('window.parent.postMessage(full, window.parent.location.origin)');
   });
 
   it('rejects a flush immediately while the iframe is not ready', async () => {

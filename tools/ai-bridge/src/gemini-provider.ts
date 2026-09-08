@@ -10,7 +10,7 @@ import {
   type AgentSessionContext,
   type AgentUserInput,
   ProviderFailure,
-  type ProviderDiagnostics,
+
   type PortableTranscriptEntry,
   type ToolInvoker,
 } from './provider';
@@ -173,7 +173,7 @@ export class GeminiProvider implements AgentProvider {
         }
 
         let accumulatedText = '';
-        const pendingCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+        const pendingCalls: { name: string; args: Record<string, unknown> }[] = [];
         let emittedToolActivity = false;
 
         const streamIter = readSseStream(response, signal);

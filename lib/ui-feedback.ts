@@ -1,11 +1,13 @@
 import * as Haptics from 'expo-haptics';
-import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
-import type { AudioPlayer } from 'expo-audio';
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import { Platform } from 'react-native';
 import { Asset } from 'expo-asset';
 
 const soundModules: Record<string, number> = {
+  // Metro needs static require calls to package local media.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   click:   require('../assets/sounds/button-press.ogg'),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   whoosh:  require('../assets/sounds/button-press.ogg'),
   success: require('../assets/sounds/success_action.wav'),
   error:   require('../assets/sounds/error.wav'),
@@ -105,5 +107,3 @@ export async function buttonFeedback() {
     playSound('click', 0.2),
   ]);
 }
-
-

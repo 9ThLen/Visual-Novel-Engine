@@ -4,7 +4,6 @@
 
 import type { Story, StoryScene, Choice } from '@/lib/scene-operations';
 import type { CharacterPosition, CharacterSprite } from './character-types';
-import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
 import { Platform } from 'react-native';
 
 /**

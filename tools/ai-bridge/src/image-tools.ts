@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { BridgeImageProvider } from '../../../lib/bridge-protocol';
-import type { BridgeImagePlacement } from '../../../lib/bridge-protocol';
-import { MAX_DECODED_IMAGE_BYTES } from '../../../lib/bridge-protocol';
+
+import { MAX_DECODED_IMAGE_BYTES, type BridgeImageProvider, type BridgeImagePlacement } from '../../../lib/bridge-protocol';
 import { getBridgeTool } from '../../../lib/ai/bridge-tools';
 import { BridgeToolError } from './provider';
 import type { BridgeToolHandler } from './tool-runtime';
@@ -55,7 +54,7 @@ export function describeImageToolCapability(raw: ImageToolOptions = {}) {
   const config = resolveImageToolConfig(raw);
   return {
     supported: Boolean(config.provider && config.apiKey),
-    ...(config.provider ? { provider: config.provider, model: config.model, modes: ['generate', 'edit'] as Array<'generate' | 'edit'> } : {}),
+    ...(config.provider ? { provider: config.provider, model: config.model, modes: ['generate', 'edit'] as ('generate' | 'edit')[] } : {}),
   };
 }
 

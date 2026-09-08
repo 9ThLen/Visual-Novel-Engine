@@ -13,7 +13,7 @@
     "ai-bridge:build": "node tools/ai-bridge/build.mjs",
     "ai-bridge:pack": "pnpm --dir tools/ai-bridge pack",
     "check": "tsc --noEmit",
-    "check:editor-boundaries": "bash tools/check-editor-boundaries.sh",
+    "check:editor-boundaries": "node tools/check-editor-boundaries.mjs",
     "check:reader-audio-boundaries": "node tools/check-reader-audio-boundaries.mjs",
     "check:player-bundle": "node tools/check-player-bundle.mjs",
     "check:player-autolinking": "node tools/check-player-autolinking.mjs",

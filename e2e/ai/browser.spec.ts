@@ -100,15 +100,15 @@ test('a pending proposal does not leak across stories', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toBeVisible();
 
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Story Editor', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Story Editor', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Studio', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Studio', exact: true }).click();
   await openStoryFromStudio(page, 'The Enchanted Museum');
   await page.getByText('AI', { exact: true }).click();
   await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Story Editor', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Story Editor', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Studio', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Studio', exact: true }).click();
   await openStoryFromStudio(page, 'The Forgotten Library');
   await page.getByText('AI', { exact: true }).click();
   await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toHaveCount(0);

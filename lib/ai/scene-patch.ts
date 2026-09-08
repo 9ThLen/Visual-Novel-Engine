@@ -12,7 +12,7 @@ export type PatchProjectContext = {
   /** Canonical ordering used by multi-scene changes. Optional for legacy single-scene patches. */
   sceneOrder?: string[];
 };
-export interface ScenePatchDescription { sceneId: string; sceneName: string; changes: Array<{ kind: 'step_added'; step: TimelineStep; index: number } | { kind: 'step_removed'; step: TimelineStep } | { kind: 'step_changed'; before: TimelineStep; after: TimelineStep } | { kind: 'metadata_changed'; field: 'name' | 'description' | 'tags'; before: unknown; after: unknown } | { kind: 'connection_changed'; outputPort: string; before: string | null; after: string | null }>; warnings: string[] }
+export interface ScenePatchDescription { sceneId: string; sceneName: string; changes: ({ kind: 'step_added'; step: TimelineStep; index: number } | { kind: 'step_removed'; step: TimelineStep } | { kind: 'step_changed'; before: TimelineStep; after: TimelineStep } | { kind: 'metadata_changed'; field: 'name' | 'description' | 'tags'; before: unknown; after: unknown } | { kind: 'connection_changed'; outputPort: string; before: string | null; after: string | null })[]; warnings: string[] }
 export class InvalidPatchError extends Error { constructor(message: string) { super(message); this.name = 'InvalidPatchError'; } }
 
 function clone<T>(value: T): T { return structuredClone(value); }
@@ -24,14 +24,14 @@ function applyOperation(scene: SceneRecord, operation: ScenePatchOperation): voi
   else { const index = scene.connections.findIndex(c => c.outputPort === operation.outputPort); if (operation.targetSceneId === null) { if (index >= 0) scene.connections.splice(index, 1); } else { const connection = { outputPort: operation.outputPort, targetSceneId: operation.targetSceneId, ...(operation.label === undefined ? {} : { label: operation.label }) }; if (index < 0) scene.connections.push(connection); else scene.connections[index] = connection; } }
 }
 
-function references(step: TimelineStep): Array<[string, string]> {
-  const found: Array<[string, string]> = [];
+function references(step: TimelineStep): [string, string][] {
+  const found: [string, string][] = [];
   const walk = (value: unknown, key = ''): void => { if (Array.isArray(value)) value.forEach(item => walk(item, key)); else if (value && typeof value === 'object') Object.entries(value).forEach(([k, v]) => walk(v, k)); else if (typeof value === 'string' && ['characterId', 'variableName', 'assetId', 'targetSceneId'].includes(key)) found.push([key, value]); };
   walk(step.data); walk(step.conditions);
   return found;
 }
 
-function characterSpriteReferences(step: TimelineStep): Array<{ characterId: string; spriteId: string }> {
+function characterSpriteReferences(step: TimelineStep): { characterId: string; spriteId: string }[] {
   const data = step.data as unknown as Record<string, unknown>;
   if (step.blockType === 'character' || step.blockType === 'text') {
     return typeof data.characterId === 'string' && typeof data.spriteId === 'string' && data.spriteId

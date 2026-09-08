@@ -46,7 +46,7 @@ import {
   type PlayerShellDescriptor,
   type PlayerShellProblem,
 } from '@/lib/release/shell';
-import type { ReleaseManifestV1, ReleasePayloadV1 } from '@/lib/release/types';
+import type { ReleaseManifestV1 } from '@/lib/release/types';
 import { createPersistentStorage, type StorageLike } from '@/lib/persistent-storage';
 
 /**

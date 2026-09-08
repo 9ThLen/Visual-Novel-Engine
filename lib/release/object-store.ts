@@ -237,7 +237,7 @@ export async function forgetReleaseObjects(
 ): Promise<{ deleted: string[]; kept: string[] }> {
   return withReleaseStorageLock('release-objects', async () => {
     const index = await readReleaseObjectIndex(storage);
-    const deleted: Array<{ sha256: string; uri: string }> = [];
+    const deleted: { sha256: string; uri: string }[] = [];
     const kept: string[] = [];
 
     for (const [sha256, entry] of Object.entries(index.objects)) {

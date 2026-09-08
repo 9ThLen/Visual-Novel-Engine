@@ -15,6 +15,18 @@ let cachedAssets: SharedEditorAssets | null | undefined;
  */
 export function getSharedEditorAssets(): SharedEditorAssets | null {
   if (cachedAssets !== undefined) return cachedAssets;
+  // srcdoc inherits the host CSP. Choose the inline path immediately when
+  // production disallows Blob scripts/styles, rather than booting a dead frame.
+  const policy = typeof document === 'undefined' ? null
+    : document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content');
+  if (policy && ['script-src', 'style-src'].some((directive) => {
+    const rules = policy.split(';').map((rule) => rule.trim().split(/\s+/));
+    const sources = rules.find((rule) => rule[0] === directive) ?? rules.find((rule) => rule[0] === 'default-src');
+    return sources && !sources.includes('blob:');
+  })) {
+    cachedAssets = null;
+    return cachedAssets;
+  }
   if (
     typeof Blob === 'undefined'
     || typeof URL === 'undefined'

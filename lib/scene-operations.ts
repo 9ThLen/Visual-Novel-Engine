@@ -9,6 +9,15 @@ import {
   getSceneRecordFromAccess,
   getSceneRecordsForStoryFromAccess,
 } from '@/lib/scene-access';
+import {
+  createBackgroundStep,
+  createCharacterStep,
+  createChoiceStep,
+  createInteractiveObjectStep,
+  createMusicStep,
+  createTextStep,
+  createTransitionStep,
+} from '@/lib/engine/event-factory';
 
 /**
  * @deprecated Legacy type — only used by buildCanonicalSceneRecordsFromLegacyScenes and upsertCanonicalSceneFromLegacyScene.
@@ -59,15 +68,6 @@ export interface Story {
   updatedAt: number;
   thumbnailUri?: string;
 }
-import {
-  createBackgroundStep,
-  createCharacterStep,
-  createChoiceStep,
-  createInteractiveObjectStep,
-  createMusicStep,
-  createTextStep,
-  createTransitionStep,
-} from '@/lib/engine/event-factory';
 
 export interface CanonicalSceneStateSnapshot {
   sceneRecordsByStory: Record<string, Record<string, SceneRecord>>;

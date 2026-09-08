@@ -94,6 +94,8 @@ export function createPersistentStorage() {
     return createSafeWebStorage(storage);
   }
   try {
+    // Load the native adapter only after the web storage branch has returned.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
     return AsyncStorage;
   } catch (error) {

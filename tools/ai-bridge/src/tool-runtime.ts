@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getBridgeTool } from '../../../lib/ai/bridge-tools';
-import type { BridgeEnvelope } from '../../../lib/bridge-protocol';
+
 import { BridgeToolError, type ToolInvoker } from './provider';
 
 const IMAGE_BUFFER_TTL_MS = 10 * 60_000;

@@ -32,6 +32,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { collectStoryAssetRefs } from './lib/collect-story-assets.mjs';
+import { copyStoryAssets } from './lib/copy-story-assets.mjs';
 import { beginOutPath } from '../tools/lib/out-path';
 import { hardenWebOutput } from './lib/harden-web-output.mjs';
 import { inlineBundleFonts } from './lib/inline-bundle-fonts.mjs';
@@ -148,12 +149,12 @@ Options:
 `);
 }
 
-function readJson(file: string): any {
+function readJson(file: string): unknown {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
 /** Resolve --story to a parsed story object, accepting a path or a story id. */
-function resolveStory(storyArg: string): { story: any; source: string } {
+function resolveStory(storyArg: string): { story: unknown; source: string } {
   const asPath = path.resolve(process.cwd(), storyArg);
   if (fs.existsSync(asPath) && fs.statSync(asPath).isFile()) {
     return { story: readJson(asPath), source: asPath };
@@ -168,7 +169,7 @@ function resolveStory(storyArg: string): { story: any; source: string } {
     const file = path.join(assetsDir, name);
     try {
       const parsed = readJson(file);
-      if (parsed && parsed.id === storyArg) return { story: parsed, source: file };
+      if (parsed && typeof parsed === 'object' && 'id' in parsed && parsed.id === storyArg) return { story: parsed, source: file };
     } catch {
       /* skip unreadable/non-story json */
     }
@@ -176,13 +177,14 @@ function resolveStory(storyArg: string): { story: any; source: string } {
   fail(`Could not resolve --story "${storyArg}" as a file path or a story id in assets/*.json`);
 }
 
-function validateStory(story: any, source: string) {
+function validateStory(story: unknown, source: string): asserts story is { id: string; title: string; startSceneId: string; scenes: Record<string, unknown> } {
   const problems: string[] = [];
-  if (!story || typeof story !== 'object') fail(`Story JSON is not an object: ${source}`);
-  if (typeof story.id !== 'string' || !story.id.trim()) problems.push('missing "id"');
-  if (typeof story.title !== 'string' || !story.title.trim()) problems.push('missing "title"');
-  if (typeof story.startSceneId !== 'string' || !story.startSceneId.trim()) problems.push('missing "startSceneId"');
-  if (!story.scenes || typeof story.scenes !== 'object' || Object.keys(story.scenes).length === 0) {
+  if (!story || typeof story !== 'object' || Array.isArray(story)) fail(`Story JSON is not an object: ${source}`);
+  const record = story as Record<string, unknown>;
+  if (typeof record.id !== 'string' || !record.id.trim()) problems.push('missing "id"');
+  if (typeof record.title !== 'string' || !record.title.trim()) problems.push('missing "title"');
+  if (typeof record.startSceneId !== 'string' || !record.startSceneId.trim()) problems.push('missing "startSceneId"');
+  if (!record.scenes || typeof record.scenes !== 'object' || Array.isArray(record.scenes) || Object.keys(record.scenes).length === 0) {
     problems.push('missing or empty "scenes"');
   }
   problems.push(...validateStoryGraph(story));
@@ -195,7 +197,7 @@ function validateStory(story: any, source: string) {
  * fatal immediately — no point building first. `bundled` refs are validated
  * against the actual build output later (see {@link verifyEmittedAssets}).
  */
-function classifyStoryAssets(story: any) {
+function classifyStoryAssets(story: unknown) {
   const refs = collectStoryAssetRefs(story);
   const fatal: string[] = [];
   const bundled: string[] = [];
@@ -512,6 +514,7 @@ function exportFromStoryJson(args: Args): void {
     version: PLAYER_CONFIG_VERSION,
     generatedAt: new Date().toISOString(),
     story,
+    assets: copyStoryAssets(REPO_ROOT, outPath, assetSummary.bundled),
   };
   // Both forms: the inline one is what the app reads, and the file stays so an
   // existing bundle's config can still be inspected or replaced by hand.

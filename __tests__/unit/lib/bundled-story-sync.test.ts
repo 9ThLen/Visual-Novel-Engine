@@ -25,6 +25,19 @@ const bundledStory: Story = {
 };
 
 describe('shouldUpsertBundledStory', () => {
+  it('carries the sprite library required by canonical character steps', () => {
+    const sprite = { id: 'guide', name: 'Guide', uri: 'assets/guide.png', createdAt: 1 };
+    const payload = createBundledStorySyncPayload({
+      ...bundledStory,
+      scenes: { scene_1: { ...bundledStory.scenes.scene_1, characters: [sprite] } },
+    });
+    expect(payload.characterLibrary).toEqual([
+      expect.objectContaining({
+        id: 'guide', name: 'Guide', defaultSpriteId: 'assets/guide.png',
+        sprites: [expect.objectContaining({ id: 'assets/guide.png', uri: 'assets/guide.png' })],
+      }),
+    ]);
+  });
   it('returns true when bundled story is missing', () => {
     expect(
       shouldUpsertBundledStory(

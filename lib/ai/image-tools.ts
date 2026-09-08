@@ -1,5 +1,4 @@
-import { MAX_DECODED_IMAGE_BYTES } from '@/lib/bridge-protocol';
-import type { BridgeImagePlacement } from '@/lib/bridge-protocol';
+import { MAX_DECODED_IMAGE_BYTES, type BridgeImagePlacement } from '@/lib/bridge-protocol';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 import { getStoryImageAssets } from '@/lib/story-image-library';
 import { useAppStore } from '@/stores/use-app-store';

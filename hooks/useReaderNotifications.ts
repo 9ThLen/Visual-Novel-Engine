@@ -4,7 +4,7 @@
  * Extracts transition/complete notification logic from StoryReaderResponsive
  * to reduce its useEffect count.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getNextBlockingEffectEndTime } from '@/lib/engine/effect-duration';
 import type { ActiveEffect } from '@/lib/engine/runtime-types';
 import type { TransitionMode, TransitionType } from '@/lib/engine/types';
@@ -39,11 +39,8 @@ export function useReaderNotifications({
 }) {
   const transitionNotifiedRef = useRef<string | null>(null);
   const completeNotifiedRef = useRef<string | null>(null);
-  const [gateTick, setGateTick] = useState(0);
-  const nextBlockingEffectEndTime = useMemo(
-    () => getNextBlockingEffectEndTime(activeEffects),
-    [activeEffects, gateTick],
-  );
+  const [, setGateTick] = useState(0);
+  const nextBlockingEffectEndTime = getNextBlockingEffectEndTime(activeEffects);
   const hasActiveBlockingEffect = nextBlockingEffectEndTime !== null;
 
   // Reset notification refs on scene change

@@ -1,4 +1,4 @@
-import type { ChoiceBlockData, SceneRecord, TimelineStep } from '@/lib/engine/types';
+import type { ChoiceBlockData, InteractiveObjectBlockData, TransitionBlockData, SceneRecord, TimelineStep } from '@/lib/engine/types';
 
 /**
  * Shared scene-graph traversal primitives.
@@ -32,6 +32,16 @@ export function sceneOutgoingTargets(scene: SceneRecord): string[] {
     targets.push(connection.targetSceneId);
   }
   for (const step of scene.timeline) {
+    if (step.enabled === false) continue;
+    if (step.blockType === 'transition') {
+      const data = step.data as TransitionBlockData;
+      if (data.mode === 'scene' && data.targetSceneId) targets.push(data.targetSceneId);
+    }
+    if (step.blockType === 'interactive_object') {
+      for (const action of (step.data as InteractiveObjectBlockData).actions ?? []) {
+        if (action.type === 'scene_transition' && action.targetSceneId) targets.push(action.targetSceneId);
+      }
+    }
     if (!isEnabledChoiceStep(step)) continue;
     const data = step.data as ChoiceBlockData;
     for (const option of data.options) {

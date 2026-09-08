@@ -35,8 +35,8 @@ export function seedPlayerStory(config: PlayerConfig): string {
   // Legacy shape — reuse the same validation + canonicalization the demo
   // stories go through at boot.
   const validated = StoryValidator.validateStory(config.story as Story);
-  const { metadata, sceneRecords } = createBundledStorySyncPayload(validated);
-  upsertBundledStory(metadata, sceneRecords);
+  const { metadata, sceneRecords, characterLibrary } = createBundledStorySyncPayload(validated);
+  upsertBundledStory(metadata, sceneRecords, characterLibrary);
   return metadata.id;
 }
 

@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { aiReaderAppearancePatchSchema } from './appearance-patch';
+import { aiScenePatchSchema } from './scene-patch-types';
+import { aiChangeSetSchema } from './change-set';
+import { AI_CAPABILITIES } from './permissions';
 
 const sceneBackgroundPlacementSchema = z.discriminatedUnion('operation', [
   z.object({
@@ -30,10 +34,6 @@ const imagePlacementSchema = z.union([
     tags: z.array(z.string().min(1)).max(20).optional(), setAsDefault: z.boolean().optional(), scenePlacement: characterScenePlacementSchema.optional(),
   }),
 ]);
-import { aiReaderAppearancePatchSchema } from './appearance-patch';
-import { aiScenePatchSchema } from './scene-patch-types';
-import { aiChangeSetSchema } from './change-set';
-import { AI_CAPABILITIES } from './permissions';
 
 export interface BridgeToolDef {
   name: string;

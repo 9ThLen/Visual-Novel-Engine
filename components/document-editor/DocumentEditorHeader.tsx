@@ -78,12 +78,12 @@ export function DocumentEditorHeader({
         zIndex: 100,
         elevation: 100,
         flexDirection: 'row',
-        flexWrap: isPhone ? 'wrap' : 'nowrap',
+        flexWrap: 'wrap',
         alignItems: 'center',
         gap: isPhone ? 14 : 10,
       }}
     >
-      <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: isPhone ? 14 : 10 }}>
+      <View style={{ flex: 1, flexBasis: isPhone ? '100%' : undefined, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: isPhone ? 14 : 10 }}>
         {isPhone ? (
           <Pressable
             onPress={onBack}
@@ -151,6 +151,8 @@ export function DocumentEditorHeader({
       {!focusMode ? (
       <View style={{
         flexDirection: 'row',
+        flexWrap: 'wrap',
+        flexShrink: 0,
         alignItems: 'center',
         justifyContent: isPhone ? 'center' : 'flex-start',
         gap: 2,
@@ -344,7 +346,7 @@ export function DocumentEditorHeader({
           </Pressable>
         </>
       ) : (
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 }}>
+        <View style={{ flexGrow: 1, flexShrink: 0, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 10 }}>
           <Button
             variant="outline"
             size="sm"

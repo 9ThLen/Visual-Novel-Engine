@@ -43,7 +43,7 @@ export class ClaudeAgentProvider implements AgentProvider {
 async function* oneMessage(message: SDKUserMessage): AsyncIterable<SDKUserMessage> { yield message; }
 
 function claudeUserMessage(input: AgentUserInput): SDKUserMessage {
-  const content: Array<Record<string, unknown>> = [];
+  const content: Record<string, unknown>[] = [];
   if (input.text.trim()) content.push({ type: 'text', text: input.text });
   for (const attachment of input.attachments) {
     const data = Buffer.from(attachment.bytes).toString('base64');

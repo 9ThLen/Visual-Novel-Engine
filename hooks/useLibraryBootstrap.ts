@@ -25,9 +25,9 @@ import { ensureStorageBootstrap } from '@/stores/storage-bootstrap';
 import { useAppStore } from '@/stores/use-app-store';
 
 function syncBundledStory(story: Story): void {
-  const { metadata, sceneRecords } = createBundledStorySyncPayload(story);
+  const { metadata, sceneRecords, characterLibrary } = createBundledStorySyncPayload(story);
 
-  upsertBundledStory(metadata, sceneRecords);
+  upsertBundledStory(metadata, sceneRecords, characterLibrary);
 }
 
 export function useLibraryBootstrap(): { isInitialized: boolean } {

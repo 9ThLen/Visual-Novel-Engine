@@ -88,7 +88,7 @@ const EMBEDDED_SCRIPT_BODY = `
       if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
         window.ReactNativeWebView.postMessage(JSON.stringify(full));
       } else {
-        window.parent.postMessage(full, window.location.origin);
+        window.parent.postMessage(full, window.parent.location.origin);
       }
     }
 

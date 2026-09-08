@@ -114,7 +114,7 @@ export interface SessionStartedPayload { sessionId: string; resumed: boolean; pr
 export interface BridgeCapabilities {
   attachments: {
     supported: boolean;
-    kinds: Array<'image' | 'pdf' | 'text'>;
+    kinds: ('image' | 'pdf' | 'text')[];
     maxCount: number;
     maxDecodedBytes: number;
   };
@@ -122,7 +122,7 @@ export interface BridgeCapabilities {
     supported: boolean;
     provider?: BridgeImageProvider;
     model?: string;
-    modes?: Array<'generate' | 'edit'>;
+    modes?: ('generate' | 'edit')[];
   };
   modelPolicy?: {
     effectiveModel?: string;

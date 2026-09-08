@@ -43,7 +43,7 @@ export function useKeyboardShortcuts({
     const kbEvent = event as unknown as KeyboardEvent;
     const key = kbEvent.key.toLowerCase();
 
-    for (const [id, config] of Object.entries(shortcutsRef.current)) {
+    for (const config of Object.values(shortcutsRef.current)) {
       const {
         key: shortcutKey,
         ctrl = false,
