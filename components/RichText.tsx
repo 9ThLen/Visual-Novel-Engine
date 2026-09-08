@@ -30,16 +30,34 @@ function spanStyle(span: RichTextSpan): TextStyle {
 export function RichText({
   text,
   visibleCount,
+  reserveSpace = false,
 }: {
   text: string;
   /** Visible-character limit; omit to render the full text. */
   visibleCount?: number;
+  /** Keep unrevealed characters in layout so typing does not resize the panel. */
+  reserveSpace?: boolean;
 }) {
   const spans = useMemo(() => parseRichText(text), [text]);
   const visible = useMemo(
     () => (visibleCount == null ? spans : sliceRichText(spans, visibleCount)),
     [spans, visibleCount],
   );
+
+  if (reserveSpace && visibleCount != null) {
+    let remaining = Math.max(0, visibleCount);
+    return <>{spans.map((span, index) => {
+      const count = Math.min(remaining, span.text.length);
+      remaining -= count;
+      return <Text key={index} style={spanStyle(span)}>
+        {span.text.slice(0, count)}
+        {count < span.text.length && (
+          <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
+            aria-hidden style={{ opacity: 0 }}>{span.text.slice(count)}</Text>
+        )}
+      </Text>;
+    })}</>;
+  }
 
   return (
     <>

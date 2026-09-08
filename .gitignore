@@ -113,3 +113,8 @@ wiki/ai-chat*-delegation-prompts.md
 wiki/ai-openai-*-plan.md
 wiki/consumer-showcase-plan.md
 wiki/final-migration-audit.md
+
+# Local build state: which key a story is signed with, and which EAS project
+# it belongs to. Machine-specific, and a signing fingerprint is not ours to
+# publish on the author's behalf.
+.vne-builds/

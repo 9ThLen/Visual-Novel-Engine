@@ -12,7 +12,7 @@ const BUNDLE_MIME = 'application/zip';
 
 type FileSystemFileHandle = {
   createWritable(): Promise<{
-    write(data: Uint8Array): Promise<void>;
+    write(data: Uint8Array | Blob): Promise<void>;
     close(): Promise<void>;
   }>;
 };
@@ -24,7 +24,13 @@ function isCancellation(error: unknown): boolean {
     : (error as { name?: string } | null)?.name === 'AbortError';
 }
 
-async function saveWeb(fileName: string, bytes: Uint8Array): Promise<boolean> {
+async function saveWebFile(
+  fileName: string,
+  data: Uint8Array | Blob,
+  mimeType: string,
+  description: string,
+  extensions: string[],
+): Promise<boolean> {
   const picker = (globalThis as typeof globalThis & {
     showSaveFilePicker?: (options: unknown) => Promise<FileSystemFileHandle>;
   }).showSaveFilePicker;
@@ -37,7 +43,7 @@ async function saveWeb(fileName: string, bytes: Uint8Array): Promise<boolean> {
     try {
       handle = await picker({
         suggestedName: fileName,
-        types: [{ description: 'Playable web bundle', accept: { [BUNDLE_MIME]: ['.zip'] } }],
+        types: [{ description, accept: { [mimeType]: extensions } }],
       });
     } catch (error) {
       // Closing the dialog is a decision, not a failure. Downloading anyway
@@ -46,12 +52,13 @@ async function saveWeb(fileName: string, bytes: Uint8Array): Promise<boolean> {
       throw error;
     }
     const writable = await handle.createWritable();
-    await writable.write(bytes);
+    await writable.write(data);
     await writable.close();
     return true;
   }
 
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: BUNDLE_MIME }));
+  const blob = data instanceof Blob ? data : new Blob([data as BlobPart], { type: mimeType });
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = fileName;
@@ -81,6 +88,18 @@ async function saveNative(fileName: string, bytes: Uint8Array): Promise<boolean>
 
 /** `false` when the author closed the save dialog without choosing anywhere. */
 export async function savePlayerBundle(fileName: string, bytes: Uint8Array): Promise<boolean> {
-  if (Platform.OS === 'web') return saveWeb(fileName, bytes);
+  if (Platform.OS === 'web') {
+    return saveWebFile(fileName, bytes, BUNDLE_MIME, 'Playable web bundle', ['.zip']);
+  }
   return saveNative(fileName, bytes);
+}
+
+/** Save a completed Android artifact returned by the local build helper. */
+export async function saveAndroidBuildArtifact(fileName: string, artifact: Blob): Promise<boolean> {
+  if (Platform.OS !== 'web') throw new Error('Android build downloads are only available in the studio web app.');
+  const extension = fileName.toLowerCase().endsWith('.aab') ? '.aab' : '.apk';
+  const mimeType = extension === '.apk'
+    ? 'application/vnd.android.package-archive'
+    : 'application/octet-stream';
+  return saveWebFile(fileName, artifact, mimeType, 'Android application', [extension]);
 }

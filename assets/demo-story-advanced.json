@@ -3,6 +3,12 @@
   "title": "The Enchanted Museum",
   "description": "A comprehensive demo showcasing ALL engine features: splash screens, interactive objects, inventory, character sprites, voice acting, and multiple endings",
   "author": "Visual Novel Engine - Full Feature Demo",
+  "thumbnailUri": "assets/background/bg-museum-entrance.png",
+  "contentRating": "everyone",
+  "languages": [
+    "en"
+  ],
+  "aiAssisted": false,
   "startSceneId": "scene_1",
   "createdAt": 1744740000000,
   "updatedAt": 1783429200000,
@@ -228,7 +234,11 @@
           "height": 30,
           "label": "Locked Door",
           "pulseAnimation": false,
-          "requiredItems": ["crystal_key", "ancient_compass", "phoenix_feather"],
+          "requiredItems": [
+            "crystal_key",
+            "ancient_compass",
+            "phoenix_feather"
+          ],
           "actions": [
             {
               "type": "scene_transition",
@@ -556,7 +566,10 @@
           "height": 20,
           "label": "Phoenix Feather",
           "pulseAnimation": true,
-          "requiredItems": ["crystal_key", "ancient_compass"],
+          "requiredItems": [
+            "crystal_key",
+            "ancient_compass"
+          ],
           "actions": [
             {
               "type": "item",

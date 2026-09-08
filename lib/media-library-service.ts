@@ -8,6 +8,7 @@
  */
 
 import * as FileSystem from 'expo-file-system/legacy';
+import { readBlobBytes } from '@/lib/blob-bytes';
 import { Platform } from 'react-native';
 import {
   createMediaBlobUri,
@@ -198,8 +199,18 @@ async function persistWebMediaBlob(
   return { blob, storageKey: await hashBlob(blob) };
 }
 
+/**
+ * The bytes are copied into a fresh `Uint8Array` before hashing.
+ *
+ * `crypto.subtle.digest` takes a BufferSource, and what a `Blob` hands back
+ * differs between runtimes: on Node 24 with jsdom it is an ordinary
+ * `ArrayBuffer`, and on Node 20 — which is what CI runs — WebCrypto rejects it
+ * with "2nd argument is not instance of ArrayBuffer, Buffer, TypedArray, or
+ * DataView". Copying costs one pass over bytes that are about to be hashed
+ * anyway, and makes the call independent of which runtime is underneath.
+ */
 async function hashBlob(blob: Blob): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+  const digest = await crypto.subtle.digest('SHA-256', await readBlobBytes(blob));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 

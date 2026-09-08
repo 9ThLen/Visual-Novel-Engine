@@ -3,6 +3,10 @@
  */
 
 import type { Story, StoryScene, Choice } from '@/lib/scene-operations';
+import {
+  sanitizeStoryPublication,
+  type StoryPublicationMetadata,
+} from '@/lib/story-publication';
 import type { CharacterPosition, CharacterSprite } from './character-types';
 import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
 import { Platform } from 'react-native';
@@ -142,6 +146,14 @@ export class StoryValidator {
       scenes: validatedScenes,
       createdAt: typeof data.createdAt === 'number' ? data.createdAt : Date.now(),
       updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : Date.now(),
+      // Publication metadata travels too. This returned an explicit field list
+      // that happened not to include it, so anything through this funnel —
+      // a bundled demo at boot, an imported story — silently lost its content
+      // rating and languages. Both are release blockers, so the loss surfaced
+      // much later as a story that could not be published for no visible
+      // reason. Sanitized by `lib/story-publication.ts` rather than copied, so
+      // there is still exactly one place that decides what these may contain.
+      ...sanitizeStoryPublication(data as StoryPublicationMetadata),
     };
   }
 

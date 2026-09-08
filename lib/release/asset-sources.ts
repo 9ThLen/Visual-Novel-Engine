@@ -1,17 +1,18 @@
 /**
  * Getting a stored release's media bytes back.
  *
- * A saved release keeps its manifest and its payload; the bytes stay in the
- * media library, because copying them would double every author's disk for no
- * gain (see `lib/release/release-storage.ts`). Packaging a release therefore has
- * to find them again — and prove they are still the same bytes.
+ * Publishing writes the bytes into the shared object store
+ * (`lib/release/object-store.ts`), so normally this is a lookup by content hash
+ * and nothing more. The fallback below exists for releases published before that
+ * store did — those kept only a manifest, and their bytes have to be found in
+ * the media library again, where an author may since have replaced them.
  *
- * That proof is the point of this module. The manifest records a SHA-256 and a
- * size per object; if an author replaced a picture after publishing, resolving
- * the reference now yields different bytes, and a bundle built from them would
- * be a release that does not match its own manifest. Better to refuse and name
- * the file.
+ * Either way the hash is checked. A bundle built from bytes that no longer match
+ * the manifest would be a release contradicting its own record of itself, and
+ * the only sign of it would be a reader's broken copy.
  */
+import { readReleaseObject } from '@/lib/release/object-store';
+import type { StorageLike } from '@/lib/persistent-storage';
 import { sha256Chunks, sourceFromBytes } from '@/lib/story-backup/hash';
 import {
   resolveStoryBackupSource,
@@ -79,6 +80,9 @@ async function resolveOneAsset(
 export interface CollectReleaseObjectsOptions {
   onObject?: (done: number, total: number) => void;
   resolveSource?: ReleaseSourceResolver;
+  storage?: StorageLike;
+  /** Injectable so a test can exercise the fallback without an object store. */
+  readObject?: (sha256: string) => Promise<{ open(): AsyncIterable<Uint8Array> } | null>;
 }
 
 /**
@@ -98,10 +102,17 @@ export async function collectReleaseObjects(
   }
 
   const resolveSource = options.resolveSource ?? resolveStoryBackupSource;
+  const readObject = options.readObject
+    ?? ((sha256: string) => readReleaseObject(sha256, options.storage));
   const objects = new Map<string, ResolvedReleaseObject>();
   let done = 0;
   for (const [sha256, asset] of wanted) {
-    const bytes = await resolveOneAsset(asset, resolveSource);
+    // The release's own copy first. The library is only asked when a release
+    // predates the object store — and that is when the bytes may have moved on.
+    const stored = await readObject(sha256);
+    const bytes = stored
+      ? await readAll(stored.open())
+      : await resolveOneAsset(asset, resolveSource);
     const digest = await sha256Chunks(sourceFromBytes(bytes).open());
     if (digest.sha256 !== sha256 || digest.size !== asset.size) {
       throw new Error(

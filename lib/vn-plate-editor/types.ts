@@ -89,6 +89,12 @@ export interface VNPlateEditorPayload {
   videoAssets?: VNPlateVideoAsset[];
   scenes?: VNPlateSceneRef[];
   theme?: VNPlateTheme;
+  /**
+   * Origin of the page hosting the frame, used as the exact postMessage target
+   * for everything the editor sends back. The frame cannot derive it: its own
+   * location is about:srcdoc, whose origin serializes to "null".
+   */
+  hostOrigin?: string;
 }
 
 export type VNPlateFormatCommand =

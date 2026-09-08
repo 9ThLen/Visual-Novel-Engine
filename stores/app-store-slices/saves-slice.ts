@@ -1,4 +1,5 @@
 import { buildCanonicalLoadSnapshot, buildCanonicalSaveSlot } from '@/lib/reader-runtime';
+import { resolveReaderReleaseStamp } from '@/lib/reader-release-stamp';
 import { buildScopedReaderRuntimeSnapshot } from '@/lib/reader-runtime-snapshot';
 import type { SaveSlot } from '@/lib/story-domain';
 import type { AppActions } from '@/stores/app-store-types';
@@ -37,9 +38,7 @@ export function createSavesSlice(set: AppStateSet, get: AppStateGet): SavesSlice
         ),
         state.playbackState,
         state.readerSceneThumbnailUri,
-        state.readerRelease?.storyId === state.playbackState.storyId
-          ? { releaseId: state.readerRelease.releaseId, version: state.readerRelease.version }
-          : null,
+        resolveReaderReleaseStamp(state.readerRelease, state.playbackState.storyId),
       );
       if (!newSlot) return false;
 

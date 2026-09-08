@@ -9,6 +9,14 @@ import type { StorageLike } from '@/lib/persistent-storage';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import type { StoryMetadata } from '@/lib/story-domain';
 import { useAppStore } from '@/stores/use-app-store';
+import { setMediaBlobStorageAdapterForTests } from '@/lib/idb-storage';
+import { readReleaseObjectIndex } from '@/lib/release/object-store';
+import {
+  buildStoredReleaseArchive,
+  releaseBuildRequestId,
+} from '@/lib/release/archive-build';
+import { readReleaseManifest as readPackagedReleaseManifest } from '@/lib/release/package';
+import { sourceFromBytes } from '@/lib/story-backup/hash';
 
 const STORY_ID = 'publish-flow-story';
 const COVER_URI = 'data:image/png;base64,AQID';
@@ -21,6 +29,45 @@ function memoryStorage(): StorageLike & { dump: () => string } {
     removeItem: (key) => { map.delete(key); },
     dump: () => [...map.values()].join('\n'),
   };
+}
+
+function storageWithConcurrentHigherRelease(): StorageLike {
+  const map = new Map<string, string>();
+  let injected = false;
+  return {
+    getItem: async (key) => map.get(key) ?? null,
+    setItem: async (key, value) => {
+      map.set(key, value);
+      if (key !== 'vne_release_objects' || injected) return;
+      injected = true;
+      map.set(`vne_release_index_${STORY_ID}`, JSON.stringify({
+        version: 1,
+        storyId: STORY_ID,
+        releases: [{
+          releaseId: 'release_from_other_tab',
+          storyId: STORY_ID,
+          version: '2.0.0',
+          channel: 'both',
+          releasedAt: '2026-09-01T12:00:00.000Z',
+          published: true,
+          sceneCount: 2,
+          totalBytes: 1,
+        }],
+      }));
+    },
+    removeItem: async (key) => { map.delete(key); },
+  };
+}
+
+function blobStore(): void {
+  const blobs = new Map<string, Blob>();
+  setMediaBlobStorageAdapterForTests({
+    get: async (key: string) => blobs.get(key) ?? null,
+    has: async (key: string) => blobs.has(key),
+    put: async (key: string, blob: Blob) => { blobs.set(key, blob); },
+    delete: async (key: string) => { blobs.delete(key); },
+    list: async () => [...blobs.keys()],
+  } as never);
 }
 
 function scene(id: string, isStart = false): SceneRecord {
@@ -73,6 +120,7 @@ describe('publishing a story end to end', () => {
   let restore: () => void;
 
   beforeEach(() => {
+    blobStore();
     const before = useAppStore.getState();
     useAppStore.setState({
       storiesMetadata: [story],
@@ -86,7 +134,10 @@ describe('publishing a story end to end', () => {
     restore = () => useAppStore.setState(before, true);
   });
 
-  afterEach(() => restore());
+  afterEach(() => {
+    setMediaBlobStorageAdapterForTests(null);
+    restore();
+  });
 
   it('compiles, stores and reads back a release', async () => {
     const storage = memoryStorage();
@@ -113,6 +164,29 @@ describe('publishing a story end to end', () => {
 
     const payload = await readReleasePayload(storage, STORY_ID, meta.releaseId);
     expect(Object.keys(payload?.scenes ?? {}).sort()).toEqual(['finish', 'start']);
+  });
+
+  it('rebuilds the immutable stored release as the exact helper upload', async () => {
+    const storage = memoryStorage();
+    const meta = await publishStoryRelease({
+      storyId: STORY_ID,
+      version: '1.0.0',
+      channel: 'both',
+      storage,
+    });
+
+    const archive = await buildStoredReleaseArchive({
+      storyId: STORY_ID,
+      releaseId: meta.releaseId,
+      storage,
+    });
+    const packaged = await readPackagedReleaseManifest(sourceFromBytes(
+      new Uint8Array(await archive.blob.arrayBuffer()),
+    ));
+
+    expect(packaged.release.releaseId).toBe(meta.releaseId);
+    expect(archive.fileName).toBe('A_Publishable_Novel-v1.0.0.vnerelease');
+    expect(releaseBuildRequestId(archive.sha256, 'apk')).toMatch(/^build_[a-f0-9]{48}_apk$/);
   });
 
   it('does not ship the author\'s disabled drafts', async () => {
@@ -146,6 +220,43 @@ describe('publishing a story end to end', () => {
     expect(await readReleasePayload(storage, STORY_ID, releases[1].releaseId)).not.toBeNull();
   });
 
+  it('rejects duplicate and lower versions without securing another artifact', async () => {
+    const storage = memoryStorage();
+    await publishStoryRelease({ storyId: STORY_ID, version: '2.0.0', channel: 'both', storage });
+    const before = await readReleaseObjectIndex(storage);
+
+    await expect(publishStoryRelease({
+      storyId: STORY_ID,
+      version: '2.0.0',
+      channel: 'both',
+      storage,
+    })).rejects.toThrow(/strictly newer/);
+    await expect(publishStoryRelease({
+      storyId: STORY_ID,
+      version: '1.9.9',
+      channel: 'both',
+      storage,
+    })).rejects.toThrow(/strictly newer/);
+
+    expect(await listReleases(storage, STORY_ID)).toHaveLength(1);
+    expect(await readReleaseObjectIndex(storage)).toEqual(before);
+  });
+
+  it('rolls back secured objects when another tab publishes a newer version first', async () => {
+    const storage = storageWithConcurrentHigherRelease();
+
+    await expect(publishStoryRelease({
+      storyId: STORY_ID,
+      version: '1.0.0',
+      channel: 'both',
+      storage,
+    })).rejects.toThrow(/strictly newer/);
+
+    expect((await readReleaseObjectIndex(storage)).objects).toEqual({});
+    expect((await listReleases(storage, STORY_ID)).map((release) => release.releaseId))
+      .toEqual(['release_from_other_tab']);
+  });
+
   it('can compile without publishing to the showcase', async () => {
     const storage = memoryStorage();
     const meta = await publishStoryRelease({
@@ -159,6 +270,27 @@ describe('publishing a story end to end', () => {
     expect(meta.published).toBe(false);
     expect(currentPublishedRelease(await listReleases(storage, STORY_ID))).toBeNull();
     expect(await readReleaseManifest(storage, STORY_ID, meta.releaseId)).not.toBeNull();
+  });
+
+  it('does not mint a mutable release when its media cannot be secured', async () => {
+    setMediaBlobStorageAdapterForTests({
+      get: async () => null,
+      has: async () => false,
+      put: async () => { throw new Error('no room'); },
+      delete: async () => {},
+      list: async () => [],
+    } as never);
+    const storage = memoryStorage();
+
+    await expect(publishStoryRelease({
+      storyId: STORY_ID,
+      version: '1.0.0',
+      channel: 'both',
+      storage,
+    })).rejects.toThrow(/could not be secured/);
+
+    expect(await listReleases(storage, STORY_ID)).toEqual([]);
+    expect((await readReleaseObjectIndex(storage)).objects).toEqual({});
   });
 
   it('refuses to publish a story missing its publication facts', async () => {

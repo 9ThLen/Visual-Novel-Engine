@@ -7,11 +7,19 @@ export interface PickedImage {
   name: string;
 }
 
+/**
+ * Describe a File the browser already handed us — from the dialog, or dropped
+ * onto the library.
+ */
+export async function describePickedImageFile(file: File): Promise<PickedImage | null> {
+  const uri = await readFileAsDataUrl(file);
+  return uri ? { uri, name: file.name } : null;
+}
+
 async function pickImageWeb(): Promise<PickedImage | null> {
   const file = await openWebFileDialog('image/*');
   if (!file) return null;
-  const uri = await readFileAsDataUrl(file);
-  return uri ? { uri, name: file.name } : null;
+  return describePickedImageFile(file);
 }
 
 async function pickImageNative(): Promise<PickedImage | null> {

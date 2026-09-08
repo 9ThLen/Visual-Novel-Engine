@@ -21,6 +21,7 @@ import process from 'node:process';
 const REPO_ROOT = process.cwd();
 
 export const BUNDLE_DIR = path.join(REPO_ROOT, 'e2e/player/.bundle');
+export const DESKTOP_DIR = path.join(REPO_ROOT, 'e2e/player/.desktop');
 const RELEASE_FILE = path.join(REPO_ROOT, 'e2e/player/.demo.vnerelease');
 
 /**
@@ -40,6 +41,7 @@ function run(script: string, args: string[]): void {
 
 export default function globalSetup(): void {
   fs.rmSync(BUNDLE_DIR, { recursive: true, force: true });
+  fs.rmSync(DESKTOP_DIR, { recursive: true, force: true });
   fs.rmSync(RELEASE_FILE, { force: true });
 
   run('scripts/make-demo-release.ts', [
@@ -52,5 +54,16 @@ export default function globalSetup(): void {
     '--release', RELEASE_FILE,
     '--out', BUNDLE_DIR,
     ...(process.env.PLAYER_E2E_BUILD ? ['--build'] : []),
+  ]);
+
+  // The desktop channel consumes the bundle the web channel just published, so
+  // it is staged from that folder rather than from the release: staging from
+  // the release again would be a second reader of the container, and the whole
+  // point of R8 is that both channels ship the same bytes. No toolchain is
+  // needed for --stage-only, which is why it can run here at all.
+  run('scripts/build-desktop.ts', [
+    '--bundle', BUNDLE_DIR,
+    '--out', DESKTOP_DIR,
+    '--stage-only',
   ]);
 }

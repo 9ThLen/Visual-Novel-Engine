@@ -71,10 +71,12 @@ function readDurationSeconds(objectUrl: string): Promise<number | undefined> {
   });
 }
 
-async function pickVideoWeb(): Promise<PickVideoResult> {
-  const file = await openWebFileDialog('video/mp4,.mp4');
-  if (!file) return { status: 'cancelled' };
-
+/**
+ * Describe a File the browser already handed us — from the dialog, or dropped
+ * onto the library. Same validation either way: where a file came from says
+ * nothing about whether it can be played.
+ */
+export async function describePickedVideoFile(file: File): Promise<PickVideoResult> {
   const mimeType = mimeTypeForName(file.name, file.type);
   const rejected = checkFile(file.size, mimeType);
   if (rejected) return rejected;
@@ -93,6 +95,12 @@ async function pickVideoWeb(): Promise<PickVideoResult> {
       release: () => URL.revokeObjectURL(uri),
     },
   };
+}
+
+async function pickVideoWeb(): Promise<PickVideoResult> {
+  const file = await openWebFileDialog('video/mp4,.mp4');
+  if (!file) return { status: 'cancelled' };
+  return describePickedVideoFile(file);
 }
 
 async function pickVideoNative(): Promise<PickVideoResult> {

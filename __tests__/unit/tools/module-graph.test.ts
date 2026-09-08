@@ -106,6 +106,21 @@ describe('the module graph walker', () => {
     expect(modules.has('reading.ts')).toBe(true);
   });
 
+  it('resolves the platform order requested by an Android staging walk', () => {
+    write(root, 'entry.ts', "import '@/target';\n");
+    write(root, 'target.web.ts', 'export const target = "web";\n');
+    write(root, 'target.android.ts', 'export const target = "android";\n');
+    write(root, 'target.ts', 'export const target = "base";\n');
+
+    const { modules } = walkModuleGraph({
+      projectRoot: root,
+      entries: [path.join(root, 'entry.ts')],
+      platformPrefixes: ['.android', '.native', ''],
+    });
+
+    expect([...modules.keys()].sort()).toEqual(['entry.ts', 'target.android.ts']);
+  });
+
   // A bare filename in a failure message is not actionable; the chain names the
   // screen that has to change.
   it('reports the chain from an entry to a module', () => {

@@ -12,12 +12,19 @@
  * store, and this follows it.
  */
 import { compileRelease } from '@/lib/release/compile';
+import { forgetReleaseObjects, saveReleaseObjects } from '@/lib/release/object-store';
 import {
+  highestReleaseVersion,
+  listReleases,
   saveRelease,
   type ReleaseMeta,
 } from '@/lib/release/release-storage';
 import type { ReleaseChannel } from '@/lib/release/types';
-import { FIRST_RELEASE_VERSION, isReleaseVersion } from '@/lib/release/version';
+import {
+  FIRST_RELEASE_VERSION,
+  isNewerReleaseVersion,
+  isReleaseVersion,
+} from '@/lib/release/version';
 import { createPersistentStorage, type StorageLike } from '@/lib/persistent-storage';
 
 export interface PublishStoryInput {
@@ -67,6 +74,15 @@ export function resolveEngineVersion(
 }
 
 export async function publishStoryRelease(input: PublishStoryInput): Promise<ReleaseMeta> {
+  if (!isReleaseVersion(input.version)) {
+    throw new Error(`Invalid release version: ${input.version}`);
+  }
+  const storage = input.storage ?? createPersistentStorage();
+  const previousVersion = highestReleaseVersion(await listReleases(storage, input.storyId));
+  if (!isNewerReleaseVersion(input.version, previousVersion)) {
+    throw new Error(`Release version ${input.version} must be strictly newer than ${previousVersion}.`);
+  }
+
   const compiled = await compileRelease({
     storyId: input.storyId,
     version: input.version,
@@ -75,9 +91,31 @@ export async function publishStoryRelease(input: PublishStoryInput): Promise<Rel
     engineVersion: resolveEngineVersion(),
   });
 
-  return saveRelease(input.storage ?? createPersistentStorage(), {
-    manifest: compiled.manifest,
-    payload: compiled.payload,
-    published: input.published,
-  });
+  // The bytes first, then the release that claims them. A release stored
+  // without its objects is one that cannot be exported later — which is exactly
+  // what happened while this step was missing: publishing hashed the media and
+  // relied on the library still holding it, so replacing a picture quietly made
+  // an already-published version unexportable.
+  const releaseId = compiled.manifest.release.releaseId;
+  const objects = await saveReleaseObjects(releaseId, compiled.assets, storage);
+  if (objects.failed.length > 0) {
+    await forgetReleaseObjects(releaseId, storage);
+    throw new Error(
+      `Release was not saved because ${objects.failed.length} media object(s) could not be secured.`,
+    );
+  }
+
+  try {
+    return await saveRelease(storage, {
+      manifest: compiled.manifest,
+      payload: compiled.payload,
+      published: input.published,
+    });
+  } catch (error) {
+    // Another tab may have minted an equal or newer version after the preflight
+    // check but before saveRelease acquired its index lock. The rejected
+    // artifact must not keep media references that no release can reach.
+    await forgetReleaseObjects(releaseId, storage);
+    throw error;
+  }
 }

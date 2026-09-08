@@ -83,12 +83,40 @@ const EMBEDDED_SCRIPT_BODY = `
       return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
     }
 
+    /*
+     * The exact origin every message to the host is addressed to.
+     *
+     * It cannot be read from window.location: this document is about:srcdoc,
+     * whose URL serializes to the opaque "null" — an invalid postMessage
+     * target that throws SyntaxError, killing the whole bridge (nothing
+     * resized, nothing saved). The document's real origin is the host's,
+     * inherited through sandbox allow-same-origin, so ask the host directly
+     * and fall back to the two properties that report the inherited origin
+     * rather than the URL.
+     */
+    var hostOrigin = (function() {
+      function usable(value) {
+        return typeof value === 'string' && value !== '' && value !== 'null';
+      }
+      if (usable(payload.hostOrigin)) return payload.hostOrigin;
+      try {
+        var ancestors = window.location.ancestorOrigins;
+        if (ancestors && ancestors.length && usable(ancestors[ancestors.length - 1])) {
+          return ancestors[ancestors.length - 1];
+        }
+      } catch (error) {}
+      if (usable(window.origin)) return window.origin;
+      // An opaque host origin (a page opened from file://) leaves no exact
+      // target to name. The receiver is the embedder either way.
+      return '*';
+    }());
+
     function post(message) {
       var full = Object.assign({ source: 'vn-plate-editor', editorId: payload.editorId }, message);
       if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
         window.ReactNativeWebView.postMessage(JSON.stringify(full));
       } else {
-        window.parent.postMessage(full, window.location.origin);
+        window.parent.postMessage(full, hostOrigin);
       }
     }
 

@@ -29,7 +29,7 @@ const {
   PLAYER_ROUTER_ROOT,
   PLAYER_BLOCKED_TREES,
   PLAYER_FORBIDDEN_MODULES,
-  PLAYER_STORE_SUBSTITUTION,
+  PLAYER_MODULE_SUBSTITUTIONS,
 } = require('../player-profile.js');
 
 const report = process.argv.includes('--report');
@@ -45,7 +45,9 @@ if (entries.length === 0) {
 const { modules, externals, unresolved } = walkModuleGraph({
   projectRoot: repoRoot,
   entries,
-  substitutions: { [PLAYER_STORE_SUBSTITUTION.from]: PLAYER_STORE_SUBSTITUTION.to },
+  substitutions: Object.fromEntries(
+    PLAYER_MODULE_SUBSTITUTIONS.map((entry) => [entry.from, entry.to]),
+  ),
 });
 
 const forbidden = new Set(PLAYER_FORBIDDEN_MODULES);

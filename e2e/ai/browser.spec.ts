@@ -23,6 +23,21 @@ async function openStoryFromStudio(page: Page, title: string): Promise<void> {
   await page.getByRole('button', { name: 'Edit novel', exact: true }).click();
 }
 
+/**
+ * Leave a story and come back to the shelf.
+ *
+ * `Back` out of the AI panel lands on the story's own project page, which has a
+ * «Studio» button and no web sidebar. This used to reach for the sidebar's
+ * «Story Editor» item, which stopped existing on this screen when `/editor`
+ * became the shelf — a stale step that only surfaced once the unit-test stage
+ * stopped failing first and CI finally reached this suite.
+ */
+async function backToStudio(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Studio', exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Studio', exact: true }).first().click();
+}
+
 async function openStoryEditor(page: Page, title: string): Promise<void> {
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Studio', exact: true }).first()).toBeVisible();
@@ -99,16 +114,12 @@ test('a pending proposal does not leak across stories', async ({ page }) => {
   await page.getByRole('button', { name: /Send|Надіслати/ }).click();
   await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Story Editor', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Story Editor', exact: true }).click();
+  await backToStudio(page);
   await openStoryFromStudio(page, 'The Enchanted Museum');
   await page.getByText('AI', { exact: true }).click();
   await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Story Editor', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Story Editor', exact: true }).click();
+  await backToStudio(page);
   await openStoryFromStudio(page, 'The Forgotten Library');
   await page.getByText('AI', { exact: true }).click();
   await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toHaveCount(0);

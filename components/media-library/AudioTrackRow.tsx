@@ -1,7 +1,7 @@
 /**
- * The audio track list.
+ * One audio track row.
  *
- * Audio used to render through `MediaGrid`, which is built around a square
+ * Audio used to render through the media grid, which is built around a square
  * whose contents *are* the picture. A sound has no picture, so the square came
  * out as an empty box with a note in it, and everything the library already
  * knew about the file — how long, how big, what format, where it plays — was
@@ -11,32 +11,30 @@
  * and it has somewhere to put the paperwork. The rail on the right of the name
  * is the file's timeline, filled for the file the screen's one preview
  * controller is on; it is where the waveform lands once peaks are computed.
+ *
+ * The row keeps this shape wherever it is shown, including inside the "all"
+ * view where grids of images sit above it.
  */
 
-import React, { useCallback, useMemo } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import type { AudioPreviewState } from '@/hooks/useAudioPreview';
 import { useI18n } from '@/hooks/use-i18n';
 import { formatDate } from '@/lib/format-date';
 import type { ThemeColorPalette } from '@/lib/_core/theme';
-import {
-  audioFormatLabel,
-  audioUsageBadge,
-  buildAudioTrackRows,
-  type AudioTrackRow,
-} from '@/lib/audio-track-rows';
+import { audioFormatLabel, audioUsageBadge } from '@/lib/audio-track-rows';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import { formatBytes, formatDuration } from '@/lib/media-format';
 import type { StoryMediaItem, UsageState } from '@/lib/story-media-gallery';
 
 /** Below this the row stacks: name over rail over badges. */
-const COMPACT_MAX_WIDTH = 720;
+export const COMPACT_MAX_WIDTH = 720;
 
-const ROW_HEIGHT = 64;
-const ROW_HEIGHT_COMPACT = 104;
-const HEADER_HEIGHT = 40;
+export const ROW_HEIGHT = 64;
+export const ROW_HEIGHT_COMPACT = 104;
+export const HEADER_HEIGHT = 40;
 const DISC_SIZE = 44;
 
 interface TrackRowProps {
@@ -46,6 +44,14 @@ interface TrackRowProps {
   selected: boolean;
   usageState: UsageState;
   onSelect: (item: StoryMediaItem) => void;
+  onLongPress?: (item: StoryMediaItem) => void;
+  /**
+   * Select mode: the row ticks the file instead of opening it, and the disc
+   * becomes the tick. Nothing plays while files are being picked — the one
+   * preview controller has no row left to belong to.
+   */
+  picking?: boolean;
+  checked?: boolean;
   onTogglePlayback?: (item: StoryMediaItem) => void;
   /** What the one preview controller is doing, when it is on this item. */
   previewState?: AudioPreviewState | null;
@@ -60,6 +66,9 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
   selected,
   usageState,
   onSelect,
+  onLongPress,
+  picking = false,
+  checked = false,
   onTogglePlayback,
   previewState = null,
   progress = 0,
@@ -90,6 +99,7 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
     formatDate(item.addedAt, language),
   ].filter(Boolean).join('  ·  ');
 
+  const highlighted = picking ? checked : selected;
   const badge = audioUsageBadge(item, usageState);
   const usageLabel = badge.kind === 'used'
     ? t('mediaLibrary.audio.usage.used', {
@@ -154,8 +164,9 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
     <View style={{ height: compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT }}>
       <Pressable
         onPress={() => onSelect(item)}
-        accessibilityRole="button"
-        accessibilityState={{ selected }}
+        onLongPress={onLongPress ? () => onLongPress(item) : undefined}
+        accessibilityRole={picking ? 'checkbox' : 'button'}
+        accessibilityState={picking ? { checked } : { selected }}
         accessibilityLabel={t('mediaLibrary.tile.label', {
           kind: t(`mediaLibrary.kind.${item.kind}`),
           name: item.name,
@@ -164,8 +175,8 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
           styles.row,
           compact ? styles.rowCompact : styles.rowWide,
           {
-            backgroundColor: selected ? colors['surface-1'] : 'transparent',
-            borderColor: selected ? accent : 'transparent',
+            backgroundColor: highlighted ? colors['surface-1'] : 'transparent',
+            borderColor: highlighted ? accent : 'transparent',
           },
         ]}
       >
@@ -188,7 +199,23 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
         )}
       </Pressable>
 
-      {onTogglePlayback ? (
+      {picking ? (
+        // The tick is drawn, not pressed: the row is the checkbox, and a second
+        // control inside it would be a second thing to explain.
+        <View style={styles.discSlot} pointerEvents="none">
+          <View
+            style={[
+              styles.disc,
+              {
+                borderColor: checked ? colors.primary : colors['border-subtle'],
+                backgroundColor: checked ? colors.primary : 'transparent',
+              },
+            ]}
+          >
+            {checked ? <IconSymbol name="checkmark" size={20} color={colors['foreground-on-primary']} /> : null}
+          </View>
+        </View>
+      ) : onTogglePlayback ? (
         // A sibling of the row, not a child of it: a button inside a button is
         // one control to a screen reader and invalid markup on web.
         <View style={styles.discSlot} pointerEvents="box-none">
@@ -216,119 +243,7 @@ export const AudioTrackRowView = React.memo(function AudioTrackRowView({
   );
 });
 
-interface AudioTrackListProps {
-  items: StoryMediaItem[];
-  colors: ThemeColorPalette;
-  selectedKey: string | null;
-  /** False under a filter or a search, where one header would hold every row. */
-  grouped: boolean;
-  emptyLabel: string;
-  usageState: UsageState;
-  onSelect: (item: StoryMediaItem) => void;
-  onTogglePlayback?: (item: StoryMediaItem) => void;
-  /** Width taken by a docked inspector, so the rows lay out in what is left. */
-  reservedWidth?: number;
-  /** The item the one preview controller is on, and what it is doing there. */
-  activeAudioKey?: string | null;
-  previewState?: AudioPreviewState;
-  progress?: number;
-}
-
-export function AudioTrackList({
-  items,
-  colors,
-  selectedKey,
-  grouped,
-  emptyLabel,
-  usageState,
-  onSelect,
-  onTogglePlayback,
-  reservedWidth = 0,
-  activeAudioKey = null,
-  previewState = 'loading',
-  progress = 0,
-}: AudioTrackListProps) {
-  const { t } = useI18n();
-  const { width } = useWindowDimensions();
-  const compact = width - reservedWidth < COMPACT_MAX_WIDTH;
-  const rowHeight = compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT;
-
-  const rows = useMemo(() => buildAudioTrackRows(items, grouped), [grouped, items]);
-
-  const getItemLayout = useCallback((data: ArrayLike<AudioTrackRow> | null | undefined, index: number) => {
-    let offset = 0;
-    for (let cursor = 0; cursor < index; cursor += 1) {
-      offset += data?.[cursor]?.type === 'header' ? HEADER_HEIGHT : rowHeight;
-    }
-    const length = data?.[index]?.type === 'header' ? HEADER_HEIGHT : rowHeight;
-    return { length, offset, index };
-  }, [rowHeight]);
-
-  const renderItem = useCallback(({ item: row }: { item: AudioTrackRow }) => {
-    if (row.type === 'header') {
-      return (
-        <View style={[styles.groupHeader, { height: HEADER_HEIGHT }]}>
-          <Text style={[styles.groupLabel, { color: colors.muted }]}>
-            {t(`mediaLibrary.audio.group.${row.category}`)}
-          </Text>
-          <Text style={[styles.groupCount, { color: colors.muted }]}>{row.count}</Text>
-          <View style={[styles.groupRule, { backgroundColor: colors['border-subtle'] }]} />
-        </View>
-      );
-    }
-    return (
-      <AudioTrackRowView
-        item={row.item}
-        colors={colors}
-        compact={compact}
-        selected={row.item.key === selectedKey}
-        usageState={usageState}
-        onSelect={onSelect}
-        onTogglePlayback={onTogglePlayback}
-        previewState={row.item.key === activeAudioKey ? previewState : null}
-        // Only the active row draws a fill, so the rest stay memo-stable while
-        // it ticks.
-        progress={row.item.key === activeAudioKey ? progress : 0}
-      />
-    );
-  }, [
-    activeAudioKey,
-    colors,
-    compact,
-    onSelect,
-    onTogglePlayback,
-    previewState,
-    progress,
-    selectedKey,
-    t,
-    usageState,
-  ]);
-
-  if (!items.length) {
-    return <Text style={[styles.empty, { color: colors.muted }]}>{emptyLabel}</Text>;
-  }
-
-  return (
-    <FlatList
-      data={rows}
-      keyExtractor={(row) => row.key}
-      renderItem={renderItem}
-      getItemLayout={getItemLayout}
-      removeClippedSubviews
-      initialNumToRender={10}
-      windowSize={5}
-      contentContainerStyle={styles.content}
-    />
-  );
-}
-
 const styles = StyleSheet.create({
-  content: { paddingBottom: spacing.xl },
-  groupHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingTop: spacing.md },
-  groupLabel: { ...typeScale.caption, textTransform: 'uppercase', letterSpacing: 1 },
-  groupCount: { ...typeScale.micro },
-  groupRule: { flex: 1, height: 1 },
-
   row: {
     flex: 1,
     borderRadius: radius.lg,
@@ -373,5 +288,4 @@ const styles = StyleSheet.create({
   },
   badgeText: { ...typeScale.micro },
 
-  empty: { ...typeScale.body, paddingVertical: spacing.xl },
 });

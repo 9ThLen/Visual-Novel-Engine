@@ -151,7 +151,10 @@ export async function buildPlayerBundle(
   if (problem || !shell) throw new PlayerShellUnavailableError(problem ?? { kind: 'missing' });
 
   onProgress?.('collecting');
-  const objects = await collectReleaseObjects(manifest, { resolveSource: input.resolveSource });
+  const objects = await collectReleaseObjects(manifest, {
+    storage,
+    resolveSource: input.resolveSource,
+  });
 
   onProgress?.('assembling');
   await yieldToPaint();

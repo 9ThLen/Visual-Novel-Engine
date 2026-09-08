@@ -15,8 +15,17 @@ import { Platform } from "react-native";
 import { ErrorHandler, ErrorSeverity } from "@/lib/error-handler";
 import { loadPlayerConfig } from "@/lib/player-mode";
 import { ensurePlayerStorySeeded } from "@/lib/player-mode-boot";
+import { registerPackagedRelease } from "@/lib/release/packaged-release";
 import { showToast } from "@/lib/toast-store";
 import { useI18n } from "@/hooks/use-i18n";
+
+/**
+ * A native player build carries its release as a bundled module rather than as a
+ * page to read it out of. Called here, at the player root, because this is the
+ * one entry point every route in this build passes through — and it does nothing
+ * at all in a studio or web build, where the generated module is empty.
+ */
+registerPackagedRelease();
 
 // Web safety: set background before any React rendering
 if (Platform.OS === 'web' && typeof document !== 'undefined') {

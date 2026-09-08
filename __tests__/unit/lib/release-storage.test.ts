@@ -29,6 +29,22 @@ function memoryStorage(): StorageLike & { keys: () => string[]; dump: () => stri
   };
 }
 
+function storageWithDelayedFirstIndexWrite(): StorageLike {
+  const map = new Map<string, string>();
+  let delayNextIndexWrite = true;
+  return {
+    getItem: async (key) => map.get(key) ?? null,
+    setItem: async (key, value) => {
+      if (key === `vne_release_index_${STORY_ID}` && delayNextIndexWrite) {
+        delayNextIndexWrite = false;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      map.set(key, value);
+    },
+    removeItem: async (key) => { map.delete(key); },
+  };
+}
+
 function manifest(overrides: { releaseId?: string; version?: string } = {}): ReleaseManifestV1 {
   const payloadHash = 'a'.repeat(64);
   const objectHash = 'b'.repeat(64);
@@ -131,6 +147,58 @@ describe('saveRelease', () => {
     expect(await listReleases(storage, STORY_ID)).toHaveLength(1);
   });
 
+  it('rejects duplicate and lower versions before writing release bodies', async () => {
+    const storage = memoryStorage();
+    await saveRelease(storage, {
+      manifest: manifest({ releaseId: 'newest', version: '2.0.0' }),
+      payload: payload(),
+    });
+
+    await expect(saveRelease(storage, {
+      manifest: manifest({ releaseId: 'duplicate', version: '2.0.0' }),
+      payload: payload(),
+    })).rejects.toThrow(/strictly newer/);
+    await expect(saveRelease(storage, {
+      manifest: manifest({ releaseId: 'lower', version: '1.9.9' }),
+      payload: payload(),
+    })).rejects.toThrow(/strictly newer/);
+
+    expect(storage.keys().some((key) => key.includes('duplicate'))).toBe(false);
+    expect(storage.keys().some((key) => key.includes('lower'))).toBe(false);
+  });
+
+  it('does not let an existing release ID address different payload bytes', async () => {
+    const storage = memoryStorage();
+    await saveRelease(storage, { manifest: manifest(), payload: payload() });
+    const changed = payload();
+    changed.scenes.scene_1.name = 'Changed after publishing';
+
+    await expect(saveRelease(storage, {
+      manifest: manifest(),
+      payload: changed,
+    })).rejects.toThrow(/different immutable artifact/);
+
+    expect((await readReleasePayload(storage, STORY_ID, 'release_1'))?.scenes.scene_1.name).toBe('One');
+  });
+
+  it('serializes concurrent releases so neither index entry is lost', async () => {
+    const storage = storageWithDelayedFirstIndexWrite();
+
+    await Promise.all([
+      saveRelease(storage, {
+        manifest: manifest({ releaseId: 'r1', version: '1.0.0' }),
+        payload: payload(),
+      }),
+      saveRelease(storage, {
+        manifest: manifest({ releaseId: 'r2', version: '2.0.0' }),
+        payload: payload(),
+      }),
+    ]);
+
+    expect((await listReleases(storage, STORY_ID)).map((release) => release.releaseId))
+      .toEqual(['r2', 'r1']);
+  });
+
   // The invariant the whole local-release design rests on: web-media-cleanup
   // finds live media by scanning persisted values, so the media URI has to be
   // in what we write, or a published story loses its art after the grace
@@ -149,7 +217,7 @@ describe('listReleases', () => {
 
   it('orders newest version first', async () => {
     const storage = memoryStorage();
-    for (const version of ['1.0.0', '1.10.0', '1.2.0']) {
+    for (const version of ['1.0.0', '1.2.0', '1.10.0']) {
       await saveRelease(storage, {
         manifest: manifest({ releaseId: `release_${version}`, version }),
         payload: payload(),

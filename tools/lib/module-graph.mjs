@@ -43,20 +43,20 @@ function toPosix(value) {
   return value.split(sep).join('/');
 }
 
-function candidates(base) {
+function candidates(base, platformPrefixes = PLATFORM_PREFIXES) {
   const out = [];
-  for (const platform of PLATFORM_PREFIXES) {
+  for (const platform of platformPrefixes) {
     for (const extension of SOURCE_EXTENSIONS) out.push(`${base}${platform}${extension}`);
   }
-  for (const platform of PLATFORM_PREFIXES) {
+  for (const platform of platformPrefixes) {
     for (const extension of SOURCE_EXTENSIONS) out.push(`${base}/index${platform}${extension}`);
   }
   return out;
 }
 
-function resolveFile(base) {
+function resolveFile(base, platformPrefixes) {
   if (existsSync(base) && statSync(base).isFile()) return base;
-  for (const candidate of candidates(base)) {
+  for (const candidate of candidates(base, platformPrefixes)) {
     if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
   }
   return null;
@@ -88,12 +88,19 @@ export function readImports(file) {
  * @param {string[]} options.entries absolute paths of entry files
  * @param {Record<string, string>} [options.substitutions] repo-relative module
  *   swaps, mirroring a bundler alias — the key is never walked, the value is
+ * @param {string[]} [options.platformPrefixes] resolution order such as
+ *   `['.android', '.native', '']` for an Android Metro graph
  * @returns {{modules: Map<string, string|null>, externals: Set<string>, unresolved: {from: string, specifier: string}[]}}
  *   `modules` maps each repo-relative module to the repo-relative module that
  *   first pulled it in, so a violation can be reported as a chain rather than a
  *   bare filename.
  */
-export function walkModuleGraph({ projectRoot, entries, substitutions = {} }) {
+export function walkModuleGraph({
+  projectRoot,
+  entries,
+  substitutions = {},
+  platformPrefixes = PLATFORM_PREFIXES,
+}) {
   const modules = new Map();
   const externals = new Set();
   const unresolved = [];
@@ -120,7 +127,7 @@ export function walkModuleGraph({ projectRoot, entries, substitutions = {} }) {
         continue;
       }
 
-      const resolved = resolveFile(base);
+      const resolved = resolveFile(base, platformPrefixes);
       if (!resolved) {
         unresolved.push({ from: fromKey, specifier });
         continue;
