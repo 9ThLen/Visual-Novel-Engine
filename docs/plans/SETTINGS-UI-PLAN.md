@@ -103,8 +103,8 @@
 
 Стан і `normalizeUserSettings` лишилися недоторканими — змінився лише шар подання. Локальні компоненти, оголошені всередині `SettingsScreen` ([settings.tsx:42](../../app/settings.tsx:42), [settings.tsx:82](../../app/settings.tsx:82), [settings.tsx:103](../../app/settings.tsx:103), [settings.tsx:134](../../app/settings.tsx:134)), переїхали у власні файли — доти вони перестворювалися на кожному рендері, тож кожна зміна гучності перемонтовувала весь екран.
 
-1. **`components/settings/list.tsx`** — `SettingsGroup` (заголовок + поверхня + виноска), `SettingsRow` (плитка, підпис, опис, слот справа, роздільник із відступом), `SettingsChevronRow`, `SettingsFooter`.
-2. **`components/ui/SegmentedControl.tsx`** — загальний контрол: доріжка, вибрана плашка з тінню, `radiogroup` / `radio` (див. 7.2). Замінив три копії `Pressable`-сегментів.
+1. **`src/components/settings/list.tsx`** — `SettingsGroup` (заголовок + поверхня + виноска), `SettingsRow` (плитка, підпис, опис, слот справа, роздільник із відступом), `SettingsChevronRow`, `SettingsFooter`.
+2. **`src/components/ui/SegmentedControl.tsx`** — загальний контрол: доріжка, вибрана плашка з тінню, `radiogroup` / `radio` (див. 7.2). Замінив три копії `Pressable`-сегментів.
 3. **Слайдер у рядку** — `onSlidingStart` / `onSlidingComplete` показують і ховають бульбашку з відсотком.
 4. **Чотири іконки в `icon-symbol.tsx`** — `globe → language`, `cloud → cloud`, `storage → data-usage`, `lock → lock`. Решта вже була в `MAPPING`.
 5. **`StorageDurabilityCard` → `StorageDurabilitySection`** — компонент віддає власну групу: рядок з обсягом, виноску зі статусом і рядок-дію замість абзаців із `Button`. Логіка `readStorageDurability` не змінилася.
@@ -131,7 +131,7 @@
 
 ### 7.1 Перемикач на вебі був бірюзовий
 
-`react-native-web` перестає застосовувати `thumbColor`, щойно `Switch` увімкнено, і бере власний типовий `#009688`. Тому кожен увімкнений перемикач у застосунку був бірюзовий, а не в кольорі теми. Колір активного повзунка називається окремо через `getSwitchActiveThumbProps` ([lib/switch-platform.ts](../../lib/switch-platform.ts)) — проп існує лише на вебі.
+`react-native-web` перестає застосовувати `thumbColor`, щойно `Switch` увімкнено, і бере власний типовий `#009688`. Тому кожен увімкнений перемикач у застосунку був бірюзовий, а не в кольорі теми. Колір активного повзунка називається окремо через `getSwitchActiveThumbProps` ([src/lib/switch-platform.ts](../../src/lib/switch-platform.ts)) — проп існує лише на вебі.
 
 ### 7.2 Сегментний вибір нічого не повідомляв про свій стан
 
@@ -139,8 +139,8 @@
 
 ### 7.3 Новий токен `control-knob`
 
-Повзунок слайдера і повзунок перемикача мають лишатися світлими на обох темах, інакше на темній вони зникають у поверхні рядка. Це єдиний новий колір; доданий до `constants/theme-colors.json` парою light/dark і описаний у [DESIGN_SYSTEM.md](../product/DESIGN_SYSTEM.md).
+Повзунок слайдера і повзунок перемикача мають лишатися світлими на обох темах, інакше на темній вони зникають у поверхні рядка. Це єдиний новий колір; доданий до `src/constants/theme-colors.json` парою light/dark і описаний у [DESIGN_SYSTEM.md](../product/DESIGN_SYSTEM.md).
 
 ### 7.4 Вісім рядків перекладу лишилися без читача
 
-Довгі описи, які переїхали у виноски груп (`settings.parallaxDescription`, `settings.backgroundVideoDescription`, `settings.cloudBackupDescription`, `settings.aboutDescription`, `settings.storage.usage`, `settings.storage.usageOfQuota`), і заголовки зниклих секцій (`settings.cloudSection`, `settings.aboutSection`) вилучені з `lib/translations.ts`. `lib/translations.json` — окремий артефакт, який жоден модуль не імпортує; його не чіпали.
+Довгі описи, які переїхали у виноски груп (`settings.parallaxDescription`, `settings.backgroundVideoDescription`, `settings.cloudBackupDescription`, `settings.aboutDescription`, `settings.storage.usage`, `settings.storage.usageOfQuota`), і заголовки зниклих секцій (`settings.cloudSection`, `settings.aboutSection`) вилучені з `src/lib/translations.ts`. `src/lib/translations.json` — окремий артефакт, який жоден модуль не імпортує; його не чіпали.

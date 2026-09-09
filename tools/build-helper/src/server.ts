@@ -4,7 +4,7 @@
  * It owns everything the app must not — a toolchain, a signing credential, a
  * cloud account — and exposes exactly two ways in: an HTTP endpoint that takes
  * one release archive, and a socket carrying its own small message set
- * (`lib/release/build-protocol.ts`). The pairing model is the AI bridge's — a
+ * (`src/lib/release/build-protocol.ts`). The pairing model is the AI bridge's — a
  * loopback origin and a token checked in constant time — and the protocol
  * deliberately is not.
  *
@@ -37,7 +37,7 @@ import {
   withBuildArtifact,
   withBuildLog,
   type BuildJob,
-} from '../../../lib/release/build-job';
+} from '../../../src/lib/release/build-job';
 import {
   encodeBuildServerMessage,
   parseBuildClientMessage,
@@ -45,12 +45,12 @@ import {
   MAX_BUILD_MESSAGE_BYTES,
   type BuildErrorCode,
   type BuildServerMessage,
-} from '../../../lib/release/build-protocol';
+} from '../../../src/lib/release/build-protocol';
 import {
   BUILD_LIMITS,
   isSameBuildRequest,
   type BuildRequest,
-} from '../../../lib/release/build-request';
+} from '../../../src/lib/release/build-request';
 import { normalizeAllowedOrigins } from '../../ai-bridge/src/origin-policy';
 import { BuildJobStore } from './job-store';
 import { verifyAndroidArtifactStructure } from './android-artifact';

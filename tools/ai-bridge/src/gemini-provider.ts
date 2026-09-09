@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MODEL_BRIDGE_TOOLS } from '../../../lib/ai/bridge-tools';
+import { MODEL_BRIDGE_TOOLS } from '../../../src/lib/ai/bridge-tools';
 import {
   buildSessionSystemPrompt,
   modelToolErrorValue,

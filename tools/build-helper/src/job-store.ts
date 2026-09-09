@@ -26,8 +26,8 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 
-import { BUILD_STATES, type BuildJob } from '../../../lib/release/build-job';
-import { isBuildRequestId, parseBuildRequest } from '../../../lib/release/build-request';
+import { BUILD_STATES, type BuildJob } from '../../../src/lib/release/build-job';
+import { isBuildRequestId, parseBuildRequest } from '../../../src/lib/release/build-request';
 
 export interface BuildJobStoreOptions {
   /** Directory the helper owns. Created if absent. */

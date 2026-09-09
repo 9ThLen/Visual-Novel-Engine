@@ -1,14 +1,14 @@
 # Design System
 
-The app uses a token-driven theme generated from `constants/theme-colors.json` and consumed through NativeWind, runtime variables, and shared UI helpers.
+The app uses a token-driven theme generated from `src/constants/theme-colors.json` and consumed through NativeWind, runtime variables, and shared UI helpers.
 
 ## Current Sources
 
-- `constants/theme-colors.json` stores paired light and dark color tokens. Prefer exact hex values for cross-platform brand colors; raw CSS may progressively enhance with OKLCH.
-- `lib/theme-variables.ts` maps tokens into runtime variables.
-- `lib/theme-nativewind.ts` bridges theme colors into NativeWind usage.
-- `theme.config.js` and `tailwind.config.js` expose tokens to styling.
-- `stores/theme-store.ts` stores the selected theme.
+- `src/constants/theme-colors.json` stores paired light and dark color tokens. Prefer exact hex values for cross-platform brand colors; raw CSS may progressively enhance with OKLCH.
+- `src/lib/theme-variables.ts` maps tokens into runtime variables.
+- `src/lib/theme-nativewind.ts` bridges theme colors into NativeWind usage.
+- `config/theme.config.js` and `tailwind.config.js` expose tokens to styling.
+- `src/stores/theme-store.ts` stores the selected theme.
 
 ## Core Tokens
 
@@ -24,7 +24,7 @@ The app uses a token-driven theme generated from `constants/theme-colors.json` a
 
 ## Maintenance Rules
 
-- Add new colors to `constants/theme-colors.json` first.
+- Add new colors to `src/constants/theme-colors.json` first.
 - Keep light and dark values paired for every token.
 - Add browser-safe fallback colors before `oklch()` when writing raw CSS.
 - Do not duplicate token values in component files.

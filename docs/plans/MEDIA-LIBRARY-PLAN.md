@@ -14,15 +14,15 @@
 
 ### 1.1 Фільтри зображень: `Усі / Використані / Невикористані / <персонажі>`
 
-У сховищі немає ознаки «фон»: кожне не-спрайтове зображення історії — це `LibraryAsset` у `imageAssetIdsByStory`. «Фони» і «Без персонажа» повертали б перетинні набори. Єдиний критерій, що реально обчислюється, — використання у таймлайні ([asset-usage.ts:94](../../lib/asset-usage.ts:94)). Це та сама тріада, яку концепція вже обрала для відео.
+У сховищі немає ознаки «фон»: кожне не-спрайтове зображення історії — це `LibraryAsset` у `imageAssetIdsByStory`. «Фони» і «Без персонажа» повертали б перетинні набори. Єдиний критерій, що реально обчислюється, — використання у таймлайні ([asset-usage.ts:94](../../src/lib/asset-usage.ts:94)). Це та сама тріада, яку концепція вже обрала для відео.
 
 ### 1.2 Одна плитка = одне зображення; персонаж — це бейдж
 
-`CharacterSprite` не лежить у `mediaLibrary` і не має `assetId` ([character-types.ts:9](../../lib/character-types.ts:9)). Дедуплікація за канонічною медіа-ідентичністю (див. 2.2); власники показуються бейджами.
+`CharacterSprite` не лежить у `mediaLibrary` і не має `assetId` ([character-types.ts:9](../../src/lib/character-types.ts:9)). Дедуплікація за канонічною медіа-ідентичністю (див. 2.2); власники показуються бейджами.
 
 ### 1.3 Власність адитивна — «Змінити персонажа» не існує
 
-Ідентичність спрайта у сцені композитна: `${characterId}:${spriteId}` ([asset-usage.ts:44](../../lib/asset-usage.ts:44)), і обидва поля лежать у блоці ([engine/types.ts:178](../../lib/engine/types.ts:178)). Тому перенесення спрайта між персонажами розриває посилання **за будь-якої** стратегії збереження id. Замість «Змінити персонажа»:
+Ідентичність спрайта у сцені композитна: `${characterId}:${spriteId}` ([asset-usage.ts:44](../../src/lib/asset-usage.ts:44)), і обидва поля лежать у блоці ([engine/types.ts:178](../../src/lib/engine/types.ts:178)). Тому перенесення спрайта між персонажами розриває посилання **за будь-якої** стратегії збереження id. Замість «Змінити персонажа»:
 
 - **«Додати персонажу…»** — новий `CharacterSprite` з новим id і тим самим URI;
 - **«Прибрати з ‹персонаж›»** — лише коли `usage.enabled + usage.disabled === 0`;
@@ -31,7 +31,7 @@
 
 ### 1.4 «Прибрати з історії» доступне лише для невикористаного
 
-Membership не зберігається — він перевиводиться при кожній гідратації: `migrateStoryImageAssetIds(..., includeReferencedImages = true)` ([story-image-library.ts:116](../../lib/story-image-library.ts:116)) і `migrateStoryMediaAssetIds`, що об'єднує timeline-, sprite-, аудіо- й cover-посилання ([story-media-library.ts:73](../../lib/story-media-library.ts:73)). Тому видалення використаного активу не просто лишає плитку на екрані — воно **відкочується після перезапуску**. Це вже наявний баг поточного екрана.
+Membership не зберігається — він перевиводиться при кожній гідратації: `migrateStoryImageAssetIds(..., includeReferencedImages = true)` ([story-image-library.ts:116](../../src/lib/story-image-library.ts:116)) і `migrateStoryMediaAssetIds`, що об'єднує timeline-, sprite-, аудіо- й cover-посилання ([story-media-library.ts:73](../../src/lib/story-media-library.ts:73)). Тому видалення використаного активу не просто лишає плитку на екрані — воно **відкочується після перезапуску**. Це вже наявний баг поточного екрана.
 
 У R1 дія доступна за `assetId != null`, `owners.length === 0`, `usage.enabled + usage.disabled === 0`. У заблокованому стані показуємо перелік сцен із «Відкрити сцену», щоб автор міг зняти використання сам — обіцянка концепції зберігається, повний набір source-aware дій приходить у R2.
 
@@ -100,13 +100,13 @@ export interface StoryMediaGallery {
 
 ### 2.2 Канонічна медіа-ідентичність
 
-`CharacterSprite` має два поля: `uri` (у редакторі web може тимчасово нести `blob:`) і `assetUri` (постійне). Канонічна форма в сторі — `uri` = постійний, `assetUri` відсутній: `restorePersistentCharacterUris` викидає `assetUri` на виході з iframe ([PlateWebViewEditor.web.tsx:33](../../components/vn-plate-editor/PlateWebViewEditor.web.tsx:33), застосовується на 568 і 588), а нативний редактор його не встановлює взагалі. У персистованому стані `assetUri` з'являється переважно з імпорту бекапу ([story-backup/import.ts:179](../../lib/story-backup/import.ts:179)) — тож alias-шлях є **шляхом сумісності**, не основним.
+`CharacterSprite` має два поля: `uri` (у редакторі web може тимчасово нести `blob:`) і `assetUri` (постійне). Канонічна форма в сторі — `uri` = постійний, `assetUri` відсутній: `restorePersistentCharacterUris` викидає `assetUri` на виході з iframe ([PlateWebViewEditor.web.tsx:33](../../src/components/vn-plate-editor/PlateWebViewEditor.web.tsx:33), застосовується на 568 і 588), а нативний редактор його не встановлює взагалі. У персистованому стані `assetUri` з'являється переважно з імпорту бекапу ([story-backup/import.ts:179](../../src/lib/story-backup/import.ts:179)) — тож alias-шлях є **шляхом сумісності**, не основним.
 
 Порядок резолву ідентичності (детермінований, перший збіг виграє):
 
 1. `sprite.assetUri` → `LibraryAsset.id`
 2. `sprite.assetUri` → `LibraryAsset.uri`
-3. `sprite.uri` → `LibraryAsset.id` (`sprite.uri` може містити саме id — див. [image-placement.ts:45](../../lib/ai/image-placement.ts:45))
+3. `sprite.uri` → `LibraryAsset.id` (`sprite.uri` може містити саме id — див. [image-placement.ts:45](../../src/lib/ai/image-placement.ts:45))
 4. `sprite.uri` → `LibraryAsset.uri`
 
 Знайшли asset → додаємо власника до `asset:${id}`. Не знайшли → ключ `sprite-uri:${assetUri ?? uri}`.
@@ -117,7 +117,7 @@ export interface StoryMediaGallery {
 
 - Джерела: story-зображення (`getStoryGalleryImageAssets`), спрайти всіх персонажів, відео (`mediaLibrary.type === 'video'` ∩ `mediaAssetIdsByStory[storyId]`, як у [document-editor.tsx:134](../../app/document-editor.tsx:134)).
 - Коли URI трапляється і як asset, і як спрайт — перемагає asset-запис (він має `assetId`, `size`, `mimeType`), спрайт додає власника.
-- `usage` — сума посилань на `asset.id`, `asset.uri` і на `usageAssetId` кожного власника. Зображення-постер відео рахується використаним ([asset-usage.ts:107](../../lib/asset-usage.ts:107)).
+- `usage` — сума посилань на `asset.id`, `asset.uri` і на `usageAssetId` кожного власника. Зображення-постер відео рахується використаним ([asset-usage.ts:107](../../src/lib/asset-usage.ts:107)).
 - Аватар фільтра: `defaultSpriteId` → перший спрайт → ініціали на `character.color`.
 - Персонаж без спрайтів присутній у `characterFilters` з `count: 0`.
 
@@ -155,11 +155,11 @@ R5    папки й теги, постер на нативі, перетягув
 
 ### R0 — Save-barrier + тристороннє злиття персонажів · **ВИКОНАНО**
 
-Реалізовано 2026-08-24: `lib/character-merge.ts`, merge-ефект і save-barrier у `DocumentSceneEditor`, обов'язковий prop через `DocumentRightRail` до `AiChatPanel`, ключ `aiChat.saveBarrierFailed`. Тести: `__tests__/unit/lib/character-merge.test.ts` (13), `__tests__/unit/components/AiChatPanel.save-barrier.test.tsx` (6).
+Реалізовано 2026-08-24: `src/lib/character-merge.ts`, merge-ефект і save-barrier у `DocumentSceneEditor`, обов'язковий prop через `DocumentRightRail` до `AiChatPanel`, ключ `aiChat.saveBarrierFailed`. Тести: `tests/unit/lib/character-merge.test.ts` (13), `tests/unit/components/AiChatPanel.save-barrier.test.tsx` (6).
 
-**Проблема.** `DocumentSceneEditor` тримає `localCharacters` у локальному стані ([DocumentSceneEditor.tsx:170](../../components/document-editor/DocumentSceneEditor.tsx:170)) і пере-сідить його лише при зміні `documentsResetKey` ([DocumentSceneEditor.tsx:240](../../components/document-editor/DocumentSceneEditor.tsx:240)), який будується зі сцен ([PlateSceneEditor.shared.tsx:91](../../components/editor/plate/PlateSceneEditor.shared.tsx:91)). `handleSave` пише `localCharactersRef.current` як істину ([DocumentSceneEditor.tsx:417](../../components/document-editor/DocumentSceneEditor.tsx:417)). Це живий баг: `AiChatPanel` живе всередині редактора ([DocumentRightRail.tsx:111](../../components/document-editor/DocumentRightRail.tsx:111)), а AI-відкат пише персонажів повз нього ([applied-change-journal.ts:106](../../lib/ai/applied-change-journal.ts:106)).
+**Проблема.** `DocumentSceneEditor` тримає `localCharacters` у локальному стані ([DocumentSceneEditor.tsx:170](../../src/components/document-editor/DocumentSceneEditor.tsx:170)) і пере-сідить його лише при зміні `documentsResetKey` ([DocumentSceneEditor.tsx:240](../../src/components/document-editor/DocumentSceneEditor.tsx:240)), який будується зі сцен ([PlateSceneEditor.shared.tsx:91](../../src/components/editor/plate/PlateSceneEditor.shared.tsx:91)). `handleSave` пише `localCharactersRef.current` як істину ([DocumentSceneEditor.tsx:417](../../src/components/document-editor/DocumentSceneEditor.tsx:417)). Це живий баг: `AiChatPanel` живе всередині редактора ([DocumentRightRail.tsx:111](../../src/components/document-editor/DocumentRightRail.tsx:111)), а AI-відкат пише персонажів повз нього ([applied-change-journal.ts:106](../../src/lib/ai/applied-change-journal.ts:106)).
 
-**A. Тристороннє злиття.** Новий чистий модуль `lib/character-merge.ts`:
+**A. Тристороннє злиття.** Новий чистий модуль `src/lib/character-merge.ts`:
 
 ```ts
 export function mergeExternalCharacters(
@@ -171,7 +171,7 @@ export function mergeExternalCharacters(
 
 Правила по полю: `local === base` → беремо `incoming`; `incoming === base` → лишаємо `local`; обидва розійшлися → `local` виграє. Спрайти й персонажі: є в `base`, немає в `incoming` → зовнішнє видалення, застосовуємо, якщо локально не редагували; немає в `base`, є в `local` → локально створений, зберігаємо. Різниця, що зводиться лише до `assetUri`/`uri` тієї самої цілі, **не** вважається редагуванням.
 
-**B. Save-barrier.** Обов'язковий (не опціональний) prop через два хопи — рейка рендериться безпосередньо редактором ([DocumentSceneEditor.tsx:870](../../components/document-editor/DocumentSceneEditor.tsx:870)):
+**B. Save-barrier.** Обов'язковий (не опціональний) prop через два хопи — рейка рендериться безпосередньо редактором ([DocumentSceneEditor.tsx:870](../../src/components/document-editor/DocumentSceneEditor.tsx:870)):
 
 ```
 DocumentSceneEditor.handleSave → DocumentRightRail.beforeStoryMutation → AiChatPanel
@@ -182,19 +182,19 @@ DocumentSceneEditor.handleSave → DocumentRightRail.beforeStoryMutation → AiC
 - guard на повторний вхід (зараз його немає);
 - barrier спрацьовує на **всіх** шляхах: scene patch, change set, перший rollback і force-повтор після підтвердження.
 
-Це не додає нової гарантії — це робить правдивими наявні: `hasNewerEdits` ([applied-change-journal.ts:45](../../lib/ai/applied-change-journal.ts:45)), `requiresConfirmation`/`forceDiscardNewerEdits` ([applied-change-journal.ts:69](../../lib/ai/applied-change-journal.ts:69)), `STALE_REVISION` ([scene-patch.ts:52](../../lib/ai/scene-patch.ts:52), [change-set.ts:166](../../lib/ai/change-set.ts:166)). Поки правки лежать у драфті, стор їх не бачить і всі ці guard'и хибно-негативні. Прецедент у файлі вже є: `handleSelectChoiceOption` робить `await handleSave()` перед перемиканням гілки ([DocumentSceneEditor.tsx:451](../../components/document-editor/DocumentSceneEditor.tsx:451)).
+Це не додає нової гарантії — це робить правдивими наявні: `hasNewerEdits` ([applied-change-journal.ts:45](../../src/lib/ai/applied-change-journal.ts:45)), `requiresConfirmation`/`forceDiscardNewerEdits` ([applied-change-journal.ts:69](../../src/lib/ai/applied-change-journal.ts:69)), `STALE_REVISION` ([scene-patch.ts:52](../../src/lib/ai/scene-patch.ts:52), [change-set.ts:166](../../src/lib/ai/change-set.ts:166)). Поки правки лежать у драфті, стор їх не бачить і всі ці guard'и хибно-негативні. Прецедент у файлі вже є: `handleSelectChoiceOption` робить `await handleSave()` перед перемиканням гілки ([DocumentSceneEditor.tsx:451](../../src/components/document-editor/DocumentSceneEditor.tsx:451)).
 
-Мовчазне збереження драфту прийнятне, бо `restoreStorySnapshot` бере автоматичний знімок «Before restore» ([snapshots-slice.ts:15](../../stores/app-store-slices/snapshots-slice.ts:15)).
+Мовчазне збереження драфту прийнятне, бо `restoreStorySnapshot` бере автоматичний знімок «Before restore» ([snapshots-slice.ts:15](../../src/stores/app-store-slices/snapshots-slice.ts:15)).
 
 **Тести:** новий спрайт вливається; локальний незбережений спрайт виживає; AI-видалений спрайт **не** воскресає; відновлення `name`/`color`/`defaultSpriteId` застосовується; same-field конфлікт → local wins; різниця лише в `assetUri`/`uri` не блокує зовнішню зміну; barrier викликається до apply, до rollback і до force-повтору; відмова save зупиняє мутацію.
 
 ### R0.5 — Lease-aware asset resolver · **ВИКОНАНО**
 
-Реалізовано 2026-08-24 у `lib/asset-resolver.ts`: `acquireResolvedAssetUri`, зворотний індекс `mediaAliasKeys`/`storageKeyByAlias`, `evictUnleasedMediaObjectUrl`, `clearUriCache` → `resetAssetResolverForTests`, dev-warning. Тести — 5 нових кейсів у `__tests__/unit/lib/asset-resolver.test.ts` (це єдиний файл, звільнений від мока в `vitest.setup.ts`).
+Реалізовано 2026-08-24 у `src/lib/asset-resolver.ts`: `acquireResolvedAssetUri`, зворотний індекс `mediaAliasKeys`/`storageKeyByAlias`, `evictUnleasedMediaObjectUrl`, `clearUriCache` → `resetAssetResolverForTests`, dev-warning. Тести — 5 нових кейсів у `tests/unit/lib/asset-resolver.test.ts` (це єдиний файл, звільнений від мока в `config/vitest.setup.ts`).
 
 **Проблема.** `resolveIndexedDbMediaUri` кешує object URL-и в `mediaObjectUrlCache` з лімітом `URI_CACHE_MAX_SIZE = 100` і **відкликає** найстаріший при переповненні. Медіатека — перший екран, що резолвить 100+ медіа за сесію, тож прокрутка сітки може вбити джерело відкритого програвача. Наївний retry не рятує: `resolveAssetUri` перевіряє `uriCache` (TTL 5 хв) **до** `resolveUri` і повертає той самий мертвий URL.
 
-**Зміни в `lib/asset-resolver.ts`:**
+**Зміни в `src/lib/asset-resolver.ts`:**
 
 ```ts
 const lease = await acquireResolvedAssetUri(assetRef);
@@ -207,52 +207,52 @@ const lease = await acquireResolvedAssetUri(assetRef);
 - `release()` знімає лише pin;
 - **зворотний індекс** `storageKey → Set<uriKey>`, що поповнюється в момент резолву; при відкликанні точково чистяться відповідні записи `uriCache`. Тотальний clear неприйнятний: `uriCache` спільний для всіх медіа, і його очищення при кожному eviction дало б постійний cache-thrash саме під час прокрутки сітки. Alias-и реальні — один blob резолвиться через `asset.id`, `asset.uri` і `idb-media://…`, бо `resolveUri` рекурсивно проходить `resolveLibraryAssetUri`;
 - для `http`/`file`/`data`/bundled `number` lease — дешева обгортка без ref-count;
-- `clearUriCache` → `resetAssetResolverForTests`, явно test-only (зараз 4 входження в репозиторії: визначення + [asset-resolver.test.ts](../../__tests__/unit/lib/asset-resolver.test.ts));
+- `clearUriCache` → `resetAssetResolverForTests`, явно test-only (зараз 4 входження в репозиторії: визначення + [asset-resolver.test.ts](../../tests/unit/lib/asset-resolver.test.ts));
 - dev-warning у момент, коли eviction неможливий через pinned entries і кеш перевищує ліміт.
 
 **Тести:** pinned URL не відкликається після 100+ інших IDB-резолвів; після `release` витісняється; eviction не лишає мертвий promise у `uriCache`; **інвалідація за всіма alias-ами** (id, uri, idb-uri) одночасно; витіснення в `uriCache` за розміром не відкликає object URL; подвійний `release` безпечний; запізнілий acquire після скасування одразу звільняється; попередження про неможливий eviction — рівно одне.
 
 ### R0.75 — Повнота usage · **ВИКОНАНО**
 
-Реалізовано 2026-08-24 у `lib/asset-usage.ts`: гілка `dialogue` в `collectAssetReferences` (одне посилання на спрайт на крок, не на репліку) і `sprite.assetUri` в aliases. Тести — 5 кейсів у `asset-usage.test.ts` + 1 в `asset-usage-available.test.ts`. Регресія шести споживачів перевірена повним прогоном; story-doctor тепер звітує про висячий `spriteId` у репліці як broken reference — це навмисно, є окремий тест.
+Реалізовано 2026-08-24 у `src/lib/asset-usage.ts`: гілка `dialogue` в `collectAssetReferences` (одне посилання на спрайт на крок, не на репліку) і `sprite.assetUri` в aliases. Тести — 5 кейсів у `asset-usage.test.ts` + 1 в `asset-usage-available.test.ts`. Регресія шести споживачів перевірена повним прогоном; story-doctor тепер звітує про висячий `spriteId` у репліці як broken reference — це навмисно, є окремий тест.
 
-- `collectAssetReferences` враховує `DialogueEntry.spriteId` ([engine/types.ts:212](../../lib/engine/types.ts:212)) — зараз sprite-посилання емітяться лише з блоків `character`;
-- `sprite.assetUri` додається до aliases у `buildAvailableAssets` ([asset-usage.ts:72](../../lib/asset-usage.ts:72)), інакше membership і usage мають різні правила ідентичності ([story-media-library.ts:95](../../lib/story-media-library.ts:95));
-- регресійний огляд шести споживачів: [story-doctor.ts:536](../../lib/story-doctor.ts:536), [story-backup/capture.ts:134](../../lib/story-backup/capture.ts:134), [story-media-library.ts:83](../../lib/story-media-library.ts:83), [ai/asset-tools.ts:72](../../lib/ai/asset-tools.ts:72), [AssetUsageCard.tsx:120](../../components/story-home/AssetUsageCard.tsx:120), `story-gallery.ts`.
+- `collectAssetReferences` враховує `DialogueEntry.spriteId` ([engine/types.ts:212](../../src/lib/engine/types.ts:212)) — зараз sprite-посилання емітяться лише з блоків `character`;
+- `sprite.assetUri` додається до aliases у `buildAvailableAssets` ([asset-usage.ts:72](../../src/lib/asset-usage.ts:72)), інакше membership і usage мають різні правила ідентичності ([story-media-library.ts:95](../../src/lib/story-media-library.ts:95));
+- регресійний огляд шести споживачів: [story-doctor.ts:536](../../src/lib/story-doctor.ts:536), [story-backup/capture.ts:134](../../src/lib/story-backup/capture.ts:134), [story-media-library.ts:83](../../src/lib/story-media-library.ts:83), [ai/asset-tools.ts:72](../../src/lib/ai/asset-tools.ts:72), [AssetUsageCard.tsx:120](../../src/components/story-home/AssetUsageCard.tsx:120), `story-gallery.ts`.
 
 Побічний наслідок, який треба зафіксувати: міграції законно почнуть утримувати ще й активи, пришпилені репліками. Для бекапу це строго безпечніше; story-doctor може показати нові broken references у наявних історіях.
 
-**Тест, який ловить регресію**, будує `SceneRecord` напряму: репліка з `spriteId` і **без** відповідного `character`-кроку. Через редактор такий стан майже не виникає — конвертація документа сама генерує `character`-кроки при зміні спрайта ([document-scene.ts:745](../../lib/document-editor/document-scene.ts:745)); розходження дають AI change set, імпорт бекапу й ручне редагування записів.
+**Тест, який ловить регресію**, будує `SceneRecord` напряму: репліка з `spriteId` і **без** відповідного `character`-кроку. Через редактор такий стан майже не виникає — конвертація документа сама генерує `character`-кроки при зміні спрайта ([document-scene.ts:745](../../src/lib/document-editor/document-scene.ts:745)); розходження дають AI change set, імпорт бекапу й ручне редагування записів.
 
 ### R1 — Модель, сітка, інспектор · **ВИКОНАНО**
 
 Реалізовано 2026-08-24; відкладена acceptance-перевірка закрита в R0.9.
 
-Модель — `lib/story-media-gallery.ts` (23 тести). UI — `components/media-library/` (`MediaGrid`, `MediaFilters`, `MediaInspector` + `MediaInspectorVideo`), переписаний `app/story-gallery.tsx`, 20 тестів у `__tests__/unit/components/MediaLibrary.test.tsx`. Стійкість видалення — 5 тестів у `__tests__/unit/lib/media-removal-durability.test.ts`. Видалено `StoryGalleryCard`, `lib/story-gallery.ts` і його тест. Ключі `mediaLibrary.*` в EN+UK.
+Модель — `src/lib/story-media-gallery.ts` (23 тести). UI — `src/components/media-library/` (`MediaGrid`, `MediaFilters`, `MediaInspector` + `MediaInspectorVideo`), переписаний `app/story-gallery.tsx`, 20 тестів у `tests/unit/components/MediaLibrary.test.tsx`. Стійкість видалення — 5 тестів у `tests/unit/lib/media-removal-durability.test.ts`. Видалено `StoryGalleryCard`, `lib/story-gallery.ts` і його тест. Ключі `mediaLibrary.*` в EN+UK.
 
 Знайдено й виправлено під час перевірки в прев'ю: `ResolvedAssetImage` резолвив лише `idb-media://`, тож bundled-шляхи (`assets/...`) і asset-id давали 404 і порожні плитки — тепер резолвиться все, що не є прямо завантажуваним URL; порожній стан під фільтром «Використані/Невикористані» стверджував, що в історії немає зображень.
 
-**Покриття маршруту:** `MediaLibraryRoute.test.tsx` монтує `app/story-gallery.tsx` і засіває стан через мок стору, який харнес підставляє глобально ([vitest.config.ts](../../vitest.config.ts)) — 6 тестів. Це smoke-покриття зв'язки «маршрут ↔ стор», не перевірка самого Zustand-стору. Розблоковано в R0.9.
+**Покриття маршруту:** `MediaLibraryRoute.test.tsx` монтує `app/story-gallery.tsx` і засіває стан через мок стору, який харнес підставляє глобально ([config/vitest.config.ts](../../config/vitest.config.ts)) — 6 тестів. Це smoke-покриття зв'язки «маршрут ↔ стор», не перевірка самого Zustand-стору. Розблоковано в R0.9.
 
 **Відкрито на майбутнє:** демо-зображення важать ~7 МБ кожне й рендеряться в плитку 200×200 — сітці потрібні мініатюри.
 
-**Передумова, закрита в R1:** ланцюг імпортів редактора не проходив у харнесі — `react-native-safe-area-context` без мока; `resolveWithTs` у `vitest.setup.ts` повертав теку для package-style імпорту (`@/components/ui`) і падав з EISDIR; у моці `expo` бракувало `requireOptionalNativeModule`; `@expo/vector-icons/MaterialIcons` не резолвився в CJS-шляху. Усе це закрито в R1 разом з автоматичним JSX-рантаймом у CJS-лоадері та `FlatList`, що справді рендерить рядки. Сам тест на зупинку операцій редактора з'явився в R0.9 — `DocumentSceneEditorSaveGuard.test.tsx`.
+**Передумова, закрита в R1:** ланцюг імпортів редактора не проходив у харнесі — `react-native-safe-area-context` без мока; `resolveWithTs` у `config/vitest.setup.ts` повертав теку для package-style імпорту (`@/components/ui`) і падав з EISDIR; у моці `expo` бракувало `requireOptionalNativeModule`; `@expo/vector-icons/MaterialIcons` не резолвився в CJS-шляху. Усе це закрито в R1 разом з автоматичним JSX-рантаймом у CJS-лоадері та `FlatList`, що справді рендерить рядки. Сам тест на зупинку операцій редактора з'явився в R0.9 — `DocumentSceneEditorSaveGuard.test.tsx`.
 
 Модель за розділом 2 (`buildStoryMediaGallery`, `filterMediaItems`, `groupMediaByDate`).
 
-Компоненти в `components/media-library/`: `MediaTypeTabs`, `CharacterFilterRail`, `MediaGrid`, `MediaTile`, `MediaInspector`, `MediaInspectorVideo`.
+Компоненти в `src/components/media-library/`: `MediaTypeTabs`, `CharacterFilterRail`, `MediaGrid`, `MediaTile`, `MediaInspector`, `MediaInspectorVideo`.
 
-**Сітка.** `numColumns` у `FlatList` не поєднується з секціями, а `SectionList` не має `numColumns`. Дані ріжуться на плоский список `{ type: 'header' } | { type: 'row', items }` з `getItemLayout`. Колонки — власний `getGalleryColumns(width)` (3/5/6–8); наявний `getGridColumns` ([responsive.ts:94](../../lib/responsive.ts:94)) не чіпаємо.
+**Сітка.** `numColumns` у `FlatList` не поєднується з секціями, а `SectionList` не має `numColumns`. Дані ріжуться на плоский список `{ type: 'header' } | { type: 'row', items }` з `getItemLayout`. Колонки — власний `getGalleryColumns(width)` (3/5/6–8); наявний `getGridColumns` ([responsive.ts:94](../../src/lib/responsive.ts:94)) не чіпаємо.
 
 **Екран.** `app/story-gallery.tsx` переписується; маршрут і параметр `storyId` зберігаються (три точки входу). Видаляється `StoryGalleryCard` разом зі старим `buildStoryGallery`; ключі `storyHome.gallery.open/.openHint/.title` лишаються для картки на `story-home`.
 
 **Інспектор.** Телефон — нижня панель на `AppModal` (голий `Modal` на react-native-web click-through і не розмонтовується); планшет/desktop — бічна панель. Дані з `references`. «Видалити фон» під `isBackgroundRemovalSupported()`. Розмір показуємо лише коли `sizeBytes` є.
 
-**Відео.** Локальний `MediaInspectorVideo`, без runtime-логіки сцени: резолв `item.assetId ?? item.uri` через lease з R0.5 (`resolveAssetUri` вже приймає asset id через `resolveLibraryAssetUri`); `null` у `useVideoPlayer` до завершення; `active`-прапорець проти запізнілих промісів (як у [SceneVideoLayer.tsx:65](../../components/reader/SceneVideoLayer.tsx:65)); **без autoplay** — `SceneVideoLayer` викликає `player.play()` в ефекті ([SceneVideoLayer.tsx:117](../../components/reader/SceneVideoLayer.tsx:117)), це не копіюємо; зупинка старого player на зміну елемента й unmount. Стан помилки покриває і невдалий резолв, і `statusChange === 'error'`, а retry перезапускає резолв (відкликаний object URL не відновлюється повторним використанням того самого значення).
+**Відео.** Локальний `MediaInspectorVideo`, без runtime-логіки сцени: резолв `item.assetId ?? item.uri` через lease з R0.5 (`resolveAssetUri` вже приймає asset id через `resolveLibraryAssetUri`); `null` у `useVideoPlayer` до завершення; `active`-прапорець проти запізнілих промісів (як у [SceneVideoLayer.tsx:65](../../src/components/reader/SceneVideoLayer.tsx:65)); **без autoplay** — `SceneVideoLayer` викликає `player.play()` в ефекті ([SceneVideoLayer.tsx:117](../../src/components/reader/SceneVideoLayer.tsx:117)), це не копіюємо; зупинка старого player на зміну елемента й unmount. Стан помилки покриває і невдалий резолв, і `statusChange === 'error'`, а retry перезапускає резолв (відкликаний object URL не відновлюється повторним використанням того самого значення).
 
 **Постера немає і не буде в R1.** Постер живе у кроці сцени (`VideoBlockData.posterAssetId`), а плитка — на рівні активу; per-asset постера в моделі не існує. Плитка відео показує іконку, назву й тривалість — це те, що обіцяла концепція.
 
-Тривалість не показується, коли `durationSeconds` відсутній ([media-library-service.ts:44](../../lib/media-library-service.ts:44)) — замість «0:00» нічого.
+Тривалість не показується, коли `durationSeconds` відсутній ([media-library-service.ts:44](../../src/lib/media-library-service.ts:44)) — замість «0:00» нічого.
 
 **Тести моделі:** той самий URI як asset і як спрайт → одна плитка; імпортований бекап зі спрайтом, чий `assetUri` вказує на наявний asset → одна плитка; спрайт, що посилається на `asset.id` → одна плитка; два персонажі з різними runtime URI, але одним `assetUri` → одна плитка, два власники; `assetUri` і `uri` на різні активи → детермінований результат за оголошеним порядком; standalone-спрайт лишається окремим; результат стабільний після persistence round-trip; `usage` підсумовує всі ролі; постер відео рахується використаним; `used`/`unused` без перетину; фон ніколи не в фільтрі персонажа; персонаж без спрайтів має `count: 0`; пошук по трьох полях; групи дат із фіксованим `now`; порожня історія.
 
@@ -260,14 +260,14 @@ const lease = await acquireResolvedAssetUri(assetRef);
 
 ### R2 — Адитивна власність + інтеграція · **ВИКОНАНО**
 
-Реалізовано 2026-08-25: `lib/character-media.ts`, `canDetachOwner` + `MediaOwner.usage` у моделі, дії інспектора, save-barrier на вході в медіатеку.
+Реалізовано 2026-08-25: `src/lib/character-media.ts`, `canDetachOwner` + `MediaOwner.usage` у моделі, дії інспектора, save-barrier на вході в медіатеку.
 
 - «Додати персонажу…» створює новий `CharacterSprite` з новим id; жодна сцена не змінюється. Посилання — `assetId`, якщо він є (стабільніший за URI і збігається з тим, що пише AI-шлях), інакше URI. `assetUri` не пишеться ніколи.
-- Ім'я спрайта дедуплікується без урахування регістру: валідатор AI-change-set відхиляє дубль ([change-set.ts:308](../../lib/ai/change-set.ts:308)), тож галерея не має права такий стан створювати.
+- Ім'я спрайта дедуплікується без урахування регістру: валідатор AI-change-set відхиляє дубль ([change-set.ts:308](../../src/lib/ai/change-set.ts:308)), тож галерея не має права такий стан створювати.
 - **Гейт відчеплення — по власнику, не по файлу.** Ламається лише посилання `${characterId}:${spriteId}`; фон із того самого файлу переживає відчеплення без змін. Тому `MediaOwner` тепер несе власний `usage`, а `canDetachOwner` дивиться тільки на нього.
 - Обидва вказівники (`defaultSpriteId` і `authoring.currentSpriteId`) ремонтуються синхронно.
-  **Уточнення до попередньої редакції плану:** твердження «редактор уже робить це» було неточним — [embedded-script.ts:5409](../../lib/vn-plate-editor/embedded-script.ts:5409) ремонтує лише `authoring.currentSpriteId` і лишає `defaultSpriteId` висіти на видаленому спрайті. Наслідок косметичний (`resolveCharacterSpriteUri` пропускає неіснуючий id, але `isDefaultSprite` не збігається ні з чим), тож iframe не чіпали — це лишається розбіжністю, зафіксованою тут.
-- **Гейт гідратації.** Сцени приїжджають асинхронно, і до того кожен файл виглядає невикористаним. Правило винесене в `usageIsKnowable`, щоб екран і запис не розійшлися: завантаження успішно завершилося **і** `scenes.length === story.sceneCount`. Рівності, а не «щось є»: reader-вікно лишає в пам'яті кілька сцен, а повне завантаження ставить `full` навіть коли сховище не повернуло нічого ([scene-slice.ts:63](../../stores/app-store-slices/scene-slice.ts:63)) — тож «одна сцена з десяти» виглядало б як повна картина. `sceneCount` придатний як незалежна перевірка, бо всі шляхи запису тримають його точним (`Object.keys(records).length`).
+  **Уточнення до попередньої редакції плану:** твердження «редактор уже робить це» було неточним — [embedded-script.ts:5409](../../src/lib/vn-plate-editor/embedded-script.ts:5409) ремонтує лише `authoring.currentSpriteId` і лишає `defaultSpriteId` висіти на видаленому спрайті. Наслідок косметичний (`resolveCharacterSpriteUri` пропускає неіснуючий id, але `isDefaultSprite` не збігається ні з чим), тож iframe не чіпали — це лишається розбіжністю, зафіксованою тут.
+- **Гейт гідратації.** Сцени приїжджають асинхронно, і до того кожен файл виглядає невикористаним. Правило винесене в `usageIsKnowable`, щоб екран і запис не розійшлися: завантаження успішно завершилося **і** `scenes.length === story.sceneCount`. Рівності, а не «щось є»: reader-вікно лишає в пам'яті кілька сцен, а повне завантаження ставить `full` навіть коли сховище не повернуло нічого ([scene-slice.ts:63](../../src/stores/app-store-slices/scene-slice.ts:63)) — тож «одна сцена з десяти» виглядало б як повна картина. `sceneCount` придатний як незалежна перевірка, бо всі шляхи запису тримають його точним (`Object.keys(records).length`).
 - Відхилений проміс — не відповідь: `.then(ok, fail)` замість `.finally`, і стан має три значення. «Ще не знаємо» і «не змогли дізнатися» — різні речі для автора, і завантаження, що завершилося без сцен історії, належить до другого.
 - **Повторна перевірка на записі.** Гейт закриває широке вікно, але не вузьке — стор може змінитися між рендером кнопки і натисканням. `handleDetachFromCharacter` читає `useAppStore.getState()`, повторює `usageIsKnowable` уже на свіжих сценах і метаданих, перебудовує галерею (`findOwnerInGallery`) і ще раз питає `canDetachOwner`.
 - **Усі три записи стартують зі свіжої бібліотеки.** `setCharacterLibrary` замінює масив цілком, тож attach і «зробити основним» так само читають `getState()` — інакше спрайт, доданий редактором чи асистентом після рендера, зникав би від сторонньої дії.
@@ -283,14 +283,14 @@ const lease = await acquireResolvedAssetUri(assetRef);
 
 ### R0.9 — Ремонт vitest-харнесу · **ВИКОНАНО**
 
-**Теорія подвійного реєстру виявилася хибною.** Reproduction-тест `__tests__/unit/harness/module-registry.test.tsx` показав, що компонент у тест-файлі, компонент в окремому модулі та alias проти прямого шляху мока — усі отримують **один** екземпляр `useAppStore`. Тест лишається регресійним.
+**Теорія подвійного реєстру виявилася хибною.** Reproduction-тест `tests/unit/harness/module-registry.test.tsx` показав, що компонент у тест-файлі, компонент в окремому модулі та alias проти прямого шляху мока — усі отримують **один** екземпляр `useAppStore`. Тест лишається регресійним.
 
 Справжні причини були дві, обидві прозаїчні:
 
 1. `useLocalSearchParams` у моці `expo-router` завжди повертав `{}`, тож `storyId` був `undefined` і кожне читання стору в маршруті коротко замикалося. Додано `setLocalSearchParamsForTests`.
 2. Мок Plate-редактора викликав `onChange` зі снапшот-об'єктом, тоді як справжній передає `(scene, characters)` двома аргументами. Через це сцена ставала «брудною» під ключем `undefined`, а справжній редактор монтувався й його `flush` у jsdom не завершувався — це й давало вакуумно зелені тести.
 
-Unification резолву Vite/Node не знадобився. Alias Plate-редактора доданий у `__mocks__/components/vn-plate-editor/PlateWebViewEditor.tsx` із seam'ом `setPlateEditorFlushForTests`.
+Unification резолву Vite/Node не знадобився. Alias Plate-редактора доданий у `tests/mocks/components/vn-plate-editor/PlateWebViewEditor.tsx` із seam'ом `setPlateEditorFlushForTests`.
 
 **Наслідок:** обидві відкладені прогалини закриті — `DocumentSceneEditorSaveGuard.test.tsx` (4 тести, regression-критерій R0) і `MediaLibraryRoute.test.tsx` (6 тестів). Обидва мутаційно перевірені: зняття `if (!(await handleSave())) return;` валить два тести, зняття join'у in-flight save — ще один.
 
@@ -298,17 +298,17 @@ Unification резолву Vite/Node не знадобився. Alias Plate-ре
 
 ### R3 — Осиротілі спрайти · **ВИКОНАНО**
 
-Реалізовано 2026-08-25: `lib/orphaned-sprite-images.ts`, підключено на межі `setCharacterLibrary`.
+Реалізовано 2026-08-25: `src/lib/orphaned-sprite-images.ts`, підключено на межі `setCharacterLibrary`.
 
 Картинка спрайта не зобов'язана бути в медіатеці: імпортована через персонажа, вона живе голим URI на спрайті й показується лише тому, що спрайт на неї вказує. Видалення персонажа її не видаляло — воно робило її недосяжною: жоден екран її більше не перелічував, а файл лежав у сховищі, доки збирач медіа не вирішував, що він нікому не потрібен. Тепер спрайт, що зникає, лишає картинку звичайним зображенням історії.
 
 **Місце виявилося іншим, ніж планувалося.** Не `embedded-script.ts`, а межа стора: редактор (видалення персонажа чи окремого спрайта), медіатека («Прибрати з ‹персонаж›») і AI-відкат — усі приходять сюди однією новою бібліотекою. Правило вийшло ширшим за «видалили персонажа», і це навмисно: видалення одного спрайта губить картинку так само.
 
-**Ідентичність файлу — через ту саму чотиристоронню резолюцію, що й `findSpriteAsset`** ([story-media-gallery.ts](../../lib/story-media-gallery.ts)): `assetUri`/`uri` × id/URI. Порівняння сирих URI читало б спрайт, переписаний з одного написання в інше, як втрачений файл і створювало б дубль ассета. Два погляди на ті самі дані не мають розходитися в тому, який ассет означає спрайт.
+**Ідентичність файлу — через ту саму чотиристоронню резолюцію, що й `findSpriteAsset`** ([story-media-gallery.ts](../../src/lib/story-media-gallery.ts)): `assetUri`/`uri` × id/URI. Порівняння сирих URI читало б спрайт, переписаний з одного написання в інше, як втрачений файл і створювало б дубль ассета. Два погляди на ті самі дані не мають розходитися в тому, який ассет означає спрайт.
 
 **Межі:** наявний ассет не копіюється — лише додається членство; спрайт лише з `blob:` не рятується (запис із тимчасового хендла зламався б на першому перезавантаженні); файл, на який ще вказує інший спрайт, не чіпається.
 
-Тести: `__tests__/unit/lib/orphaned-sprite-images.test.ts` (15) + 2 на межі стора. Мутаційно перевірено три вузли: ігнорування чужого спрайта на той самий файл, порятунок `blob:`-хендлів, порівняння сирих URI замість резолвленої ідентичності.
+Тести: `tests/unit/lib/orphaned-sprite-images.test.ts` (15) + 2 на межі стора. Мутаційно перевірено три вузли: ігнорування чужого спрайта на той самий файл, порятунок `blob:`-хендлів, порівняння сирих URI замість резолвленої ідентичності.
 
 ---
 
@@ -320,17 +320,17 @@ Unification резолву Vite/Node не знадобився. Alias Plate-ре
 
 **Що зроблено.**
 
-- **Ліва вертикальна рейка** — `components/media-library/MediaRail.tsx`: «Джерела» (`role="tab"`), «Персонажі», «Стан», плюс обсяг у підвалі. Три осі розділені, список персонажів росте вниз. `< 1100 px` — лише іконки й лічильники, `< 768 px` — рейки немає, її заміняють таби + чипи з `MediaFilters` (на телефоні горизонтальний ряд лишається правильною формою).
+- **Ліва вертикальна рейка** — `src/components/media-library/MediaRail.tsx`: «Джерела» (`role="tab"`), «Персонажі», «Стан», плюс обсяг у підвалі. Три осі розділені, список персонажів росте вниз. `< 1100 px` — лише іконки й лічильники, `< 768 px` — рейки немає, її заміняють таби + чипи з `MediaFilters` (на телефоні горизонтальний ряд лишається правильною формою).
 - **Один тулбар** — `MediaToolbar.tsx`: назад, назва, пошук, сортування, щільність, «Додати» в одному ряду замість трьох смуг. На телефоні пошук переходить на власний рядок.
-- **Режим «Уся медіа»** — стартовий: `lib/media-browser-rows.ts` будує рядки для одного `FlatList`, у якому секція зображень і відео — сітки, а секція аудіо — ті самі доріжки `AudioTrackRowView`. **Звук ніде не стає квадратом.** Порожня секція не має заголовка взагалі.
+- **Режим «Уся медіа»** — стартовий: `src/lib/media-browser-rows.ts` будує рядки для одного `FlatList`, у якому секція зображень і відео — сітки, а секція аудіо — ті самі доріжки `AudioTrackRowView`. **Звук ніде не стає квадратом.** Порожня секція не має заголовка взагалі.
 - **Підпис під плиткою** — `MediaTile.tsx`: назва + розмір, мітка «не викор.» лише коли `usageState === 'ready'`. Назва зникла зсередини відео-заглушки, бо тепер її каже підпис.
-- **Панель праворуч ніколи не порожня** (`≥ 1100 px`) — `MediaOverviewPanel.tsx` + `lib/media-library-overview.ts`: обсяг по типах, скільки файлів ніде не використовується (і скільки це важить), нещодавно додані, кнопка додавання. Смуга рахується лише з файлів, у яких є записаний розмір, і каже, скількох не зважила.
+- **Панель праворуч ніколи не порожня** (`≥ 1100 px`) — `MediaOverviewPanel.tsx` + `src/lib/media-library-overview.ts`: обсяг по типах, скільки файлів ніде не використовується (і скільки це важить), нещодавно додані, кнопка додавання. Смуга рахується лише з файлів, у яких є записаний розмір, і каже, скількох не зважила.
 - **Сортування** (`sortMediaItems`) і щільність сітки. Дата-заголовки лишаються тільки під `sort === 'date'` — під іншим порядком вони описували б групування, якого не було.
 - **`+` у режимі «Уся медіа» питає тип** — раніше кнопка мовчки додавала те, що показує вкладка; коли на екрані всі три типи, це єдине питання, яке вона мусить поставити.
 
-**Файли.** Нові: `lib/media-browser-rows.ts`, `lib/media-library-overview.ts`, `components/media-library/{MediaBrowser,MediaTile,AudioTrackRow,MediaRail,MediaToolbar,MediaOverviewPanel}.tsx`. `MediaGrid.tsx` і `AudioTrackList.tsx` прибрано: єдиний список замінив обидва, а їхні плитка й рядок переїхали у власні файли.
+**Файли.** Нові: `src/lib/media-browser-rows.ts`, `src/lib/media-library-overview.ts`, `src/components/media-library/{MediaBrowser,MediaTile,AudioTrackRow,MediaRail,MediaToolbar,MediaOverviewPanel}.tsx`. `MediaGrid.tsx` і `AudioTrackList.tsx` прибрано: єдиний список замінив обидва, а їхні плитка й рядок переїхали у власні файли.
 
-**Тести:** `__tests__/unit/lib/media-library-overview.test.ts` (8), оновлені `MediaLibrary.test.tsx` (комбінований список), `MediaLibraryRoute.test.tsx` (стартовий режим і меню `+`). Уся сюїта — 2508 зелених.
+**Тести:** `tests/unit/lib/media-library-overview.test.ts` (8), оновлені `MediaLibrary.test.tsx` (комбінований список), `MediaLibraryRoute.test.tsx` (стартовий режим і меню `+`). Уся сюїта — 2508 зелених.
 
 **Продовження:** R4.5.
 
@@ -341,11 +341,11 @@ Unification резолву Vite/Node не знадобився. Alias Plate-ре
 Чотири речі, які R4 свідомо відклав. Модель і persisted state знову не змінювалися.
 
 - **Мультивибір і пакетні дії.** Довге натискання або кнопка «Вибрати файли» в тулбарі вмикає режим, у якому плитка й доріжка стають чекбоксами (`accessibilityRole="checkbox"`, галочка малюється, а не натискається — контрол усередині контрола це один контрол для скрінрідера). `MediaBatchBar` дає «Додати персонажу…», «Прибрати фон» і видалення. Кнопка видалення показує **число, яке справді буде видалено**: `canRemoveFromStory` відсіює використані, а рядок під кнопкою каже, скільки лишиться і чому. Поки сцени не прочитані, видалення недоступне — той самий гейт, що й в інспектора. Прив'язка до персонажа — **один запис** на весь пакет: кожен `attachSpriteToCharacter` замінює бібліотеку цілком, тож послідовні виклики затирали б один одного.
-- **Drag & drop (веб).** `MediaDropZone` вішає DOM-слухачі на свій вузол (одним файлом із `Platform.OS` — як пікери й `thumbnails`, без `.web.tsx`). `dragleave` рахується лічильником, бо спрацьовує на кожній дитині. `lib/media-drop.ts` — чиста класифікація: оголошений тип виграє, інакше розширення; оголошений, але непідтримуваний тип (`video/x-msvideo`) — це відповідь «ні», а не привід гадати за назвою. Додавання переиспользує `describePicked*File`, які винесені з веб-гілок пікерів, тож валідація однакова для діалогу й для дропу.
+- **Drag & drop (веб).** `MediaDropZone` вішає DOM-слухачі на свій вузол (одним файлом із `Platform.OS` — як пікери й `thumbnails`, без `.web.tsx`). `dragleave` рахується лічильником, бо спрацьовує на кожній дитині. `src/lib/media-drop.ts` — чиста класифікація: оголошений тип виграє, інакше розширення; оголошений, але непідтримуваний тип (`video/x-msvideo`) — це відповідь «ні», а не привід гадати за назвою. Додавання переиспользує `describePicked*File`, які винесені з веб-гілок пікерів, тож валідація однакова для діалогу й для дропу.
 - **Клавіатура.** Наявний `useKeyboardShortcuts` (нічого нового не додано, крім гарда): стрілки рухають виділення (←/→ на один файл, ↑/↓ на рядок сітки — `mediaBrowserColumns`, а в аудіо на один рядок), `Enter` ставить галочку, `Space` програє звук, `Delete` пропонує прибрати (за тим самим гейтом), `Escape` скидає. У сам хук додано `isTypingTarget`: `Delete` у полі пошуку більше не видаляє файл — це був баг для всіх його користувачів, не лише для медіатеки.
-- **Постер відео.** `lib/video-poster.ts` бере кадр на 0.25 с (не нульовий — перший кадр фейду чорний) через `<video>` + canvas, з кешем, чергою на один декод і запам'ятовуванням відмов. Веб-only за побудовою, як `thumbnails`; де кадру немає — плитка показує гліф, як і показувала. Лізу ресолвера звільняємо одразу після кадру: постер уже власний object URL.
+- **Постер відео.** `src/lib/video-poster.ts` бере кадр на 0.25 с (не нульовий — перший кадр фейду чорний) через `<video>` + canvas, з кешем, чергою на один декод і запам'ятовуванням відмов. Веб-only за побудовою, як `thumbnails`; де кадру немає — плитка показує гліф, як і показувала. Лізу ресолвера звільняємо одразу після кадру: постер уже власний object URL.
 
-**Файли.** Нові: `lib/video-poster.ts`, `lib/media-drop.ts`, `components/media-library/{VideoPoster,MediaBatchBar,MediaDropZone}.tsx`. Змінені: `MediaTile`, `AudioTrackRow`, `MediaBrowser`, `MediaToolbar`, `app/story-gallery.tsx`, `hooks/use-keyboard-shortcuts.ts`, три пікери.
+**Файли.** Нові: `src/lib/video-poster.ts`, `src/lib/media-drop.ts`, `src/components/media-library/{VideoPoster,MediaBatchBar,MediaDropZone}.tsx`. Змінені: `MediaTile`, `AudioTrackRow`, `MediaBrowser`, `MediaToolbar`, `app/story-gallery.tsx`, `src/hooks/use-keyboard-shortcuts.ts`, три пікери.
 
 **Тести:** `media-drop.test.ts` (6), `video-poster.test.ts` (7), `MediaDropZone.test.tsx` (5), +4 у `MediaLibraryRoute.test.tsx` (пакетне видалення, чесний лічильник, стрілки й Escape, гард на друк у пошуку). Уся сюїта — 2529 зелених.
 
@@ -359,7 +359,7 @@ Unification резолву Vite/Node не знадобився. Alias Plate-ре
 
 **Чому це окремий шар.** Бібліотека відповідає «якого типу», «чий» і «чи використовується» — усе це виводиться зі сцен. На «які з цих сорока фонів належать другому розділу» не відповідає ніщо: сцена цього не записує. Це відповідь автора, тож єдина річ тут, яку зберігаємо, а не обчислюємо.
 
-**Модель** — `lib/media-organization.ts`, чиста, без імпорту галереї (структурний тип `{ key: string }`, тож циклу немає):
+**Модель** — `src/lib/media-organization.ts`, чиста, без імпорту галереї (структурний тип `{ key: string }`, тож циклу немає):
 
 - **Папка** — де файл лежить. Один файл, одна папка або жодної. Пласка навмисно: дерево коштує хлібних крихт, перевірок циклів і діалогу переміщення, а медіа однієї новели не така глибока.
 - **Тег** — перетинає папки: фон може бути «ніч» і «дощ» і при цьому лежати в «Депо».
@@ -368,19 +368,19 @@ Unification резолву Vite/Node не знадобився. Alias Plate-ре
 - **Файл, що пішов з історії, забирає свій запис** (`forgetMedia` у шляхах видалення): запис, що вказує в нікуди, невидимий доти, доки той самий asset id не повернеться — і тоді він кладе чужу картинку в папку, якої ніхто не обирав.
 - Регістр не є різницею: «Ніч» і «ніч» — одна полиця, і для тегів, і для назв папок.
 
-**Стан.** Новий слайс `stores/app-store-slices/media-organization-slice.ts`; persisted-версія піднята до 9, `normalizeMediaOrganizations` читає що завгодно (стан до 9 версії, відредагований руками бекап) як порожню систему тек, а не як помилку. Кожен запис іде через чисту модель, яка повертає той самий об'єкт, коли робити нічого — тож no-op не перемальовує бібліотеку.
+**Стан.** Новий слайс `src/stores/app-store-slices/media-organization-slice.ts`; persisted-версія піднята до 9, `normalizeMediaOrganizations` читає що завгодно (стан до 9 версії, відредагований руками бекап) як порожню систему тек, а не як помилку. Кожен запис іде через чисту модель, яка повертає той самий об'єкт, коли робити нічого — тож no-op не перемальовує бібліотеку.
 
 **UI.** Групи «Папки» й «Теги» у рейці (з `+` для нової папки, довге натискання — перейменувати/видалити); ті самі чипи в горизонтальній рейці телефона, інакше на телефоні можна було б розкладати й ніколи не бачити результату; секція «Папка»/«Теги» в інспекторі; «Перемістити в папку…» і «Додати тег…» у пакетній панелі. `createMediaFolder` повертає id, тож «Нова папка…» з меню переміщення і створює папку, і кладе в неї файли — на телефоні це єдиний шлях до нової папки.
 
 **Постер відео на нативі** — без нової залежності: `expo-video@3` уміє `player.generateThumbnailsAsync()`. Модуль тепер повертає *джерело*, а не URI (об'єктний URL на вебі, нативне посилання на зображення на телефоні), і плитка малює його через `expo-image`, який приймає обидва. Плеєр створюється рівно на один кадр і одразу звільняється.
 
-**Перетягування у папку** — `hooks/use-folder-drag.ts` на `PanResponder` з ядра RN. Жест claim-иться лише коли пройшов убік (сітка гортається вертикально, тож скрол і тап лишаються недоторканими); цілі вимірюються на початку перетягування, а не при layout, бо рейка теж гортається. Рядок «Поза папками» з'являється під час перетягування навіть коли він порожній — інакше нічим витягти файл із папки. Тягнути можна лише там, де рейка є (≥ 768 px); на телефоні розкладання йде через інспектор і пакетну панель.
+**Перетягування у папку** — `src/hooks/use-folder-drag.ts` на `PanResponder` з ядра RN. Жест claim-иться лише коли пройшов убік (сітка гортається вертикально, тож скрол і тап лишаються недоторканими); цілі вимірюються на початку перетягування, а не при layout, бо рейка теж гортається. Рядок «Поза папками» з'являється під час перетягування навіть коли він порожній — інакше нічим витягти файл із папки. Тягнути можна лише там, де рейка є (≥ 768 px); на телефоні розкладання йде через інспектор і пакетну панель.
 
 **Прийом файлів, перетягнутих ззовні застосунку, на iOS/Android не реалізовано** і не може бути без нативного коду: це `UIDropInteraction` та `View.setOnDragListener`, яких Expo не експонує. На вебі системний drop працює з R4.5.
 
 **Побічно:** мок `TextInput` тепер віддає `accessibilityLabel` як `aria-label` — раніше будь-яке підписане поле було недосяжним для запиту, яким користується скрінрідер.
 
-**Файли.** Нові: `lib/media-organization.ts`, `hooks/use-folder-drag.ts`, `components/ui/PromptDialog.tsx`, `stores/app-store-slices/media-organization-slice.ts`. Змінені: галерея (фільтри + `mediaKeyForAsset`), рейка, чипи, інспектор, пакетна панель, `story-gallery`, `video-poster`, `VideoPoster`, персистентність, моки.
+**Файли.** Нові: `src/lib/media-organization.ts`, `src/hooks/use-folder-drag.ts`, `src/components/ui/PromptDialog.tsx`, `src/stores/app-store-slices/media-organization-slice.ts`. Змінені: галерея (фільтри + `mediaKeyForAsset`), рейка, чипи, інспектор, пакетна панель, `story-gallery`, `video-poster`, `VideoPoster`, персистентність, моки.
 
 **Тести:** `media-organization` (15), `useFolderDrag` (7), +5 маршрутних (розкладання, теги, фільтри за папкою й тегом, відмова від дубльованої назви). Уся сюїта — 2556 зелених.
 
@@ -390,7 +390,7 @@ Unification резолву Vite/Node не знадобився. Alias Plate-ре
 
 ## 4. i18n
 
-Нові плоскі ключі `mediaLibrary.*` в `EN` і `UK` ([translations.ts](../../lib/translations.ts)):
+Нові плоскі ключі `mediaLibrary.*` в `EN` і `UK` ([translations.ts](../../src/lib/translations.ts)):
 
 ```
 mediaLibrary.title, .tab.images, .tab.videos

@@ -29,7 +29,7 @@ import { PLAYER_SHELL_DESCRIPTOR_PATH, parsePlayerShellDescriptor } from '@/lib/
  * the old folder and does not delete it either — the studio simply opens empty,
  * which is indistinguishable from data loss to the person it happens to.
  *
- * `__tests__/unit/scripts/stage-studio.test.ts` pins this string. That test has
+ * `tests/unit/scripts/stage-studio.test.ts` pins this string. That test has
  * no other purpose: it exists to fail when someone edits the line below it.
  */
 export const STUDIO_IDENTIFIER = 'com.vne.studio';

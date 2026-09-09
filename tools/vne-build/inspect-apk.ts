@@ -34,7 +34,7 @@ import {
   normalizeSigningFingerprint,
 } from '@/lib/release/native-identity';
 import { runApksigner, type ApksignerVerdict } from './apksigner';
-import playerProfileModule from '../../player-profile.js';
+import playerProfileModule from '../../config/player-profile.js';
 import { attribute, elementsNamed, parseBinaryXml } from './axml';
 import { readApkSigning, type ApkSigning } from './apk-signature';
 import { fileSource } from './stage-android';

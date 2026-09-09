@@ -3,7 +3,7 @@ import {
   type SpawnSyncOptionsWithStringEncoding,
   type SpawnSyncReturns,
 } from 'node:child_process';
-import type { BridgeProvider } from '../../../lib/bridge-protocol';
+import type { BridgeProvider } from '../../../src/lib/bridge-protocol';
 
 export interface ProviderAuthCommand {
   command: string;

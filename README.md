@@ -46,7 +46,7 @@ The scene editor brings narration and character dialogue together with visual an
 | Versioned releases | Freeze a story version for distribution. |
 | Optional AI assistance and cloud backup | Connect additional services when you want them. |
 
-The [user guide](docs/en/USER_GUIDE.md) introduces the workflow through a small example. The [action reference](wiki/block-types-reference.md) describes individual action types and their fields.
+The [user guide](docs/en/USER_GUIDE.md) introduces the workflow through a small example. The [action reference](docs/technical/block-types-reference.md) describes individual action types and their fields.
 
 ## Make reading comfortable
 
@@ -64,11 +64,11 @@ See [saving and restoring a copy](docs/en/USER_GUIDE.md#7-save-a-portable-copy) 
 
 ## Share a finished story
 
-A release freezes one version of your story so you can continue editing the draft without changing that released version. Follow [Releasing a story](wiki/releases.md) to prepare a standalone web bundle.
+A release freezes one version of your story so you can continue editing the draft without changing that released version. Follow [Releasing a story](docs/technical/releases.md) to prepare a standalone web bundle.
 
-[Desktop packaging](wiki/releases-desktop.md) and [Android packaging](wiki/releases-android.md) have separate requirements. Creating a browser story does not require installing their build tools.
+[Desktop packaging](docs/technical/releases-desktop.md) and [Android packaging](docs/technical/releases-android.md) have separate requirements. Creating a browser story does not require installing their build tools.
 
-The studio itself can also be [installed as a desktop application](wiki/studio-desktop.md), which removes the need for a checkout, a terminal and a development server.
+The studio itself can also be [installed as a desktop application](docs/technical/studio-desktop.md), which removes the need for a checkout, a terminal and a development server.
 
 ## Project status and support
 
@@ -78,7 +78,17 @@ If something goes wrong during setup, start with [installation troubleshooting](
 
 ## For contributors
 
-The app uses Expo, React Native Web, TypeScript, Zustand, NativeWind, and Plate. The active scene editor is in `components/editor/plate/`; canonical scene data uses `SceneRecord + TimelineStep`.
+The app uses Expo, React Native Web, TypeScript, Zustand, NativeWind, and Plate. The active scene editor is in `src/components/editor/plate/`; canonical scene data uses `SceneRecord + TimelineStep`.
+
+The repository has one root per kind of file:
+
+- `app/`, `app-player/` — Expo Router roots: the studio, and the reader-only player build.
+- `src/` — the engine's own source: `components/`, `constants/`, `hooks/`, `lib/`, `stores/`. `@/*` resolves here first, then at the repository root.
+- `tests/` — `unit/` (Vitest), `e2e/` (Playwright), `mocks/`, `helpers/`.
+- `config/` — build and test configuration that its tool can be pointed at: Playwright, Vitest, the player profile, the Metro block list, the theme tokens.
+- `assets/`, `public/`, `patches/`, `scripts/`, `tools/`, `docs/` — art and demo stories, static web files, dependency patches, build scripts, developer tooling, documentation.
+
+Configuration a tool insists on finding at the root stays there: `app.config.js`, `metro.config.js`, `babel.config.cjs`, `tailwind.config.js`, `tsconfig.json`, `eslint.config.mjs`, `eas.json`.
 
 From an installed checkout, use:
 
@@ -91,10 +101,10 @@ pnpm.cmd lint     # Run lint checks
 
 Further reading:
 
-- [Documentation index](wiki/index.md)
-- [Architecture reference](wiki/architecture-reference.md)
-- [Testing guide](wiki/testing-guide.md)
-- [Project changelog](wiki/changelog.md)
+- [Documentation index](docs/technical/index.md)
+- [Architecture reference](docs/technical/architecture-reference.md)
+- [Testing guide](docs/technical/testing-guide.md)
+- [Project changelog](docs/technical/changelog.md)
 - [Product principles](docs/product/PRODUCT.md)
 - [Design system](docs/product/DESIGN_SYSTEM.md)
 - [Optional integration variables](.env.example)

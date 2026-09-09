@@ -20,7 +20,7 @@ It reuses the AI bridge's *pairing* model — a Node process on loopback, an exa
 origin, a token compared in constant time — and none of its protocol. Four
 reasons, each checkable rather than a matter of taste:
 
-- `lib/bridge-protocol.ts` caps a message at 1 MB (8 MB for images). A release is
+- `src/lib/bridge-protocol.ts` caps a message at 1 MB (8 MB for images). A release is
   measured in hundreds.
 - `tools/ai-bridge/src/server.ts` closes the socket on any binary frame.
 - It rejects unknown client message types outright.

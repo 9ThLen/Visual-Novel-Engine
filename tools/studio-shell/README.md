@@ -29,7 +29,7 @@ between two releases. See below.
 
 Reusing the player shell for this would also mean loosening it. It grants
 `core:default` and registers no commands *on purpose*, asserted by
-`__tests__/unit/scripts/stage-desktop.test.ts`, because a story is data a
+`tests/unit/scripts/stage-desktop.test.ts`, because a story is data a
 stranger runs. The studio will eventually need to spawn a process. Those two
 requirements do not belong in one file.
 

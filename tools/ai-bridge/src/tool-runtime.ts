@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { getBridgeTool } from '../../../lib/ai/bridge-tools';
+import { getBridgeTool } from '../../../src/lib/ai/bridge-tools';
 
 import { BridgeToolError, type ToolInvoker } from './provider';
 

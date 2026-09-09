@@ -2,7 +2,7 @@
 
 **Статус:** реалізовано 2026-08-28. Концепт створено 2026-08-27.
 
-**Обсяг:** композиція `/story-home` ([app/story-home.tsx](../../app/story-home.tsx), 1311 рядків) і чотирьох карток у [components/story-home/](../../components/story-home) — сторінка, куди веде дотик по картці на полиці студії.
+**Обсяг:** композиція `/story-home` ([app/story-home.tsx](../../app/story-home.tsx), 1311 рядків) і чотирьох карток у [src/components/story-home/](../../src/components/story-home) — сторінка, куди веде дотик по картці на полиці студії.
 
 **Поза цим релізом:** нові поля `StoryMetadata`, зміни у `runStoryDoctor` / `validateSceneGraph` / `story-coverage`, редагування медіатеки на місці, видалення історії (це лишається в меню «⋯» на полиці).
 
@@ -32,7 +32,7 @@
 
 ### 2.1 Порожня третина сторінки
 
-`ChoiceStatisticsCard` повертає `null`, коли проходжень ще не було ([ChoiceStatisticsCard.tsx:28](../../components/story-home/ChoiceStatisticsCard.tsx:28)), але його доріжка лишається з `flex: 1` ([story-home.tsx:855](../../app/story-home.tsx:855)). Виходить діра 323 × 243 ліворуч від «Здоров'я історії» — рівно те, що видно на знімку.
+`ChoiceStatisticsCard` повертає `null`, коли проходжень ще не було ([ChoiceStatisticsCard.tsx:28](../../src/components/story-home/ChoiceStatisticsCard.tsx:28)), але його доріжка лишається з `flex: 1` ([story-home.tsx:855](../../app/story-home.tsx:855)). Виходить діра 323 × 243 ліворуч від «Здоров'я історії» — рівно те, що видно на знімку.
 
 ### 2.2 Вісім однакових коробок
 
@@ -52,7 +52,7 @@
 
 ### 2.6 Локальні двійники спільних компонентів
 
-`ActionButton` ([story-home.tsx:128](../../app/story-home.tsx:128)), `SectionHeader` ([story-home.tsx:170](../../app/story-home.tsx:170)) і `StatTile` ([story-home.tsx:193](../../app/story-home.tsx:193)) написані тут при наявних [components/ui/Button.tsx](../../components/ui/Button.tsx) і [components/settings/list.tsx](../../components/settings/list.tsx). Плюс декоративна смужка `heroAccent` заввишки 4 px ([story-home.tsx:744](../../app/story-home.tsx:744)) — той самий прийом, який щойно прибрали з полиці студії.
+`ActionButton` ([story-home.tsx:128](../../app/story-home.tsx:128)), `SectionHeader` ([story-home.tsx:170](../../app/story-home.tsx:170)) і `StatTile` ([story-home.tsx:193](../../app/story-home.tsx:193)) написані тут при наявних [src/components/ui/Button.tsx](../../src/components/ui/Button.tsx) і [src/components/settings/list.tsx](../../src/components/settings/list.tsx). Плюс декоративна смужка `heroAccent` заввишки 4 px ([story-home.tsx:744](../../app/story-home.tsx:744)) — той самий прийом, який щойно прибрали з полиці студії.
 
 ### 2.7 Четверта система шапок
 
@@ -143,19 +143,19 @@
 ## 5. Що написано
 
 1. **`app/story-home.tsx`** — нав-бар, п'ять смуг, злиття шапки з «Деталями», акордеон стану. `ActionButton`, `SectionHeader`, `StatTile`, `heroAccent`, `mainGridRow` / `analyticsRow` / `analyticsLane` зникають.
-2. **`lib/story-home/overview-state.ts`** (новий, чистий) — `buildOverviewState()`: із `readiness`, `storyDoctorReport`, `coverageReport` і звіту про ассети робить вирок і чотири плитки (значення, тон, чи є що розкривати). Під юніт-тестами, за зразком `lib/editor/story-library.ts`.
-3. **`components/story-home/*Card.tsx`** — звітні картки отримали прапорець `embedded`: у смузі B рамку й поверхню малює сама смуга. `StorySnapshotsCard` лишився як є — він став смугою D, змінилася тільки обгортка. `ChoiceStatisticsCard` і далі повертає `null`, коли виборів ще не робили, але діри це більше не лишає: плитка просто не розкривається, а список недосяжних сцен показує сусідній `PlaytestCoverageCard`.
-4. **`components/story-home/PlaytestCoverageCard.tsx`** (новий) — покриття, витягнуте зі «Здоров'я історії».
-5. **`lib/story-home/asset-report.ts`** (новий) — спільний звіт про ассети для плитки й для панелі, щоб вони не могли розійтися.
+2. **`src/lib/story-home/overview-state.ts`** (новий, чистий) — `buildOverviewState()`: із `readiness`, `storyDoctorReport`, `coverageReport` і звіту про ассети робить вирок і чотири плитки (значення, тон, чи є що розкривати). Під юніт-тестами, за зразком `src/lib/editor/story-library.ts`.
+3. **`src/components/story-home/*Card.tsx`** — звітні картки отримали прапорець `embedded`: у смузі B рамку й поверхню малює сама смуга. `StorySnapshotsCard` лишився як є — він став смугою D, змінилася тільки обгортка. `ChoiceStatisticsCard` і далі повертає `null`, коли виборів ще не робили, але діри це більше не лишає: плитка просто не розкривається, а список недосяжних сцен показує сусідній `PlaytestCoverageCard`.
+4. **`src/components/story-home/PlaytestCoverageCard.tsx`** (новий) — покриття, витягнуте зі «Здоров'я історії».
+5. **`src/lib/story-home/asset-report.ts`** (новий) — спільний звіт про ассети для плитки й для панелі, щоб вони не могли розійтися.
 6. **Сума розмірів медіа** для рядка «8 файлів · ≈ 24 МБ» — байти беруться з `mediaLibrary` по ассетах цієї історії.
-7. **`lib/translations.ts`** — 48 ключів вироку, плиток, медіатеки й копій у `EN` і `UK`.
-8. **Тести** — `__tests__/unit/lib/story-home-overview-state.test.ts`, 13 тестів: вирок при кожній комбінації, плитка без даних, плитка з даними, стабільний порядок плиток.
+7. **`src/lib/translations.ts`** — 48 ключів вироку, плиток, медіатеки й копій у `EN` і `UK`.
+8. **Тести** — `tests/unit/lib/story-home-overview-state.test.ts`, 13 тестів: вирок при кожній комбінації, плитка без даних, плитка з даними, стабільний порядок плиток.
 
 ## 6. Рішення, ухвалені під час реалізації
 
 - **Усе згорнуто на старті, ширина колонки 920.** Виміряно в браузері: п'ять смуг, усі 920 завширшки, усі починаються на одній лівій межі (замість чотирьох). На 375 px — 343 завширшки, плитки стають 2 × 2, горизонтального скролу немає.
 - **Проходження перестало бути «—».** «0/12» — це факт, а не порожнеча, і список сцен, яких ніхто не бачив, корисний саме до першої гри. Плитка сіра, але розкривається.
-- **Покриття виїхало зі «Здоров'я історії»** в новий `components/story-home/PlaytestCoverageCard.tsx`. Воно жило там другою секцією, а тепер має власну плитку — звіт, який відповідає двом плиткам одразу, це рівно та вада, заради якої все й переробляли.
+- **Покриття виїхало зі «Здоров'я історії»** в новий `src/components/story-home/PlaytestCoverageCard.tsx`. Воно жило там другою секцією, а тепер має власну плитку — звіт, який відповідає двом плиткам одразу, це рівно та вада, заради якої все й переробляли.
 - **Дата йде за мовою застосунку**, а не за локаллю браузера: інакше поруч із англійським «Updated» стояло «7 июл. 2026 г.».
 - **Розмір копії не вигадується.** Якщо жоден ассет не має відомого розміру, рядок каже «14 сцен · 8 файлів» без «≈ 0 КБ».
 - **Плитка й панель ассетів читають один звіт** — `buildStoryAssetUsageReport`. Плитка, яка розходиться зі списком під нею, гірша за відсутню плитку.

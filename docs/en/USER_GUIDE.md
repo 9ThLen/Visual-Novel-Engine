@@ -81,9 +81,9 @@ Once the two-route example works, expand one part at a time:
 - Use variables to remember decisions and conditions to make later options depend on them.
 - Add interactive objects where a scene needs reader interaction.
 
-The [action reference](../../wiki/block-types-reference.md) describes available action types and their fields. It also contains runtime details; dialogue in the current editor is authored through character lines in the document.
+The [action reference](../technical/block-types-reference.md) describes available action types and their fields. It also contains runtime details; dialogue in the current editor is authored through character lines in the document.
 
-For a version you want to share with readers, follow [Releasing a story](../../wiki/releases.md). A release freezes a particular version; a backup is for preserving and restoring your editable work. Desktop and Android packaging have [separate](../../wiki/releases-desktop.md) [guides](../../wiki/releases-android.md) and additional requirements.
+For a version you want to share with readers, follow [Releasing a story](../technical/releases.md). A release freezes a particular version; a backup is for preserving and restoring your editable work. Desktop and Android packaging have [separate](../technical/releases-desktop.md) [guides](../technical/releases-android.md) and additional requirements.
 
 ## Everyday working habits
 
