@@ -148,7 +148,35 @@ along. The BGM path above it already separates the two; voice now does the same.
 - **`/story-page` says "This story is gone" for a demo story.** Correct: that
   screen renders a published release and the demos are drafts.
 
-### Open, not fixed: autoplay rejection on a cold reader load
+### Fixed after merge: the audio rejection that turned the Pages gate red
+
+Left open in the pass above, and no longer a matter of judgement: merging the
+audio fix made the deployed site play sound, which surfaced the rejection on the
+live smoke and failed `Deploy to GitHub Pages` on `main` (run 34339209476).
+
+The four SPA-fallback 404s that had been failing that gate were gone — that fix
+worked. What replaced them was one line:
+
+    The play() request was interrupted by a call to pause().
+
+`expo-audio`'s web player discarded the promise from `HTMLMediaElement.play()`,
+so every refusal escaped as an unhandled rejection: `NotAllowedError` when
+autoplay is blocked, `AbortError` when a `pause()` lands first, as it does on
+every crossfade. It also left `isPlaying` true after playback never started,
+which is why `AudioPlayerService.resume()` would skip a track that was silent.
+
+Patched through `patchedDependencies`, which this repository already uses for
+`@expo/cli` and `react-native-css-interop`: the promise is now handled and
+`isPlaying` reflects what the element actually did. Nothing in the app could
+catch this — `play()` returns `undefined` there.
+
+Verified: a cold load straight onto the reader reports zero page errors where it
+reported three, advancing through scenes reports zero where it reported the
+`AbortError`, audio still loads (206 and 200), and `scripts/check-deployed-web.mjs`
+— the failing gate itself — passes against a local server that mimics the Pages
+fallback.
+
+### Superseded: the earlier note on this, kept for the record
 
 Now that audio resolves, a reader opened with no prior interaction — a direct
 link or a refresh straight onto the route — logs three uncaught
