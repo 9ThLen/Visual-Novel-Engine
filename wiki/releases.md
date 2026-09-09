@@ -11,6 +11,31 @@ and the release does not move until they publish again.
 
 ## Exporting from inside the app
 
+The release card selects any combination of project page, Android, Windows and
+iOS. Saving freezes one artifact with those intended targets; it does not start
+several builds. Only a selection containing project page publishes to the
+showcase by default. Android builds still use the configured build helper and
+EAS. Windows requires the source checkout and Rust/Tauri tooling:
+`pnpm build:desktop --bundle ./novel-web --out ./novel-desktop` after web export.
+iOS records intent only; no staging or build pipeline is implemented yet.
+
+Targets are additive schema-v1 metadata. The legacy `channel` remains a derived
+compatibility field for old players, so neither the playback schema nor minimum
+engine version changes. Missing targets are interpreted on read as `page` →
+`[page]`, `app` → `[android]`, `both` → `[page, android]`; existing frozen files
+are not rewritten.
+
+Reading is deliberately forgiving and writing is not. A `targets` list naming
+something this build has never heard of keeps the part it understands, and falls
+back to `channel` when it understands none of it — a release must not become
+unopenable because a later engine added a target, and `build-desktop.ts` already
+bundles deb, appimage and dmg, so `linux` and `macos` are a question of when. A
+list that contradicts `channel` is read as written, with `channel` authoritative,
+because from the reader's side it is indistinguishable from that same case. Only
+a `targets` field that is not a list at all is refused: nothing in it can be
+salvaged. Writing stays strict — an empty selection throws, and the release card
+will not let the last target be cleared.
+
 Open a story's project page, publish a release, and use **Export as a playable
 folder**. The studio downloads the player it was deployed with, injects the
 story, and hands back a zip anyone can unzip and open — no command line, no

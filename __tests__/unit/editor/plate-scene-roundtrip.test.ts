@@ -17,6 +17,7 @@ import {
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import { normalizePlateDocumentScene } from '@/lib/vn-plate-editor/scene-normalizer';
 import { createVNPlateEditorHtml } from '@/lib/vn-plate-editor/embedded-html';
+import { sceneToEditorHtml } from '@/lib/vn-plate-editor/embedded-renderers';
 import type { PlateDocumentScene } from '@/components/editor/plate/types';
 import { sceneRecordToPlateDocument } from '@/components/editor/plate/serializers/scene-to-plate';
 import { plateDocumentToSceneRecord } from '@/components/editor/plate/serializers/plate-to-scene';
@@ -749,7 +750,8 @@ describe('Plate scene serializer roundtrip', () => {
     expect(block.speakerName).toBe('Alice');
     expect(block.characterId).toBe('char_alice');
     expect(block.spriteId).toBe('sprite_neutral');
-    expect(block.openCharacterControls).toBe(true);
+    // Existing content: loading a scene must not pop the character panel open.
+    expect(block.openCharacterControls).toBe(false);
   });
 
   it('normalizes text shorthand speaker lines into dialogue blocks', () => {
@@ -883,6 +885,34 @@ describe('Plate scene serializer roundtrip', () => {
     expect(html).not.toContain('background-thumb');
     expect(html).toContain('"id":"newScene"');
     expect(html).toContain("type: 'createNextScene'");
+  });
+
+  it('does not arm the character panel auto-open when loading a saved /character step', () => {
+    const characterStep = withStepMeta(
+      createCharacterStep({
+        characterId: 'char_alice',
+        spriteId: 'sprite_neutral',
+        position: 'center',
+      }),
+      'step_character',
+    );
+    const scene = sceneRecordToPlateDocument(sceneWithTimeline([characterStep]), [{
+      id: 'char_alice',
+      name: 'Alice',
+      color: '#ff4d6d',
+      defaultSpriteId: 'sprite_neutral',
+      authoring: { currentSpriteId: 'sprite_neutral', currentPosition: 'center', focusOnSpeak: true },
+      sprites: [{ id: 'sprite_neutral', name: 'Neutral', uri: 'file://alice.png', createdAt: 1 }],
+      createdAt: 1,
+    }]);
+
+    const markup = sceneToEditorHtml(scene);
+
+    // Every scene iframe boots its own copy of the script and opens the panel
+    // for the first block carrying this flag, so a saved character block must
+    // not carry it: otherwise all scenes open their panels on editor load.
+    expect(markup).toContain('data-id="step_character"');
+    expect(markup).not.toContain('data-open-character-controls');
   });
 
   it('renders inline effect parts as compact effect chips in embedded HTML', () => {

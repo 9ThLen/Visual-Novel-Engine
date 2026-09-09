@@ -550,8 +550,11 @@ export function blockToHtml(
     const action = data.action || 'show';
     const transition = data.transition || 'fade';
     const editCharacterLabel = language === 'uk' ? 'Редагувати персонажа' : 'Edit character';
+    // No data-open-character-controls here: the flag makes the iframe pop the
+    // character panel open on boot, which is an affordance for a character the
+    // author just inserted, not for every saved /character block on reload.
     return [
-      `<p data-kind="dialogue" data-id="${escapeHtml(block.id)}" data-speaker="${escapeHtml(speakerName)}" data-character-id="${escapeHtml(characterId)}" data-sprite-id="${escapeHtml(data.spriteId || '')}" data-character-action="${escapeHtml(action)}" data-character-transition="${escapeHtml(transition)}" data-open-character-controls="true">`,
+      `<p data-kind="dialogue" data-id="${escapeHtml(block.id)}" data-speaker="${escapeHtml(speakerName)}" data-character-id="${escapeHtml(characterId)}" data-sprite-id="${escapeHtml(data.spriteId || '')}" data-character-action="${escapeHtml(action)}" data-character-transition="${escapeHtml(transition)}">`,
       `<span class="speaker-token dialogue-badge" contenteditable="false" tabindex="0" role="button" aria-label="${editCharacterLabel} ${escapeHtml(speakerName)}" data-character-id="${escapeHtml(characterId)}" data-block-id="${escapeHtml(block.id)}" style="--speaker-color:#ff4d6d">${escapeHtml(speakerName)}:</span> `,
       '<br>',
       '</p>',

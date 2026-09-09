@@ -26,14 +26,20 @@ async function openStoryFromStudio(page: Page, title: string): Promise<void> {
 /**
  * Leave a story and come back to the shelf.
  *
- * `Back` out of the AI panel lands on the story's own project page, which has a
+ * `Exit` out of the AI panel lands on the story's own project page, which has a
  * «Studio» button and no web sidebar. This used to reach for the sidebar's
  * «Story Editor» item, which stopped existing on this screen when `/editor`
  * became the shelf — a stale step that only surfaced once the unit-test stage
  * stopped failing first and CI finally reached this suite.
+ *
+ * The control was named «Back» until the editor stopped leaving by walking
+ * history: scene navigation pushes `/document-editor` entries, so going back
+ * retraced scenes instead of leaving. It now pops to the project page, which is
+ * where this helper always wanted to land, and says «Exit» because that is what
+ * it does.
  */
 async function backToStudio(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Exit', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Studio', exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Studio', exact: true }).first().click();
 }

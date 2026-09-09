@@ -18,6 +18,7 @@
 import { parseReleaseManifest } from '@/lib/release/manifest';
 import { computeReleaseStats } from '@/lib/release/preflight';
 import {
+  releaseChannelForTargets, resolveReleaseTargets, type ReleaseTarget,
   RELEASE_CONTAINER_VERSION,
   RELEASE_FORMAT,
   RELEASE_PATHS,
@@ -52,6 +53,7 @@ export interface CompileReleaseInput {
   storyId: string;
   version: string;
   channel: ReleaseChannel;
+  targets?: ReleaseTarget[];
   /** The build doing the compiling, e.g. from `Constants.expoConfig.version`. */
   engineVersion: string;
   notes?: string;
@@ -193,7 +195,8 @@ export async function compileRelease(input: CompileReleaseInput): Promise<Compil
     releaseId: input.releaseId ?? generateReleaseId(),
     storyId: story.id,
     version: input.version,
-    channel: input.channel,
+    channel: input.targets ? releaseChannelForTargets(input.targets) : input.channel,
+    targets: resolveReleaseTargets(input.channel, input.targets),
     releasedAt: input.releasedAt ?? new Date().toISOString(),
     engineVersion: input.engineVersion,
     minEngineVersion: MIN_ENGINE_VERSION_FOR_RELEASE_V1,

@@ -70,7 +70,7 @@ describe('DocumentSceneEditor save guard', () => {
     const onBack = vi.fn();
     const { onSave } = renderEditor({ onBack });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Exit' }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onBack).toHaveBeenCalled();
@@ -93,7 +93,7 @@ describe('DocumentSceneEditor save guard', () => {
     makeFlushFail();
     renderEditor({ onBack, onSave });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Exit' }));
 
     // Nothing reached the store, and the author stays where their edits are.
     await waitFor(() => expect(onSave).not.toHaveBeenCalled());

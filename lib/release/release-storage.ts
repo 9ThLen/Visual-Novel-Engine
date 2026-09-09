@@ -19,7 +19,7 @@
  * and callers can supply the same instance the rest of the app uses.
  */
 import { parseReleaseManifest } from '@/lib/release/manifest';
-import type { ReleaseChannel, ReleaseManifestV1, ReleasePayloadV1 } from '@/lib/release/types';
+import { resolveReleaseTargets, type ReleaseTarget, type ReleaseChannel, type ReleaseManifestV1, type ReleasePayloadV1 } from '@/lib/release/types';
 import {
   compareReleaseVersions,
   isNewerReleaseVersion,
@@ -46,6 +46,7 @@ export interface ReleaseMeta {
   storyId: string;
   version: string;
   channel: ReleaseChannel;
+  targets?: ReleaseTarget[];
   releasedAt: string;
   notes?: string;
   /** Whether the showcase shows it. Unpublishing keeps the artifact. */
@@ -105,12 +106,19 @@ function parseReleaseMeta(value: unknown, storyId: string): ReleaseMeta | null {
   if (typeof version !== 'string' || !isReleaseVersion(version)) return null;
   if (channel !== 'page' && channel !== 'app' && channel !== 'both') return null;
   if (typeof releasedAt !== 'string' || !releasedAt) return null;
+  // A targets field this build cannot read must not cost the author the row.
+  // Dropping the entry hides a release that is still on disk and still playable,
+  // and `channel` alone is enough to list one.
+  let targets: ReleaseTarget[];
+  try { targets = resolveReleaseTargets(channel, value.targets); }
+  catch { targets = resolveReleaseTargets(channel); }
 
   const meta: ReleaseMeta = {
     releaseId,
     storyId,
     version,
     channel,
+    targets,
     releasedAt,
     published: published === true,
     sceneCount: Number.isSafeInteger(sceneCount) ? (sceneCount as number) : 0,
@@ -339,6 +347,7 @@ async function saveReleaseUnlocked(
     storyId,
     version: manifest.release.version,
     channel: manifest.release.channel,
+    targets: resolveReleaseTargets(manifest.release.channel, manifest.release.targets),
     releasedAt: manifest.release.releasedAt,
     published: input.published !== false,
     sceneCount: sceneIds.length,

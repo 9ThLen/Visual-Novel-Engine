@@ -272,6 +272,19 @@ describe('publishing a story end to end', () => {
     expect(await readReleaseManifest(storage, STORY_ID, meta.releaseId)).not.toBeNull();
   });
 
+  it('retains independent platform targets without publishing a page', async () => {
+    const storage = memoryStorage();
+    const meta = await publishStoryRelease({
+      storyId: STORY_ID, version: '1.0.0', channel: 'app',
+      targets: ['android', 'windows'], storage,
+    });
+    expect(meta.published).toBe(false);
+    expect((await listReleases(storage, STORY_ID))[0].targets).toEqual(['android', 'windows']);
+    expect((await readReleaseManifest(storage, STORY_ID, meta.releaseId))?.release.targets)
+      .toEqual(['android', 'windows']);
+    expect(currentPublishedRelease(await listReleases(storage, STORY_ID))).toBeNull();
+  });
+
   it('does not mint a mutable release when its media cannot be secured', async () => {
     setMediaBlobStorageAdapterForTests({
       get: async () => null,

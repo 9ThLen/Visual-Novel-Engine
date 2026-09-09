@@ -70,6 +70,53 @@ export const MIN_ENGINE_VERSION_FOR_RELEASE_V1 = '1.0.0';
 export const RELEASE_CHANNELS = ['page', 'app', 'both'] as const;
 export type ReleaseChannel = (typeof RELEASE_CHANNELS)[number];
 
+export const RELEASE_TARGETS = ['page', 'android', 'windows', 'ios'] as const;
+export type ReleaseTarget = (typeof RELEASE_TARGETS)[number];
+
+/**
+ * The targets a release declares, as far as this engine understands them.
+ *
+ * `targets` is additive: a v1 player that has never heard of the field reads
+ * `channel` and plays the release anyway. An unknown *value* inside the field
+ * has to degrade the same way — and at first it did not. One unrecognised string
+ * made the manifest throw and the releases index drop the row, so the first
+ * engine to add a target would have turned every release written after it into
+ * one that older builds refuse to open or silently stop listing. That is not
+ * hypothetical: `scripts/build-desktop.ts` already bundles deb, appimage and
+ * dmg, so `linux` and `macos` are a question of when.
+ *
+ * The rule is stated a few lines above `MIN_ENGINE_VERSION_FOR_RELEASE_V1`:
+ * refusing to open is worse than degrading. So unknown targets are dropped, and
+ * a list holding nothing this engine knows falls back to what `channel` says —
+ * the field a v1 reader was always going to use.
+ *
+ * Legacy `app` exports used the Android pipeline. Never infer iOS or Windows.
+ */
+export function resolveReleaseTargets(channel: ReleaseChannel, targets?: unknown): ReleaseTarget[] {
+  const fromChannel = (): ReleaseTarget[] => (
+    channel === 'page' ? ['page'] : channel === 'app' ? ['android'] : ['page', 'android']
+  );
+  if (targets === undefined) return fromChannel();
+  // A non-array is malformed rather than unfamiliar: there is nothing in it to
+  // salvage, and reinterpreting it quietly would hide a writer that is broken.
+  if (!Array.isArray(targets)) throw new Error('Invalid release targets');
+
+  const known = [...new Set(targets)].filter(
+    (target): target is ReleaseTarget => RELEASE_TARGETS.includes(target as ReleaseTarget),
+  );
+  return known.length > 0 ? known : fromChannel();
+}
+
+/**
+ * The frozen v1 view of a target list. Old players read this and nothing else,
+ * so every writer derives it here rather than carrying a second opinion.
+ */
+export function releaseChannelForTargets(targets: readonly ReleaseTarget[]): ReleaseChannel {
+  if (targets.length === 0) throw new Error('Invalid release targets');
+  if (!targets.includes('page')) return 'app';
+  return targets.length === 1 ? 'page' : 'both';
+}
+
 /** A release credit is a story credit, frozen; the shape must not diverge. */
 export type ReleaseCredit = StoryCredit;
 
@@ -124,6 +171,8 @@ export interface ReleaseBlock {
   /** Author-facing `MAJOR.MINOR.PATCH`; see `lib/release/version.ts`. */
   version: string;
   channel: ReleaseChannel;
+  /** Optional additive metadata; old v1 players continue to use channel. */
+  targets?: ReleaseTarget[];
   releasedAt: string;
   notes?: string;
   engineVersion: string;

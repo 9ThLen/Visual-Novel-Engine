@@ -66,6 +66,8 @@ A release freezes one version of your story so you can continue editing the draf
 
 [Desktop packaging](wiki/releases-desktop.md) and [Android packaging](wiki/releases-android.md) have separate requirements. Creating a browser story does not require installing their build tools.
 
+The studio itself can also be [installed as a desktop application](wiki/studio-desktop.md), which removes the need for a checkout, a terminal and a development server.
+
 ## Project status and support
 
 Visual Novel Engine is under active development. The documented acceptance scope covers the PC browser editor, browser reader, web bundle, and locally built Windows shell. The Android EAS path is implemented, but its paid-build and real-device acceptance are still pending. Optional integrations require their own configuration.

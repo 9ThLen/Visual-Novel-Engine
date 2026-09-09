@@ -19,7 +19,7 @@ import {
   saveRelease,
   type ReleaseMeta,
 } from '@/lib/release/release-storage';
-import type { ReleaseChannel } from '@/lib/release/types';
+import { releaseChannelForTargets, resolveReleaseTargets, type ReleaseTarget, type ReleaseChannel } from '@/lib/release/types';
 import {
   FIRST_RELEASE_VERSION,
   isNewerReleaseVersion,
@@ -31,6 +31,7 @@ export interface PublishStoryInput {
   storyId: string;
   version: string;
   channel: ReleaseChannel;
+  targets?: ReleaseTarget[];
   notes?: string;
   /** Compile and keep the artifact without putting it on the showcase. */
   published?: boolean;
@@ -86,7 +87,8 @@ export async function publishStoryRelease(input: PublishStoryInput): Promise<Rel
   const compiled = await compileRelease({
     storyId: input.storyId,
     version: input.version,
-    channel: input.channel,
+    channel: input.targets ? releaseChannelForTargets(input.targets) : input.channel,
+    targets: resolveReleaseTargets(input.channel, input.targets),
     notes: input.notes,
     engineVersion: resolveEngineVersion(),
   });
@@ -109,7 +111,7 @@ export async function publishStoryRelease(input: PublishStoryInput): Promise<Rel
     return await saveRelease(storage, {
       manifest: compiled.manifest,
       payload: compiled.payload,
-      published: input.published,
+      published: (input.targets ? input.targets.includes('page') : input.channel !== 'app') && input.published !== false,
     });
   } catch (error) {
     // Another tab may have minted an equal or newer version after the preflight

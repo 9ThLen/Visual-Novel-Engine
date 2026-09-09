@@ -18,6 +18,7 @@ import {
 import {
   CONTENT_RATINGS,
   RELEASE_CHANNELS,
+  resolveReleaseTargets,
   RELEASE_CONTAINER_VERSION,
   RELEASE_FORMAT,
   RELEASE_LIMITS,
@@ -229,6 +230,15 @@ function parseReleaseBlock(value: unknown): ReleaseBlock {
     stats: parseStats(release.stats),
     showcase: parseShowcase(release.showcase),
   };
+
+  // Two views of the same decision, and `channel` is the authoritative one:
+  // it is the frozen v1 field every existing player already reads. `targets` is
+  // what this engine additionally recognises, which is deliberately allowed to
+  // be the smaller list — a release naming a target added after this build
+  // resolves to the part we understand, and `channel` still governs playback.
+  // An earlier cut threw when the two disagreed, which made exactly that case
+  // unopenable.
+  parsed.targets = resolveReleaseTargets(parsed.channel, release.targets);
 
   if (release.notes !== undefined) {
     const notes = requireString(release.notes, 'release notes');

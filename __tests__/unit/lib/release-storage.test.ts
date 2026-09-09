@@ -233,6 +233,33 @@ describe('listReleases', () => {
     expect(await listReleases(storage, STORY_ID)).toEqual([]);
   });
 
+  /**
+   * A release whose `targets` this build cannot read is still on disk and still
+   * playable, so dropping the row would hide the author's own work behind a
+   * field that is only metadata. `channel` is enough to list one.
+   */
+  it('lists a release naming a target this build does not know', async () => {
+    const storage = memoryStorage();
+    await saveRelease(storage, { manifest: manifest(), payload: payload() });
+    const raw = JSON.parse((await storage.getItem(`vne_release_index_${STORY_ID}`)) as string);
+    raw.releases[0].targets = ['page', 'linux'];
+    await storage.setItem(`vne_release_index_${STORY_ID}`, JSON.stringify(raw));
+
+    const releases = await listReleases(storage, STORY_ID);
+    expect(releases).toHaveLength(1);
+    expect(releases[0].targets).toEqual(['page']);
+  });
+
+  it('lists a release whose targets field is malformed', async () => {
+    const storage = memoryStorage();
+    await saveRelease(storage, { manifest: manifest(), payload: payload() });
+    const raw = JSON.parse((await storage.getItem(`vne_release_index_${STORY_ID}`)) as string);
+    raw.releases[0].targets = 'page';
+    await storage.setItem(`vne_release_index_${STORY_ID}`, JSON.stringify(raw));
+
+    expect(await listReleases(storage, STORY_ID)).toHaveLength(1);
+  });
+
   it('drops unparseable entries but keeps the rest', async () => {
     const storage = memoryStorage();
     await saveRelease(storage, { manifest: manifest(), payload: payload() });

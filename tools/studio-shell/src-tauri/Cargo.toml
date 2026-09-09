@@ -1,0 +1,30 @@
+[package]
+# Not the product name, and not the player's crate either. The two shells build
+# in two directories and are two applications; sharing a crate name would make
+# `cargo` artifacts from one look reusable to the other.
+name = "vne-desktop-studio"
+# Overwritten by staging with the engine version. Tauri bundles the version from
+# tauri.conf.json; a Cargo manifest that disagrees is a second answer to the
+# same question.
+version = "0.0.0"
+description = "Visual Novel Engine studio"
+edition = "2021"
+rust-version = "1.77.2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+# The studio is a window around the studio's own web bundle. It registers no
+# commands today. When the AI bridge becomes a sidecar it will need
+# `tauri-plugin-shell` and a matching capability — that is a deliberate step,
+# not a convenience to add in passing.
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

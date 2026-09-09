@@ -21,9 +21,15 @@ The tested web build and exported player pass the checks below. This is not a ce
 | Follow-up diagnostics tests after final graph/asset fixes | 43 passed |
 | Final focused frame, background, graph and asset regressions | 16 passed |
 | AI browser workflow suite | 7 passed |
+| Studio release UI suite (follow-up) | 2 passed; bundled story creates a release without blockers |
+| Android and iOS JavaScript/assets export (follow-up) | Both platforms exported successfully |
+| Knowledge graph (follow-up) | Updated successfully: 6,309 nodes and 16,468 edges |
+| Windows native shell `cargo check --offline` | Passed, including Tauri/WebView2 integration |
+| Windows executable `cargo build --offline` | Built successfully in the dev profile; not a signed release installer |
 | Final exported-player and staged-desktop suite | 10 passed, including offline playback |
 | TypeScript | Passed |
 | Direct ESLint, source/tools/scripts, zero-warning limit | Passed |
+| Standard Expo lint wrapper (follow-up) | Passed with access to the local pnpm cache |
 | Production Studio export and player shell | Built successfully |
 | Legacy strict demo exports | Advanced: 27 assets; basic: 13 assets; passed |
 | Editor/reader/audio boundaries, player bundle and Android autolinking | Passed |
@@ -272,10 +278,13 @@ story, which is the case it exists for.
 
 ## Remaining release verification
 
-- Native Android/iOS builds and real-device behavior have not been verified. Desktop tests validate the staged application and its offline frontend, not an installed native binary.
-- Demo publication still requires cover, content rating and language metadata; the demo remains a draft.
-- The local Expo lint wrapper failed while invoking the machine's pnpm installation (SQLite access error). Direct execution of the installed ESLint completed successfully. Browser tests required execution outside the filesystem sandbox.
+- Android/iOS native packages and real-device behavior have not been verified. Both platforms' Hermes JavaScript/assets exports pass. The Windows native executable builds, but installed application behavior and a signed release installer remain unverified. iOS native compilation and device testing require a macOS/Xcode environment.
+- The follow-up Studio suite confirms the current bundled demo has sufficient publication metadata and creates a release in isolated test storage. The earlier missing-metadata observation is superseded by this result.
+- The initial Expo lint wrapper failure (pnpm SQLite access) was resolved by running with access to the local cache; the standard wrapper and direct ESLint both pass. Browser tests also required execution outside the filesystem sandbox.
 - No release was published and no commit was created by this audit.
-- `graphify update .` was rerun after the final edits, but did not finish AST extraction during this verification and was stopped. The existing graph is therefore not fully current. `.graphifyignore` now excludes generated E2E bundles; rerun the update before relying on the graph for subsequent code navigation.
+- `graphify update .` completed in the follow-up when run with access to its local cache. `.graphifyignore` excludes generated E2E bundles.
+- Android `:app:assembleRelease` reached project configuration but failed with `SDK location not found`; neither `ANDROID_HOME` nor `android/local.properties` supplies an SDK path. The generated local Android project currently uses the debug signing configuration for its release variant and must not be treated as a distributable signed release.
 
 Local evidence: `.release-coverage-final.log`, `.release-ai-final.log`, `.release-player-recheck.log`, `.release-focused-recheck.log`, `.release-lint-recheck.log`, `.release-preview-build.log`; coverage output is under `test-results/release-coverage`.
+
+Follow-up evidence: `.release-studio-final.log`, `.release-native-export.log`, `.release-expo-lint-native.log`, `.release-graphify-native.log`, `.release-android-build.log`, `.release-desktop-check.log`, `.release-desktop-build.log`. Native JavaScript exports are under `test-results/native-export`.

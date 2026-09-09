@@ -90,7 +90,9 @@ function technicalCharacterToDialogueBlock(
     characterId: data?.characterId || character?.id || null,
     spriteId: data?.spriteId || character?.authoring?.currentSpriteId || character?.defaultSpriteId || null,
     tokenColor: character?.color,
-    openCharacterControls: true,
+    // A saved /character step is existing content, not a fresh insertion, so it
+    // must not reopen the character panel every time the scene is loaded.
+    openCharacterControls: false,
   };
 }
 

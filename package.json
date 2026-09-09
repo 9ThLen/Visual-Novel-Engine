@@ -37,6 +37,7 @@
     "export:story": "tsx scripts/export-story-web.ts",
     "demo:release": "tsx scripts/make-demo-release.ts",
     "build:desktop": "tsx scripts/build-desktop.ts",
+    "build:studio-desktop": "tsx scripts/build-studio-desktop.ts",
     "stage:android": "tsx tools/vne-build/main.ts",
     "inspect:apk": "tsx tools/vne-build/inspect-apk.ts"
   },

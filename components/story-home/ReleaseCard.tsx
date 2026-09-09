@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 
 import { AppModal } from '@/components/ui';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useI18n } from '@/hooks/use-i18n';
 import { Fonts, withAlpha, type ThemeColorPalette } from '@/lib/_core/theme';
@@ -27,17 +26,16 @@ import type { PlayerBundleProgress } from '@/lib/release/shell-build';
 import type { BuildJobSummary } from '@/lib/release/build-job';
 import type { BuildTarget } from '@/lib/release/build-request';
 import type { BuildHelperSettings } from '@/lib/release/build-session';
-import type { ReleaseChannel } from '@/lib/release/types';
+import { RELEASE_TARGETS, releaseChannelForTargets, type ReleaseTarget, type ReleaseChannel } from '@/lib/release/types';
 import { isNewerReleaseVersion, nextReleaseVersion } from '@/lib/release/version';
 import type { StoryMetadata } from '@/lib/story-domain';
 
 export interface PublishRequest {
   version: string;
   channel: ReleaseChannel;
+  targets: ReleaseTarget[];
   notes?: string;
 }
-
-export const RELEASE_CHANNEL_OPTIONS: readonly ReleaseChannel[] = ['page', 'app', 'both'];
 
 interface ReleaseCardProps {
   colors: ThemeColorPalette;
@@ -49,8 +47,8 @@ interface ReleaseCardProps {
    * the strictest channel: a bundle handed to a friend should not be blocked by
    * what a storefront listing would need.
    */
-  channel: ReleaseChannel;
-  onChannelChange: (channel: ReleaseChannel) => void;
+  targets: ReleaseTarget[];
+  onTargetsChange: (targets: ReleaseTarget[]) => void;
   busy?: boolean;
   onPublish: (request: PublishRequest) => void;
   onSetPublished: (releaseId: string, published: boolean) => void;
@@ -88,8 +86,8 @@ export function ReleaseCard({
   story,
   releases,
   preflight,
-  channel,
-  onChannelChange,
+  targets,
+  onTargetsChange,
   busy = false,
   onPublish,
   onSetPublished,
@@ -157,94 +155,154 @@ export function ReleaseCard({
           <IconSymbol name="save" size={16} color={colors.primary} />
         </View>
         <Text style={[styles.title, { color: colors.foreground }]}>{t('release.card.title')}</Text>
+        {releases.length > 1 ? (
+          <Text style={[styles.headerMeta, { color: colors['foreground-tertiary'] }]} numberOfLines={1}>
+            {t('release.card.history', { count: releases.length })}
+          </Text>
+        ) : null}
       </View>
 
-      <Text style={[styles.status, { color: colors.muted }]}>{status}</Text>
-      {hasUnreleasedChanges && published ? (
-        <Text style={[styles.status, { color: colors.warning }]}>
-          {t('release.card.unreleasedChanges', { version: published.version })}
+      {/* One loud line for where the story stands, one quiet line for the
+          detail. The card used to stack four captions of equal weight, and none
+          of them read first. */}
+      <Text style={[styles.statusLead, { color: colors.foreground }]}>{status}</Text>
+      {exportable?.targets ? (
+        <Text style={[styles.status, { color: colors.muted }]}>
+          {exportable.version}: {exportable.targets.map((target) => t(`release.target.${target}`)).join(', ')}
         </Text>
       ) : null}
-      {releases.length > 1 ? (
-        <Text style={[styles.status, { color: colors.muted }]}>
-          {t('release.card.history', { count: releases.length })}
-        </Text>
+      {hasUnreleasedChanges && published ? (
+        <View style={[styles.notice, { backgroundColor: withAlpha(colors.warning, 0.14) }]}>
+          <View style={[styles.noticeDot, { backgroundColor: colors.warning }]} />
+          <Text style={[styles.status, styles.noticeText, { color: colors.foreground }]}>
+            {t('release.card.unreleasedChanges', { version: published.version })}
+          </Text>
+        </View>
       ) : null}
 
       <Text style={[styles.fieldLabel, { color: colors.muted }]}>
         {t('release.sheet.channel')}
       </Text>
-      <SegmentedControl<ReleaseChannel>
-        options={RELEASE_CHANNEL_OPTIONS.map((option) => ({
-          value: option,
-          label: t(`release.sheet.channel.${option}`),
-        }))}
-        value={channel}
-        onChange={onChannelChange}
-        accessibilityLabel={t('release.sheet.channel')}
-        segmentMinWidth={78}
-      />
-
-      <Pressable
-        onPress={openSheet}
-        disabled={!canRelease}
-        accessibilityRole="button"
-        accessibilityLabel={t('release.publish')}
-        accessibilityState={{ disabled: !canRelease }}
-        style={({ pressed }) => [
-          styles.primaryButton,
-          {
-            backgroundColor: colors.primary,
-            opacity: !canRelease ? 0.45 : pressed ? 0.85 : 1,
-          },
-        ]}
-      >
-        <IconSymbol name="save" size={16} color={colors['text-inverse']} />
-        <Text style={[styles.primaryLabel, { color: colors['text-inverse'] }]}>
-          {t('release.publish')}
+      {/* Four targets as chips on one or two lines, not four full-width slabs.
+          Every hint is a paragraph, so only the chosen targets spend one. */}
+      <View style={styles.targetRow}>
+        {RELEASE_TARGETS.map((target) => {
+          const checked = targets.includes(target);
+          return (
+            <Pressable
+              key={target}
+              accessibilityRole="checkbox"
+              accessibilityLabel={t(`release.target.${target}`)}
+              accessibilityState={{ checked, disabled: busy }}
+              aria-checked={checked}
+              disabled={busy}
+              onPress={() => onTargetsChange(checked
+                ? (targets.length > 1 ? targets.filter((value) => value !== target) : targets)
+                : [...targets, target])}
+              style={({ pressed }) => [
+                styles.targetChip,
+                {
+                  backgroundColor: checked ? withAlpha(colors.primary, 0.12) : 'transparent',
+                  borderColor: checked ? colors.primary : colors['border-subtle'],
+                  opacity: busy ? 0.5 : pressed ? 0.7 : 1,
+                },
+              ]}
+            >
+              {checked ? <IconSymbol name="checkmark" size={13} color={colors.primary} /> : null}
+              <Text
+                style={[
+                  styles.targetLabel,
+                  { color: checked ? colors.primary : colors['foreground-secondary'] },
+                ]}
+              >
+                {t(`release.target.${target}`)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {RELEASE_TARGETS.filter((target) => targets.includes(target)).map((target) => (
+        <Text key={target} style={[styles.hint, { color: colors.muted }]}>
+          {t(`release.target.${target}.hint`)}
         </Text>
-      </Pressable>
+      ))}
 
-      {blockerCount > 0 ? (
-        <Text style={[styles.hint, { color: colors.muted }]}>
-          {t('release.sheet.blockers', { count: blockerCount })}
-        </Text>
-      ) : null}
-
-      {published ? (
+      <View style={styles.actionRow}>
         <Pressable
-          onPress={() => onSetPublished(published.releaseId, false)}
+          onPress={openSheet}
+          disabled={!canRelease}
           accessibilityRole="button"
-          style={({ pressed }) => [styles.linkButton, { opacity: pressed ? 0.7 : 1 }]}
+          accessibilityLabel={t('release.publish')}
+          accessibilityState={{ disabled: !canRelease }}
+          style={({ pressed }) => [
+            styles.primaryButton,
+            {
+              backgroundColor: colors.primary,
+              opacity: !canRelease ? 0.45 : pressed ? 0.85 : 1,
+            },
+          ]}
         >
-          <Text style={[styles.linkLabel, { color: colors.muted }]}>{t('release.unpublish')}</Text>
-        </Pressable>
-      ) : highest ? (
-        <Pressable
-          onPress={() => {
-            const latest = releases.find((release) => release.version === highest);
-            if (latest) onSetPublished(latest.releaseId, true);
-          }}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.linkButton, { opacity: pressed ? 0.7 : 1 }]}
-        >
-          <Text style={[styles.linkLabel, { color: colors.primary }]}>{t('release.republish')}</Text>
-        </Pressable>
-      ) : null}
-
-      {onExportBundle && exportable ? (
-        <Pressable
-          onPress={() => onExportBundle(exportable.releaseId)}
-          disabled={exporting}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: exporting, busy: exporting }}
-          accessibilityLabel={t('release.export')}
-          style={({ pressed }) => [styles.linkButton, { opacity: pressed || exporting ? 0.7 : 1 }]}
-        >
-          <Text style={[styles.linkLabel, { color: colors.primary }]}>
-            {exporting ? t(`release.export.${exportProgress}`) : t('release.export')}
+          <IconSymbol name="save" size={16} color={colors['text-inverse']} />
+          <Text style={[styles.primaryLabel, { color: colors['text-inverse'] }]}>
+            {t('release.publish')}
           </Text>
         </Pressable>
+
+        {/* The second-order actions sit in the same strip as the primary one and
+            carry a real 36pt hit area, instead of stacking as 4pt-tall bare
+            text nobody reads as clickable. */}
+        {onExportBundle && exportable ? (
+          <Pressable
+            onPress={() => onExportBundle(exportable.releaseId)}
+            disabled={exporting}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: exporting, busy: exporting }}
+            accessibilityLabel={t('release.export')}
+            style={({ pressed }) => [
+              styles.ghostButton,
+              { borderColor: colors.border, opacity: pressed || exporting ? 0.7 : 1 },
+            ]}
+          >
+            <Text style={[styles.ghostLabel, { color: colors.foreground }]}>
+              {exporting ? t(`release.export.${exportProgress}`) : t('release.export')}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {published ? (
+          <Pressable
+            onPress={() => onSetPublished(published.releaseId, false)}
+            accessibilityRole="button"
+            accessibilityLabel={t('release.unpublish')}
+            style={({ pressed }) => [
+              styles.ghostButton,
+              { borderColor: colors['border-subtle'], opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <Text style={[styles.ghostLabel, { color: colors.muted }]}>{t('release.unpublish')}</Text>
+          </Pressable>
+        ) : highest && releases.find((release) => release.version === highest)?.targets?.includes('page') ? (
+          <Pressable
+            onPress={() => {
+              const latest = releases.find((release) => release.version === highest);
+              if (latest) onSetPublished(latest.releaseId, true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={t('release.republish')}
+            style={({ pressed }) => [
+              styles.ghostButton,
+              { borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <Text style={[styles.ghostLabel, { color: colors.foreground }]}>{t('release.republish')}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {blockerCount > 0 ? (
+        <Text style={[styles.hint, { color: colors.danger }]}>
+          {t('release.sheet.blockers', { count: blockerCount })}
+        </Text>
       ) : null}
 
       {onExportBundle && exportable && !exporting && !exportMessage ? (
@@ -361,7 +419,7 @@ export function ReleaseCard({
                 {t('release.sheet.channel')}
               </Text>
               <Text style={[styles.hint, { color: colors['foreground-secondary'] }]}>
-                {t(`release.sheet.channel.${channel}`)}
+                {targets.map((target) => t(`release.target.${target}`)).join(', ')}
               </Text>
 
               <Text style={[styles.fieldLabel, { color: colors.muted }]}>
@@ -397,7 +455,7 @@ export function ReleaseCard({
                 <Pressable
                   onPress={() => {
                     setSheetOpen(false);
-                    onPublish({ version, channel, notes: notes.trim() || undefined });
+                    onPublish({ version, channel: releaseChannelForTargets(targets), targets, notes: notes.trim() || undefined });
                   }}
                   disabled={!versionIsUsable || busy}
                   accessibilityRole="button"
@@ -444,11 +502,63 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans,
     fontWeight: '800',
   },
+  headerMeta: {
+    ...typeScale.caption,
+    marginLeft: 'auto',
+    flexShrink: 1,
+  },
+  statusLead: {
+    ...typeScale.label,
+    fontWeight: '600',
+  },
   status: {
     ...typeScale.caption,
   },
+  notice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  noticeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: radius.full,
+  },
+  noticeText: {
+    flexShrink: 1,
+  },
   hint: {
     ...typeScale.caption,
+  },
+  targetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  targetChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 1,
+    height: 32,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+  },
+  targetLabel: {
+    ...typeScale.caption,
+    fontWeight: '700',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   primaryButton: {
     flexDirection: 'row',
@@ -457,12 +567,24 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     borderRadius: radius.full,
     paddingHorizontal: spacing.lg,
-    paddingVertical: 10,
-    marginTop: spacing.xs,
+    height: 36,
   },
   primaryLabel: {
     ...typeScale.label,
     fontWeight: '700',
+  },
+  ghostButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 36,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.lg,
+  },
+  ghostLabel: {
+    ...typeScale.label,
+    fontWeight: '600',
   },
   linkButton: {
     paddingVertical: 4,
