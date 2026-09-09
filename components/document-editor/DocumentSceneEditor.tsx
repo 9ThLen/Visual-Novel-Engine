@@ -36,6 +36,7 @@ import { useEditorShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { charactersEquivalent, mergeExternalCharacters } from '@/lib/character-merge';
 import { crumbsForSceneIndex, type BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
+import { exitEditorToStoryHome } from '@/lib/document-editor/editor-exit';
 import { ensureDocumentCharactersInBlocks } from '@/lib/document-editor/document-scene';
 import { loadSceneHeights, persistSceneHeight } from '@/lib/document-editor/scene-height-cache';
 import {
@@ -757,8 +758,10 @@ export function DocumentSceneEditor({
       onBack();
       return;
     }
-    router.back();
-  }, [handleSave, onBack, router]);
+    // Never `router.back()`: scene navigation stacks `/document-editor` entries,
+    // so history walks scenes instead of leaving. See lib/document-editor/editor-exit.
+    exitEditorToStoryHome(router, storyId);
+  }, [handleSave, onBack, router, storyId]);
 
   const handlePreview = useCallback(async () => {
     if (!(await handleSave())) return;

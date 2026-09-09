@@ -88,7 +88,8 @@ export function DocumentEditorHeader({
           <Pressable
             onPress={onBack}
             accessibilityRole="button"
-            accessibilityLabel={t('menu.back')}
+            accessibilityLabel={t('document.exit')}
+            accessibilityHint={t('document.exitHint')}
             style={{ width: 38, height: 44, alignItems: 'center', justifyContent: 'center' }}
           >
             <IconSymbol name="chevron.left" size={34} color={colors.foreground} />
@@ -97,17 +98,21 @@ export function DocumentEditorHeader({
           <Pressable
             onPress={onBack}
             accessibilityRole="button"
-            accessibilityLabel={t('menu.back')}
+            accessibilityLabel={t('document.exit')}
+            accessibilityHint={t('document.exitHint')}
             style={{
               height: 36,
               paddingHorizontal: 12,
               borderRadius: 8,
+              flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
+              gap: 4,
               backgroundColor: withAlpha(colors.primary, 0.08),
             }}
           >
-            <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>{t('menu.back')}</Text>
+            <IconSymbol name="chevron.left" size={16} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>{t('document.exit')}</Text>
           </Pressable>
         )}
 

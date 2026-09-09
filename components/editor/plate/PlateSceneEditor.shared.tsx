@@ -5,6 +5,7 @@ import {
   DocumentSceneEditor,
 } from '@/components/document-editor/DocumentSceneEditor';
 import { buildDocumentsResetKey } from '@/lib/document-editor/document-reset-key';
+import { exitEditorToStoryHome } from '@/lib/document-editor/editor-exit';
 import { resolveNextSceneIdForSave } from '@/lib/document-editor/document-scene';
 import type { BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
 import type { IncomingScenePath } from '@/lib/document-editor/story-path';
@@ -150,7 +151,7 @@ export function PlateSceneEditor({
       onUploadBackgroundAsset={onUploadBackgroundAsset}
       onUploadAudioAsset={onUploadAudioAsset}
       onPickVideoAsset={onPickVideoAsset}
-      onBack={() => router.back()}
+      onBack={() => exitEditorToStoryHome(router, storyId)}
       onPreview={(sceneId) => router.push({ pathname: '/preview', params: { storyId, sceneId } })}
       onSaveAndPlay={(sceneId) => router.push({ pathname: '/preview', params: { storyId, sceneId } })}
       onGallery={onGallery}
