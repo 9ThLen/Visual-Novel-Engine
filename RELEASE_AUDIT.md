@@ -135,6 +135,43 @@ had simply been superseded, conflating a stale read with a missing file — whic
 is what sent this investigation looking for an absent asset that was present all
 along. The BGM path above it already separates the two; voice now does the same.
 
+### Investigated and not defects
+
+- **Scene-graph responder warnings.** The graph view logs
+  `Unknown event handler property onStartShouldSetResponder` and three more on
+  web. Pan and zoom were measured against the SVG's bounding box and both work
+  (drag moved it, wheel scaled it), and tapping a node still selects the scene.
+  React-native-gesture-handler and react-native-svg interop noise, not a defect.
+- **The reader appears not to advance.** It does. A click in the middle of the
+  demo's first scene lands on an interactive-object hotspot, which is a scene
+  transition rather than a dialogue advance.
+- **`/story-page` says "This story is gone" for a demo story.** Correct: that
+  screen renders a published release and the demos are drafts.
+
+### Open, not fixed: autoplay rejection on a cold reader load
+
+Now that audio resolves, a reader opened with no prior interaction — a direct
+link or a refresh straight onto the route — logs three uncaught
+`NotAllowedError: play() failed because the user didn't interact with the
+document first`.
+
+The rejection is not the app's to catch. `expo-audio`'s web player is
+
+    play() { this.media.play(); this.isPlaying = true; }
+
+so the media element's promise is discarded, and `isPlaying` is set to `true`
+even when the browser refused. `AudioPlayerService.resume()` skips a track it
+believes is already playing, so a blocked track can stay silent for the rest of
+the scene. An attempt to catch this from the call site was written and then
+removed: `play()` returns `undefined` there, so nothing at that level can see
+the rejection.
+
+Not fixed here because both routes out are decisions rather than repairs: patch
+`expo-audio` (this repo does patch dependencies, through `patchedDependencies`
+in `pnpm-workspace.yaml`), or add a resume-on-first-gesture path to the audio
+manager. Reaching the reader by tapping through the app activates the document
+first, so ordinary use is unaffected.
+
 ## Remaining release verification
 
 - Native Android/iOS builds and real-device behavior have not been verified. Desktop tests validate the staged application and its offline frontend, not an installed native binary.
