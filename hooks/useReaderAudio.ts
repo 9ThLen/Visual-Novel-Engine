@@ -345,12 +345,18 @@ export function useReaderAudio(
 
       if (scene.voiceAudioUri?.trim()) {
         void resolvePlayableAssetUri(scene.voiceAudioUri).then((uri) => {
+          // Superseded by a later scene, or a session that has since ended:
+          // ordinary, and not something the asset failed at. Reporting it as a
+          // resolution failure — as this did — sends anyone reading the console
+          // looking for a missing file that is sitting right where it belongs.
           if (
             sceneGenerationRef.current !== generation ||
-            !isReaderAudioSessionValid(sessionId) ||
-            !uri
+            !isReaderAudioSessionValid(sessionId)
           ) {
-            if (shouldLogDevDiagnostics() && scene.voiceAudioUri?.trim()) {
+            return;
+          }
+          if (!uri) {
+            if (shouldLogDevDiagnostics()) {
               console.warn('[useReaderAudio] Could not resolve voice:', scene.voiceAudioUri);
             }
             return;

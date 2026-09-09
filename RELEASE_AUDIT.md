@@ -94,6 +94,47 @@ claimed otherwise; that came from running `eslint .` directly over the whole
 repo, which covers test and mock files the project's own lint script does not.
 There is no lint debt to act on.
 
+### Bundled audio was silently dropped on web
+
+Driving the reader rather than only loading it surfaced this. The console said
+`Could not resolve BGM` and `Could not resolve voice` for files that are sitting
+in `assets/sounds-sample/` and are listed in `lib/bundled-assets.ts`.
+
+They resolve fine. `getBrowserSafeAudioUri()` then threw the result away.
+A bundled asset resolves on web to a root-relative URL —
+`/assets/?unstable_path=.%2Fassets%2Fsounds-sample/music-mysterious-adventure.mp3`
+— and the filter accepted only `http://`, `https://`, `blob:` and `data:audio/`,
+so every same-origin path became `null` and the track never played. The filter
+exists to stop a native cache path reaching an `<audio>` element on a served
+page; a relative path is not that, and is exactly as playable as an absolute URL.
+
+The same rejection hit the exported player opened from disk: there
+`resolveWebUrl()` resolves packaged media against `document.baseURI`, which is
+`file://`, and `file://` was rejected too — on a page that is itself on `file:`,
+that is its own origin and the only copy of the file that exists.
+
+Relative references are now kept, and `file://` is kept only when the document
+is itself on `file:`, so the native-cache case this filter was written for is
+still rejected. Protocol-relative `//host/track.mp3` names another origin and is
+rejected rather than given the same-origin benefit of the doubt.
+
+Verified in the browser: the demo reader now fetches
+`music-mysterious-adventure.mp3` (200) and `voice-guide-welcome.mp3` (206) where
+before it fetched neither, and the packaged player serves two mp3s with no
+warnings. The offline `file://` player no longer logs a resolution failure;
+Chromium does not surface `file://` subresource requests, so that case rests on
+the warning being gone and on the code path, not on an observed file read.
+
+No test covered this: the player suite asserts the first scene renders and never
+advances the reader or looks at audio.
+
+### A voice warning that fired when nothing was wrong
+
+`useReaderAudio` reported `Could not resolve voice` for a scene generation that
+had simply been superseded, conflating a stale read with a missing file — which
+is what sent this investigation looking for an absent asset that was present all
+along. The BGM path above it already separates the two; voice now does the same.
+
 ## Remaining release verification
 
 - Native Android/iOS builds and real-device behavior have not been verified. Desktop tests validate the staged application and its offline frontend, not an installed native binary.
