@@ -245,6 +245,31 @@ the handler deliberately swallows `AbortError` — a cancelled save is not an
 error; and `Export` opens a confirmation first rather than downloading. Both
 need the fallback path or a real confirmation to exercise.
 
+### A published story's own link reported it gone
+
+Found by publishing a release and then following the path a reader takes, which
+nothing had exercised: the demos are drafts, so `/story-page` had never been
+seen with a real release behind it.
+
+Published, the page renders correctly when reached from the showcase — and says
+`This story is gone` when the same URL is opened directly or reloaded. That is
+the shareable link for a published story, so the one visit it was built for was
+the one that failed.
+
+`loadPublishedReleases()` walks `storiesMetadata`, which the bootstrap on this
+screen fills asynchronously. The load ran once on mount, found an empty list,
+and was never re-run; arriving from the showcase worked only because the stories
+were already in memory. It now re-runs when they land.
+
+The draft case still answers `This story is gone`, which is correct. A studio
+e2e test covers it — publish, then open the page by URL with no showcase visit
+first — and was checked in both directions: it fails against the old code.
+
+This also corrects an earlier entry in this file. `/story-page` refusing a demo
+was recorded as "investigated and not a defect". That reading was right about
+drafts and wrong to stop there: the screen was never tried with a published
+story, which is the case it exists for.
+
 ## Remaining release verification
 
 - Native Android/iOS builds and real-device behavior have not been verified. Desktop tests validate the staged application and its offline frontend, not an installed native binary.

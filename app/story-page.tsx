@@ -71,9 +71,16 @@ export default function StoryPageScreen() {
   const loadPublishedReleases = useAppStore((state) => state.loadPublishedReleases);
   const openReleaseForReading = useAppStore((state) => state.openReleaseForReading);
 
+  // The load walks `storiesMetadata`, which the bootstrap above fills
+  // asynchronously — so on mount there is nothing to walk and it finds no
+  // release. Running it only once left a direct visit, a shared link or a
+  // reload, looking at a published story and reporting it gone; arriving from
+  // the showcase worked because the stories were already in memory. Re-run
+  // when they land.
+  const storyCount = storiesMetadata.length;
   useEffect(() => {
     void loadPublishedReleases().catch(() => undefined);
-  }, [loadPublishedReleases]);
+  }, [loadPublishedReleases, storyCount]);
 
   const story = useMemo(() => {
     if (!release) return null;

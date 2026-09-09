@@ -59,6 +59,35 @@ test('publishes a bundled story from its project page', async ({ page }) => {
 });
 
 /**
+ * What a published story's link is for. The project page loads its release by
+ * walking the story list, which the bootstrap fills asynchronously — so running
+ * that load once on mount found nothing, and a visit that did not come from the
+ * showcase reported a published story gone. Arriving from the shelf worked,
+ * which is why only a direct visit catches it: this test opens the page by URL.
+ */
+test('opens a published story page from its link, not only from the showcase', async ({ page }) => {
+  await openStoryHome(page, 'The Enchanted Museum');
+
+  await page.getByRole('button', { name: 'Release…', exact: true }).click();
+  await expect(page.getByText('Release this story')).toBeVisible();
+  const version = page.getByLabel('Version', { exact: true });
+  const chosen = await version.inputValue();
+  await page.getByRole('button', { name: 'Release', exact: true }).last().click();
+  await expect(page.getByText(new RegExp(`Published v${chosen.replace(/\./g, '\\.')}`)))
+    .toBeVisible({ timeout: 120_000 });
+
+  const storyId = new URL(page.url()).searchParams.get('storyId');
+  expect(storyId).toBeTruthy();
+
+  // A fresh navigation, the way a shared link arrives: no showcase visit before
+  // it, so nothing has put the stories in memory on this screen's behalf.
+  await page.goto(`/story-page?storyId=${storyId}`);
+
+  await expect(page.getByText('The Enchanted Museum').first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText('This story is gone')).toHaveCount(0);
+});
+
+/**
  * The gate is the reason the button above is usable, so it is worth seeing it
  * work rather than inferring it from a green publish.
  */
