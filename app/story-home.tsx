@@ -39,7 +39,7 @@ import {
 import { computeStoryStats } from '@/lib/story-stats';
 import { runStoryDoctor } from '@/lib/story-doctor';
 import { runReleasePreflight } from '@/lib/release/preflight';
-import type { ReleaseChannel } from '@/lib/release/types';
+import { releaseChannelForTargets, type ReleaseTarget } from '@/lib/release/types';
 import { highestReleaseVersion, type ReleaseMeta } from '@/lib/release/release-storage';
 import { publishStoryRelease, resolveEngineVersion } from '@/lib/release/service';
 import { saveAndroidBuildArtifact, savePlayerBundle } from '@/lib/release/bundle-file';
@@ -112,6 +112,13 @@ function dateFormatterFor(language: string): Intl.DateTimeFormat {
 
 /** One reading column; the paper pattern frames it on either side. */
 const COLUMN_MAX_WIDTH = 920;
+
+/**
+ * One height for every pill in the passport — the rating segments, the language
+ * field, the tag chips and the add-a-tag field. They sit on two adjacent rows,
+ * so a shared measure is what makes them read as one strip.
+ */
+const PILL_HEIGHT = 30;
 /** Thumbnails before the strip turns into «+N». */
 const GALLERY_PREVIEW_COUNT = 6;
 
@@ -355,7 +362,8 @@ export default function StoryHomeScreen() {
    * than for the strictest channel: a story that is ready to hand to a friend
    * as an app should not be blocked by what a storefront listing would need.
    */
-  const [releaseChannel, setReleaseChannel] = useState<ReleaseChannel>('both');
+  const [releaseTargets, setReleaseTargets] = useState<ReleaseTarget[]>(['page']);
+  const releaseChannel = releaseChannelForTargets(releaseTargets);
   const [exportProgress, setExportProgress] = useState<PlayerBundleProgress | null>(null);
   const [exportMessage, setExportMessage] = useState<
     { tone: 'error' | 'done'; text: string } | null
@@ -1226,9 +1234,15 @@ export default function StoryHomeScreen() {
                     onPress={handleRemoveCover}
                     accessibilityRole="button"
                     accessibilityLabel={t('storyHome.removeCover')}
-                    style={styles.removeCoverBtn}
+                    style={({ pressed }) => [
+                      styles.removeCoverBtn,
+                      { borderColor: colors['border-subtle'], opacity: pressed ? 0.7 : 1 },
+                    ]}
                   >
-                    <Text style={[styles.removeCoverText, { color: colors.muted }]}>{t('storyHome.removeCover')}</Text>
+                    <IconSymbol name="xmark" size={11} color={colors['foreground-tertiary']} />
+                    <Text style={[styles.removeCoverText, { color: colors['foreground-tertiary'] }]}>
+                      {t('storyHome.removeCover')}
+                    </Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -1276,40 +1290,58 @@ export default function StoryHomeScreen() {
                   style={[fieldStyle('description'), styles.aboutField, { color: colors['foreground-secondary'] }]}
                 />
 
+                {/* The three publication facts share one row and one pill
+                    rhythm; each is named, because a bare "en" in a box tells
+                    nobody what it sets. */}
                 <View style={styles.publication}>
-                  <SegmentedControl<ContentRating>
-                    options={CONTENT_RATINGS.map((rating) => ({
-                      value: rating,
-                      label: t(`storyHome.contentRating.${rating}`),
-                    }))}
-                    value={story.contentRating ?? 'everyone'}
-                    onChange={commitContentRating}
-                    accessibilityLabel={t('storyHome.contentRatingLabel')}
-                    segmentMinWidth={78}
-                  />
-                  <TextInput
-                    value={languagesDraft}
-                    onChangeText={setLanguagesDraft}
-                    onFocus={() => setFocusedField('languages')}
-                    onBlur={() => {
-                      setFocusedField(null);
-                      commitLanguages();
-                    }}
-                    autoCapitalize="none"
-                    placeholder={t('storyHome.languagesPlaceholder')}
-                    placeholderTextColor={colors['foreground-disabled']}
-                    accessibilityLabel={t('storyHome.languagesLabel')}
-                    style={[
-                      styles.tagInput,
-                      {
-                        borderColor: focusedField === 'languages' ? colors.primary : colors['border-subtle'],
-                        color: colors.foreground,
-                      },
-                    ]}
-                  />
+                  <View style={styles.publicationField}>
+                    <Text style={[styles.fieldCaption, { color: colors['foreground-tertiary'] }]}>
+                      {t('storyHome.contentRatingLabel')}
+                    </Text>
+                    <SegmentedControl<ContentRating>
+                      options={CONTENT_RATINGS.map((rating) => ({
+                        value: rating,
+                        label: t(`storyHome.contentRating.${rating}`),
+                      }))}
+                      value={story.contentRating ?? 'everyone'}
+                      onChange={commitContentRating}
+                      accessibilityLabel={t('storyHome.contentRatingLabel')}
+                      segmentMinWidth={72}
+                      colors={colors}
+                    />
+                  </View>
+                  <View style={styles.publicationField}>
+                    <Text style={[styles.fieldCaption, { color: colors['foreground-tertiary'] }]}>
+                      {t('storyHome.languagesLabel')}
+                    </Text>
+                    <TextInput
+                      value={languagesDraft}
+                      onChangeText={setLanguagesDraft}
+                      onFocus={() => setFocusedField('languages')}
+                      onBlur={() => {
+                        setFocusedField(null);
+                        commitLanguages();
+                      }}
+                      autoCapitalize="none"
+                      placeholder={t('storyHome.languagesPlaceholder')}
+                      placeholderTextColor={colors['foreground-disabled']}
+                      accessibilityLabel={t('storyHome.languagesLabel')}
+                      style={[
+                        styles.pillInput,
+                        {
+                          backgroundColor: colors['surface-2'],
+                          borderColor: focusedField === 'languages' ? colors.primary : colors['border-subtle'],
+                          color: colors.foreground,
+                        },
+                      ]}
+                    />
+                  </View>
                 </View>
 
                 <View style={styles.tagRow}>
+                  <Text style={[styles.fieldCaption, styles.tagCaption, { color: colors['foreground-tertiary'] }]}>
+                    {t('storyHome.tagsLabel')}
+                  </Text>
                   {tags.map((tag) => (
                     <Pressable
                       key={tag}
@@ -1340,9 +1372,10 @@ export default function StoryHomeScreen() {
                     maxLength={MAX_STORY_TAG_LENGTH}
                     returnKeyType="done"
                     style={[
-                      styles.tagInput,
+                      styles.pillInput,
+                      styles.addInput,
                       {
-                        borderColor: focusedField === 'tag' ? colors.primary : colors['border-subtle'],
+                        borderColor: focusedField === 'tag' ? colors.primary : colors.border,
                         color: colors.foreground,
                       },
                     ]}
@@ -1467,8 +1500,8 @@ export default function StoryHomeScreen() {
             story={story}
             releases={releases}
             preflight={releasePreflight}
-            channel={releaseChannel}
-            onChannelChange={setReleaseChannel}
+            targets={releaseTargets}
+            onTargetsChange={setReleaseTargets}
             busy={releasing}
             onPublish={handlePublish}
             onSetPublished={handleSetPublished}
@@ -1775,12 +1808,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // A bordered pill, not bare 10px text: the only way to drop a cover has to
+  // look like something you can press.
   removeCoverBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: spacing.sm,
+    justifyContent: 'center',
+    gap: spacing.xs,
+    alignSelf: 'center',
+    height: 28,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    marginTop: spacing.sm,
   },
   removeCoverText: {
     ...typeScale.micro,
+    fontWeight: '600',
   },
   fields: {
     flex: 1,
@@ -1815,9 +1859,26 @@ const styles = StyleSheet.create({
   },
   publication: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     flexWrap: 'wrap',
-    gap: spacing.sm,
+    gap: spacing.md,
+    paddingTop: spacing.xs,
+  },
+  publicationField: {
+    gap: spacing.xs,
+  },
+  // Names the control underneath it. Small and quiet: the passport is still a
+  // page, and these read as captions, not as form labels.
+  fieldCaption: {
+    ...typeScale.micro,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  tagCaption: {
+    // The caption sits on the chips' own line, so it has to hold their height.
+    lineHeight: PILL_HEIGHT,
+    marginRight: spacing.xs,
   },
   tagRow: {
     flexDirection: 'row',
@@ -1826,27 +1887,35 @@ const styles = StyleSheet.create({
     gap: spacing.xs + 2,
     paddingTop: spacing.xs,
   },
+  // Chips, the language field and the add-a-tag field all stand PILL_HEIGHT
+  // tall, so the two rows read as one strip instead of three loose sizes.
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs + 1,
+    height: PILL_HEIGHT,
     borderWidth: 1,
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
-    paddingVertical: 3,
   },
   chipText: {
     ...typeScale.caption,
+    fontWeight: '600',
   },
-  tagInput: {
+  pillInput: {
     minWidth: 116,
-    height: 28,
+    height: PILL_HEIGHT,
     borderWidth: 1,
-    borderStyle: 'dashed',
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
     fontSize: typeScale.caption.fontSize,
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
+  },
+  // Dashed means "nothing here yet, add one" — kept for the empty add field and
+  // taken away from the language field, which holds a real value.
+  addInput: {
+    borderStyle: 'dashed',
+    minWidth: 104,
   },
   statsLine: {
     ...typeScale.caption,

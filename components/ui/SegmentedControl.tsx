@@ -10,6 +10,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useColors } from '@/hooks/use-colors';
+import type { ThemeColorPalette } from '@/lib/_core/theme';
+import { radius } from '@/lib/design-tokens';
 
 export interface SegmentedOption<T> {
   value: T;
@@ -29,6 +31,13 @@ interface Props<T> {
   accessibilityLabel: string;
   /** Widens every segment to the same measure, for columns of digits. */
   segmentMinWidth?: number;
+  /**
+   * The palette of the surface this sits on. Screens that pin a scheme — the
+   * studio is always light, whatever the reader's theme is — must pass theirs,
+   * or the control paints itself in the app scheme and lands as a dark slab on
+   * a light page.
+   */
+  colors?: ThemeColorPalette;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -38,14 +47,20 @@ export function SegmentedControl<T extends string | number>({
   onChange,
   accessibilityLabel,
   segmentMinWidth = 36,
+  colors: colorsProp,
   style,
 }: Props<T>) {
-  const colors = useColors();
+  const themeColors = useColors();
+  const colors = colorsProp ?? themeColors;
 
   return (
     <View
       accessibilityRole="radiogroup"
-      style={[styles.track, { backgroundColor: colors['surface-2'] }, style]}
+      style={[
+        styles.track,
+        { backgroundColor: colors['surface-2'], borderColor: colors['border-subtle'] },
+        style,
+      ]}
     >
       {options.map((option) => {
         const selected = option.value === value;
@@ -65,11 +80,7 @@ export function SegmentedControl<T extends string | number>({
               { minWidth: segmentMinWidth, opacity: pressed ? 0.7 : 1 },
               selected && {
                 backgroundColor: colors.surface,
-                shadowColor: colors['shadow-color'],
-                shadowOpacity: 0.16,
-                shadowRadius: 2,
-                shadowOffset: { width: 0, height: 1 },
-                elevation: 1,
+                borderColor: colors.border,
               },
             ]}
           >
@@ -77,9 +88,9 @@ export function SegmentedControl<T extends string | number>({
               style={[
                 styles.label,
                 {
-                  color: colors.foreground,
+                  color: selected ? colors.primary : colors['foreground-secondary'],
                   fontSize: option.fontSize ?? 12,
-                  fontWeight: selected ? '600' : '500',
+                  fontWeight: selected ? '700' : '500',
                 },
               ]}
             >
@@ -96,14 +107,21 @@ const styles = StyleSheet.create({
   track: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 8,
+    borderWidth: 1,
+    borderRadius: radius.full,
     padding: 2,
     gap: 2,
   },
   segment: {
-    height: 26,
-    paddingHorizontal: 7,
-    borderRadius: 6,
+    // 24 + 2x2 track padding + the track's 1px ring = a 30pt control, the same
+    // measure the studio's pills and chips stand at.
+    height: 24,
+    paddingHorizontal: 10,
+    borderRadius: radius.full,
+    // The unselected segments carry a transparent ring so choosing one does not
+    // change the control's measure.
+    borderWidth: 1,
+    borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },

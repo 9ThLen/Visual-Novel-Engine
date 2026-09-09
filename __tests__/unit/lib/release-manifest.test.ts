@@ -111,6 +111,63 @@ function withPublication(changes: Record<string, unknown>): Record<string, unkno
 }
 
 describe('parseReleaseManifest', () => {
+  it('maps legacy channels without inferring unsupported platforms', () => {
+    expect(parseReleaseManifest(withRelease({ channel: 'page' })).release.targets).toEqual(['page']);
+    expect(parseReleaseManifest(withRelease({ channel: 'app' })).release.targets).toEqual(['android']);
+    expect(parseReleaseManifest(withRelease({ channel: 'both' })).release.targets).toEqual(['page', 'android']);
+  });
+
+  it('preserves independent platform targets in schema v1', () => {
+    const parsed = parseReleaseManifest(withRelease({ channel: 'app', targets: ['android', 'windows'] }));
+    expect(parsed.release.targets).toEqual(['android', 'windows']);
+    expect(parsed.schemaVersion).toBe(1);
+  });
+
+  it('refuses a targets field that is not a list at all', () => {
+    // Malformed rather than unfamiliar: nothing in it can be salvaged, and
+    // quietly reinterpreting it would hide a writer that is broken.
+    expect(() => parseReleaseManifest(withRelease({ channel: 'app', targets: 'android' })))
+      .toThrow(/targets/);
+  });
+
+  /**
+   * A release naming a target this build has never heard of has to keep opening.
+   * `targets` is additive metadata — a v1 player ignores the field entirely and
+   * plays from `channel` — so an unknown value inside it must degrade the same
+   * way rather than making the manifest unreadable. `scripts/build-desktop.ts`
+   * already bundles deb, appimage and dmg, so this is the near future, not a
+   * hypothetical.
+   */
+  describe('a target added by a later engine', () => {
+    it('keeps the part this build understands', () => {
+      const parsed = parseReleaseManifest(withRelease({ channel: 'both', targets: ['page', 'linux'] }));
+      expect(parsed.release.targets).toEqual(['page']);
+      expect(parsed.release.channel).toBe('both');
+    });
+
+    it('falls back to the channel when nothing in the list is known', () => {
+      const parsed = parseReleaseManifest(withRelease({ channel: 'both', targets: ['linux', 'macos'] }));
+      expect(parsed.release.targets).toEqual(['page', 'android']);
+    });
+
+    it('falls back to the channel for an empty list', () => {
+      // Lenient here, strict where it is written: `releaseChannelForTargets`
+      // refuses an empty selection, so a release cannot be published with one.
+      expect(parseReleaseManifest(withRelease({ channel: 'app', targets: [] })).release.targets)
+        .toEqual(['android']);
+    });
+  });
+
+  it('keeps a contradictory file readable, with the channel authoritative', () => {
+    // From the reader's side this is nearly the same shape as the case above —
+    // a list that resolves to less than the channel claims. Refusing it is what
+    // made a future target unopenable, and the cost of accepting it is cosmetic:
+    // `channel` is what every v1 player acts on either way.
+    const parsed = parseReleaseManifest(withRelease({ channel: 'app', targets: ['page'] }));
+    expect(parsed.release.channel).toBe('app');
+    expect(parsed.release.targets).toEqual(['page']);
+  });
+
   it('accepts a well-formed manifest', () => {
     const parsed = parseReleaseManifest(validManifest());
     expect(parsed.release.version).toBe('1.0.0');
