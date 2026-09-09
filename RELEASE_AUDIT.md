@@ -227,6 +227,24 @@ counted. The tile says "in the library" rather than "in this story", and the
 unused-asset count beside it is filtered to the story's own gallery, so nothing
 destructive is offered over another story's files.
 
+### Backup and restore, verified end to end
+
+The path the copy exists for — carry the work to another device — driven through
+the UI on the demo story:
+
+| Step | Result |
+| --- | --- |
+| `Create copy` on the project page | `The_Enchanted_Museum.vnebackup`, 89,939,840 bytes |
+| Re-open it through `Import` | Reads it and reports scenes 14, characters 7, media 18 files, matching the story |
+| `Import as new story` | Lands on the restored story's own page |
+| Library afterwards | 3 stories, 44 scenes; the copy carries all 14 scenes, 636 words, 24 choices |
+
+Two things that look like failures under automation and are not: `Create copy`
+does nothing visible when `showSaveFilePicker` is present and rejects, because
+the handler deliberately swallows `AbortError` — a cancelled save is not an
+error; and `Export` opens a confirmation first rather than downloading. Both
+need the fallback path or a real confirmation to exercise.
+
 ## Remaining release verification
 
 - Native Android/iOS builds and real-device behavior have not been verified. Desktop tests validate the staged application and its offline frontend, not an installed native binary.
