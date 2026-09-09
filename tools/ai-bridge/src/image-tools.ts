@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-import { MAX_DECODED_IMAGE_BYTES, type BridgeImageProvider, type BridgeImagePlacement } from '../../../lib/bridge-protocol';
-import { getBridgeTool } from '../../../lib/ai/bridge-tools';
+import { MAX_DECODED_IMAGE_BYTES, type BridgeImageProvider, type BridgeImagePlacement } from '../../../src/lib/bridge-protocol';
+import { getBridgeTool } from '../../../src/lib/ai/bridge-tools';
 import { BridgeToolError } from './provider';
 import type { BridgeToolHandler } from './tool-runtime';
 import {

@@ -10,7 +10,7 @@ Follow this workflow without duplicating repository conventions.
 1. Decide whether a code change is necessary; reuse a matching implementation when one exists.
 2. If `graphify-out/graph.json` exists, run `graphify query "<task>"` first. Then use `rg`, `package.json`, and imports to identify at most three likely files before opening them.
 3. Read only targeted ranges and do not reread unchanged files. Use `rg` for symbols, errors, and relevant call sites; inspect full files only when they are short or strictly necessary.
-4. Respect the canonical architecture: plate/document editing, `SceneRecord + TimelineStep`, `useSceneExecutor`, `lib/scene-access.ts`, Zustand through `useAppStore()`, and persistent storage through `createPersistentStorage()`.
+4. Respect the canonical architecture: plate/document editing, `SceneRecord + TimelineStep`, `useSceneExecutor`, `src/lib/scene-access.ts`, Zustand through `useAppStore()`, and persistent storage through `createPersistentStorage()`.
 5. Make the smallest correct localized edit. Do not refactor adjacent code or add a dependency without need. If a failure repeats twice, research several plausible fixes before changing code again.
 6. Run the narrowest relevant validation first. After code edits, run `graphify update .`; report only the result, changed files, validation, and any remaining problem.
 

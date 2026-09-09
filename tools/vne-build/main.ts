@@ -25,7 +25,7 @@ import {
   verifyStagedAndroidProject,
 } from './stage-android';
 
-import playerProfile from '../../player-profile.js';
+import playerProfile from '../../config/player-profile.js';
 import { beginOutPath } from '../lib/out-path';
 
 import {

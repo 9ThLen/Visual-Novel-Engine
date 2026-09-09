@@ -32,7 +32,7 @@
 
 ## Поточні архітектурні обмеження
 
-- Канонічна сцена: `SceneRecord + TimelineStep` у `lib/engine/types.ts`.
+- Канонічна сцена: `SceneRecord + TimelineStep` у `src/lib/engine/types.ts`.
 - `useSceneExecutor` має yield-point лише для `text`, `dialogue`, `choice`, `transition`; `advance()` і `selectChoice()` є чинними шляхами продовження.
 - `SceneState` входить у persisted `ProjectScene`, копіюється під час duplicate і бере участь у AI revision hash.
 - Reader отримує timeline через `toReaderScene()`, але не переносить persisted `sceneState`.
@@ -45,7 +45,7 @@
 
 ## Цільова модель даних
 
-Використати плоский `VideoBlockData`, сумісний з іншими `BlockData` та текстовою граматикою. Parser приймає частково заповнений або некоректний авторський запис, а `normalizeVideoData()` приводить його до безпечного runtime contract. Це повторює патерн `normalizeTransitionData()` з `lib/engine/transition-utils.ts`.
+Використати плоский `VideoBlockData`, сумісний з іншими `BlockData` та текстовою граматикою. Parser приймає частково заповнений або некоректний авторський запис, а `normalizeVideoData()` приводить його до безпечного runtime contract. Це повторює патерн `normalizeTransitionData()` з `src/lib/engine/transition-utils.ts`.
 
 ```ts
 export interface VideoBlockData {
@@ -186,8 +186,8 @@ Gate лишається **закритим**: тестовий MP4 жодног�
 
 ### Asset contract
 
-- Додати `'video'` до `AssetType` у `lib/media-library-service.ts`.
-- Додати MP4 MIME/extension mappings у media service та `stores/backup-local-repository.ts`.
+- Додати `'video'` до `AssetType` у `src/lib/media-library-service.ts`.
+- Додати MP4 MIME/extension mappings у media service та `src/stores/backup-local-repository.ts`.
 - Додати `AssetUsageKind: 'video'`, reference collection для video-step та окрему сумісність kind.
 - `collectAssetReferences()` повертає дві незалежні references для `play`: `assetId` як video та `posterAssetId` як image-compatible background reference. Poster бере участь в unused/broken analysis, отримує story membership і потрапляє в `.vnebackup`.
 - Додати Story Doctor codes:
@@ -248,7 +248,7 @@ Gate лишається **закритим**: тестовий MP4 жодног�
   - Plate embedded commands, renderer, script і normalizer;
   - test generators, fuzz/round-trip fixtures.
 - Parser/serializer grammar має зберігати всі video-поля без втрат.
-- Додати `lib/engine/video-utils.ts` з `normalizeVideoData()` і тести для partial JSON, некоректних enum/numbers, `background + loop:false`, `cutscene + loop:true` та `stop` із зайвими playback-полями.
+- Додати `src/lib/engine/video-utils.ts` з `normalizeVideoData()` і тести для partial JSON, некоректних enum/numbers, `background + loop:false`, `cutscene + loop:true` та `stop` із зайвими playback-полями.
 - Старі історії не потребують міграції: відсутність video-step валідна.
 
 ### Runtime
@@ -260,7 +260,7 @@ Gate лишається **закритим**: тестовий MP4 жодног�
 
 ### Renderer
 
-- Створити спільний `components/reader/SceneVideoLayer.tsx` на `expo-video`.
+- Створити спільний `src/components/reader/SceneVideoLayer.tsx` на `expo-video`.
 - Підключити його до PreviewScreen і ReaderDisplay/reader stage.
 - URI завжди резолвити через наявний asset resolver.
 - Player створювати hook-ом і звільняти на unmount/source replacement.
@@ -415,61 +415,61 @@ graphify update .
 
 ### Модель і round-trip
 
-- `lib/engine/types.ts`
-- `lib/engine/event-factory.ts`
-- `lib/engine/runtime-types.ts`
-- новий `lib/engine/video-utils.ts`
-- `lib/engine/useSceneExecutor.ts`
-- `lib/engine/conditionUtils.ts`
-- `lib/document-editor/types.ts`
-- `lib/document-editor/commands.ts`
-- `lib/document-editor/document-scene.ts`
-- `lib/scene-document/sceneTypes.ts`
-- `lib/scene-document/sceneRecordAdapter.ts`
-- `lib/scene-document/sceneParser.ts`
-- `lib/scene-document/sceneSerializer.ts`
-- `lib/scene-document/sceneValidation.ts`
-- `lib/editor/story-manuscript.ts`
-- `lib/story-hooks.ts`
-- `lib/ai/scene-patch-types.ts`
+- `src/lib/engine/types.ts`
+- `src/lib/engine/event-factory.ts`
+- `src/lib/engine/runtime-types.ts`
+- новий `src/lib/engine/video-utils.ts`
+- `src/lib/engine/useSceneExecutor.ts`
+- `src/lib/engine/conditionUtils.ts`
+- `src/lib/document-editor/types.ts`
+- `src/lib/document-editor/commands.ts`
+- `src/lib/document-editor/document-scene.ts`
+- `src/lib/scene-document/sceneTypes.ts`
+- `src/lib/scene-document/sceneRecordAdapter.ts`
+- `src/lib/scene-document/sceneParser.ts`
+- `src/lib/scene-document/sceneSerializer.ts`
+- `src/lib/scene-document/sceneValidation.ts`
+- `src/lib/editor/story-manuscript.ts`
+- `src/lib/story-hooks.ts`
+- `src/lib/ai/scene-patch-types.ts`
 
 ### Plate/editor
 
-- `lib/vn-plate-editor/types.ts`
-- `lib/vn-plate-editor/embedded-commands.ts`
-- `lib/vn-plate-editor/embedded-renderers.ts`
-- `lib/vn-plate-editor/embedded-script.ts`
-- `lib/vn-plate-editor/scene-normalizer.ts`
-- `components/vn-plate-editor/PlateWebViewEditor.web.tsx`
-- `components/editor/plate/PlateSceneEditor.shared.tsx`
-- `components/document-editor/DocumentSceneEditor.tsx`
+- `src/lib/vn-plate-editor/types.ts`
+- `src/lib/vn-plate-editor/embedded-commands.ts`
+- `src/lib/vn-plate-editor/embedded-renderers.ts`
+- `src/lib/vn-plate-editor/embedded-script.ts`
+- `src/lib/vn-plate-editor/scene-normalizer.ts`
+- `src/components/vn-plate-editor/PlateWebViewEditor.web.tsx`
+- `src/components/editor/plate/PlateSceneEditor.shared.tsx`
+- `src/components/document-editor/DocumentSceneEditor.tsx`
 - `app/document-editor.tsx`
 
 ### Assets, backup і діагностика
 
-- `lib/media-library-service.ts`
-- новий `lib/pick-video.ts`
-- `lib/asset-usage.ts`
-- `lib/story-doctor.ts`
-- `lib/story-backup/capture.ts`
-- `stores/backup-local-repository.ts`
-- `lib/translations.ts`
-- `lib/translations.json`
-- `stores/app-store-types.ts`
+- `src/lib/media-library-service.ts`
+- новий `src/lib/pick-video.ts`
+- `src/lib/asset-usage.ts`
+- `src/lib/story-doctor.ts`
+- `src/lib/story-backup/capture.ts`
+- `src/stores/backup-local-repository.ts`
+- `src/lib/translations.ts`
+- `src/lib/translations.json`
+- `src/stores/app-store-types.ts`
 - `stores/app-store-persistence.ts`
-- `stores/app-store-slices/libraries-slice.ts`
+- `src/stores/app-store-slices/libraries-slice.ts`
 
 ### Runtime UI та save/audio
 
-- новий `components/reader/SceneVideoLayer.tsx`
-- `components/reader/ReaderDisplay.tsx`
-- `components/story-reader-responsive.tsx`
-- `components/editor/PreviewScreen.tsx`
-- `hooks/useReaderAudio.ts`
-- `components/ReaderMenu.tsx`
-- `components/StoryAutoSave.tsx`
-- `lib/story-domain.ts`
-- `stores/app-store-slices/saves-slice.ts`
+- новий `src/components/reader/SceneVideoLayer.tsx`
+- `src/components/reader/ReaderDisplay.tsx`
+- `src/components/story-reader-responsive.tsx`
+- `src/components/editor/PreviewScreen.tsx`
+- `src/hooks/useReaderAudio.ts`
+- `src/components/ReaderMenu.tsx`
+- `src/components/StoryAutoSave.tsx`
+- `src/lib/story-domain.ts`
+- `src/stores/app-store-slices/saves-slice.ts`
 
 ## Definition of Done
 

@@ -73,17 +73,17 @@ not build two publishing paths that can disagree about what "the story" is.
 | Capability | Where |
 | --- | --- |
 | Single-story web bundle (CLI only) | `scripts/export-story-web.ts`, `pnpm export:story` |
-| Player-mode boot flag + editor lockout | `lib/player-mode.ts`, `lib/player-mode-boot.ts`, `components/PlayerModeRouteGuard.tsx`, `app/index.tsx` |
+| Player-mode boot flag + editor lockout | `src/lib/player-mode.ts`, `src/lib/player-mode-boot.ts`, `src/components/PlayerModeRouteGuard.tsx`, `app/index.tsx` |
 | Production hardening of web output (CSP, frame guard, `404.html`) | `scripts/lib/harden-web-output.mjs` |
-| Story graph validation for export | `scripts/lib/validate-story-graph.mjs`, `lib/document-editor/scene-graph-validator.ts` |
-| Health report with severities and deep links | `lib/story-doctor.ts`, `components/story-home/StoryHealthCard.tsx` |
-| Full-fidelity archive with media (`.vnebackup`) | `lib/story-backup/*` — zip via `fflate`, `manifest.json` + `story.json` + content-addressed `objects/<sha256>` |
-| Consumer-facing showcase + story page + reviews | `lib/showcase/*`, `app/tabs/index.tsx`, `app/story-page.tsx`, `lib/reviews/*` |
-| Per-story reader theme and layout preset | `lib/story-theme.ts`, `app/theme-studio.tsx` |
-| Sub-path web hosting hook | `VNE_WEB_BASE_URL` to `experiments.baseUrl` in `app.config.js`, `lib/web-base-url.ts` |
+| Story graph validation for export | `scripts/lib/validate-story-graph.mjs`, `src/lib/document-editor/scene-graph-validator.ts` |
+| Health report with severities and deep links | `src/lib/story-doctor.ts`, `src/components/story-home/StoryHealthCard.tsx` |
+| Full-fidelity archive with media (`.vnebackup`) | `src/lib/story-backup/*` — zip via `fflate`, `manifest.json` + `story.json` + content-addressed `objects/<sha256>` |
+| Consumer-facing showcase + story page + reviews | `src/lib/showcase/*`, `app/tabs/index.tsx`, `app/story-page.tsx`, `src/lib/reviews/*` |
+| Per-story reader theme and layout preset | `src/lib/story-theme.ts`, `app/theme-studio.tsx` |
+| Sub-path web hosting hook | `VNE_WEB_BASE_URL` to `experiments.baseUrl` in `app.config.js`, `src/lib/web-base-url.ts` |
 | Native build config | `eas.json`, `android/`, `app.config.js` — present but generic: one app, no per-story identity |
 | Env-driven build configuration seam | `VNE_WEB_BASE_URL` in `app.config.js` — the pattern the native identity vars extend |
-| Splash screen plumbing | `expo-splash-screen` plugin, `lib/splash-types.ts` |
+| Splash screen plumbing | `expo-splash-screen` plugin, `src/lib/splash-types.ts` |
 
 ### Missing — the actual gap list
 
@@ -112,7 +112,7 @@ A **release** is an immutable, content-addressed snapshot of one story at one
 version. It is produced once, verified once, and then consumed by both channels.
 
 Format: `.vnerelease` — the **same container as `.vnebackup`**, extended, not
-reinvented. `lib/story-backup/archive.ts` already writes and reads a streaming
+reinvented. `src/lib/story-backup/archive.ts` already writes and reads a streaming
 zip with a manifest, a JSON payload and `objects/<sha256>` blobs, with size
 caps, ratio caps and hash verification. A release adds a `release` block to the
 manifest and a stricter payload contract.
@@ -170,8 +170,8 @@ interface ReleaseBlock {
 }
 ```
 
-`stats` is computed, never typed by hand — `lib/story-stats.ts` and
-`lib/showcase/story-showcase.ts` already produce every number in it.
+`stats` is computed, never typed by hand — `src/lib/story-stats.ts` and
+`src/lib/showcase/story-showcase.ts` already produce every number in it.
 
 ### 2.3 Pipeline
 
@@ -182,11 +182,11 @@ working copy  ->  preflight  ->  compile  ->  package  ->  Channel A: publish to
 
 Four stages, each independently testable:
 
-1. **Preflight** (`lib/release/preflight.ts`) — the gate. Blockers stop the
+1. **Preflight** (`src/lib/release/preflight.ts`) — the gate. Blockers stop the
    release; warnings are shown and can be accepted.
-2. **Compile** (`lib/release/compile.ts`) — freeze the story into the release
+2. **Compile** (`src/lib/release/compile.ts`) — freeze the story into the release
    payload, resolve and hash every asset.
-3. **Package** (`lib/release/package.ts`) — write/read `.vnerelease`.
+3. **Package** (`src/lib/release/package.ts`) — write/read `.vnerelease`.
 4. **Publish** — a channel-specific consumer. Never re-derives story data.
 
 ### 2.4 Preflight gate
@@ -196,9 +196,9 @@ Four stages, each independently testable:
 | Scene graph: unreachable scenes, dangling `goto`, missing start scene | `validateSceneGraph` | blocker |
 | Story doctor errors | `runStoryDoctor` | blocker |
 | Story doctor warnings | `runStoryDoctor` | warning |
-| Every referenced asset resolves and is portable | `lib/asset-usage.ts`, `isPortableAssetUri` | blocker |
+| Every referenced asset resolves and is portable | `src/lib/asset-usage.ts`, `isPortableAssetUri` | blocker |
 | Title, author, description, cover present | `StoryMetadata` | blocker for a store page, warning for a bundle |
-| At least one ending reachable | `lib/showcase/story-showcase.ts` | blocker |
+| At least one ending reachable | `src/lib/showcase/story-showcase.ts` | blocker |
 | Theme contrast is legible | `evaluateThemeContrast` | warning |
 | Content rating + languages chosen | new metadata | blocker (Channel A) |
 | Total release size within limits | `STORY_BACKUP_LIMITS` | blocker |
@@ -240,7 +240,7 @@ plan once A1 is shipped (stage [R10](#r10--remote-catalog-a2-separate-decision))
   credits, content rating and warnings, languages, licence, and a
   **"Get as app"** action that hands over to Channel B.
 - The reader launches the **release snapshot**, not the working copy
-  (`lib/reader-launch.ts` gains a `releaseId`).
+  (`src/lib/reader-launch.ts` gains a `releaseId`).
 - Save slots are stamped with `releaseId` + `version`. Opening a save from an
   older release offers *continue anyway* / *restart* with an honest explanation,
   rather than crashing on a scene id that no longer exists.
@@ -250,7 +250,7 @@ plan once A1 is shipped (stage [R10](#r10--remote-catalog-a2-separate-decision))
 ### A1 storage
 
 Releases persist through `createPersistentStorage`, which matters for a
-non-obvious reason: `lib/web-media-cleanup.ts` finds live media by scanning
+non-obvious reason: `src/lib/web-media-cleanup.ts` finds live media by scanning
 persisted values (`collectReferencedMediaKeys`). A release snapshot stored that
 way keeps its media alive automatically. A release stored anywhere else would
 have its art garbage-collected out from under it after the 7-day grace window.
@@ -269,7 +269,7 @@ Everything below shares one prerequisite — B0.
 ### B0 — the player build profile
 
 The release target is *the engine with nothing but the reader in it*. Today
-`components/PlayerModeRouteGuard.tsx` **guards** the editor at runtime: the
+`src/components/PlayerModeRouteGuard.tsx` **guards** the editor at runtime: the
 editor code still ships, it is merely unreachable. For a downloadable app that is
 the wrong shape twice over — it inflates every artifact with an editor nobody can
 open, and it leaves a class of bug where a routing hole exposes authoring UI
@@ -296,7 +296,7 @@ migration banner and the cross-tab machinery. A published novel has no second ta
 to conflict with, no legacy store to migrate and nothing to auto-save on the
 author's behalf. None of that ships.
 
-**3. A store cut, and it needs a named mechanism.** `stores/use-app-store.ts`
+**3. A store cut, and it needs a named mechanism.** `src/stores/use-app-store.ts`
 composes seven slices and the reader pulls all of them. Listing the slices the
 player keeps is not enough, because the player still needs story and scene data —
 just **read-only**. "Drop the story slice" would break the reader.
@@ -311,7 +311,7 @@ through the existing store, keeps the authoring code in the graph and defeats th
 point.
 
 **4. A native-module and permission cut — a dependency problem, not a config
-one.** `metro-blocklist.js` only blocks *JavaScript* resolution, and removing a
+one.** `config/metro-blocklist.js` only blocks *JavaScript* resolution, and removing a
 plugin from `app.config.js` does not unlink anything: Expo autolinks from what is
 **installed**, so `expo-image-picker`, `expo-document-picker` and
 `expo-notifications` follow the player into the APK straight out of
@@ -326,10 +326,10 @@ plugin from `app.config.js` does not unlink anything: Expo autolinks from what i
 
 A novel that asks to read your storage is a novel nobody installs.
 
-Blocklist patterns for editor-only trees (`components/editor/`,
-`components/document-editor/`, `components/vn-plate-editor/`,
-`components/ai-chat/`, `components/media-library/`, `lib/ai/`) still apply —
-`metro-blocklist.js` already exists and already documents the anchoring trap that
+Blocklist patterns for editor-only trees (`src/components/editor/`,
+`src/components/document-editor/`, `src/components/vn-plate-editor/`,
+`src/components/ai-chat/`, `src/components/media-library/`, `src/lib/ai/`) still apply —
+`config/metro-blocklist.js` already exists and already documents the anchoring trap that
 once broke CI, so extend it rather than inventing a second mechanism.
 
 **Verification is measured, not asserted.** A boundary test in the spirit of
@@ -353,10 +353,10 @@ The current exporter is 80% of this. What it needs:
    generate an asset map `{ "idb-media://<id>": "media/<sha>.png" }`. This is
    what unblocks author-uploaded art. Data URIs stay supported but stop being
    the only option — a 40 MB inline JSON is not a viable delivery format.
-3. **Runtime resolution.** `lib/asset-resolver.ts` consults the release asset
+3. **Runtime resolution.** `src/lib/asset-resolver.ts` consults the release asset
    map when player mode is active, before it tries IndexedDB.
 4. **Inline the boot config.** Emit `window.__VNE_PLAYER_CONFIG__` into
-   `index.html` and have `lib/player-mode.ts` read the global first, falling
+   `index.html` and have `src/lib/player-mode.ts` read the global first, falling
    back to today's `fetch`. Consequence: the exported folder plays by
    double-clicking `index.html` from `file://`, where `fetch` is blocked. Media
    loads as relative paths, which `file://` allows.
@@ -589,7 +589,7 @@ copies of every asset at once. Staging happens on disk, at build time — which
 also bounds what [B2](#b2-export-as-app-from-inside-the-app-without-node) can
 honestly offer for large novels.
 
-At runtime `lib/player-mode.ts` reads the release from the generated module
+At runtime `src/lib/player-mode.ts` reads the release from the generated module
 through `expo-asset`, and the media map resolves to bundled assets. Media travels
 **inside** the APK — a novel that needs the network to show its own art is not an
 app.
@@ -699,7 +699,7 @@ and automatic updates, not capability.
 **3. Remote media with a first-run download and cache — the chosen direction.**
 Ship the story and light assets inside the app; fetch the heavy media once and
 cache it to the filesystem. Far cheaper than asset packs, works for sideload and
-Play alike, and `lib/asset-resolver.ts` already resolves remote URLs. The costs
+Play alike, and `src/lib/asset-resolver.ts` already resolves remote URLs. The costs
 are real: the novel needs hosting, and the first launch needs a connection —
 after which it is offline like any other.
 
@@ -715,7 +715,7 @@ below keeps the door open at near-zero cost today.
   manifest is already the index a CDN needs; it just has to not grow an
   assumption that every object ships inside the artifact.
 - **One resolution seam.** R5 introduces the release asset map and its hook in
-  `lib/asset-resolver.ts`. A remote object store must be able to arrive as one
+  `src/lib/asset-resolver.ts`. A remote object store must be able to arrive as one
   more source behind that seam, not as a second resolution path threaded through
   the reader. This is the part that is genuinely expensive to retrofit, and the
   only thing worth being careful about today.
@@ -752,7 +752,7 @@ is on record rather than rediscovered.
 frame of every native player build — this is the attribution, and it replaces the
 removable "Made with" mark proposed earlier for web. The author's own title card,
 if they want one, plays after it through the existing `SplashScreen` type in
-`lib/splash-types.ts`.
+`src/lib/splash-types.ts`.
 
 Two practical notes: the native splash needs its **own engine PNG** staged into
 the player project, separate from the story cover that becomes the icon; and it
@@ -785,32 +785,32 @@ the first stage that touches EAS and a device.
 
 *No UI. Pure modules, unit-tested in isolation.*
 
-- `lib/release/types.ts` — `ReleaseBlock`, `ReleaseManifestV1`, `ReleasePayloadV1`, limits.
-- `lib/release/manifest.ts` — parse/serialize/validate, mirroring `lib/story-backup/manifest.ts`.
-- `lib/release/version.ts` — version parsing, ordering, next-version suggestion, release id generation (`lib/id-utils.ts`).
+- `src/lib/release/types.ts` — `ReleaseBlock`, `ReleaseManifestV1`, `ReleasePayloadV1`, limits.
+- `src/lib/release/manifest.ts` — parse/serialize/validate, mirroring `src/lib/story-backup/manifest.ts`.
+- `src/lib/release/version.ts` — version parsing, ordering, next-version suggestion, release id generation (`src/lib/id-utils.ts`).
 - Tests: `__tests__/release/manifest.test.ts`, `version.test.ts`.
 
 **Done when:** a hand-written manifest round-trips and every malformed field is rejected with a specific error.
 
 ### R1 — Preflight gate ✅
 
-- `lib/release/preflight.ts` — aggregates `runStoryDoctor`, `validateSceneGraph`,
+- `src/lib/release/preflight.ts` — aggregates `runStoryDoctor`, `validateSceneGraph`,
   `computeStoryStats`, `evaluateThemeContrast`, asset portability, metadata
   completeness, size estimate. Returns `{ blockers, warnings, stats, estimatedBytes }`.
-- `components/story-home/ReleaseChecklistCard.tsx` — rendered on `app/story-home.tsx`
+- `src/components/story-home/ReleaseChecklistCard.tsx` — rendered on `app/story-home.tsx`
   next to `StoryHealthCard`, reusing its finding rows and deep links.
 - New metadata fields on `StoryMetadata`: `contentRating`, `languages`,
   `contentWarnings`, `licence`, `credits`, `aiAssisted` — all optional, all
   normalized in `normalizeStoryMetadata` so old stories stay valid.
-- i18n keys in `lib/translations.ts` (en + uk).
+- i18n keys in `src/lib/translations.ts` (en + uk).
 
 **Done when:** a deliberately broken demo story lists its blockers, and a good
 one reports "ready to release".
 
 ### R2 — Build and store a release ✅
 
-- `lib/release/compile.ts` — freeze the payload; reuse `lib/story-backup/capture.ts`
-  for asset collection and `lib/story-backup/hash.ts` for hashing; strip
+- `src/lib/release/compile.ts` — freeze the payload; reuse `src/lib/story-backup/capture.ts`
+  for asset collection and `src/lib/story-backup/hash.ts` for hashing; strip
   editor-only data and disabled steps.
 - **Packaging is pass-through. No transcoding.** An earlier draft of this plan
   put a release-time media pass here; that was wrong. [VIDEO-PLAN.md](VIDEO-PLAN.md)
@@ -824,13 +824,13 @@ one reports "ready to release".
   hundred megabytes of WAV is why their novel will not fit. Automated
   optimization is worth revisiting only after R9 produces real APK/AAB
   measurements to justify it.
-- `lib/release/release-storage.ts` — persist the release index and snapshots via
+- `src/lib/release/release-storage.ts` — persist the release index and snapshots via
   `createPersistentStorage` (see [A1 storage](#a1-storage)). **One object store
   keyed by SHA-256, plus one manifest per release.** Content addressing describes
   the naming; it does not by itself deduplicate — the shared store is what makes
   v1.1 cost only its changed media, and a per-release copy of the objects would
   quietly undo it.
-- Store: `releasesByStory` in `stores/use-app-store.ts` + `publishRelease`,
+- Store: `releasesByStory` in `src/stores/use-app-store.ts` + `publishRelease`,
   `unpublishRelease`, `deleteRelease` actions.
 - UI: publish sheet on `app/story-home.tsx` — version, notes, channel, preflight
   result, confirm.
@@ -842,7 +842,7 @@ play, and clearing the editor's working copy does not damage either.
 > Publishing hashed the media and kept only the manifest, on the reasoning that
 > the media library still held the bytes. It does — until the author replaces a
 > picture, and then a release that is supposed to be immutable can no longer be
-> exported at all. The store now exists (`lib/release/object-store.ts`), keyed by
+> exported at all. The store now exists (`src/lib/release/object-store.ts`), keyed by
 > SHA-256 and reference-counted so two versions share every unchanged file and
 > deleting one takes only what nothing else needs. Publishing on a device that
 > will not store blobs still succeeds and falls back to the library, which is
@@ -850,11 +850,11 @@ play, and clearing the editor's working copy does not damage either.
 
 ### R3 — Channel A: the showcase publishes releases ✅
 
-- `lib/showcase/showcase-adapter.ts`: source becomes published releases, not
+- `src/lib/showcase/showcase-adapter.ts`: source becomes published releases, not
   `storiesMetadata`.
 - `app/tabs/index.tsx`, `app/story-page.tsx`: version, changelog, credits,
   rating, languages, "Get as app".
-- `lib/reader-launch.ts` + `app/reader.tsx`: launch by `releaseId`.
+- `src/lib/reader-launch.ts` + `app/reader.tsx`: launch by `releaseId`.
 - `SaveSlot` gains `releaseId` + `version`; mismatch dialog on load.
 - Studio surfaces publication state per story: *draft* / *published v1.2* /
   *unpublished changes*.
@@ -869,17 +869,17 @@ explains itself.
   with its own minimal `_layout`. Selected via the `expo-router` plugin's `root`
   option (`extra.router.root`), so Expo Router crawls only this directory and the
   studio's routes are never required into the bundle.
-- Store cut: `stores/use-app-store.player.ts` composes playback, preferences,
+- Store cut: `src/stores/use-app-store.player.ts` composes playback, preferences,
   saves and a new **scene *read*** slice. The story, snapshots, libraries,
   releases and scene-*write* slices are out of the graph. Metro substitutes it
   for `@/stores/use-app-store` — substituted rather than blocked, because every
   reader screen imports that path and blocking it would only break the build.
-- `metro-blocklist.js` — `createPlayerBlockList()` refuses the authoring trees
+- `config/metro-blocklist.js` — `createPlayerBlockList()` refuses the authoring trees
   outright in the player profile.
 - `tools/check-player-bundle.mjs` — walks the module graph from `app-player/`,
   applying the same store substitution, and fails on any authoring module,
   reporting the **import chain** rather than the filename.
-- `player-profile.js` — one description of the profile, shared by `app.config.js`,
+- `config/player-profile.js` — one description of the profile, shared by `app.config.js`,
   `metro.config.js` and the checker. Earlier drafts kept three copies and they
   drifted.
 - Native audit: the player config drops the `expo-document-picker` and
@@ -899,7 +899,7 @@ explains itself.
 >
 > They cannot move to this repo's `package.json` either — the studio build shares
 > it and needs the pickers. So the list is a specification
-> (`playerAutolinkingPackageJson()` in `player-profile.js`) applied by the staged
+> (`playerAutolinkingPackageJson()` in `config/player-profile.js`) applied by the staged
 > project R9 produces, and `pnpm check:player-autolinking` runs real autolinking
 > to prove every name is a module this project links and that excluding them
 > removes those four and nothing else. **The native module cut is specified and
@@ -938,8 +938,8 @@ still builds and runs its shelf unchanged.
   guard against), `MigrationErrorBanner` (no studio history to migrate) and the
   proactive cross-tab warning (readers do not edit).
 - Blocking whole directories is not enough on its own. `lib/document-editor/scene-graph-*`
-  is graph traversal the reader's own coverage code walks, and `lib/ai/permissions.ts`
-  is read by `lib/user-settings.ts`. Blocking those directories breaks the player
+  is graph traversal the reader's own coverage code walks, and `src/lib/ai/permissions.ts`
+  is read by `src/lib/user-settings.ts`. Blocking those directories breaks the player
   build, so the bundler handles the unambiguous trees and the checker names
   individual files.
 
@@ -963,28 +963,28 @@ unacceptable until R9 shipped. R4 proves the *JS and autolinking* boundary; R9
 proves it on a real artifact.
 
 **Known and not addressed here:** the full translation table for both languages
-ships in the player bundle, because `lib/translations.ts` is one module. Worth
+ships in the player bundle, because `src/lib/translations.ts` is one module. Worth
 splitting before R9 measures an APK, but it is not a boundary problem.
 
 ### R5 — Channel B1: portable web bundle — **implemented**
 
-- `lib/release/package.ts` — writes and reads `.vnerelease` on top of the backup
+- `src/lib/release/package.ts` — writes and reads `.vnerelease` on top of the backup
   container. The zip streaming, the hash verification, the entry-order safety and
-  the zip-bomb limits are the *same code*: `lib/story-backup/archive.ts` grew a
+  the zip-bomb limits are the *same code*: `src/lib/story-backup/archive.ts` grew a
   container writer and byte readers, and `extract.ts` became generic over the
   manifest inside it. A second copy of the extractor is where a malformed archive
   would eventually do damage.
-- `lib/release/asset-map.ts` — every string the story uses for a picture →
+- `src/lib/release/asset-map.ts` — every string the story uses for a picture →
   `media/<sha256>.<ext>`. Built from the manifest's `sourceReferences`, because
   only the manifest knows that a media-library id, the library asset's own uri
   and the `idb-media://` string a scene stored are all the same bytes.
-- `lib/asset-resolver.ts` — `setPackagedMediaMap()`, consulted **first**. In a
+- `src/lib/asset-resolver.ts` — `setPackagedMediaMap()`, consulted **first**. In a
   bundle the packaged file is the only copy that exists, so every other branch
   would be looking for something that was never shipped. Deliberately a plain
   string map set from outside rather than an import of the release code: the
   resolver sits in the reader's core, and a player should not gain the release
   machinery to look up a filename.
-- `lib/player-mode.ts` — reads `window.__VNE_PLAYER_CONFIG__` before falling back
+- `src/lib/player-mode.ts` — reads `window.__VNE_PLAYER_CONFIG__` before falling back
   to the fetch, and carries the asset map and the release stamp.
 - `scripts/export-story-web.ts` — `--release`, `media/` emission, inlined boot
   config, `--base-url`, `--profile`. Converted from `.mjs` to TypeScript run
@@ -994,7 +994,7 @@ splitting before R9 measures an APK, but it is not a boundary problem.
   JSON. Exists because the in-app producer is R6, and R5 could not otherwise be
   exercised at all; it uses the same writer and parser, so a fixture cannot be
   something the app could never have produced.
-- `wiki/publish-web.md` → `wiki/releases.md`, rewritten.
+- `wiki/publish-web.md` → `docs/technical/releases.md`, rewritten.
 - `pnpm test:player-e2e` — builds a release, exports it, serves the folder, and
   asserts the bundle boots from the inlined config, fetches the packaged art with
   a 200, serves **every** file the asset map names with a real content type, and
@@ -1041,15 +1041,15 @@ picked.
 
 - `scripts/build-web.mjs` builds twice: `dist/` (studio) with
   `player-shell-<version>.zip` and `player-shell.json` inside it.
-- `lib/release/shell.ts` — descriptor, version guard, download.
-- `lib/release/asset-sources.ts` — a stored release's media, resolved back out of
+- `src/lib/release/shell.ts` — descriptor, version guard, download.
+- `src/lib/release/asset-sources.ts` — a stored release's media, resolved back out of
   the library and **verified against the manifest's hashes**. An author who
   replaced a picture after publishing is refused by name rather than shipping a
   bundle that does not match its own manifest.
-- `lib/release/player-bundle.ts` — the parts that decide what a bundle *is*,
+- `src/lib/release/player-bundle.ts` — the parts that decide what a bundle *is*,
   shared with `scripts/export-story-web.ts` so the two cannot drift.
-- `lib/release/shell-build.ts` — fetch, unzip, inject, re-zip.
-- `lib/release/bundle-file.ts` — save picker on web, `expo-sharing` on native.
+- `src/lib/release/shell-build.ts` — fetch, unzip, inject, re-zip.
+- `src/lib/release/bundle-file.ts` — save picker on web, `expo-sharing` on native.
 - UI: «Export as a playable folder» on the release card, with progress states
   mirroring `StoryBackupProgress`.
 
@@ -1058,7 +1058,7 @@ and play offline. **They can.** Verified by clicking it: the studio built
 `Export_Trial-v1.0.0.zip` whose `index.html` carries the story, the release stamp
 and the scene's first line — and, separately, by opening an exported bundle from
 the filesystem with no server anywhere
-(`e2e/player/bundle.spec.ts`, "plays from a double-clicked index.html").
+(`tests/e2e/player/bundle.spec.ts`, "plays from a double-clicked index.html").
 
 > **Corrected 2026-08-30.** The first version of this claimed offline on the
 > strength of an HTTP-served folder, which hid two things. Expo emitted absolute
@@ -1132,7 +1132,7 @@ submits a request and follows it.
 
 **Transport — a new contract, not the AI bridge's.** An earlier draft called the
 helper "another tool on the same transport". That was wrong on four counts, all
-checkable in the code: `lib/bridge-protocol.ts` caps messages at 1 MB (8 MB for
+checkable in the code: `src/lib/bridge-protocol.ts` caps messages at 1 MB (8 MB for
 images); `tools/ai-bridge/src/server.ts` closes the socket on any binary frame
 and rejects unknown client message types; and `tool_call` runs
 helper → browser, the opposite direction from a build RPC. A release archive is
@@ -1161,7 +1161,7 @@ different payloads.
 
 **Request**
 
-- `lib/release/build-request.ts` — `{ requestId, releaseId, target: 'apk' | 'aab',
+- `src/lib/release/build-request.ts` — `{ requestId, releaseId, target: 'apk' | 'aab',
   versionCode, payloadHash }`; `requestId` is the **idempotency key**, so a
   reconnect or a double click resumes the existing job instead of starting a
   second paid build.
@@ -1183,7 +1183,7 @@ interface. Not built now; the interface exists so they can be.
 machine survive abuse against a **fake builder** — reload mid-build, cancel,
 retry, a resubmit with the same idempotency key, a resubmit with the same key and
 a different payload, an abandoned upload. **They do.** Every case in that list is
-a test in `__tests__/unit/tools/build-helper.test.ts`, driven over real sockets
+a test in `tests/unit/tools/build-helper.test.ts`, driven over real sockets
 and real HTTP rather than by calling methods, plus: an upload for a request
 nobody submitted, an upload without the token, an upload from an unpaired origin,
 an oversized upload, a binary frame, a socket without the token, a retry of a
@@ -1191,15 +1191,15 @@ running build, and an artifact past its expiry.
 
 **What was built**
 
-- `lib/release/build-request.ts` — the request and what makes two of them the
+- `src/lib/release/build-request.ts` — the request and what makes two of them the
   same job. The id is validated here because it becomes a filename in two
   places, and sanitising it in each would be two chances to disagree.
-- `lib/release/build-job.ts` — the state machine, pure. An event that does not
+- `src/lib/release/build-job.ts` — the state machine, pure. An event that does not
   belong in the current state returns the job unchanged rather than throwing: a
   cancel landing just after a build finished is a race, not a fault.
-- `lib/release/build-protocol.ts` — its own message set, with the four reasons it
+- `src/lib/release/build-protocol.ts` — its own message set, with the four reasons it
   is not the AI bridge's written down beside it.
-- `lib/release/build-client.ts` — the app's half. No credential, no toolchain, no
+- `src/lib/release/build-client.ts` — the app's half. No credential, no toolchain, no
   decision about the build.
 - `tools/build-helper/` — the service: upload endpoint, socket, durable job store
   (atomic writes), log sanitizer, `Builder` seam, `FakeBuilder`, `EasBuilder`,
@@ -1227,7 +1227,7 @@ EAS adapter. The paid/device acceptance gate remains in R9.
   `capabilities/default.json`. No icon set: `tauri icon` generates one at stage
   time, and it ships with the same CLI as `tauri build`, so an author who can
   build can always produce icons.
-- `lib/release/native-identity.ts` — moved up from R9, because R8 needs it
+- `src/lib/release/native-identity.ts` — moved up from R9, because R8 needs it
   first. The application id is derived from the **story id alone** and always
   carries a hash of it. That id decides the WebView2 data directory on Windows,
   which is where the reader's saves live: derived from the title it would orphan
@@ -1250,7 +1250,7 @@ EAS adapter. The paid/device acceptance gate remains in R9.
   forged markers and input overlap, and keeps the last complete output on failure.
 - `.github/workflows/desktop.yml` — Windows, Linux and macOS, macOS
   `continue-on-error` until there is a Developer ID.
-- `wiki/releases-desktop.md`, `tools/desktop-shell/README.md`.
+- `docs/technical/releases-desktop.md`, `tools/desktop-shell/README.md`.
 
 **Verified:** 32 unit tests (identity, staging, verification, icon choice, and
 the shell's boundary: no commands, no plugins, `core:default` only), plus five
@@ -1303,7 +1303,7 @@ download is implemented and verified against an injected CLI. The command has
 never been submitted against a real account: a cloud build spends money and
 signs with credentials that outlive it.
 
-- `lib/release/native-identity.ts` — the Android half: `androidVersionCode`,
+- `src/lib/release/native-identity.ts` — the Android half: `androidVersionCode`,
   distribution mode, and one normalizer for signing-certificate fingerprints so
   nothing compares them as raw strings. The package id was already derived here
   in R8, from `storyId` and never from author or title.
@@ -1318,14 +1318,14 @@ signs with credentials that outlive it.
     one release are one version of the app.
 - `tools/vne-build/stage-android.ts` + `pnpm stage:android` — verify the manifest
   against its payload hash before writing anything, copy an allowlisted project,
-  stream the media out of the archive, generate `lib/generated/player-release.ts`
+  stream the media out of the archive, generate `src/lib/generated/player-release.ts`
   as one static `require` per object, write the staged `package.json` (with the
   autolinking exclusions), `eas.json` and `.easignore`, and stage the icon and the
   engine splash.
-- `lib/release/packaged-release.ts` + `lib/generated/player-release.ts` (a
+- `src/lib/release/packaged-release.ts` + `src/lib/generated/player-release.ts` (a
   committed stub) — the runtime end: module references become uris through
   `expo-asset` and join the *existing* asset seam rather than adding a second
-  resolution path. Registered into `lib/player-mode.ts` rather than imported by
+  resolution path. Registered into `src/lib/player-mode.ts` rather than imported by
   it, so that file stays loadable by the Node scripts that use it.
 - `app.config.js` — `VNE_PLAYER_APP_ID` / `_APP_NAME` / `_VERSION` /
   `_VERSION_CODE` / `_SLUG` / `_ICON` / `_SPLASH`, read **only** under the player
@@ -1336,9 +1336,9 @@ signs with credentials that outlive it.
   values it reads sit in a file anyone can open.
 
 **The asset cut, which was not in the plan and turned out to matter more than
-anything else here.** `lib/asset-resolver.ts` held the bundled-art map inline, so
+anything else here.** `src/lib/asset-resolver.ts` held the bundled-art map inline, so
 its static `require`s put every demo background, sample track and sprite inside
-every artifact. It is now `lib/bundled-assets.ts`, and the player profile
+every artifact. It is now `src/lib/bundled-assets.ts`, and the player profile
 substitutes an empty one the way it already substitutes the store
 (`PLAYER_MODULE_SUBSTITUTIONS`). Measured, not asserted:
 
@@ -1349,7 +1349,7 @@ substitutes an empty one the way it already substitutes the store
 | staged Android project | 219 MB | **106 MB** (96 MB of it the release's own media) |
 | player module graph | 209 | **181** |
 
-A release already carries its own bytes — `lib/story-backup/capture.ts` resolves
+A release already carries its own bytes — `src/lib/story-backup/capture.ts` resolves
 bundled references and packs them — so the player answers from the packaged map,
 which `getBundledAsset` was already written to defer to. Staging then deletes the
 art nothing imports, driven by the graph rather than by a list of directories.
@@ -1465,7 +1465,7 @@ with no `startSceneId` passed, and would have installed and sat on its boot
 screen); the two build profiles are checked to describe the same application; and
 staging is deterministic, stamped from the release rather than from the clock.
 
-- `wiki/releases-android.md` — sideload instructions, the Play checklist, and
+- `docs/technical/releases-android.md` — sideload instructions, the Play checklist, and
   what losing a signing key costs.
 
 **One path to an artifact, one check, and it is not optional.** Submitting,
@@ -1601,7 +1601,7 @@ Both callers keep a failed artifact as `.unverified` rather than discarding it.
 `Promise.allSettled` on synchronous work, which runs it in order; the other was
 named after a failure it never provoked. They asserted the happy path in the
 shape of a race, which is worse than no test, because the bug each was written
-for would have passed. `__tests__/unit/tools/build-races.test.ts` spawns real
+for would have passed. `tests/unit/tools/build-races.test.ts` spawns real
 processes: three replacing one artifact in a loop and checking it is never
 missing, and two racing to record a first key.
 
@@ -1626,9 +1626,9 @@ Deferred by decision: build only after A1 ships, with its own plan.
 
 - Supabase: `releases` and `release_assets` tables, storage bucket, RLS,
   resumable upload (`tus-js-client` is already a dependency,
-  `lib/supabase-backup.ts` is the pattern).
+  `src/lib/supabase-backup.ts` is the pattern).
 - Accounts, ownership, unpublish, takedown, abuse reports, moderation queue.
-- Reviews move from local storage to shared storage — `lib/reviews/*` is
+- Reviews move from local storage to shared storage — `src/lib/reviews/*` is
   currently device-local and would need identity and anti-spam.
 - Legal surface: terms, DMCA process, age-rating policy, storage cost model.
 

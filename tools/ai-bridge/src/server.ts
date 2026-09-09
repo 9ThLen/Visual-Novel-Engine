@@ -1,14 +1,14 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { MAX_IMAGE_MESSAGE_BYTES, MAX_MESSAGE_BYTES, makeEnvelope, parseEnvelope, type BridgeEnvelope, type BridgeErrorCode, type BridgeProvider, type SessionChallengePayload } from '../../../lib/bridge-protocol';
-import { getBridgeTool } from '../../../lib/ai/bridge-tools';
+import { MAX_IMAGE_MESSAGE_BYTES, MAX_MESSAGE_BYTES, makeEnvelope, parseEnvelope, type BridgeEnvelope, type BridgeErrorCode, type BridgeProvider, type SessionChallengePayload } from '../../../src/lib/bridge-protocol';
+import { getBridgeTool } from '../../../src/lib/ai/bridge-tools';
 import { BridgeToolError, ProviderFailure, type AgentAttachment, type AgentProvider, type AgentProviderFactory, type AgentUserInput } from './provider';
 import { BridgeToolRuntime } from './tool-runtime';
 import { createImageToolHandlers, describeImageToolCapability, type ImageToolOptions } from './image-tools';
 import { normalizeAllowedOrigins } from './origin-policy';
 import { getCodexHardeningCapability } from './codex-launch-policy';
-import { validateCodexBetaConsent } from '../../../lib/ai/codex-beta-consent';
+import { validateCodexBetaConsent } from '../../../src/lib/ai/codex-beta-consent';
 
 const TURN_TIMEOUT_MS = 120_000;
 const TOOL_TIMEOUT_MS = 30_000;

@@ -1,4 +1,4 @@
-import type { BridgeImagePlacement, BridgeImageProvider } from '../../../lib/bridge-protocol';
+import type { BridgeImagePlacement, BridgeImageProvider } from '../../../src/lib/bridge-protocol';
 import { BridgeToolError } from './provider';
 
 const IMAGE_TIMEOUT_MS = 90_000;

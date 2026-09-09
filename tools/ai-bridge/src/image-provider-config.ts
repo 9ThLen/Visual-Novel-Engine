@@ -1,4 +1,4 @@
-import type { BridgeImageProvider, BridgeProvider } from '../../../lib/bridge-protocol';
+import type { BridgeImageProvider, BridgeProvider } from '../../../src/lib/bridge-protocol';
 
 export type ImageProviderSelection = BridgeImageProvider | 'auto' | 'none';
 

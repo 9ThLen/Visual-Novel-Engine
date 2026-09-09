@@ -179,15 +179,25 @@ Native Android and iOS commands are intentionally outside the current testing wo
 - Plate
 - Vitest and Playwright
 
+## Repository layout
+
+- `app/`, `app-player/` — Expo Router roots: the studio, and the reader-only player build.
+- `src/` — the engine's own source: `components/`, `constants/`, `hooks/`, `lib/`, `stores/`. `@/*` resolves here first, then at the repository root.
+- `tests/` — `unit/` (Vitest), `e2e/` (Playwright), `mocks/`, `helpers/`.
+- `config/` — build and test configuration that its tool can be pointed at: Playwright, Vitest, the player profile, the Metro block list, the theme tokens.
+- `assets/`, `public/`, `patches/`, `scripts/`, `tools/`, `docs/` — art and demo stories, static web files, dependency patches, build scripts, developer tooling, documentation.
+
+Configuration a tool insists on finding at the root stays there: `app.config.js`, `metro.config.js`, `babel.config.cjs`, `tailwind.config.js`, `tsconfig.json`, `eslint.config.mjs`, `eas.json`.
+
 ## Architecture overview
 
 - `app/` — Expo Router screens.
-- `components/editor/plate/` — the active scene editor.
-- `components/editor/` — active preview, play, scene management, manuscript, and shared editor surfaces.
-- `lib/engine/` — timeline execution, events, and condition evaluation.
-- `stores/use-app-store.ts` — persisted Zustand application state.
-- `lib/persistent-storage.ts` — platform-aware storage abstraction.
-- `wiki/` — detailed project knowledge base.
+- `src/components/editor/plate/` — the active scene editor.
+- `src/components/editor/` — active preview, play, scene management, manuscript, and shared editor surfaces.
+- `src/lib/engine/` — timeline execution, events, and condition evaluation.
+- `src/stores/use-app-store.ts` — persisted Zustand application state.
+- `src/lib/persistent-storage.ts` — platform-aware storage abstraction.
+- `docs/technical/` — detailed project knowledge base.
 
 Canonical scene data uses `SceneRecord + TimelineStep`. Legacy `Story`, `StoryScene`, and `Choice` types remain only at import, export, and migration boundaries.
 
@@ -195,14 +205,14 @@ Canonical scene data uses `SceneRecord + TimelineStep`. Legacy `Story`, `StorySc
 
 - [`docs/TESTER_QUICK_START.md`](docs/TESTER_QUICK_START.md) — first installation and web launch on Windows.
 - [`docs/MANUAL_TESTING.md`](docs/MANUAL_TESTING.md) — manual test scope, regression checklist, and bug-report template.
-- [`wiki/index.md`](wiki/index.md) — documentation index.
-- [`wiki/overview.md`](wiki/overview.md) — product and system overview.
-- [`wiki/architecture-reference.md`](wiki/architecture-reference.md) — architecture reference.
-- [`wiki/testing-guide.md`](wiki/testing-guide.md) — automated testing guide.
-- [`wiki/releases.md`](wiki/releases.md) — freeze a story into a release and publish it as a standalone web bundle.
-- [`wiki/releases-desktop.md`](wiki/releases-desktop.md) — wrap that same bundle in a desktop installer.
-- [`wiki/releases-android.md`](wiki/releases-android.md) — stage that same release as an Android app.
-- [`wiki/studio-desktop.md`](wiki/studio-desktop.md) — install the studio itself as a desktop application.
+- [`docs/technical/index.md`](docs/technical/index.md) — documentation index.
+- [`docs/technical/overview.md`](docs/technical/overview.md) — product and system overview.
+- [`docs/technical/architecture-reference.md`](docs/technical/architecture-reference.md) — architecture reference.
+- [`docs/technical/testing-guide.md`](docs/technical/testing-guide.md) — automated testing guide.
+- [`docs/technical/releases.md`](docs/technical/releases.md) — freeze a story into a release and publish it as a standalone web bundle.
+- [`docs/technical/releases-desktop.md`](docs/technical/releases-desktop.md) — wrap that same bundle in a desktop installer.
+- [`docs/technical/releases-android.md`](docs/technical/releases-android.md) — stage that same release as an Android app.
+- [`docs/technical/studio-desktop.md`](docs/technical/studio-desktop.md) — install the studio itself as a desktop application.
 - [`PRODUCT.md`](PRODUCT.md) — product purpose and design principles.
 - [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) — visual language, tokens, and theme rules.
 

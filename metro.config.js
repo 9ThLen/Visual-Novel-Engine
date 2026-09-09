@@ -1,8 +1,8 @@
 const path = require("path");
 const { getDefaultConfig } = require("expo/metro-config");
 const { withNativeWind } = require("nativewind/metro");
-const { createBlockList, createPlayerBlockList } = require("./metro-blocklist");
-const { isPlayerProfile, PLAYER_MODULE_SUBSTITUTIONS } = require("./player-profile");
+const { createBlockList, createPlayerBlockList } = require("./config/metro-blocklist");
+const { isPlayerProfile, PLAYER_MODULE_SUBSTITUTIONS } = require("./config/player-profile");
 const config = getDefaultConfig(__dirname);
 
 const playerProfile = isPlayerProfile();

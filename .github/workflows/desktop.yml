@@ -11,7 +11,7 @@ on:
       - 'tools/desktop-shell/**'
       - 'scripts/build-desktop.ts'
       - 'scripts/lib/stage-desktop.ts'
-      - 'lib/release/native-identity.ts'
+      - 'src/lib/release/native-identity.ts'
       - '.github/workflows/desktop.yml'
 
 permissions:
@@ -61,7 +61,7 @@ jobs:
 
       # Not a dependency of the repository: it carries a prebuilt binary per
       # platform and is useless without the Rust toolchain below, which no
-      # lockfile can install. See wiki/releases-desktop.md.
+      # lockfile can install. See docs/technical/releases-desktop.md.
       - name: Install the Tauri CLI
         run: pnpm add -D @tauri-apps/cli@^2
 

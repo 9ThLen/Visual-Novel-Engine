@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import { createSdkMcpServer, query, tool, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { MODEL_BRIDGE_TOOLS } from '../../../lib/ai/bridge-tools';
+import { MODEL_BRIDGE_TOOLS } from '../../../src/lib/ai/bridge-tools';
 import { ClaudeConversation } from './claude-conversation';
 import { buildSessionSystemPrompt, modelToolErrorValue, type AgentEvent, type AgentProvider, type AgentSessionContext, type AgentUserInput, type ToolInvoker } from './provider';
 

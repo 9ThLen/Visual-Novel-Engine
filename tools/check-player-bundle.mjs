@@ -11,7 +11,7 @@
  *
  * It walks the same graph Metro would (see `tools/lib/module-graph.mjs`),
  * applying the player store substitution, and reports the import chain rather
- * than the filename: knowing that `lib/story-snapshots.ts` is in the bundle is
+ * than the filename: knowing that `src/lib/story-snapshots.ts` is in the bundle is
  * useless without knowing which reader screen pulled it in.
  *
  * Usage: node tools/check-player-bundle.mjs [--report]
@@ -30,7 +30,7 @@ const {
   PLAYER_BLOCKED_TREES,
   PLAYER_FORBIDDEN_MODULES,
   PLAYER_MODULE_SUBSTITUTIONS,
-} = require('../player-profile.js');
+} = require('../config/player-profile.js');
 
 const report = process.argv.includes('--report');
 const routerRoot = PLAYER_ROUTER_ROOT.replace(/^\.\//, '');

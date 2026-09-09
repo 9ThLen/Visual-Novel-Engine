@@ -21,7 +21,7 @@ Context7 takes priority over memory for API details.
 - Demo story sync must run after migration, even when storage seeding fails.
 - `migrateFromLegacyKeys()` must not replace hydrated persisted data with empty arrays. Prefer existing hydrated data when legacy arrays are empty.
 - `StoryAutoSave` must not call `migrateFromLegacyKeys()`; HomeScreen owns migration.
-- Do not import `@react-native-async-storage/async-storage` directly. Use `createPersistentStorage()` from `lib/persistent-storage.ts`.
+- Do not import `@react-native-async-storage/async-storage` directly. Use `createPersistentStorage()` from `src/lib/persistent-storage.ts`.
 - `SplashScreen.preventAutoHideAsync()` must run from `useEffect` through dynamic import; module-level calls can hang web.
 - Reanimated can fail on web when imported at module level. Use guarded require/import patterns where needed.
 - Add hex/rgb fallbacks before `oklch()` for browser compatibility.
@@ -37,8 +37,8 @@ Context7 takes priority over memory for API details.
 - Canonical scene data is `SceneRecord + TimelineStep`.
 - Legacy `Story`, `StoryScene`, and `Choice` remain only for JSON import and old storage migration.
 - Reader and preview execute scenes through `useSceneExecutor`.
-- Reader scene access should go through `lib/scene-access.ts` and reader cache helpers.
-- Bundled demo sync uses canonical payloads from `lib/bundled-story-upsert.ts`.
+- Reader scene access should go through `src/lib/scene-access.ts` and reader cache helpers.
+- Bundled demo sync uses canonical payloads from `src/lib/bundled-story-upsert.ts`.
 
 ## graphify
 

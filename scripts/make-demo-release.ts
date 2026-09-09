@@ -1,11 +1,11 @@
 /**
  * Build a `.vnerelease` from a story JSON on disk.
  *
- * The app freezes and stores releases (`lib/release/compile.ts`), and exports a
+ * The app freezes and stores releases (`src/lib/release/compile.ts`), and exports a
  * playable folder straight from storage — no `.vnerelease` file is written on
  * that path. So nothing in the app produces the container this exporter reads,
  * and there would be no way to exercise it. This writes one, through the same
- * `lib/release/package.ts` writer and the same manifest parser the app uses, so
+ * `src/lib/release/package.ts` writer and the same manifest parser the app uses, so
  * what comes out is a real release rather than a mock.
  *
  * `--media` is the point of it. A story JSON can only name art that ships with
@@ -16,7 +16,7 @@
  * has, and the one the legacy exporter could never publish.
  *
  * Bundled `assets/…` references are packaged too, read straight from the repo.
- * `lib/story-backup/capture.ts` does the same thing at runtime by resolving them
+ * `src/lib/story-backup/capture.ts` does the same thing at runtime by resolving them
  * through `expo-asset`; a fixture that skipped it would produce releases the app
  * never produces, and bundles missing every sprite.
  *

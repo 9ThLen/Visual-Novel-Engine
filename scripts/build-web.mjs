@@ -4,7 +4,7 @@
  * Two builds, not one. `dist/` is the studio — the app an author opens. Inside
  * it sits `player-shell-<version>.zip`: the *player* build, zipped, which the
  * studio downloads at export time and turns into a playable folder for one
- * story (see `lib/release/shell-build.ts`).
+ * story (see `src/lib/release/shell-build.ts`).
  *
  * The shell has to be prebuilt because the studio cannot run a bundler. An
  * author with nothing but a browser still has to be able to hand a stranger a
@@ -38,7 +38,7 @@ import { inlineBundleFonts } from './lib/inline-bundle-fonts.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Where the studio looks for the shell. Mirrored by `lib/release/shell.ts`. */
+/** Where the studio looks for the shell. Mirrored by `src/lib/release/shell.ts`. */
 const SHELL_DESCRIPTOR = 'player-shell.json';
 const PLAYER_DIST = 'dist-player';
 const STUDIO_DIST = 'dist';

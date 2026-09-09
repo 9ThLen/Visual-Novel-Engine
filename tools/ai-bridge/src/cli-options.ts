@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util';
 import { defaultAllowedOrigins, normalizeAllowedOrigins } from './origin-policy';
-import type { BridgeProvider } from '../../../lib/bridge-protocol';
+import type { BridgeProvider } from '../../../src/lib/bridge-protocol';
 import { parseImageProviderSelection, type ImageProviderSelection } from './image-provider-config';
 
 export interface BridgeCliArgs {

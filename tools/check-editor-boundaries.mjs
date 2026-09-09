@@ -18,7 +18,7 @@ export function checkEditorBoundaries(repoRoot) {
       }
     }
   }
-  for (const directory of ['app', 'components/editor']) scan(resolve(repoRoot, directory));
+  for (const directory of ['app', 'src/components/editor']) scan(resolve(repoRoot, directory));
   return violations;
 }
 

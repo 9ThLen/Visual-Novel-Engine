@@ -26,7 +26,7 @@ const require = createRequire(import.meta.url);
 const {
   PLAYER_AUTOLINKING_ALLOWED,
   PLAYER_AUTOLINKING_EXCLUDE,
-} = require('../player-profile.js');
+} = require('../config/player-profile.js');
 
 const platformFlag = process.argv.indexOf('--platform');
 const platform = platformFlag >= 0 ? process.argv[platformFlag + 1] : 'android';
