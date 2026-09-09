@@ -1,211 +1,89 @@
 # Visual Novel Engine
 
-![Expo](https://img.shields.io/badge/Expo-54-000020?logo=expo&logoColor=white)
-![React Native](https://img.shields.io/badge/React_Native-0.81-61DAFB?logo=react&logoColor=111827)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)
-![pnpm](https://img.shields.io/badge/pnpm-10.23-F69220?logo=pnpm&logoColor=white)
-![Platform](https://img.shields.io/badge/current_platform-PC%20%7C%20Web-2563EB)
-![Status](https://img.shields.io/badge/status-active_development-F59E0B)
+Visual Novel Engine is an editor and player for interactive visual novels. Write a story, divide it into scenes, add characters, backgrounds, and music, and let readers shape what happens through their choices.
 
-Visual Novel Engine is a browser-based editor and player for creating interactive visual novels on a PC. It gives writers a focused place to write scenes, build branching dialogue, add characters and media, preview changes, and play the result from a reader's perspective.
+The work starts with text. You write a scene as a document, then add the actions around it: a character entering, a background changing, a sound playing, or a choice leading somewhere new. Preview the scene as you work, then play the whole story from the reader's perspective.
 
-> **Current testing scope:** authoring and testing happen on a PC in a desktop browser. Android tooling, emulators, and native builds are not required for authoring. A finished release can be sent through the optional local EAS build helper; its real-device acceptance is still pending.
+The basic experience runs locally without an account. Stories are saved in your browser, and the interface is available in English and Ukrainian.
 
-## Features
+## Start here
 
-- Create and organize visual novel projects.
-- Write scenes as readable document pages.
-- Add narration, dialogue, choices, variables, and conditions.
-- Use backgrounds, character sprites, audio, effects, transitions, camera actions, and interactive objects.
-- Preview the active scene without leaving the editor.
-- Play the complete story through the reader runtime.
-- Save work locally in the browser and export story data.
-- Optionally enable cloud backup and AI-assisted editing.
+**[Install and run the app on Windows](docs/INSTALLATION.md)** — a complete walkthrough, from installing Git and Node.js to opening the editor. It includes exact PowerShell commands, checks after each stage, restarting, updating, and troubleshooting.
 
-## Quick start on Windows
+**[Create your first novel](docs/USER_GUIDE.md)** — build a short story with a character, a background, and two routes, test both choices, and save a portable backup.
 
-### Requirements
+**[Understand the settings](docs/SETTINGS.md)** — adjust sound and reading comfort, understand local storage, and find the optional cloud and AI setup guides.
 
-Install the following before continuing:
+The installation guide covers running from source: a local server runs on your computer and you work in a browser. It requires Node.js 24 or newer and pnpm 10.23.0. You do not need Android tools or service credentials for this workflow.
 
-- [Git for Windows](https://git-scm.com/download/win)
-- [Node.js LTS](https://nodejs.org/en/download), version 20.19 or newer
-- Chrome, Edge, or Firefox
+## What you can create
 
-You do **not** need Android Studio, an Android emulator, Java, Supabase, a `.env` file, or any API keys for the standard local experience.
+The scene editor brings narration and character dialogue together with visual and audio actions. You can start with plain text and add presentation as the story takes shape.
 
-### 1. Download the project
+| Capability | How it helps your story |
+| --- | --- |
+| Stories and scenes | Organize projects and write scenes as readable documents. |
+| Narration and character dialogue | Move between descriptive passages and conversations. |
+| Choices and scene destinations | Give readers different paths through the story. |
+| Variables and conditions | Remember decisions and make later options depend on them. |
+| Backgrounds and character sprites | Set the location and show the cast. |
+| Music, voice audio, and sound effects | Build atmosphere and support the action. |
+| Effects, transitions, and camera actions | Control the presentation of important moments. |
+| Interactive objects | Add interaction with elements in a scene. |
+| Scene preview and full-story playback | Check the current scene and test the reader's journey. |
+| Import, export, and full backups | Preserve your work and move it between installations. |
+| Versioned releases | Freeze a story version for distribution. |
+| Optional AI assistance and cloud backup | Connect additional services when you want them. |
 
-Open PowerShell and run:
+The [user guide](docs/USER_GUIDE.md) introduces the workflow through a small example. The [action reference](wiki/block-types-reference.md) describes individual action types and their fields.
 
-```powershell
-git clone https://github.com/9ThLen/Visual-Novel-Engine.git
-cd Visual-Novel-Engine
-```
+## Make reading comfortable
 
-### 2. Install dependencies
+Settings let you choose the interface language and adjust music, voice, and effects separately. You can change how quickly text appears, resize dialogue text, and adjust the reader's font scale and line spacing.
 
-```powershell
-corepack pnpm install
-```
+Auto-play, parallax, and background video have their own controls. The [settings guide](docs/SETTINGS.md) explains each option. AI provider configuration is covered separately in the [AI bridge guide](tools/ai-bridge/README.md).
 
-Corepack may ask for permission to download the pnpm version declared by the project. Confirm the prompt if it appears.
+## Keep your work safe
 
-### 3. Start the web app
+Local stories belong to the browser profile and address where you created them. They do not automatically appear in another browser or on another computer. Clearing site data can remove them, and private browsing may discard them when the session ends.
 
-```powershell
-corepack pnpm dev:web
-```
+Autosave helps you continue between sessions. For a portable copy, create a **full backup** from the story's project page: it includes the story and its media. A JSON-only export contains the story structure without images and audio. Keep full backups before updates or major rewrites, and use one editing tab at a time because concurrent scene edits cannot be merged safely.
 
-Open [http://localhost:8081](http://localhost:8081) if the browser does not open automatically.
+See [saving and restoring a copy](docs/USER_GUIDE.md#7-save-a-portable-copy) for the workflow.
 
-Keep the PowerShell window running while you use the app. Press `Ctrl+C` in that window to stop the development server.
+## Share a finished story
 
-For a step-by-step guided setup, see the [Windows tester quick start](docs/TESTER_QUICK_START.md).
+A release freezes one version of your story so you can continue editing the draft without changing that released version. Follow [Releasing a story](wiki/releases.md) to prepare a standalone web bundle.
 
-## Using the app
+[Desktop packaging](wiki/releases-desktop.md) and [Android packaging](wiki/releases-android.md) have separate requirements. Creating a browser story does not require installing their build tools.
 
-1. Open the home page and select **Studio**.
-2. Open a bundled demo or create a new story.
-3. Select **Edit novel** to write and organize scenes.
-4. Add dialogue, choices, characters, media, and runtime actions.
-5. Preview the active scene while editing.
-6. Select **Play novel** to experience the story as a reader.
-7. Reload the browser and confirm that your work is still available.
+The studio itself can also be [installed as a desktop application](wiki/studio-desktop.md), which removes the need for a checkout, a terminal and a development server.
 
-The interface supports English and Ukrainian. Visible button names follow the language selected in Settings.
+## Project status and support
 
-## Starting the app again
+Visual Novel Engine is under active development. The documented acceptance scope covers the PC browser editor, browser reader, web bundle, and locally built Windows shell. The Android EAS path is implemented, but its paid-build and real-device acceptance are still pending. Optional integrations require their own configuration.
 
-After the first installation, you only need to open PowerShell in the project directory and start the server:
+If something goes wrong during setup, start with [installation troubleshooting](docs/INSTALLATION.md#troubleshooting). For a reproducible problem, [open an issue](https://github.com/9ThLen/Visual-Novel-Engine/issues) with the steps, expected result, actual result, and relevant error messages. The [manual testing guide](docs/MANUAL_TESTING.md) includes a bug-report template.
+
+## For contributors
+
+The app uses Expo, React Native Web, TypeScript, Zustand, NativeWind, and Plate. The active scene editor is in `components/editor/plate/`; canonical scene data uses `SceneRecord + TimelineStep`.
+
+From an installed checkout, use:
 
 ```powershell
-cd C:\path\to\Visual-Novel-Engine
-corepack pnpm dev:web
+pnpm.cmd dev:web  # Start the browser app
+pnpm.cmd check    # Check TypeScript
+pnpm.cmd test     # Run unit tests
+pnpm.cmd lint     # Run lint checks
 ```
 
-Do not run `git clone` again for an existing copy of the project.
+Further reading:
 
-## Updating the project
-
-Stop the server with `Ctrl+C`, then run:
-
-```powershell
-git pull
-corepack pnpm install
-corepack pnpm dev:web
-```
-
-Stories are stored in the current browser profile rather than in Git. Export important work before a major update. Incognito or InPrivate windows may remove local data when they are closed.
-
-## Troubleshooting
-
-### `git`, `node`, or `corepack` is not recognized
-
-Confirm that Git and Node.js LTS are installed. Close all PowerShell windows, open a new one, and check:
-
-```powershell
-git --version
-node --version
-corepack pnpm --version
-```
-
-If a command is still unavailable, restart Windows and try again.
-
-### Port 8081 is already in use
-
-Check whether the app is already running in another PowerShell window. Stop the old process with `Ctrl+C`, then run `corepack pnpm dev:web` again.
-
-### The page does not open
-
-Keep the server window open, check it for errors, and visit [http://localhost:8081](http://localhost:8081) manually. Use `Ctrl+Shift+R` to perform a hard refresh.
-
-### The browser shows an old version
-
-Stop the server and restart Expo with a clean cache:
-
-```powershell
-git pull
-corepack pnpm install
-corepack pnpm exec expo start --web --port 8081 --clear
-```
-
-### `pnpm install` fails
-
-Save the first complete `ERR_PNPM` message, verify the Node.js version, and check the internet connection, VPN, proxy, or antivirus. Do not delete project files unless a developer asks you to.
-
-## Local data and optional services
-
-The default experience is local-first:
-
-- no account is required;
-- story data stays in the current browser profile;
-- use one app tab at a time; the app warns both tabs when it detects concurrent editing because simultaneous scene changes cannot be merged safely;
-- different browsers use separate local storage;
-- clearing site data for `localhost` can remove locally stored stories.
-
-The `.env.example` file documents optional integrations. Copy it to `.env` only when you intentionally configure Supabase cloud backup or an AI provider. Never place a Supabase `service_role` key in the client configuration, and never commit credentials.
-
-For AI provider setup and local bridge pairing, see [`tools/ai-bridge/README.md`](tools/ai-bridge/README.md).
-
-## Development commands
-
-```powershell
-# Start the web development server
-corepack pnpm dev:web
-
-# Type-check the project
-corepack pnpm check
-
-# Run unit tests
-corepack pnpm test
-
-# Run lint checks
-corepack pnpm lint
-
-# Run the deterministic AI browser suite
-corepack pnpm test:ai-e2e
-```
-
-Native Android and iOS commands are intentionally outside the current testing workflow.
-
-## Technology
-
-- [Expo](https://expo.dev/) and Expo Router
-- React Native and React Native Web
-- TypeScript
-- Zustand
-- NativeWind
-- Plate
-- Vitest and Playwright
-
-## Architecture overview
-
-- `app/` — Expo Router screens.
-- `components/editor/plate/` — the active scene editor.
-- `components/editor/` — active preview, play, scene management, manuscript, and shared editor surfaces.
-- `lib/engine/` — timeline execution, events, and condition evaluation.
-- `stores/use-app-store.ts` — persisted Zustand application state.
-- `lib/persistent-storage.ts` — platform-aware storage abstraction.
-- `wiki/` — detailed project knowledge base.
-
-Canonical scene data uses `SceneRecord + TimelineStep`. Legacy `Story`, `StoryScene`, and `Choice` types remain only at import, export, and migration boundaries.
-
-## Documentation
-
-- [`docs/TESTER_QUICK_START.md`](docs/TESTER_QUICK_START.md) — first installation and web launch on Windows.
-- [`docs/MANUAL_TESTING.md`](docs/MANUAL_TESTING.md) — manual test scope, regression checklist, and bug-report template.
-- [`wiki/index.md`](wiki/index.md) — documentation index.
-- [`wiki/overview.md`](wiki/overview.md) — product and system overview.
-- [`wiki/architecture-reference.md`](wiki/architecture-reference.md) — architecture reference.
-- [`wiki/testing-guide.md`](wiki/testing-guide.md) — automated testing guide.
-- [`wiki/releases.md`](wiki/releases.md) — freeze a story into a release and publish it as a standalone web bundle.
-- [`wiki/releases-desktop.md`](wiki/releases-desktop.md) — wrap that same bundle in a desktop installer.
-- [`wiki/releases-android.md`](wiki/releases-android.md) — stage that same release as an Android app.
-- [`wiki/studio-desktop.md`](wiki/studio-desktop.md) — install the studio itself as a desktop application.
-- [`PRODUCT.md`](PRODUCT.md) — product purpose and design principles.
-- [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) — visual language, tokens, and theme rules.
-
-## Project status
-
-Visual Novel Engine is under active development. The current acceptance workflow covers the PC web editor, web reader, web bundle, and the locally built Windows shell. Cloud integrations and AI providers are optional. The Android EAS path is implemented but has not yet completed its paid-build and real-device acceptance run.
+- [Documentation index](wiki/index.md)
+- [Architecture reference](wiki/architecture-reference.md)
+- [Testing guide](wiki/testing-guide.md)
+- [Project changelog](wiki/changelog.md)
+- [Product principles](PRODUCT.md)
+- [Design system](DESIGN_SYSTEM.md)
+- [Optional integration variables](.env.example)

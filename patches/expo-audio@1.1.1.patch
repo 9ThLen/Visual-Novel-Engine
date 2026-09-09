@@ -1,0 +1,24 @@
+diff --git a/build/AudioModule.web.js b/build/AudioModule.web.js
+index 407e9e9aa29c4a01ebed886575705506f261aa69..643782f9d2716034cc93523a460bd115f66385f6 100644
+--- a/build/AudioModule.web.js
++++ b/build/AudioModule.web.js
+@@ -136,7 +136,18 @@ export class AudioPlayerWeb extends globalThis.expo.SharedObject {
+         return getStatusFromMedia(this.media, this.id);
+     }
+     play() {
+-        this.media.play();
++        // HTMLMediaElement.play() returns a promise. Discarding it made every
++        // refusal an unhandled rejection escaping to the page: NotAllowedError
++        // when autoplay is blocked, AbortError when a pause() lands first. It
++        // also left isPlaying true after playback never started.
++        const started = this.media.play();
++        if (started && typeof started.then === 'function') {
++            started.then(() => {
++                this.isPlaying = !this.media.paused;
++            }, () => {
++                this.isPlaying = false;
++            });
++        }
+         this.isPlaying = true;
+     }
+     pause() {

@@ -1,15 +1,18 @@
-shamefullyHoist: true
-strictPeerDependencies: false
-updateNotifier: false
+allowBuilds:
+  esbuild: set this to true or false
+  unrs-resolver: set this to true or false
 
 onlyBuiltDependencies:
   - esbuild
   - unrs-resolver
 
 patchedDependencies:
+  '@expo/cli': patches/@expo__cli@54.0.24.patch
+  expo-audio@1.1.1: patches/expo-audio@1.1.1.patch
   react-native-css-interop: patches/react-native-css-interop.patch
-  "@expo/cli": patches/@expo__cli@54.0.24.patch
 
-allowBuilds:
-  esbuild: set this to true or false
-  unrs-resolver: set this to true or false
+shamefullyHoist: true
+
+strictPeerDependencies: false
+
+updateNotifier: false

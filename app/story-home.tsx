@@ -88,10 +88,13 @@ import type { StoryMetadata } from '@/lib/story-domain';
 import { CONTENT_RATINGS, sanitizeStoryLanguages, type ContentRating } from '@/lib/story-publication';
 import { formatNumber } from '@/lib/format-number';
 import type { SceneRecord } from '@/lib/engine/types';
+import type { Character } from '@/lib/character-types';
 import { selectSceneRecordsForStory, useAppStore } from '@/stores/use-app-store';
 
 /** Stable identity so the store selector cannot loop by returning a new []. */
 const EMPTY_RELEASES: ReleaseMeta[] = [];
+/** Same reason as `EMPTY_RELEASES`: a fresh `[]` per render is a new identity. */
+const NO_CHARACTERS: Character[] = [];
 
 /**
  * Keyed by the app's language, not the browser's: «Updated» in English beside a
@@ -351,7 +354,7 @@ export default function StoryHomeScreen() {
     storyId ? state.characterLibraries[storyId]?.length ?? 0 : 0,
   );
   const characterLibrary = useAppStore((state) =>
-    storyId ? state.characterLibraries[storyId] ?? [] : [],
+    storyId ? state.characterLibraries[storyId] ?? NO_CHARACTERS : NO_CHARACTERS,
   );
   const releases = useAppStore((state) => (storyId ? state.releasesByStory[storyId] ?? EMPTY_RELEASES : EMPTY_RELEASES));
   const loadReleasesForStory = useAppStore((state) => state.loadReleasesForStory);
