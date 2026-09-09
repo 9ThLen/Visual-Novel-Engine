@@ -85,12 +85,13 @@ const appConfig = {
     }
   },
   android: {
-    // The launcher masks the layers itself and only guarantees the inner 66.67%
-    // of each, so the foreground holds the rabbit alone — sized to the 0.71 of
-    // the circle the artwork uses — and this colour is the cream it sits on.
-    // A pre-rounded tile here would be masked a second time, ears first.
+    // The launcher masks the layers itself, so the foreground holds the rabbit
+    // alone — fitted to Android's 66dp keyline circle, the largest it can be
+    // without a mask shape clipping it — and this colour is the cream its
+    // outline and eyes read against. A pre-rounded tile would be masked a
+    // second time, ears first.
     adaptiveIcon: {
-      backgroundColor: "#F8F3EC",
+      backgroundColor: "#FBF4EA",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
     },
