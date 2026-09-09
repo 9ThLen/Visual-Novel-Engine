@@ -70,6 +70,30 @@ re-read it: the screen stayed empty until a reload. Observed directly in the bro
 payload still wins wherever it holds a record; records already in memory now only fill
 what it does not cover. Two regression tests cover both directions.
 
+### The GitHub Pages release gate was red on every push
+
+`Deploy to GitHub Pages` has failed on all four recent pushes to `main`
+(9c5fe69, abccbda, 343272d, 3405674). The deploy itself succeeds every time; the
+`Verify deployed web app` step after it is what fails, so the site publishes and
+the gate that is supposed to protect it reports failure regardless — it has not
+been able to catch a real regression for some time.
+
+The check counted its own SPA fallback as a runtime error. GitHub Pages serves a
+deep link from `404.html` **with a 404 status** — that is the pattern the
+deployment depends on — and the browser logs that document status as a console
+error. The four deep routes the smoke walks produced exactly the four errors the
+CI log reported. Reproduced locally against a server that mimics the Pages
+fallback, then fixed: document errors for the routes the smoke itself asked for
+are expected; a 404 on anything else still fails. Verified in both directions —
+the check passes on a good build and still fails when a real subresource (the CSS
+bundle) is removed. It also names the failing URL now, which is why the CI log
+could only say "Failed to load resource" four times with nothing to identify.
+
+Note: `pnpm lint` — the command CI runs — passes. An earlier note in this pass
+claimed otherwise; that came from running `eslint .` directly over the whole
+repo, which covers test and mock files the project's own lint script does not.
+There is no lint debt to act on.
+
 ## Remaining release verification
 
 - Native Android/iOS builds and real-device behavior have not been verified. Desktop tests validate the staged application and its offline frontend, not an installed native binary.

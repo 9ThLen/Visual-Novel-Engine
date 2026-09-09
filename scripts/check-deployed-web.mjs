@@ -40,6 +40,19 @@ async function verify() {
 async function verifyInBrowser() {
   const { chromium } = await import('@playwright/test');
   const browser = await chromium.launch();
+  const routes = [
+    '',
+    'tabs',
+    'reader?storyId=deployment-smoke',
+    'document-editor?storyId=deployment-smoke&sceneId=deployment-smoke',
+    'definitely-missing',
+  ];
+  // Every deep route is served by the SPA fallback, and Pages must answer it
+  // with a 404 status for that to work at all — so the browser logs the
+  // document's own status as a console error. Those are the routes we asked
+  // for, so their document errors are the deployment working. A 404 on
+  // anything else, a missing chunk or asset, is still a real failure.
+  const requestedDocuments = new Set(routes.map((route) => new URL(route, pageRoot).toString()));
   try {
     const page = await browser.newPage();
     const runtimeErrors = [];
@@ -49,17 +62,13 @@ async function verifyInBrowser() {
       const sourceUrl = message.location().url;
       // The generic editor intentionally probes for this optional player flag.
       if (sourceUrl.endsWith('/player-config.json')) return;
-      runtimeErrors.push(message.text());
+      if (requestedDocuments.has(sourceUrl)) return;
+      runtimeErrors.push(`${message.text()} (${sourceUrl})`);
     });
 
-    for (const route of [
-      '',
-      'tabs',
-      'reader?storyId=deployment-smoke',
-      'document-editor?storyId=deployment-smoke&sceneId=deployment-smoke',
-      'definitely-missing',
-    ]) {
+    for (const route of routes) {
       await page.goto(new URL(route, pageRoot).toString(), { waitUntil: 'domcontentloaded' });
+      // The fallback has to actually boot the app, not just return a document.
       await page.locator('#root > *').first().waitFor({ state: 'visible', timeout: 20_000 });
       await page.waitForTimeout(1_000);
     }
