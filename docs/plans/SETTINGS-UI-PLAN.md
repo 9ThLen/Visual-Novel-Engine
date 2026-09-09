@@ -16,23 +16,23 @@
 
 ### 1.1 Колонка не обмежена нічим
 
-`ScreenContainer` віддає всю ширину вікна ([settings.tsx:184](app/settings.tsx:184)). На десктопі підпис лишається ліворуч, а `Switch` відлітає на протилежний край — око не зв'язує їх у пару. Сусідні екрани це вже вирішили: `theme-studio` має `maxWidth: 1200` ([theme-studio.tsx:380](app/theme-studio.tsx:380)), `editor` — `1100` ([editor.tsx:298](app/editor.tsx:298)). Налаштування — ні.
+`ScreenContainer` віддає всю ширину вікна ([settings.tsx:184](../../app/settings.tsx:184)). На десктопі підпис лишається ліворуч, а `Switch` відлітає на протилежний край — око не зв'язує їх у пару. Сусідні екрани це вже вирішили: `theme-studio` має `maxWidth: 1200` ([theme-studio.tsx:380](../../app/theme-studio.tsx:380)), `editor` — `1100` ([editor.tsx:298](../../app/editor.tsx:298)). Налаштування — ні.
 
 ### 1.2 Кожна секція — окрема картка з обведенням
 
-`padding: 16` + `marginBottom: 16` + `borderWidth: 1` × 7 ([settings.tsx:82](app/settings.tsx:82)) дають близько 220 px самих лише полів і сім конкурентних прямокутників.
+`padding: 16` + `marginBottom: 16` + `borderWidth: 1` × 7 ([settings.tsx:82](../../app/settings.tsx:82)) дають близько 220 px самих лише полів і сім конкурентних прямокутників.
 
 ### 1.3 Підписи секцій кричать
 
-13 px, `fontWeight: '700'`, колір `primary`, капс і трекінг 0.8 ([settings.tsx:93](app/settings.tsx:93)) — сім акцентів рівної сили, які змагаються з власним вмістом.
+13 px, `fontWeight: '700'`, колір `primary`, капс і трекінг 0.8 ([settings.tsx:93](../../app/settings.tsx:93)) — сім акцентів рівної сили, які змагаються з власним вмістом.
 
 ### 1.4 Кожен контрол займає два поверхи
 
-`SliderRow` — підпис зверху, доріжка `height: 36` знизу ([settings.tsx:118](app/settings.tsx:118)), близько 60 px на одну гучність. `SegmentedNumberRow` — підпис зверху, три-чотири кнопки з `paddingVertical: 10` ([settings.tsx:153](app/settings.tsx:153)), ще 68 px.
+`SliderRow` — підпис зверху, доріжка `height: 36` знизу ([settings.tsx:118](../../app/settings.tsx:118)), близько 60 px на одну гучність. `SegmentedNumberRow` — підпис зверху, три-чотири кнопки з `paddingVertical: 10` ([settings.tsx:153](../../app/settings.tsx:153)), ще 68 px.
 
 ### 1.5 Іконка вклеєна в рядок тексту
 
-`{icon} {label}` всередині `<Text>` ([settings.tsx:53](app/settings.tsx:53)) прив'язує іконку до базової лінії й лишає підписи без спільної лівої межі.
+`{icon} {label}` всередині `<Text>` ([settings.tsx:53](../../app/settings.tsx:53)) прив'язує іконку до базової лінії й лишає підписи без спільної лівої межі.
 
 ---
 
@@ -101,7 +101,7 @@
 
 ## 5. Що написано
 
-Стан і `normalizeUserSettings` лишилися недоторканими — змінився лише шар подання. Локальні компоненти, оголошені всередині `SettingsScreen` ([settings.tsx:42](app/settings.tsx:42), [settings.tsx:82](app/settings.tsx:82), [settings.tsx:103](app/settings.tsx:103), [settings.tsx:134](app/settings.tsx:134)), переїхали у власні файли — доти вони перестворювалися на кожному рендері, тож кожна зміна гучності перемонтовувала весь екран.
+Стан і `normalizeUserSettings` лишилися недоторканими — змінився лише шар подання. Локальні компоненти, оголошені всередині `SettingsScreen` ([settings.tsx:42](../../app/settings.tsx:42), [settings.tsx:82](../../app/settings.tsx:82), [settings.tsx:103](../../app/settings.tsx:103), [settings.tsx:134](../../app/settings.tsx:134)), переїхали у власні файли — доти вони перестворювалися на кожному рендері, тож кожна зміна гучності перемонтовувала весь екран.
 
 1. **`components/settings/list.tsx`** — `SettingsGroup` (заголовок + поверхня + виноска), `SettingsRow` (плитка, підпис, опис, слот справа, роздільник із відступом), `SettingsChevronRow`, `SettingsFooter`.
 2. **`components/ui/SegmentedControl.tsx`** — загальний контрол: доріжка, вибрана плашка з тінню, `radiogroup` / `radio` (див. 7.2). Замінив три копії `Pressable`-сегментів.
@@ -131,7 +131,7 @@
 
 ### 7.1 Перемикач на вебі був бірюзовий
 
-`react-native-web` перестає застосовувати `thumbColor`, щойно `Switch` увімкнено, і бере власний типовий `#009688`. Тому кожен увімкнений перемикач у застосунку був бірюзовий, а не в кольорі теми. Колір активного повзунка називається окремо через `getSwitchActiveThumbProps` ([lib/switch-platform.ts](lib/switch-platform.ts)) — проп існує лише на вебі.
+`react-native-web` перестає застосовувати `thumbColor`, щойно `Switch` увімкнено, і бере власний типовий `#009688`. Тому кожен увімкнений перемикач у застосунку був бірюзовий, а не в кольорі теми. Колір активного повзунка називається окремо через `getSwitchActiveThumbProps` ([lib/switch-platform.ts](../../lib/switch-platform.ts)) — проп існує лише на вебі.
 
 ### 7.2 Сегментний вибір нічого не повідомляв про свій стан
 
@@ -139,7 +139,7 @@
 
 ### 7.3 Новий токен `control-knob`
 
-Повзунок слайдера і повзунок перемикача мають лишатися світлими на обох темах, інакше на темній вони зникають у поверхні рядка. Це єдиний новий колір; доданий до `constants/theme-colors.json` парою light/dark і описаний у [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
+Повзунок слайдера і повзунок перемикача мають лишатися світлими на обох темах, інакше на темній вони зникають у поверхні рядка. Це єдиний новий колір; доданий до `constants/theme-colors.json` парою light/dark і описаний у [DESIGN_SYSTEM.md](../product/DESIGN_SYSTEM.md).
 
 ### 7.4 Вісім рядків перекладу лишилися без читача
 

@@ -1,8 +1,8 @@
 # Settings explained
 
-[English](SETTINGS.md) · [Українська](uk/SETTINGS.md)
+[English](SETTINGS.md) · [Українська](../uk/SETTINGS.md)
 
-[Project overview](../README.md) · [Installation](INSTALLATION.md) · [User guide](USER_GUIDE.md)
+[Project overview](../../README.md) · [Installation](INSTALLATION.md) · [User guide](USER_GUIDE.md)
 
 Open **Settings** in the app to adjust language, audio, and reading preferences. Start with the defaults, then change the parts that affect your comfort. The names below use the English interface.
 
@@ -30,10 +30,10 @@ Use a full backup from the story's project page to keep the story and its media 
 
 ## Optional cloud setup
 
-For a self-hosted source checkout, the available environment settings are documented in [`.env.example`](../.env.example). Copy it to `.env` only when configuring an optional integration. Cloud backup uses `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; restart the development server after changing them.
+For a self-hosted source checkout, the available environment settings are documented in [`.env.example`](../../.env.example). Copy it to `.env` only when configuring an optional integration. Cloud backup uses `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; restart the development server after changing them.
 
 Do not put a Supabase `service_role` key in the browser configuration or commit credentials. Once the service is configured, use the app's cloud-backup controls to sign in and check its status. Merely opening the local app does not enable cloud backup.
 
 ## Optional AI assistance
 
-AI provider settings are separate from reading preferences. The provider and connection you choose determine the required credentials and available features. Follow the [AI bridge setup guide](../tools/ai-bridge/README.md) for provider setup and local pairing. Provider usage may require a paid account or incur charges.
+AI provider settings are separate from reading preferences. The provider and connection you choose determine the required credentials and available features. Follow the [AI bridge setup guide](../../tools/ai-bridge/README.md) for provider setup and local pairing. Provider usage may require a paid account or incur charges.

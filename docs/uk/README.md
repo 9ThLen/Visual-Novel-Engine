@@ -84,6 +84,6 @@ pnpm.cmd lint     # Перевірка лінтером
 - [Архітектура](../../wiki/architecture-reference.md)
 - [Тестування](../../wiki/testing-guide.md)
 - [Історія змін](../../wiki/changelog.md)
-- [Принципи продукту](../../PRODUCT.md)
-- [Дизайн-система](../../DESIGN_SYSTEM.md)
+- [Принципи продукту](../product/PRODUCT.md)
+- [Дизайн-система](../product/DESIGN_SYSTEM.md)
 - [Параметри додаткових інтеграцій](../../.env.example)

@@ -18,21 +18,21 @@
 
 ### 1.2 Дві категорії: «Музика» і «Звуки»
 
-`AudioLibraryItem.type` має чотири значення ([audio-types.ts:26](lib/audio-types.ts:26)), але в таймлайні їх лише дві ролі: блок `music` (фонова доріжка) і блок `sound` (одноразовий ефект) — саме так це бачить і облік використання, де `AssetUsageKind` знає `music` і `sound` ([asset-usage.ts:16](lib/asset-usage.ts:16)). Тому в медіатеці категорій дві: **музика** і **звуки**; `voice` та `ambient` показуються як звуки.
+`AudioLibraryItem.type` має чотири значення ([audio-types.ts:26](../../lib/audio-types.ts:26)), але в таймлайні їх лише дві ролі: блок `music` (фонова доріжка) і блок `sound` (одноразовий ефект) — саме так це бачить і облік використання, де `AssetUsageKind` знає `music` і `sound` ([asset-usage.ts:16](../../lib/asset-usage.ts:16)). Тому в медіатеці категорій дві: **музика** і **звуки**; `voice` та `ambient` показуються як звуки.
 
 ### 1.3 Категорія виводиться з використання, а не з назви файлу
 
-Єдиний наявний класифікатор — `inferAudioItemType` ([audio-library.ts:30](lib/audio-library.ts:30)) — вгадує тип із назви: `voice` за словом «voice», `music` за «music/theme/bgm», решта — `sfx`. `ambient` не вгадується ніколи. Класифікувати всю бібліотеку так означало б підписати більшість файлів навмання.
+Єдиний наявний класифікатор — `inferAudioItemType` ([audio-library.ts:30](../../lib/audio-library.ts:30)) — вгадує тип із назви: `voice` за словом «voice», `music` за «music/theme/bgm», решта — `sfx`. `ambient` не вгадується ніколи. Класифікувати всю бібліотеку так означало б підписати більшість файлів навмання.
 
 Тому категорія береться за спаданням надійності:
 
 1. **Запис у `audioLibraries[storyId]`**, якщо він є: `type === 'music'` → музика, інакше звуки.
-2. **Посилання зі сцен**: якщо файл хоч раз стоїть у блоці `music` — це музика; якщо тільки в блоках `sound` — це звук. Дані реальні, їх дає `collectAssetReferences` ([asset-usage.ts:98](lib/asset-usage.ts:98)), і саме вони визначають, як файл звучить у грі.
+2. **Посилання зі сцен**: якщо файл хоч раз стоїть у блоці `music` — це музика; якщо тільки в блоках `sound` — це звук. Дані реальні, їх дає `collectAssetReferences` ([asset-usage.ts:98](../../lib/asset-usage.ts:98)), і саме вони визначають, як файл звучить у грі.
 3. **Назва файлу** — лише для тих, що не вживаються ніде: `inferAudioItemType`, згорнутий до двох значень.
 
 Правило «будь-яке `music`-посилання перемагає» робить результат детермінованим для файлу, вжитого в обох ролях.
 
-**Наслідок:** `audioLibraries[storyId]` зараз не заповнює жоден потік застосунку — записи туди потрапляють лише при імпорті бекапу ([story-backup/import.ts:317](lib/story-backup/import.ts:317)). Ручне перевизначення категорії в інспекторі (R4.3) стане першим місцем, де застосунок пише цю структуру сам.
+**Наслідок:** `audioLibraries[storyId]` зараз не заповнює жоден потік застосунку — записи туди потрапляють лише при імпорті бекапу ([story-backup/import.ts:317](../../lib/story-backup/import.ts:317)). Ручне перевизначення категорії в інспекторі (R4.3) стане першим місцем, де застосунок пише цю структуру сам.
 
 ### 1.4 Відтворення просто в плитці
 
@@ -44,7 +44,7 @@
 
 Стан контролера ведеться **за ключем елемента, а не за наявністю плеєра**: поки URI резолвиться, плеєра ще немає, але елемент уже активний — інакше повторний тап під час завантаження запускав би другий резолв замість того, щоб скасувати перший (R4.5).
 
-Ліз на URI береться в момент запуску й повертається на зупинці, зміні елемента й розмонтуванні — за зразком `MediaInspectorVideo` ([MediaInspector.tsx:46](components/media-library/MediaInspector.tsx:46)), бо відкликаний object URL не відновлюється повторним використанням того самого значення.
+Ліз на URI береться в момент запуску й повертається на зупинці, зміні елемента й розмонтуванні — за зразком `MediaInspectorVideo` ([MediaInspector.tsx:46](../../components/media-library/MediaInspector.tsx:46)), бо відкликаний object URL не відновлюється повторним використанням того самого значення.
 
 ### 1.6 Прев'ю не чіпає аудіо читача
 
@@ -79,19 +79,19 @@ export interface StoryMediaGallery {
 }
 ```
 
-`durationSeconds`, `sizeBytes` і `mimeType` уже є в `StoryMediaItem` ([story-media-gallery.ts:61](lib/story-media-gallery.ts:61)); `owners` для аудіо завжди порожній.
+`durationSeconds`, `sizeBytes` і `mimeType` уже є в `StoryMediaItem` ([story-media-gallery.ts:61](../../lib/story-media-gallery.ts:61)); `owners` для аудіо завжди порожній.
 
 ### 2.2 Членство історії
 
-`audios` = `mediaLibrary.filter(a => a.type === 'audio' && storyMediaIds.has(a.id))` — той самий набір `mediaAssetIdsByStory`, з якого вже будуються відео. Він уже правильний для аудіо: `migrateStoryMediaAssetIds` збирає `audioReferences` при кожній гідратації ([story-media-library.ts:96](lib/story-media-library.ts:96)).
+`audios` = `mediaLibrary.filter(a => a.type === 'audio' && storyMediaIds.has(a.id))` — той самий набір `mediaAssetIdsByStory`, з якого вже будуються відео. Він уже правильний для аудіо: `migrateStoryMediaAssetIds` збирає `audioReferences` при кожній гідратації ([story-media-library.ts:96](../../lib/story-media-library.ts:96)).
 
-**Не** використовуємо `getPlaybackAudioLibraryPure`: `buildPlaybackAudioLibraryItems` проходить по всьому `mediaLibrary` без фільтра за історією ([audio-library.ts:57](lib/audio-library.ts:57)), тобто повертає аудіо чужих історій. Записи `audioLibraries[storyId]` беремо лише як джерело метаданих для правила 1.3, не як список.
+**Не** використовуємо `getPlaybackAudioLibraryPure`: `buildPlaybackAudioLibraryItems` проходить по всьому `mediaLibrary` без фільтра за історією ([audio-library.ts:57](../../lib/audio-library.ts:57)), тобто повертає аудіо чужих історій. Записи `audioLibraries[storyId]` беремо лише як джерело метаданих для правила 1.3, не як список.
 
 > Побічне спостереження: через це саме місце пікер звуку в редакторі показує аудіо з інших історій. Медіатека цього не успадкує; сам пікер — окрема задача.
 
 ### 2.3 Використання
 
-`buildStoryMediaGallery` зараз передає порожній масив аудіо в `buildAvailableAssets` ([asset-usage.ts:49](lib/asset-usage.ts:49)). Передаємо реальні аудіо-активи історії — і «Використані / Невикористані» починають працювати для звуків без нової логіки: `canUseAssetKind` уже вважає `music` і `sound` взаємозамінними, тож доріжка, вставлена в блок `sound`, не читається як бита.
+`buildStoryMediaGallery` зараз передає порожній масив аудіо в `buildAvailableAssets` ([asset-usage.ts:49](../../lib/asset-usage.ts:49)). Передаємо реальні аудіо-активи історії — і «Використані / Невикористані» починають працювати для звуків без нової логіки: `canUseAssetKind` уже вважає `music` і `sound` взаємозамінними, тож доріжка, вставлена в блок `sound`, не читається як бита.
 
 Це також прибирає нинішній перекіс: посилання `music`/`sound` зі сцен зараз потрапляють у `brokenReferences` звіту медіатеки просто тому, що жодного аудіо-активу їй не показали.
 
@@ -104,9 +104,9 @@ export type ImageFilter =
   | { kind: 'audioCategory'; category: AudioCategory };
 ```
 
-Рейка на вкладці звуків: `Усі · Музика · Звуки · Використані · Невикористані`. Персонажів там немає — так само, як на вкладці відео ([story-gallery.tsx:137](app/story-gallery.tsx:137)). Лічильники чіпсів «Музика» / «Звуки» — розміри відповідних підмножин.
+Рейка на вкладці звуків: `Усі · Музика · Звуки · Використані · Невикористані`. Персонажів там немає — так само, як на вкладці відео ([story-gallery.tsx:137](../../app/story-gallery.tsx:137)). Лічильники чіпсів «Музика» / «Звуки» — розміри відповідних підмножин.
 
-`filterMediaItems` ([story-media-gallery.ts:393](lib/story-media-gallery.ts:393)) отримує одну гілку: `case 'audioCategory': return item.audioCategory === normalized.category`.
+`filterMediaItems` ([story-media-gallery.ts:393](../../lib/story-media-gallery.ts:393)) отримує одну гілку: `case 'audioCategory': return item.audioCategory === normalized.category`.
 
 Пошук не змінюється — по `name`; для аудіо власників немає, тож інші поля не застосовні.
 
@@ -116,7 +116,7 @@ export type ImageFilter =
 
 ### 3.1 Вкладки
 
-`MediaTypeTabs` стає трикнопковим, `counts` — з трьох чисел ([MediaFilters.tsx:35](components/media-library/MediaFilters.tsx:35)). Перемикання вкладки скидає фільтр і зупиняє прев'ю.
+`MediaTypeTabs` стає трикнопковим, `counts` — з трьох чисел ([MediaFilters.tsx:35](../../components/media-library/MediaFilters.tsx:35)). Перемикання вкладки скидає фільтр і зупиняє прев'ю.
 
 ### 3.2 Плитка звуку
 
@@ -125,10 +125,10 @@ export type ImageFilter =
 - по центру — кнопка транспорту, вона ж головна афорданс-точка плитки. Три значення, і мітка щоразу каже яке: **пауза** для того, що грає, **відтворити** для паузи, і **зупинити** — поки файл ще резолвиться;
 - під нею — назва у два рядки;
 - лівий верхній кут — іконка категорії (нота для музики, динамік для звуку);
-- правий нижній кут — бейдж тривалості, той самий `styles.videoBadge` ([MediaGrid.tsx:230](components/media-library/MediaGrid.tsx:230)), лише коли `durationSeconds` відомий;
+- правий нижній кут — бейдж тривалості, той самий `styles.videoBadge` (історична згадка: `components/media-library/MediaGrid.tsx:230`; файл більше не існує за цим шляхом), лише коли `durationSeconds` відомий;
 - низ плитки під час гри — смужка прогресу 2px із `playbackStatusUpdate`.
 
-Усі чотири іконки вже є в `IconSymbol`: `play`, `stop`, `music`, `sound` ([icon-symbol.tsx:45](components/ui/icon-symbol.tsx:45)).
+Усі чотири іконки вже є в `IconSymbol`: `play`, `stop`, `music`, `sound` ([icon-symbol.tsx:45](../../components/ui/icon-symbol.tsx:45)).
 
 Два натискання розділені: кнопка запускає звук, решта плитки — вибирає елемент і відкриває інспектор. Обидва мають власні `accessibilityLabel` («Відтворити ‹назва›» / «Зупинити ‹назва›» і наявний `mediaLibrary.tile.label`), бо вкладена пара `Pressable` інакше зчитується як одна кнопка.
 
@@ -140,9 +140,9 @@ export type ImageFilter =
 
 ### 3.4 Додавання і вилучення
 
-**Додати.** Кнопка `+` стає залежною від вкладки: зараз вона підбирає зображення завжди ([story-gallery.tsx:155](app/story-gallery.tsx:155)). Потрібен `lib/pick-audio.ts` за зразком `lib/pick-video.ts`: на web — `openWebFileDialog('audio/*')` з читанням тривалості з метаданих (`<audio>`-проба, як відео-проба читає заголовок), на native — `expo-document-picker` (уже в залежностях). Плюс `isSupportedAudioMimeType` (`audio/mpeg`, `audio/wav`, `audio/ogg`, `audio/mp4`) поряд із наявним відео-аналогом ([media-library-service.ts:31](lib/media-library-service.ts:31)) і ліміт розміру `MAX_AUDIO_ASSET_BYTES` = `STORY_BACKUP_LIMITS.maxObjectBytes`, як у відео ([media-library-service.ts:26](lib/media-library-service.ts:26)).
+**Додати.** Кнопка `+` стає залежною від вкладки: зараз вона підбирає зображення завжди ([story-gallery.tsx:155](../../app/story-gallery.tsx:155)). Потрібен `lib/pick-audio.ts` за зразком `lib/pick-video.ts`: на web — `openWebFileDialog('audio/*')` з читанням тривалості з метаданих (`<audio>`-проба, як відео-проба читає заголовок), на native — `expo-document-picker` (уже в залежностях). Плюс `isSupportedAudioMimeType` (`audio/mpeg`, `audio/wav`, `audio/ogg`, `audio/mp4`) поряд із наявним відео-аналогом ([media-library-service.ts:31](../../lib/media-library-service.ts:31)) і ліміт розміру `MAX_AUDIO_ASSET_BYTES` = `STORY_BACKUP_LIMITS.maxObjectBytes`, як у відео ([media-library-service.ts:26](../../lib/media-library-service.ts:26)).
 
-**Прибрати з історії.** Правило те саме, що для відео (`canRemoveFromStory` — [story-media-gallery.ts:324](lib/story-media-gallery.ts:324)), **плюс одна умова**: якщо для активу є запис у `audioLibraries[storyId]`, членство повернеться після перезапуску через `audioReferences` у міграції. Тож вилучення прибирає і запис аудіо-бібліотеки; якщо цього зробити не можна — дія блокується з поясненням. Мовчазне «прибрав, а воно повернулося» — рівно той баг, якого медіатека уникає для зображень ([MEDIA-LIBRARY-PLAN.md:34](MEDIA-LIBRARY-PLAN.md:34)).
+**Прибрати з історії.** Правило те саме, що для відео (`canRemoveFromStory` — [story-media-gallery.ts:324](../../lib/story-media-gallery.ts:324)), **плюс одна умова**: якщо для активу є запис у `audioLibraries[storyId]`, членство повернеться після перезапуску через `audioReferences` у міграції. Тож вилучення прибирає і запис аудіо-бібліотеки; якщо цього зробити не можна — дія блокується з поясненням. Мовчазне «прибрав, а воно повернулося» — рівно той баг, якого медіатека уникає для зображень ([MEDIA-LIBRARY-PLAN.md:34](MEDIA-LIBRARY-PLAN.md:34)).
 
 ---
 
@@ -159,9 +159,9 @@ R4.5  повний транспорт і чесні стани відмови
 
 ### R4.0 — Модель, вкладка, категорії · **ВИКОНАНО**
 
-Реалізовано: `AudioCategory` й `audioCategoryOf` у [story-media-gallery.ts](lib/story-media-gallery.ts), нова [audio-category.ts](lib/audio-category.ts), третя вкладка й чіпси категорій, плитка звуку, ключі EN+UK. Тести: 9 у `story-media-gallery.test.ts`, 3 у `MediaLibrary.test.tsx`.
+Реалізовано: `AudioCategory` й `audioCategoryOf` у [story-media-gallery.ts](../../lib/story-media-gallery.ts), нова [audio-category.ts](../../lib/audio-category.ts), третя вкладка й чіпси категорій, плитка звуку, ключі EN+UK. Тести: 9 у `story-media-gallery.test.ts`, 3 у `MediaLibrary.test.tsx`.
 
-**Уточнено при реалізації:** евристику назви довелося винести з `lib/audio-library` в окремий модуль — харнес підміняє весь `audio-library` заглушкою ([vitest.setup.ts:33](vitest.setup.ts:33)), тож правило медіатеки, що імпортувало б її звідти, було б непротестовним.
+**Уточнено при реалізації:** евристику назви довелося винести з `lib/audio-library` в окремий модуль — харнес підміняє весь `audio-library` заглушкою ([vitest.setup.ts:33](../../vitest.setup.ts:33)), тож правило медіатеки, що імпортувало б її звідти, було б непротестовним.
 
 `MediaKind`, `AudioCategory`, `audios` у галереї, аудіо в `buildAvailableAssets`, чіпси категорій, плитка (статична), порожні стани, ключі i18n.
 
@@ -171,7 +171,7 @@ R4.5  повний транспорт і чесні стани відмови
 
 ### R4.1 — Відтворення · **ВИКОНАНО**
 
-Реалізовано: [useAudioPreview.ts](hooks/useAudioPreview.ts), транспорт у плитці й інспекторі, розширений `__mocks__/expo-audio.ts`. Тести: 11 у `MediaLibraryAudio.test.tsx`.
+Реалізовано: [useAudioPreview.ts](../../hooks/useAudioPreview.ts), транспорт у плитці й інспекторі, розширений `__mocks__/expo-audio.ts`. Тести: 11 у `MediaLibraryAudio.test.tsx`.
 
 **Уточнено при реалізації:** транспорт зроблено сусідом плитки, а не її дитиною — вкладена пара `Pressable` дає кнопку в кнопці, що для скрінрідера один елемент керування, а на web ще й невалідна розмітка.
 
@@ -183,7 +183,7 @@ R4.5  повний транспорт і чесні стани відмови
 
 ### R4.2 — Додавання і вилучення · **ВИКОНАНО**
 
-Реалізовано: [pick-audio.ts](lib/pick-audio.ts), `isSupportedAudioMimeType` + `MAX_AUDIO_ASSET_BYTES` і гейт розміру в медіа-сервісі, kind-aware `+` (разом із відеогілкою, якої бракувало), вилучення разом із записом аудіо-бібліотеки. Тести: 5 у `pick-audio.test.ts`, 2 у `media-removal-durability.test.ts`, 3 у `MediaLibraryRoute.test.tsx`.
+Реалізовано: [pick-audio.ts](../../lib/pick-audio.ts), `isSupportedAudioMimeType` + `MAX_AUDIO_ASSET_BYTES` і гейт розміру в медіа-сервісі, kind-aware `+` (разом із відеогілкою, якої бракувало), вилучення разом із записом аудіо-бібліотеки. Тести: 5 у `pick-audio.test.ts`, 2 у `media-removal-durability.test.ts`, 3 у `MediaLibraryRoute.test.tsx`.
 
 `lib/pick-audio.ts`, `isSupportedAudioMimeType`, `MAX_AUDIO_ASSET_BYTES`, kind-aware `+`, гейт вилучення з урахуванням `audioLibraries`.
 
@@ -191,7 +191,7 @@ R4.5  повний транспорт і чесні стани відмови
 
 ### R4.3 — Ручна категорія · **ВИКОНАНО**
 
-Реалізовано: `setAudioCategoryInLibrary` в [audio-category.ts](lib/audio-category.ts), перемикач в інспекторі, запис через `setAudioLibrary`. Тести: 5 у `story-media-gallery.test.ts`, 1 у `MediaLibraryRoute.test.tsx`.
+Реалізовано: `setAudioCategoryInLibrary` в [audio-category.ts](../../lib/audio-category.ts), перемикач в інспекторі, запис через `setAudioLibrary`. Тести: 5 у `story-media-gallery.test.ts`, 1 у `MediaLibraryRoute.test.tsx`.
 
 **Уточнено при реалізації:** чіпси дістали власні `accessibilityLabel` («Позначити як музику»), бо коротка назва збігається з чіпсом фільтра за рейку вище.
 
@@ -224,7 +224,7 @@ R4.5  повний транспорт і чесні стани відмови
 
 ## 5. i18n
 
-Нові плоскі ключі в `EN` і `UK` ([translations.ts](lib/translations.ts)):
+Нові плоскі ключі в `EN` і `UK` ([translations.ts](../../lib/translations.ts)):
 
 ```
 mediaLibrary.tab.audio
@@ -257,6 +257,6 @@ mediaLibrary.audioAdded | .audioAddFailed | .audioTooLarge | .audioUnsupported
 
 ## 7. Відкрито на майбутнє
 
-- ~~**Дедуплікація за назвою.**~~ **Закрито (R4.4).** Виняток поширено на аудіо через предикат `keepsOwnIdentity` у [media-library-service.ts:267](lib/media-library-service.ts:267): файл, узятий із пристрою, не зливається за назвою і дістає власне ім'я на диску. Data URI — виняток із винятку: він адресується хешем власних байтів, тож там однаковий вміст справді є тим самим активом, і злиття правильне. Тести: `media-library-audio.test.ts` (6).
+- ~~**Дедуплікація за назвою.**~~ **Закрито (R4.4).** Виняток поширено на аудіо через предикат `keepsOwnIdentity` у [media-library-service.ts:267](../../lib/media-library-service.ts:267): файл, узятий із пристрою, не зливається за назвою і дістає власне ім'я на диску. Data URI — виняток із винятку: він адресується хешем власних байтів, тож там однаковий вміст справді є тим самим активом, і злиття правильне. Тести: `media-library-audio.test.ts` (6).
 - **Пікер звуку в редакторі** досі показує аудіо чужих історій (розділ 2.2).
 - **Тривалість на native.** `expo-document-picker` її не повідомляє, тож бейдж тривалості на телефоні з'явиться лише для файлів, доданих на web або через бекап.

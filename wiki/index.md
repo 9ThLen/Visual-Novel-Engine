@@ -27,8 +27,11 @@ Historical audit reports, fix plans, and intermediate reviews remain in git hist
 
 ## Active Repository Docs
 
+See the [documentation index](../docs/README.md) for both language versions, product documents, plans, and reviews.
+
+
 | File | Purpose |
 |---|---|
 | `README.md` | Project setup, architecture summary, commands |
-| `DESIGN_SYSTEM.md` | Theme tokens, color system, maintenance rules |
+| `docs/product/DESIGN_SYSTEM.md` | Theme tokens, color system, maintenance rules |
 | `AGENTS.md` | AI agent rules and project-specific pitfalls |

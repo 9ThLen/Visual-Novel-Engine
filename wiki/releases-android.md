@@ -252,7 +252,7 @@ After the asset cut above, the engine's own contribution is small enough that th
 artifact is essentially the author's media. A novel that overruns 200 MB is
 nearly always carrying unoptimised PNG and WAV; the engine's job there is
 measurement, not re-encoding. See
-[RELEASE-PLAN.md](../RELEASE-PLAN.md#when-the-novel-is-genuinely-bigger-than-200-mb).
+[RELEASE-PLAN.md](../docs/plans/RELEASE-PLAN.md#when-the-novel-is-genuinely-bigger-than-200-mb).
 
 ## For readers, when you hand out an APK
 

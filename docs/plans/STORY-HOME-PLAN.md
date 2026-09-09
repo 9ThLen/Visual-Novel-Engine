@@ -2,7 +2,7 @@
 
 **Статус:** реалізовано 2026-08-28. Концепт створено 2026-08-27.
 
-**Обсяг:** композиція `/story-home` ([app/story-home.tsx](app/story-home.tsx), 1311 рядків) і чотирьох карток у [components/story-home/](components/story-home) — сторінка, куди веде дотик по картці на полиці студії.
+**Обсяг:** композиція `/story-home` ([app/story-home.tsx](../../app/story-home.tsx), 1311 рядків) і чотирьох карток у [components/story-home/](../../components/story-home) — сторінка, куди веде дотик по картці на полиці студії.
 
 **Поза цим релізом:** нові поля `StoryMetadata`, зміни у `runStoryDoctor` / `validateSceneGraph` / `story-coverage`, редагування медіатеки на місці, видалення історії (це лишається в меню «⋯» на полиці).
 
@@ -24,7 +24,7 @@
 | Здоров'я історії | 339 | 1151 | 323 | 209 |
 | Використання ассетів | 677 | 1151 | 323 | 243 |
 
-Вісім коробок, **чотири різні ліві межі** (0, 339, 606, 677) і три різні сітки на одній сторінці: 1.5 : 1 ([story-home.tsx:1252](app/story-home.tsx:1252)), 1 : 1 і 1 : 1 : 1 ([story-home.tsx:1269](app/story-home.tsx:1269)).
+Вісім коробок, **чотири різні ліві межі** (0, 339, 606, 677) і три різні сітки на одній сторінці: 1.5 : 1 ([story-home.tsx:1252](../../app/story-home.tsx:1252)), 1 : 1 і 1 : 1 : 1 ([story-home.tsx:1269](../../app/story-home.tsx:1269)).
 
 ---
 
@@ -32,15 +32,15 @@
 
 ### 2.1 Порожня третина сторінки
 
-`ChoiceStatisticsCard` повертає `null`, коли проходжень ще не було ([ChoiceStatisticsCard.tsx:28](components/story-home/ChoiceStatisticsCard.tsx:28)), але його доріжка лишається з `flex: 1` ([story-home.tsx:855](app/story-home.tsx:855)). Виходить діра 323 × 243 ліворуч від «Здоров'я історії» — рівно те, що видно на знімку.
+`ChoiceStatisticsCard` повертає `null`, коли проходжень ще не було ([ChoiceStatisticsCard.tsx:28](../../components/story-home/ChoiceStatisticsCard.tsx:28)), але його доріжка лишається з `flex: 1` ([story-home.tsx:855](../../app/story-home.tsx:855)). Виходить діра 323 × 243 ліворуч від «Здоров'я історії» — рівно те, що видно на знімку.
 
 ### 2.2 Вісім однакових коробок
 
-Кожен блок — `styles.card` + рамка + `shadowCard`. Форма редагування метаданих, посилання на медіатеку й звіт із 59 битими посиланнями мають однакову вагу. «Медіатека» — це картка з одного речення й однієї кнопки, записана одним рядком коду на 300 символів ([story-home.tsx:675](app/story-home.tsx:675)).
+Кожен блок — `styles.card` + рамка + `shadowCard`. Форма редагування метаданих, посилання на медіатеку й звіт із 59 битими посиланнями мають однакову вагу. «Медіатека» — це картка з одного речення й однієї кнопки, записана одним рядком коду на 300 символів ([story-home.tsx:675](../../app/story-home.tsx:675)).
 
 ### 2.3 Назву й опис показано двічі
 
-Шапка виводить назву ([story-home.tsx:777](app/story-home.tsx:777)) й опис ([story-home.tsx:786](app/story-home.tsx:786)), а картка «Деталі» одразу під нею містить ті самі значення в полях введення ([story-home.tsx:535](app/story-home.tsx:535)). Один рядок тексту двічі на екрані, за 300 px один від одного.
+Шапка виводить назву ([story-home.tsx:777](../../app/story-home.tsx:777)) й опис ([story-home.tsx:786](../../app/story-home.tsx:786)), а картка «Деталі» одразу під нею містить ті самі значення в полях введення ([story-home.tsx:535](../../app/story-home.tsx:535)). Один рядок тексту двічі на екрані, за 300 px один від одного.
 
 ### 2.4 Дві оцінки стану, які не знають одна про одну
 
@@ -52,11 +52,11 @@
 
 ### 2.6 Локальні двійники спільних компонентів
 
-`ActionButton` ([story-home.tsx:128](app/story-home.tsx:128)), `SectionHeader` ([story-home.tsx:170](app/story-home.tsx:170)) і `StatTile` ([story-home.tsx:193](app/story-home.tsx:193)) написані тут при наявних [components/ui/Button.tsx](components/ui/Button.tsx) і [components/settings/list.tsx](components/settings/list.tsx). Плюс декоративна смужка `heroAccent` заввишки 4 px ([story-home.tsx:744](app/story-home.tsx:744)) — той самий прийом, який щойно прибрали з полиці студії.
+`ActionButton` ([story-home.tsx:128](../../app/story-home.tsx:128)), `SectionHeader` ([story-home.tsx:170](../../app/story-home.tsx:170)) і `StatTile` ([story-home.tsx:193](../../app/story-home.tsx:193)) написані тут при наявних [components/ui/Button.tsx](../../components/ui/Button.tsx) і [components/settings/list.tsx](../../components/settings/list.tsx). Плюс декоративна смужка `heroAccent` заввишки 4 px ([story-home.tsx:744](../../app/story-home.tsx:744)) — той самий прийом, який щойно прибрали з полиці студії.
 
 ### 2.7 Четверта система шапок
 
-Тут хлібні крихти «Story Editor / The Enchanted Museum» із круглою кнопкою «назад» ([story-home.tsx:723](app/story-home.tsx:723)). У налаштуваннях, студії тем і на полиці — нав-бар 44 pt.
+Тут хлібні крихти «Story Editor / The Enchanted Museum» із круглою кнопкою «назад» ([story-home.tsx:723](../../app/story-home.tsx:723)). У налаштуваннях, студії тем і на полиці — нав-бар 44 pt.
 
 ### 2.8 Порядок блоків не відповідає нічому
 
@@ -107,7 +107,7 @@
 
 ### 4.4 Смуга C — медіатека, з прев'ю замість посилання
 
-Замість картки з одним реченням і кнопкою — смуга, яка показує те, про що говорить: заголовок із лічильником «10 файлів · 2 не використано», стрічка мініатюр 3:2 з горизонтальною прокруткою (невживані позначено), і «Відкрити галерею» під нею. Дані вже пораховано на цій сторінці — `storyImageAssets` через `getStoryGalleryImageAssets` ([story-home.tsx:377](app/story-home.tsx:377)), той самий масив, який отримує «лікар історії». Мініатюри малює наявний `ResolvedAssetImage`.
+Замість картки з одним реченням і кнопкою — смуга, яка показує те, про що говорить: заголовок із лічильником «10 файлів · 2 не використано», стрічка мініатюр 3:2 з горизонтальною прокруткою (невживані позначено), і «Відкрити галерею» під нею. Дані вже пораховано на цій сторінці — `storyImageAssets` через `getStoryGalleryImageAssets` ([story-home.tsx:377](../../app/story-home.tsx:377)), той самий масив, який отримує «лікар історії». Мініатюри малює наявний `ResolvedAssetImage`.
 
 Смуга й плитка «Ассети» зі смуги B не дублюють одна одну: плитка — діагноз (скільки посилань ведуть у нікуди), смуга — комора (що лежить у бібліотеці й що з цього ніде не вжито).
 
@@ -136,7 +136,7 @@
 
 ### 4.8 Тло лишається
 
-Патерн `assets/background/bg-rabbits-pattern-soft.png` під сторінкою ([story-home.tsx:60](app/story-home.tsx:60), шар у [story-home.tsx:713](app/story-home.tsx:713)) не чіпаємо — це фактура продукту, і смуги на ній читаються краще, ніж вісім рамок. Він і далі йде окремим шаром під `ScrollView`, з `pointerEvents="none"` і схований від рідера екрана.
+Патерн `assets/background/bg-rabbits-pattern-soft.png` під сторінкою ([story-home.tsx:60](../../app/story-home.tsx:60), шар у [story-home.tsx:713](../../app/story-home.tsx:713)) не чіпаємо — це фактура продукту, і смуги на ній читаються краще, ніж вісім рамок. Він і далі йде окремим шаром під `ScrollView`, з `pointerEvents="none"` і схований від рідера екрана.
 
 ---
 

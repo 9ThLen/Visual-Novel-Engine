@@ -1,8 +1,8 @@
 # Create your first visual novel
 
-[English](USER_GUIDE.md) · [Українська](uk/USER_GUIDE.md)
+[English](USER_GUIDE.md) · [Українська](../uk/USER_GUIDE.md)
 
-[Project overview](../README.md) · [Installation](INSTALLATION.md) · [Settings](SETTINGS.md)
+[Project overview](../../README.md) · [Installation](INSTALLATION.md) · [Settings](SETTINGS.md)
 
 Start with the app open in your browser. If you have not reached that point yet, follow the [installation guide](INSTALLATION.md) first.
 
@@ -81,9 +81,9 @@ Once the two-route example works, expand one part at a time:
 - Use variables to remember decisions and conditions to make later options depend on them.
 - Add interactive objects where a scene needs reader interaction.
 
-The [action reference](../wiki/block-types-reference.md) describes available action types and their fields. It also contains runtime details; dialogue in the current editor is authored through character lines in the document.
+The [action reference](../../wiki/block-types-reference.md) describes available action types and their fields. It also contains runtime details; dialogue in the current editor is authored through character lines in the document.
 
-For a version you want to share with readers, follow [Releasing a story](../wiki/releases.md). A release freezes a particular version; a backup is for preserving and restoring your editable work. Desktop and Android packaging have [separate](../wiki/releases-desktop.md) [guides](../wiki/releases-android.md) and additional requirements.
+For a version you want to share with readers, follow [Releasing a story](../../wiki/releases.md). A release freezes a particular version; a backup is for preserving and restoring your editable work. Desktop and Android packaging have [separate](../../wiki/releases-desktop.md) [guides](../../wiki/releases-android.md) and additional requirements.
 
 ## Everyday working habits
 

@@ -15,13 +15,15 @@ The basic experience runs locally without an account. Stories are saved in your 
 
 ## Start here
 
+[Documentation index — English / Українська](docs/README.md)
+
 [Українська документація — опис проєкту та посібники](docs/uk/README.md)
 
-**[Install and run the app on Windows](docs/INSTALLATION.md)** — a complete walkthrough, from installing Git and Node.js to opening the editor. It includes exact PowerShell commands, checks after each stage, restarting, updating, and troubleshooting.
+**[Install and run the app on Windows](docs/en/INSTALLATION.md)** — a complete walkthrough, from installing Git and Node.js to opening the editor. It includes exact PowerShell commands, checks after each stage, restarting, updating, and troubleshooting.
 
-**[Create your first novel](docs/USER_GUIDE.md)** — build a short story with a character, a background, and two routes, test both choices, and save a portable backup.
+**[Create your first novel](docs/en/USER_GUIDE.md)** — build a short story with a character, a background, and two routes, test both choices, and save a portable backup.
 
-**[Understand the settings](docs/SETTINGS.md)** — adjust sound and reading comfort, understand local storage, and find the optional cloud and AI setup guides.
+**[Understand the settings](docs/en/SETTINGS.md)** — adjust sound and reading comfort, understand local storage, and find the optional cloud and AI setup guides.
 
 The installation guide covers running from source: a local server runs on your computer and you work in a browser. It requires Node.js 24 or newer and pnpm 10.23.0. You do not need Android tools or service credentials for this workflow.
 
@@ -44,13 +46,13 @@ The scene editor brings narration and character dialogue together with visual an
 | Versioned releases | Freeze a story version for distribution. |
 | Optional AI assistance and cloud backup | Connect additional services when you want them. |
 
-The [user guide](docs/USER_GUIDE.md) introduces the workflow through a small example. The [action reference](wiki/block-types-reference.md) describes individual action types and their fields.
+The [user guide](docs/en/USER_GUIDE.md) introduces the workflow through a small example. The [action reference](wiki/block-types-reference.md) describes individual action types and their fields.
 
 ## Make reading comfortable
 
 Settings let you choose the interface language and adjust music, voice, and effects separately. You can change how quickly text appears, resize dialogue text, and adjust the reader's font scale and line spacing.
 
-Auto-play, parallax, and background video have their own controls. The [settings guide](docs/SETTINGS.md) explains each option. AI provider configuration is covered separately in the [AI bridge guide](tools/ai-bridge/README.md).
+Auto-play, parallax, and background video have their own controls. The [settings guide](docs/en/SETTINGS.md) explains each option. AI provider configuration is covered separately in the [AI bridge guide](tools/ai-bridge/README.md).
 
 ## Keep your work safe
 
@@ -58,7 +60,7 @@ Local stories belong to the browser profile and address where you created them. 
 
 Autosave helps you continue between sessions. For a portable copy, create a **full backup** from the story's project page: it includes the story and its media. A JSON-only export contains the story structure without images and audio. Keep full backups before updates or major rewrites, and use one editing tab at a time because concurrent scene edits cannot be merged safely.
 
-See [saving and restoring a copy](docs/USER_GUIDE.md#7-save-a-portable-copy) for the workflow.
+See [saving and restoring a copy](docs/en/USER_GUIDE.md#7-save-a-portable-copy) for the workflow.
 
 ## Share a finished story
 
@@ -72,7 +74,7 @@ The studio itself can also be [installed as a desktop application](wiki/studio-d
 
 Visual Novel Engine is under active development. The documented acceptance scope covers the PC browser editor, browser reader, web bundle, and locally built Windows shell. The Android EAS path is implemented, but its paid-build and real-device acceptance are still pending. Optional integrations require their own configuration.
 
-If something goes wrong during setup, start with [installation troubleshooting](docs/INSTALLATION.md#troubleshooting). For a reproducible problem, [open an issue](https://github.com/9ThLen/Visual-Novel-Engine/issues) with the steps, expected result, actual result, and relevant error messages. The [manual testing guide](docs/MANUAL_TESTING.md) includes a bug-report template.
+If something goes wrong during setup, start with [installation troubleshooting](docs/en/INSTALLATION.md#troubleshooting). For a reproducible problem, [open an issue](https://github.com/9ThLen/Visual-Novel-Engine/issues) with the steps, expected result, actual result, and relevant error messages. The [manual testing guide](docs/MANUAL_TESTING.md) includes a bug-report template.
 
 ## For contributors
 
@@ -93,6 +95,6 @@ Further reading:
 - [Architecture reference](wiki/architecture-reference.md)
 - [Testing guide](wiki/testing-guide.md)
 - [Project changelog](wiki/changelog.md)
-- [Product principles](PRODUCT.md)
-- [Design system](DESIGN_SYSTEM.md)
+- [Product principles](docs/product/PRODUCT.md)
+- [Design system](docs/product/DESIGN_SYSTEM.md)
 - [Optional integration variables](.env.example)

@@ -158,7 +158,7 @@ existing bundle's config can be inspected or replaced by hand.
 ## Limitations
 
 - **Nothing is re-encoded.** A release weighs what its media weighs; see
-  `VIDEO-PLAN.md`. The app reports the size and the author decides.
+  `docs/plans/VIDEO-PLAN.md`. The app reports the size and the author decides.
 - **In-app export holds the bundle in memory and zips on the main thread.** A
   browser tab has no filesystem to stream through, and the production CSP
   forbids the blob workers fflate's async API needs. The tab pauses while a
