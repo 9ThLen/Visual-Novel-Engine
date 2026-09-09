@@ -34,13 +34,14 @@ export function useSceneImages(scene: SceneImageState) {
       if (bundledAsset) {
         setBgSource(bundledAsset);
       } else {
+        setBgSource(null);
         resolveAssetUri(bgUri).then((uri) => {
           if (mounted && uri) {
             setBgSource(typeof uri === 'string' ? { uri } : uri);
           } else if (mounted) {
             setBgSource(null);
           }
-        }).catch(() => {});
+        }).catch(() => { if (mounted) setBgSource(null); });
       }
     }
 
@@ -62,6 +63,8 @@ export function useSceneImages(scene: SceneImageState) {
     });
 
     return () => { mounted = false; };
+  // Asset identity controls reloads; equivalent character arrays must not restart resolution.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene.id, scene.backgroundImageUri, characterDeps]);
 
   return { bgSource, resolvedCharUris };

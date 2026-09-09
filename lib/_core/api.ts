@@ -12,10 +12,10 @@ const RATE_LIMIT = {
   endpointWindowMs: 1_000,
 };
 
-const requestLog: Array<{ time: number; endpoint: string }> = [];
-const endpointLog: Map<string, Array<number>> = new Map();
+const requestLog: { time: number; endpoint: string }[] = [];
+const endpointLog: Map<string, number[]> = new Map();
 
-function pruneLog(log: Array<number | { time: number; endpoint: string }>, windowMs: number, now: number) {
+function pruneLog(log: (number | { time: number; endpoint: string })[], windowMs: number, now: number) {
   while (log.length > 0 && now - (typeof log[0] === 'number' ? log[0] : (log[0] as { time: number }).time) > windowMs) {
     log.shift();
   }

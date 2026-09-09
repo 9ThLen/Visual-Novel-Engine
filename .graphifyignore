@@ -1,0 +1,6 @@
+# Generated E2E exports duplicate the source graph with minified bundles.
+/e2e/player/.bundle/
+/e2e/player/.desktop/
+/e2e/player/..desktop.tmp-*/
+/coverage/
+/test-results/

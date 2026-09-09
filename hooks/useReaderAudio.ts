@@ -462,7 +462,7 @@ export function useReaderAudio(
 
     resumeReaderAudioSession();
 
-    if (!isFocused || !currentScene) {
+    if (!isFocused || !currentScene?.id) {
       sceneGenerationRef.current += 1;
       clearAutoFadeTimer();
       currentBgmUriRef.current = null;
@@ -481,6 +481,8 @@ export function useReaderAudio(
     return () => {
       sceneGenerationRef.current += 1;
     };
+  // Audio signatures deliberately ignore dialogue-only state changes to avoid restarting playback.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     blockedByOverlay,
     isFocused,

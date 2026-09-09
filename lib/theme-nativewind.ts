@@ -10,6 +10,8 @@ type LoadBindings = () => NativewindBindings;
 
 const defaultLoadBindings: LoadBindings = () => {
   try {
+    // Guard native bindings so unsupported web environments can use the fallback.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('nativewind') as NativewindBindings;
   } catch {
     return {};

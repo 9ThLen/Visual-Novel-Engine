@@ -59,7 +59,7 @@ export function useKeyboardShortcuts({
     const key = kbEvent.key.toLowerCase();
     if (key !== 'escape' && isTypingTarget(kbEvent.target)) return;
 
-    for (const [id, config] of Object.entries(shortcutsRef.current)) {
+    for (const config of Object.values(shortcutsRef.current)) {
       const {
         key: shortcutKey,
         ctrl = false,

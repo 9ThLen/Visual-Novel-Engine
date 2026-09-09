@@ -35,6 +35,26 @@ function makeScene(overrides: Partial<SceneRecord> & { id: string }): SceneRecor
 }
 
 describe('validateSceneGraph', () => {
+  it('follows explicit transitions and interactive-object actions when checking reachability', () => {
+    const scenes = [
+      makeScene({ id: 'start', isStart: true, timeline: [{
+        id: 'door', enabled: true, collapsed: false, blockType: 'interactive_object',
+        data: { actions: [{ type: 'scene_transition', targetSceneId: 'reward' }] },
+      } as TimelineStep] }),
+      makeScene({ id: 'reward', timeline: [{
+        id: 'finish', enabled: true, collapsed: false, blockType: 'transition',
+        data: { mode: 'scene', targetSceneId: 'ending', transitionType: 'instant', duration: 0 },
+      }] }),
+      makeScene({ id: 'ending' }),
+    ];
+    expect(validateSceneGraph(scenes)).toEqual([]);
+    scenes[0].timeline[0].enabled = false;
+    expect(validateSceneGraph(scenes)).toEqual([
+      { type: 'unreachableScene', sceneId: 'reward' },
+      { type: 'unreachableScene', sceneId: 'ending' },
+    ]);
+  });
+
   it('returns no issues for an empty scene list', () => {
     expect(validateSceneGraph([])).toEqual([]);
   });

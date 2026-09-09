@@ -357,7 +357,7 @@ export class OpenAiProvider implements AgentProvider {
 
 function openAiUserMessage(input: AgentUserInput): ResponseItem {
   if (input.attachments.length === 0) return { role: 'user', content: input.text, type: 'message' };
-  const content: Array<Record<string, unknown>> = [];
+  const content: Record<string, unknown>[] = [];
   if (input.text.trim()) content.push({ type: 'input_text', text: input.text });
   for (const attachment of input.attachments) {
     const base64 = Buffer.from(attachment.bytes).toString('base64');
@@ -392,9 +392,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isResponseItem(value: unknown): value is ResponseItem {
   return isRecord(value) && typeof value.type === 'string';
 }
-function itemTextParts(item: ResponseItem): Array<{ kind: 'text' | 'refusal'; text: string }> {
+function itemTextParts(item: ResponseItem): { kind: 'text' | 'refusal'; text: string }[] {
   if (item.type !== 'message' || !Array.isArray(item.content)) return [];
-  return item.content.flatMap((part): Array<{ kind: 'text' | 'refusal'; text: string }> => {
+  return item.content.flatMap((part): { kind: 'text' | 'refusal'; text: string }[] => {
     if (!isRecord(part)) return [];
     if (part.type === 'output_text' && typeof part.text === 'string') return [{ kind: 'text', text: part.text }];
     if (part.type === 'refusal') {
@@ -434,18 +434,6 @@ function parseEvent(dataLines: string[]): Record<string, unknown> | null {
   } catch {
     throw new ProviderFailure('OPENAI_MALFORMED_RESPONSE');
   }
-}
-
-/** Extract only a short error code/type; never a message that could echo prompt text. */
-function streamErrorCode(event: Record<string, unknown>): string {
-  const response = isRecord(event.response) ? event.response : null;
-  const error = isRecord(event.error) ? event.error
-    : response && isRecord(response.error) ? response.error
-      : null;
-  const source = error ?? response ?? event;
-  if (typeof source.code === 'string') return source.code;
-  if (typeof source.type === 'string') return source.type;
-  return 'stream_error';
 }
 
 async function cancelBody(response: Response): Promise<void> {

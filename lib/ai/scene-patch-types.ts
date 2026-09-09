@@ -42,7 +42,7 @@ const baseDataSchemas = {
   goto: z.object({ targetLabel: z.string().min(1), condition: conditionSchema.nullish(), elseTargetLabel: z.string().nullish() }),
 } as const;
 
-const blockTypes = Object.keys(baseDataSchemas) as Array<keyof typeof baseDataSchemas>;
+const blockTypes = Object.keys(baseDataSchemas) as (keyof typeof baseDataSchemas)[];
 
 export const timelineStepSchema = z.object({
   id: z.string().min(1),

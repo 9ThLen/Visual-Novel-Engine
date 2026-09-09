@@ -1,14 +1,13 @@
 import type { Character } from '@/lib/character-types';
-import type { Story } from '@/lib/scene-operations';
-import type { CanonicalStory, StoryMetadata } from '@/lib/story-domain';
 import { useAppStore } from '@/stores/use-app-store';
 import type { SceneRecord } from '@/lib/engine/types';
 import { migrateSceneRecordMap } from '@/lib/audio-block-migration';
 import {
   buildCanonicalSceneRecordsFromLegacyScenes,
   deriveCharacterLibraryFromLegacyStory,
+  type Story,
 } from '@/lib/scene-operations';
-import { StoryDomain, normalizeStoryMetadata } from '@/lib/story-domain';
+import { StoryDomain, normalizeStoryMetadata, type CanonicalStory, type StoryMetadata } from '@/lib/story-domain';
 
 export interface BundledStorySyncPayload {
   metadata: StoryMetadata;

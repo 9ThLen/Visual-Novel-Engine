@@ -60,7 +60,7 @@ export interface ScenePathMetadata {
    * outermost first (viaChoice is the last entry). Cleared at merge points.
    * Used to blend branch tints for nested branches.
    */
-  viaChoiceTrail?: Array<{ choiceStepId: string; optionId: string }>;
+  viaChoiceTrail?: { choiceStepId: string; optionId: string }[];
 }
 
 export interface ActivePathResult {

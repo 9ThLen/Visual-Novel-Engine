@@ -36,7 +36,7 @@ export function useAutoSave({
   releaseStampRef.current = releaseStamp;
 
   useEffect(() => {
-    if (!enabled || !playbackState || !playbackState.isPlaying) {
+    if (!enabled || !playbackStateRef.current?.isPlaying) {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;

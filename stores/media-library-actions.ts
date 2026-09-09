@@ -10,11 +10,11 @@
 
 import { useAppStore } from './use-app-store';
 import {
-  addAssetToLibraryPure,
+  addAssetToLibraryPure, type LibraryAsset,
   getLibraryAssetById as getLibraryAssetByIdPure,
   resolveLibraryAssetUri as resolveLibraryAssetUriPure,
 } from '@/lib/media-library-service';
-import type { LibraryAsset } from '@/lib/media-library-service';
+
 
 export function getLibraryAssets(): LibraryAsset[] {
   return useAppStore.getState().mediaLibrary;

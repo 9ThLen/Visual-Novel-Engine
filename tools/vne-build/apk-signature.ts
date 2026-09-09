@@ -34,8 +34,7 @@
  * Format reference: source.android.com/docs/security/features/apksigning/v2
  * and .../v3.
  */
-import { createHash, createPublicKey, verify as verifySignature, X509Certificate } from 'node:crypto';
-import { constants as cryptoConstants } from 'node:crypto';
+import { createHash, createPublicKey, verify as verifySignature, X509Certificate, constants as cryptoConstants } from 'node:crypto';
 
 const EOCD_SIGNATURE = 0x06054b50;
 const EOCD_MIN_SIZE = 22;

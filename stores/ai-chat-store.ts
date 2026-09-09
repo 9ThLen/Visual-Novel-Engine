@@ -75,8 +75,8 @@ export type AiPendingInteraction =
  */
 export interface CharacterUndoDelta {
   createdCharacterIds: string[];
-  previousValues: Array<{ id: string; name: string; color?: string }>;
-  spriteChanges?: Array<{ id: string; createdSpriteIds: string[]; previousDefaultSpriteId?: string }>;
+  previousValues: { id: string; name: string; color?: string }[];
+  spriteChanges?: { id: string; createdSpriteIds: string[]; previousDefaultSpriteId?: string }[];
 }
 
 interface AppliedChangeBase {

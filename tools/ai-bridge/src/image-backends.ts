@@ -201,7 +201,7 @@ export function createGeminiImageBackend(options: ImageBackendOptions): ImageGen
     },
     request: async (input, _edit, source, degraded) => {
       const imageSize = degraded ? '1K' : input.resolution;
-      const requestInput: Array<Record<string, string>> = [{ type: 'text', text: input.prompt }];
+      const requestInput: Record<string, string>[] = [{ type: 'text', text: input.prompt }];
       if (source) requestInput.push({ type: 'image', data: source.base64, mime_type: source.mimeType });
       const responseFormat: Record<string, string> = {
         type: 'image',

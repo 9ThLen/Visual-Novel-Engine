@@ -1,6 +1,5 @@
 import { useWindowDimensions } from 'react-native';
-import { getResponsiveValues, getGridColumns } from '@/lib/responsive';
-import type { ScreenDimensions } from '@/lib/responsive';
+import { getResponsiveValues, getGridColumns, type ScreenDimensions } from '@/lib/responsive';
 
 export type DeviceType = 'phone' | 'tablet' | 'desktop';
 

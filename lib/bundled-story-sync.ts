@@ -19,6 +19,7 @@ type BundledAudioScene = AudioScene & {
 export interface BundledStorySyncSnapshot {
   storiesMetadata: { id: string; updatedAt?: unknown }[];
   sceneRecordsByStory: Record<string, Record<string, BundledAudioScene>>;
+  characterLibraries?: Record<string, { id: string }[]>;
 }
 
 const READER_YIELDING_BLOCK_TYPES = new Set(['text', 'dialogue', 'choice', 'transition']);
@@ -51,6 +52,11 @@ export function shouldUpsertBundledStory(
   }
 
   const bundledStartScene = bundledStory.scenes?.[startSceneId];
+  // Repair untouched demos seeded before their character library was carried over.
+  if (!snapshot.characterLibraries?.[storyId]?.length
+    && Object.values(bundledStory.scenes || {}).some((scene) => scene.characters?.length)) {
+    return true;
+  }
   if (!bundledStartScene) {
     return false;
   }

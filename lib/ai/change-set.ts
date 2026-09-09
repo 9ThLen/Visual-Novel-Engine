@@ -64,16 +64,14 @@ export type AiChangeSetApplyResult = {
   sceneIdsCreated: string[];
   nextSceneOrder: string[];
   charactersToSave?: Character[];
-  connectionsToSet: Array<{ sceneId: string; outputPort: string; targetSceneId: string | null }>;
+  connectionsToSet: { sceneId: string; outputPort: string; targetSceneId: string | null }[];
 } | AiChangeSetFailure;
 
 export interface AiChangeSetDescription {
-  scenes: Array<
-    | { kind: 'created'; sceneRef: string; name: string; stepCount: number; teaser?: string }
-    | { kind: 'modified'; sceneRef: string; changes: ScenePatchDescription['changes'] }
-  >;
-  characters: Array<{ kind: 'created' | 'updated'; ref: string; name?: string }>;
-  connections: Array<{ sceneRef: string; targetRef: string | null; outputPort: string; label?: string }>;
+  scenes: (| { kind: 'created'; sceneRef: string; name: string; stepCount: number; teaser?: string }
+    | { kind: 'modified'; sceneRef: string; changes: ScenePatchDescription['changes'] })[];
+  characters: { kind: 'created' | 'updated'; ref: string; name?: string }[];
+  connections: { sceneRef: string; targetRef: string | null; outputPort: string; label?: string }[];
   warnings: string[];
 }
 
@@ -270,7 +268,7 @@ export function applyAiChangeSet(changeSet: AiChangeSet, state: AiChangeSetState
 
   const sceneIdsCreated: string[] = [];
   const changedSceneIds = new Set<string>();
-  const connectionsToSet: Array<{ sceneId: string; outputPort: string; targetSceneId: string | null }> = [];
+  const connectionsToSet: { sceneId: string; outputPort: string; targetSceneId: string | null }[] = [];
   let nextSceneOrder = [...(state.context.sceneOrder ?? state.context.sceneIds)];
   const siblingCounts = new Map<string, number>();
   const lastInsertedAfterAnchor = new Map<string, string>();
@@ -389,7 +387,7 @@ export function applyAiChangeSet(changeSet: AiChangeSet, state: AiChangeSetState
       if (item.kind === 'set_choice_target') {
         const choice = scene.timeline.find(step => step.id === item.choiceStepId && step.blockType === 'choice');
         if (!choice) return fail('VALIDATION_FAILED', `Unknown choice step '${item.choiceStepId}'`);
-        const options = (choice.data as { options?: Array<{ id: string; targetSceneId: string | null }> }).options;
+        const options = (choice.data as { options?: { id: string; targetSceneId: string | null }[] }).options;
         const option = options?.find(candidate => candidate.id === item.optionId);
         if (!option) return fail('VALIDATION_FAILED', `Unknown choice option '${item.optionId}'`);
         option.targetSceneId = targetSceneId;
@@ -421,7 +419,7 @@ export function applyAiChangeSet(changeSet: AiChangeSet, state: AiChangeSetState
 function firstDialogueTeaser(timeline: TimelineStep[]): string | undefined {
   for (const step of timeline) {
     if (step.blockType !== 'dialogue') continue;
-    const text = (step.data as { entries?: Array<{ text?: string }> }).entries?.find(entry => entry.text)?.text;
+    const text = (step.data as { entries?: { text?: string }[] }).entries?.find(entry => entry.text)?.text;
     if (text) return text.slice(0, 120);
   }
   return undefined;
@@ -444,7 +442,7 @@ export function describeAiChangeSet(changeSet: AiChangeSet, state: Pick<AiChange
     } else if (item.kind === 'set_choice_target') {
       const scene = state.scenes.get(item.sceneRef);
       const choice = scene?.timeline.find(step => step.id === item.choiceStepId && step.blockType === 'choice');
-      const label = ((choice?.data as { options?: Array<{ id: string; text: string }> } | undefined)?.options ?? []).find(option => option.id === item.optionId)?.text;
+      const label = ((choice?.data as { options?: { id: string; text: string }[] } | undefined)?.options ?? []).find(option => option.id === item.optionId)?.text;
       connections.push({ sceneRef: item.sceneRef, targetRef: item.targetRef, outputPort: item.optionId, label });
     } else connections.push({ sceneRef: item.sceneRef, targetRef: item.targetRef, outputPort: item.outputPort });
   }

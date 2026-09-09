@@ -1,3 +1,4 @@
+import type { BridgeProvider, CodexBetaConsent } from '@/lib/bridge-protocol';
 export const DEFAULT_AI_BRIDGE_URL = 'ws://127.0.0.1:8787';
 
 export type AiBridgeConnectionProfile = {
@@ -127,4 +128,3 @@ export function resolveAiBridgeConfig(
     ...(typeof settings?.requestedTokenBudget === 'number' && settings.requestedTokenBudget > 0 ? { requestedTokenBudget: Math.floor(settings.requestedTokenBudget) } : {}),
   };
 }
-import type { BridgeProvider, CodexBetaConsent } from '@/lib/bridge-protocol';

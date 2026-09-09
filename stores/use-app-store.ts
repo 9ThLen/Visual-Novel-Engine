@@ -33,7 +33,6 @@ import {
 } from '@/lib/app-store-persistence';
 import { initialAppState } from '@/stores/app-store-initial-state';
 import {
-  type AppState,
   type AppStore,
 } from '@/stores/app-store-types';
 import { createLibrariesSlice } from '@/stores/app-store-slices/libraries-slice';
@@ -125,7 +124,7 @@ export const useAppStore = create<AppStore>()(
           } finally {
             if (timeoutId !== undefined) clearTimeout(timeoutId);
           }
-          const [storiesJson, saveSlotsJson, settingsJson, blockTreeJson, langJson, canonicalStateJson] = legacyValues;
+          const [storiesJson, saveSlotsJson, settingsJson, , langJson, canonicalStateJson] = legacyValues;
           const hasCanonicalState = canonicalStateJson !== null;
 
           const stories: StoryMetadata[] = storiesJson ? JSON.parse(storiesJson) : [];

@@ -6,7 +6,7 @@ import { computeAppearanceRevision } from './appearance-patch';
 import { computeSceneRevision } from './scene-revision';
 
 export interface StorySummary { id: string; title: string; sceneCount: number; characterNames: string[]; variableNames: string[]; tags: string[] }
-export interface SceneSummary { id: string; name: string; description: string; blockCount: number; connections: Array<{ outputPort: string; targetSceneId: string }>; isStart: boolean }
+export interface SceneSummary { id: string; name: string; description: string; blockCount: number; connections: { outputPort: string; targetSceneId: string }[]; isStart: boolean }
 export interface AiSceneView extends SceneSummary { revision: string; timeline: TimelineStep[] }
 /** Current reader theme plus its own revision, so an appearance patch can be guarded independently of scene edits. */
 export interface AiAppearanceView { theme: StoryReaderTheme; layoutPreset: StoryReaderLayoutPreset; revision: string }

@@ -8,7 +8,6 @@ import {
   type StoryPublicationMetadata,
 } from '@/lib/story-publication';
 import type { CharacterPosition, CharacterSprite } from './character-types';
-import { ErrorHandler, ErrorCategory, ErrorSeverity } from '@/lib/error-handler';
 import { Platform } from 'react-native';
 
 /**

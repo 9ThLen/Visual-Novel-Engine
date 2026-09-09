@@ -331,7 +331,7 @@ export class AiBridgeServer {
       || (this.options.provider === 'claude' && this.options.enableClaudeAttachments === true);
     const policy = this.options.modelPolicy;
     return {
-      attachments: { supported, kinds: supported ? ['image', 'pdf', 'text'] as Array<'image' | 'pdf' | 'text'> : [], maxCount: 4, maxDecodedBytes: 5 * 1024 * 1024 },
+      attachments: { supported, kinds: supported ? ['image', 'pdf', 'text'] as ('image' | 'pdf' | 'text')[] : [], maxCount: 4, maxDecodedBytes: 5 * 1024 * 1024 },
       imageGeneration: describeImageToolCapability(this.options.imageTools),
       modelPolicy: { effectiveModel: policy?.defaultModel, allowedModels: policy?.allowedModels, modelLocked: !policy?.allowedModels?.length, effectiveTokenBudget: policy?.defaultTokenBudget, maxTokenBudget: policy?.maxTokenBudget, tokenBudgetLocked: !policy?.maxTokenBudget },
     };

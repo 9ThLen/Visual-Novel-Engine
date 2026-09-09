@@ -25,7 +25,6 @@ import {
   followEasBuild,
   jsonFromCli,
   spawnEas,
-  type EasCommandResult,
   type RunEasCommand,
 } from '../../vne-build/eas-run';
 import { apksignerReadiness } from '../../vne-build/apksigner';
