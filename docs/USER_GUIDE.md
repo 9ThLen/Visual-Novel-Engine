@@ -1,5 +1,7 @@
 # Create your first visual novel
 
+[English](USER_GUIDE.md) · [Українська](uk/USER_GUIDE.md)
+
 [Project overview](../README.md) · [Installation](INSTALLATION.md) · [Settings](SETTINGS.md)
 
 Start with the app open in your browser. If you have not reached that point yet, follow the [installation guide](INSTALLATION.md) first.

@@ -1,5 +1,7 @@
 # Install and run Visual Novel Engine on Windows
 
+[English](INSTALLATION.md) · [Українська](uk/INSTALLATION.md)
+
 [Back to the project overview](../README.md) · [Create your first novel](USER_GUIDE.md) · [Settings](SETTINGS.md)
 
 This guide takes you from a fresh Windows computer to a running editor. You do not need programming experience. Enter the commands one at a time and wait for each step to finish before continuing.

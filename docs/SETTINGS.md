@@ -1,5 +1,7 @@
 # Settings explained
 
+[English](SETTINGS.md) · [Українська](uk/SETTINGS.md)
+
 [Project overview](../README.md) · [Installation](INSTALLATION.md) · [User guide](USER_GUIDE.md)
 
 Open **Settings** in the app to adjust language, audio, and reading preferences. Start with the defaults, then change the parts that affect your comfort. The names below use the English interface.

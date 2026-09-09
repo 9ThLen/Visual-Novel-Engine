@@ -1,5 +1,12 @@
 # Visual Novel Engine
 
+![Expo](https://img.shields.io/badge/Expo-54-000020?logo=expo&logoColor=white)
+![React Native](https://img.shields.io/badge/React_Native-0.81-61DAFB?logo=react&logoColor=111827)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)
+![pnpm](https://img.shields.io/badge/pnpm-10.23-F69220?logo=pnpm&logoColor=white)
+![Platform](https://img.shields.io/badge/current_platform-PC%20%7C%20Web-2563EB)
+![Status](https://img.shields.io/badge/status-active_development-F59E0B)
+
 Visual Novel Engine is an editor and player for interactive visual novels. Write a story, divide it into scenes, add characters, backgrounds, and music, and let readers shape what happens through their choices.
 
 The work starts with text. You write a scene as a document, then add the actions around it: a character entering, a background changing, a sound playing, or a choice leading somewhere new. Preview the scene as you work, then play the whole story from the reader's perspective.
@@ -7,6 +14,8 @@ The work starts with text. You write a scene as a document, then add the actions
 The basic experience runs locally without an account. Stories are saved in your browser, and the interface is available in English and Ukrainian.
 
 ## Start here
+
+[Українська документація — опис проєкту та посібники](docs/uk/README.md)
 
 **[Install and run the app on Windows](docs/INSTALLATION.md)** — a complete walkthrough, from installing Git and Node.js to opening the editor. It includes exact PowerShell commands, checks after each stage, restarting, updating, and troubleshooting.
 
