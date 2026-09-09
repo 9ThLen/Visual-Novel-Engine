@@ -148,7 +148,35 @@ along. The BGM path above it already separates the two; voice now does the same.
 - **`/story-page` says "This story is gone" for a demo story.** Correct: that
   screen renders a published release and the demos are drafts.
 
-### Open, not fixed: autoplay rejection on a cold reader load
+### Fixed after merge: the audio rejection that turned the Pages gate red
+
+Left open in the pass above, and no longer a matter of judgement: merging the
+audio fix made the deployed site play sound, which surfaced the rejection on the
+live smoke and failed `Deploy to GitHub Pages` on `main` (run 34339209476).
+
+The four SPA-fallback 404s that had been failing that gate were gone — that fix
+worked. What replaced them was one line:
+
+    The play() request was interrupted by a call to pause().
+
+`expo-audio`'s web player discarded the promise from `HTMLMediaElement.play()`,
+so every refusal escaped as an unhandled rejection: `NotAllowedError` when
+autoplay is blocked, `AbortError` when a `pause()` lands first, as it does on
+every crossfade. It also left `isPlaying` true after playback never started,
+which is why `AudioPlayerService.resume()` would skip a track that was silent.
+
+Patched through `patchedDependencies`, which this repository already uses for
+`@expo/cli` and `react-native-css-interop`: the promise is now handled and
+`isPlaying` reflects what the element actually did. Nothing in the app could
+catch this — `play()` returns `undefined` there.
+
+Verified: a cold load straight onto the reader reports zero page errors where it
+reported three, advancing through scenes reports zero where it reported the
+`AbortError`, audio still loads (206 and 200), and `scripts/check-deployed-web.mjs`
+— the failing gate itself — passes against a local server that mimics the Pages
+fallback.
+
+### Superseded: the earlier note on this, kept for the record
 
 Now that audio resolves, a reader opened with no prior interaction — a direct
 link or a refresh straight onto the route — logs three uncaught
@@ -171,6 +199,76 @@ Not fixed here because both routes out are decisions rather than repairs: patch
 in `pnpm-workspace.yaml`), or add a resume-on-first-gesture path to the audio
 manager. Reaching the reader by tapping through the app activates the document
 first, so ordinary use is unaffected.
+
+### Functional pass over the core loop — no defects found
+
+Driven through the real UI, not asserted from storage:
+
+| Flow | Result |
+| --- | --- |
+| Create a story, type into the Plate editor, save, reload | Text persists |
+| Reader: advance through dialogue to a choice point | Works |
+| Reader: select a choice and branch | Works — the sign branch opens |
+| Save a branched state to a manual slot | Records `scene_1_sign · 1 choices` |
+| Restart the reader, then load that slot | Restores the branch, via `?resume=1` |
+| Media library: every kind, character, folder and state facet; long-press select | Clean |
+| Release gate on a brand-new story | Reports "Fix 6 things before releasing", 1 script warning |
+| Mobile 390 × 844 over ten routes | Clean, no horizontal overflow |
+
+Three earlier readings of mine were wrong and are corrected here: the reader does
+advance (the advance target is the full-area "Continue reading" control, and
+clicking by coordinate lands on an interactive-object hotspot instead), choices
+do fire, and manual slots do appear on the Load tab.
+
+One thing looks odd and is not a fault: a brand-new story's project page reads
+`Assets 10 in the library`. `buildPlaybackAudioLibraryItems()` merges the shared
+media library into the story's own for playback, so the ten sample sounds are
+counted. The tile says "in the library" rather than "in this story", and the
+unused-asset count beside it is filtered to the story's own gallery, so nothing
+destructive is offered over another story's files.
+
+### Backup and restore, verified end to end
+
+The path the copy exists for — carry the work to another device — driven through
+the UI on the demo story:
+
+| Step | Result |
+| --- | --- |
+| `Create copy` on the project page | `The_Enchanted_Museum.vnebackup`, 89,939,840 bytes |
+| Re-open it through `Import` | Reads it and reports scenes 14, characters 7, media 18 files, matching the story |
+| `Import as new story` | Lands on the restored story's own page |
+| Library afterwards | 3 stories, 44 scenes; the copy carries all 14 scenes, 636 words, 24 choices |
+
+Two things that look like failures under automation and are not: `Create copy`
+does nothing visible when `showSaveFilePicker` is present and rejects, because
+the handler deliberately swallows `AbortError` — a cancelled save is not an
+error; and `Export` opens a confirmation first rather than downloading. Both
+need the fallback path or a real confirmation to exercise.
+
+### A published story's own link reported it gone
+
+Found by publishing a release and then following the path a reader takes, which
+nothing had exercised: the demos are drafts, so `/story-page` had never been
+seen with a real release behind it.
+
+Published, the page renders correctly when reached from the showcase — and says
+`This story is gone` when the same URL is opened directly or reloaded. That is
+the shareable link for a published story, so the one visit it was built for was
+the one that failed.
+
+`loadPublishedReleases()` walks `storiesMetadata`, which the bootstrap on this
+screen fills asynchronously. The load ran once on mount, found an empty list,
+and was never re-run; arriving from the showcase worked only because the stories
+were already in memory. It now re-runs when they land.
+
+The draft case still answers `This story is gone`, which is correct. A studio
+e2e test covers it — publish, then open the page by URL with no showcase visit
+first — and was checked in both directions: it fails against the old code.
+
+This also corrects an earlier entry in this file. `/story-page` refusing a demo
+was recorded as "investigated and not a defect". That reading was right about
+drafts and wrong to stop there: the screen was never tried with a published
+story, which is the case it exists for.
 
 ## Remaining release verification
 

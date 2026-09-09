@@ -8,6 +8,9 @@ patchedDependencies:
   '@expo/cli':
     hash: 892be31b1655f2aa547fa3c67a94a6abde2aafe96b8b736efae1a6222bb57c95
     path: patches/@expo__cli@54.0.24.patch
+  expo-audio@1.1.1:
+    hash: 2e0f7dbcda4917c24e9b2ebb2bf9ef0dcfc1c44be2a1e3e5dea5877f001f2816
+    path: patches/expo-audio@1.1.1.patch
   react-native-css-interop:
     hash: 1fdc650fb52b8979d34c214331333ce67e818baeccbb38fb565e702bcc228058
     path: patches/react-native-css-interop.patch
@@ -48,7 +51,7 @@ importers:
         version: 12.0.13(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.7.3)
       expo-audio:
         specifier: ~1.1.1
-        version: 1.1.1(expo-asset@12.0.13(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.7.3))(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+        version: 1.1.1(patch_hash=2e0f7dbcda4917c24e9b2ebb2bf9ef0dcfc1c44be2a1e3e5dea5877f001f2816)(expo-asset@12.0.13(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.7.3))(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       expo-blur:
         specifier: ~15.0.8
         version: 15.0.8(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -10852,7 +10855,7 @@ snapshots:
       - supports-color
       - typescript
 
-  expo-audio@1.1.1(expo-asset@12.0.13(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.7.3))(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+  expo-audio@1.1.1(patch_hash=2e0f7dbcda4917c24e9b2ebb2bf9ef0dcfc1c44be2a1e3e5dea5877f001f2816)(expo-asset@12.0.13(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.7.3))(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:
       expo: 54.0.34(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native-webview@13.16.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.7.3)
       expo-asset: 12.0.13(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.7.3)
