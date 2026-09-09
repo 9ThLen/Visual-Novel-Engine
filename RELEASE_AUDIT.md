@@ -172,6 +172,33 @@ in `pnpm-workspace.yaml`), or add a resume-on-first-gesture path to the audio
 manager. Reaching the reader by tapping through the app activates the document
 first, so ordinary use is unaffected.
 
+### Functional pass over the core loop — no defects found
+
+Driven through the real UI, not asserted from storage:
+
+| Flow | Result |
+| --- | --- |
+| Create a story, type into the Plate editor, save, reload | Text persists |
+| Reader: advance through dialogue to a choice point | Works |
+| Reader: select a choice and branch | Works — the sign branch opens |
+| Save a branched state to a manual slot | Records `scene_1_sign · 1 choices` |
+| Restart the reader, then load that slot | Restores the branch, via `?resume=1` |
+| Media library: every kind, character, folder and state facet; long-press select | Clean |
+| Release gate on a brand-new story | Reports "Fix 6 things before releasing", 1 script warning |
+| Mobile 390 × 844 over ten routes | Clean, no horizontal overflow |
+
+Three earlier readings of mine were wrong and are corrected here: the reader does
+advance (the advance target is the full-area "Continue reading" control, and
+clicking by coordinate lands on an interactive-object hotspot instead), choices
+do fire, and manual slots do appear on the Load tab.
+
+One thing looks odd and is not a fault: a brand-new story's project page reads
+`Assets 10 in the library`. `buildPlaybackAudioLibraryItems()` merges the shared
+media library into the story's own for playback, so the ten sample sounds are
+counted. The tile says "in the library" rather than "in this story", and the
+unused-asset count beside it is filtered to the story's own gallery, so nothing
+destructive is offered over another story's files.
+
 ## Remaining release verification
 
 - Native Android/iOS builds and real-device behavior have not been verified. Desktop tests validate the staged application and its offline frontend, not an installed native binary.
