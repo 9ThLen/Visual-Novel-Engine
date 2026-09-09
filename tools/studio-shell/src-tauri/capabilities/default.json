@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Everything the studio window is allowed to do. Core only: no filesystem, no shell, no dialog, no HTTP plugin. The author's projects live in the webview's own storage, which needs no permission. Adding the AI bridge means adding shell:allow-execute here, scoped to one sidecar.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
