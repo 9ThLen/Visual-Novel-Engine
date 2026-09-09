@@ -7,8 +7,17 @@ import { Fonts, withAlpha, type ThemeColorPalette } from '@/lib/_core/theme';
 import { type AssetReference, type AssetUsageKind } from '@/lib/asset-usage';
 import { radius, spacing, typeScale } from '@/lib/design-tokens';
 import type { SceneRecord } from '@/lib/engine/types';
+import type { Character } from '@/lib/character-types';
+import type { AudioLibraryItem } from '@/lib/audio-types';
 import { buildStoryAssetUsageReport } from '@/lib/story-home/asset-report';
 import { useAppStore } from '@/stores/use-app-store';
+
+/**
+ * Shared fallbacks: a selector that allocates its own `[]` returns a new
+ * identity on every render, which invalidates the memos derived from it.
+ */
+const NO_AUDIO: AudioLibraryItem[] = [];
+const NO_CHARACTERS: Character[] = [];
 
 interface AssetUsageCardProps {
   colors: ThemeColorPalette;
@@ -98,8 +107,8 @@ export const AssetUsageCard = React.memo(function AssetUsageCard({
   const { t } = useI18n();
   const mediaLibrary = useAppStore((state) => state.mediaLibrary);
   const imageAssetIdsByStory = useAppStore((state) => state.imageAssetIdsByStory);
-  const storyAudioLibrary = useAppStore((state) => state.audioLibraries[storyId] ?? []);
-  const characters = useAppStore((state) => state.characterLibraries[storyId] ?? []);
+  const storyAudioLibrary = useAppStore((state) => state.audioLibraries[storyId] ?? NO_AUDIO);
+  const characters = useAppStore((state) => state.characterLibraries[storyId] ?? NO_CHARACTERS);
   const [usedExpanded, setUsedExpanded] = useState(false);
   const [unusedExpanded, setUnusedExpanded] = useState(false);
   const [brokenExpanded, setBrokenExpanded] = useState(false);

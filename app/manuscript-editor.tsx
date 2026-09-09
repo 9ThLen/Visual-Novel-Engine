@@ -12,6 +12,7 @@ export default function ManuscriptEditorRoute() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
   const isLoaded = useAppStore((state) => state.isLoaded);
   const setCurrentStory = useAppStore((state) => state.loadCurrentStory);
+  const hydrateSceneRecords = useAppStore((state) => state.hydrateSceneRecordsForStory);
   const { t } = useI18n();
 
   const storyMetadata = useAppStore(
@@ -39,6 +40,15 @@ export default function ManuscriptEditorRoute() {
       setCurrentStory(storyId);
     }
   }, [setCurrentStory, storyId]);
+
+  // Scene records load per story on demand, and marking a story current is not
+  // that load. Without this the manuscript opens empty for a story that has
+  // scenes, whenever no earlier screen happened to have loaded them.
+  useEffect(() => {
+    if (storyId) {
+      void hydrateSceneRecords(storyId);
+    }
+  }, [hydrateSceneRecords, storyId]);
 
   if (!isLoaded) {
     return (

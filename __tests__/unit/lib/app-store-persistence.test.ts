@@ -516,6 +516,30 @@ describe('app store persistence helpers', () => {
     expect(merged.sceneRecordsByStory).toBe(currentState.sceneRecordsByStory);
   });
 
+  it('keeps scene records an on-demand read loaded before rehydration landed', () => {
+    // The race this guards: a screen calls hydrateSceneRecordsForStory, which
+    // reads the story's own storage key and puts the records in the store,
+    // and only then does Zustand's rehydration apply the persisted blob —
+    // which carries no scene records, because they do not live in it.
+    const current = makeState();
+
+    const merged = mergePersistedAppState({ sceneRecordsByStory: {} }, current);
+
+    expect(merged.sceneRecordsByStory['story-1']).toEqual(current.sceneRecordsByStory['story-1']);
+  });
+
+  it('lets the persisted payload win over a record already in memory', () => {
+    const current = makeState();
+    const persistedRecord = { ...makeSceneRecord(), name: 'Persisted name' };
+
+    const merged = mergePersistedAppState(
+      { sceneRecordsByStory: { 'story-1': { 'scene-1': persistedRecord } } },
+      current,
+    );
+
+    expect(merged.sceneRecordsByStory['story-1']['scene-1'].name).toBe('Persisted name');
+  });
+
   it('restores persisted scene hydration while preserving current entries', () => {
     const current = makeState();
     current.sceneRecordHydration = { current: 'full' };

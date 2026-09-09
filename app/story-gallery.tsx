@@ -75,8 +75,18 @@ import {
   type UsageState,
 } from '@/lib/story-media-gallery';
 import { showToast } from '@/lib/toast-store';
+import type { Character } from '@/lib/character-types';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
 import { selectSceneRecordsForStory, selectStoryMetadata, useAppStore } from '@/stores/use-app-store';
+
+/**
+ * A selector that builds its own fallback hands back a new array on every
+ * render, and `shown` is derived from it — which re-ran the effect that prunes
+ * the ticked files, which rendered again. A story with no characters yet, and
+ * that is every new story, span until React cut it off. One shared empty array
+ * keeps the identity stable.
+ */
+const NO_CHARACTERS: Character[] = [];
 
 /** Below this the inspector is a bottom sheet and the rail becomes chips. */
 const PHONE_MAX_WIDTH = 768;
@@ -101,7 +111,7 @@ export default function StoryGalleryRoute() {
   const imageAssetIdsByStory = useAppStore((state) => state.imageAssetIdsByStory);
   const mediaAssetIdsByStory = useAppStore((state) => state.mediaAssetIdsByStory);
   const audioLibraries = useAppStore((state) => state.audioLibraries);
-  const characters = useAppStore((state) => storyId ? state.characterLibraries[storyId] ?? [] : []);
+  const characters = useAppStore((state) => (storyId ? state.characterLibraries[storyId] ?? NO_CHARACTERS : NO_CHARACTERS));
   const hydrate = useAppStore((state) => state.hydrateSceneRecordsForStory);
   const addImage = useAppStore((state) => state.addImageAssetToStory);
   const addMedia = useAppStore((state) => state.addMediaAssetToStory);

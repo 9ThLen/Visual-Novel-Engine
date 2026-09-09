@@ -328,6 +328,33 @@ export function migratePersistedAppState(
   return migrated;
 }
 
+/**
+ * Scene records live in their own per-story keys and are read on demand, so a
+ * screen can finish that read *before* Zustand's rehydration lands. Taking the
+ * persisted map wholesale threw those records away while `sceneRecordHydration`
+ * — merged the other way round, current first — still said the story was
+ * loaded, so nothing ever re-read it and the screen stayed empty.
+ *
+ * The persisted payload still wins wherever it has a record: it is the saved
+ * state, and rehydration is what applies it. Records already in memory only
+ * fill what it does not cover.
+ */
+function keepLoadedSceneRecords(
+  persisted: Record<string, Record<string, SceneRecord>>,
+  loaded: Record<string, Record<string, SceneRecord>>,
+): Record<string, Record<string, SceneRecord>> {
+  const storyIds = Object.keys(loaded);
+  if (storyIds.length === 0) return persisted;
+
+  const merged = { ...persisted };
+  for (const storyId of storyIds) {
+    const loadedRecords = loaded[storyId];
+    if (!loadedRecords || Object.keys(loadedRecords).length === 0) continue;
+    merged[storyId] = { ...loadedRecords, ...merged[storyId] };
+  }
+  return merged;
+}
+
 export function mergePersistedAppState<TState extends AppStorePersistenceState>(
   persistedState: unknown,
   currentState: TState,
@@ -343,7 +370,10 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
     ? getHydratableMediaLibrary(persisted.mediaLibrary)
     : currentState.mediaLibrary;
   const sceneRecordsByStory = 'sceneRecordsByStory' in persisted
-    ? migrateSceneRecordsByStory(persisted.sceneRecordsByStory)
+    ? keepLoadedSceneRecords(
+        migrateSceneRecordsByStory(persisted.sceneRecordsByStory),
+        currentState.sceneRecordsByStory,
+      )
     : currentState.sceneRecordsByStory;
   const characterLibraries = 'characterLibraries' in persisted
     ? migrateCharacterLibraries(persisted.characterLibraries)

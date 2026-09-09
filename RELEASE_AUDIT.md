@@ -32,6 +32,44 @@ The tested web build and exported player pass the checks below. This is not a ce
 
 The full coverage run preceded the last graph/asset-report fixes; the follow-up regressions cover those changes. The final preview-only styling change was rebuilt and inspected in the browser.
 
+## Second pass — 2026-09-09
+
+Driving every studio route in a browser, rather than only the pages the first pass
+inspected, turned up three defects. All three are fixed here.
+
+### Media library span until React stopped it
+
+`/story-gallery` selected the story's characters with an inline selector that built
+its own `[]` fallback, so it returned a new array on every render whenever the story
+had no characters. `shown` derives from it, and the effect that unticks files which
+leave the view depends on `shown`, so each render scheduled another — "Maximum update
+depth exceeded", repeatedly. Stories that already have characters were unaffected,
+which is why the bundled demos hid it; every newly created story hit it. Fixed with a
+shared empty array, the pattern `EMPTY_RELEASES` in `app/story-home.tsx` already used.
+The same defect in `app/story-home.tsx` and `components/story-home/AssetUsageCard.tsx`
+is fixed alongside it.
+
+### Scene manager and manuscript opened empty
+
+Scene records load per story on demand. Neither `components/editor/SceneManager.tsx`
+nor `app/manuscript-editor.tsx` asked for that load, so both reported "no scenes yet"
+for a story with fourteen of them, and only showed scenes when another screen happened
+to have loaded them first. Both now hydrate. The scene manager also built its selector
+during render, making a new one each pass; it is memoized on the story.
+
+### Scene records lost to a rehydration race
+
+The root cause under the screen above, and the more serious of the three.
+`mergePersistedAppState()` replaced `sceneRecordsByStory` with the persisted map
+wholesale. Scene records do not live in that blob — they have their own per-story keys,
+read on demand — so a screen that finished its read before Zustand's rehydration landed
+had those records thrown away. `sceneRecordHydration` is merged the other way round,
+current first, so the store went on reporting the story as fully loaded and nothing ever
+re-read it: the screen stayed empty until a reload. Observed directly in the browser as
+0 → 14 → 0 records, the last transition on the rehydration callback. The persisted
+payload still wins wherever it holds a record; records already in memory now only fill
+what it does not cover. Two regression tests cover both directions.
+
 ## Remaining release verification
 
 - Native Android/iOS builds and real-device behavior have not been verified. Desktop tests validate the staged application and its offline frontend, not an installed native binary.
