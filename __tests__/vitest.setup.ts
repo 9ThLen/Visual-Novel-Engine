@@ -5,7 +5,7 @@ const Module = require('module');
 const path = require('path');
 const fs = require('fs');
 
-const rootDir = path.resolve(__dirname);
+const rootDir = path.resolve(__dirname, '..');
 
 // Map Vite aliases for CJS require() — maps import specifier → mock file path
 const aliases = {

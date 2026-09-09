@@ -1,4 +1,5 @@
-import { defineConfig, devices } from '@playwright/test';
+import path from "node:path";
+import { defineConfig, devices } from "@playwright/test";
 
 /**
  * The studio flows an author actually performs, driven through the real UI.
@@ -12,35 +13,48 @@ import { defineConfig, devices } from '@playwright/test';
  * an unminified bundle — slow enough on a small CI runner that the default
  * timeouts are not survivable.
  */
-const appOrigin = 'http://127.0.0.1:8083';
+const appOrigin = "http://127.0.0.1:8083";
 const isCI = Boolean(process.env.CI);
 
 export default defineConfig({
-  testDir: './e2e/studio',
+  outputDir: path.resolve(__dirname, "../../test-results"),
+  testDir: "../studio",
   testMatch: /release\.spec\.ts/,
   timeout: isCI ? 180_000 : 90_000,
   fullyParallel: false,
   workers: 1,
   retries: isCI ? 1 : 0,
-  reporter: isCI ? [['github'], ['html', { open: 'never' }]] : 'list',
+  reporter: isCI
+    ? [
+        ["github"],
+        [
+          "html",
+          {
+            open: "never",
+            outputFolder: path.resolve(__dirname, "../../playwright-report"),
+          },
+        ],
+      ]
+    : "list",
   expect: { timeout: isCI ? 30_000 : 10_000 },
   use: {
     baseURL: appOrigin,
-    ...devices['Desktop Chrome'],
+    ...devices["Desktop Chrome"],
     actionTimeout: isCI ? 30_000 : 0,
     navigationTimeout: isCI ? 90_000 : 0,
-    trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   webServer: {
-    command: 'node node_modules/expo/bin/cli start --web --port 8083 --offline',
+    cwd: path.resolve(__dirname, "../.."),
+    command: "node node_modules/expo/bin/cli start --web --port 8083 --offline",
     url: appOrigin,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
     // Metro reports bundling failures on stdout, which Playwright discards by
     // default. Without this a broken bundle is invisible: the dev server keeps
     // answering, the browser gets a 500, and every test sees a blank page.
-    stdout: 'pipe',
-    env: { ...process.env, CI: '1' },
+    stdout: "pipe",
+    env: { ...process.env, CI: "1" },
   },
 });

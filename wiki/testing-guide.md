@@ -15,8 +15,8 @@ corepack pnpm run check:reader-audio-boundaries
 ## Test Setup
 
 - Runner: Vitest with globals enabled.
-- Setup: `vitest.setup.ts`.
-- Module aliases and mocks are configured through `vitest.config.ts` and `vitest.setup.ts`.
+- Setup: `__tests__/vitest.setup.ts`.
+- Module aliases and mocks are configured through `vitest.config.ts` and `__tests__/vitest.setup.ts`.
 - Tests live under `__tests__/unit`.
 
 ## Current Coverage Areas
@@ -34,7 +34,7 @@ corepack pnpm run check:reader-audio-boundaries
 ## Testing Rules
 
 - Prefer behavioral tests over render-only smoke tests.
-- Keep mocks centralized in `__mocks__` and `vitest.setup.ts`.
+- Keep mocks centralized in `__mocks__` and `__tests__/vitest.setup.ts`.
 - Store tests should exercise slice behavior directly when possible.
 - Reader tests should cover visible state and callbacks, not internal implementation details.
 - Add regression tests before changing persistence, migration, reader audio, or scene hydration logic.

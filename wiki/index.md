@@ -34,4 +34,3 @@ See the [documentation index](../docs/README.md) for both language versions, pro
 |---|---|
 | `README.md` | Project setup, architecture summary, commands |
 | `docs/product/DESIGN_SYSTEM.md` | Theme tokens, color system, maintenance rules |
-| `AGENTS.md` | AI agent rules and project-specific pitfalls |

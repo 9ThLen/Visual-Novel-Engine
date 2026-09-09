@@ -119,3 +119,9 @@ wiki/final-migration-audit.md
 # it belongs to. Machine-specific, and a signing fingerprint is not ours to
 # publish on the author's behalf.
 .vne-builds/
+
+# Local AI instructions and analysis configuration
+/.agents/
+/AGENTS.md
+/.graphifyignore
+/.publish-docs/

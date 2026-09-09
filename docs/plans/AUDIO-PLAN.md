@@ -161,7 +161,7 @@ R4.5  повний транспорт і чесні стани відмови
 
 Реалізовано: `AudioCategory` й `audioCategoryOf` у [story-media-gallery.ts](../../lib/story-media-gallery.ts), нова [audio-category.ts](../../lib/audio-category.ts), третя вкладка й чіпси категорій, плитка звуку, ключі EN+UK. Тести: 9 у `story-media-gallery.test.ts`, 3 у `MediaLibrary.test.tsx`.
 
-**Уточнено при реалізації:** евристику назви довелося винести з `lib/audio-library` в окремий модуль — харнес підміняє весь `audio-library` заглушкою ([vitest.setup.ts:33](../../vitest.setup.ts:33)), тож правило медіатеки, що імпортувало б її звідти, було б непротестовним.
+**Уточнено при реалізації:** евристику назви довелося винести з `lib/audio-library` в окремий модуль — харнес підміняє весь `audio-library` заглушкою ([vitest.setup.ts:33](../../__tests__/vitest.setup.ts:33)), тож правило медіатеки, що імпортувало б її звідти, було б непротестовним.
 
 `MediaKind`, `AudioCategory`, `audios` у галереї, аудіо в `buildAvailableAssets`, чіпси категорій, плитка (статична), порожні стани, ключі i18n.
 
