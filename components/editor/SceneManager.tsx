@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -51,7 +51,18 @@ export function SceneManager({ storyId }: SceneManagerProps) {
   const deleteScene = useAppStore((state) => state.deleteScene);
   const setStartScene = useAppStore((state) => state.setStartScene);
   const updateSceneConnection = useAppStore((state) => state.updateSceneConnection);
-  const storyRecords = useAppStore(selectSceneRecordMapForStory(storyId));
+  const hydrateSceneRecords = useAppStore((state) => state.hydrateSceneRecordsForStory);
+  // Calling the factory during render makes a new selector every render, and
+  // the map it reads is rebuilt whenever the selector is: `scenes` would then
+  // be a fresh array each pass. Memoizing on the story keeps both stable.
+  const storyRecords = useAppStore(useMemo(() => selectSceneRecordMapForStory(storyId), [storyId]));
+
+  // Scene records are loaded per story on demand. Without this the manager
+  // opens on "no scenes yet" for a story that has plenty — it only ever showed
+  // them when another screen happened to have loaded them first.
+  useEffect(() => {
+    void hydrateSceneRecords(storyId);
+  }, [hydrateSceneRecords, storyId]);
 
   const story = storiesMetadata.find((metadata) => metadata.id === storyId);
 
