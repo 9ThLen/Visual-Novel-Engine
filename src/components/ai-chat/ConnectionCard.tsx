@@ -6,6 +6,7 @@ import { useI18n } from '@/hooks/use-i18n';
 import type { ColorScheme } from '@/constants/theme';
 import { normalizeLocalBridgeUrl } from '@/lib/ai/bridge-config';
 import { bridgeLaunchInstruction } from '@/lib/ai/bridge-launch';
+import { StudioBridgeSection } from '@/components/ai-chat/StudioBridgeSection';
 import { AI_PROVIDER_INFO, VISIBLE_AI_PROVIDERS, aiProviderLabel } from '@/lib/ai/providers';
 import type { BridgeConnectionState, BridgeProvider } from '@/lib/bridge-client';
 import { copyToClipboard, readFromClipboard } from '@/lib/web-utils';
@@ -88,6 +89,9 @@ export function ConnectionCard({
     if (copiedCommandTimerRef.current) clearTimeout(copiedCommandTimerRef.current);
   }, []);
 
+  const [studioCanStart, setStudioCanStart] = useState(false);
+  const [manualAnyway, setManualAnyway] = useState(false);
+
   const normalizedUrl = useMemo(() => normalizeLocalBridgeUrl(urlValue), [urlValue]);
   const launch = bridgeLaunchInstruction({
     origin: currentBrowserOrigin(),
@@ -156,6 +160,16 @@ export function ConnectionCard({
           <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.connection.demo')}</Text>
         ) : null}
       </View>
+
+      <StudioBridgeSection
+        provider={providerChoice}
+        onAvailabilityChange={setStudioCanStart}
+        onPaired={(pairedUrl, pairedToken) => {
+          setValue(pairedToken);
+          setUrlValue(pairedUrl);
+          onConnect(pairedToken, pairedUrl, providerChoice);
+        }}
+      />
 
       {state === 'connecting' || state === 'reconnecting' ? (
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
@@ -245,6 +259,16 @@ export function ConnectionCard({
         <Text style={{ color: colors.muted, fontSize: 11 }}>{t(`aiChat.connection.imageProviderHelp.${imageProviderChoice}`)}</Text>
       </View>
 
+      {/* The manual route: a command to run and a token to paste. Kept out of
+          the way when the studio can start a bridge itself — but only out of
+          the way, because an author with a bridge of their own, or one the
+          studio failed to start, still needs it. */}
+      {studioCanStart && !manualAnyway ? (
+        <Pressable accessibilityRole="button" onPress={() => setManualAnyway(true)}>
+          <Text style={{ color: colors.primary, fontSize: 12 }}>{t('aiChat.studioBridge.manual')}</Text>
+        </Pressable>
+      ) : (
+        <>
       <View style={{ gap: 8 }}>
         <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.connection.startBridge')}</Text>
         <CommandRow command={command} copied={copiedCommand === command} onCopy={() => void copy(command)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
@@ -288,14 +312,19 @@ export function ConnectionCard({
         </View>
       ) : null}
 
-      <Pressable
-        accessibilityRole="button"
-        disabled={!value.trim() || !normalizedUrl.ok}
-        onPress={connect}
-        style={{ backgroundColor: colors.primary, borderRadius: 8, padding: 10, opacity: value.trim() && normalizedUrl.ok ? 1 : 0.5 }}
-      >
-        <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700' }}>{t('aiChat.connection.connect')}</Text>
-      </Pressable>
+        </>
+      )}
+
+      {studioCanStart && !manualAnyway ? null : (
+        <Pressable
+          accessibilityRole="button"
+          disabled={!value.trim() || !normalizedUrl.ok}
+          onPress={connect}
+          style={{ backgroundColor: colors.primary, borderRadius: 8, padding: 10, opacity: value.trim() && normalizedUrl.ok ? 1 : 0.5 }}
+        >
+          <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700' }}>{t('aiChat.connection.connect')}</Text>
+        </Pressable>
+      )}
       {state === 'closed' ? (
         <Pressable accessibilityRole="button" onPress={onRetry} style={{ borderWidth: 1, borderColor: colors.primary, borderRadius: 8, padding: 9 }}>
           <Text style={{ color: colors.primary, textAlign: 'center', fontWeight: '700' }}>{t('aiChat.connection.reconnect')}</Text>

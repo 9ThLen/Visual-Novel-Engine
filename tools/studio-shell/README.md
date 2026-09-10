@@ -82,6 +82,12 @@ and `pnpm build:studio-desktop` finds its output; `--no-bridge` builds without
 it. A studio built that way still pairs with a bridge the author starts, and says
 so rather than offering a button that cannot work.
 
+The panel calls these through `src/lib/ai/studio-bridge.ts`, which answers
+`{ available: false }` anywhere there is no supervisor — a dev server, a browser,
+a studio built before the commands existed. `StudioBridgeSection` renders nothing
+at all in those places, and the manual URL-and-token form stays exactly as it
+was.
+
 ## What must not be added lightly
 
 The window still has no filesystem, no dialog and no HTTP plugin, and the three
