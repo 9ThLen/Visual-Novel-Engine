@@ -114,8 +114,8 @@ export function createOpenAiImageBackend(options: ImageBackendOptions): ImageGen
     label: 'OpenAI Images',
     model: options.model,
     configured: Boolean(options.apiKey),
-    configurationError: () => new BridgeToolError('PROVIDER_UNAVAILABLE', 'Image generation is not configured. Set OPENAI_API_KEY in the bridge .env.', {
-      reason: 'IMAGE_PROVIDER_NOT_CONFIGURED', provider: 'openai', hint: 'Set OPENAI_API_KEY in .env and restart the AI bridge.',
+    configurationError: () => new BridgeToolError('PROVIDER_UNAVAILABLE', 'Image generation is not configured. Set OPENAI_API_KEY in the bridge settings.', {
+      reason: 'IMAGE_PROVIDER_NOT_CONFIGURED', provider: 'openai', hint: 'Set OPENAI_API_KEY in the bridge settings file or environment, then restart the AI bridge.',
     }),
     estimate,
     request: async (input, edit, source, degraded) => {
@@ -192,8 +192,8 @@ export function createGeminiImageBackend(options: ImageBackendOptions): ImageGen
     label: 'Google Gemini Images',
     model: options.model,
     configured: Boolean(options.apiKey),
-    configurationError: () => new BridgeToolError('PROVIDER_UNAVAILABLE', 'Image generation is not configured. Set GEMINI_API_KEY in the bridge .env.', {
-      reason: 'IMAGE_PROVIDER_NOT_CONFIGURED', provider: 'gemini', hint: 'Set GEMINI_API_KEY in .env and restart the AI bridge.',
+    configurationError: () => new BridgeToolError('PROVIDER_UNAVAILABLE', 'Image generation is not configured. Set GEMINI_API_KEY in the bridge settings.', {
+      reason: 'IMAGE_PROVIDER_NOT_CONFIGURED', provider: 'gemini', hint: 'Set GEMINI_API_KEY in the bridge settings file or environment, then restart the AI bridge.',
     }),
     estimate: (input) => {
       const value = geminiPrice(options.model, input.resolution);

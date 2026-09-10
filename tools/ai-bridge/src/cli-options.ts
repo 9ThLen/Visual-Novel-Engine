@@ -12,6 +12,7 @@ export interface BridgeCliArgs {
   help: boolean;
   version?: boolean;
   enableCodexBeta?: boolean;
+  resetToken?: boolean;
 }
 
 export interface BridgeCliConfig {
@@ -37,6 +38,7 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
       'enable-codex-beta': { type: 'boolean' },
+      'reset-token': { type: 'boolean' },
     },
   });
 
@@ -49,6 +51,7 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
     help: parsed.values.help ?? false,
     ...(parsed.values.version ? { version: true } : {}),
     ...(parsed.values['enable-codex-beta'] ? { enableCodexBeta: true } : {}),
+    ...(parsed.values['reset-token'] ? { resetToken: true } : {}),
   };
 }
 
@@ -104,10 +107,12 @@ export function bridgeCliHelp(): string {
     '  --enable-codex-beta        Explicitly enable experimental Codex CLI',
     '  --origin <origin>          Allowed loopback browser origin; repeatable',
     '  --port <port>              Bridge WebSocket port (default: 8787)',
+    '  --reset-token              Issue a new pairing token and exit',
     '  -h, --help                 Show this help',
     '  -v, --version              Show the bridge version',
     '',
     'Fallback is CLI-only: using --fallback-provider explicitly allows prior chat and attachments to be sent to Gemini.',
     'CLI options override AI_BRIDGE_PROVIDER, AI_BRIDGE_IMAGE_PROVIDER, AI_BRIDGE_ALLOWED_ORIGINS, and AI_BRIDGE_PORT.',
+    'Those in turn override the settings file in the bridge directory; set VNE_BRIDGE_HOME to move it.',
   ].join('\n');
 }

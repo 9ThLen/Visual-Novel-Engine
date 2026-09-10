@@ -12,6 +12,9 @@ import { OpenAiProvider } from './openai-provider';
 import { RoutingProvider } from './routing-provider';
 import type { ToolInvoker } from './provider';
 import { imageProviderLabel, resolveImageProvider } from './image-provider-config';
+import { bridgeConfigFile, bridgeHomeDir, bridgeTokenFile } from './config-paths';
+import { applyEnvDefaults, readEnvFile } from './config-store';
+import { readOrCreateToken, resetStoredToken } from './token-store';
 
 export const BRIDGE_CLI_VERSION = '0.1.0';
 
@@ -19,23 +22,18 @@ export const BRIDGE_CLI_VERSION = '0.1.0';
 const OPENAI_SYSTEM_PROMPT = readFileSync(fileURLToPath(new URL('./system-prompt.md', import.meta.url)), 'utf8');
 
 /**
- * Minimal `.env` loader (tsx does not read `.env` on its own, and we don't want
- * a dependency for four dev-only keys). Loads KEY=VALUE lines from the project
- * root without overriding anything already set in the real environment.
+ * Settings, in falling priority: the real environment, then the repository
+ * `.env`, then the user's own configuration file.
+ *
+ * Precedence is call order rather than a comparison someone has to keep
+ * correct, because `applyEnvDefaults` never overwrites. A checkout therefore
+ * behaves exactly as before — the developer's `.env` still wins — while an
+ * installed bridge, which has no `.env` and no meaningful working directory,
+ * reads the file in its own per-user directory instead of finding nothing.
  */
-function loadDotEnv(): void {
-  try {
-    const raw = readFileSync(resolve(process.cwd(), '.env'), 'utf8');
-    for (const line of raw.split(/\r?\n/)) {
-      const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
-      if (!match || line.trimStart().startsWith('#')) continue;
-      const key = match[1];
-      const value = match[2].trim().replace(/^["']|["']$/g, '');
-      if (process.env[key] === undefined) process.env[key] = value;
-    }
-  } catch {
-    // No .env file — rely on the real environment. This is fine.
-  }
+function loadBridgeSettings(dir: string): void {
+  applyEnvDefaults(process.env, readEnvFile(resolve(process.cwd(), '.env')));
+  applyEnvDefaults(process.env, readEnvFile(bridgeConfigFile(dir)));
 }
 
 async function main(): Promise<void> {
@@ -49,7 +47,16 @@ async function main(): Promise<void> {
     return;
   }
 
-  loadDotEnv();
+  const bridgeHome = bridgeHomeDir();
+  if (cli.resetToken) {
+    const rotated = resetStoredToken(bridgeHome);
+    console.log(`New bridge token: ${rotated}`);
+    console.log(`Stored in: ${bridgeTokenFile(bridgeHome)}`);
+    console.log('Re-pair the editor with this token. A bridge that is already running keeps the old one until it is restarted.');
+    return;
+  }
+
+  loadBridgeSettings(bridgeHome);
   const { origins, port, provider, fallbackProvider, imageProvider: imageProviderSelection, enableCodexBeta } = resolveBridgeCliConfig(cli, process.env);
   if (fallbackProvider === 'gemini' && !process.env.GEMINI_API_KEY?.trim()) {
     throw new Error('--fallback-provider gemini requires GEMINI_API_KEY');
@@ -71,9 +78,13 @@ async function main(): Promise<void> {
   } else if (!imageProvider.provider) {
     console.warn('Image diagnostic: no image provider is configured; image generation and editing will be unavailable.');
   }
-  // A fixed token lets the browser and bridge share one value from .env. Falls
-  // back to the browser-facing key, then to a random token if neither is set.
-  const token = process.env.AI_BRIDGE_TOKEN ?? process.env.EXPO_PUBLIC_AI_BRIDGE_TOKEN;
+  // An explicitly configured token still wins, so a checkout can keep sharing one
+  // value between the browser and the bridge. Otherwise the stored token is used,
+  // issued on first run, so restarting the bridge does not silently invalidate the
+  // pairing the editor has saved.
+  const token = process.env.AI_BRIDGE_TOKEN
+    ?? process.env.EXPO_PUBLIC_AI_BRIDGE_TOKEN
+    ?? readOrCreateToken(bridgeHome).token;
   const server = new AiBridgeServer({
     port,
     token,

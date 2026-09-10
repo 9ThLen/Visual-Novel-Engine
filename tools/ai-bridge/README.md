@@ -94,7 +94,44 @@ tool. Starting the bridge with `--provider codex` therefore exits with
 `CODEX_HARDENING_UNSUPPORTED`. Use Claude until a Codex CLI release provides a
 testable zero-data-access tool boundary.
 
-The bridge prints one pairing block containing the provider, WebSocket URL, allowed browser origins, and a random token. Paste the token into the editor's AI panel; editing `.env` is optional.
+The bridge prints one pairing block containing the provider, WebSocket URL,
+allowed browser origins, and the pairing token. Paste the token into the
+editor's AI panel; editing the settings file is optional.
+
+## Settings and token outside a checkout
+
+The bridge reads settings from three layers, each one filling in only what the
+layer above left unset:
+
+1. CLI options;
+2. the real environment, including a project-root `.env` in a checkout;
+3. a `bridge.env` file in the bridge's own per-user directory.
+
+That third layer is what an installed bridge uses, because it has no `.env` and
+no meaningful working directory — starting it from a shortcut, from `C:\`, or
+from Documents must not change which settings it finds. Set `VNE_BRIDGE_HOME`
+to an absolute path to move the directory; otherwise it is:
+
+| Platform | Directory |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\VisualNovelEngine\Bridge` |
+| macOS | `~/Library/Application Support/VisualNovelEngine/Bridge` |
+| Linux | `$XDG_CONFIG_HOME/visual-novel-engine/bridge` |
+
+The **pairing token** lives in `token` in that same directory, apart from the
+settings so it can be rotated on its own. It is issued on first run and reused
+after that: a token minted per start would silently invalidate the pairing the
+editor has saved, and the editor failing to connect after a reboot reads as a
+broken product rather than as an expired secret.
+
+A token file that is empty or malformed is an error, never a silent
+replacement — see above for why. `--reset-token` issues a new one and exits. A
+bridge that is already running keeps the old token in memory, so restart it:
+that restart is what actually ends sessions authenticated with the old token.
+
+The file is written `0o600`, which POSIX honours. Windows ignores the mode and
+the file instead inherits the ACL of the per-user directory containing it —
+protection that is worth verifying on a real machine rather than assuming.
 
 In the editor, open the AI tab and choose a visible provider card. The setup
 panel shows the provider-specific instructions, a copyable bridge command, an
@@ -107,7 +144,8 @@ The connected-state menu offers:
 - **Disconnect**: ends the current bridge session but keeps the saved local URL
   and token for an explicit reconnect.
 - **Reset connection**: ends the session, removes the saved resume ID, URL, and
-  token, and disables automatic `.env` fallback until the user connects again.
+  token, and disables the automatic environment fallback until the user
+  connects again.
 - **AI permissions**: controls which tool capabilities require confirmation,
   may run automatically, or are blocked.
 
