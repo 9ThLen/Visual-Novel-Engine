@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { Animated } from 'react-native';
+import { Animated, Image } from 'react-native';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
 import { CHARACTER_STAGE_HEIGHT_FRACTION, DEFAULT_CHARACTER_ASPECT_RATIO } from '@/lib/character-layout';
 import type { AnimatedCharacterInstance } from '@/lib/character-animator';
@@ -34,6 +34,26 @@ describe('CharacterDisplay', () => {
     expect(container.style.height).toBe(`${800 * CHARACTER_STAGE_HEIGHT_FRACTION}px`);
     expect(container.style.width)
       .toBe(`${800 * CHARACTER_STAGE_HEIGHT_FRACTION * DEFAULT_CHARACTER_ASPECT_RATIO}px`);
+  });
+
+  it('draws the sprite in the proportions of the file once they are known', () => {
+    vi.mocked(Image.getSize).mockImplementation((_uri, success) => success(384, 583));
+
+    render(
+      <CharacterDisplay
+        instance={instance()}
+        spriteUri="file://tall.png"
+        stageWidth={1920}
+        stageHeight={800}
+      />,
+    );
+
+    const container = screen.getByLabelText('Character sprite');
+    const width = Number.parseFloat(container.style.width);
+    const height = Number.parseFloat(container.style.height);
+
+    expect(height).toBeCloseTo(800 * CHARACTER_STAGE_HEIGHT_FRACTION, 5);
+    expect(width / height).toBeCloseTo(384 / 583, 5);
   });
 
   it('keeps a wide sprite inside a narrow stage', () => {

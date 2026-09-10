@@ -23,6 +23,11 @@ import { useTypewriter } from '@/hooks/useTypewriter';
 import type { StoryReaderLayoutPreset } from '@/lib/story-theme';
 import { SceneVideoLayer } from '@/components/reader/SceneVideoLayer';
 import { SceneCutsceneLayer } from '@/components/reader/SceneCutsceneLayer';
+import {
+  READER_TOP_PRESET_OFFSET,
+  readerStageInsets,
+  type ReaderStageInsets,
+} from '@/lib/reader-stage';
 
 /** Shared with the editor's scene preview so both compute line height alike. */
 export const DIALOGUE_LINE_HEIGHT_MULTIPLIER = 1.65;
@@ -32,13 +37,6 @@ const CURSOR_STYLE = { opacity: 0.8 };
 const BACKGROUND_PLACEHOLDER = { blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' };
 
 const styles = StyleSheet.create({
-  charactersLayer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-  },
   screenEffectsLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 30,
@@ -78,7 +76,6 @@ interface ReaderDisplayProps {
   isLoading: boolean;
   onTap: () => void;
   onSelectChoice: (choiceId: string) => void;
-  paddingBottom: number;
   pagesLength: number;
   pageIndex: number;
   readerControls: React.ReactNode;
@@ -181,7 +178,7 @@ function ReaderCharacters({
   animatedStyle,
   instances,
   resolvedCharUris,
-  paddingBottom,
+  stageInsets,
   activeSpeakerCharacterId,
   activeSpeakerFocusScale,
   dimNonSpeakerCharacters,
@@ -192,7 +189,7 @@ function ReaderCharacters({
   animatedStyle: StyleProp<ViewStyle>;
   instances: React.ComponentProps<typeof CharacterDisplay>['instance'][];
   resolvedCharUris: Record<string, ImageSource | undefined>;
-  paddingBottom: number;
+  stageInsets: ReaderStageInsets;
   activeSpeakerCharacterId?: string | null;
   activeSpeakerFocusScale?: number;
   dimNonSpeakerCharacters?: boolean;
@@ -201,22 +198,29 @@ function ReaderCharacters({
   parallaxEnabled: boolean;
 }) {
   const parallaxStyle = useParallaxLayer(parallaxEnabled, PARALLAX_LAYERS.characters);
+  // The layer *is* the stage: it is inset to where the dialogue panel starts
+  // rather than padded down to it. Padding would not do it — on the web an
+  // absolutely positioned sprite is placed against the padding box's outer
+  // edge, so `bottom: 0` inside a padded layer still lands on the very bottom
+  // of the display, behind the panel.
   const containerStyle = useMemo(
     () => [
-      StyleSheet.absoluteFillObject,
       animatedStyle,
-      styles.charactersLayer,
-      { paddingBottom },
+      {
+        position: 'absolute' as const,
+        top: stageInsets.top,
+        right: stageInsets.right,
+        bottom: stageInsets.bottom,
+        left: stageInsets.left,
+      },
       getPointerEventsStyle('none'),
     ],
-    [animatedStyle, paddingBottom],
+    [animatedStyle, stageInsets],
   );
 
   // Sprites are scaled by the stage they stand on, so the layer measures
-  // itself. `layout` is the frame including the padding that keeps characters
-  // clear of the dialogue panel, which is why the padding comes back off here.
-  // The window is the fallback for the first frame and for RN Web layouts
-  // where `onLayout` does not fire.
+  // itself. The window minus the insets is the fallback for the first frame
+  // and for RN Web layouts where `onLayout` does not fire.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [layer, setLayer] = useState<{ width: number; height: number } | null>(null);
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
@@ -226,8 +230,10 @@ function ReaderCharacters({
       ? current
       : { width, height }));
   }, []);
-  const stageWidth = layer?.width ?? windowWidth;
-  const stageHeight = Math.max(0, (layer?.height ?? windowHeight) - paddingBottom);
+  const stageWidth = layer?.width
+    ?? Math.max(0, windowWidth - stageInsets.left - stageInsets.right);
+  const stageHeight = layer?.height
+    ?? Math.max(0, windowHeight - stageInsets.top - stageInsets.bottom);
 
   return (
     <Animated.View style={containerStyle} onLayout={handleLayout}>
@@ -291,7 +297,6 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
   isLoading,
   onTap,
   onSelectChoice,
-  paddingBottom,
   pagesLength,
   pageIndex,
   readerControls,
@@ -324,7 +329,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
 
   // Sprites are placed against the window, so the camera frames them by the
   // same width.
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const focusCharacters = useMemo<CameraFocusCharacter[]>(
     () => instances.map((instance) => ({ characterId: instance.characterId, position: instance.position })),
     [instances],
@@ -354,6 +359,21 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
     [colors.primary],
   );
 
+  // The panel is drawn at the bottom of the display — at the top for the `top`
+  // preset — so that is the side the characters give up. Reserving from the
+  // panel's own measurements is what keeps a landscape character standing on
+  // the panel's edge instead of behind it.
+  const stageInsets = useMemo(
+    () => readerStageInsets({
+      stageWidth: windowWidth,
+      stageHeight: windowHeight,
+      layoutPreset,
+      lineHeight: dialogueTextStyle.lineHeight,
+      panelWidth: layoutPreset === 'classic' ? windowWidth : layoutContainerWidth,
+    }),
+    [dialogueTextStyle.lineHeight, layoutContainerWidth, layoutPreset, windowHeight, windowWidth],
+  );
+
   return (
     <>
       <ReaderBackground
@@ -372,7 +392,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
         animatedStyle={[characterAnimatedStyle, cameraTransformStyle]}
         instances={instances}
         resolvedCharUris={resolvedCharUris}
-        paddingBottom={paddingBottom}
+        stageInsets={stageInsets}
         activeSpeakerCharacterId={activeSpeakerCharacterId}
         activeSpeakerFocusScale={activeSpeakerFocusScale}
         dimNonSpeakerCharacters={dimNonSpeakerCharacters}
@@ -425,7 +445,7 @@ export const ReaderDisplay = React.memo(function ReaderDisplay({
           layoutPreset === 'classic'
             ? { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 40 }
             : layoutPreset === 'top'
-              ? { position: 'absolute', top: 72, left: layoutContainerLeft, zIndex: 40, width: layoutContainerWidth }
+              ? { position: 'absolute', top: READER_TOP_PRESET_OFFSET, left: layoutContainerLeft, zIndex: 40, width: layoutContainerWidth }
               : { position: 'absolute', bottom: 0, left: layoutContainerLeft, zIndex: 40, width: layoutContainerWidth },
           dialogueAnimatedStyle,
           hudParallaxStyle,

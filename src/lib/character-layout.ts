@@ -25,11 +25,15 @@ export const DEFAULT_CHARACTER_ASPECT_RATIO = 9 / 16;
  * at 92% of a phone's height would be wider than the phone. The cap also keeps
  * a crowded scene readable: the more characters share the stage, the less width
  * each one may claim before they cover each other.
+ *
+ * A lone character is allowed nearly the whole width. It has to be: a 2:3 sprite
+ * at 92% of a phone's height is 93% as wide as the phone, and a tighter cap
+ * would take the height back off it for width the scene is not using.
  */
 export function characterMaxWidthFraction(characterCount: number): number {
   if (characterCount >= 3) return 0.42;
   if (characterCount === 2) return 0.55;
-  return 0.8;
+  return 0.95;
 }
 
 export interface CharacterSpriteSizeInput {
@@ -66,22 +70,4 @@ export function getCharacterSpriteSize({
   const maxWidth = stageWidth * characterMaxWidthFraction(characterCount);
 
   return width <= maxWidth ? { width, height } : { width: maxWidth, height: maxWidth / ratio };
-}
-
-/**
- * Reads a sprite's real proportions out of an image load event.
- *
- * React Native reports the decoded size under `nativeEvent.source` and
- * expo-image under `source`; the reader uses one and the previews the other,
- * and both need the same number.
- */
-export function spriteAspectRatioFromLoadEvent(event: unknown): number | null {
-  const candidate = event as { source?: unknown; nativeEvent?: { source?: unknown } } | null;
-  const source = (candidate?.source ?? candidate?.nativeEvent?.source) as
-    | { width?: number; height?: number }
-    | undefined;
-  const width = source?.width;
-  const height = source?.height;
-  if (!width || !height || !Number.isFinite(width) || !Number.isFinite(height)) return null;
-  return width / height;
 }

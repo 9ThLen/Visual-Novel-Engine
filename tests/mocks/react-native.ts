@@ -101,16 +101,32 @@ export const TextInput = React.forwardRef((props: any, ref: any) => {
  */
 type ImageSource = string | number | { uri?: string } | null | undefined;
 
-export const Image = React.forwardRef(function Image(
-  props: Record<string, unknown> & { source?: ImageSource },
-  ref: React.Ref<HTMLImageElement>,
-) {
-  const { source, ...rest } = props;
-  const src = typeof source === 'string'
-    ? source
-    : source && typeof source === 'object' ? source.uri : undefined;
-  return React.createElement('img', { ...domProps(rest), ...(src ? { src } : {}), ref });
+/**
+ * jsdom has no image decoder, so a component that asks for a sprite's size gets
+ * the failure path — the same answer a broken file would give — until a test
+ * says otherwise with `vi.mocked(Image.getSize).mockImplementation(...)`.
+ */
+const getSize = vi.fn((
+  uri: string,
+  _success: (width: number, height: number) => void,
+  failure?: (error: Error) => void,
+) => {
+  failure?.(new Error(`No image size available for ${uri}`));
 });
+
+export const Image = Object.assign(
+  React.forwardRef(function Image(
+    props: Record<string, unknown> & { source?: ImageSource },
+    ref: React.Ref<HTMLImageElement>,
+  ) {
+    const { source, ...rest } = props;
+    const src = typeof source === 'string'
+      ? source
+      : source && typeof source === 'object' ? source.uri : undefined;
+    return React.createElement('img', { ...domProps(rest), ...(src ? { src } : {}), ref });
+  }),
+  { getSize, resolveAssetSource: () => null },
+);
 type MockProps = Record<string, unknown>;
 
 /** Exposes the imperative handle callers use; a bare div has no scrollTo. */

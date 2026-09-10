@@ -1,36 +1,61 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Image } from 'react-native';
 
-import { DEFAULT_CHARACTER_ASPECT_RATIO, spriteAspectRatioFromLoadEvent } from '@/lib/character-layout';
+import { DEFAULT_CHARACTER_ASPECT_RATIO } from '@/lib/character-layout';
 
 /**
  * Sprite proportions live longer than the component that measured them: a
  * character leaving and re-entering a scene, or the same sprite shown in the
- * preview and the reader, must not fall back to the default box again.
+ * preview and in the reader, must not fall back to the default box again.
  */
 const aspectRatioCache = new Map<string, number>();
 
+type SpriteSource = string | number | null | undefined;
+
+/** What is known without asking: a bundled asset, or a URI measured before. */
+function knownAspectRatio(source: SpriteSource): number | null {
+  if (typeof source === 'number') {
+    const asset = Image.resolveAssetSource?.(source);
+    return asset?.width && asset?.height ? asset.width / asset.height : null;
+  }
+  return (source && aspectRatioCache.get(source)) || null;
+}
+
 /**
- * Real proportions of a sprite, learned from the image itself.
+ * A sprite's real proportions, so it can be drawn in its own shape rather than
+ * in a fixed box.
  *
- * The size comes from the load event both image components already fire, so
- * nothing is fetched twice and no measuring pass is needed. Until the file
- * loads the caller lays out with the default full-body ratio.
+ * `Image.getSize` is the one API that answers on every platform this app runs
+ * on. The image's own load event looked cheaper, but on React Native Web it is
+ * delivered after `decode()` resolves, by which point the DOM event no longer
+ * carries the element that has the size — so every sprite silently kept the
+ * default 9:16 box.
  */
-export function useSpriteAspectRatio(uri: string | null | undefined) {
+export function useSpriteAspectRatio(source: SpriteSource): number {
   const [aspectRatio, setAspectRatio] = useState(
-    () => (uri ? aspectRatioCache.get(uri) : undefined) ?? DEFAULT_CHARACTER_ASPECT_RATIO,
+    () => knownAspectRatio(source) ?? DEFAULT_CHARACTER_ASPECT_RATIO,
   );
 
   useEffect(() => {
-    setAspectRatio((uri ? aspectRatioCache.get(uri) : undefined) ?? DEFAULT_CHARACTER_ASPECT_RATIO);
-  }, [uri]);
+    const known = knownAspectRatio(source);
+    setAspectRatio(known ?? DEFAULT_CHARACTER_ASPECT_RATIO);
+    if (known || typeof source !== 'string' || !source) return;
 
-  const onSpriteLoad = useCallback((event: unknown) => {
-    const ratio = spriteAspectRatioFromLoadEvent(event);
-    if (!ratio) return;
-    if (uri) aspectRatioCache.set(uri, ratio);
-    setAspectRatio(ratio);
-  }, [uri]);
+    let active = true;
+    Image.getSize(
+      source,
+      (width, height) => {
+        if (!width || !height) return;
+        aspectRatioCache.set(source, width / height);
+        if (active) setAspectRatio(width / height);
+      },
+      () => {},
+    );
 
-  return { aspectRatio, onSpriteLoad };
+    return () => {
+      active = false;
+    };
+  }, [source]);
+
+  return aspectRatio;
 }

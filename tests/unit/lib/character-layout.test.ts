@@ -3,7 +3,6 @@ import {
   DEFAULT_CHARACTER_ASPECT_RATIO,
   characterMaxWidthFraction,
   getCharacterSpriteSize,
-  spriteAspectRatioFromLoadEvent,
 } from '@/lib/character-layout';
 
 const PHONE = { stageWidth: 390, stageHeight: 526 };
@@ -53,21 +52,5 @@ describe('getCharacterSpriteSize', () => {
 
   it('draws nothing while the stage has no size yet', () => {
     expect(getCharacterSpriteSize({ stageWidth: 0, stageHeight: 0 })).toEqual({ width: 0, height: 0 });
-  });
-});
-
-describe('spriteAspectRatioFromLoadEvent', () => {
-  it('reads the React Native load event', () => {
-    expect(spriteAspectRatioFromLoadEvent({ nativeEvent: { source: { width: 600, height: 1200 } } }))
-      .toBeCloseTo(0.5, 5);
-  });
-
-  it('reads the expo-image load event', () => {
-    expect(spriteAspectRatioFromLoadEvent({ source: { width: 900, height: 1200 } })).toBeCloseTo(0.75, 5);
-  });
-
-  it('ignores an event without a usable size', () => {
-    expect(spriteAspectRatioFromLoadEvent({ source: { width: 0, height: 0 } })).toBeNull();
-    expect(spriteAspectRatioFromLoadEvent(null)).toBeNull();
   });
 });

@@ -39,7 +39,7 @@ export const CharacterDisplay = React.memo(function CharacterDisplay({
   characterCount = 1,
 }: Props) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const { aspectRatio, onSpriteLoad } = useSpriteAspectRatio(spriteUri);
+  const aspectRatio = useSpriteAspectRatio(spriteUri);
   const { width: charWidth, height: charHeight } = getCharacterSpriteSize({
     stageWidth: stageWidth ?? windowWidth,
     stageHeight: stageHeight ?? windowHeight,
@@ -76,7 +76,6 @@ export const CharacterDisplay = React.memo(function CharacterDisplay({
           source={{ uri: spriteUri }}
           style={StyleSheet.absoluteFillObject}
           resizeMode="contain"
-          onLoad={onSpriteLoad}
         />
       ) : null}
       {overlay ? <View style={[StyleSheet.absoluteFillObject, { overflow: 'hidden' }]}>{overlay}</View> : null}

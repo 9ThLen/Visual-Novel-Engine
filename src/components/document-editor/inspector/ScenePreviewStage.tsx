@@ -23,7 +23,8 @@ import { useSpriteAspectRatio } from '@/hooks/use-sprite-aspect-ratio';
 import { useI18n } from '@/hooks/use-i18n';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 import { getCharacterSpriteSize } from '@/lib/character-layout';
-import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
+import { getResponsiveFontSize } from '@/lib/responsive';
+import { readerStageInsets } from '@/lib/reader-stage';
 import { richTextAlignment } from '@/lib/rich-text';
 import { getStoryReaderSpeakerTextStyle } from '@/lib/story-reader-platform';
 import { getPreviewGeometry, getPreviewLayerStyle, type PreviewDevice } from '@/lib/document-editor/preview-viewport';
@@ -54,20 +55,18 @@ function positionPercent(position: CharacterPosition): `${number}%` {
  */
 function PreviewCharacter({
   source,
-  spriteUri,
   position,
   stageWidth,
   stageHeight,
   characterCount,
 }: {
   source: ResolvedSource;
-  spriteUri: string | null | undefined;
   position: CharacterPosition;
   stageWidth: number;
   stageHeight: number;
   characterCount: number;
 }) {
-  const { aspectRatio, onSpriteLoad } = useSpriteAspectRatio(spriteUri);
+  const aspectRatio = useSpriteAspectRatio(typeof source === 'number' ? source : source.uri);
   const { width, height } = getCharacterSpriteSize({
     stageWidth,
     stageHeight,
@@ -92,7 +91,6 @@ function PreviewCharacter({
         contentFit="contain"
         cachePolicy="memory-disk"
         transition={0}
-        onLoad={onSpriteLoad}
       />
     </View>
   );
@@ -134,15 +132,6 @@ export const ScenePreviewStage = React.memo(function ScenePreviewStage({
 
   const { deviceWidth, deviceHeight } = geometry;
 
-  // Phone portrait pushes the character layer up above the dialogue panel;
-  // desktop landscape leaves it flush with the bottom. This is the single most
-  // visible difference between the two devices.
-  const readerLayout = useMemo(
-    () => getReaderLayout({ width: deviceWidth, height: deviceHeight }),
-    [deviceWidth, deviceHeight],
-  );
-  const charactersPaddingBottom =
-    readerLayout.dialoguePosition === 'bottom' ? Math.max(0, readerLayout.dialogueHeight - 20) : 0;
   const previewCharacters = frame?.characters ?? [];
 
   const fontSize = useMemo(
@@ -165,6 +154,19 @@ export const ScenePreviewStage = React.memo(function ScenePreviewStage({
       textAlign: richTextAlignment(frame?.text ?? ''),
     }),
     [colors.dialogueText, dialogueFontSize, frame?.text, settings.readerLineHeightScale],
+  );
+
+  // The reader's own reserve, from the reader's own module: whatever the panel
+  // keeps for itself there, the preview's characters give up here.
+  const stageInsets = useMemo(
+    () => readerStageInsets({
+      stageWidth: deviceWidth,
+      stageHeight: deviceHeight,
+      layoutPreset,
+      lineHeight: dialogueTextStyle.lineHeight,
+      panelWidth: layoutPreset === 'classic' ? deviceWidth : Math.min(deviceWidth, 760),
+    }),
+    [deviceHeight, deviceWidth, dialogueTextStyle.lineHeight, layoutPreset],
   );
 
   const choices = useMemo(
@@ -232,12 +234,13 @@ export const ScenePreviewStage = React.memo(function ScenePreviewStage({
 
         <View
           style={{
+            // Inset, not padded: on the web a padded layer still places an
+            // absolute sprite against its outer edge (see ReaderDisplay).
             position: 'absolute',
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            paddingBottom: charactersPaddingBottom,
+            top: stageInsets.top,
+            right: stageInsets.right,
+            bottom: stageInsets.bottom,
+            left: stageInsets.left,
           }}
         >
           {previewCharacters.map((character) => {
@@ -247,10 +250,9 @@ export const ScenePreviewStage = React.memo(function ScenePreviewStage({
               <PreviewCharacter
                 key={character.characterId}
                 source={source}
-                spriteUri={character.spriteUri}
                 position={character.position}
-                stageWidth={deviceWidth}
-                stageHeight={deviceHeight - charactersPaddingBottom}
+                stageWidth={deviceWidth - stageInsets.left - stageInsets.right}
+                stageHeight={deviceHeight - stageInsets.top - stageInsets.bottom}
                 characterCount={previewCharacters.length}
               />
             );
