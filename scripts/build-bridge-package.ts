@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BRIDGE_PACKAGE_NAME,
   checksumFor,
+  zipExtractors,
   stageBridgePackage,
   verifyStagedBridgePackage,
 } from './lib/stage-bridge-package';
@@ -116,6 +117,16 @@ async function download(url: string): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer());
 }
 
+function extractZip(zipPath: string, into: string): { ok: true } | { ok: false; problems: string[] } {
+  const problems: string[] = [];
+  for (const extractor of zipExtractors()) {
+    const result = spawnSync(extractor.command, extractor.args(zipPath, into), { encoding: 'utf8' });
+    if (!result.error && result.status === 0) return { ok: true };
+    problems.push(`${extractor.command}: ${result.error?.message ?? result.stderr?.trim() ?? `exited ${result.status}`}`);
+  }
+  return { ok: false, problems };
+}
+
 /** Downloads a Node runtime, verifies it, and returns the path to `node.exe`. */
 async function fetchNodeExecutable(version: string, workDir: string): Promise<string> {
   const archive = `node-${version}-${NODE_PLATFORM}.zip`;
@@ -140,10 +151,8 @@ async function fetchNodeExecutable(version: string, workDir: string): Promise<st
 
   const zipPath = path.join(workDir, archive);
   fs.writeFileSync(zipPath, zip);
-  const unzip = spawnSync('unzip', ['-q', '-o', zipPath, '-d', workDir], { encoding: 'utf8' });
-  if (unzip.status !== 0) {
-    fail('Could not unpack the Node archive', [unzip.stderr?.trim() || 'unzip is not available on PATH.']);
-  }
+  const extraction = extractZip(zipPath, workDir);
+  if (!extraction.ok) fail('Could not unpack the Node archive', extraction.problems);
 
   const executable = path.join(workDir, `node-${version}-${NODE_PLATFORM}`, 'node.exe');
   if (!fs.existsSync(executable)) fail(`The archive did not contain node.exe at ${executable}`);

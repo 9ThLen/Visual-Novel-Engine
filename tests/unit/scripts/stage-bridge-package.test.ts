@@ -13,6 +13,7 @@ import {
   readmeText,
   stageBridgePackage,
   verifyStagedBridgePackage,
+  zipExtractors,
 } from '../../../scripts/lib/stage-bridge-package';
 
 const PAIRING_MARKER = 'AI BRIDGE PAIRING';
@@ -183,5 +184,30 @@ describe('the published checksum of the runtime we ship', () => {
 
   it('fails rather than shipping a runtime the release does not list', () => {
     expect(() => checksumFor(shasums, 'node-v99.0.0-win-x64.zip')).toThrow();
+  });
+});
+
+describe('unpacking the downloaded runtime', () => {
+  // This ran `unzip` unconditionally, which is not on a Windows PATH — so
+  // building the Windows package on Windows failed on the build machine. The
+  // author who runs the finished package needs none of this.
+  it('tries the tool each platform actually has', () => {
+    expect(zipExtractors('win32').map(e => e.command)).toEqual(['tar', 'powershell']);
+    expect(zipExtractors('linux').map(e => e.command)).toEqual(['unzip', 'tar']);
+    expect(zipExtractors('darwin').map(e => e.command)).toEqual(['unzip', 'tar']);
+  });
+
+  it('always offers a fallback, so one missing tool is not fatal', () => {
+    for (const platform of ['win32', 'linux', 'darwin'] as const) {
+      expect(zipExtractors(platform).length).toBeGreaterThan(1);
+    }
+  });
+
+  it('passes the archive and destination to each of them', () => {
+    for (const extractor of zipExtractors('win32')) {
+      const args = extractor.args('C:\\tmp\\node.zip', 'C:\\tmp\\out').join(' ');
+      expect(args).toContain('C:\\tmp\\node.zip');
+      expect(args).toContain('C:\\tmp\\out');
+    }
   });
 });

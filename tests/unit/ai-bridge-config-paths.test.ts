@@ -13,6 +13,7 @@ import {
   ensureSettingsTemplate,
   parseEnvFile,
   readEnvFile,
+  settingsSources,
   settingsTemplate,
 } from '../../tools/ai-bridge/src/config-store';
 
@@ -152,5 +153,22 @@ describe('the settings file a first run leaves behind', () => {
     writeFileSync(file, 'OPENAI_API_KEY=sk-mine\n');
     expect(ensureSettingsTemplate(file)).toBe(false);
     expect(readEnvFile(file)).toEqual({ OPENAI_API_KEY: 'sk-mine' });
+  });
+});
+
+describe('where a run takes its settings from', () => {
+  const cwdEnvFile = '/work/.env';
+  const settingsFile = '/home/bridge.env';
+
+  it('lets a checkout keep its own .env winning', () => {
+    expect(settingsSources({ packaged: false, cwdEnvFile, settingsFile }))
+      .toEqual([cwdEnvFile, settingsFile]);
+  });
+
+  it('gives the packaged bridge one source and no working directory at all', () => {
+    // It has no checkout, and it is double-clicked from wherever Explorer was.
+    // A `.env` that happens to be in that folder belongs to something else.
+    expect(settingsSources({ packaged: true, cwdEnvFile, settingsFile }))
+      .toEqual([settingsFile]);
   });
 });

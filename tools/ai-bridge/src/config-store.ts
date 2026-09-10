@@ -106,3 +106,22 @@ export function ensureSettingsTemplate(path: string): boolean {
     throw error;
   }
 }
+
+/**
+ * The settings files to read, lowest priority last.
+ *
+ * A checkout reads its own `.env` first, so a developer's file still wins over
+ * the per-user one. The packaged bridge does not read a working-directory
+ * `.env` at all: it has no checkout, its working directory is wherever it was
+ * double-clicked from, and a file that happens to be there belongs to whatever
+ * else lives in that folder. One source, unambiguously.
+ */
+export function settingsSources(options: {
+  packaged: boolean;
+  cwdEnvFile: string;
+  settingsFile: string;
+}): string[] {
+  return options.packaged
+    ? [options.settingsFile]
+    : [options.cwdEnvFile, options.settingsFile];
+}

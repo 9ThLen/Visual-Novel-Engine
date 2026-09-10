@@ -133,8 +133,13 @@ The bridge reads settings from three layers, each one filling in only what the
 layer above left unset:
 
 1. CLI options;
-2. the real environment, including a project-root `.env` in a checkout;
+2. the real environment, including a project-root `.env` **in a checkout only**;
 3. a `bridge.env` file in the bridge's own per-user directory.
+
+The packaged bridge skips that second `.env` entirely. It has no checkout, it is
+double-clicked from wherever Explorer happened to be, and a `.env` that happens
+to sit in that folder belongs to whatever else lives there. The bundle knows it
+is a bundle because `build.mjs` stamps it — see `src/build-flags.ts`.
 
 That third layer is what an installed bridge uses, because it has no `.env` and
 no meaningful working directory — starting it from a shortcut, from `C:\`, or
@@ -170,13 +175,21 @@ Windows ignores the mode. The files were left to inherit the ACL of the per-user
 directory, on the assumption that it was owner-only — and checking that on a real
 machine showed it was not: the inherited entries included a group the owner never
 chose, so the file holding an author's API key was readable by more than the
-author. The directory's ACL is now set explicitly with `icacls`, dropping the
-inherited entries rather than adding to them, before anything is written into it.
-A directory tightened afterwards leaves a window in which both files were
-readable.
+author. The directory's ACL is now set explicitly with `icacls`, before anything is
+written into it — a directory tightened afterwards leaves a window in which both
+files were readable — **and then read back and checked**. Applying alone proves
+nothing: `/inheritance:r` removes inherited entries and leaves explicit ones, and
+`/grant:r` replaces the grants of the principal it names and nobody else's.
 
-If that fails — no `icacls`, a denied permission — the bridge says so on startup
-instead of implying a protection nobody applied.
+What it will not do is delete someone else's entry. Deciding which principal is
+safe to remove means classifying names that are localised and domain-qualified,
+and getting that wrong locks the author out of their own directory. An entry that
+survives `/inheritance:r` was put there deliberately, so it is named and the
+bridge stops.
+
+**The bridge refuses to start when any of that fails.** Not a warning: the
+directory is about to hold an API key and a pairing token, and continuing would
+be the same false assurance this check exists to remove.
 
 The settings file matters at least as much as the token: the token is useful to
 nothing but this bridge on this machine, while the settings file is where the

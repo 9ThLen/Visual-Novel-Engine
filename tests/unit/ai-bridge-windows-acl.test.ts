@@ -1,10 +1,23 @@
 // @vitest-environment node
 import type { SpawnSyncReturns } from 'node:child_process';
 import {
+  bareAccountName,
   icaclsArgs,
   ownerPrincipal,
+  parseAclPrincipals,
   restrictDirectoryToOwner,
+  unexpectedPrincipals,
 } from '../../tools/ai-bridge/src/windows-acl';
+
+/** Shaped like real `icacls <dir>` output: first entry shares the path's line. */
+function icaclsOutput(dir: string, entries: readonly string[]): string {
+  return [
+    `${dir} ${entries[0]}`,
+    ...entries.slice(1).map(entry => `      ${entry}`),
+    'Successfully processed 1 files; Failed processing 0 files',
+    '',
+  ].join('\r\n');
+}
 
 function runner(result: Partial<SpawnSyncReturns<string>>) {
   const calls: { command: string; args: readonly string[] }[] = [];
@@ -39,19 +52,77 @@ describe('restricting the bridge directory on Windows', () => {
     expect(ownerPrincipal({ USERDOMAIN: 'ADA' }, 'ada')).toBe('ada');
   });
 
-  it('runs icacls without a shell and without a console window', () => {
-    const { calls, run } = runner({ status: 0 });
+  it('applies the ACL and then reads it back, because applying is not proof', () => {
+    const { calls, run } = runner({ status: 0, stdout: icaclsOutput('C:\\dir', ['ada:(OI)(CI)(F)']) });
     expect(restrictDirectoryToOwner('C:\\dir', { platform: 'win32', env: {}, username: 'ada', run }))
       .toEqual({ applied: true });
-    expect(calls).toHaveLength(1);
-    expect(calls[0].command).toBe('icacls');
+    expect(calls.map(call => call.command)).toEqual(['icacls', 'icacls']);
+    expect(calls[0].args).toContain('/inheritance:r');
+    expect(calls[1].args).toEqual(['C:\\dir']);
   });
 
   it('does nothing on POSIX, where the file mode already did it', () => {
-    const { calls, run } = runner({ status: 0 });
+    const { calls, run } = runner({ status: 0, stdout: '' });
     expect(restrictDirectoryToOwner('/dir', { platform: 'linux', env: {}, username: 'ada', run }))
       .toEqual({ applied: false, reason: 'not-windows' });
     expect(calls).toHaveLength(0);
+  });
+
+  it('reads the principals out of icacls output, whatever language it is in', () => {
+    const output = icaclsOutput('C:\\dir', [
+      'NT AUTHORITY\\SYSTEM:(OI)(CI)(F)',
+      'BUILTIN\\Administrators:(OI)(CI)(F)',
+      'DESKTOP-7\\ada:(OI)(CI)(F)',
+      'DESKTOP-7\\CodexSandboxUsers:(OI)(CI)(RX)',
+    ]);
+    expect(parseAclPrincipals(output, 'C:\\dir')).toEqual([
+      'NT AUTHORITY\\SYSTEM',
+      'BUILTIN\\Administrators',
+      'DESKTOP-7\\ada',
+      'DESKTOP-7\\CodexSandboxUsers',
+    ]);
+  });
+
+  it('matches the owner however icacls chose to qualify the name', () => {
+    // icacls reports MACHINE\\ada while the granted principal may be bare `ada`.
+    // Comparing them as written marks the owner's own entry as a stranger's —
+    // and the first version of this then tried to remove it, which would have
+    // locked the author out of their own directory.
+    expect(bareAccountName('DESKTOP-7\\ada')).toBe('ADA');
+    expect(bareAccountName('ada')).toBe('ADA');
+    expect(unexpectedPrincipals(['DESKTOP-7\\ada'], 'ada')).toEqual([]);
+    expect(unexpectedPrincipals(['ada'], 'CORP\\ada')).toEqual([]);
+  });
+
+  it('treats only the owner and the system accounts as expected', () => {
+    // An administrator can take ownership of any file and SYSTEM is how backup
+    // reaches it, so excluding those two would be theatre. A sandbox group the
+    // owner never chose is not.
+    const principals = [
+      'NT AUTHORITY\\SYSTEM',
+      'BUILTIN\\Administrators',
+      'DESKTOP-7\\ada',
+      'DESKTOP-7\\CodexSandboxUsers',
+    ];
+    expect(unexpectedPrincipals(principals, 'ada')).toEqual(['DESKTOP-7\\CodexSandboxUsers']);
+    expect(unexpectedPrincipals(principals, 'DESKTOP-7\\ada')).toEqual(['DESKTOP-7\\CodexSandboxUsers']);
+  });
+
+  it("refuses on an explicit entry rather than deleting someone else's", () => {
+    // Deciding which principal is safe to remove means classifying names that
+    // are localised and domain-qualified. Getting that wrong locks the author
+    // out of their own directory, which is worse than what is being fixed — so
+    // the survivor is named and the decision goes to a person.
+    const run = (_command: string, args: readonly string[]) => ({
+      pid: 1, output: [], status: 0, signal: null, stderr: '',
+      stdout: args.length === 1
+        ? icaclsOutput('C:\\dir', ['ada:(OI)(CI)(F)', 'DESKTOP-7\\CodexSandboxUsers:(OI)(CI)(RX)'])
+        : '',
+    }) as never;
+
+    const result = restrictDirectoryToOwner('C:\\dir', { platform: 'win32', env: {}, username: 'ada', run });
+    expect(result.applied).toBe(false);
+    expect(result).toMatchObject({ reason: expect.stringContaining('DESKTOP-7\\CodexSandboxUsers') });
   });
 
   it('reports a failure instead of implying a protection nobody applied', () => {

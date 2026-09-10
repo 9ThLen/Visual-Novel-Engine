@@ -248,3 +248,31 @@ export function checksumFor(shasums: string, fileName: string): string {
   }
   throw new Error(`${fileName} is not listed in SHASUMS256.txt for this release.`);
 }
+
+/**
+ * Unpacks a zip using whatever the build machine already has.
+ *
+ * Node has no zip reader, and this ran `unzip` unconditionally — which is not on
+ * a Windows PATH, so building the Windows package on Windows failed. Each
+ * platform's own tool is tried in turn and every failure is reported together,
+ * because "unzip is not available" is unhelpful on a machine that was never
+ * going to have it.
+ *
+ * This is a build-machine dependency only. The author who runs the package needs
+ * none of it.
+ */
+export function zipExtractors(platform: NodeJS.Platform = process.platform): { command: string; args(zip: string, into: string): string[] }[] {
+  const bsdtar = { command: 'tar', args: (zip: string, into: string) => ['-xf', zip, '-C', into] };
+  const unzip = { command: 'unzip', args: (zip: string, into: string) => ['-q', '-o', zip, '-d', into] };
+  const expandArchive = {
+    command: 'powershell',
+    args: (zip: string, into: string) => [
+      '-NoProfile', '-NonInteractive', '-Command',
+      `Expand-Archive -LiteralPath '${zip}' -DestinationPath '${into}' -Force`,
+    ],
+  };
+  // Windows 10 ships bsdtar, which reads zip; PowerShell is the fallback there.
+  // Elsewhere `unzip` is the usual one and GNU tar cannot read a zip at all.
+  return platform === 'win32' ? [bsdtar, expandArchive] : [unzip, bsdtar];
+}
+

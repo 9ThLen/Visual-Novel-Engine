@@ -13,7 +13,8 @@ import { RoutingProvider } from './routing-provider';
 import type { ToolInvoker } from './provider';
 import { imageProviderLabel, resolveImageProvider } from './image-provider-config';
 import { bridgeConfigFile, bridgeHomeDir, bridgeTokenFile, ensureBridgeHome } from './config-paths';
-import { applyEnvDefaults, ensureSettingsTemplate, readEnvFile } from './config-store';
+import { applyEnvDefaults, ensureSettingsTemplate, readEnvFile, settingsSources } from './config-store';
+import { IS_PACKAGED_BUILD } from './build-flags';
 import { readOrCreateToken, resetStoredToken } from './token-store';
 
 export const BRIDGE_CLI_VERSION = '0.1.0';
@@ -38,8 +39,12 @@ function loadBridgeSettings(dir: string): void {
   if (ensureSettingsTemplate(settingsFile)) {
     console.log(`Wrote a settings file to edit: ${settingsFile}`);
   }
-  applyEnvDefaults(process.env, readEnvFile(resolve(process.cwd(), '.env')));
-  applyEnvDefaults(process.env, readEnvFile(settingsFile));
+  const sources = settingsSources({
+    packaged: IS_PACKAGED_BUILD,
+    cwdEnvFile: resolve(process.cwd(), '.env'),
+    settingsFile,
+  });
+  for (const source of sources) applyEnvDefaults(process.env, readEnvFile(source));
 }
 
 async function main(): Promise<void> {
@@ -58,8 +63,15 @@ async function main(): Promise<void> {
   // leaves a window in which the token and the API key were readable.
   const acl = ensureBridgeHome(bridgeHome);
   if (!acl.applied && acl.reason !== 'not-windows') {
-    console.warn(`Could not restrict ${bridgeHome} to your account: ${acl.reason}`);
-    console.warn('The token and your API key are in there. Check the folder permissions yourself.');
+    // Not a warning. This directory is about to hold an API key and a pairing
+    // token, and continuing after failing to protect them would be the same
+    // false assurance this check exists to remove — worse, because it would be
+    // printed above the very secret it failed to protect.
+    console.error(`Refusing to start: ${bridgeHome} could not be restricted to your account.`);
+    console.error(acl.reason);
+    console.error('That folder holds your API key and the pairing token. Fix the folder permissions, then start the bridge again.');
+    process.exitCode = 1;
+    return;
   }
 
   if (cli.resetToken) {
