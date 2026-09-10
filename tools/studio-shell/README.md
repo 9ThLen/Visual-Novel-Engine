@@ -57,17 +57,23 @@ before shipping an installer to anyone.
 ## What must not be added lightly
 
 `main.rs` registers no commands and `capabilities/default.json` grants
-`core:default`. The AI bridge is the one thing known to need more: it is a Node
-process on a loopback WebSocket, and an installed studio cannot ask its user to
-run `pnpm ai-bridge`. Making it a sidecar needs, at minimum:
+`core:default`. Connecting to a bridge the author starts themselves needs
+nothing more than that — a WebSocket is not a permission — and works today:
+`src/lib/ai/studio-origins.ts` carries this window's origin, and both the
+bridge's `origin-policy.ts` and the editor's `platform-support.ts` read it.
+
+*Launching* the bridge is the part that needs more, and needs, at minimum:
 
 - a packaged Node runtime — `pnpm ai-bridge:build` emits `cli.mjs`, which is not
   an executable and does not carry one;
 - `tauri-plugin-shell` and a `shell:allow-execute` scoped to that one binary;
-- an origin the bridge will accept. It will not accept this one today:
-  `tools/ai-bridge/src/origin-policy.ts` allows `localhost`, `127.0.0.1` and
-  `[::1]` only, so `http://tauri.localhost` is rejected before the server starts;
-- the session token, which the bridge regenerates on every start, handed to the
-  window without the author copying it.
+- the session token handed to the window without the author copying it. It is no
+  longer regenerated per start — see `tools/ai-bridge/src/token-store.ts` — but
+  it still has to reach the window.
+
+Add the CSP to that list before starting: `scripts/lib/harden-web-output.mjs`
+permits `ws:` but not `http://ipc.localhost`, so Tauri's IPC already falls back
+to postMessage. No command is registered today, so nothing breaks yet; a sidecar
+would be the first caller to care.
 
 Those are step 2. Nothing above should be half-done to make a demo work.

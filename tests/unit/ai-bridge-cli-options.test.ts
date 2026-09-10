@@ -53,13 +53,35 @@ describe('AI bridge CLI options', () => {
     });
   });
 
-  it('defaults only to the Expo origins on port 8081', () => {
+  it('defaults to the Expo origins and the installed studio', () => {
     expect(resolveBridgeCliConfig(parseBridgeCliArgs([]), {})).toMatchObject({
       provider: 'claude',
       imageProvider: 'auto',
       port: 8787,
-      origins: ['http://localhost:8081', 'http://127.0.0.1:8081'],
+      origins: ['http://localhost:8081', 'http://127.0.0.1:8081', 'http://tauri.localhost'],
     });
+  });
+
+  it('accepts the studio origin, which is exact rather than a loopback host', () => {
+    expect(normalizeLoopbackOrigin('http://tauri.localhost')).toBe('http://tauri.localhost');
+    expect(normalizeLoopbackOrigin('HTTP://TAURI.LOCALHOST/')).toBe('http://tauri.localhost');
+  });
+
+  it.each([
+    // Neighbours of the measured origin. Matching by host rather than by exact
+    // origin would have admitted every one of these.
+    'http://tauri.localhost:8081',
+    'https://tauri.localhost',
+    'http://evil.tauri.localhost',
+    'http://tauri.localhost.example.com',
+    // Documented for macOS and Linux, but not yet measured on either.
+    'tauri://localhost',
+  ])('does not admit %s alongside the measured studio origin', value => {
+    expect(() => normalizeLoopbackOrigin(value)).toThrow(/loopback http\/https origin/);
+  });
+
+  it.each(['*', 'null', '', '  '])('rejects the wildcard and absent-origin values (%s)', value => {
+    expect(() => normalizeLoopbackOrigin(value)).toThrow(/Invalid bridge origin/);
   });
 
   it.each([
