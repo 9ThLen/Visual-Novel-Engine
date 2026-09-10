@@ -12,6 +12,7 @@ interface Props {
   dimmed?: boolean;
   focusScale?: number;
   overlay?: React.ReactNode;
+  viewport?: { width: number; height: number };
 }
 
 function positionPercent(position: Props['position']): `${number}%` {
@@ -26,8 +27,10 @@ export const CharacterDisplay = React.memo(function CharacterDisplay({
   dimmed = false,
   focusScale = 1.04,
   overlay,
+  viewport,
 }: Props) {
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const windowDimensions = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = viewport ?? windowDimensions;
   const charWidth = screenWidth * 0.35;
   const activeScale = isActiveSpeaker ? focusScale : 1;
 

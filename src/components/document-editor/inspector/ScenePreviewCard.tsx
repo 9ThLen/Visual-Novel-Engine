@@ -140,7 +140,7 @@ export function ScenePreviewCard({
   );
 }
 
-function DevicePreviewSwitch({
+export function DevicePreviewSwitch({
   colors,
   device,
   onSelect,

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, useWindowDimensions, View, Text, Pressable } from 'react-native';
+import { StyleSheet, View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +22,9 @@ import { useShakeOffset } from '@/components/reader/useShakeOffset';
 import { useVisibleEffects } from '@/components/reader/useVisibleEffects';
 import { useEffectAmbience } from '@/hooks/useEffectAmbience';
 import { SceneVideoLayer } from '@/components/reader/SceneVideoLayer';
+import { DevicePreviewSwitch } from '@/components/document-editor/inspector/ScenePreviewCard';
+import { useEditorPreviewDevice } from '@/components/document-editor/inspector/useEditorPreviewDevice';
+import { getPreviewGeometry, getPreviewLayerStyle } from '@/lib/document-editor/preview-viewport';
 import { showToast } from '@/lib/toast-store';
 
 function secondsToMs(value: number | null | undefined, fallbackMs = 0): number {
@@ -34,6 +37,9 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const colors = useColors();
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
+  const [device, setDevice] = useEditorPreviewDevice();
+  const [stage, setStage] = useState({ width: 0, height: 0 });
+  const geometry = getPreviewGeometry(device, stage);
   const sceneRecord = useAppStore(selectCanonicalSceneRecord(storyId, sceneId));
   const characterLibrary = useAppStore((s) => s.characterLibraries[storyId] || []);
   const sfxVolume = useAppStore((s) => s.settings.sfxVolume);
@@ -233,7 +239,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
     router.back();
   }, [audioService, router]);
 
-const surfaceContainer = colors['surface-container'] || colors.surface;
+  const surfaceContainer = colors['surface-container'] || colors.surface;
   const showChoices = !!sceneState.currentChoices;
   const camera = sceneState.cameraState;
   const activeEffects = useVisibleEffects(sceneState.activeEffects);
@@ -244,7 +250,7 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
   const shakeOffset = useShakeOffset(screenEffects);
   // Preview and reader share the camera hook so a preset previewed here moves
   // exactly the way it will for the reader.
-  const { width: previewWidth } = useWindowDimensions();
+  const previewWidth = geometry.deviceWidth;
   const cameraValues = useCameraTransform(camera, sceneState.characters, previewWidth);
   const cameraTransform = {
     transform: [
@@ -263,6 +269,19 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: 8, gap: 8 }}>
+        <Pressable onPress={handleBack} accessibilityRole="button" accessibilityLabel={t('menu.back')} style={{ alignSelf: 'flex-start', padding: 8 }}>
+          <Text style={{ color: colors.foreground }}>{t('menu.back')}</Text>
+        </Pressable>
+        <DevicePreviewSwitch colors={colors} device={device} onSelect={setDevice} />
+      </View>
+      <View
+        testID="full-preview-stage"
+        onLayout={({ nativeEvent }) => setStage({ width: nativeEvent.layout.width, height: nativeEvent.layout.height })}
+        style={{ flex: 1, overflow: 'hidden', marginBottom: insets.bottom }}
+      >
+      <View testID="full-preview-device" style={[getPreviewLayerStyle(geometry), { overflow: 'hidden', backgroundColor: colors.background }]}>
+
       <View style={{
         flex: 1,
         backgroundColor: colors['surface-1'] ?? colors.background,
@@ -306,6 +325,7 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
               <CharacterDisplay
                 key={instance.characterId}
                 instance={instance}
+                viewport={{ width: geometry.deviceWidth, height: geometry.deviceHeight }}
                 spriteUri={getImageSourceUri(resolvedCharUris[instance.characterId])}
                 position={instance.position}
                 isActiveSpeaker={sceneState.activeSpeakerCharacterId === instance.characterId}
@@ -348,7 +368,7 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
           onPress={handleAdvance}
           style={{
             position: 'absolute',
-            bottom: insets.bottom + 20,
+            bottom: 20,
             left: 20,
             right: 20,
             backgroundColor: surfaceContainer,
@@ -373,7 +393,7 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
       {showChoices && sceneState.currentChoices ? (
         <View style={{
           position: 'absolute',
-          bottom: insets.bottom + 20,
+          bottom: 20,
           left: 20,
           right: 20,
           gap: 8,
@@ -404,7 +424,7 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
       {isComplete && (
         <View style={{
           position: 'absolute',
-          bottom: insets.bottom + 20,
+          bottom: 20,
           left: 20,
           right: 20,
         }}>
@@ -426,25 +446,10 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
         </View>
       )}
 
-      <View style={{
-        position: 'absolute',
-        top: insets.top,
-        left: 0,
-        right: 0,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingRight: 64,
-        paddingVertical: 8,
-      }}>
-        <Pressable onPress={handleBack} style={{ padding: 8, borderRadius: 8, backgroundColor: surfaceContainer, flexDirection: 'row', alignItems: 'center', gap: 6 }} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
-          <IconSymbol name="arrow.left" size={14} color={colors.foreground} />
-          <Text style={{ color: colors.foreground, fontSize: 14 }}>{t('menu.back')}</Text>
-        </Pressable>
-        <Text style={{ color: colors.foreground, backgroundColor: surfaceContainer, padding: 8, borderRadius: 8, fontSize: 12, alignSelf: 'center' }}>
-          {currentStepIndex + 1}/{timeline.length}
-        </Text>
+      <Text style={{ position: 'absolute', top: 8, right: 8, color: colors.foreground, backgroundColor: surfaceContainer, padding: 8, borderRadius: 8, fontSize: 12 }}>
+        {currentStepIndex + 1}/{timeline.length}
+      </Text>
+      </View>
       </View>
 
       <PreviewInspector
