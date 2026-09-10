@@ -5,6 +5,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import type { ColorScheme } from '@/constants/theme';
 import { normalizeLocalBridgeUrl } from '@/lib/ai/bridge-config';
+import { bridgeLaunchInstruction } from '@/lib/ai/bridge-launch';
 import { AI_PROVIDER_INFO, VISIBLE_AI_PROVIDERS, aiProviderLabel } from '@/lib/ai/providers';
 import type { BridgeConnectionState, BridgeProvider } from '@/lib/bridge-client';
 import { copyToClipboard, readFromClipboard } from '@/lib/web-utils';
@@ -29,20 +30,6 @@ export interface ConnectionCardProps {
 
 function currentBrowserOrigin(): string {
   return typeof window === 'undefined' ? '' : window.location.origin;
-}
-
-function bridgeCommand(choice: ProviderChoice, imageProvider: ImageProviderChoice, url: string): string {
-  const normalized = normalizeLocalBridgeUrl(url);
-  let portFlag = '';
-  if (normalized.ok) {
-    const port = new URL(normalized.url).port;
-    if (port && port !== '8787') portFlag = ` --port ${port}`;
-  }
-  const origin = currentBrowserOrigin();
-  const originFlag = origin.startsWith('http://') || origin.startsWith('https://')
-    ? ` --origin ${origin}`
-    : '';
-  return `pnpm ai-bridge --provider ${choice} --image-provider ${imageProvider}${choice === 'codex' ? ' --enable-codex-beta' : ''}${originFlag}${portFlag}`;
 }
 
 function CommandRow({
@@ -102,7 +89,13 @@ export function ConnectionCard({
   }, []);
 
   const normalizedUrl = useMemo(() => normalizeLocalBridgeUrl(urlValue), [urlValue]);
-  const command = bridgeCommand(providerChoice, imageProviderChoice, normalizedUrl.ok ? normalizedUrl.url : urlValue);
+  const launch = bridgeLaunchInstruction({
+    origin: currentBrowserOrigin(),
+    provider: providerChoice,
+    imageProvider: imageProviderChoice,
+    url: normalizedUrl.ok ? normalizedUrl.url : urlValue,
+  });
+  const command = launch.command;
   const selected = AI_PROVIDER_INFO[providerChoice];
   const connected = state === 'connected';
   const hasError = state === 'unauthorized' || state === 'error' || state === 'challenge';
@@ -216,7 +209,9 @@ export function ConnectionCard({
         </Pressable>
         {showInstall ? (
           <View style={{ gap: 6 }}>
-            <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.connection.installHint')}</Text>
+            <Text style={{ color: colors.muted, fontSize: 11 }}>
+              {t(launch.kind === 'packaged' ? 'aiChat.connection.installHintPackaged' : 'aiChat.connection.installHint')}
+            </Text>
             {selected.setup.map(step => step.kind === 'command' ? (
               <CommandRow key={step.value} command={step.value} copied={copiedCommand === step.value} onCopy={() => void copy(step.value)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
             ) : (
