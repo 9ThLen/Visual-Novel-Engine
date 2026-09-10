@@ -98,6 +98,35 @@ The bridge prints one pairing block containing the provider, WebSocket URL,
 allowed browser origins, and the pairing token. Paste the token into the
 editor's AI panel; editing the settings file is optional.
 
+## The packaged bridge
+
+`pnpm build:bridge-package` writes a folder an author can run on a Windows
+machine that has never had Node, a checkout, or a terminal opened on it:
+
+```
+pnpm ai-bridge:build          # writes tools/ai-bridge/dist
+pnpm build:bridge-package     # wraps it with a runtime and a launcher
+```
+
+The result is about 95 MB, nearly all of it the official `node.exe` the package
+downloads from nodejs.org and checks against the release's published
+`SHASUMS256.txt`. An interpreter nobody verified is not something to hand
+someone and tell them to double-click. `--node <path>` ships one you supply
+instead, unchecked, because at that point you chose it.
+
+The author unzips it, runs `Start AI Bridge.cmd`, edits the settings file the
+first run tells them about, runs it again, and pastes the URL and token into the
+studio. `README.txt` in the folder says exactly that.
+
+Two commands rather than one, for the reason the desktop channels give: the
+package contains exactly what the bundler emitted, so there is one answer to
+"what is in this package" — and re-running only the second of them packages a
+stale bundle, which is the same trade every channel here makes.
+
+What this is **not** is the sidecar. Nothing in the studio launches it; the
+author starts it. Making the studio spawn it needs `tauri-plugin-shell` and a
+widened capability file — see `tools/studio-shell/README.md`.
+
 ## Settings and token outside a checkout
 
 The bridge reads settings from three layers, each one filling in only what the
@@ -129,9 +158,18 @@ replacement — see above for why. `--reset-token` issues a new one and exits. A
 bridge that is already running keeps the old token in memory, so restart it:
 that restart is what actually ends sessions authenticated with the old token.
 
-The file is written `0o600`, which POSIX honours. Windows ignores the mode and
-the file instead inherits the ACL of the per-user directory containing it —
-protection that is worth verifying on a real machine rather than assuming.
+On a machine with no settings file, the first run writes a commented template
+and prints its path — "put your key in the settings file" is not an instruction
+anyone can follow when there is no file and the directory is one they have never
+opened. Every line in it is commented out, so it changes nothing until a person
+edits it, and an existing file is never touched.
+
+Both files are written `0o600`, which POSIX honours. Windows ignores the mode and
+they instead inherit the ACL of the per-user directory containing them —
+protection that is worth verifying on a real machine rather than assuming. The
+settings file matters at least as much as the token here: the token is useful to
+nothing but this bridge on this machine, while the settings file is where the
+author's API key goes.
 
 In the editor, open the AI tab and choose a visible provider card. The setup
 panel shows the provider-specific instructions, a copyable bridge command, an

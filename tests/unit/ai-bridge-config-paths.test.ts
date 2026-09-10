@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
@@ -8,7 +8,13 @@ import {
   bridgeHomeDir,
   bridgeTokenFile,
 } from '../../tools/ai-bridge/src/config-paths';
-import { applyEnvDefaults, parseEnvFile, readEnvFile } from '../../tools/ai-bridge/src/config-store';
+import {
+  applyEnvDefaults,
+  ensureSettingsTemplate,
+  parseEnvFile,
+  readEnvFile,
+  settingsTemplate,
+} from '../../tools/ai-bridge/src/config-store';
 
 describe('bridge home directory', () => {
   it('uses the per-user local app data directory on Windows', () => {
@@ -92,5 +98,45 @@ describe('bridge settings file', () => {
     const target: Record<string, string | undefined> = { AI_BRIDGE_PORT: '7000' };
     applyEnvDefaults(target, { AI_BRIDGE_PORT: '9000', OPENAI_API_KEY: 'sk-test' });
     expect(target).toEqual({ AI_BRIDGE_PORT: '7000', OPENAI_API_KEY: 'sk-test' });
+  });
+});
+
+describe('the settings file a first run leaves behind', () => {
+  let dir: string;
+  beforeEach(() => { dir = mkdtempSync(resolve(tmpdir(), 'vne-settings-')); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it('parses to no settings at all until a person edits it', () => {
+    // Every line is commented out on purpose: a template that took effect would
+    // silently override whatever the environment already said.
+    expect(parseEnvFile(settingsTemplate())).toEqual({});
+  });
+
+  it('names the provider, because the built-in default needs a separate CLI', () => {
+    const text = settingsTemplate();
+    expect(text).toContain('AI_BRIDGE_PROVIDER=openai');
+    expect(text).toContain('OPENAI_API_KEY');
+    expect(text).toContain('GEMINI_API_KEY');
+  });
+
+  it('writes it once and reports that it did', () => {
+    const file = join(dir, 'nested', 'bridge.env');
+    expect(ensureSettingsTemplate(file)).toBe(true);
+    expect(readEnvFile(file)).toEqual({});
+  });
+
+  it.runIf(process.platform !== 'win32')('keeps it readable only by its owner', () => {
+    // The API key goes in here, so this file is the more sensitive of the two,
+    // not the less. It was created world-readable until a real run showed it.
+    const file = join(dir, 'bridge.env');
+    ensureSettingsTemplate(file);
+    expect(statSync(file).mode & 0o077).toBe(0);
+  });
+
+  it("never overwrites an author's own settings", () => {
+    const file = join(dir, 'bridge.env');
+    writeFileSync(file, 'OPENAI_API_KEY=sk-mine\n');
+    expect(ensureSettingsTemplate(file)).toBe(false);
+    expect(readEnvFile(file)).toEqual({ OPENAI_API_KEY: 'sk-mine' });
   });
 });

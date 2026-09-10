@@ -13,7 +13,7 @@ import { RoutingProvider } from './routing-provider';
 import type { ToolInvoker } from './provider';
 import { imageProviderLabel, resolveImageProvider } from './image-provider-config';
 import { bridgeConfigFile, bridgeHomeDir, bridgeTokenFile } from './config-paths';
-import { applyEnvDefaults, readEnvFile } from './config-store';
+import { applyEnvDefaults, ensureSettingsTemplate, readEnvFile } from './config-store';
 import { readOrCreateToken, resetStoredToken } from './token-store';
 
 export const BRIDGE_CLI_VERSION = '0.1.0';
@@ -32,8 +32,14 @@ const OPENAI_SYSTEM_PROMPT = readFileSync(fileURLToPath(new URL('./system-prompt
  * reads the file in its own per-user directory instead of finding nothing.
  */
 function loadBridgeSettings(dir: string): void {
+  const settingsFile = bridgeConfigFile(dir);
+  // A packaged bridge lands on a machine with no settings file and no reason for
+  // its owner to know where one goes, so the first run leaves them one to edit.
+  if (ensureSettingsTemplate(settingsFile)) {
+    console.log(`Wrote a settings file to edit: ${settingsFile}`);
+  }
   applyEnvDefaults(process.env, readEnvFile(resolve(process.cwd(), '.env')));
-  applyEnvDefaults(process.env, readEnvFile(bridgeConfigFile(dir)));
+  applyEnvDefaults(process.env, readEnvFile(settingsFile));
 }
 
 async function main(): Promise<void> {
@@ -57,6 +63,7 @@ async function main(): Promise<void> {
   }
 
   loadBridgeSettings(bridgeHome);
+  console.log(`Settings: ${bridgeConfigFile(bridgeHome)}`);
   const { origins, port, provider, fallbackProvider, imageProvider: imageProviderSelection, enableCodexBeta } = resolveBridgeCliConfig(cli, process.env);
   if (fallbackProvider === 'gemini' && !process.env.GEMINI_API_KEY?.trim()) {
     throw new Error('--fallback-provider gemini requires GEMINI_API_KEY');
