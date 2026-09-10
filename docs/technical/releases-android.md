@@ -1,0 +1,328 @@
+# Releasing a story as an Android app
+
+The Android channel turns a release into an application a reader installs: one
+novel, no library, no editor, playing offline. The engine appears once, as the
+launch splash.
+
+An APK cannot be produced by the app itself, or by the browser, or by any trick
+of injecting a story into a prebuilt one — the package id, the app name and the
+icon live in compiled binary resources, and editing them invalidates the
+signature. So the work splits: **the app authors the build, the local helper
+stages and follows it, and EAS compiles and signs it.** After one-time EAS setup,
+the normal path is the Android block on the story's Release card. The command
+below remains the diagnostic/manual staging path.
+
+```powershell
+pnpm stage:android --release novel.vnerelease --out ./novel-android --eas-project-id <your-own-eas-project-uuid> --build
+```
+
+`--build` stages, runs all four checks, and only then submits. It is a flag and
+never implied: it is the only step in this pipeline that spends money, and it
+uses the signing credentials Android will hold the story to for the life of the
+work. It also carries the two easily-forgotten details — the working directory
+and `EAS_SKIP_AUTO_FINGERPRINT` — so they live in one place rather than in
+whoever remembers to type them.
+
+`--build` waits for the build, downloads the APK, and **verifies it** before it
+will call the build a success — declared permissions, application id, version
+code, version name, and the signature checked against the file's own bytes. The
+same check runs when a build is made from the app; neither path can skip it.
+
+The build id is printed **before** the wait, not after it, because a closed
+terminal or a dropped connection must not cost a second build:
+
+```powershell
+pnpm stage:android --release novel.vnerelease --out ./novel-android --from-build <build-id>
+```
+
+That skips staging and submitting: it follows, downloads and verifies a build
+already paid for. It never cancels the build — you may be watching one somebody
+else started. Downloads land in a file of their own and are renamed into place only once they
+verify; the rename overwrites atomically, so the artifact is never absent or
+half-written even if two builds finish at once. A build that fails verification
+is kept as `.unverified`.
+
+To read an APK already on disk:
+
+```powershell
+pnpm inspect:apk ./player.apk --release novel.vnerelease
+```
+
+### What "verified" covers
+
+- **The signature holds over this file**, according to `apksigner verify`, which
+  is **required**: without the Android SDK build-tools a build cannot be
+  certified here. Set `ANDROID_SDK_ROOT`, or point `APKSIGNER` at the jar or the
+  executable. This is checked *before* a build is submitted, by the app and by
+  the command line, so a missing tool costs nothing rather than a build.
+
+  This repository's own reader runs alongside it as a second opinion — signature
+  against signed data, public key against certificate, content digest recomputed
+  over the archive, every scheme and every signer — and a disagreement between
+  the two is a failure. Where it knows it does not implement something, such as
+  a key-rotation lineage, it says so and apksigner's verdict stands alone.
+- **The permissions are what is declared**, read from `uses-permission`
+  elements in the parsed manifest rather than matched against its text.
+- **The identity is the one the release derives** — application id, version
+  code, version name.
+- **The key is the one this story has always used.** The first verified build
+  records its certificate under
+  `.vne-builds/signing/<application id>.signing.json`; later builds are compared
+  to it, whether they came from the app or the command line. Records left by
+  earlier versions in `.vne-builds/` or `.vne-builds/eas-identities/` are still
+  read and carried forward. Delete the file and the next build silently becomes
+  the new reference, so keep it — it is the local memory of the key your
+  readers' installs are pinned to.
+
+What it does not cover: certificate chains and trust, which Android does not use
+for this — an app is pinned to whatever key signed its first install, so a
+self-signed certificate is the normal case. Nor v3's key-rotation lineage or the
+platform's rules about which scheme governs which Android version; `apksigner
+verify` is the tool that implements all of it, and this refuses anything it
+cannot fully check rather than passing it. And **AABs are refused, not
+checked**: the manifest inside one is protobuf and its signing is not an
+installed app's. Verifying one needs `bundletool`.
+
+A build that fails verification is kept beside the destination as `.unverified`,
+by both paths — the artifact is usually what you need to look at.
+
+The same thing by hand, which is what the two notes below are about:
+
+```powershell
+pnpm stage:android --release novel.vnerelease --out ./novel-android --eas-project-id <your-own-eas-project-uuid>
+Set-Location ./novel-android
+$env:EAS_SKIP_AUTO_FINGERPRINT = '1'
+eas build --platform android --profile player-apk
+```
+
+Two things about that command, both found by running it rather than by reading:
+
+- **The staged project is a git repository**, created by staging. `eas build`
+  refuses to run outside one, and asks on stdin whether it may run `git init` —
+  a question an automated staging run cannot answer. Nothing is committed: the
+  project carries `.easignore`, so the CLI archives the working directory rather
+  than the git index.
+- **`EAS_SKIP_AUTO_FINGERPRINT=1` is not optional.** Staging links `node_modules`
+  into the staged project as a junction, because the EAS CLI reads the app config
+  locally before uploading and cannot resolve config plugins without it. That
+  same junction crosses onto another drive, and the fingerprint step follows it
+  and produces a path that is the staged directory with an absolute path
+  concatenated onto the end. The junction has to stay; the fingerprint has to go.
+
+## What staging does, and why each part exists
+
+**A separate project, not a flag on this repository.** Three things the engine's
+own project cannot carry:
+
+| | |
+| --- | --- |
+| `expo.autolinking.android.exclude` | Lives in `package.json`, which the studio shares — and the studio needs the file pickers this cut removes. |
+| `appVersionSource` | The engine's `eas.json` says `"remote"`, which makes EAS's stored counter the authority and would quietly ignore the version code derived from the release. |
+| the generated module | The story has to reach Metro through *static* `require` calls. Generating one means writing a file that has no business being committed. |
+
+**The story travels as generated `require`s.** Metro bundles what it can see. An
+environment variable naming a path is invisible to it, so a release passed that
+way would simply not be in the APK — and the failure is a reader opening a novel
+with no pictures, twenty minutes after a cloud build that reported success.
+`src/lib/generated/player-release.ts` is one static `require` per media object, plus
+the frozen story, written per build.
+
+**Everything the player never shows is deleted.** The staged project is walked
+from `app-player/` and any art nothing imports is dropped. For the demo release
+that is 41 files and 113 MB — demo backgrounds, sample music, sprites and splash
+screens that were inside every artifact because a static `require` named them.
+What remains is the engine (about 3 MB of source, 9 MB with its icons) plus the
+release's own media.
+
+**A release that names art it does not carry is refused.** The web exporter only
+warns, because a `--dist` pointing at a full Expo build still holds the app's own
+`assets/` tree and the picture may still appear. Nothing rescues it here: the
+player profile substitutes an empty bundled-asset map and staging then deletes
+the files, so an unpackaged reference is a guaranteed blank image on a stranger's
+phone.
+
+**The output directory is replaced only after the new project verifies.** A
+regular file, symlink/junction, input overlap, forged marker, or directory with
+unowned files is refused outright. Staging happens in a fresh sibling and the
+last complete output remains intact if staging fails.
+
+**The editor is not in the upload.** The authoring component trees are removed,
+and so is every route under `app/` that the player root does not re-export.
+Metro would not have bundled them, but "the archive contains no editor code"
+should be true of the archive, not only of the bundle.
+
+## What `pnpm stage:android` checks
+
+Four passes, all runnable without an Android SDK or an Expo account:
+
+1. **Structural** — the autolinking exclusions are present, `appVersionSource` is
+   `local`, both build profiles exist, emit the formats they claim and agree
+   about which application they are building, the release parses the way the
+   *runtime* will parse it, every file the asset map names is on disk, every
+   `require` in the generated module resolves, and none of the media has an
+   extension Metro will not bundle. That last list is checked against Metro's own
+   `assetExts` by a test, because it was wrong once: `.weba` — what a release
+   calls an `audio/webm` object — was accepted here and silently dropped there.
+2. **Completeness** — the player's whole module graph is walked *inside the
+   staged copy*. An allowlist that missed a directory otherwise produces a
+   project that uploads cleanly and fails in Metro twenty minutes later.
+3. **Resolved config** — `expo config` inside the staged project, asserting the
+   name, version, package, version code, router root and blocked permissions.
+4. **Native modules** — `expo-modules-autolinking resolve -p android` inside the
+   staged project. This repository links 31 native modules; the staged project
+   links 27. The four excluded ones are the file pickers, secure storage and
+   notifications, and this is the check that proves they are gone rather than
+   merely written down.
+
+## The package name decides whether saves survive
+
+`com.vne.story.<readable part of the story id>.s<hash of the whole story id>`,
+derived from the **story id** and nothing else. Android treats a changed package
+as a different app: derived from the title it would orphan every save the first
+time the author renamed their novel, and without the hash two stories whose ids
+slugify alike would install over each other and inherit each other's saved games.
+
+The rules are in [`src/lib/release/native-identity.ts`](../../src/lib/release/native-identity.ts),
+shared with the desktop channel.
+
+## The URL scheme
+
+Derived from the application id, so every novel registers its own.
+
+Every build used to carry the engine's. Two novels installed on one phone
+therefore registered the same custom scheme, and the OS resolves duplicate
+registrations arbitrarily — a link meant for one opens the other, and a player
+can end up in front of the studio's own OAuth redirect on a device that has both.
+The scheme is part of an application's identity, so it comes from the application
+id like the rest of it.
+
+## The version code
+
+`major * 1000000 + minor * 1000 + patch`, so `2.1.0` is `2001000`.
+
+**This is a correction to the plan**, which specified a counter reserved
+atomically before submit and never returned on failure. A derived code is
+monotonic by construction — a release version is already refused unless it is
+strictly newer than the last one — so there is no counter to reserve, nothing to
+race for, and no way for a crashed helper to strand a number. It also gets the
+concurrency case right in the other direction: two requests for the *same*
+release must produce the *same* code, because an APK and an AAB of one release
+are one version of the app.
+
+The cost is that the codes are sparse. Android only compares them.
+
+## Signing, and the part that bites later
+
+Android refuses to install an update signed with a different key than the
+installed version. Two keys get confused, and the difference decides how bad a
+loss is:
+
+- the **app signing key**, which signs what the device installs;
+- the **upload key**, which only authenticates uploads to Play.
+
+Under Play App Signing, Google holds the app signing key and a lost upload key
+can be reset. **For a sideloaded APK there is no such escape hatch:** lose that
+key and every installed copy is stranded — the reader has to uninstall, losing
+their saves, before they can take an update.
+
+Since sideloading is the default here, the keystore is the most fragile artifact
+in the pipeline. EAS holds it per project, which is why `--eas-project-id` should
+be **the author's own**: their builds, their account, their credentials. Never
+store a private key in IndexedDB.
+
+Because EAS manages the credentials, the certificate cannot be checked before a
+build — there is no stable non-interactive way to read the fingerprint ahead of
+one. The check belongs *after* the artifact comes back, comparing its signing
+certificate against the stored fingerprint before it is handed to the author.
+
+## Size
+
+Sideloaded APKs have no platform limit. Play does:
+
+| Route | Ceiling |
+| --- | --- |
+| Play, legacy APK | 100 MB |
+| Play, AAB — one device's download | 200 MB compressed |
+| Play, AAB — base module upload | 500 MB |
+
+The 200 MB figure is the per-device *download*, not the `.aab` file, so measuring
+it with `ls -l` measures the wrong number — use `bundletool get-size total`.
+
+After the asset cut above, the engine's own contribution is small enough that the
+artifact is essentially the author's media. A novel that overruns 200 MB is
+nearly always carrying unoptimised PNG and WAV; the engine's job there is
+measurement, not re-encoding. See
+[RELEASE-PLAN.md](../plans/RELEASE-PLAN.md#when-the-novel-is-genuinely-bigger-than-200-mb).
+
+## For readers, when you hand out an APK
+
+Android asks permission to install apps from outside Play, once, per source. Say
+so on the download page — a reader who meets that prompt with no warning
+concludes the file is malware, which is the correct instinct.
+
+The app asks for no sensitive runtime permissions. It reads a story; it does not
+pick files, take photos, record audio, read shared storage, or post
+notifications. `INTERNET` and `ACCESS_NETWORK_STATE` remain for Expo runtime
+compatibility, as recorded below.
+
+## What the first real APK looked like
+
+Built 2026-09-02 from the demo release: 168.9 MB, signed, `1.0.0` / version code
+`1000000`, twenty minutes. Read out of the artifact rather than assumed:
+
+| | |
+| --- | --- |
+| media | inside, under `res/` with minified names (`res/fG.mp3`, 11.3 MB) |
+| native libraries | 72 MB across four ABIs; one device uses about a quarter |
+| permissions removed | CAMERA, RECORD_AUDIO, READ/WRITE_EXTERNAL_STORAGE, READ_MEDIA_*, POST_NOTIFICATIONS |
+| permissions found and now blocked | `SYSTEM_ALERT_WINDOW` — React Native dev support, alive in a release build |
+| permissions still declared | `INTERNET`, `ACCESS_NETWORK_STATE` |
+
+The last row is a decision rather than an oversight: a novel whose media ships
+inside it needs neither, but removing them could break `expo-asset` or
+`expo-updates` at runtime in ways nothing here can test. Reach for `player-aab`
+before worrying about the size — the four ABIs are most of what a single device
+never uses.
+
+## What has and has not happened
+
+**Three real APKs have been built from the staged project, and one has run.** The build
+proves that EAS can compile and sign the generated project and that the release
+media is packaged; the author installed it on 2026-09-02 and reports that it
+plays. That is their observation, not a measurement taken here — but it is the
+first evidence about the artifact on a device rather than about the pipeline
+that made it. It was submitted manually, not through the browser/helper path.
+
+The EAS adapter is implemented: readiness, staging, archive inspection, submit,
+poll, remote cancel, HTTPS artifact download, EAS identity/version matching,
+server-side hash/Android-structure checks and a second size/hash check in the
+browser. It also persists the binding between one
+EAS project and one novel. It has been exercised against a simulated EAS
+CLI only. The following therefore remains physical acceptance rather than an
+implemented-code gap:
+
+- the complete browser → helper → EAS → browser path;
+- installing v2 over v1 with the saves intact — the case the whole
+  application-id design exists for. Everything Android checks first is now
+  verified rather than assumed: two APKs of the same story, `1.0.0` and `1.0.1`,
+  carry the same application id, version codes `1000000` and `1000001`, and EAS
+  reports the same keystore (`Build Credentials 3Xs4et9yvN`) for both. Untested
+  is the install itself, and whether a reader's saves survive it;
+- the permission surface as a device reports it, rather than as the APK declares
+  it.
+- the post-build certificate check, which needs an artifact to check.
+
+`EasBuilder` in [`tools/build-helper`](../../tools/build-helper/README.md) refuses a
+new request before accepting its archive when EAS CLI, login, or the novel's
+project UUID is unavailable. Signing credentials are deliberately configured
+outside the browser; builds use `--freeze-credentials` so a click cannot replace
+a keystore.
+
+## The launcher icon
+
+The story cover becomes the icon when it is a square PNG of at least 512px. The
+**adaptive** icon — what Android 8 and later actually draw — stays the engine's:
+a foreground layer needs its subject inside a safe zone that a full-bleed cover
+does not have, and producing one needs a rasterizer this pipeline deliberately
+does not carry. So on a modern phone the launcher shows the engine mark until
+someone adds image processing. Stated here rather than discovered.

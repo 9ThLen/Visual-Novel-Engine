@@ -15,7 +15,7 @@ Choose a language to install the app, create your first story, or adjust its set
 ## Project and developer references
 
 - [Product principles](product/PRODUCT.md) and [design system](product/DESIGN_SYSTEM.md) describe the product and its interface conventions.
-- [Technical wiki](../wiki/index.md) covers architecture, runtime, packaging, and testing.
+- [Technical wiki](technical/index.md) covers architecture, runtime, packaging, and testing.
 - [Manual testing](MANUAL_TESTING.md) includes test scenarios and a bug-report template.
 - [Plans](plans/README.md) preserve implementation plans and design decisions.
 - [Reviews](reviews/README.md) preserve audit findings and the scope of past checks.

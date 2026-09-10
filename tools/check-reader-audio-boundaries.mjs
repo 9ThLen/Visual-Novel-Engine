@@ -5,12 +5,12 @@ import { hasReaderAudioBoundaryViolation } from './lib/reader-audio-boundary-pat
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const files = [
-  'lib/reader-runtime.ts',
-  'hooks/useReaderInitialization.ts',
-  'hooks/useReaderAudio.ts',
-  'hooks/useAutoSave.ts',
-  'lib/audio-types.ts',
-  'lib/bundled-story-sync.ts',
+  'src/lib/reader-runtime.ts',
+  'src/hooks/useReaderInitialization.ts',
+  'src/hooks/useReaderAudio.ts',
+  'src/hooks/useAutoSave.ts',
+  'src/lib/audio-types.ts',
+  'src/lib/bundled-story-sync.ts',
 ];
 
 let hasViolations = false;
@@ -33,7 +33,7 @@ for (const file of files) {
 if (hasViolations) {
   console.log('');
   console.log('FAIL: reader/audio boundary violation(s) found');
-  console.log('Use lib/reader-scene.ts or lib/audio-scene.ts projections at canonical boundaries.');
+  console.log('Use src/lib/reader-scene.ts or src/lib/audio-scene.ts projections at canonical boundaries.');
   process.exit(1);
 }
 

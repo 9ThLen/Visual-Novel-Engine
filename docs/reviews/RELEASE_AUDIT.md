@@ -52,12 +52,12 @@ leave the view depends on `shown`, so each render scheduled another — "Maximum
 depth exceeded", repeatedly. Stories that already have characters were unaffected,
 which is why the bundled demos hid it; every newly created story hit it. Fixed with a
 shared empty array, the pattern `EMPTY_RELEASES` in `app/story-home.tsx` already used.
-The same defect in `app/story-home.tsx` and `components/story-home/AssetUsageCard.tsx`
+The same defect in `app/story-home.tsx` and `src/components/story-home/AssetUsageCard.tsx`
 is fixed alongside it.
 
 ### Scene manager and manuscript opened empty
 
-Scene records load per story on demand. Neither `components/editor/SceneManager.tsx`
+Scene records load per story on demand. Neither `src/components/editor/SceneManager.tsx`
 nor `app/manuscript-editor.tsx` asked for that load, so both reported "no scenes yet"
 for a story with fourteen of them, and only showed scenes when another screen happened
 to have loaded them first. Both now hydrate. The scene manager also built its selector
@@ -104,7 +104,7 @@ There is no lint debt to act on.
 
 Driving the reader rather than only loading it surfaced this. The console said
 `Could not resolve BGM` and `Could not resolve voice` for files that are sitting
-in `assets/sounds-sample/` and are listed in `lib/bundled-assets.ts`.
+in `assets/sounds-sample/` and are listed in `src/lib/bundled-assets.ts`.
 
 They resolve fine. `getBrowserSafeAudioUri()` then threw the result away.
 A bundled asset resolves on web to a root-relative URL —

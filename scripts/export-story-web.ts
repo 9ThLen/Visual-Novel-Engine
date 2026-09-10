@@ -9,7 +9,7 @@
  * It builds (or reuses) the player-profile Expo web export, copies it to
  * `--out`, unpacks the release's media beside it, and inlines the boot config
  * into `index.html`. The app reads that config on load and launches straight
- * into the reader for the bundled story (see `lib/player-mode.ts`).
+ * into the reader for the bundled story (see `src/lib/player-mode.ts`).
  *
  * **Why `--release` exists.** The legacy `--story` path can only publish art
  * that ships with the app, because a story JSON refers to everything else by
@@ -328,7 +328,7 @@ function writePlayerConfig(outPath: string, config: PlayerConfigFile): string {
  * from — three ways for a folder that "looks fine" to open on an empty screen.
  * Inlined, the config is simply there before the first paint.
  *
- * The escaping and the tag shape come from `lib/release/player-bundle.ts`, which
+ * The escaping and the tag shape come from `src/lib/release/player-bundle.ts`, which
  * the in-app exporter uses too: the two must produce the same bundle.
  */
 function inlinePlayerConfig(outPath: string, config: PlayerConfigFile): void {

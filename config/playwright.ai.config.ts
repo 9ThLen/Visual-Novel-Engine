@@ -1,0 +1,65 @@
+import { defineConfig, devices } from '@playwright/test';
+import path from 'node:path';
+
+/**
+ * The config lives in `config/`, and Playwright anchors `webServer.cwd` on the
+ * config file's own directory. Every server here is a repo-root command.
+ */
+const REPO_ROOT = path.resolve(__dirname, '..');
+
+const appOrigin = 'http://127.0.0.1:8081';
+
+// The suite drives the Expo *dev* server, so every navigation parses and runs an
+// unminified bundle. On a two-core CI runner that costs ~13s before the first
+// screen paints (measured at 6x CPU throttling: `load` at 5.4s, first button at
+// 13.3s), which silently blew past Playwright's 5s default expect timeout and
+// made every test fail on a blank page. Give the app room on CI.
+const isCI = Boolean(process.env.CI);
+
+export default defineConfig({
+  outputDir: path.resolve(REPO_ROOT, 'test-results'),
+  testDir: '../tests/e2e/ai',
+  testMatch: /browser\.spec\.ts/,
+  timeout: isCI ? 180_000 : 60_000,
+  globalSetup: '../tests/e2e/ai/global-setup.ts',
+  fullyParallel: false,
+  workers: 1,
+  retries: isCI ? 1 : 0,
+  reporter: isCI ? [['github'], ['html', { open: 'never', outputFolder: path.resolve(REPO_ROOT, 'playwright-report') }]] : 'list',
+  expect: { timeout: isCI ? 30_000 : 5_000 },
+  use: {
+    baseURL: appOrigin,
+    ...devices['Desktop Chrome'],
+    actionTimeout: isCI ? 30_000 : 0,
+    navigationTimeout: isCI ? 90_000 : 0,
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
+  webServer: [
+    {
+      command: 'node node_modules/tsx/dist/cli.mjs tests/e2e/ai/fake-bridge.ts',
+      cwd: REPO_ROOT,
+      url: 'http://127.0.0.1:18788/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+    {
+      command: 'node node_modules/expo/bin/cli start --web --port 8081 --offline',
+      cwd: REPO_ROOT,
+      url: appOrigin,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      // Metro reports bundling failures on stdout, which Playwright discards by
+      // default. Without this a broken bundle is invisible: the dev server keeps
+      // answering, the browser gets a 500 for the bundle, and every test just
+      // sees a blank page.
+      stdout: 'pipe',
+      env: {
+        ...process.env,
+        CI: '1',
+        EXPO_PUBLIC_AI_BRIDGE_TOKEN: '',
+        EXPO_PUBLIC_AI_BRIDGE_URL: 'ws://127.0.0.1:18787',
+      },
+    },
+  ],
+});

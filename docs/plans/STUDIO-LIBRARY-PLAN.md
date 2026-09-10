@@ -2,7 +2,7 @@
 
 **Статус:** реалізовано 2026-08-27. Концепт створено 2026-08-27.
 
-**Обсяг:** візуальна й поведінкова переробка `/editor` ([app/editor.tsx](../../app/editor.tsx)) і картки проєкту ([components/editor/EditorStoryCard.tsx](../../components/editor/EditorStoryCard.tsx)) — перший екран, який автор бачить, натиснувши «Студія» на вітрині.
+**Обсяг:** візуальна й поведінкова переробка `/editor` ([app/editor.tsx](../../app/editor.tsx)) і картки проєкту ([src/components/editor/EditorStoryCard.tsx](../../src/components/editor/EditorStoryCard.tsx)) — перший екран, який автор бачить, натиснувши «Студія» на вітрині.
 
 **Поза цим релізом:** зміни у `story-home`, нові поля `StoryMetadata`, дублювання історій, папки/колекції, синхронізація.
 
@@ -12,7 +12,7 @@
 
 ### 1.1 Маркетинговий банер усередині робочого інструмента
 
-Верхню третину екрана займає герой-блок ([editor.tsx:166](../../app/editor.tsx:166)): дрібні капси «CREATOR WORKSPACE» над великим заголовком, під ним речення «Manage your stories, edit scenes, and preview your work» ([translations.ts:181](../../lib/translations.ts:181)). Це три рядки, які нічого не повідомляють: підзаголовок переказує назву екрана, а сам екран автор відкрив свідомо. Такий «eyebrow + title + subtitle» — найвпізнаваніший штамп згенерованої сторінки.
+Верхню третину екрана займає герой-блок ([editor.tsx:166](../../app/editor.tsx:166)): дрібні капси «CREATOR WORKSPACE» над великим заголовком, під ним речення «Manage your stories, edit scenes, and preview your work» ([translations.ts:181](../../src/lib/translations.ts:181)). Це три рядки, які нічого не повідомляють: підзаголовок переказує назву екрана, а сам екран автор відкрив свідомо. Такий «eyebrow + title + subtitle» — найвпізнаваніший штамп згенерованої сторінки.
 
 ### 1.2 Декор замість інформації
 
@@ -24,7 +24,7 @@
 
 ### 1.4 «Видалити» — рівноправна дія в кожному рядку
 
-Під кожною карткою постійно висять дві кнопки: «Редагувати» і «Видалити» ([EditorStoryCard.tsx:115–121](../../components/editor/EditorStoryCard.tsx:115)). Найнебезпечніша дія екрана повторена стільки разів, скільки в автора проєктів, і стоїть за 4 px від найчастішої.
+Під кожною карткою постійно висять дві кнопки: «Редагувати» і «Видалити» ([EditorStoryCard.tsx:115–121](../../src/components/editor/EditorStoryCard.tsx:115)). Найнебезпечніша дія екрана повторена стільки разів, скільки в автора проєктів, і стоїть за 4 px від найчастішої.
 
 ### 1.5 Кнопка «Редагувати» не веде в редактор
 
@@ -32,11 +32,11 @@
 
 ### 1.6 Порядок списку — випадковий
 
-`storiesMetadata.map` ([editor.tsx:250](../../app/editor.tsx:250)) рендерить масив як є, а `createStory` дописує нову історію в кінець ([story-slice.ts:27](../../stores/app-store-slices/story-slice.ts:27)). Тобто щойно створений проєкт опиняється внизу, а той, який автор правив годину тому, — десь посередині. Сортування, пошуку й фільтра немає взагалі: при п'ятнадцяти історіях екран стає нескінченним стовпцем.
+`storiesMetadata.map` ([editor.tsx:250](../../app/editor.tsx:250)) рендерить масив як є, а `createStory` дописує нову історію в кінець ([story-slice.ts:27](../../src/stores/app-store-slices/story-slice.ts:27)). Тобто щойно створений проєкт опиняється внизу, а той, який автор правив годину тому, — десь посередині. Сортування, пошуку й фільтра немає взагалі: при п'ятнадцяти історіях екран стає нескінченним стовпцем.
 
 ### 1.7 Картка знає про історію менше, ніж застосунок
 
-На картці лише кількість сцен, дата оновлення й до трьох тегів. Водночас `sceneRecordsByStory` при старті гідратується для **всіх** історій ([use-app-store.ts:174–191](../../stores/use-app-store.ts:174)), а `computeStoryStats` і `validateSceneGraph` — чисті функції, які вже рахують слова, вибори, обірвані посилання й недосяжні сцени. Екран вибору проєкту нічим із цього не користується, хоча саме тут це потрібно, щоб обрати.
+На картці лише кількість сцен, дата оновлення й до трьох тегів. Водночас `sceneRecordsByStory` при старті гідратується для **всіх** історій ([use-app-store.ts:174–191](../../src/stores/use-app-store.ts:174)), а `computeStoryStats` і `validateSceneGraph` — чисті функції, які вже рахують слова, вибори, обірвані посилання й недосяжні сцени. Екран вибору проєкту нічим із цього не користується, хоча саме тут це потрібно, щоб обрати.
 
 ### 1.8 Третя система шапок і відсутній вихід
 
@@ -44,7 +44,7 @@
 
 ### 1.9 Геометрія повз токени
 
-`EditorStoryCard` набраний числами: `padding: 14`, `borderRadius: 16`, `gap: 12`, `fontSize: 18`, `COVER_WIDTH = 76` ([EditorStoryCard.tsx:127–176](../../components/editor/EditorStoryCard.tsx:127)) — при наявних `spacing`, `radius`, `typeScale` ([lib/design-tokens.ts](../../lib/design-tokens.ts)) і прямій вимозі [DESIGN_SYSTEM.md](../product/DESIGN_SYSTEM.md) не дублювати значення в компонентах.
+`EditorStoryCard` набраний числами: `padding: 14`, `borderRadius: 16`, `gap: 12`, `fontSize: 18`, `COVER_WIDTH = 76` ([EditorStoryCard.tsx:127–176](../../src/components/editor/EditorStoryCard.tsx:127)) — при наявних `spacing`, `radius`, `typeScale` ([src/lib/design-tokens.ts](../../src/lib/design-tokens.ts)) і прямій вимозі [DESIGN_SYSTEM.md](../product/DESIGN_SYSTEM.md) не дублювати значення в компонентах.
 
 ---
 
@@ -120,9 +120,9 @@
 ## 4. Що написано
 
 1. **`app/editor.tsx`** — нав-бар 44 pt, рядок керування (пошук + сортування), сітка з адаптивними колонками, плитка створення з полем усередині, порожній стан. Герой-блок, `formCard` і `statPill` зникають.
-2. **`components/editor/EditorStoryCard.tsx`** — переклад на `spacing`/`radius`/`typeScale`, обкладинка 3:2 зверху, рядок статистики, статус, меню «⋯»; варіант `featured` для широкої картки.
-3. **`lib/editor/story-library.ts`** (новий, чистий) — `buildStudioProjects()`: із `storiesMetadata` + `sceneRecordsByStory` рахує статистику, статус і відносний час; `sortProjects()` і `filterProjects()`. Уся логіка екрана — тут, під юніт-тестами, за зразком `lib/showcase/story-showcase.ts`.
-4. **`lib/translations.ts`** — нові ключі `editor.*` в `EN` і `UK`; `editor.creatorWorkspace` і `editor.workspaceSubtitle` вилучаються.
+2. **`src/components/editor/EditorStoryCard.tsx`** — переклад на `spacing`/`radius`/`typeScale`, обкладинка 3:2 зверху, рядок статистики, статус, меню «⋯»; варіант `featured` для широкої картки.
+3. **`src/lib/editor/story-library.ts`** (новий, чистий) — `buildStudioProjects()`: із `storiesMetadata` + `sceneRecordsByStory` рахує статистику, статус і відносний час; `sortProjects()` і `filterProjects()`. Уся логіка екрана — тут, під юніт-тестами, за зразком `src/lib/showcase/story-showcase.ts`.
+4. **`src/lib/translations.ts`** — нові ключі `editor.*` в `EN` і `UK`; `editor.creatorWorkspace` і `editor.workspaceSubtitle` вилучаються.
 5. **Тести** — `__tests__` на `buildStudioProjects` (статуси, сортування, пошук) за прикладом наявних тестів вітрини.
 
 ## 5. Що лишається без змін
@@ -131,7 +131,7 @@
 
 ## 6. «Продовжити» пам'ятає сцену
 
-Увійшло в цей реліз. `lastEditedSceneByStory` у сторі (`stores/app-store-types.ts`, `app-store-initial-state.ts`), дія `noteSceneOpened` у `story-slice.ts`, запис із `/document-editor` на кожну зміну маршрутних параметрів, поле в `buildPersistedAppState` — тобто переживає перезапуск. `deleteStory` прибирає свій запис, а `resolveResumeSceneId` відкочується на стартову сцену, якщо запам'ятаної сцени більше немає.
+Увійшло в цей реліз. `lastEditedSceneByStory` у сторі (`src/stores/app-store-types.ts`, `app-store-initial-state.ts`), дія `noteSceneOpened` у `story-slice.ts`, запис із `/document-editor` на кожну зміну маршрутних параметрів, поле в `buildPersistedAppState` — тобто переживає перезапуск. `deleteStory` прибирає свій запис, а `resolveResumeSceneId` відкочується на стартову сцену, якщо запам'ятаної сцени більше немає.
 
 **Пастка, на якій це спершу не працювало:** `persist` гідрує стан за такт після монтування, а `mergePersistedAppState` накладає збережений стан поверх поточного (`{ ...currentState, ...persisted }`). Усе, що записано до гідрації, мовчки зникає. Тому ефект у `/document-editor` навішений на `isLoaded`. Те саме стосується будь-якого іншого запису зі стартового ефекту екрана.
 

@@ -12,7 +12,7 @@
  * through the sanitizer on the way out, and a builder that could bypass that by
  * writing to the client directly would make the sanitizer decorative.
  */
-import type { BuildRequest } from '../../../lib/release/build-request';
+import type { BuildRequest } from '../../../src/lib/release/build-request';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { zipSync } from 'fflate';

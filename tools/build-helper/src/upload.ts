@@ -26,7 +26,7 @@ import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
-import { BUILD_LIMITS, isBuildRequestId } from '../../../lib/release/build-request';
+import { BUILD_LIMITS, isBuildRequestId } from '../../../src/lib/release/build-request';
 
 export type UploadOutcome =
   | { ok: true; bytes: number; sha256: string; archivePath: string }

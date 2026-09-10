@@ -102,18 +102,18 @@ graphify-scope/
 
 # Local IDE and Obsidian workspace state
 .run/
-wiki/.obsidian/app.json
-wiki/.obsidian/appearance.json
-wiki/.obsidian/graph.json
-wiki/.obsidian/workspace.json
+docs/technical/.obsidian/app.json
+docs/technical/.obsidian/appearance.json
+docs/technical/.obsidian/graph.json
+docs/technical/.obsidian/workspace.json
 
 # Archived planning and AI-agent working notes (kept locally, not versioned)
 /plan.md
-wiki/ai-chat-*-plan.md
-wiki/ai-chat*-delegation-prompts.md
-wiki/ai-openai-*-plan.md
-wiki/consumer-showcase-plan.md
-wiki/final-migration-audit.md
+docs/technical/ai-chat-*-plan.md
+docs/technical/ai-chat*-delegation-prompts.md
+docs/technical/ai-openai-*-plan.md
+docs/technical/consumer-showcase-plan.md
+docs/technical/final-migration-audit.md
 
 # Local build state: which key a story is signed with, and which EAS project
 # it belongs to. Machine-specific, and a signing fingerprint is not ours to

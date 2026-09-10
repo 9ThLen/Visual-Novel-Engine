@@ -63,6 +63,28 @@ function resolveFile(base, platformPrefixes) {
 }
 
 /**
+ * The substitution list `@/*` maps to, in the order `tsconfig.json` gives it:
+ * `./src/*` first, then the project root. Most of the app lives under `src/`,
+ * but `@/app/...`, `@/assets/...` and `@/global.css` still resolve at the root,
+ * so trying only one of the two would leave a hole in the graph — and an
+ * unresolved specifier makes the boundary checks inconclusive rather than green.
+ */
+const ALIAS_ROOTS = ['src', ''];
+
+function resolveAlias(projectRoot, rest, platformPrefixes) {
+  for (const root of ALIAS_ROOTS) {
+    const candidate = resolve(projectRoot, root, rest);
+    if (resolveFile(candidate, platformPrefixes)) return candidate;
+  }
+  // Nothing matched under any root. Hand back the last substitution rather than
+  // nothing, so the caller reports one unresolved specifier against a real path.
+  // Written in terms of the list rather than as a second, hard-coded root: a
+  // hard-coded one made the project root reachable even when `ALIAS_ROOTS` no
+  // longer named it, which is a mapping that cannot be tested.
+  return resolve(projectRoot, ALIAS_ROOTS[ALIAS_ROOTS.length - 1], rest);
+}
+
+/**
  * Read one file's edges. Type-only lines are dropped: they carry no code into
  * the bundle, and treating them as edges would report the whole type surface of
  * the editor as "present in the player".
@@ -120,7 +142,7 @@ export function walkModuleGraph({
 
     for (const specifier of readImports(file)) {
       let base;
-      if (specifier.startsWith('@/')) base = resolve(projectRoot, specifier.slice(2));
+      if (specifier.startsWith('@/')) base = resolveAlias(projectRoot, specifier.slice(2), platformPrefixes);
       else if (specifier.startsWith('.')) base = resolve(dirname(file), specifier);
       else {
         externals.add(specifier.split('/').slice(0, specifier.startsWith('@') ? 2 : 1).join('/'));

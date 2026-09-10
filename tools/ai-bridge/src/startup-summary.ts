@@ -1,5 +1,5 @@
-import type { BridgeImageProvider, BridgeProvider } from '../../../lib/bridge-protocol';
-import { aiProviderLabel } from '../../../lib/ai/providers';
+import type { BridgeImageProvider, BridgeProvider } from '../../../src/lib/bridge-protocol';
+import { aiProviderLabel } from '../../../src/lib/ai/providers';
 import { imageProviderLabel } from './image-provider-config';
 
 export interface BridgeStartupSummary {

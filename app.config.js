@@ -3,7 +3,7 @@ import {
   PLAYER_BLOCKED_PERMISSIONS,
   PLAYER_EXCLUDED_PLUGINS,
   PLAYER_ROUTER_ROOT,
-} from "./player-profile.js";
+} from "./config/player-profile.js";
 
 const rawBundleId = "space.manus.visual.novel.engine.t20260331092519";
 const bundleId = rawBundleId

@@ -1,6 +1,6 @@
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
 
-import type { BuildTarget } from '../../../lib/release/build-request';
+import type { BuildTarget } from '../../../src/lib/release/build-request';
 
 const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_ENTRY_SIGNATURE = 0x02014b50;

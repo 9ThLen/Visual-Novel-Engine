@@ -7,7 +7,7 @@
  * deliberately does not repeat it.
  *
  * All of the arithmetic — size, status, order, search — lives in
- * `lib/editor/story-library.ts`, which is pure and tested; the screen only
+ * `src/lib/editor/story-library.ts`, which is pure and tested; the screen only
  * renders what it returns.
  */
 

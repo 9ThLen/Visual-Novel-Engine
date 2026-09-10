@@ -28,7 +28,7 @@ over every other one.
 `main.rs` registers no commands and `capabilities/default.json` grants
 `core:default`. A story is data a stranger runs, so the shell exposes no way to
 reach the machine it plays on. Both facts are asserted by
-`__tests__/unit/scripts/stage-desktop.test.ts`; adding a plugin or a command
+`tests/unit/scripts/stage-desktop.test.ts`; adding a plugin or a command
 means changing that test, on purpose, in the open.
 
 `app.security.csp` is `null` so the page keeps the policy it shipped with. The
@@ -37,4 +37,4 @@ same folder also has to play double-clicked from a filesystem, where
 
 The reader's saves live in the webview's own storage, which needs no permission —
 and which is keyed by `identifier`. See
-[`wiki/releases-desktop.md`](../../wiki/releases-desktop.md).
+[`docs/technical/releases-desktop.md`](../../docs/technical/releases-desktop.md).

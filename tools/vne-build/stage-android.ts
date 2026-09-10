@@ -48,7 +48,7 @@ import type { StoryArchiveBinarySource, StoryBackupAsset } from '@/lib/story-bac
  * A default import, not `require`: this module is loaded as ESM under `tsx` and
  * as CommonJS under the test runner, and `import.meta` would break the second.
  */
-import playerProfileModule from '../../player-profile.js';
+import playerProfileModule from '../../config/player-profile.js';
 import { ENGINE_EAS_PROJECT_ID } from '../../app.config.js';
 
 const playerProfile = playerProfileModule as unknown as {
@@ -73,29 +73,31 @@ export const STAGED_ROOT_FILES = [
   'pnpm-lock.yaml',
   'pnpm-workspace.yaml',
   'app.config.js',
-  'player-profile.js',
   'metro.config.js',
-  'metro-blocklist.js',
   'babel.config.cjs',
+  // The build-time configuration `app.config.js`, `metro.config.js` and
+  // `tailwind.config.js` reach for by name. Named one by one rather than as the
+  // whole `config/` directory, which also holds the test-runner configuration a
+  // staged player has no use for.
+  'config/player-profile.js',
+  'config/metro-blocklist.js',
+  'config/theme.config.js',
+  'config/theme.config.d.ts',
   'tsconfig.json',
   'global.css',
   'global.d.ts',
   'expo-env.d.ts',
   'nativewind-env.d.ts',
   'tailwind.config.js',
-  'theme.config.js',
-  'theme.config.d.ts',
 ];
 
 export const STAGED_ROOT_DIRS = [
   'app',
   'app-player',
   'assets',
-  'components',
-  'constants',
-  'hooks',
-  'lib',
-  'stores',
+  // The engine's own source, all five directories of it, under one root since
+  // the repository was flattened; `@/*` resolves here before the project root.
+  'src',
   'patches',
 ];
 
@@ -104,7 +106,7 @@ export const STAGED_MEDIA_DIR = `assets/${RELEASE_MEDIA_DIR}`;
 /** The boot config, as a file Metro will inline through a static require. */
 export const STAGED_RELEASE_JSON = 'assets/player-release.json';
 /** The module the runtime imports. Committed as a stub; overwritten here. */
-export const GENERATED_MODULE = 'lib/generated/player-release.ts';
+export const GENERATED_MODULE = 'src/lib/generated/player-release.ts';
 export const STAGED_ICON = 'assets/player-icon.png';
 export const STAGED_SPLASH = 'assets/player-splash.png';
 export const NATIVE_IDENTITY_FILE = '.vne-native-identity.json';
@@ -943,7 +945,7 @@ export async function inspectStagedGraph(outDir: string): Promise<StagedGraph> {
   return { unresolved, assetFiles, sourceFiles };
 }
 
-const PRUNABLE_SOURCE_ROOTS = ['app', 'app-player', 'components', 'hooks', 'lib', 'stores'];
+const PRUNABLE_SOURCE_ROOTS = ['app', 'app-player', 'src'];
 const SOURCE_FILE_PATTERN = /\.(?:[cm]?[jt]sx?)$/;
 
 /**
@@ -993,7 +995,7 @@ function moduleSubstitutions(): { from: string; to: string }[] {
 /**
  * Delete art the staged bundle no longer names.
  *
- * The player profile swaps `lib/bundled-assets.ts` for an empty map, so the demo
+ * The player profile swaps `src/lib/bundled-assets.ts` for an empty map, so the demo
  * backgrounds, sample music, sprites and splash art stop being named by any
  * static `require` — and Metro ships what it can see, so what is not named is
  * not in the APK. Leaving the files on disk anyway would still upload them to

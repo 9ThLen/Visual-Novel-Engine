@@ -1,4 +1,4 @@
-import { BRIDGE_PROTOCOL_VERSION, MAX_DECODED_IMAGE_BYTES } from '../../lib/bridge-protocol';
+import { BRIDGE_PROTOCOL_VERSION, MAX_DECODED_IMAGE_BYTES } from '../../src/lib/bridge-protocol';
 import { ClaudeAgentProvider } from './src/claude-provider';
 import { createImageToolHandlers } from './src/image-tools';
 import { OpenAiProvider } from './src/openai-provider';
