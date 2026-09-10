@@ -2,10 +2,12 @@
 // beside it.
 //
 // The player shell (`tools/desktop-shell`) registers no commands because a story
-// is data a stranger runs. This one registers three, and only three: start the
-// bridge, ask how it is, stop it. None of them takes an argument, so nothing the
-// page sends can choose what runs — the executable is resolved from this
-// application's own resource directory.
+// is data a stranger runs. This one registers four: start the bridge, ask how it
+// is, stop it, and save the author's provider and API key into the bridge's own
+// settings. The first three take no argument at all; the fourth takes two
+// values and no path — the file it writes is the one the bridge reported, and
+// the executable it runs is resolved from this application's own resource
+// directory. Nothing the page sends chooses either.
 //
 // That is deliberately not `tauri-plugin-shell`. A permission to run programs is
 // general; this is specific, and the difference is the entire security argument
@@ -27,6 +29,7 @@ fn main() {
             bridge::ai_bridge_start,
             bridge::ai_bridge_status,
             bridge::ai_bridge_stop,
+            bridge::ai_bridge_save_settings,
         ])
         .build(tauri::generate_context!())
         .expect("the visual novel studio failed to start")

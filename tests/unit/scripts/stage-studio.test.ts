@@ -163,7 +163,7 @@ describe('the studio window exposes nothing it does not need', () => {
   // This used to assert that no command existed at all. Three do now, and the
   // guard that matters moved with them: not "can the window call into Rust", but
   // "can the window choose what Rust runs".
-  it('registers the three AI bridge commands and nothing else', () => {
+  it('registers the four AI bridge commands and nothing else', () => {
     const main = fs.readFileSync(path.join(SRC_TAURI, 'src', 'main.rs'), 'utf8');
     const handler = /generate_handler!\[([\s\S]*?)\]/.exec(main);
     expect(handler).not.toBeNull();
@@ -175,6 +175,7 @@ describe('the studio window exposes nothing it does not need', () => {
       'bridge::ai_bridge_start',
       'bridge::ai_bridge_status',
       'bridge::ai_bridge_stop',
+      'bridge::ai_bridge_save_settings',
     ]);
   });
 
@@ -184,13 +185,15 @@ describe('the studio window exposes nothing it does not need', () => {
     // argument that could name another one.
     const bridge = fs.readFileSync(path.join(SRC_TAURI, 'src', 'bridge.rs'), 'utf8');
     const commands = [...bridge.matchAll(/#\[tauri::command\]\s*pub async fn [a-z_]+(?:<[^>]*>)?\(([^)]*)\)/g)];
-    expect(commands).toHaveLength(3);
+    expect(commands).toHaveLength(4);
     for (const [, parameters] of commands) {
       // Written whole rather than split on commas: `State<'_, BridgeSupervisor>`
       // contains one, and a check that mis-parses its own subject proves nothing.
+      // `provider` and `api_key` are values the author typed; no parameter names
+      // a path or a program, which is what keeps this narrow.
       const normalized = parameters.replace(/\s+/g, ' ').trim().replace(/,$/, '');
       expect(normalized).toMatch(
-        /^(app: AppHandle<R>, )?state: State<'_, BridgeSupervisor>$/,
+        /^(app: AppHandle<R>, )?state: State<'_, BridgeSupervisor>(, provider: String, api_key: String)?$/,
       );
     }
   });

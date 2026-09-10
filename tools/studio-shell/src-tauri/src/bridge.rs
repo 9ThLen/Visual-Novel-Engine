@@ -58,6 +58,14 @@ pub struct BridgeReport {
     pub token: Option<String>,
     /// Why it is not usable, in the bridge's own words.
     pub error: Option<String>,
+    /// The settings file, as the bridge itself reported it.
+    ///
+    /// Not computed here. The bridge derives it from the account's own
+    /// directories and prints it on every start — including the start it
+    /// refuses, which is the one where the author needs it. Deriving it a
+    /// second time in Rust would be two answers to one question, and this
+    /// project has already paid for that mistake more than once.
+    pub settings_path: Option<String>,
 }
 
 #[derive(Default)]
@@ -97,7 +105,11 @@ fn push_diagnostic(buffer: &mut String, line: &str) {
 
 /// Reads the pairing block out of the bridge's own startup output.
 pub fn parse_pairing_line(line: &str) -> Option<(&'static str, String)> {
-    for (prefix, field) in [("URL: ", "url"), ("Token: ", "token")] {
+    for (prefix, field) in [
+        ("URL: ", "url"),
+        ("Token: ", "token"),
+        ("Settings: ", "settings"),
+    ] {
         if let Some(rest) = line.strip_prefix(prefix) {
             let value = rest.trim();
             if !value.is_empty() {
@@ -191,6 +203,7 @@ pub fn spawn_bridge(
                 match parse_pairing_line(&line) {
                     Some(("url", value)) => report.url = Some(value),
                     Some(("token", value)) => report.token = Some(value),
+                    Some(("settings", value)) => report.settings_path = Some(value),
                     _ => push_diagnostic(&mut diagnostic, &line),
                 }
                 if report.url.is_some() && report.token.is_some() {
@@ -234,6 +247,8 @@ pub fn spawn_bridge(
                 let mut report = state.report.lock().expect("bridge report lock");
                 report.running = false;
                 report.ready = false;
+                // `settings_path` deliberately survives: a refusal is exactly
+                // when the author needs to know which file to fix.
                 let detail = report.error.clone().unwrap_or_default();
                 let message = if detail.is_empty() {
                     format!("The AI bridge stopped immediately ({status}).")
@@ -258,12 +273,114 @@ pub fn spawn_bridge(
     }
 }
 
+/// Sets one `KEY=value` in a settings file, leaving the rest of it alone.
+///
+/// The file the bridge writes on its first run is entirely commented out, so
+/// the line to change is usually `#OPENAI_API_KEY=`. Both forms are replaced in
+/// place — appending instead would leave the commented original above a live
+/// value, which reads as though the file has two answers.
+pub fn apply_setting(contents: &str, key: &str, value: &str) -> String {
+    let mut replaced = false;
+    let mut lines: Vec<String> = contents
+        .lines()
+        .map(|line| {
+            let candidate = line.trim_start().trim_start_matches('#').trim_start();
+            if !replaced && candidate.starts_with(&format!("{key}=")) {
+                replaced = true;
+                format!("{key}={value}")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect();
+    if !replaced {
+        lines.push(format!("{key}={value}"));
+    }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
+}
+
+/// Writes the author's provider and key into the bridge's own settings file,
+/// then starts the bridge again so they take effect.
+///
+/// The key travels page → command → file. It is never stored by the window and
+/// never leaves this machine: the bridge is the only thing that uses it. The
+/// path is not chosen by the caller — it is the one the bridge reported, so a
+/// page cannot aim this at a file of its choosing.
 #[tauri::command]
-pub async fn ai_bridge_stop(state: State<'_, BridgeSupervisor>) -> Result<BridgeReport, String> {
+pub async fn ai_bridge_save_settings<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, BridgeSupervisor>,
+    provider: String,
+    api_key: String,
+) -> Result<BridgeReport, String> {
+    let provider = match provider.as_str() {
+        "openai" | "gemini" => provider,
+        other => return Err(format!("{other} is not a provider this panel can configure.")),
+    };
+    let key = api_key.trim();
+    if key.is_empty() {
+        return Err("The API key is empty.".to_string());
+    }
+
+    let path = state
+        .snapshot()
+        .settings_path
+        .ok_or("The bridge has not reported where its settings live. Start it once first.")?;
+    let path = std::path::PathBuf::from(path);
+    let contents = std::fs::read_to_string(&path)
+        .map_err(|error| format!("could not read the bridge settings: {error}"))?;
+
+    let variable = if provider == "gemini" { "GEMINI_API_KEY" } else { "OPENAI_API_KEY" };
+    let updated = apply_setting(
+        &apply_setting(&contents, "AI_BRIDGE_PROVIDER", &provider),
+        variable,
+        key,
+    );
+    write_private(&path, &updated)
+        .map_err(|error| format!("could not save the bridge settings: {error}"))?;
+
+    // A running bridge read the old file at startup and will not read it again.
+    stop_bridge(&state);
+    let node = resource_path(&app, NODE_EXECUTABLE)?;
+    let entry = resource_path(&app, ENTRYPOINT)?;
+    spawn_bridge(&node, &entry, &state)
+}
+
+/// Writes owner-only where the platform expresses that in the file mode.
+///
+/// On Windows the mode is ignored and the directory's ACL applies instead — the
+/// bridge sets and verifies that before it writes anything into the folder, and
+/// refuses to run when it cannot.
+#[cfg(unix)]
+fn write_private(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(contents.as_bytes())
+}
+
+#[cfg(not(unix))]
+fn write_private(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    std::fs::write(path, contents)
+}
+
+fn stop_bridge(state: &BridgeSupervisor) {
     if let Some(mut child) = state.child.lock().expect("bridge child lock").take() {
         let _ = child.kill();
         let _ = child.wait();
     }
+}
+
+#[tauri::command]
+pub async fn ai_bridge_stop(state: State<'_, BridgeSupervisor>) -> Result<BridgeReport, String> {
+    stop_bridge(&state);
     let mut report = state.report.lock().expect("bridge report lock");
     *report = BridgeReport::default();
     Ok(report.clone())
@@ -274,10 +391,7 @@ pub async fn ai_bridge_stop(state: State<'_, BridgeSupervisor>) -> Result<Bridge
 /// Without this a closed studio leaves a Node process holding the port, and the
 /// next start finds it taken by something the author cannot see.
 pub fn shut_down(state: &BridgeSupervisor) {
-    if let Some(mut child) = state.child.lock().expect("bridge child lock").take() {
-        let _ = child.kill();
-        let _ = child.wait();
-    }
+    stop_bridge(state);
 }
 
 #[cfg(test)]
@@ -391,6 +505,91 @@ mod tests {
         let error = spawn_bridge(&node, &entry, &state).expect_err("it should refuse");
         assert!(error.contains("OPENAI_API_KEY"), "said: {error}");
         assert!(!state.snapshot().ready);
+    }
+
+    #[test]
+    fn sets_a_commented_template_line_in_place() {
+        // The file the bridge writes is entirely commented out. Appending would
+        // leave `#OPENAI_API_KEY=` above a live value, which reads as two
+        // answers to one question.
+        let template = "# a comment\n#AI_BRIDGE_PROVIDER=openai\n#OPENAI_API_KEY=\n";
+        let out = apply_setting(template, "OPENAI_API_KEY", "sk-real");
+        assert_eq!(out, "# a comment\n#AI_BRIDGE_PROVIDER=openai\nOPENAI_API_KEY=sk-real\n");
+        assert!(!out.contains("#OPENAI_API_KEY"));
+    }
+
+    #[test]
+    fn replaces_a_value_that_is_already_live() {
+        let out = apply_setting("OPENAI_API_KEY=old\nAI_BRIDGE_PORT=8787\n", "OPENAI_API_KEY", "new");
+        assert_eq!(out, "OPENAI_API_KEY=new\nAI_BRIDGE_PORT=8787\n");
+    }
+
+    #[test]
+    fn appends_a_key_the_file_never_mentioned() {
+        let out = apply_setting("AI_BRIDGE_PORT=8787\n", "GEMINI_API_KEY", "g-real");
+        assert_eq!(out, "AI_BRIDGE_PORT=8787\nGEMINI_API_KEY=g-real\n");
+    }
+
+    #[test]
+    fn leaves_a_similarly_named_setting_alone() {
+        // `OPENAI_API_KEY` must not be confused with `OPENAI_API_KEY_BACKUP`.
+        let out = apply_setting("#OPENAI_API_KEY_BACKUP=keep\n", "OPENAI_API_KEY", "sk-real");
+        assert!(out.contains("#OPENAI_API_KEY_BACKUP=keep"));
+        assert!(out.contains("OPENAI_API_KEY=sk-real"));
+    }
+
+    #[test]
+    fn a_refused_start_still_reports_where_the_settings_are() {
+        // That refusal is exactly when the author needs the path: it is what the
+        // panel writes the key into next.
+        let Some((node, entry)) = real_bridge() else {
+            eprintln!("skipped: set VNE_TEST_BRIDGE_ENTRY to a built cli.mjs");
+            return;
+        };
+        let home = std::env::temp_dir().join(format!("vne-bridge-refusal-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::env::set_var("VNE_BRIDGE_HOME", &home);
+        std::env::remove_var("OPENAI_API_KEY");
+        std::env::set_var("AI_BRIDGE_PROVIDER", "openai");
+        std::env::set_var("AI_BRIDGE_PORT", "8873");
+
+        let state = BridgeSupervisor::default();
+        spawn_bridge(&node, &entry, &state).expect_err("no key, so no bridge");
+        let report = state.snapshot();
+        assert!(report.settings_path.is_some(), "no settings path in {report:?}");
+        assert!(std::path::Path::new(report.settings_path.as_ref().unwrap()).exists());
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_key_written_into_that_file_is_what_starts_the_bridge() {
+        // The whole loop the panel drives: refuse, learn the path, write the
+        // key, start. Nothing here needs a window.
+        let Some((node, entry)) = real_bridge() else {
+            eprintln!("skipped: set VNE_TEST_BRIDGE_ENTRY to a built cli.mjs");
+            return;
+        };
+        let home = std::env::temp_dir().join(format!("vne-bridge-loop-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::env::set_var("VNE_BRIDGE_HOME", &home);
+        std::env::remove_var("OPENAI_API_KEY");
+        std::env::set_var("AI_BRIDGE_PROVIDER", "openai");
+        std::env::set_var("AI_BRIDGE_PORT", "8874");
+
+        let state = BridgeSupervisor::default();
+        spawn_bridge(&node, &entry, &state).expect_err("no key yet");
+        let settings = state.snapshot().settings_path.expect("the bridge said where");
+
+        let contents = std::fs::read_to_string(&settings).expect("readable");
+        let updated = apply_setting(&contents, "OPENAI_API_KEY", "sk-test-not-used");
+        write_private(std::path::Path::new(&settings), &updated).expect("writable");
+
+        let after = BridgeSupervisor::default();
+        let report = spawn_bridge(&node, &entry, &after).expect("the key should be enough");
+        assert!(report.ready, "not ready: {report:?}");
+        assert_eq!(report.url.as_deref(), Some("ws://127.0.0.1:8874"));
+        shut_down(&after);
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

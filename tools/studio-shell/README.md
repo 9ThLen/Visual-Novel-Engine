@@ -59,10 +59,17 @@ before shipping an installer to anyone.
 `capabilities/default.json` grants `core:default` and nothing more, and it still
 does now that the studio can start the AI bridge.
 
-`main.rs` registers three commands — start the bridge, ask how it is, stop it —
-and each takes no argument. Nothing the page sends chooses a path, a binary or a
-flag: `src/bridge.rs` resolves `ai-bridge/node.exe` against this application's
-own resource directory, where `scripts/lib/stage-studio.ts` put it.
+`main.rs` registers four commands — start the bridge, ask how it is, stop it, and
+save the author's provider and API key. The first three take no argument at all.
+The fourth takes two **values** and no path: `src/bridge.rs` resolves
+`ai-bridge/node.exe` against this application's own resource directory, where
+`scripts/lib/stage-studio.ts` put it, and writes to the settings file *the bridge
+itself reported*. Nothing the page sends chooses a path, a binary or a flag.
+
+That the bridge reports its own settings path matters more than it looks.
+Deriving it a second time in Rust would be two answers to one question, and it is
+printed even on the start the bridge refuses — which is the start where the
+author needs it, because that refusal is what the key is being typed to fix.
 
 That is deliberately not `tauri-plugin-shell`. A permission to run programs is a
 general one; what is needed is one specific process, so it is spawned with
