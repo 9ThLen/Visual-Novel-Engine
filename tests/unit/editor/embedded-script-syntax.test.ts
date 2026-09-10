@@ -916,6 +916,184 @@ describe('createEmbeddedScript', () => {
     }
   });
 
+  describe('slash command typed inside existing text', () => {
+    function setCaret(node: Node, offset: number) {
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+
+    /** Places the caret, then fires the input event typing a character would. */
+    function typeAt(node: Node, offset: number) {
+      setCaret(node, offset);
+      document.getElementById('editor')!.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    const slashMenu = () => document.getElementById('slashMenu') as HTMLElement;
+
+    function textAround(paragraph: HTMLElement, chip: Element) {
+      const before = document.createRange();
+      before.setStart(paragraph, 0);
+      before.setEndBefore(chip);
+      const after = document.createRange();
+      after.setStartAfter(chip);
+      after.setEnd(paragraph, paragraph.childNodes.length);
+      return [before.toString(), after.toString()];
+    }
+
+    function appendDialogueParagraph(editor: HTMLElement, text: string): HTMLParagraphElement {
+      const paragraph = document.createElement('p');
+      paragraph.dataset.kind = 'dialogue';
+      paragraph.dataset.id = 'dialogue_1';
+      paragraph.dataset.speaker = 'Guide';
+      paragraph.dataset.characterId = 'char_guide';
+      const token = document.createElement('span');
+      token.className = 'speaker-token dialogue-badge';
+      token.contentEditable = 'false';
+      token.dataset.characterId = 'char_guide';
+      token.dataset.blockId = 'dialogue_1';
+      token.textContent = 'Guide:';
+      paragraph.append(token, document.createTextNode(text));
+      editor.appendChild(paragraph);
+      return paragraph;
+    }
+
+    it('opens the menu for a slash typed mid-paragraph, filtered by the text up to the caret', () => {
+      const harness = createSnippetHarness();
+      try {
+        const editor = document.getElementById('editor') as HTMLElement;
+        const paragraph = appendTextParagraph(editor, 'p_mid', 'Hello /back and the rest of the line.');
+        typeAt(paragraph.firstChild!, 'Hello /'.length);
+        expect(slashMenu().classList.contains('hidden')).toBe(false);
+        expect(slashMenu().querySelectorAll('.slash-item').length).toBe(getEmbeddedCommands('en').length);
+
+        typeAt(paragraph.firstChild!, 'Hello /back'.length);
+        expect(slashMenu().querySelector('[data-id="background"]')).not.toBeNull();
+        expect(slashMenu().querySelectorAll('.slash-item').length).toBeLessThan(getEmbeddedCommands('en').length);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it('ignores a slash glued to the preceding word', () => {
+      const harness = createSnippetHarness();
+      try {
+        const editor = document.getElementById('editor') as HTMLElement;
+        const paragraph = appendTextParagraph(editor, 'p_word', 'this and/or that');
+        typeAt(paragraph.firstChild!, 'this and/'.length);
+        expect(slashMenu().classList.contains('hidden')).toBe(true);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it('splits the paragraph around a block inserted mid-paragraph without losing the text after the caret', () => {
+      const harness = createSnippetHarness();
+      try {
+        const editor = document.getElementById('editor') as HTMLElement;
+        const paragraph = appendTextParagraph(editor, 'p_split', 'Welcome to the museum. /bg Legend says more.');
+        typeAt(paragraph.firstChild!, 'Welcome to the museum. /bg'.length);
+        harness.api.insertCommand('background');
+
+        expect(paragraph.textContent).toBe('Welcome to the museum.');
+        const block = paragraph.nextElementSibling as HTMLElement;
+        expect(block.classList.contains('background-block')).toBe(true);
+        const tail = block.nextElementSibling as HTMLElement;
+        expect(tail.tagName).toBe('P');
+        expect(tail.dataset.kind).toBe('text');
+        expect(tail.dataset.id).not.toBe('p_split');
+        expect(tail.textContent).toBe('Legend says more.');
+        expect(tail.contains(window.getSelection()?.anchorNode ?? null)).toBe(true);
+        expect(slashMenu().classList.contains('hidden')).toBe(true);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it('keeps the speaker on both halves of a split dialogue line', () => {
+      const harness = createSnippetHarness();
+      try {
+        const editor = document.getElementById('editor') as HTMLElement;
+        const paragraph = appendDialogueParagraph(editor, ' Welcome. / Legend says.');
+        typeAt(paragraph.lastChild!, ' Welcome. /'.length);
+        harness.api.insertCommand('label');
+
+        expect(paragraph.dataset.id).toBe('dialogue_1');
+        expect(paragraph.textContent).toBe('Guide: Welcome.');
+        const tail = (paragraph.nextElementSibling as HTMLElement).nextElementSibling as HTMLElement;
+        expect(tail.dataset.kind).toBe('dialogue');
+        expect(tail.dataset.characterId).toBe('char_guide');
+        expect(tail.dataset.id).not.toBe('dialogue_1');
+        const tailToken = tail.querySelector('.speaker-token') as HTMLElement;
+        expect(tailToken.dataset.blockId).toBe(tail.dataset.id);
+        expect(tail.textContent).toBe('Guide: Legend says.');
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it('puts a block typed at the very start of a line above that line', () => {
+      const harness = createSnippetHarness();
+      try {
+        const editor = document.getElementById('editor') as HTMLElement;
+        const paragraph = appendTextParagraph(editor, 'p_start', '/Legend says.');
+        typeAt(paragraph.firstChild!, 1);
+        harness.api.insertCommand('label');
+
+        expect(paragraph.previousElementSibling?.classList.contains('label-block')).toBe(true);
+        expect(paragraph.dataset.id).toBe('p_start');
+        expect(paragraph.textContent).toBe('Legend says.');
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it('drops an inline chip exactly where the slash was typed', () => {
+      const harness = createSnippetHarness();
+      try {
+        const editor = document.getElementById('editor') as HTMLElement;
+        const paragraph = appendTextParagraph(editor, 'p_chip', 'Hello / world');
+        typeAt(paragraph.firstChild!, 'Hello /'.length);
+        harness.api.insertCommand('effect');
+
+        const chip = paragraph.querySelector('.effect-chip') as HTMLElement;
+        expect(chip).not.toBeNull();
+        expect(textAround(paragraph, chip)).toEqual(['Hello ', ' world']);
+      } finally {
+        harness.cleanup();
+      }
+    });
+
+    it('closes the menu once the caret leaves the slash token', () => {
+      const harness = createSnippetHarness();
+      // The selectionchange listener also reports bold/italic state, which jsdom cannot answer.
+      const doc = document as unknown as Record<string, unknown>;
+      const originalQueryCommandState = doc.queryCommandState;
+      const originalQueryCommandValue = doc.queryCommandValue;
+      doc.queryCommandState = () => false;
+      doc.queryCommandValue = () => '';
+      try {
+        const editor = document.getElementById('editor') as HTMLElement;
+        editor.tabIndex = 0;
+        editor.focus();
+        const paragraph = appendTextParagraph(editor, 'p_leave', 'Hello / world');
+        typeAt(paragraph.firstChild!, 'Hello /'.length);
+        expect(slashMenu().classList.contains('hidden')).toBe(false);
+
+        setCaret(paragraph.firstChild!, 'Hello / wor'.length);
+        document.dispatchEvent(new Event('selectionchange'));
+        expect(slashMenu().classList.contains('hidden')).toBe(true);
+      } finally {
+        doc.queryCommandState = originalQueryCommandState;
+        doc.queryCommandValue = originalQueryCommandValue;
+        harness.cleanup();
+      }
+    });
+  });
+
   it('inserts a /video block that serializes back into a real video step', () => {
     const harness = createVoidBlockHarness();
     try {

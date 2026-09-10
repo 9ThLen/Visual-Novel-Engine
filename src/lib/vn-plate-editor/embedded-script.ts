@@ -24,6 +24,8 @@ const EMBEDDED_SCRIPT_BODY = `
     var HISTORY_LIMIT = 100;
     var HISTORY_GROUP_MS = 1200;
     var menu = document.getElementById('slashMenu');
+    // Scopes the phone-only bottom-sheet menu styles (see isCompactViewport).
+    if (payload.isPhone) document.documentElement.classList.add('is-phone');
     var saveTimer = 0;
     var resizeTimer = 0;
     var activeSlash = null;
@@ -4665,21 +4667,42 @@ const EMBEDDED_SCRIPT_BODY = `
       editor.focus();
     }
 
+    // The slash token is the "/query" run that ends at the caret, not the tail of
+    // the whole line — otherwise a "/" typed mid-paragraph takes the rest of the
+    // paragraph as its query, matches nothing and the menu never opens.
+    function slashTokenAtCaret(selection) {
+      if (!selection || !selection.rangeCount || !selection.isCollapsed) return null;
+      var node = selection.anchorNode;
+      var offset = selection.anchorOffset;
+      if (node && node.nodeType === Node.ELEMENT_NODE && offset > 0) {
+        var previousChild = node.childNodes[offset - 1];
+        if (previousChild && previousChild.nodeType === Node.TEXT_NODE) {
+          node = previousChild;
+          offset = (previousChild.textContent || '').length;
+        }
+      }
+      if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+      var beforeCaret = (node.textContent || '').slice(0, offset);
+      var slash = beforeCaret.lastIndexOf('/');
+      if (slash < 0) return null;
+      var previousText = node.previousSibling && node.previousSibling.nodeType === Node.TEXT_NODE
+        ? node.previousSibling.textContent || ''
+        : '';
+      var charBefore = slash > 0 ? beforeCaret.charAt(slash - 1) : previousText.slice(-1);
+      if (/\\S/.test(charBefore)) return null;
+      return { node: node, start: slash, end: offset, query: beforeCaret.slice(slash + 1) };
+    }
+
     function currentSlashQuery() {
       var selection = window.getSelection();
       if (!selection || !selection.rangeCount) return null;
-      var range = selection.getRangeAt(0);
       var p = nearestEditableLine();
       if (!p) return null;
-      var text = textOf(p);
-      var offsetText = text;
-      var slash = offsetText.lastIndexOf('/');
-      if (slash < 0) return null;
-      var beforeSlash = offsetText.slice(0, slash);
-      if (/\\S$/.test(beforeSlash)) return null;
-      var query = offsetText.slice(slash + 1);
-      var rect = range.getBoundingClientRect();
-      return { paragraph: p, query: query, rect: rect };
+      var token = slashTokenAtCaret(selection);
+      if (!token || !p.contains(token.node)) return null;
+      var range = selection.getRangeAt(0);
+      var rect = typeof range.getBoundingClientRect === 'function' ? range.getBoundingClientRect() : null;
+      return { paragraph: p, query: token.query, rect: rect, token: token };
     }
 
     function commandMatches(command, query) {
@@ -4695,7 +4718,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function isCompactViewport() {
-      return window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
+      return Boolean(payload.isPhone) && Boolean(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
     }
 
     function positionSlashMenu(state) {
@@ -4780,7 +4803,22 @@ const EMBEDDED_SCRIPT_BODY = `
       scheduleResize();
     }
 
-    function removeSlashToken(p) {
+    // Deletes exactly the "/query" run and splits its text node there, so the
+    // returned anchor ends where the command was typed and whatever followed the
+    // caret survives as the anchor's next sibling.
+    function removeSlashToken(p, token) {
+      var tokenNode = token && token.node;
+      if (tokenNode && tokenNode.parentNode && p.contains(tokenNode) && (tokenNode.textContent || '').charAt(token.start) === '/') {
+        var value = tokenNode.textContent || '';
+        var start = token.start;
+        var end = Math.min(Math.max(token.end, start + 1), value.length);
+        // "a /bg b" drops the separator along with the token instead of leaving a double space.
+        if (start > 0 && end < value.length && /\\s/.test(value.charAt(start - 1)) && /\\s/.test(value.charAt(end))) start -= 1;
+        tokenNode.deleteData(start, end - start);
+        if (start < (tokenNode.textContent || '').length) tokenNode.splitText(start);
+        else tokenNode.textContent = (tokenNode.textContent || '').trimEnd();
+        return tokenNode;
+      }
       var children = Array.prototype.slice.call(p.childNodes).reverse();
       for (var index = 0; index < children.length; index += 1) {
         var child = children[index];
@@ -4797,24 +4835,17 @@ const EMBEDDED_SCRIPT_BODY = `
       return null;
     }
 
-    function insertEffectChipInParagraph(p, anchorNode) {
-      var chip = createEffectChip({
-        effectType: 'rain',
-        target: 'screen',
-        intensity: 50,
-        duration: 8,
-        durationMode: 'scene',
-        fadeIn: 0,
-        fadeOut: 0
-      });
-      var spacer = document.createTextNode(' ');
+    function placeInlineChip(p, anchorNode, chip) {
       var reference = anchorNode && anchorNode.parentNode === p ? anchorNode.nextSibling : null;
       var needsLeadingSpace = anchorNode && anchorNode.textContent && !/\\s$/.test(anchorNode.textContent);
       if (needsLeadingSpace) p.insertBefore(document.createTextNode(' '), reference);
       p.insertBefore(chip, reference);
-      p.insertBefore(spacer, reference);
+      // Text that continues after the chip already opens with a space; reuse it.
+      var spacer = reference && reference.nodeType === Node.TEXT_NODE && /^\\s/.test(reference.textContent || '')
+        ? reference
+        : p.insertBefore(document.createTextNode(' '), reference);
       var range = document.createRange();
-      range.setStart(spacer, spacer.textContent.length);
+      range.setStart(spacer, 1);
       range.collapse(true);
       var selection = window.getSelection();
       selection.removeAllRanges();
@@ -4823,22 +4854,82 @@ const EMBEDDED_SCRIPT_BODY = `
       return chip;
     }
 
+    function insertEffectChipInParagraph(p, anchorNode) {
+      return placeInlineChip(p, anchorNode, createEffectChip({
+        effectType: 'rain',
+        target: 'screen',
+        intensity: 50,
+        duration: 8,
+        durationMode: 'scene',
+        fadeIn: 0,
+        fadeOut: 0
+      }));
+    }
+
     function insertAudioChipInParagraph(p, anchorNode, kind) {
-      var chip = createAudioChip(kind === 'sound' ? 'sound' : 'music');
-      var spacer = document.createTextNode(' ');
-      var reference = anchorNode && anchorNode.parentNode === p ? anchorNode.nextSibling : null;
-      var needsLeadingSpace = anchorNode && anchorNode.textContent && !/\\s$/.test(anchorNode.textContent);
-      if (needsLeadingSpace) p.insertBefore(document.createTextNode(' '), reference);
-      p.insertBefore(chip, reference);
-      p.insertBefore(spacer, reference);
-      var range = document.createRange();
-      range.setStart(spacer, spacer.textContent.length);
-      range.collapse(true);
+      return placeInlineChip(p, anchorNode, createAudioChip(kind === 'sound' ? 'sound' : 'music'));
+    }
+
+    function lineHasContent(node) {
+      var clone = node.cloneNode(true);
+      Array.prototype.slice.call(clone.querySelectorAll('.speaker-token')).forEach(function(item) { item.remove(); });
+      return Boolean((clone.textContent || '').trim()) || Boolean(clone.querySelector(inlineChipSelector()));
+    }
+
+    // A block typed mid-line splits the line around the removed slash token: text
+    // before the caret stays above the block, text after it moves below. A line
+    // with nothing after the caret keeps the old shape (block + fresh empty line).
+    function placeBlockAtSlash(p, anchorNode, block) {
+      var afterRange = null;
+      if (anchorNode && anchorNode.parentNode && p.contains(anchorNode)) {
+        afterRange = document.createRange();
+        afterRange.setStartAfter(anchorNode);
+        afterRange.setEnd(p, p.childNodes.length);
+      }
+      if (!afterRange || !lineHasContent(afterRange.cloneContents())) {
+        p.insertAdjacentElement('afterend', block);
+        var next = document.createElement('p');
+        next.dataset.kind = 'text';
+        next.dataset.id = uid('doc_text');
+        next.appendChild(document.createElement('br'));
+        block.insertAdjacentElement('afterend', next);
+        moveCaretToEnd(next);
+        return;
+      }
+      var beforeRange = document.createRange();
+      beforeRange.setStart(p, 0);
+      beforeRange.setEndAfter(anchorNode);
+      var caret = document.createRange();
+      if (!lineHasContent(beforeRange.cloneContents())) {
+        p.insertAdjacentElement('beforebegin', block);
+        caret.setStartAfter(anchorNode);
+      } else {
+        var tail = p.cloneNode(false);
+        tail.dataset.id = uid(p.dataset.kind === 'dialogue' ? 'doc_dialogue' : 'doc_text');
+        delete tail.dataset.openCharacterControls;
+        var headToken = p.dataset.kind === 'dialogue' ? p.querySelector('.speaker-token') : null;
+        if (headToken) {
+          // The speaker keeps talking after the block, so the tail stays their line.
+          var tailToken = headToken.cloneNode(true);
+          tailToken.dataset.blockId = tail.dataset.id;
+          tail.appendChild(tailToken);
+          tail.appendChild(document.createTextNode(' '));
+        }
+        var rest = afterRange.extractContents();
+        var firstText = document.createTreeWalker(rest, NodeFilter.SHOW_TEXT).nextNode();
+        if (firstText) firstText.textContent = (firstText.textContent || '').replace(/^\\s+/, '');
+        var firstRestNode = rest.firstChild;
+        tail.appendChild(rest);
+        if (anchorNode.nodeType === Node.TEXT_NODE) anchorNode.textContent = (anchorNode.textContent || '').trimEnd();
+        p.insertAdjacentElement('afterend', block);
+        block.insertAdjacentElement('afterend', tail);
+        if (firstText) caret.setStart(firstText, 0);
+        else caret.setStartBefore(firstRestNode);
+      }
+      caret.collapse(true);
       var selection = window.getSelection();
       selection.removeAllRanges();
-      selection.addRange(range);
-      editor.focus();
-      return chip;
+      selection.addRange(caret);
     }
 
     function selectedInlineChip() {
@@ -4954,16 +5045,18 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function insertCommand(commandId) {
-      var p = activeSlash && activeSlash.paragraph ? activeSlash.paragraph : nearestEditableLine();
+      var slashState = activeSlash || currentSlashQuery();
+      var p = slashState && slashState.paragraph ? slashState.paragraph : nearestEditableLine();
       if (!p) return;
+      var slashToken = slashState ? slashState.token : null;
       if (commandId === 'newScene') {
-        removeSlashToken(p);
+        removeSlashToken(p, slashToken);
         closeSlashMenu();
         post({ type: 'createNextScene', scene: buildScenePayload(), characters: characters });
         return;
       }
       if (commandId === 'character') {
-        removeSlashToken(p);
+        removeSlashToken(p, slashToken);
         createDialogueBlockFromCharacterName(p, 'Character', textOf(p), { forceOpenControls: true, focusName: true });
         closeSlashMenu();
         scheduleResize();
@@ -4971,7 +5064,7 @@ const EMBEDDED_SCRIPT_BODY = `
         return;
       }
       if (commandId === 'effect') {
-        var slashAnchor = removeSlashToken(p);
+        var slashAnchor = removeSlashToken(p, slashToken);
         insertEffectChipInParagraph(p, slashAnchor);
         closeSlashMenu();
         scheduleResize();
@@ -4979,7 +5072,7 @@ const EMBEDDED_SCRIPT_BODY = `
         return;
       }
       if (commandId === 'music' || commandId === 'sound') {
-        var audioSlashAnchor = removeSlashToken(p);
+        var audioSlashAnchor = removeSlashToken(p, slashToken);
         insertAudioChipInParagraph(p, audioSlashAnchor, commandId);
         closeSlashMenu();
         scheduleResize();
@@ -4987,27 +5080,21 @@ const EMBEDDED_SCRIPT_BODY = `
         return;
       }
       if (commandId === 'choiceTwoBranches') {
-        removeSlashToken(p);
+        var choiceSlashAnchor = removeSlashToken(p, slashToken);
         var choiceSnippetBlock = document.createElement('div');
         choiceSnippetBlock.className = 'void-block choice-block';
         choiceSnippetBlock.contentEditable = 'false';
         choiceSnippetBlock.dataset.kind = 'choice';
         choiceSnippetBlock.dataset.id = uid('doc_choice');
         renderChoiceBlockContent(choiceSnippetBlock);
-        p.insertAdjacentElement('afterend', choiceSnippetBlock);
-        var afterChoiceSnippet = document.createElement('p');
-        afterChoiceSnippet.dataset.kind = 'text';
-        afterChoiceSnippet.dataset.id = uid('doc_text');
-        afterChoiceSnippet.appendChild(document.createElement('br'));
-        choiceSnippetBlock.insertAdjacentElement('afterend', afterChoiceSnippet);
+        placeBlockAtSlash(p, choiceSlashAnchor, choiceSnippetBlock);
         closeSlashMenu();
-        moveCaretToEnd(afterChoiceSnippet);
         scheduleResize();
         saveNow();
         return;
       }
       if (commandId === 'sceneEnding') {
-        removeSlashToken(p);
+        var endingSlashAnchor = removeSlashToken(p, slashToken);
         var endingSnippetBlock = document.createElement('div');
         endingSnippetBlock.className = 'void-block transition-block';
         endingSnippetBlock.contentEditable = 'false';
@@ -5020,19 +5107,13 @@ const EMBEDDED_SCRIPT_BODY = `
           transitionType: 'fade',
           duration: 0.5
         });
-        p.insertAdjacentElement('afterend', endingSnippetBlock);
-        var afterEndingSnippet = document.createElement('p');
-        afterEndingSnippet.dataset.kind = 'text';
-        afterEndingSnippet.dataset.id = uid('doc_text');
-        afterEndingSnippet.appendChild(document.createElement('br'));
-        endingSnippetBlock.insertAdjacentElement('afterend', afterEndingSnippet);
+        placeBlockAtSlash(p, endingSlashAnchor, endingSnippetBlock);
         closeSlashMenu();
-        moveCaretToEnd(afterEndingSnippet);
         scheduleResize();
         saveNow();
         return;
       }
-      removeSlashToken(p);
+      var blockSlashAnchor = removeSlashToken(p, slashToken);
       var block = document.createElement('div');
       block.className = commandId === 'background' ? 'void-block background-block'
         : commandId === 'transition' ? 'void-block transition-block'
@@ -5082,14 +5163,8 @@ const EMBEDDED_SCRIPT_BODY = `
       } else {
         block.innerHTML = '<div class="void-title">/' + commandId + '</div><div class="void-summary">New block</div>';
       }
-      p.insertAdjacentElement('afterend', block);
-      var next = document.createElement('p');
-      next.dataset.kind = 'text';
-      next.dataset.id = uid('doc_text');
-      next.appendChild(document.createElement('br'));
-      block.insertAdjacentElement('afterend', next);
+      placeBlockAtSlash(p, blockSlashAnchor, block);
       closeSlashMenu();
-      moveCaretToEnd(next);
       scheduleResize();
       if (commandId !== 'interactive_object') saveNow();
       if (commandId === 'interactive_object') openInteractiveObjectPopover(block);
@@ -6213,9 +6288,11 @@ const EMBEDDED_SCRIPT_BODY = `
     document.addEventListener('selectionchange', function() {
       rememberFormatSelection();
       postFormatState();
-      if (document.activeElement !== editor) return;
+      if (document.activeElement !== editor || !activeSlash) return;
+      // Typing opens the menu; moving the caret only follows or dismisses it.
       var slash = currentSlashQuery();
       if (slash) renderSlashMenu(slash);
+      else closeSlashMenu();
     });
 
     ensureParagraph();
