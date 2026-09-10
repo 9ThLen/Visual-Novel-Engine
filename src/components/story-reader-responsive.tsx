@@ -31,7 +31,7 @@ import type { CharacterRuntimeState, RuntimeVariables, SceneState } from '@/lib/
 import type { Character } from '@/lib/character-types';
 import type { ReaderTransitionEvent } from '@/lib/reader-runtime';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
-import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
+import { getResponsiveFontSize } from '@/lib/responsive';
 import { DialogueHistory } from './dialogue-history';
 import { ReaderControls } from './reader/ReaderControls';
 import { ReaderDisplay } from './reader/ReaderDisplay';
@@ -130,7 +130,6 @@ export function StoryReaderResponsive({
 }: Props) {
   const { t } = useI18n();
   const dims = useWindowDimensions();
-  const layout = getReaderLayout(dims);
   const fontSize = getResponsiveFontSize(dims);
   const firstTimelineStepId = timeline?.[0]?.id;
   const currentStoryId = useAppStore((state) => state.currentStoryId);
@@ -479,7 +478,6 @@ export function StoryReaderResponsive({
         isLoading={isLoading}
         onTap={handleDisplayTap}
         onSelectChoice={handleSelectChoice}
-        paddingBottom={layout.dialoguePosition === 'bottom' ? layout.dialogueHeight - 20 : 0}
         pagesLength={pages.length}
         pageIndex={pageIndex}
         readerControls={readerControls}

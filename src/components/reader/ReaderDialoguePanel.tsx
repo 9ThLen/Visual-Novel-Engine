@@ -17,8 +17,18 @@ import { RichText } from "@/components/RichText";
 import { ReaderChoices } from "@/components/reader/ReaderChoices";
 import type { StoryReaderLayoutPreset } from "@/lib/story-theme";
 import { stripRichText } from "@/lib/rich-text";
-
-const DIALOGUE_MARGIN_BOTTOM = 28;
+import {
+  CONTROLS_ROW_PADDING_BOTTOM,
+  CONTROLS_ROW_PADDING_TOP,
+  DENSE_CONTROLS_ROW_PADDING_BOTTOM,
+  DENSE_DIALOGUE_MARGIN_BOTTOM,
+  DENSE_DIALOGUE_PANEL_PADDING,
+  DIALOGUE_MARGIN_BOTTOM,
+  DIALOGUE_MIN_LINES,
+  DIALOGUE_PANEL_PADDING,
+  SPEAKER_ROW_MIN_HEIGHT,
+  isDenseReaderLayout,
+} from "@/lib/reader-stage";
 
 interface ReaderDialoguePanelProps {
   colors: ReturnType<typeof useColors>;
@@ -70,7 +80,10 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
     pageIndex,
     layoutPreset = "classic",
   } = visible ? props : lastContent.current;
-  const dense = layoutPreset !== "classic";
+  // The same measurements decide how much of the stage the characters give up
+  // to this panel, so they live in `reader-stage` and are read from there.
+  const dense = isDenseReaderLayout(layoutPreset);
+  const panelPadding = dense ? DENSE_DIALOGUE_PANEL_PADDING : DIALOGUE_PANEL_PADDING;
   const { height: windowHeight } = useWindowDimensions();
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   /** 1 while open, 0 while collapsed; only ever constrains a closing panel. */
@@ -122,7 +135,7 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
   return (
     <View
       testID={`reader-dialogue-${layoutPreset}`}
-      style={{ marginBottom: dense ? 12 : DIALOGUE_MARGIN_BOTTOM }}
+      style={{ marginBottom: dense ? DENSE_DIALOGUE_MARGIN_BOTTOM : DIALOGUE_MARGIN_BOTTOM }}
     >
       <ScrollView
         testID="reader-dialogue-scroll"
@@ -154,7 +167,7 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
             setContentHeight(Math.ceil(event.nativeEvent.layout.height));
           }}
         >
-        <View style={{ minHeight: 28 }}>
+        <View style={{ minHeight: SPEAKER_ROW_MIN_HEIGHT }}>
           {speaker ? (
             <View
               className="self-start px-3.5 py-1 rounded-br-lg rounded-tl-xl"
@@ -172,8 +185,8 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
 
         <Pressable
           style={{
-            padding: dense ? 12 : 16,
-            minHeight: lineHeight * 3 + (dense ? 24 : 32),
+            padding: panelPadding,
+            minHeight: lineHeight * DIALOGUE_MIN_LINES + panelPadding * 2,
           }}
           onPress={onTap}
           accessible={false}
@@ -220,8 +233,9 @@ export const ReaderDialoguePanel = React.memo(function ReaderDialoguePanel(
       <View
         testID="reader-controls-row"
         style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center",
-          justifyContent: "flex-end", gap: 8, paddingHorizontal: dense ? 12 : 16,
-          paddingBottom: dense ? 8 : 12, paddingTop: 4 }}
+          justifyContent: "flex-end", gap: 8, paddingHorizontal: panelPadding,
+          paddingBottom: dense ? DENSE_CONTROLS_ROW_PADDING_BOTTOM : CONTROLS_ROW_PADDING_BOTTOM,
+          paddingTop: CONTROLS_ROW_PADDING_TOP }}
       >
         {false && pagesLength > 1 ? (
           <View className="flex-row gap-1">

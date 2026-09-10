@@ -1,6 +1,8 @@
 import React from 'react';
 import { Image, Animated, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { characterPositionCenterFraction } from '@/lib/character-position';
+import { getCharacterSpriteSize } from '@/lib/character-layout';
+import { useSpriteAspectRatio } from '@/hooks/use-sprite-aspect-ratio';
 import type { AnimatedCharacterInstance } from '@/lib/character-animator';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 
@@ -12,6 +14,12 @@ interface Props {
   dimmed?: boolean;
   focusScale?: number;
   overlay?: React.ReactNode;
+  /** Stage the sprite stands on. Falls back to the window when unmeasured. */
+  stageWidth?: number;
+  /** Stage height with the dialogue panel already subtracted. */
+  stageHeight?: number;
+  /** Characters sharing the stage; decides how much width each may claim. */
+  characterCount?: number;
 }
 
 function positionPercent(position: Props['position']): `${number}%` {
@@ -26,9 +34,18 @@ export const CharacterDisplay = React.memo(function CharacterDisplay({
   dimmed = false,
   focusScale = 1.04,
   overlay,
+  stageWidth,
+  stageHeight,
+  characterCount = 1,
 }: Props) {
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const charWidth = screenWidth * 0.35;
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const aspectRatio = useSpriteAspectRatio(spriteUri);
+  const { width: charWidth, height: charHeight } = getCharacterSpriteSize({
+    stageWidth: stageWidth ?? windowWidth,
+    stageHeight: stageHeight ?? windowHeight,
+    aspectRatio,
+    characterCount,
+  });
   const activeScale = isActiveSpeaker ? focusScale : 1;
 
   return (
@@ -38,6 +55,7 @@ export const CharacterDisplay = React.memo(function CharacterDisplay({
         bottom: 0,
         left: positionPercent(position || instance.position),
         width: charWidth,
+        height: charHeight,
         opacity: dimmed
           ? Animated.multiply(instance.animatedOpacity, 0.58)
           : instance.animatedOpacity,
@@ -56,19 +74,10 @@ export const CharacterDisplay = React.memo(function CharacterDisplay({
       {spriteUri ? (
         <Image
           source={{ uri: spriteUri }}
-          style={{ width: '100%', aspectRatio: 9 / 16, maxHeight: screenHeight * 0.65 }}
+          style={StyleSheet.absoluteFillObject}
           resizeMode="contain"
         />
-      ) : (
-        <View
-          style={{
-            width: '100%',
-            aspectRatio: 9 / 16,
-            maxHeight: screenHeight * 0.65,
-            backgroundColor: 'transparent',
-          }}
-        />
-      )}
+      ) : null}
       {overlay ? <View style={[StyleSheet.absoluteFillObject, { overflow: 'hidden' }]}>{overlay}</View> : null}
     </Animated.View>
   );

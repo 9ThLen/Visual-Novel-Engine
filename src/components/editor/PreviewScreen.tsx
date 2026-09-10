@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, useWindowDimensions, View, Text, Pressable } from 'react-native';
+import { StyleSheet, useWindowDimensions, View, Text, Pressable, type LayoutChangeEvent } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -244,7 +244,18 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
   const shakeOffset = useShakeOffset(screenEffects);
   // Preview and reader share the camera hook so a preset previewed here moves
   // exactly the way it will for the reader.
-  const { width: previewWidth } = useWindowDimensions();
+  const { width: previewWidth, height: previewWindowHeight } = useWindowDimensions();
+  // The preview stage is a panel, not the window, so sprites are sized against
+  // the area they are actually drawn in. The window is the fallback until the
+  // layer reports its own size.
+  const [stage, setStage] = useState<{ width: number; height: number } | null>(null);
+  const handleStageLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    if (width <= 0 || height <= 0) return;
+    setStage((current) => (current && current.width === width && current.height === height
+      ? current
+      : { width, height }));
+  }, []);
   const cameraValues = useCameraTransform(camera, sceneState.characters, previewWidth);
   const cameraTransform = {
     transform: [
@@ -299,7 +310,11 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
           <EffectsLayerStack effects={backgroundEffects} colors={colors} target="background" />
         ) : null}
 
-        <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, cameraTransform]}>
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFillObject, cameraTransform]}
+          onLayout={handleStageLayout}
+        >
           {characterInstances.map((instance) => {
             const characterSpecificEffects = effectsForCharacter(characterEffects, instance.characterId);
             return (
@@ -314,6 +329,9 @@ const surfaceContainer = colors['surface-container'] || colors.surface;
                   && sceneState.activeSpeakerCharacterId !== instance.characterId
                 }
                 focusScale={sceneState.activeSpeakerFocusScale}
+                stageWidth={stage?.width ?? previewWidth}
+                stageHeight={stage?.height ?? previewWindowHeight}
+                characterCount={characterInstances.length}
                 overlay={characterSpecificEffects.length > 0 ? (
                   <EffectsLayerStack effects={characterSpecificEffects} colors={colors} target="character" />
                 ) : null}

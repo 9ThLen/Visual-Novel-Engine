@@ -20,7 +20,6 @@ const baseProps = {
   isLoading: false,
   onTap: vi.fn(),
   onSelectChoice: vi.fn(),
-  paddingBottom: 24,
   pagesLength: 1,
   pageIndex: 0,
   readerControls: <ReaderControlsStub />,
