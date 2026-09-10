@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { beginOutPath } from '../../tools/lib/out-path';
+import { TAURI_IPC_ORIGINS, relaxCspForDesktopStudio } from './harden-web-output.mjs';
 
 import { readInlinedPlayerConfig } from '@/lib/release/player-bundle';
 import { PLAYER_SHELL_DESCRIPTOR_PATH, parsePlayerShellDescriptor } from '@/lib/release/shell';
@@ -224,6 +225,10 @@ export function stageStudioProject(input: StageStudioInput): StagedStudioProject
     const workFrontendDir = path.join(workDir, FRONTEND_DIR_NAME);
     fs.cpSync(bundleDir, workFrontendDir, { recursive: true });
 
+    // Only this copy. `build:web` writes one bundle that the web channel and the
+    // player use unchanged, and neither of them has a Tauri IPC to reach.
+    relaxCspForDesktopStudio(path.join(workFrontendDir, 'index.html'));
+
     const workSrcTauriDir = path.join(workDir, 'src-tauri');
     const workConfigFile = path.join(workSrcTauriDir, 'tauri.conf.json');
     const targets = input.targets && input.targets.length > 0 ? [...input.targets] : undefined;
@@ -351,6 +356,14 @@ export function verifyStagedStudioProject(outDir: string): string[] {
     problems.push(`frontendDist "${config.build.frontendDist}" has no index.html.`);
   } else {
     const html = fs.readFileSync(indexFile, 'utf8');
+    for (const origin of TAURI_IPC_ORIGINS) {
+      // Without it Tauri's IPC is refused and silently falls back to
+      // postMessage. Nothing depends on IPC yet, so this would go unnoticed
+      // until the first thing that does.
+      if (!html.includes(origin)) {
+        problems.push(`The staged index.html does not allow ${origin}: the window's IPC would be blocked.`);
+      }
+    }
     if (readInlinedPlayerConfig(html)) {
       problems.push('The staged index.html carries a player config: this is a story, not the studio.');
     }

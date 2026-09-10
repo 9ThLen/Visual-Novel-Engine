@@ -114,8 +114,11 @@ Node runtime (`pnpm ai-bridge:build` emits `cli.mjs`, which is not an
 executable), `tauri-plugin-shell` scoped to that one binary, and a session token
 handed to the window rather than copied by the author.
 
-One thing to know before starting it: the CSP written by
-`scripts/lib/harden-web-output.mjs` allows `ws:` — so the bridge connection
-passes — but not `http://ipc.localhost`, so Tauri's IPC falls back to
-postMessage. Nothing registers a command today, so nothing breaks; the sidecar
-would be the first thing to depend on it.
+Tauri's IPC is now reachable from the window. The CSP written by
+`scripts/lib/harden-web-output.mjs` allowed `ws:` — so the bridge connection
+always passed — but not `http://ipc.localhost`, so IPC was refused and fell back
+to postMessage. Staging relaxes that one directive **in the studio's copy only**,
+because `build:web` writes one bundle that the web channel and the player also
+use, and neither of them has a Tauri to talk to.
+`verifyStagedStudioProject` fails a build whose page lost it, since nothing
+depends on IPC yet and the loss would otherwise surface much later.

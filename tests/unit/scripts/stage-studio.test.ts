@@ -10,6 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import { TAURI_IPC_ORIGINS, WEB_CSP } from '../../../scripts/lib/harden-web-output.mjs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -30,7 +31,15 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 const TEMPLATE_DIR = path.join(REPO_ROOT, 'tools', 'studio-shell');
 const SRC_TAURI = path.join(TEMPLATE_DIR, 'src-tauri');
 
-const SHELL_HTML = '<html><head><title>x</title></head><body><div id="root"></div></body></html>';
+/**
+ * Shaped like what `build:web` actually writes: hardened, CSP tag and all.
+ *
+ * Staging relaxes that tag for the desktop window, so a fixture without one
+ * exercises a path no real bundle takes.
+ */
+const SHELL_HTML = '<html><head><title>x</title>'
+  + `<meta data-vne-web-security http-equiv="Content-Security-Policy" content="${WEB_CSP}">`
+  + '</head><body><div id="root"></div></body></html>';
 
 function tempDir(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `vne-${name}-`));
@@ -241,6 +250,43 @@ describe('staging the studio', () => {
     expect(config.version).toBe('1.4.0');
     expect(fs.readFileSync(path.join(staged.srcTauriDir, 'Cargo.toml'), 'utf8'))
       .toContain('version = "1.4.0"');
+  });
+
+  it('relaxes the CSP for the window, and only in the copy it staged', () => {
+    // Tauri serves its IPC from http://ipc.localhost, which the web policy does
+    // not allow, so IPC is refused and silently falls back to postMessage.
+    // Nothing registers a command yet — the first thing that does would be the
+    // first to find out.
+    bundle = writeStudioBundle(tempDir('studio'));
+    out = path.join(tempDir('out'), 'project');
+
+    const staged = stage(bundle, out);
+
+    const stagedHtml = fs.readFileSync(path.join(staged.frontendDir, 'index.html'), 'utf8');
+    const sourceHtml = fs.readFileSync(path.join(bundle, 'index.html'), 'utf8');
+    for (const origin of TAURI_IPC_ORIGINS) {
+      expect(stagedHtml).toContain(origin);
+      // The bundle feeds the web channel and the player too, and neither has a
+      // Tauri to talk to.
+      expect(sourceHtml).not.toContain(origin);
+    }
+    expect(verifyStagedStudioProject(out)).toEqual([]);
+  });
+
+  it('fails verification when the staged page lost that relaxation', () => {
+    bundle = writeStudioBundle(tempDir('studio'));
+    out = path.join(tempDir('out'), 'project');
+    const staged = stage(bundle, out);
+
+    const indexFile = path.join(staged.frontendDir, 'index.html');
+    fs.writeFileSync(
+      indexFile,
+      fs.readFileSync(indexFile, 'utf8').replace(new RegExp(` ${TAURI_IPC_ORIGINS[0]}`, 'g'), ''),
+    );
+
+    expect(verifyStagedStudioProject(out)).toEqual([
+      expect.stringContaining(TAURI_IPC_ORIGINS[0]),
+    ]);
   });
 
   it('puts the build where the config says the frontend is', () => {
