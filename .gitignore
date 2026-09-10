@@ -125,3 +125,4 @@ docs/technical/final-migration-audit.md
 /AGENTS.md
 /.graphifyignore
 /.publish-docs/
+/.review-pr*/

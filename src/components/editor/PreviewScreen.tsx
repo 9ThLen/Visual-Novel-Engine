@@ -269,11 +269,23 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: 8, gap: 8 }}>
-        <Pressable onPress={handleBack} accessibilityRole="button" accessibilityLabel={t('menu.back')} style={{ alignSelf: 'flex-start', padding: 8 }}>
-          <Text style={{ color: colors.foreground }}>{t('menu.back')}</Text>
+      {/* paddingRight keeps the row clear of PreviewInspector's floating toggle. */}
+      <View style={{
+        paddingTop: insets.top + 8,
+        paddingLeft: 16,
+        paddingRight: 64,
+        paddingBottom: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+      }}>
+        <Pressable testID="full-preview-back" onPress={handleBack} style={{ padding: 8, borderRadius: 8, backgroundColor: surfaceContainer, flexDirection: 'row', alignItems: 'center', gap: 6 }} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
+          <IconSymbol name="arrow.left" size={14} color={colors.foreground} />
+          <Text style={{ color: colors.foreground, fontSize: 14 }}>{t('menu.back')}</Text>
         </Pressable>
-        <DevicePreviewSwitch colors={colors} device={device} onSelect={setDevice} />
+        <View style={{ flex: 1 }}>
+          <DevicePreviewSwitch colors={colors} device={device} onSelect={setDevice} />
+        </View>
       </View>
       <View
         testID="full-preview-stage"
