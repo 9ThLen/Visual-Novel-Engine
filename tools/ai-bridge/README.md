@@ -164,10 +164,21 @@ anyone can follow when there is no file and the directory is one they have never
 opened. Every line in it is commented out, so it changes nothing until a person
 edits it, and an existing file is never touched.
 
-Both files are written `0o600`, which POSIX honours. Windows ignores the mode and
-they instead inherit the ACL of the per-user directory containing them —
-protection that is worth verifying on a real machine rather than assuming. The
-settings file matters at least as much as the token here: the token is useful to
+Both files are written `0o600`, which POSIX honours.
+
+Windows ignores the mode. The files were left to inherit the ACL of the per-user
+directory, on the assumption that it was owner-only — and checking that on a real
+machine showed it was not: the inherited entries included a group the owner never
+chose, so the file holding an author's API key was readable by more than the
+author. The directory's ACL is now set explicitly with `icacls`, dropping the
+inherited entries rather than adding to them, before anything is written into it.
+A directory tightened afterwards leaves a window in which both files were
+readable.
+
+If that fails — no `icacls`, a denied permission — the bridge says so on startup
+instead of implying a protection nobody applied.
+
+The settings file matters at least as much as the token: the token is useful to
 nothing but this bridge on this machine, while the settings file is where the
 author's API key goes.
 

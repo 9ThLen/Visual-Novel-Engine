@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, posix, resolve, win32 } from 'node:path';
 import {
   BRIDGE_HOME_ENV,
   bridgeConfigFile,
@@ -22,14 +22,18 @@ describe('bridge home directory', () => {
       platform: 'win32',
       env: { LOCALAPPDATA: 'C:\\Users\\ada\\AppData\\Local' },
       home: 'C:\\Users\\ada',
-    })).toBe(join('C:\\Users\\ada\\AppData\\Local', 'VisualNovelEngine', 'Bridge'));
+    })).toBe('C:\\Users\\ada\\AppData\\Local\\VisualNovelEngine\\Bridge');
   });
 
   it('falls back to the profile when Windows does not set LOCALAPPDATA', () => {
-    expect(bridgeHomeDir({ platform: 'win32', env: {}, home: '/profile' }))
-      .toBe(join('/profile', 'AppData', 'Local', 'VisualNovelEngine', 'Bridge'));
+    expect(bridgeHomeDir({ platform: 'win32', env: {}, home: 'C:\\Users\\ada' }))
+      .toBe(win32.join('C:\\Users\\ada', 'AppData', 'Local', 'VisualNovelEngine', 'Bridge'));
   });
 
+  // These are written out rather than built with the host's `join`, because the
+  // answer must not depend on where the test runs. Spelling them with the host
+  // separator passed on Linux and CI and failed on Windows, the one platform
+  // that actually ships this.
   it('uses Application Support on macOS and XDG on Linux', () => {
     expect(bridgeHomeDir({ platform: 'darwin', env: {}, home: '/Users/ada' }))
       .toBe('/Users/ada/Library/Application Support/VisualNovelEngine/Bridge');
@@ -51,6 +55,14 @@ describe('bridge home directory', () => {
       .toThrow(/absolute path/);
   });
 
+  it('honours a Windows-shaped absolute override', () => {
+    expect(bridgeHomeDir({
+      platform: 'win32',
+      env: { [BRIDGE_HOME_ENV]: 'D:\\bridge' },
+      home: 'C:\\Users\\ada',
+    })).toBe('D:\\bridge');
+  });
+
   it('does not depend on the working directory', () => {
     const options = { platform: 'linux' as const, env: {}, home: '/home/ada' };
     const before = bridgeHomeDir(options);
@@ -64,8 +76,10 @@ describe('bridge home directory', () => {
   });
 
   it('keeps the token beside the settings but in its own file', () => {
-    expect(bridgeConfigFile('/home')).toBe(join('/home', 'bridge.env'));
-    expect(bridgeTokenFile('/home')).toBe(join('/home', 'token'));
+    expect(bridgeConfigFile('/home', 'linux')).toBe(posix.join('/home', 'bridge.env'));
+    expect(bridgeTokenFile('/home', 'linux')).toBe(posix.join('/home', 'token'));
+    expect(bridgeConfigFile('C:\\dir', 'win32')).toBe('C:\\dir\\bridge.env');
+    expect(bridgeTokenFile('C:\\dir', 'win32')).toBe('C:\\dir\\token');
   });
 });
 

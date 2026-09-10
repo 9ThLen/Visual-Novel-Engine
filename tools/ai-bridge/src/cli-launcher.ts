@@ -53,3 +53,24 @@ export function checkProviderAuthentication(
     windowsHide: true,
   });
 }
+
+/**
+ * The API key a provider needs and does not have.
+ *
+ * `claude` and `codex` are stopped at startup when their CLI is missing or
+ * signed out, and the author reads why in the window they are looking at.
+ * `openai` and `gemini` had no equivalent: the bridge started happily with no
+ * key and failed on the first message instead, which reaches the editor as a
+ * generic connection error long after the window that could have explained it.
+ *
+ * Returns the variable's name so the message can name it, or `null` when the
+ * provider is satisfied.
+ */
+export function missingProviderKey(
+  provider: BridgeProvider,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string | null {
+  if (provider === 'openai') return env.OPENAI_API_KEY?.trim() ? null : 'OPENAI_API_KEY';
+  if (provider === 'gemini') return env.GEMINI_API_KEY?.trim() ? null : 'GEMINI_API_KEY';
+  return null;
+}

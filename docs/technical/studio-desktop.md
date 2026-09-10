@@ -96,7 +96,9 @@ dialog, no HTTP plugin. The studio's own storage needs no permission.
 
 The AI bridge is the known exception, and it arrives in two steps.
 
-**Connecting to a bridge the author starts** works. Both allowlists that gate it
+**Connecting to a bridge the author starts** works, verified on a Windows build:
+the AI tab appears, the handshake carries `Origin: http://tauri.localhost`, and
+the panel reports the connected provider. Both allowlists that gate it
 read `src/lib/ai/studio-origins.ts`: the bridge's `origin-policy.ts` answers the
 studio's handshake, and the editor's `platform-support.ts` shows the AI tab. They
 were separate once and disagreed, and the editor's check ran first — so the

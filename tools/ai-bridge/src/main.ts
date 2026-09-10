@@ -6,13 +6,13 @@ import { CodexCliProvider } from './codex-provider';
 import { GeminiProvider } from './gemini-provider';
 import { AiBridgeServer } from './server';
 import { bridgeCliHelp, parseBridgeCliArgs, resolveBridgeCliConfig } from './cli-options';
-import { checkProviderAuthentication } from './cli-launcher';
+import { checkProviderAuthentication, missingProviderKey } from './cli-launcher';
 import { formatBridgeStartupBlock } from './startup-summary';
 import { OpenAiProvider } from './openai-provider';
 import { RoutingProvider } from './routing-provider';
 import type { ToolInvoker } from './provider';
 import { imageProviderLabel, resolveImageProvider } from './image-provider-config';
-import { bridgeConfigFile, bridgeHomeDir, bridgeTokenFile } from './config-paths';
+import { bridgeConfigFile, bridgeHomeDir, bridgeTokenFile, ensureBridgeHome } from './config-paths';
 import { applyEnvDefaults, ensureSettingsTemplate, readEnvFile } from './config-store';
 import { readOrCreateToken, resetStoredToken } from './token-store';
 
@@ -54,6 +54,14 @@ async function main(): Promise<void> {
   }
 
   const bridgeHome = bridgeHomeDir();
+  // Before anything secret is written into it. A directory tightened afterwards
+  // leaves a window in which the token and the API key were readable.
+  const acl = ensureBridgeHome(bridgeHome);
+  if (!acl.applied && acl.reason !== 'not-windows') {
+    console.warn(`Could not restrict ${bridgeHome} to your account: ${acl.reason}`);
+    console.warn('The token and your API key are in there. Check the folder permissions yourself.');
+  }
+
   if (cli.resetToken) {
     const rotated = resetStoredToken(bridgeHome);
     console.log(`New bridge token: ${rotated}`);
@@ -79,6 +87,17 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  // The same courtesy the CLI providers get: say what is missing here, rather
+  // than starting and failing on the author's first message, where the editor
+  // can only report that something went wrong.
+  const missingKey = missingProviderKey(provider, process.env);
+  if (missingKey) {
+    console.error(`${missingKey} is not set, so ${provider} has nothing to authenticate with.`);
+    console.error(`Put it in the bridge settings, then start the bridge again: ${bridgeConfigFile(bridgeHome)}`);
+    process.exitCode = 1;
+    return;
+  }
+
   if (imageProvider.provider && !imageProvider.configured) {
     const key = imageProvider.provider === 'gemini' ? 'GEMINI_API_KEY' : 'OPENAI_API_KEY';
     console.warn(`Image diagnostic: ${key} is not set; ${imageProviderLabel(imageProvider.provider)} will be unavailable.`);

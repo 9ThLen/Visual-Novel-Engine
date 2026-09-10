@@ -1,5 +1,8 @@
+import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { posix, win32, type PlatformPath } from 'node:path';
+
+import { restrictDirectoryToOwner, type AclResult } from './windows-acl';
 
 /**
  * Where an installed bridge keeps its configuration and its pairing token.
@@ -27,6 +30,17 @@ export interface BridgeHomeOptions {
 }
 
 /**
+ * Path semantics follow the platform being asked about, not the one running.
+ *
+ * In production those are the same. In a test they are not, and taking them from
+ * the host is how two of these paths passed on Linux and CI and failed on
+ * Windows — the only platform that actually ships this.
+ */
+function pathsFor(platform: NodeJS.Platform): PlatformPath {
+  return platform === 'win32' ? win32 : posix;
+}
+
+/**
  * The bridge's own directory. Pure: it computes a path and creates nothing, so
  * callers decide when a directory is worth bringing into existence.
  */
@@ -35,34 +49,51 @@ export function bridgeHomeDir(options: BridgeHomeOptions = {}): string {
   const platform = options.platform ?? process.platform;
   const home = options.home ?? homedir();
 
+  const p = pathsFor(platform);
+
   const override = env[BRIDGE_HOME_ENV]?.trim();
   if (override) {
-    if (!isAbsolute(override)) {
+    if (!p.isAbsolute(override)) {
       throw new Error(`${BRIDGE_HOME_ENV} must be an absolute path: ${override}`);
     }
     return override;
   }
 
   if (platform === 'win32') {
-    const local = env.LOCALAPPDATA?.trim() || join(home, 'AppData', 'Local');
-    return join(local, BRIDGE_DIR_NAME, BRIDGE_SUBDIR_NAME);
+    const local = env.LOCALAPPDATA?.trim() || p.join(home, 'AppData', 'Local');
+    return p.join(local, BRIDGE_DIR_NAME, BRIDGE_SUBDIR_NAME);
   }
 
   if (platform === 'darwin') {
-    return join(home, 'Library', 'Application Support', BRIDGE_DIR_NAME, BRIDGE_SUBDIR_NAME);
+    return p.join(home, 'Library', 'Application Support', BRIDGE_DIR_NAME, BRIDGE_SUBDIR_NAME);
   }
 
   const xdg = env.XDG_CONFIG_HOME?.trim();
-  const base = xdg && isAbsolute(xdg) ? xdg : join(home, '.config');
-  return join(base, 'visual-novel-engine', 'bridge');
+  const base = xdg && p.isAbsolute(xdg) ? xdg : p.join(home, '.config');
+  return p.join(base, 'visual-novel-engine', 'bridge');
 }
 
 /** `KEY=VALUE` settings, the same shape the repository `.env` already uses. */
-export function bridgeConfigFile(dir: string): string {
-  return join(dir, 'bridge.env');
+export function bridgeConfigFile(dir: string, platform: NodeJS.Platform = process.platform): string {
+  return pathsFor(platform).join(dir, 'bridge.env');
 }
 
 /** The pairing token, kept apart from the settings so it can be rotated alone. */
-export function bridgeTokenFile(dir: string): string {
-  return join(dir, 'token');
+export function bridgeTokenFile(dir: string, platform: NodeJS.Platform = process.platform): string {
+  return pathsFor(platform).join(dir, 'token');
+}
+
+/**
+ * Creates the bridge's directory and makes it the owner's alone.
+ *
+ * Called once before anything is written into it, so the token and the settings
+ * file are created inside an already-restricted directory rather than being
+ * tightened afterwards — a file that is briefly readable is readable.
+ *
+ * The mode covers POSIX. Windows ignores it and needs the ACL set explicitly:
+ * `%LOCALAPPDATA%` was assumed to be owner-only and, on a real machine, was not.
+ */
+export function ensureBridgeHome(dir: string): AclResult {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return restrictDirectoryToOwner(dir);
 }
