@@ -16,11 +16,12 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-
-# The studio is a window around the studio's own web bundle. It registers no
-# commands today. When the AI bridge becomes a sidecar it will need
-# `tauri-plugin-shell` and a matching capability — that is a deliberate step,
-# not a convenience to add in passing.
+# For the report the bridge commands hand back to the window. Nothing else is
+# serialised here, and no plugin is pulled in: the bridge is spawned with
+# `std::process::Command`, so there is no `tauri-plugin-shell` and no
+# `shell:allow-execute` — a permission to run programs would be general, and
+# what is needed is one specific process.
+serde = { version = "1", features = ["derive"] }
 
 [profile.release]
 panic = "abort"

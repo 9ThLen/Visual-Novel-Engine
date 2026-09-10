@@ -56,24 +56,30 @@ before shipping an installer to anyone.
 
 ## What must not be added lightly
 
-`main.rs` registers no commands and `capabilities/default.json` grants
-`core:default`. Connecting to a bridge the author starts themselves needs
-nothing more than that — a WebSocket is not a permission — and works today:
-`src/lib/ai/studio-origins.ts` carries this window's origin, and both the
-bridge's `origin-policy.ts` and the editor's `platform-support.ts` read it.
+`capabilities/default.json` grants `core:default` and nothing more, and it still
+does now that the studio can start the AI bridge.
 
-*Launching* the bridge is the part that needs more, and needs, at minimum:
+`main.rs` registers three commands — start the bridge, ask how it is, stop it —
+and each takes no argument. Nothing the page sends chooses a path, a binary or a
+flag: `src/bridge.rs` resolves `ai-bridge/node.exe` against this application's
+own resource directory, where `scripts/lib/stage-studio.ts` put it.
 
-- a packaged Node runtime — `pnpm ai-bridge:build` emits `cli.mjs`, which is not
-  an executable and does not carry one;
-- `tauri-plugin-shell` and a `shell:allow-execute` scoped to that one binary;
-- the session token handed to the window without the author copying it. It is no
-  longer regenerated per start — see `tools/ai-bridge/src/token-store.ts` — but
-  it still has to reach the window.
+That is deliberately not `tauri-plugin-shell`. A permission to run programs is a
+general one; what is needed is one specific process, so it is spawned with
+`std::process::Command` instead. Nor does it need a capability entry: Tauri gates
+plugin commands, remote origins and apps that define their own ACL manifest, and
+this is none of those — see the invoke path in the `tauri` crate.
 
-Add the CSP to that list before starting: `scripts/lib/harden-web-output.mjs`
-permits `ws:` but not `http://ipc.localhost`, so Tauri's IPC already falls back
-to postMessage. No command is registered today, so nothing breaks yet; a sidecar
-would be the first caller to care.
+The installer carries the bridge when `pnpm build:bridge-package` has been run
+and `pnpm build:studio-desktop` finds its output; `--no-bridge` builds without
+it. A studio built that way still pairs with a bridge the author starts, and says
+so rather than offering a button that cannot work.
+
+## What must not be added lightly
+
+The window still has no filesystem, no dialog and no HTTP plugin, and the three
+commands above are the whole of its reach outside the page. Anything wider —
+`shell:allow-execute`, a command that takes a path — gives up the argument that
+made spawning a process acceptable in the first place.
 
 Those are step 2. Nothing above should be half-done to make a demo work.
