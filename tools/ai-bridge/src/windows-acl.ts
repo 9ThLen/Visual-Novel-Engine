@@ -1,103 +1,176 @@
 import { spawnSync, type SpawnSyncOptionsWithStringEncoding, type SpawnSyncReturns } from 'node:child_process';
-import { userInfo } from 'node:os';
 
 /**
- * Restrict the bridge's directory to the account that owns it, on Windows.
+ * Restrict the bridge's directory and secrets to the account that owns them, on
+ * Windows, and prove it afterwards.
  *
- * The token and the settings file are written `0o600`, which Windows ignores.
- * They inherit the ACL of `%LOCALAPPDATA%`, and that was assumed to be
- * owner-only. It is not: on a real machine the inherited entries included a
- * group the owner never chose, so the file holding an author's API key was
- * readable by more than the author.
+ * The files are written `0o600`, which Windows ignores; they inherit the ACL of
+ * `%LOCALAPPDATA%`, which was assumed owner-only and, on a real machine, was
+ * not. Three rounds of this were wrong in instructive ways, and each mistake is
+ * why the code looks as it does:
  *
- * `icacls` is how Windows itself does this, so nothing is added to the package
- * to get it. Two things it does *not* do, both of which cost a round to learn:
- *
- * - `/inheritance:r` removes inherited entries and leaves explicit ones alone;
- * - `/grant:r` replaces the grants of the principal it names, and nobody else's.
- *
- * So applying them proves nothing on a directory that already carried an
- * explicit entry for someone else. The ACL is read back and checked. A
- * guarantee that is not verified is the bug this exists to fix.
- *
- * What it deliberately does not do is delete other people's entries. Deciding
- * which principal is safe to remove means classifying names that are localised
- * and domain-qualified, and getting that wrong locks the author out of their own
- * directory — a worse outcome than the one being fixed. An entry that survives
- * `/inheritance:r` was put there explicitly by someone, so it is reported and
- * the bridge refuses, which puts the decision where it belongs.
+ * - Applying `/inheritance:r /grant:r` and reporting success. It proves nothing:
+ *   the first flag removes inherited entries only, the second replaces the
+ *   grants of the principal it names and nobody else's.
+ * - Checking the result by account *name*. `DOMAIN-A\anna` and `DOMAIN-B\anna`
+ *   are different people who compare equal, and `SYSTEM` and `Administrators`
+ *   are English strings that a localised Windows does not use. Windows
+ *   identifies accounts by SID; so does this.
+ * - Checking the directory alone. A `token` that predates this, or that someone
+ *   gave an explicit entry, keeps its own ACL regardless of the directory's.
  */
 export type AclResult =
   | { applied: true }
   | { applied: false; reason: string };
 
 /**
- * Principals that may remain besides the owner.
+ * SIDs that may hold an entry besides the owner.
  *
- * Removing these is neither possible in practice nor useful: an administrator
- * can take ownership of any file, and SYSTEM is how backup and indexing reach
- * it. Excluding them would be security theatre. Everything else is not.
+ * `S-1-5-18` is Local System and `S-1-5-32-544` is the built-in Administrators
+ * group. Removing either is neither possible in practice nor useful — an
+ * administrator can take ownership of any file — and both are the same numbers
+ * in every language Windows ships in, which is the point of using SIDs.
  */
-const ALWAYS_PERMITTED = ['SYSTEM', 'ADMINISTRATORS'];
+export const PERMITTED_SIDS = ['S-1-5-18', 'S-1-5-32-544'] as const;
 
-/**
- * The account name without its domain or machine prefix.
- *
- * `icacls` reports `MACHINE\ada` while the principal we grant may be the bare
- * `ada` — comparing the two as written marks the owner's own entry as a
- * stranger's, and the first version of this went on to try removing it.
- */
-export function bareAccountName(principal: string): string {
-  const separator = principal.lastIndexOf('\\');
-  return (separator < 0 ? principal : principal.slice(separator + 1)).trim().toUpperCase();
+export interface AclEntry {
+  path: string;
+  /** True when inherited entries are blocked on this path. */
+  protected: boolean;
+  sids: string[];
 }
 
-/** The account to grant, qualified by domain when the shell says there is one. */
-export function ownerPrincipal(
-  env: Readonly<Record<string, string | undefined>> = process.env,
-  username: string = userInfo().username,
-): string {
-  const domain = env.USERDOMAIN?.trim();
-  // A domain equal to the machine name is a local account; icacls resolves the
-  // bare name either way, and the qualified form is what fails on a machine
-  // renamed since the profile was made.
-  return domain && domain.toLowerCase() !== username.toLowerCase()
-    ? `${domain}\\${username}`
-    : username;
+export interface AclInspection {
+  ownerSid: string;
+  entries: AclEntry[];
 }
 
 /**
- * `(OI)(CI)F` so the files inside inherit it: the point is the token and the
- * settings file, and granting only the directory would leave both as they were.
+ * PowerShell that reports the ACLs as SIDs.
+ *
+ * `icacls` prints localised names; `Get-Acl` hands back identities that
+ * translate to SIDs, and says whether inheritance is blocked. One call covers
+ * the directory and every secret in it, because checking the directory alone was
+ * the previous round's gap.
  */
-export function icaclsArgs(dir: string, principal: string): string[] {
-  return [dir, '/inheritance:r', '/grant:r', `${principal}:(OI)(CI)F`];
+export function inspectionScript(paths: readonly string[]): string {
+  const list = paths.map(path => `'${path.replace(/'/g, "''")}'`).join(',');
+  return [
+    '$ErrorActionPreference = "Stop";',
+    '$entries = @();',
+    `foreach ($p in @(${list})) {`,
+    '  if (Test-Path -LiteralPath $p) {',
+    '    $acl = Get-Acl -LiteralPath $p;',
+    '    $sids = @($acl.Access | ForEach-Object {',
+    '      try { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value }',
+    '      catch { $_.IdentityReference.Value } });',
+    '    $entries += [pscustomobject]@{ path = $p; protected = [bool]$acl.AreAccessRulesProtected; sids = $sids };',
+    '  } };',
+    '[pscustomobject]@{',
+    '  owner = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;',
+    '  entries = @($entries)',
+    '} | ConvertTo-Json -Depth 4 -Compress',
+  ].join(' ');
+}
+
+export function powershellArgs(script: string): string[] {
+  return ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script];
 }
 
 /**
- * The principals named in `icacls <dir>` output.
+ * Reads the inspection back.
  *
- * Each entry is `PRINCIPAL:(perms)`, the first on the same line as the path and
- * the rest indented. The trailing summary line is localised, so lines are
- * matched by that structure rather than by any English in them.
+ * Windows PowerShell collapses a one-element array into a bare object, so both
+ * shapes are accepted. An unparsable or ownerless result is an error rather than
+ * an empty success: a parser that recognised nothing previously read as "nobody
+ * has access", which is the most dangerous thing it could have concluded.
  */
-export function parseAclPrincipals(output: string, dir: string): string[] {
-  const principals: string[] = [];
-  for (const raw of output.split(/\r?\n/)) {
-    let line = raw.trim();
-    if (!line) continue;
-    if (line.startsWith(dir)) line = line.slice(dir.length).trim();
-    const separator = line.indexOf(':(');
-    if (separator <= 0) continue;
-    principals.push(line.slice(0, separator).trim());
+export function parseInspection(json: string): AclInspection {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    throw new Error(`could not read the ACL report: ${json.trim().slice(0, 200) || '(no output)'}`);
   }
-  return principals;
+  const value = raw as { owner?: unknown; entries?: unknown };
+  if (typeof value?.owner !== 'string' || !/^S-1-/.test(value.owner)) {
+    throw new Error('the ACL report named no owner SID');
+  }
+  const rows = value.entries === undefined || value.entries === null
+    ? []
+    : Array.isArray(value.entries) ? value.entries : [value.entries];
+
+  const entries = rows.map(row => {
+    const entry = row as { path?: unknown; protected?: unknown; sids?: unknown };
+    if (typeof entry?.path !== 'string') throw new Error('the ACL report carried an entry with no path');
+    const sids = entry.sids === undefined || entry.sids === null
+      ? []
+      : Array.isArray(entry.sids) ? entry.sids : [entry.sids];
+    if (sids.length === 0) {
+      throw new Error(`the ACL report listed no entries at all for ${entry.path}`);
+    }
+    return {
+      path: entry.path,
+      protected: entry.protected === true,
+      sids: sids.map(String),
+    };
+  });
+  return { ownerSid: value.owner, entries };
 }
 
-/** Everything holding an entry that is neither the owner nor a system account. */
-export function unexpectedPrincipals(principals: readonly string[], owner: string): string[] {
-  const permitted = new Set([bareAccountName(owner), ...ALWAYS_PERMITTED]);
-  return [...new Set(principals.filter(name => !permitted.has(bareAccountName(name))))];
+/** SIDs holding access that are neither the owner nor a permitted system account. */
+export function unexpectedSids(sids: readonly string[], ownerSid: string): string[] {
+  const permitted = new Set<string>([ownerSid, ...PERMITTED_SIDS]);
+  return [...new Set(sids.filter(sid => !permitted.has(sid)))];
+}
+
+/** Everything wrong with an inspection, in words that name the path. */
+export function inspectionProblems(inspection: AclInspection, expectedPaths: readonly string[]): string[] {
+  const problems: string[] = [];
+  for (const entry of inspection.entries) {
+    const unexpected = unexpectedSids(entry.sids, inspection.ownerSid);
+    if (unexpected.length > 0) {
+      problems.push(`${entry.path} is also accessible to ${unexpected.join(', ')}`);
+    }
+    if (!entry.protected) {
+      problems.push(`${entry.path} still inherits permissions from the folders above it`);
+    }
+  }
+  // A path that exists but produced no row means the report skipped it, and a
+  // silently skipped secret is the failure this whole function exists to catch.
+  const reported = new Set(inspection.entries.map(entry => entry.path));
+  for (const path of expectedPaths) {
+    if (!reported.has(path)) problems.push(`${path} was not reported on`);
+  }
+  return problems;
+}
+
+/** Asks Windows for the running account's SID, which is its only unambiguous name. */
+export function ownerSidScript(): string {
+  return '[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value';
+}
+
+export function parseOwnerSid(output: string): string {
+  const sid = output.trim();
+  // `S-1-5-21-…` for a real account. Anything else means the call did not do
+  // what it was asked, and granting to a mangled principal would silently grant
+  // to nobody while reporting success.
+  if (!/^S-1-[\d-]+$/.test(sid)) {
+    throw new Error(`could not determine your account SID: ${sid.slice(0, 200) || '(no output)'}`);
+  }
+  return sid;
+}
+
+export function icaclsArgs(dir: string, ownerSid: string): string[] {
+  // Granted by SID: a localised Windows names the same account differently, and
+  // a bare username is ambiguous across two domains that both have an `anna`.
+  // `(OI)(CI)` so files created inside inherit it — the point is the secrets.
+  return [dir, '/inheritance:r', '/grant:r', `*${ownerSid}:(OI)(CI)F`];
+}
+
+/** Makes an existing file take the directory's ACL instead of whatever it has. */
+export function resetChildArgs(file: string): string[] {
+  return [file, '/reset'];
 }
 
 export type AclRunner = (
@@ -106,45 +179,68 @@ export type AclRunner = (
   options: SpawnSyncOptionsWithStringEncoding,
 ) => SpawnSyncReturns<string>;
 
-export function restrictDirectoryToOwner(
-  dir: string,
-  options: {
-    platform?: NodeJS.Platform;
-    env?: Readonly<Record<string, string | undefined>>;
-    username?: string;
-    run?: AclRunner;
-  } = {},
-): AclResult {
+export interface RestrictOptions {
+  /** Secrets inside the directory that must be checked, not only the directory. */
+  files?: readonly string[];
+  platform?: NodeJS.Platform;
+  run?: AclRunner;
+}
+
+function failureOf(result: SpawnSyncReturns<string>): string | null {
+  if (result.error) return result.error.message;
+  if (result.status !== 0) return result.stderr?.trim() || result.stdout?.trim() || `exited ${result.status}`;
+  return null;
+}
+
+export function restrictDirectoryToOwner(dir: string, options: RestrictOptions = {}): AclResult {
   const platform = options.platform ?? process.platform;
   // POSIX already got this right through the file mode.
   if (platform !== 'win32') return { applied: false, reason: 'not-windows' };
 
-  const owner = ownerPrincipal(options.env ?? process.env, options.username ?? userInfo().username);
   const run = options.run ?? spawnSync;
-  const icacls = (args: readonly string[]) => run('icacls', args, { encoding: 'utf8', windowsHide: true });
+  const files = options.files ?? [];
+  const exec = (command: string, args: readonly string[]) =>
+    run(command, args, { encoding: 'utf8', windowsHide: true });
 
-  const failureOf = (result: SpawnSyncReturns<string>): string | null => {
-    if (result.error) return result.error.message;
-    if (result.status !== 0) return result.stderr?.trim() || result.stdout?.trim() || `icacls exited ${result.status}`;
-    return null;
-  };
+  const identity = exec('powershell', powershellArgs(ownerSidScript()));
+  const identityFailure = failureOf(identity);
+  if (identityFailure) return { applied: false, reason: `could not read your account SID: ${identityFailure}` };
 
-  const applied = icacls(icaclsArgs(dir, owner));
-  const applyFailure = failureOf(applied);
-  if (applyFailure) return { applied: false, reason: applyFailure };
-
-  const read = () => {
-    const result = icacls([dir]);
-    const failure = failureOf(result);
-    return failure ? { failure } : { principals: parseAclPrincipals(result.stdout ?? '', dir) };
-  };
-
-  const first = read();
-  if ('failure' in first) return { applied: false, reason: `could not read the resulting ACL: ${first.failure}` };
-
-  const remaining = unexpectedPrincipals(first.principals, owner);
-  if (remaining.length > 0) {
-    return { applied: false, reason: `these have explicit access and were not put there by this bridge: ${remaining.join(', ')}` };
+  let ownerSid: string;
+  try {
+    ownerSid = parseOwnerSid(identity.stdout ?? '');
+  } catch (error) {
+    return { applied: false, reason: error instanceof Error ? error.message : String(error) };
   }
-  return { applied: true };
+
+  const applied = exec('icacls', icaclsArgs(dir, ownerSid));
+  const applyFailure = failureOf(applied);
+  if (applyFailure) return { applied: false, reason: `icacls: ${applyFailure}` };
+
+  // An existing secret keeps its own ACL until it is told to take the folder's.
+  for (const file of files) {
+    const reset = exec('icacls', resetChildArgs(file));
+    const failure = failureOf(reset);
+    // A file that is not there yet is not a problem; it will be created inside
+    // an already-restricted directory.
+    if (failure && !/cannot find|does not exist|не зна|не найд/i.test(failure)) {
+      return { applied: false, reason: `icacls ${file}: ${failure}` };
+    }
+  }
+
+  const inspected = exec('powershell', powershellArgs(inspectionScript([dir, ...files])));
+  const inspectFailure = failureOf(inspected);
+  if (inspectFailure) return { applied: false, reason: `could not read the resulting ACL: ${inspectFailure}` };
+
+  let inspection: AclInspection;
+  try {
+    inspection = parseInspection(inspected.stdout ?? '');
+  } catch (error) {
+    return { applied: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+
+  // Only paths that exist are reported on, and only the directory is guaranteed
+  // to exist at this point.
+  const problems = inspectionProblems(inspection, [dir]);
+  return problems.length === 0 ? { applied: true } : { applied: false, reason: problems.join('; ') };
 }

@@ -95,5 +95,10 @@ export function bridgeTokenFile(dir: string, platform: NodeJS.Platform = process
  */
 export function ensureBridgeHome(dir: string): AclResult {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return restrictDirectoryToOwner(dir);
+  // The secrets are named, not just the directory: a `token` that predates this
+  // — or that someone gave an explicit entry — keeps its own ACL no matter what
+  // the directory says, and checking only the directory missed exactly that.
+  return restrictDirectoryToOwner(dir, {
+    files: [bridgeTokenFile(dir), bridgeConfigFile(dir)],
+  });
 }

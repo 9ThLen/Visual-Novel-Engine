@@ -175,17 +175,29 @@ Windows ignores the mode. The files were left to inherit the ACL of the per-user
 directory, on the assumption that it was owner-only — and checking that on a real
 machine showed it was not: the inherited entries included a group the owner never
 chose, so the file holding an author's API key was readable by more than the
-author. The directory's ACL is now set explicitly with `icacls`, before anything is
-written into it — a directory tightened afterwards leaves a window in which both
-files were readable — **and then read back and checked**. Applying alone proves
-nothing: `/inheritance:r` removes inherited entries and leaves explicit ones, and
-`/grant:r` replaces the grants of the principal it names and nobody else's.
+author. The ACL is set with `icacls` before anything is written — a directory tightened
+afterwards leaves a window in which both files were readable — and then read back
+and checked. Applying alone proves nothing: `/inheritance:r` removes inherited
+entries only, and `/grant:r` replaces the grants of the principal it names and
+nobody else's.
 
-What it will not do is delete someone else's entry. Deciding which principal is
-safe to remove means classifying names that are localised and domain-qualified,
-and getting that wrong locks the author out of their own directory. An entry that
-survives `/inheritance:r` was put there deliberately, so it is named and the
-bridge stops.
+Everything is done by **SID**, because a name is not an identity:
+`DOMAIN-A\anna` and `DOMAIN-B\anna` are different people whose names compare
+equal, and `SYSTEM` and `Administrators` are English strings a localised Windows
+does not use. `S-1-5-18` and `S-1-5-32-544` are the same numbers everywhere, and
+those two are the only entries permitted besides the owner — an administrator can
+take ownership of any file, so excluding them would be theatre.
+
+The check covers the **token and the settings file**, not just the folder. A
+secret that predates this, or that someone gave an explicit entry, keeps its own
+ACL regardless of what the directory says. A report the checker cannot parse is
+an error, not an empty pass: reading nothing as "nobody has access" is the most
+dangerous conclusion available to it.
+
+What it will not do is delete someone else's entry. An entry that survives
+`/inheritance:r` was put there deliberately, so it is named and the bridge stops
+— which puts the decision with a person rather than with a guess about which
+principal was safe to remove.
 
 **The bridge refuses to start when any of that fails.** Not a warning: the
 directory is about to hold an API key and a pairing token, and continuing would
