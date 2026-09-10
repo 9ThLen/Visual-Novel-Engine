@@ -17,10 +17,12 @@ import {
   DEFAULT_READER_LINE_HEIGHT_SCALE,
   DIALOGUE_LINE_HEIGHT_MULTIPLIER,
 } from '@/components/reader/ReaderDisplay';
-import { useResolvedAssetUris } from '@/components/document-editor/inspector/useResolvedAssetUris';
+import { useResolvedAssetUris, type ResolvedSource } from '@/components/document-editor/inspector/useResolvedAssetUris';
 import { useReaderColors } from '@/hooks/use-reader-colors';
+import { useSpriteAspectRatio } from '@/hooks/use-sprite-aspect-ratio';
 import { useI18n } from '@/hooks/use-i18n';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
+import { getCharacterSpriteSize } from '@/lib/character-layout';
 import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
 import { richTextAlignment } from '@/lib/rich-text';
 import { getStoryReaderSpeakerTextStyle } from '@/lib/story-reader-platform';
@@ -44,6 +46,56 @@ function positionPercent(position: CharacterPosition): `${number}%` {
     default:
       return '50%';
   }
+}
+
+/**
+ * One sprite, sized by the reader's own rule: as tall as the stage allows, in
+ * the file's real proportions.
+ */
+function PreviewCharacter({
+  source,
+  spriteUri,
+  position,
+  stageWidth,
+  stageHeight,
+  characterCount,
+}: {
+  source: ResolvedSource;
+  spriteUri: string | null | undefined;
+  position: CharacterPosition;
+  stageWidth: number;
+  stageHeight: number;
+  characterCount: number;
+}) {
+  const { aspectRatio, onSpriteLoad } = useSpriteAspectRatio(spriteUri);
+  const { width, height } = getCharacterSpriteSize({
+    stageWidth,
+    stageHeight,
+    aspectRatio,
+    characterCount,
+  });
+
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        bottom: 0,
+        left: positionPercent(position),
+        width,
+        height,
+        transform: [{ translateX: -width / 2 }],
+      }}
+    >
+      <Image
+        source={source}
+        style={{ width: '100%', height: '100%' }}
+        contentFit="contain"
+        cachePolicy="memory-disk"
+        transition={0}
+        onLoad={onSpriteLoad}
+      />
+    </View>
+  );
 }
 
 interface ScenePreviewStageProps {
@@ -91,6 +143,7 @@ export const ScenePreviewStage = React.memo(function ScenePreviewStage({
   );
   const charactersPaddingBottom =
     readerLayout.dialoguePosition === 'bottom' ? Math.max(0, readerLayout.dialogueHeight - 20) : 0;
+  const previewCharacters = frame?.characters ?? [];
 
   const fontSize = useMemo(
     () => getResponsiveFontSize({ width: deviceWidth, height: deviceHeight }),
@@ -187,29 +240,19 @@ export const ScenePreviewStage = React.memo(function ScenePreviewStage({
             paddingBottom: charactersPaddingBottom,
           }}
         >
-          {(frame?.characters ?? []).map((character) => {
+          {previewCharacters.map((character) => {
             const source = character.spriteUri ? sources[character.spriteUri] : null;
             if (!source) return null;
-            const charWidth = deviceWidth * 0.35;
             return (
-              <View
+              <PreviewCharacter
                 key={character.characterId}
-                style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  left: positionPercent(character.position),
-                  width: charWidth,
-                  transform: [{ translateX: -charWidth / 2 }],
-                }}
-              >
-                <Image
-                  source={source}
-                  style={{ width: '100%', aspectRatio: 9 / 16, maxHeight: deviceHeight * 0.65 }}
-                  contentFit="contain"
-                  cachePolicy="memory-disk"
-                  transition={0}
-                />
-              </View>
+                source={source}
+                spriteUri={character.spriteUri}
+                position={character.position}
+                stageWidth={deviceWidth}
+                stageHeight={deviceHeight - charactersPaddingBottom}
+                characterCount={previewCharacters.length}
+              />
             );
           })}
         </View>

@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Pressable, StyleSheet, useWindowDimensions, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, useWindowDimensions, View, type LayoutChangeEvent, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import type { useColors } from '@/hooks/use-colors';
@@ -212,8 +212,25 @@ function ReaderCharacters({
     [animatedStyle, paddingBottom],
   );
 
+  // Sprites are scaled by the stage they stand on, so the layer measures
+  // itself. `layout` is the frame including the padding that keeps characters
+  // clear of the dialogue panel, which is why the padding comes back off here.
+  // The window is the fallback for the first frame and for RN Web layouts
+  // where `onLayout` does not fire.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const [layer, setLayer] = useState<{ width: number; height: number } | null>(null);
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    if (width <= 0 || height <= 0) return;
+    setLayer((current) => (current && current.width === width && current.height === height
+      ? current
+      : { width, height }));
+  }, []);
+  const stageWidth = layer?.width ?? windowWidth;
+  const stageHeight = Math.max(0, (layer?.height ?? windowHeight) - paddingBottom);
+
   return (
-    <Animated.View style={containerStyle}>
+    <Animated.View style={containerStyle} onLayout={handleLayout}>
       <Animated.View style={[StyleSheet.absoluteFillObject, parallaxStyle]}>
       {instances.map((instance) => {
         const charSource = resolvedCharUris[instance.characterId];
@@ -233,6 +250,9 @@ function ReaderCharacters({
             isActiveSpeaker={isActiveSpeaker}
             dimmed={Boolean(dimNonSpeakerCharacters && activeSpeakerCharacterId && !isActiveSpeaker)}
             focusScale={activeSpeakerFocusScale}
+            stageWidth={stageWidth}
+            stageHeight={stageHeight}
+            characterCount={instances.length}
             overlay={characterSpecificEffects.length > 0 ? (
               <EffectsLayerStack effects={characterSpecificEffects} colors={colors} target="character" />
             ) : null}
