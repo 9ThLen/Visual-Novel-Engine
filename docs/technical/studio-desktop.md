@@ -94,16 +94,31 @@ Nothing but show the page. `main.rs` registers no commands and
 `capabilities/default.json` grants `core:default` — no filesystem, no shell, no
 dialog, no HTTP plugin. The studio's own storage needs no permission.
 
-The AI bridge is the known exception, and it is not done yet. It is a Node
-process on a loopback WebSocket, and an installed studio cannot ask its user to
-run `pnpm ai-bridge` by hand. Making it a sidecar needs a packaged Node runtime
-(`pnpm ai-bridge:build` emits `cli.mjs`, which is not an executable),
-`tauri-plugin-shell` scoped to that one binary, a session token handed to the
-window rather than copied by the author, and a change to
-`tools/ai-bridge/src/origin-policy.ts`, which today allows `localhost`,
-`127.0.0.1` and `[::1]` only and so rejects `http://tauri.localhost` before the
-server starts.
+The AI bridge is the known exception, and it arrives in two steps.
 
-Until that lands, AI features in the installed studio work only if the author
-starts the bridge from a source checkout — which is most of the reason the
-installer exists.
+**Connecting to a bridge the author starts** works, verified on a Windows build:
+the AI tab appears, the handshake carries `Origin: http://tauri.localhost`, and
+the panel reports the connected provider. Both allowlists that gate it
+read `src/lib/ai/studio-origins.ts`: the bridge's `origin-policy.ts` answers the
+studio's handshake, and the editor's `platform-support.ts` shows the AI tab. They
+were separate once and disagreed, and the editor's check ran first — so the
+symptom was not a refused connection but a missing tab. Anything added to that
+list must be an origin **measured** off a real handshake, never one read from
+documentation.
+
+The window needs no new permission for this: it opens a WebSocket, which
+`core:default` already allows.
+
+**Launching the bridge itself** is the step that is not done. It needs a packaged
+Node runtime (`pnpm ai-bridge:build` emits `cli.mjs`, which is not an
+executable), `tauri-plugin-shell` scoped to that one binary, and a session token
+handed to the window rather than copied by the author.
+
+Tauri's IPC is now reachable from the window. The CSP written by
+`scripts/lib/harden-web-output.mjs` allowed `ws:` — so the bridge connection
+always passed — but not `http://ipc.localhost`, so IPC was refused and fell back
+to postMessage. Staging relaxes that one directive **in the studio's copy only**,
+because `build:web` writes one bundle that the web channel and the player also
+use, and neither of them has a Tauri to talk to.
+`verifyStagedStudioProject` fails a build whose page lost it, since nothing
+depends on IPC yet and the loss would otherwise surface much later.

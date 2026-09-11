@@ -9,6 +9,7 @@ dist/
 dist-player/
 dist-player-baseurl/
 dist-studio-desktop/
+dist-bridge-package/
 web-build/
 expo-env.d.ts
 

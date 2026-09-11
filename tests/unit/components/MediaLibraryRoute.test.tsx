@@ -46,6 +46,25 @@ function scene(timeline: TimelineStep[]): SceneRecord {
   };
 }
 
+/**
+ * Presses a global key until it lands.
+ *
+ * The shortcut listener is attached in an effect — see
+ * `src/hooks/use-keyboard-shortcuts.ts` — so a key pressed before that effect
+ * has run reaches nobody, and the event is gone. `waitFor` around the assertion
+ * cannot recover it: retrying an assertion does not re-deliver a lost keystroke.
+ * Firing the key inside the retry does.
+ *
+ * Everywhere but CI the effect wins the race, which is why this passed locally
+ * eight times out of eight and failed on a two-core runner.
+ */
+async function pressUntil(key: { key: string }, assertion: () => void): Promise<void> {
+  await waitFor(() => {
+    fireEvent.keyDown(document.body, key);
+    assertion();
+  });
+}
+
 type StoreSeed = Record<string, unknown>;
 
 function seedStore(overrides: StoreSeed = {}) {
@@ -904,11 +923,9 @@ describe('media library route', () => {
     fireEvent.keyDown(document.body, { key: 'ArrowRight' });
     expect(screen.queryByText('Alice · Happy')).toBeNull();
 
-    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
-    await waitFor(() => expect(screen.getByText('Alice · Happy')).toBeTruthy());
+    await pressUntil({ key: 'ArrowRight' }, () => expect(screen.getByText('Alice · Happy')).toBeTruthy());
 
-    fireEvent.keyDown(document.body, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByText('Alice · Happy')).toBeNull());
+    await pressUntil({ key: 'Escape' }, () => expect(screen.queryByText('Alice · Happy')).toBeNull());
   });
 
   // A screen with both a search field and a delete key has to tell them apart,
@@ -933,8 +950,7 @@ describe('media library route', () => {
     expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
 
     // The same key outside the field is the shortcut it was meant to be.
-    fireEvent.keyDown(document.body, { key: 'Delete' });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy());
+    await pressUntil({ key: 'Delete' }, () => expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy());
   });
 
   // Folders and tags are the one thing in this library the story cannot answer

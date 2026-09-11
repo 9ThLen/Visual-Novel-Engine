@@ -56,18 +56,43 @@ before shipping an installer to anyone.
 
 ## What must not be added lightly
 
-`main.rs` registers no commands and `capabilities/default.json` grants
-`core:default`. The AI bridge is the one thing known to need more: it is a Node
-process on a loopback WebSocket, and an installed studio cannot ask its user to
-run `pnpm ai-bridge`. Making it a sidecar needs, at minimum:
+`capabilities/default.json` grants `core:default` and nothing more, and it still
+does now that the studio can start the AI bridge.
 
-- a packaged Node runtime — `pnpm ai-bridge:build` emits `cli.mjs`, which is not
-  an executable and does not carry one;
-- `tauri-plugin-shell` and a `shell:allow-execute` scoped to that one binary;
-- an origin the bridge will accept. It will not accept this one today:
-  `tools/ai-bridge/src/origin-policy.ts` allows `localhost`, `127.0.0.1` and
-  `[::1]` only, so `http://tauri.localhost` is rejected before the server starts;
-- the session token, which the bridge regenerates on every start, handed to the
-  window without the author copying it.
+`main.rs` registers four commands — start the bridge, ask how it is, stop it, and
+save the author's provider and API key. The first three take no argument at all.
+The fourth takes two **values** and no path: `src/bridge.rs` resolves
+`ai-bridge/node.exe` against this application's own resource directory, where
+`scripts/lib/stage-studio.ts` put it, and writes to the settings file *the bridge
+itself reported*. Nothing the page sends chooses a path, a binary or a flag.
+
+That the bridge reports its own settings path matters more than it looks.
+Deriving it a second time in Rust would be two answers to one question, and it is
+printed even on the start the bridge refuses — which is the start where the
+author needs it, because that refusal is what the key is being typed to fix.
+
+That is deliberately not `tauri-plugin-shell`. A permission to run programs is a
+general one; what is needed is one specific process, so it is spawned with
+`std::process::Command` instead. Nor does it need a capability entry: Tauri gates
+plugin commands, remote origins and apps that define their own ACL manifest, and
+this is none of those — see the invoke path in the `tauri` crate.
+
+The installer carries the bridge when `pnpm build:bridge-package` has been run
+and `pnpm build:studio-desktop` finds its output; `--no-bridge` builds without
+it. A studio built that way still pairs with a bridge the author starts, and says
+so rather than offering a button that cannot work.
+
+The panel calls these through `src/lib/ai/studio-bridge.ts`, which answers
+`{ available: false }` anywhere there is no supervisor — a dev server, a browser,
+a studio built before the commands existed. `StudioBridgeSection` renders nothing
+at all in those places, and the manual URL-and-token form stays exactly as it
+was.
+
+## What must not be added lightly
+
+The window still has no filesystem, no dialog and no HTTP plugin, and the three
+commands above are the whole of its reach outside the page. Anything wider —
+`shell:allow-execute`, a command that takes a path — gives up the argument that
+made spawning a process acceptable in the first place.
 
 Those are step 2. Nothing above should be half-done to make a demo work.

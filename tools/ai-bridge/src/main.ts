@@ -6,12 +6,16 @@ import { CodexCliProvider } from './codex-provider';
 import { GeminiProvider } from './gemini-provider';
 import { AiBridgeServer } from './server';
 import { bridgeCliHelp, parseBridgeCliArgs, resolveBridgeCliConfig } from './cli-options';
-import { checkProviderAuthentication } from './cli-launcher';
+import { checkProviderAuthentication, missingProviderKey } from './cli-launcher';
 import { formatBridgeStartupBlock } from './startup-summary';
 import { OpenAiProvider } from './openai-provider';
 import { RoutingProvider } from './routing-provider';
 import type { ToolInvoker } from './provider';
 import { imageProviderLabel, resolveImageProvider } from './image-provider-config';
+import { bridgeConfigFile, bridgeHomeDir, bridgeTokenFile, ensureBridgeHome } from './config-paths';
+import { applyEnvDefaults, ensureSettingsTemplate, readEnvFile, settingsSources } from './config-store';
+import { IS_PACKAGED_BUILD } from './build-flags';
+import { readOrCreateToken, resetStoredToken } from './token-store';
 
 export const BRIDGE_CLI_VERSION = '0.1.0';
 
@@ -19,23 +23,28 @@ export const BRIDGE_CLI_VERSION = '0.1.0';
 const OPENAI_SYSTEM_PROMPT = readFileSync(fileURLToPath(new URL('./system-prompt.md', import.meta.url)), 'utf8');
 
 /**
- * Minimal `.env` loader (tsx does not read `.env` on its own, and we don't want
- * a dependency for four dev-only keys). Loads KEY=VALUE lines from the project
- * root without overriding anything already set in the real environment.
+ * Settings, in falling priority: the real environment, then the repository
+ * `.env`, then the user's own configuration file.
+ *
+ * Precedence is call order rather than a comparison someone has to keep
+ * correct, because `applyEnvDefaults` never overwrites. A checkout therefore
+ * behaves exactly as before — the developer's `.env` still wins — while an
+ * installed bridge, which has no `.env` and no meaningful working directory,
+ * reads the file in its own per-user directory instead of finding nothing.
  */
-function loadDotEnv(): void {
-  try {
-    const raw = readFileSync(resolve(process.cwd(), '.env'), 'utf8');
-    for (const line of raw.split(/\r?\n/)) {
-      const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
-      if (!match || line.trimStart().startsWith('#')) continue;
-      const key = match[1];
-      const value = match[2].trim().replace(/^["']|["']$/g, '');
-      if (process.env[key] === undefined) process.env[key] = value;
-    }
-  } catch {
-    // No .env file — rely on the real environment. This is fine.
+function loadBridgeSettings(dir: string): void {
+  const settingsFile = bridgeConfigFile(dir);
+  // A packaged bridge lands on a machine with no settings file and no reason for
+  // its owner to know where one goes, so the first run leaves them one to edit.
+  if (ensureSettingsTemplate(settingsFile)) {
+    console.log(`Wrote a settings file to edit: ${settingsFile}`);
   }
+  const sources = settingsSources({
+    packaged: IS_PACKAGED_BUILD,
+    cwdEnvFile: resolve(process.cwd(), '.env'),
+    settingsFile,
+  });
+  for (const source of sources) applyEnvDefaults(process.env, readEnvFile(source));
 }
 
 async function main(): Promise<void> {
@@ -49,7 +58,32 @@ async function main(): Promise<void> {
     return;
   }
 
-  loadDotEnv();
+  const bridgeHome = bridgeHomeDir();
+  // Before anything secret is written into it. A directory tightened afterwards
+  // leaves a window in which the token and the API key were readable.
+  const acl = ensureBridgeHome(bridgeHome);
+  if (!acl.applied && acl.reason !== 'not-windows') {
+    // Not a warning. This directory is about to hold an API key and a pairing
+    // token, and continuing after failing to protect them would be the same
+    // false assurance this check exists to remove — worse, because it would be
+    // printed above the very secret it failed to protect.
+    console.error(`Refusing to start: ${bridgeHome} could not be restricted to your account.`);
+    console.error(acl.reason);
+    console.error('That folder holds your API key and the pairing token. Fix the folder permissions, then start the bridge again.');
+    process.exitCode = 1;
+    return;
+  }
+
+  if (cli.resetToken) {
+    const rotated = resetStoredToken(bridgeHome);
+    console.log(`New bridge token: ${rotated}`);
+    console.log(`Stored in: ${bridgeTokenFile(bridgeHome)}`);
+    console.log('Re-pair the editor with this token. A bridge that is already running keeps the old one until it is restarted.');
+    return;
+  }
+
+  loadBridgeSettings(bridgeHome);
+  console.log(`Settings: ${bridgeConfigFile(bridgeHome)}`);
   const { origins, port, provider, fallbackProvider, imageProvider: imageProviderSelection, enableCodexBeta } = resolveBridgeCliConfig(cli, process.env);
   if (fallbackProvider === 'gemini' && !process.env.GEMINI_API_KEY?.trim()) {
     throw new Error('--fallback-provider gemini requires GEMINI_API_KEY');
@@ -65,15 +99,30 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  // The same courtesy the CLI providers get: say what is missing here, rather
+  // than starting and failing on the author's first message, where the editor
+  // can only report that something went wrong.
+  const missingKey = missingProviderKey(provider, process.env);
+  if (missingKey) {
+    console.error(`${missingKey} is not set, so ${provider} has nothing to authenticate with.`);
+    console.error(`Put it in the bridge settings, then start the bridge again: ${bridgeConfigFile(bridgeHome)}`);
+    process.exitCode = 1;
+    return;
+  }
+
   if (imageProvider.provider && !imageProvider.configured) {
     const key = imageProvider.provider === 'gemini' ? 'GEMINI_API_KEY' : 'OPENAI_API_KEY';
     console.warn(`Image diagnostic: ${key} is not set; ${imageProviderLabel(imageProvider.provider)} will be unavailable.`);
   } else if (!imageProvider.provider) {
     console.warn('Image diagnostic: no image provider is configured; image generation and editing will be unavailable.');
   }
-  // A fixed token lets the browser and bridge share one value from .env. Falls
-  // back to the browser-facing key, then to a random token if neither is set.
-  const token = process.env.AI_BRIDGE_TOKEN ?? process.env.EXPO_PUBLIC_AI_BRIDGE_TOKEN;
+  // An explicitly configured token still wins, so a checkout can keep sharing one
+  // value between the browser and the bridge. Otherwise the stored token is used,
+  // issued on first run, so restarting the bridge does not silently invalidate the
+  // pairing the editor has saved.
+  const token = process.env.AI_BRIDGE_TOKEN
+    ?? process.env.EXPO_PUBLIC_AI_BRIDGE_TOKEN
+    ?? readOrCreateToken(bridgeHome).token;
   const server = new AiBridgeServer({
     port,
     token,
