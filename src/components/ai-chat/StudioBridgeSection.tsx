@@ -11,7 +11,7 @@ import {
   studioBridgeStatus,
   type StudioBridgeResult,
 } from '@/lib/ai/studio-bridge';
-import { studioBridgeView } from '@/lib/ai/studio-bridge-view';
+import { offersKeyEntry, studioBridgeView } from '@/lib/ai/studio-bridge-view';
 import type { BridgeProvider } from '@/lib/bridge-protocol';
 
 export interface StudioBridgeSectionProps {
@@ -22,17 +22,21 @@ export interface StudioBridgeSectionProps {
   onAvailabilityChange?(available: boolean): void;
 }
 
+/** How often to ask again while the studio's own start is still running. */
+const WHILE_STARTING = 500;
+
 /**
  * Starting the bridge the installed studio carries.
  *
  * Absent everywhere else — a dev server, a browser, a studio built before the
- * commands existed — where the manual URL-and-token form remains the way in.
+ * commands existed, a studio built without the bridge package — where the manual
+ * URL-and-token form remains the way in.
  *
- * The key field is offered whenever the bridge is not running rather than only
- * when the failure looks like a missing key. The bridge's message is the
- * diagnosis and is shown as it came; deciding what to offer by matching English
- * would break on the first message anyone reworded, and offering the field when
- * the key was not the problem costs an author nothing.
+ * The studio starts the bridge as it opens, so most of the time an author
+ * arrives here already paired. The button remains for the times that did not
+ * work, and the key field is always here, which is the part that was wrong:
+ * offering it only after a failed *start* left an author with a working bridge
+ * and a rejected key unable to replace it.
  */
 export function StudioBridgeSection({ provider, onPaired, onAvailabilityChange }: StudioBridgeSectionProps) {
   const colors = useColors();
@@ -40,17 +44,25 @@ export function StudioBridgeSection({ provider, onPaired, onAvailabilityChange }
   const [result, setResult] = useState<StudioBridgeResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [apiKey, setApiKey] = useState('');
-  const pairedRef = useRef(false);
+  const onPairedRef = useRef(onPaired);
+  onPairedRef.current = onPaired;
 
   const view = studioBridgeView(result, busy);
 
   const absorb = useCallback((next: StudioBridgeResult) => {
     setResult(next);
     onAvailabilityChange?.(next.available);
+    // Pairing follows each deliberate step — the first status, a start, a saved
+    // key — and not a re-render. Doing it on every render would drop a live
+    // session; doing it only once meant that replacing a key restarted the
+    // bridge and left the editor talking to the process that had just been
+    // killed.
+    const paired = studioBridgeView(next);
+    if (paired.kind === 'paired') onPairedRef.current(paired.url, paired.token);
   }, [onAvailabilityChange]);
 
-  // A bridge may already be running: the studio was reopened, or this panel was
-  // closed and opened again. Asking costs nothing and saves a pointless start.
+  // A bridge may already be running: the studio starts one as it opens, and this
+  // panel is opened later. Asking costs nothing and saves a pointless start.
   useEffect(() => {
     if (!isStudioShell()) {
       onAvailabilityChange?.(false);
@@ -61,13 +73,17 @@ export function StudioBridgeSection({ provider, onPaired, onAvailabilityChange }
     return () => { cancelled = true; };
   }, [absorb, onAvailabilityChange]);
 
-  // Pairing is a side effect of readiness, and must happen once: the details do
-  // not change while a bridge stays up, and re-pairing would drop a live session.
+  // While the studio's own start is still going there is nothing to press and
+  // nothing to read: ask again until it has settled one way or the other.
+  const startingUp = view.kind === 'busy' && !busy;
   useEffect(() => {
-    if (view.kind !== 'paired' || pairedRef.current) return;
-    pairedRef.current = true;
-    onPaired(view.url, view.token);
-  }, [view, onPaired]);
+    if (!startingUp) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void studioBridgeStatus().then(next => { if (!cancelled) absorb(next); });
+    }, WHILE_STARTING);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [startingUp, result, absorb]);
 
   const run = useCallback(async (action: () => Promise<StudioBridgeResult>) => {
     setBusy(true);
@@ -92,7 +108,12 @@ export function StudioBridgeSection({ provider, onPaired, onAvailabilityChange }
 
   if (view.kind === 'absent') return null;
 
-  const canTypeKey = provider === 'openai' || provider === 'gemini';
+  const canTypeKey = (provider === 'openai' || provider === 'gemini') && offersKeyEntry(view);
+  const running = view.kind === 'paired';
+  const keyLabel = t(
+    running ? 'aiChat.studioBridge.replaceKey' : 'aiChat.studioBridge.keyLabel',
+    { provider: aiProviderLabel(provider) },
+  );
 
   return (
     <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, gap: 10 }}>
@@ -133,18 +154,16 @@ export function StudioBridgeSection({ provider, onPaired, onAvailabilityChange }
         </Pressable>
       ) : null}
 
-      {view.kind === 'blocked' && canTypeKey ? (
+      {canTypeKey ? (
         <View style={{ gap: 6 }}>
-          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: '700' }}>
-            {t('aiChat.studioBridge.keyLabel', { provider: aiProviderLabel(provider) })}
-          </Text>
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: '700' }}>{keyLabel}</Text>
           <TextInput
             value={apiKey}
             onChangeText={setApiKey}
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
-            accessibilityLabel={t('aiChat.studioBridge.keyLabel', { provider: aiProviderLabel(provider) })}
+            accessibilityLabel={keyLabel}
             style={{
               borderWidth: 1, borderColor: colors.border, borderRadius: 8,
               paddingHorizontal: 10, minHeight: 44, color: colors.foreground,
@@ -161,15 +180,19 @@ export function StudioBridgeSection({ provider, onPaired, onAvailabilityChange }
                 backgroundColor: colors.primary, opacity: apiKey.trim() ? 1 : 0.5,
               }}
             >
-              <Text style={{ color: colors.background, fontWeight: '700' }}>{t('aiChat.studioBridge.saveKey')}</Text>
+              <Text style={{ color: colors.background, fontWeight: '700' }}>
+                {t(running ? 'aiChat.studioBridge.saveKeyRestart' : 'aiChat.studioBridge.saveKey')}
+              </Text>
             </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={start}
-              style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center' }}
-            >
-              <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.studioBridge.retry')}</Text>
-            </Pressable>
+            {view.kind === 'blocked' ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={start}
+                style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center' }}
+              >
+                <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.studioBridge.retry')}</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
       ) : null}

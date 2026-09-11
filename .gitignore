@@ -126,3 +126,10 @@ docs/technical/final-migration-audit.md
 /AGENTS.md
 /.graphifyignore
 /.publish-docs/
+
+# What `cargo test` needs in a checkout and a release does not ship from here.
+# The desktop shells are templates: `pnpm build:studio-desktop` stages a copy
+# elsewhere and generates these into it. Producing them in place is the way to
+# compile the Rust tests locally, and none of it is source.
+tools/*-shell/frontend/
+tools/*-shell/src-tauri/icons/

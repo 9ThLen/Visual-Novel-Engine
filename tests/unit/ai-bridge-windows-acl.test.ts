@@ -97,10 +97,11 @@ describe('reading the ACL report', () => {
 });
 
 describe('judging an inspection', () => {
-  const clean = { path: 'C:\\dir', protected: true, sids: [OWNER, 'S-1-5-18'] };
+  const DIR = 'C:\\dir';
+  const clean = { path: DIR, protected: true, sids: [OWNER, 'S-1-5-18'] };
 
   it('passes a directory that only the owner and the system reach', () => {
-    expect(inspectionProblems({ ownerSid: OWNER, entries: [clean] }, ['C:\\dir'])).toEqual([]);
+    expect(inspectionProblems({ ownerSid: OWNER, entries: [clean] }, DIR, [DIR])).toEqual([]);
   });
 
   it('names a secret with its own explicit entry, not just the directory', () => {
@@ -110,22 +111,46 @@ describe('judging an inspection', () => {
     const problems = inspectionProblems({
       ownerSid: OWNER,
       entries: [clean, { path: 'C:\\dir\\token', protected: true, sids: [OWNER, SANDBOX_GROUP] }],
-    }, ['C:\\dir']);
+    }, DIR, [DIR]);
     expect(problems).toEqual([`C:\\dir\\token is also accessible to ${SANDBOX_GROUP}`]);
   });
 
-  it('names a path that still inherits from above it', () => {
+  it('lets a secret inherit the directory it sits in', () => {
+    // This is what `icacls <file> /reset` produces, and `/reset` is how an
+    // existing secret is handed the directory's ACL in the first place. Treating
+    // it as a fault made the bridge start once and refuse every time after, on
+    // the machine where it had already worked.
+    const problems = inspectionProblems({
+      ownerSid: OWNER,
+      entries: [clean, { path: 'C:\\dir\\token', protected: false, sids: [OWNER, 'S-1-5-18'] }],
+    }, DIR, [DIR]);
+    expect(problems).toEqual([]);
+  });
+
+  it('still refuses a directory that inherits from above it', () => {
+    // The directory is where inheritance has to stop: everything inside takes
+    // its ACL from here, so this is the entry the whole scheme rests on.
     const problems = inspectionProblems({
       ownerSid: OWNER,
       entries: [{ ...clean, protected: false }],
-    }, ['C:\\dir']);
-    expect(problems).toEqual(['C:\\dir still inherits permissions from the folders above it']);
+    }, DIR, [DIR]);
+    expect(problems).toEqual([`${DIR} still inherits permissions from the folders above it`]);
+  });
+
+  it('judges an inherited secret by who can reach it, not by inheritance', () => {
+    // An inherited ACL is only as good as what it inherits, and a file left in
+    // a directory this run did not protect is not covered by anything.
+    const problems = inspectionProblems({
+      ownerSid: OWNER,
+      entries: [clean, { path: 'C:\\dir\\token', protected: false, sids: [OWNER, SANDBOX_GROUP] }],
+    }, DIR, [DIR]);
+    expect(problems).toEqual([`C:\\dir\\token is also accessible to ${SANDBOX_GROUP}`]);
   });
 
   it('notices a path the report skipped entirely', () => {
     // A silently skipped secret is exactly the failure this exists to catch.
-    expect(inspectionProblems({ ownerSid: OWNER, entries: [] }, ['C:\\dir']))
-      .toEqual(['C:\\dir was not reported on']);
+    expect(inspectionProblems({ ownerSid: OWNER, entries: [] }, DIR, [DIR]))
+      .toEqual([`${DIR} was not reported on`]);
   });
 });
 
@@ -180,6 +205,27 @@ describe('applying the restriction', () => {
     };
     expect(restrictDirectoryToOwner('C:\\dir', { platform: 'win32', files: ['C:\\dir\\token'], run }))
       .toEqual({ applied: true });
+  });
+
+  it('starts a second time on a machine where it already ran once', () => {
+    // The reported blocker, end to end. On the first run the directory is
+    // protected and no secret exists. On the second the secrets are there,
+    // `/reset` gives them the directory's ACL — which means inheritance is on —
+    // and the run that had just repaired them refused to continue.
+    const run = scriptedRun({
+      owner: OWNER,
+      entries: [
+        { path: 'C:\\dir', protected: true, sids: [OWNER] },
+        { path: 'C:\\dir\\token', protected: false, sids: [OWNER] },
+        { path: 'C:\\dir\\bridge.env', protected: false, sids: [OWNER] },
+      ],
+    });
+
+    expect(restrictDirectoryToOwner('C:\\dir', {
+      platform: 'win32',
+      files: ['C:\\dir\\token', 'C:\\dir\\bridge.env'],
+      run,
+    })).toEqual({ applied: true });
   });
 
   it('does nothing on POSIX, where the file mode already did it', () => {

@@ -13,6 +13,7 @@ import {
   readmeText,
   stageBridgePackage,
   verifyStagedBridgePackage,
+  resolveBridgePackage,
   zipExtractors,
 } from '../../../scripts/lib/stage-bridge-package';
 
@@ -209,5 +210,40 @@ describe('unpacking the downloaded runtime', () => {
       expect(args).toContain('C:\\tmp\\node.zip');
       expect(args).toContain('C:\\tmp\\out');
     }
+  });
+});
+
+describe('deciding whether a studio build ships the bridge', () => {
+  const defaultDir = '/repo/dist-bridge-package/VNE-AI-Bridge';
+  const resolve = (p: string) => `/abs/${p}`;
+
+  it('ships what is there', () => {
+    expect(resolveBridgePackage({ noBridge: false, defaultDir, exists: () => true, resolve }))
+      .toEqual({ ship: true, dir: defaultDir });
+  });
+
+  it('tells a decision apart from a missed step', () => {
+    // The documented recipe runs four commands and the two that build the
+    // package are the easy ones to skip, so arriving without one usually means
+    // a step was missed. `--no-bridge` is how to say it was meant.
+    expect(resolveBridgePackage({ noBridge: true, defaultDir, exists: () => true, resolve }))
+      .toEqual({ ship: false, because: 'asked' });
+    expect(resolveBridgePackage({ noBridge: false, defaultDir, exists: () => false, resolve }))
+      .toEqual({ ship: false, because: 'missing', looked: defaultDir });
+  });
+
+  it('takes an explicit path at its word, wherever it points', () => {
+    // A named path that turns out to be empty must fail loudly in staging, not
+    // fall back to shipping nothing — that fallback is how a build silently
+    // loses the feature it was asked for.
+    expect(resolveBridgePackage({
+      noBridge: false, explicit: 'elsewhere/pkg', defaultDir, exists: () => false, resolve,
+    })).toEqual({ ship: true, dir: '/abs/elsewhere/pkg' });
+  });
+
+  it('lets --no-bridge win over an explicit path, so one flag always means no', () => {
+    expect(resolveBridgePackage({
+      noBridge: true, explicit: 'elsewhere/pkg', defaultDir, exists: () => true, resolve,
+    })).toEqual({ ship: false, because: 'asked' });
   });
 });

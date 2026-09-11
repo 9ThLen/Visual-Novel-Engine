@@ -363,13 +363,27 @@ describe('staging the studio', () => {
       cwd: REPO_ROOT,
     });
 
-    // The name is half a contract: `src/bridge.rs` resolves `ai-bridge/node.exe`
-    // against the resource directory.
     expect(fs.existsSync(path.join(staged.srcTauriDir, BRIDGE_RESOURCE_DIR, 'node.exe'))).toBe(true);
     expect(fs.existsSync(path.join(staged.srcTauriDir, BRIDGE_RESOURCE_DIR, 'bridge', 'cli.mjs'))).toBe(true);
     const config = readConfig(path.join(staged.srcTauriDir, 'tauri.conf.json'));
     expect(config.bundle.resources).toEqual([BRIDGE_RESOURCE_GLOB]);
     expect(verifyStagedStudioProject(out)).toEqual([]);
+  });
+
+  it('stages the bridge where the installed studio looks for it', () => {
+    // The two halves of this contract are written in different languages, and
+    // nothing compiles them together. They disagreed: staging wrote
+    // `resources/ai-bridge/` and Rust resolved `ai-bridge/`, which Tauri never
+    // produces — a resource is installed under the relative path it was named
+    // by, every component of it. The installer carried the bridge and the studio
+    // reported it missing, and no test on either side could see the other.
+    const rust = fs.readFileSync(
+      path.join(REPO_ROOT, 'tools/studio-shell/src-tauri/src/bridge.rs'),
+      'utf8',
+    );
+    const declared = /const RESOURCE_DIR: &str = "([^"]+)";/.exec(rust);
+
+    expect(declared?.[1]).toBe(BRIDGE_RESOURCE_DIR);
   });
 
   it('builds without one, and does not claim to carry it', () => {

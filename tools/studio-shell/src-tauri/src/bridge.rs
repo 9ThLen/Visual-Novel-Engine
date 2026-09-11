@@ -24,7 +24,16 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, Runtime, State};
 
 /// Where staging puts the packaged bridge inside the bundle.
-const RESOURCE_DIR: &str = "ai-bridge";
+///
+/// The whole relative path, because that is what Tauri reproduces. A
+/// `bundle.resources` entry is copied to the path it was named by —
+/// `tauri_utils::resources::resource_relpath` keeps every component — so files
+/// staged at `src-tauri/resources/ai-bridge/` install to
+/// `<resources>/resources/ai-bridge/`, not to `<resources>/ai-bridge/`.
+/// Resolving the short name found nothing in an installed studio while every
+/// test passed, because no test installs one. `scripts/lib/stage-studio.ts`
+/// holds the other half of this string, and a test compares the two.
+const RESOURCE_DIR: &str = "resources/ai-bridge";
 const NODE_EXECUTABLE: &str = if cfg!(windows) { "node.exe" } else { "node" };
 const ENTRYPOINT: &str = "bridge/cli.mjs";
 
@@ -45,11 +54,28 @@ const DRAIN: Duration = Duration::from_millis(250);
 /// Enough of the bridge's own output to explain a failure, and no more.
 const MAX_DIAGNOSTIC_BYTES: usize = 8 * 1024;
 
+/// Said when the installation has no bridge in it, by both things that run one.
+const MISSING_BRIDGE: &str = "This installation does not include the AI bridge. Reinstall the studio, \
+                              or start a bridge yourself and pair it in the AI panel.";
+
+/// `CREATE_NO_WINDOW`: without it a console flashes over the studio on every
+/// start, and again on every saved key.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 /// What the window is told. The token is here because pairing is the point:
 /// the author should not have to copy it out of a console they never opened.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BridgeReport {
+    /// This installation carries a bridge at all.
+    ///
+    /// A studio built without the package is a supported shape — it pairs with a
+    /// bridge the author runs — and the panel must offer that manual path rather
+    /// than a start button that can only fail. Resolved from the files on disk
+    /// each time it is asked, not remembered, because it is a fact about the
+    /// installation and not about the run.
+    pub installed: bool,
     /// The bridge is listening and has published its pairing details.
     pub ready: bool,
     /// A process exists, whether or not it has finished starting.
@@ -68,15 +94,62 @@ pub struct BridgeReport {
     pub settings_path: Option<String>,
 }
 
-#[derive(Default)]
+/// Cloneable, because the work is done off the UI thread.
+///
+/// Starting the bridge blocks for as long as the bridge takes to listen. Doing
+/// that inside an async command holds a runtime thread for up to thirty
+/// seconds; the clone is what lets the whole thing move to `spawn_blocking`.
+#[derive(Clone, Default)]
 pub struct BridgeSupervisor {
-    child: Mutex<Option<Child>>,
+    child: Arc<Mutex<Option<Child>>>,
     report: Arc<Mutex<BridgeReport>>,
+    /// Held for the length of a start, so two of them cannot overlap.
+    ///
+    /// The studio starts the bridge as it opens; the AI panel asks again when an
+    /// author gets there. Without this the second call would either spawn a
+    /// rival process fighting for the port, or report "not running" about a
+    /// bridge that was seconds from ready. Instead it waits for the first and
+    /// reads its result.
+    starting: Arc<Mutex<()>>,
 }
 
 impl BridgeSupervisor {
     fn snapshot(&self) -> BridgeReport {
         self.report.lock().expect("bridge report lock").clone()
+    }
+
+    /// Whether the process we started is still alive, updating the report when
+    /// it is not.
+    ///
+    /// The report is written by threads reading the bridge's output, and those
+    /// say nothing when the process simply dies — the pipes close and the last
+    /// state stands. So a crashed bridge went on reporting itself ready, and the
+    /// panel went on offering a pairing to a socket that had gone. Asking the
+    /// operating system is the only answer that cannot be stale.
+    fn reconcile(&self) -> bool {
+        let mut child = self.child.lock().expect("bridge child lock");
+        let exited = match child.as_mut() {
+            None => return false,
+            Some(running) => match running.try_wait() {
+                Ok(None) => return true,
+                Ok(Some(status)) => format!("The AI bridge stopped ({status})."),
+                Err(error) => format!("Lost track of the AI bridge: {error}"),
+            },
+        };
+        *child = None;
+        let mut report = self.report.lock().expect("bridge report lock");
+        // The pairing details go with it: they name a socket nobody is holding,
+        // and handing them out again would pair the editor to nothing.
+        *report = BridgeReport {
+            error: Some(match report.error.clone() {
+                // Whatever it said on the way out explains more than the exit code.
+                Some(said) if !said.is_empty() => said,
+                _ => exited,
+            }),
+            settings_path: report.settings_path.clone(),
+            ..BridgeReport::default()
+        };
+        false
     }
 }
 
@@ -87,6 +160,15 @@ fn resource_path<R: Runtime>(app: &AppHandle<R>, relative: &str) -> Result<PathB
             tauri::path::BaseDirectory::Resource,
         )
         .map_err(|error| format!("could not locate {relative} in this installation: {error}"))
+}
+
+/// The runtime and the bridge this installation ships, if it ships them.
+fn bridge_paths<R: Runtime>(app: &AppHandle<R>) -> Result<(PathBuf, PathBuf), String> {
+    Ok((resource_path(app, NODE_EXECUTABLE)?, resource_path(app, ENTRYPOINT)?))
+}
+
+fn bridge_installed<R: Runtime>(app: &AppHandle<R>) -> bool {
+    matches!(bridge_paths(app), Ok((node, entry)) if node.exists() && entry.exists())
 }
 
 /// Keeps the last `MAX_DIAGNOSTIC_BYTES` of what the bridge said.
@@ -121,8 +203,14 @@ pub fn parse_pairing_line(line: &str) -> Option<(&'static str, String)> {
 }
 
 #[tauri::command]
-pub async fn ai_bridge_status(state: State<'_, BridgeSupervisor>) -> Result<BridgeReport, String> {
-    Ok(state.snapshot())
+pub async fn ai_bridge_status<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, BridgeSupervisor>,
+) -> Result<BridgeReport, String> {
+    // Not the stored answer: the stored answer survives the process it describes.
+    state.reconcile();
+    let installed = bridge_installed(&app);
+    Ok(BridgeReport { installed, ..state.snapshot() })
 }
 
 #[tauri::command]
@@ -130,23 +218,64 @@ pub async fn ai_bridge_start<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, BridgeSupervisor>,
 ) -> Result<BridgeReport, String> {
-    {
-        // Already up: hand back what we know rather than starting a second one,
-        // which would bind a taken port and leave the editor paired to neither.
-        let mut child = state.child.lock().expect("bridge child lock");
-        if let Some(running) = child.as_mut() {
-            match running.try_wait() {
-                Ok(None) => return Ok(state.snapshot()),
-                _ => {
-                    *child = None;
-                }
-            }
-        }
-    }
+    let (node, entry) = bridge_paths(&app)?;
+    let supervisor = (*state).clone();
+    // Reaching a report at all means the files were there: `spawn_bridge`
+    // refuses otherwise, so there is nothing to re-check.
+    installed(blocking(move || ensure_running(&node, &entry, &supervisor)).await)
+}
 
-    let node = resource_path(&app, NODE_EXECUTABLE)?;
-    let entry = resource_path(&app, ENTRYPOINT)?;
-    spawn_bridge(&node, &entry, &state)
+/// Stamps a report from a path that only succeeds on an installation that has
+/// the bridge, so the window is never told a working bridge is not installed.
+fn installed(result: Result<BridgeReport, String>) -> Result<BridgeReport, String> {
+    result.map(|report| BridgeReport { installed: true, ..report })
+}
+
+/// Starts the bridge as the studio opens, without blocking the window.
+///
+/// An author who has configured this once should find the AI panel connected,
+/// not holding a button that they have to press every time they open the studio.
+/// Nothing here is reported to anyone: whatever happens ends up in the report,
+/// and the panel reads that when it is opened.
+pub fn start_in_background<R: Runtime>(app: &AppHandle<R>, state: &BridgeSupervisor) {
+    let Ok((node, entry)) = bridge_paths(app) else { return };
+    // A studio built without the package: nothing to start, and the panel will
+    // offer manual pairing instead.
+    if !node.exists() || !entry.exists() {
+        return;
+    }
+    let supervisor = state.clone();
+    thread::spawn(move || {
+        let _ = ensure_running(&node, &entry, &supervisor);
+    });
+}
+
+/// Runs blocking work off the async runtime and unwraps the join.
+async fn blocking<F>(work: F) -> Result<BridgeReport, String>
+where
+    F: FnOnce() -> Result<BridgeReport, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|error| format!("the AI bridge task did not finish: {error}"))?
+}
+
+/// Starts the bridge unless it is already up, and never twice at once.
+///
+/// The lock is taken before the liveness check, not after: two callers that both
+/// looked first would both find nothing and both spawn.
+pub fn ensure_running(
+    node: &std::path::Path,
+    entry: &std::path::Path,
+    state: &BridgeSupervisor,
+) -> Result<BridgeReport, String> {
+    let _turn = state.starting.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if state.reconcile() {
+        // Up already — including the case where this call waited for the start
+        // that brought it up.
+        return Ok(state.snapshot());
+    }
+    spawn_bridge(node, entry, state)
 }
 
 /// Starts the bridge and waits for it to publish a pairing block.
@@ -161,11 +290,7 @@ pub fn spawn_bridge(
     state: &BridgeSupervisor,
 ) -> Result<BridgeReport, String> {
     if !node.exists() || !entry.exists() {
-        return Err(
-            "This installation does not include the AI bridge. Reinstall the studio, or start a \
-             bridge yourself and pair it in the AI panel."
-                .to_string(),
-        );
+        return Err(MISSING_BRIDGE.to_string());
     }
 
     let mut command = Command::new(node);
@@ -176,10 +301,8 @@ pub fn spawn_bridge(
         .stderr(Stdio::piped());
     #[cfg(windows)]
     {
-        // CREATE_NO_WINDOW: without it a console flashes over the studio on
-        // every start.
         use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000);
+        command.creation_flags(CREATE_NO_WINDOW);
     }
 
     let mut spawned = command
@@ -273,41 +396,18 @@ pub fn spawn_bridge(
     }
 }
 
-/// Sets one `KEY=value` in a settings file, leaving the rest of it alone.
+/// Hands the author's provider and key to the bridge, and starts it again.
 ///
-/// The file the bridge writes on its first run is entirely commented out, so
-/// the line to change is usually `#OPENAI_API_KEY=`. Both forms are replaced in
-/// place — appending instead would leave the commented original above a live
-/// value, which reads as though the file has two answers.
-pub fn apply_setting(contents: &str, key: &str, value: &str) -> String {
-    let mut replaced = false;
-    let mut lines: Vec<String> = contents
-        .lines()
-        .map(|line| {
-            let candidate = line.trim_start().trim_start_matches('#').trim_start();
-            if !replaced && candidate.starts_with(&format!("{key}=")) {
-                replaced = true;
-                format!("{key}={value}")
-            } else {
-                line.to_string()
-            }
-        })
-        .collect();
-    if !replaced {
-        lines.push(format!("{key}={value}"));
-    }
-    let mut out = lines.join("\n");
-    out.push('\n');
-    out
-}
-
-/// Writes the author's provider and key into the bridge's own settings file,
-/// then starts the bridge again so they take effect.
+/// The studio does not write the settings file, does not know its format and
+/// does not know where it is. It runs the bridge once with `--save-key`, which
+/// seals the key for this Windows account and selects the provider, then starts
+/// the bridge normally. One program owns the settings, and it is the one that
+/// reads them.
 ///
-/// The key travels page → command → file. It is never stored by the window and
-/// never leaves this machine: the bridge is the only thing that uses it. The
-/// path is not chosen by the caller — it is the one the bridge reported, so a
-/// page cannot aim this at a file of its choosing.
+/// The key travels on that process's standard input. It is never an argument:
+/// every process on Windows can read every other process's command line, so an
+/// API key passed that way is readable by anything running as the author —
+/// which is most of what sealing it protects against.
 #[tauri::command]
 pub async fn ai_bridge_save_settings<R: Runtime>(
     app: AppHandle<R>,
@@ -319,56 +419,76 @@ pub async fn ai_bridge_save_settings<R: Runtime>(
         "openai" | "gemini" => provider,
         other => return Err(format!("{other} is not a provider this panel can configure.")),
     };
-    let key = api_key.trim();
-    if key.is_empty() {
+    if api_key.trim().is_empty() {
         return Err("The API key is empty.".to_string());
     }
 
-    let path = state
-        .snapshot()
-        .settings_path
-        .ok_or("The bridge has not reported where its settings live. Start it once first.")?;
-    let path = std::path::PathBuf::from(path);
-    let contents = std::fs::read_to_string(&path)
-        .map_err(|error| format!("could not read the bridge settings: {error}"))?;
-
-    let variable = if provider == "gemini" { "GEMINI_API_KEY" } else { "OPENAI_API_KEY" };
-    let updated = apply_setting(
-        &apply_setting(&contents, "AI_BRIDGE_PROVIDER", &provider),
-        variable,
-        key,
-    );
-    write_private(&path, &updated)
-        .map_err(|error| format!("could not save the bridge settings: {error}"))?;
-
-    // A running bridge read the old file at startup and will not read it again.
-    stop_bridge(&state);
-    let node = resource_path(&app, NODE_EXECUTABLE)?;
-    let entry = resource_path(&app, ENTRYPOINT)?;
-    spawn_bridge(&node, &entry, &state)
+    let (node, entry) = bridge_paths(&app)?;
+    let supervisor = (*state).clone();
+    installed(
+        blocking(move || {
+            save_key(&node, &entry, &provider, api_key.trim())?;
+            // A running bridge read the old settings at startup and will not read
+            // them again, so the new key only takes effect on a fresh process.
+            stop_bridge(&supervisor);
+            ensure_running(&node, &entry, &supervisor)
+        })
+        .await,
+    )
 }
 
-/// Writes owner-only where the platform expresses that in the file mode.
-///
-/// On Windows the mode is ignored and the directory's ACL applies instead — the
-/// bridge sets and verifies that before it writes anything into the folder, and
-/// refuses to run when it cannot.
-#[cfg(unix)]
-fn write_private(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+/// Runs the bridge's own `--save-key`, writing the key to its standard input.
+pub fn save_key(
+    node: &std::path::Path,
+    entry: &std::path::Path,
+    provider: &str,
+    key: &str,
+) -> Result<(), String> {
     use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(path)?;
-    file.write_all(contents.as_bytes())
-}
 
-#[cfg(not(unix))]
-fn write_private(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
-    std::fs::write(path, contents)
+    if !node.exists() || !entry.exists() {
+        return Err(MISSING_BRIDGE.to_string());
+    }
+
+    let mut command = Command::new(node);
+    command
+        .arg(entry)
+        .arg("--save-key")
+        .arg(provider)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut spawned = command
+        .spawn()
+        .map_err(|error| format!("could not save the key: {error}"))?;
+    spawned
+        .stdin
+        .take()
+        .ok_or_else(|| "could not hand the key to the AI bridge".to_string())?
+        .write_all(key.as_bytes())
+        .map_err(|error| format!("could not hand the key to the AI bridge: {error}"))?;
+
+    let finished = spawned
+        .wait_with_output()
+        .map_err(|error| format!("could not save the key: {error}"))?;
+    if finished.status.success() {
+        return Ok(());
+    }
+    // The bridge's own words again: it explains a key Windows would not seal,
+    // or a settings file it could not write.
+    let said = String::from_utf8_lossy(&finished.stderr);
+    let said = said.trim();
+    Err(if said.is_empty() {
+        format!("The AI bridge could not save the key ({}).", finished.status)
+    } else {
+        said.to_string()
+    })
 }
 
 fn stop_bridge(state: &BridgeSupervisor) {
@@ -379,11 +499,14 @@ fn stop_bridge(state: &BridgeSupervisor) {
 }
 
 #[tauri::command]
-pub async fn ai_bridge_stop(state: State<'_, BridgeSupervisor>) -> Result<BridgeReport, String> {
+pub async fn ai_bridge_stop<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, BridgeSupervisor>,
+) -> Result<BridgeReport, String> {
     stop_bridge(&state);
     let mut report = state.report.lock().expect("bridge report lock");
     *report = BridgeReport::default();
-    Ok(report.clone())
+    Ok(BridgeReport { installed: bridge_installed(&app), ..report.clone() })
 }
 
 /// Kills the bridge when the studio goes away.
@@ -508,37 +631,6 @@ mod tests {
     }
 
     #[test]
-    fn sets_a_commented_template_line_in_place() {
-        // The file the bridge writes is entirely commented out. Appending would
-        // leave `#OPENAI_API_KEY=` above a live value, which reads as two
-        // answers to one question.
-        let template = "# a comment\n#AI_BRIDGE_PROVIDER=openai\n#OPENAI_API_KEY=\n";
-        let out = apply_setting(template, "OPENAI_API_KEY", "sk-real");
-        assert_eq!(out, "# a comment\n#AI_BRIDGE_PROVIDER=openai\nOPENAI_API_KEY=sk-real\n");
-        assert!(!out.contains("#OPENAI_API_KEY"));
-    }
-
-    #[test]
-    fn replaces_a_value_that_is_already_live() {
-        let out = apply_setting("OPENAI_API_KEY=old\nAI_BRIDGE_PORT=8787\n", "OPENAI_API_KEY", "new");
-        assert_eq!(out, "OPENAI_API_KEY=new\nAI_BRIDGE_PORT=8787\n");
-    }
-
-    #[test]
-    fn appends_a_key_the_file_never_mentioned() {
-        let out = apply_setting("AI_BRIDGE_PORT=8787\n", "GEMINI_API_KEY", "g-real");
-        assert_eq!(out, "AI_BRIDGE_PORT=8787\nGEMINI_API_KEY=g-real\n");
-    }
-
-    #[test]
-    fn leaves_a_similarly_named_setting_alone() {
-        // `OPENAI_API_KEY` must not be confused with `OPENAI_API_KEY_BACKUP`.
-        let out = apply_setting("#OPENAI_API_KEY_BACKUP=keep\n", "OPENAI_API_KEY", "sk-real");
-        assert!(out.contains("#OPENAI_API_KEY_BACKUP=keep"));
-        assert!(out.contains("OPENAI_API_KEY=sk-real"));
-    }
-
-    #[test]
     fn a_refused_start_still_reports_where_the_settings_are() {
         // That refusal is exactly when the author needs the path: it is what the
         // panel writes the key into next.
@@ -580,9 +672,10 @@ mod tests {
         spawn_bridge(&node, &entry, &state).expect_err("no key yet");
         let settings = state.snapshot().settings_path.expect("the bridge said where");
 
+        save_key(&node, &entry, "openai", "sk-test-not-used").expect("the bridge should take it");
+        // Sealed, not written here: the settings file must not hold the key.
         let contents = std::fs::read_to_string(&settings).expect("readable");
-        let updated = apply_setting(&contents, "OPENAI_API_KEY", "sk-test-not-used");
-        write_private(std::path::Path::new(&settings), &updated).expect("writable");
+        assert!(!contents.contains("sk-test-not-used"), "key left in {settings}");
 
         let after = BridgeSupervisor::default();
         let report = spawn_bridge(&node, &entry, &after).expect("the key should be enough");
@@ -590,6 +683,53 @@ mod tests {
         assert_eq!(report.url.as_deref(), Some("ws://127.0.0.1:8874"));
         shut_down(&after);
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn stops_reporting_a_bridge_that_died() {
+        // The reported failure: the report is written by threads reading the
+        // bridge's pipes, and a process that dies says nothing. The last state
+        // stood, so the panel kept offering a pairing to a socket that had gone.
+        let state = BridgeSupervisor::default();
+        *state.report.lock().unwrap() = BridgeReport {
+            installed: true,
+            ready: true,
+            running: true,
+            url: Some("ws://127.0.0.1:8787".to_string()),
+            token: Some("a-token".to_string()),
+            settings_path: Some("C:\\settings".to_string()),
+            error: None,
+        };
+        let corpse = Command::new(if cfg!(windows) { "cmd" } else { "true" })
+            .args(if cfg!(windows) { vec!["/c", "exit", "0"] } else { vec![] })
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("a process that exits at once");
+        *state.child.lock().unwrap() = Some(corpse);
+        // Give it a moment to actually be gone; `try_wait` reports what is true
+        // now, not what is about to be.
+        for _ in 0..200 {
+            if !state.reconcile() {
+                break;
+            }
+            thread::sleep(POLL);
+        }
+
+        let report = state.snapshot();
+        assert!(!report.running && !report.ready, "still claims a bridge: {report:?}");
+        assert_eq!(report.url, None, "handed out a dead socket");
+        assert_eq!(report.token, None);
+        assert!(report.error.is_some(), "said nothing about why");
+        // The one thing worth keeping: it is where the author fixes the key.
+        assert_eq!(report.settings_path.as_deref(), Some("C:\\settings"));
+    }
+
+    #[test]
+    fn says_nothing_about_a_bridge_that_was_never_started() {
+        let state = BridgeSupervisor::default();
+        assert!(!state.reconcile());
+        assert_eq!(state.snapshot().error, None);
     }
 
     #[test]

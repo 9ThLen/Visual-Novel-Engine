@@ -13,6 +13,8 @@ import { isStudioOrigin } from '@/lib/ai/studio-origins';
  * and this whole path is simply absent.
  */
 export interface StudioBridgeReport {
+  /** Whether this installation carries a bridge at all. */
+  installed: boolean;
   ready: boolean;
   running: boolean;
   url?: string;
@@ -88,8 +90,9 @@ export function stopStudioBridge(): Promise<StudioBridgeResult> {
 /**
  * Hands the author's provider and key to the bridge, and starts it again.
  *
- * The key goes page → command → the bridge's settings file. It is not stored by
- * the window: the caller is expected to forget it once this resolves, because
+ * The key goes page → command → the bridge's own `--save-key`, on that process's
+ * standard input, and is sealed there for this Windows account. It is not stored
+ * by the window: the caller is expected to forget it once this resolves, because
  * the only thing that ever needs it is the bridge.
  */
 export function saveStudioBridgeSettings(

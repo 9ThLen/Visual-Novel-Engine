@@ -12,10 +12,13 @@ import { OpenAiProvider } from './openai-provider';
 import { RoutingProvider } from './routing-provider';
 import type { ToolInvoker } from './provider';
 import { imageProviderLabel, resolveImageProvider } from './image-provider-config';
-import { bridgeConfigFile, bridgeHomeDir, bridgeTokenFile, ensureBridgeHome } from './config-paths';
+import { bridgeConfigFile, bridgeHomeDir, bridgeSecretsFile, bridgeTokenFile, ensureBridgeHome } from './config-paths';
 import { applyEnvDefaults, ensureSettingsTemplate, readEnvFile, settingsSources } from './config-store';
 import { IS_PACKAGED_BUILD } from './build-flags';
 import { readOrCreateToken, resetStoredToken } from './token-store';
+import { isKeyedProvider, saveProviderKey, KEYED_PROVIDERS } from './key-command';
+import { revealStoredSecrets } from './secret-store';
+import { readAll } from './stdin';
 
 export const BRIDGE_CLI_VERSION = '0.1.0';
 
@@ -38,6 +41,17 @@ function loadBridgeSettings(dir: string): void {
   // its owner to know where one goes, so the first run leaves them one to edit.
   if (ensureSettingsTemplate(settingsFile)) {
     console.log(`Wrote a settings file to edit: ${settingsFile}`);
+  }
+  // Ahead of both files, behind the real environment. The protected store is
+  // written by a deliberate, recent action — someone typing a key into the
+  // studio — and a key left in a settings file must not quietly outrank the key
+  // they just replaced. `--save-key` clears that line as well, so in practice
+  // there is only ever one answer; this decides the case where there is not.
+  const { values, problems } = revealStoredSecrets(bridgeSecretsFile(dir));
+  applyEnvDefaults(process.env, values);
+  for (const problem of problems) {
+    console.warn(`A saved key could not be opened on this account (${problem}).`);
+    console.warn('Enter it again in the studio, or put it in the settings file below.');
   }
   const sources = settingsSources({
     packaged: IS_PACKAGED_BUILD,
@@ -74,6 +88,25 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (cli.saveKey !== undefined) {
+    const provider = cli.saveKey.trim().toLowerCase();
+    if (!isKeyedProvider(provider)) {
+      console.error(`--save-key takes ${KEYED_PROVIDERS.join(' or ')}, not "${cli.saveKey}".`);
+      process.exitCode = 1;
+      return;
+    }
+    // On standard input, never as an argument: a command line is readable by
+    // every process on the machine, and this one is the author's API key.
+    const saved = saveProviderKey(bridgeHome, provider, await readAll(process.stdin));
+    console.log(saved.protection === 'dpapi'
+      ? `Saved your ${provider} key, protected for your Windows account: ${saved.secretsFile}`
+      : `Saved your ${provider} key to ${saved.secretsFile} (readable only by your user).`);
+    if (saved.removedPlaintext) {
+      console.log(`Removed the plaintext copy from ${saved.settingsFile}.`);
+    }
+    return;
+  }
+
   if (cli.resetToken) {
     const rotated = resetStoredToken(bridgeHome);
     console.log(`New bridge token: ${rotated}`);
@@ -105,7 +138,8 @@ async function main(): Promise<void> {
   const missingKey = missingProviderKey(provider, process.env);
   if (missingKey) {
     console.error(`${missingKey} is not set, so ${provider} has nothing to authenticate with.`);
-    console.error(`Put it in the bridge settings, then start the bridge again: ${bridgeConfigFile(bridgeHome)}`);
+    console.error('Enter it in the studio\'s AI panel, or put it in the bridge settings and start the bridge again:');
+    console.error(bridgeConfigFile(bridgeHome));
     process.exitCode = 1;
     return;
   }

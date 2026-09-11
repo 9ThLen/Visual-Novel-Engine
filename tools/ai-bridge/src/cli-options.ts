@@ -13,6 +13,8 @@ export interface BridgeCliArgs {
   version?: boolean;
   enableCodexBeta?: boolean;
   resetToken?: boolean;
+  /** Seal the API key arriving on standard input, then exit. */
+  saveKey?: string;
 }
 
 export interface BridgeCliConfig {
@@ -39,6 +41,7 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
       version: { type: 'boolean', short: 'v' },
       'enable-codex-beta': { type: 'boolean' },
       'reset-token': { type: 'boolean' },
+      'save-key': { type: 'string' },
     },
   });
 
@@ -52,6 +55,7 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
     ...(parsed.values.version ? { version: true } : {}),
     ...(parsed.values['enable-codex-beta'] ? { enableCodexBeta: true } : {}),
     ...(parsed.values['reset-token'] ? { resetToken: true } : {}),
+    ...(parsed.values['save-key'] ? { saveKey: parsed.values['save-key'] } : {}),
   };
 }
 
@@ -108,6 +112,8 @@ export function bridgeCliHelp(): string {
     '  --origin <origin>          Allowed loopback browser origin; repeatable',
     '  --port <port>              Bridge WebSocket port (default: 8787)',
     '  --reset-token              Issue a new pairing token and exit',
+    '  --save-key <openai|gemini>  Read an API key from standard input, protect it for your',
+    '                             account, select that provider, and exit',
     '  -h, --help                 Show this help',
     '  -v, --version              Show the bridge version',
     '',

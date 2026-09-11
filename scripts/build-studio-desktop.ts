@@ -28,6 +28,7 @@ import {
   stageStudioProject,
   verifyStagedStudioProject,
 } from './lib/stage-studio';
+import { resolveBridgePackage } from './lib/stage-bridge-package';
 
 import { beginOutPath } from '../tools/lib/out-path';
 
@@ -270,15 +271,27 @@ async function main(): Promise<void> {
      * produce a studio. What such a studio cannot do is start a bridge, and
      * saying so here is cheaper than finding out from a button.
      */
-    const bridgePackageDir = args.noBridge
-      ? undefined
-      : args.bridge
-        ? path.resolve(args.bridge)
-        : fs.existsSync(DEFAULT_BRIDGE) ? DEFAULT_BRIDGE : undefined;
-    if (bridgePackageDir) {
-      console.log(color.dim(`  shipping the AI bridge from ${bridgePackageDir}`));
+    const choice = resolveBridgePackage({
+      noBridge: args.noBridge,
+      ...(args.bridge ? { explicit: args.bridge } : {}),
+      defaultDir: DEFAULT_BRIDGE,
+      exists: (candidate) => fs.existsSync(candidate),
+      resolve: (candidate) => path.resolve(candidate),
+    });
+    const bridgePackageDir = choice.ship ? choice.dir : undefined;
+    if (choice.ship) {
+      console.log(color.dim(`  shipping the AI bridge from ${choice.dir}`));
+    } else if (choice.because === 'asked') {
+      console.log(color.dim('  no AI bridge in this build, as asked'));
     } else {
-      console.log(color.dim('  no AI bridge in this build: the studio will pair with one the author starts'));
+      // Not dim. Omitting the bridge is the difference between "press a button"
+      // and "go and find one", and the documented recipe's first two commands
+      // are the easy ones to skip — so arriving here usually means a step was
+      // missed rather than declined. `--no-bridge` says it was declined, and
+      // silences this.
+      console.warn(color.yellow('  ! This studio will not carry the AI bridge.'));
+      console.warn(color.yellow(`    Nothing was found at ${choice.looked}.`));
+      console.warn(color.yellow('    Run pnpm build:bridge-package first, or pass --no-bridge to mean it.'));
     }
 
     try {

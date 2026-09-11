@@ -84,6 +84,14 @@ export function bridgeTokenFile(dir: string, platform: NodeJS.Platform = process
 }
 
 /**
+ * The author's API key, sealed for this account. See `secret-store.ts` for why
+ * it is not simply a line in `bridge.env`.
+ */
+export function bridgeSecretsFile(dir: string, platform: NodeJS.Platform = process.platform): string {
+  return pathsFor(platform).join(dir, 'secrets.json');
+}
+
+/**
  * Creates the bridge's directory and makes it the owner's alone.
  *
  * Called once before anything is written into it, so the token and the settings
@@ -99,6 +107,6 @@ export function ensureBridgeHome(dir: string): AclResult {
   // — or that someone gave an explicit entry — keeps its own ACL no matter what
   // the directory says, and checking only the directory missed exactly that.
   return restrictDirectoryToOwner(dir, {
-    files: [bridgeTokenFile(dir), bridgeConfigFile(dir)],
+    files: [bridgeTokenFile(dir), bridgeConfigFile(dir), bridgeSecretsFile(dir)],
   });
 }

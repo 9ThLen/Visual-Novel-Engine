@@ -1,9 +1,10 @@
 // @vitest-environment node
-import { needsManualPairing, studioBridgeView } from '@/lib/ai/studio-bridge-view';
+import { needsManualPairing, offersKeyEntry, studioBridgeView } from '@/lib/ai/studio-bridge-view';
 import type { StudioBridgeResult } from '@/lib/ai/studio-bridge';
 
-const report = (over: Partial<{ ready: boolean; running: boolean; url: string; token: string; error: string }> = {}) =>
-  ({ available: true, report: { ready: false, running: false, ...over } }) as StudioBridgeResult;
+const report = (
+  over: Partial<{ installed: boolean; ready: boolean; running: boolean; url: string; token: string; error: string }> = {},
+) => ({ available: true, report: { installed: true, ready: false, running: false, ...over } }) as StudioBridgeResult;
 
 describe('what the panel offers about the studio bridge', () => {
   it('offers nothing before anything has been asked', () => {
@@ -29,8 +30,35 @@ describe('what the panel offers about the studio bridge', () => {
   });
 
   it('does not call it paired without both halves', () => {
-    expect(studioBridgeView(report({ ready: true, running: true, url: 'ws://127.0.0.1:8787' })).kind).toBe('offer');
-    expect(studioBridgeView(report({ ready: true, running: true, token: 't' })).kind).toBe('offer');
+    // Half a pairing is not a pairing. A process is there, so it reads as still
+    // starting rather than as something to start again.
+    expect(studioBridgeView(report({ ready: true, running: true, url: 'ws://127.0.0.1:8787' })).kind).toBe('busy');
+    expect(studioBridgeView(report({ ready: true, running: false, token: 't' })).kind).toBe('offer');
+  });
+
+  it('waits while the studio is still starting one', () => {
+    // The studio starts the bridge as it opens, so the panel can be opened
+    // mid-start. A button here would start a second process against a taken port.
+    expect(studioBridgeView(report({ running: true }))).toEqual({ kind: 'busy' });
+  });
+
+  it('steps aside in a studio that carries no bridge', () => {
+    // Built without the package: a supported shape, and the manual pairing form
+    // is the way in. An offer to start what is not there can only fail.
+    const view = studioBridgeView(report({ installed: false }));
+    expect(view).toEqual({ kind: 'absent' });
+    expect(needsManualPairing(view)).toBe(true);
+  });
+
+  it('takes a key in every state an author can act on', () => {
+    // Including a bridge that is up: a key can be wrong rather than missing, and
+    // then the bridge runs, pairs, and the model refuses every message. Offering
+    // the field only after a failed start left nowhere to correct it.
+    expect(offersKeyEntry({ kind: 'paired', url: 'u', token: 't' })).toBe(true);
+    expect(offersKeyEntry({ kind: 'offer' })).toBe(true);
+    expect(offersKeyEntry({ kind: 'blocked', message: 'no key' })).toBe(true);
+    expect(offersKeyEntry({ kind: 'busy' })).toBe(false);
+    expect(offersKeyEntry({ kind: 'absent' })).toBe(false);
   });
 
   it("shows the bridge's own words when it refuses", () => {
