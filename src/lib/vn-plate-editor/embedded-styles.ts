@@ -1258,7 +1258,10 @@ export function createEmbeddedStyles(): string {
          clipped by the iframe — use an inset glow for the branch tint instead. */
       .paper { min-height: 620px; border: 0; border-radius: 0; padding: 28px 24px 80px; box-shadow: inset 0 0 46px var(--page-branch-shadow, transparent); }
       .title { font-size: 30px; }
-      .slash-menu {
+      /* Only a real phone docks the menu as a bottom sheet: the desktop frame is
+         narrow too, but it is as tall as the whole scene, so its bottom edge can
+         sit far below the caret and off screen. */
+      .is-phone .slash-menu {
         position: fixed;
         left: 0 !important;
         right: 0;
