@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
+import { StyleSheet, View, Text, Pressable, type LayoutChangeEvent } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -251,6 +251,17 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   // Preview and reader share the camera hook so a preset previewed here moves
   // exactly the way it will for the reader.
   const previewWidth = geometry.deviceWidth;
+  // Sprites are sized against the layer they are actually drawn in, inside the
+  // device frame. The frame itself is the fallback until the layer reports its
+  // own size.
+  const [spriteStage, setSpriteStage] = useState<{ width: number; height: number } | null>(null);
+  const handleStageLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    if (width <= 0 || height <= 0) return;
+    setSpriteStage((current) => (current && current.width === width && current.height === height
+      ? current
+      : { width, height }));
+  }, []);
   const cameraValues = useCameraTransform(camera, sceneState.characters, previewWidth);
   const cameraTransform = {
     transform: [
@@ -330,14 +341,17 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
           <EffectsLayerStack effects={backgroundEffects} colors={colors} target="background" />
         ) : null}
 
-        <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, cameraTransform]}>
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFillObject, cameraTransform]}
+          onLayout={handleStageLayout}
+        >
           {characterInstances.map((instance) => {
             const characterSpecificEffects = effectsForCharacter(characterEffects, instance.characterId);
             return (
               <CharacterDisplay
                 key={instance.characterId}
                 instance={instance}
-                viewport={{ width: geometry.deviceWidth, height: geometry.deviceHeight }}
                 spriteUri={getImageSourceUri(resolvedCharUris[instance.characterId])}
                 position={instance.position}
                 isActiveSpeaker={sceneState.activeSpeakerCharacterId === instance.characterId}
@@ -346,6 +360,9 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
                   && sceneState.activeSpeakerCharacterId !== instance.characterId
                 }
                 focusScale={sceneState.activeSpeakerFocusScale}
+                stageWidth={spriteStage?.width ?? geometry.deviceWidth}
+                stageHeight={spriteStage?.height ?? geometry.deviceHeight}
+                characterCount={characterInstances.length}
                 overlay={characterSpecificEffects.length > 0 ? (
                   <EffectsLayerStack effects={characterSpecificEffects} colors={colors} target="character" />
                 ) : null}

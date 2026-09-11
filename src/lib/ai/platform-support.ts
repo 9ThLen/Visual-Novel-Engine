@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { isStudioOrigin } from '@/lib/ai/studio-origins';
 
 export type AiPlatformSupport =
   | { supported: true; reason: 'supported' }
@@ -11,6 +12,18 @@ interface AiPlatformEnvironment {
 }
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+
+/**
+ * The AI tab is shown on a loopback dev server and in the installed studio.
+ *
+ * The studio's origin is not a loopback host — `tauri.localhost` resolves
+ * nowhere — so it is matched exactly, against the same list the bridge's origin
+ * policy reads. When these two disagreed, this check was the one that ran first,
+ * and it hid the tab rather than reporting a refused connection.
+ */
+function withinLocalBoundary(url: URL): boolean {
+  return LOOPBACK_HOSTS.has(url.hostname) || isStudioOrigin(url.origin);
+}
 
 export function getAiPlatformSupport(environment: AiPlatformEnvironment = {}): AiPlatformSupport {
   const platformOS = environment.platformOS ?? Platform.OS;
@@ -26,7 +39,7 @@ export function getAiPlatformSupport(environment: AiPlatformEnvironment = {}): A
     if (
       hasWebSocket
       && (url.protocol === 'http:' || url.protocol === 'https:')
-      && LOOPBACK_HOSTS.has(url.hostname)
+      && withinLocalBoundary(url)
     ) {
       return { supported: true, reason: 'supported' };
     }

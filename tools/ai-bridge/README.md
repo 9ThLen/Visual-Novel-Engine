@@ -94,7 +94,118 @@ tool. Starting the bridge with `--provider codex` therefore exits with
 `CODEX_HARDENING_UNSUPPORTED`. Use Claude until a Codex CLI release provides a
 testable zero-data-access tool boundary.
 
-The bridge prints one pairing block containing the provider, WebSocket URL, allowed browser origins, and a random token. Paste the token into the editor's AI panel; editing `.env` is optional.
+The bridge prints one pairing block containing the provider, WebSocket URL,
+allowed browser origins, and the pairing token. Paste the token into the
+editor's AI panel; editing the settings file is optional.
+
+## The packaged bridge
+
+`pnpm build:bridge-package` writes a folder an author can run on a Windows
+machine that has never had Node, a checkout, or a terminal opened on it:
+
+```
+pnpm ai-bridge:build          # writes tools/ai-bridge/dist
+pnpm build:bridge-package     # wraps it with a runtime and a launcher
+```
+
+The result is about 95 MB, nearly all of it the official `node.exe` the package
+downloads from nodejs.org and checks against the release's published
+`SHASUMS256.txt`. An interpreter nobody verified is not something to hand
+someone and tell them to double-click. `--node <path>` ships one you supply
+instead, unchecked, because at that point you chose it.
+
+The author unzips it, runs `Start AI Bridge.cmd`, edits the settings file the
+first run tells them about, runs it again, and pastes the URL and token into the
+studio. `README.txt` in the folder says exactly that.
+
+Two commands rather than one, for the reason the desktop channels give: the
+package contains exactly what the bundler emitted, so there is one answer to
+"what is in this package" — and re-running only the second of them packages a
+stale bundle, which is the same trade every channel here makes.
+
+What this is **not** is the sidecar. Nothing in the studio launches it; the
+author starts it. Making the studio spawn it needs `tauri-plugin-shell` and a
+widened capability file — see `tools/studio-shell/README.md`.
+
+## Settings and token outside a checkout
+
+The bridge reads settings from three layers, each one filling in only what the
+layer above left unset:
+
+1. CLI options;
+2. the real environment, including a project-root `.env` **in a checkout only**;
+3. a `bridge.env` file in the bridge's own per-user directory.
+
+The packaged bridge skips that second `.env` entirely. It has no checkout, it is
+double-clicked from wherever Explorer happened to be, and a `.env` that happens
+to sit in that folder belongs to whatever else lives there. The bundle knows it
+is a bundle because `build.mjs` stamps it — see `src/build-flags.ts`.
+
+That third layer is what an installed bridge uses, because it has no `.env` and
+no meaningful working directory — starting it from a shortcut, from `C:\`, or
+from Documents must not change which settings it finds. Set `VNE_BRIDGE_HOME`
+to an absolute path to move the directory; otherwise it is:
+
+| Platform | Directory |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\VisualNovelEngine\Bridge` |
+| macOS | `~/Library/Application Support/VisualNovelEngine/Bridge` |
+| Linux | `$XDG_CONFIG_HOME/visual-novel-engine/bridge` |
+
+The **pairing token** lives in `token` in that same directory, apart from the
+settings so it can be rotated on its own. It is issued on first run and reused
+after that: a token minted per start would silently invalidate the pairing the
+editor has saved, and the editor failing to connect after a reboot reads as a
+broken product rather than as an expired secret.
+
+A token file that is empty or malformed is an error, never a silent
+replacement — see above for why. `--reset-token` issues a new one and exits. A
+bridge that is already running keeps the old token in memory, so restart it:
+that restart is what actually ends sessions authenticated with the old token.
+
+On a machine with no settings file, the first run writes a commented template
+and prints its path — "put your key in the settings file" is not an instruction
+anyone can follow when there is no file and the directory is one they have never
+opened. Every line in it is commented out, so it changes nothing until a person
+edits it, and an existing file is never touched.
+
+Both files are written `0o600`, which POSIX honours.
+
+Windows ignores the mode. The files were left to inherit the ACL of the per-user
+directory, on the assumption that it was owner-only — and checking that on a real
+machine showed it was not: the inherited entries included a group the owner never
+chose, so the file holding an author's API key was readable by more than the
+author. The ACL is set with `icacls` before anything is written — a directory tightened
+afterwards leaves a window in which both files were readable — and then read back
+and checked. Applying alone proves nothing: `/inheritance:r` removes inherited
+entries only, and `/grant:r` replaces the grants of the principal it names and
+nobody else's.
+
+Everything is done by **SID**, because a name is not an identity:
+`DOMAIN-A\anna` and `DOMAIN-B\anna` are different people whose names compare
+equal, and `SYSTEM` and `Administrators` are English strings a localised Windows
+does not use. `S-1-5-18` and `S-1-5-32-544` are the same numbers everywhere, and
+those two are the only entries permitted besides the owner — an administrator can
+take ownership of any file, so excluding them would be theatre.
+
+The check covers the **token and the settings file**, not just the folder. A
+secret that predates this, or that someone gave an explicit entry, keeps its own
+ACL regardless of what the directory says. A report the checker cannot parse is
+an error, not an empty pass: reading nothing as "nobody has access" is the most
+dangerous conclusion available to it.
+
+What it will not do is delete someone else's entry. An entry that survives
+`/inheritance:r` was put there deliberately, so it is named and the bridge stops
+— which puts the decision with a person rather than with a guess about which
+principal was safe to remove.
+
+**The bridge refuses to start when any of that fails.** Not a warning: the
+directory is about to hold an API key and a pairing token, and continuing would
+be the same false assurance this check exists to remove.
+
+The settings file matters at least as much as the token: the token is useful to
+nothing but this bridge on this machine, while the settings file is where the
+author's API key goes.
 
 In the editor, open the AI tab and choose a visible provider card. The setup
 panel shows the provider-specific instructions, a copyable bridge command, an
@@ -107,7 +218,8 @@ The connected-state menu offers:
 - **Disconnect**: ends the current bridge session but keeps the saved local URL
   and token for an explicit reconnect.
 - **Reset connection**: ends the session, removes the saved resume ID, URL, and
-  token, and disables automatic `.env` fallback until the user connects again.
+  token, and disables the automatic environment fallback until the user
+  connects again.
 - **AI permissions**: controls which tool capabilities require confirmation,
   may run automatically, or are blocked.
 

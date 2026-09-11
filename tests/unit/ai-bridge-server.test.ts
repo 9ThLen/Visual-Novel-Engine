@@ -204,6 +204,30 @@ describe('AI bridge protocol server', () => {
     expect(await handshake(explicitOrigin)).toMatchObject({ type: 'session_started' });
   });
 
+  it('completes a handshake from the installed studio, and refuses its neighbours', async () => {
+    // Measured on a Windows build: the studio window sends exactly this Origin.
+    // Everything alongside it must still be refused, which is what distinguishes
+    // an exact-origin allowance from allowing the host.
+    const { port } = await setup(async function* () {});
+    expect(await handshake(connect(port, 'http://tauri.localhost')))
+      .toMatchObject({ type: 'session_started' });
+
+    for (const origin of ['http://tauri.localhost:8081', 'https://tauri.localhost', 'http://evil.tauri.localhost']) {
+      const [error] = await once(connect(port, origin), 'error');
+      expect(String(error)).toContain('Unexpected server response');
+    }
+  });
+
+  it('refuses a handshake that carries no Origin at all', async () => {
+    // `verifyClient` looks the header up in a Set, so an absent Origin arrives as
+    // `undefined` and misses. Asserted because the alternative — answering a
+    // handshake with no origin — is the one widening we agreed never to make.
+    const { port } = await setup(async function* () {});
+    const socket = new WebSocket(`ws://127.0.0.1:${port}`);
+    const [error] = await once(socket, 'error');
+    expect(String(error)).toContain('Unexpected server response');
+  });
+
   it('rejects non-loopback configured origins', () => {
     expect(() => new AiBridgeServer({
       port: 0,

@@ -10,6 +10,16 @@
  */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import { TAURI_IPC_ORIGINS, WEB_CSP } from '../../../scripts/lib/harden-web-output.mjs';
+
+/** Shaped like what `pnpm build:bridge-package` writes. */
+function writeBridgePackage(dir: string): string {
+  fs.mkdirSync(path.join(dir, 'bridge'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'node.exe'), 'MZ fake runtime');
+  fs.writeFileSync(path.join(dir, 'bridge', 'cli.mjs'), 'console.log("AI BRIDGE PAIRING");');
+  fs.writeFileSync(path.join(dir, 'README.txt'), 'how to run it');
+  return dir;
+}
 import os from 'node:os';
 import path from 'node:path';
 
@@ -22,6 +32,9 @@ import {
   assertStudioBundle,
   stageStudioProject,
   verifyStagedStudioProject,
+  BRIDGE_RESOURCE_DIR,
+  BRIDGE_RESOURCE_GLOB,
+  assertBridgePackage,
 } from '../../../scripts/lib/stage-studio';
 import { inlinePlayerConfig, type PlayerBootConfig } from '@/lib/release/player-bundle';
 import { PLAYER_SHELL_DESCRIPTOR_PATH } from '@/lib/release/shell';
@@ -30,7 +43,15 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 const TEMPLATE_DIR = path.join(REPO_ROOT, 'tools', 'studio-shell');
 const SRC_TAURI = path.join(TEMPLATE_DIR, 'src-tauri');
 
-const SHELL_HTML = '<html><head><title>x</title></head><body><div id="root"></div></body></html>';
+/**
+ * Shaped like what `build:web` actually writes: hardened, CSP tag and all.
+ *
+ * Staging relaxes that tag for the desktop window, so a fixture without one
+ * exercises a path no real bundle takes.
+ */
+const SHELL_HTML = '<html><head><title>x</title>'
+  + `<meta data-vne-web-security http-equiv="Content-Security-Policy" content="${WEB_CSP}">`
+  + '</head><body><div id="root"></div></body></html>';
 
 function tempDir(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `vne-${name}-`));
@@ -102,7 +123,7 @@ function readConfig(file: string) {
     identifier: string;
     productName: string;
     version: string;
-    bundle: { targets: string[] };
+    bundle: { targets: string[]; resources?: string[] };
   };
 }
 
@@ -139,9 +160,56 @@ describe('the studio window exposes nothing it does not need', () => {
     expect(capability.permissions).toEqual(['core:default']);
   });
 
-  it('registers no commands', () => {
+  // This used to assert that no command existed at all. Three do now, and the
+  // guard that matters moved with them: not "can the window call into Rust", but
+  // "can the window choose what Rust runs".
+  it('registers the four AI bridge commands and nothing else', () => {
     const main = fs.readFileSync(path.join(SRC_TAURI, 'src', 'main.rs'), 'utf8');
-    expect(main).not.toContain('invoke_handler');
+    const handler = /generate_handler!\[([\s\S]*?)\]/.exec(main);
+    expect(handler).not.toBeNull();
+    const registered = handler![1]
+      .split(',')
+      .map(entry => entry.trim())
+      .filter(Boolean);
+    expect(registered).toEqual([
+      'bridge::ai_bridge_start',
+      'bridge::ai_bridge_status',
+      'bridge::ai_bridge_stop',
+      'bridge::ai_bridge_save_settings',
+    ]);
+  });
+
+  it('never lets the page say what to run', () => {
+    // The whole security argument for spawning anything: the executable comes
+    // from this application's own resource directory, and the commands take no
+    // argument that could name another one.
+    const bridge = fs.readFileSync(path.join(SRC_TAURI, 'src', 'bridge.rs'), 'utf8');
+    const commands = [...bridge.matchAll(/#\[tauri::command\]\s*pub async fn [a-z_]+(?:<[^>]*>)?\(([^)]*)\)/g)];
+    expect(commands).toHaveLength(4);
+    for (const [, parameters] of commands) {
+      // Written whole rather than split on commas: `State<'_, BridgeSupervisor>`
+      // contains one, and a check that mis-parses its own subject proves nothing.
+      // `provider` and `api_key` are values the author typed; no parameter names
+      // a path or a program, which is what keeps this narrow.
+      const normalized = parameters.replace(/\s+/g, ' ').trim().replace(/,$/, '');
+      expect(normalized).toMatch(
+        /^(app: AppHandle<R>, )?state: State<'_, BridgeSupervisor>(, provider: String, api_key: String)?$/,
+      );
+    }
+  });
+
+  it('takes no permission to run programs', () => {
+    // `tauri-plugin-shell` would be a general capability to execute; what is
+    // needed is one specific process, so it is spawned directly instead.
+    // A dependency line, not the words: both files explain in prose why the
+    // plugin is absent, and a check that trips over that explanation is worse
+    // than none.
+    const cargo = fs.readFileSync(path.join(SRC_TAURI, 'Cargo.toml'), 'utf8');
+    expect(cargo).not.toMatch(/^\s*tauri-plugin-shell\s*=/m);
+    const capability = JSON.parse(
+      fs.readFileSync(path.join(SRC_TAURI, 'capabilities', 'default.json'), 'utf8'),
+    ) as { permissions: string[] };
+    expect(capability.permissions.filter(name => name.startsWith('shell:'))).toEqual([]);
   });
 });
 
@@ -241,6 +309,126 @@ describe('staging the studio', () => {
     expect(config.version).toBe('1.4.0');
     expect(fs.readFileSync(path.join(staged.srcTauriDir, 'Cargo.toml'), 'utf8'))
       .toContain('version = "1.4.0"');
+  });
+
+  it('relaxes the CSP for the window, and only in the copy it staged', () => {
+    // Tauri serves its IPC from http://ipc.localhost, which the web policy does
+    // not allow, so IPC is refused and silently falls back to postMessage.
+    // Nothing registers a command yet — the first thing that does would be the
+    // first to find out.
+    bundle = writeStudioBundle(tempDir('studio'));
+    out = path.join(tempDir('out'), 'project');
+
+    const staged = stage(bundle, out);
+
+    const stagedHtml = fs.readFileSync(path.join(staged.frontendDir, 'index.html'), 'utf8');
+    const sourceHtml = fs.readFileSync(path.join(bundle, 'index.html'), 'utf8');
+    for (const origin of TAURI_IPC_ORIGINS) {
+      expect(stagedHtml).toContain(origin);
+      // The bundle feeds the web channel and the player too, and neither has a
+      // Tauri to talk to.
+      expect(sourceHtml).not.toContain(origin);
+    }
+    expect(verifyStagedStudioProject(out)).toEqual([]);
+  });
+
+  it('fails verification when the staged page lost that relaxation', () => {
+    bundle = writeStudioBundle(tempDir('studio'));
+    out = path.join(tempDir('out'), 'project');
+    const staged = stage(bundle, out);
+
+    const indexFile = path.join(staged.frontendDir, 'index.html');
+    fs.writeFileSync(
+      indexFile,
+      fs.readFileSync(indexFile, 'utf8').replace(new RegExp(` ${TAURI_IPC_ORIGINS[0]}`, 'g'), ''),
+    );
+
+    expect(verifyStagedStudioProject(out)).toEqual([
+      expect.stringContaining(TAURI_IPC_ORIGINS[0]),
+    ]);
+  });
+
+  it('ships the AI bridge as a resource the installer carries', () => {
+    bundle = writeStudioBundle(tempDir('studio'));
+    out = path.join(tempDir('out'), 'project');
+    const bridgePackageDir = writeBridgePackage(tempDir('bridge'));
+
+    const staged = stageStudioProject({
+      bundleDir: bundle,
+      outDir: out,
+      templateDir: TEMPLATE_DIR,
+      version: '1.4.0',
+      bridgePackageDir,
+      repoRoot: REPO_ROOT,
+      cwd: REPO_ROOT,
+    });
+
+    expect(fs.existsSync(path.join(staged.srcTauriDir, BRIDGE_RESOURCE_DIR, 'node.exe'))).toBe(true);
+    expect(fs.existsSync(path.join(staged.srcTauriDir, BRIDGE_RESOURCE_DIR, 'bridge', 'cli.mjs'))).toBe(true);
+    const config = readConfig(path.join(staged.srcTauriDir, 'tauri.conf.json'));
+    expect(config.bundle.resources).toEqual([BRIDGE_RESOURCE_GLOB]);
+    expect(verifyStagedStudioProject(out)).toEqual([]);
+  });
+
+  it('stages the bridge where the installed studio looks for it', () => {
+    // The two halves of this contract are written in different languages, and
+    // nothing compiles them together. They disagreed: staging wrote
+    // `resources/ai-bridge/` and Rust resolved `ai-bridge/`, which Tauri never
+    // produces — a resource is installed under the relative path it was named
+    // by, every component of it. The installer carried the bridge and the studio
+    // reported it missing, and no test on either side could see the other.
+    const rust = fs.readFileSync(
+      path.join(REPO_ROOT, 'tools/studio-shell/src-tauri/src/bridge.rs'),
+      'utf8',
+    );
+    const declared = /const RESOURCE_DIR: &str = "([^"]+)";/.exec(rust);
+
+    expect(declared?.[1]).toBe(BRIDGE_RESOURCE_DIR);
+  });
+
+  it('builds without one, and does not claim to carry it', () => {
+    // A build machine with no network cannot run build:bridge-package. Such a
+    // studio still pairs with a bridge the author starts.
+    bundle = writeStudioBundle(tempDir('studio'));
+    out = path.join(tempDir('out'), 'project');
+
+    const staged = stage(bundle, out);
+
+    expect(fs.existsSync(path.join(staged.srcTauriDir, BRIDGE_RESOURCE_DIR))).toBe(false);
+    expect(readConfig(path.join(staged.srcTauriDir, 'tauri.conf.json')).bundle.resources).toBeUndefined();
+    expect(verifyStagedStudioProject(out)).toEqual([]);
+  });
+
+  it('refuses a bridge folder that is not a package', () => {
+    // An empty directory stages, builds and installs, and only then produces a
+    // button that reports the bridge is missing from a build meant to have it.
+    const empty = tempDir('bridge-empty');
+    expect(() => assertBridgePackage(empty)).toThrow(/no usable node\.exe/);
+    expect(() => assertBridgePackage(path.join(empty, 'absent'))).toThrow(/is missing/);
+
+    const truncated = writeBridgePackage(tempDir('bridge-cut'));
+    fs.writeFileSync(path.join(truncated, 'bridge', 'cli.mjs'), '');
+    expect(() => assertBridgePackage(truncated)).toThrow(/no usable bridge\/cli\.mjs/);
+  });
+
+  it('fails verification when the declaration and the files disagree', () => {
+    bundle = writeStudioBundle(tempDir('studio'));
+    out = path.join(tempDir('out'), 'project');
+    const staged = stageStudioProject({
+      bundleDir: bundle,
+      outDir: out,
+      templateDir: TEMPLATE_DIR,
+      version: '1.4.0',
+      bridgePackageDir: writeBridgePackage(tempDir('bridge')),
+      repoRoot: REPO_ROOT,
+      cwd: REPO_ROOT,
+    });
+
+    fs.rmSync(path.join(staged.srcTauriDir, BRIDGE_RESOURCE_DIR), { recursive: true, force: true });
+
+    expect(verifyStagedStudioProject(out)).toEqual([
+      expect.stringContaining('would offer to start a bridge it does not carry'),
+    ]);
   });
 
   it('puts the build where the config says the frontend is', () => {

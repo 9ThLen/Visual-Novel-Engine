@@ -22,3 +22,58 @@ describe('production web hardening', () => {
     }
   });
 });
+
+describe('the desktop studio CSP', () => {
+  it('adds Tauri IPC to connect-src and leaves the rest alone', async () => {
+    const { WEB_CSP, desktopStudioCsp, TAURI_IPC_ORIGINS } = await import('../../../scripts/lib/harden-web-output.mjs');
+    const relaxed = desktopStudioCsp();
+    for (const origin of TAURI_IPC_ORIGINS) {
+      expect(/connect-src [^;]*;/.exec(relaxed)![0]).toContain(origin);
+    }
+    // Every other directive is untouched.
+    for (const directive of WEB_CSP.split(';').map(part => part.trim()).filter(Boolean)) {
+      if (directive.startsWith('connect-src')) continue;
+      expect(relaxed).toContain(directive);
+    }
+  });
+
+  it('never leaks into the policy the web channel and the player ship', async () => {
+    // The player is a stranger's download with a story inlined. It has no Tauri
+    // and no reason to carry an origin belonging to one.
+    const { WEB_CSP, TAURI_IPC_ORIGINS } = await import('../../../scripts/lib/harden-web-output.mjs');
+    for (const origin of TAURI_IPC_ORIGINS) expect(WEB_CSP).not.toContain(origin);
+  });
+
+  it('is idempotent, so re-staging cannot accumulate copies', async () => {
+    const { desktopStudioCsp } = await import('../../../scripts/lib/harden-web-output.mjs');
+    const once = desktopStudioCsp();
+    expect(desktopStudioCsp(once)).toBe(once);
+  });
+
+  it('refuses a policy with no connect-src rather than silently doing nothing', async () => {
+    const { desktopStudioCsp } = await import('../../../scripts/lib/harden-web-output.mjs');
+    expect(() => desktopStudioCsp("default-src 'self';")).toThrow(/connect-src/);
+  });
+
+  it('rewrites the hardened tag in place, and refuses a page with none', async () => {
+    const { hardenWebOutput, relaxCspForDesktopStudio, TAURI_IPC_ORIGINS } =
+      await import('../../../scripts/lib/harden-web-output.mjs');
+    const { mkdtempSync, readFileSync, rmSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const output = mkdtempSync(join(tmpdir(), 'vne-csp-'));
+    try {
+      writeFileSync(join(output, 'index.html'), '<html><head></head><body></body></html>');
+      hardenWebOutput(output);
+      relaxCspForDesktopStudio(join(output, 'index.html'));
+      const html = readFileSync(join(output, 'index.html'), 'utf8');
+      for (const origin of TAURI_IPC_ORIGINS) expect(html).toContain(origin);
+
+      writeFileSync(join(output, 'bare.html'), '<html><head></head></html>');
+      expect(() => relaxCspForDesktopStudio(join(output, 'bare.html'))).toThrow(/No hardened CSP/);
+    } finally {
+      rmSync(output, { recursive: true, force: true });
+    }
+  });
+});

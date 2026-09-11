@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { beginOutPath } from '../../tools/lib/out-path';
+import { TAURI_IPC_ORIGINS, relaxCspForDesktopStudio } from './harden-web-output.mjs';
 
 import { readInlinedPlayerConfig } from '@/lib/release/player-bundle';
 import { PLAYER_SHELL_DESCRIPTOR_PATH, parsePlayerShellDescriptor } from '@/lib/release/shell';
@@ -41,6 +42,25 @@ export const TEMPLATE_VERSION = '0.0.0';
 /** Where the bundle goes inside the staged project, relative to `src-tauri`. */
 export const FRONTEND_DIR_NAME = 'frontend';
 
+/**
+ * Where the packaged AI bridge goes, relative to `src-tauri`.
+ *
+ * `src/bridge.rs` resolves this same path against the installed resource
+ * directory, so the string is half of a contract and cannot be changed alone —
+ * `stage-studio.test.ts` reads the Rust constant and compares it.
+ *
+ * The whole path matters, not just the last component: Tauri copies a resource
+ * to the relative path it was named by, so files staged here install to
+ * `<resources>/resources/ai-bridge/` rather than `<resources>/ai-bridge/`.
+ */
+export const BRIDGE_RESOURCE_DIR = 'resources/ai-bridge';
+
+/** What `bundle.resources` must contain for the installer to carry the bridge. */
+export const BRIDGE_RESOURCE_GLOB = `${BRIDGE_RESOURCE_DIR}/**/*`;
+
+/** Enough of the package to know it is one and not an empty directory. */
+export const REQUIRED_BRIDGE_PACKAGE_FILES = ['node.exe', 'bridge/cli.mjs'];
+
 /** What Tauri will accept, and what NSIS can compare between two installers. */
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
@@ -55,6 +75,14 @@ export interface StageStudioInput {
   version: string;
   /** Bundle targets, e.g. `['nsis']`. Empty means the template's default. */
   targets?: string[];
+  /**
+   * The folder `pnpm build:bridge-package` wrote, to ship inside the installer.
+   *
+   * Optional on purpose: a studio without it still installs and still pairs with
+   * a bridge the author starts. What it cannot do is start one itself, and the
+   * window is told exactly that rather than being left to guess.
+   */
+  bridgePackageDir?: string;
   repoRoot: string;
   cwd?: string;
 }
@@ -198,6 +226,28 @@ function assertVersion(version: string): void {
  * The identity is not an input. Every other value a caller could pass is one an
  * author could get wrong once and orphan their own projects with.
  */
+/**
+ * Refuses a bridge folder that is not one.
+ *
+ * An empty or half-copied directory still stages, still builds, and still
+ * installs — and then the author clicks a button that reports the bridge is
+ * missing, on a build that was supposed to contain it. Cheaper to fail here.
+ */
+export function assertBridgePackage(dir: string): string {
+  if (!fs.existsSync(dir)) {
+    throw new Error(`The AI bridge package is missing: ${dir}\nRun: pnpm build:bridge-package`);
+  }
+  for (const relative of REQUIRED_BRIDGE_PACKAGE_FILES) {
+    const file = path.join(dir, ...relative.split('/'));
+    if (!fs.existsSync(file) || fs.statSync(file).size === 0) {
+      throw new Error(
+        `The AI bridge package has no usable ${relative}: ${dir}\nRun: pnpm build:bridge-package`,
+      );
+    }
+  }
+  return dir;
+}
+
 export function stageStudioProject(input: StageStudioInput): StagedStudioProject {
   const bundleDir = path.resolve(input.bundleDir);
   const outDir = path.resolve(input.outDir);
@@ -224,10 +274,21 @@ export function stageStudioProject(input: StageStudioInput): StagedStudioProject
     const workFrontendDir = path.join(workDir, FRONTEND_DIR_NAME);
     fs.cpSync(bundleDir, workFrontendDir, { recursive: true });
 
+    // Only this copy. `build:web` writes one bundle that the web channel and the
+    // player use unchanged, and neither of them has a Tauri IPC to reach.
+    relaxCspForDesktopStudio(path.join(workFrontendDir, 'index.html'));
+
     const workSrcTauriDir = path.join(workDir, 'src-tauri');
+    const bridgePackageDir = input.bridgePackageDir
+      ? assertBridgePackage(input.bridgePackageDir)
+      : undefined;
+    if (bridgePackageDir) {
+      fs.cpSync(bridgePackageDir, path.join(workSrcTauriDir, BRIDGE_RESOURCE_DIR), { recursive: true });
+    }
+
     const workConfigFile = path.join(workSrcTauriDir, 'tauri.conf.json');
     const targets = input.targets && input.targets.length > 0 ? [...input.targets] : undefined;
-    writeTauriConfig(workConfigFile, input.version, targets);
+    writeTauriConfig(workConfigFile, input.version, targets, Boolean(bridgePackageDir));
     writeCargoVersion(path.join(workSrcTauriDir, 'Cargo.toml'), input.version);
 
     const frontendFiles = listFiles(workFrontendDir);
@@ -262,7 +323,7 @@ interface TauriConfig {
   identifier: string;
   build: { frontendDist: string };
   app: { windows: { title: string }[] };
-  bundle: { targets: string[]; icon: string[] };
+  bundle: { targets: string[]; icon: string[]; resources?: string[] };
 }
 
 function readTauriConfig(configFile: string): TauriConfig {
@@ -275,7 +336,12 @@ function readTauriConfig(configFile: string): TauriConfig {
  * so a staging step that could set them would be a second place they could
  * differ.
  */
-function writeTauriConfig(configFile: string, version: string, targets?: string[]): void {
+function writeTauriConfig(
+  configFile: string,
+  version: string,
+  targets?: string[],
+  withBridge = false,
+): void {
   const config = readTauriConfig(configFile);
   if (config.identifier !== STUDIO_IDENTIFIER) {
     throw new Error(
@@ -290,6 +356,10 @@ function writeTauriConfig(configFile: string, version: string, targets?: string[
   }
   config.version = version;
   if (targets) config.bundle.targets = targets;
+  // Written rather than kept in the template: a template that always named the
+  // resource would fail every build made without one.
+  if (withBridge) config.bundle.resources = [BRIDGE_RESOURCE_GLOB];
+  else delete config.bundle.resources;
   fs.writeFileSync(configFile, `${JSON.stringify(config, null, 2)}\n`);
 }
 
@@ -343,6 +413,28 @@ export function verifyStagedStudioProject(outDir: string): string[] {
     problems.push('The version is still the template\'s, so no installer could tell two builds apart.');
   }
 
+  // The resource declaration and the files it names are two halves of one fact,
+  // and Tauri checks neither until the Rust build has finished. A studio that
+  // declares the bridge and ships nothing has a button that always fails.
+  const declaresBridge = config.bundle.resources?.includes(BRIDGE_RESOURCE_GLOB) ?? false;
+  const bridgeDir = path.join(srcTauriDir, BRIDGE_RESOURCE_DIR);
+  const hasBridgeFiles = REQUIRED_BRIDGE_PACKAGE_FILES.every((relative) => {
+    const file = path.join(bridgeDir, ...relative.split('/'));
+    return fs.existsSync(file) && fs.statSync(file).size > 0;
+  });
+  if (declaresBridge && !hasBridgeFiles) {
+    problems.push(
+      `bundle.resources names ${BRIDGE_RESOURCE_GLOB} but the files are not staged: the studio `
+      + 'would offer to start a bridge it does not carry.',
+    );
+  }
+  if (!declaresBridge && hasBridgeFiles) {
+    problems.push(
+      `${BRIDGE_RESOURCE_DIR} is staged but bundle.resources does not name it: the installer `
+      + 'would leave it out.',
+    );
+  }
+
   // `frontendDist` is relative to the config file, and Tauri reports a missing
   // one only once the whole Rust build has finished.
   const frontendDir = path.resolve(srcTauriDir, config.build.frontendDist);
@@ -351,6 +443,14 @@ export function verifyStagedStudioProject(outDir: string): string[] {
     problems.push(`frontendDist "${config.build.frontendDist}" has no index.html.`);
   } else {
     const html = fs.readFileSync(indexFile, 'utf8');
+    for (const origin of TAURI_IPC_ORIGINS) {
+      // Without it Tauri's IPC is refused and silently falls back to
+      // postMessage. Nothing depends on IPC yet, so this would go unnoticed
+      // until the first thing that does.
+      if (!html.includes(origin)) {
+        problems.push(`The staged index.html does not allow ${origin}: the window's IPC would be blocked.`);
+      }
+    }
     if (readInlinedPlayerConfig(html)) {
       problems.push('The staged index.html carries a player config: this is a story, not the studio.');
     }

@@ -17,11 +17,14 @@ import {
   DEFAULT_READER_LINE_HEIGHT_SCALE,
   DIALOGUE_LINE_HEIGHT_MULTIPLIER,
 } from '@/components/reader/ReaderDisplay';
-import { useResolvedAssetUris } from '@/components/document-editor/inspector/useResolvedAssetUris';
+import { useResolvedAssetUris, type ResolvedSource } from '@/components/document-editor/inspector/useResolvedAssetUris';
 import { useReaderColors } from '@/hooks/use-reader-colors';
+import { useSpriteAspectRatio } from '@/hooks/use-sprite-aspect-ratio';
 import { useI18n } from '@/hooks/use-i18n';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
-import { getReaderLayout, getResponsiveFontSize } from '@/lib/responsive';
+import { getCharacterSpriteSize } from '@/lib/character-layout';
+import { getResponsiveFontSize } from '@/lib/responsive';
+import { readerStageInsets } from '@/lib/reader-stage';
 import { richTextAlignment } from '@/lib/rich-text';
 import { getStoryReaderSpeakerTextStyle } from '@/lib/story-reader-platform';
 import { getPreviewGeometry, getPreviewLayerStyle, type PreviewDevice } from '@/lib/document-editor/preview-viewport';
@@ -44,6 +47,53 @@ function positionPercent(position: CharacterPosition): `${number}%` {
     default:
       return '50%';
   }
+}
+
+/**
+ * One sprite, sized by the reader's own rule: as tall as the stage allows, in
+ * the file's real proportions.
+ */
+function PreviewCharacter({
+  source,
+  position,
+  stageWidth,
+  stageHeight,
+  characterCount,
+}: {
+  source: ResolvedSource;
+  position: CharacterPosition;
+  stageWidth: number;
+  stageHeight: number;
+  characterCount: number;
+}) {
+  const aspectRatio = useSpriteAspectRatio(typeof source === 'number' ? source : source.uri);
+  const { width, height } = getCharacterSpriteSize({
+    stageWidth,
+    stageHeight,
+    aspectRatio,
+    characterCount,
+  });
+
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        bottom: 0,
+        left: positionPercent(position),
+        width,
+        height,
+        transform: [{ translateX: -width / 2 }],
+      }}
+    >
+      <Image
+        source={source}
+        style={{ width: '100%', height: '100%' }}
+        contentFit="contain"
+        cachePolicy="memory-disk"
+        transition={0}
+      />
+    </View>
+  );
 }
 
 interface ScenePreviewStageProps {
@@ -82,15 +132,7 @@ export const ScenePreviewStage = React.memo(function ScenePreviewStage({
 
   const { deviceWidth, deviceHeight } = geometry;
 
-  // Phone portrait pushes the character layer up above the dialogue panel;
-  // desktop landscape leaves it flush with the bottom. This is the single most
-  // visible difference between the two devices.
-  const readerLayout = useMemo(
-    () => getReaderLayout({ width: deviceWidth, height: deviceHeight }),
-    [deviceWidth, deviceHeight],
-  );
-  const charactersPaddingBottom =
-    readerLayout.dialoguePosition === 'bottom' ? Math.max(0, readerLayout.dialogueHeight - 20) : 0;
+  const previewCharacters = frame?.characters ?? [];
 
   const fontSize = useMemo(
     () => getResponsiveFontSize({ width: deviceWidth, height: deviceHeight }),
@@ -112,6 +154,19 @@ export const ScenePreviewStage = React.memo(function ScenePreviewStage({
       textAlign: richTextAlignment(frame?.text ?? ''),
     }),
     [colors.dialogueText, dialogueFontSize, frame?.text, settings.readerLineHeightScale],
+  );
+
+  // The reader's own reserve, from the reader's own module: whatever the panel
+  // keeps for itself there, the preview's characters give up here.
+  const stageInsets = useMemo(
+    () => readerStageInsets({
+      stageWidth: deviceWidth,
+      stageHeight: deviceHeight,
+      layoutPreset,
+      lineHeight: dialogueTextStyle.lineHeight,
+      panelWidth: layoutPreset === 'classic' ? deviceWidth : Math.min(deviceWidth, 760),
+    }),
+    [deviceHeight, deviceWidth, dialogueTextStyle.lineHeight, layoutPreset],
   );
 
   const choices = useMemo(
@@ -179,37 +234,27 @@ export const ScenePreviewStage = React.memo(function ScenePreviewStage({
 
         <View
           style={{
+            // Inset, not padded: on the web a padded layer still places an
+            // absolute sprite against its outer edge (see ReaderDisplay).
             position: 'absolute',
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            paddingBottom: charactersPaddingBottom,
+            top: stageInsets.top,
+            right: stageInsets.right,
+            bottom: stageInsets.bottom,
+            left: stageInsets.left,
           }}
         >
-          {(frame?.characters ?? []).map((character) => {
+          {previewCharacters.map((character) => {
             const source = character.spriteUri ? sources[character.spriteUri] : null;
             if (!source) return null;
-            const charWidth = deviceWidth * 0.35;
             return (
-              <View
+              <PreviewCharacter
                 key={character.characterId}
-                style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  left: positionPercent(character.position),
-                  width: charWidth,
-                  transform: [{ translateX: -charWidth / 2 }],
-                }}
-              >
-                <Image
-                  source={source}
-                  style={{ width: '100%', aspectRatio: 9 / 16, maxHeight: deviceHeight * 0.65 }}
-                  contentFit="contain"
-                  cachePolicy="memory-disk"
-                  transition={0}
-                />
-              </View>
+                source={source}
+                position={character.position}
+                stageWidth={deviceWidth - stageInsets.left - stageInsets.right}
+                stageHeight={deviceHeight - stageInsets.top - stageInsets.bottom}
+                characterCount={previewCharacters.length}
+              />
             );
           })}
         </View>

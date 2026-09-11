@@ -5,6 +5,8 @@ import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import type { ColorScheme } from '@/constants/theme';
 import { normalizeLocalBridgeUrl } from '@/lib/ai/bridge-config';
+import { bridgeLaunchInstruction } from '@/lib/ai/bridge-launch';
+import { StudioBridgeSection } from '@/components/ai-chat/StudioBridgeSection';
 import { AI_PROVIDER_INFO, VISIBLE_AI_PROVIDERS, aiProviderLabel } from '@/lib/ai/providers';
 import type { BridgeConnectionState, BridgeProvider } from '@/lib/bridge-client';
 import { copyToClipboard, readFromClipboard } from '@/lib/web-utils';
@@ -29,20 +31,6 @@ export interface ConnectionCardProps {
 
 function currentBrowserOrigin(): string {
   return typeof window === 'undefined' ? '' : window.location.origin;
-}
-
-function bridgeCommand(choice: ProviderChoice, imageProvider: ImageProviderChoice, url: string): string {
-  const normalized = normalizeLocalBridgeUrl(url);
-  let portFlag = '';
-  if (normalized.ok) {
-    const port = new URL(normalized.url).port;
-    if (port && port !== '8787') portFlag = ` --port ${port}`;
-  }
-  const origin = currentBrowserOrigin();
-  const originFlag = origin.startsWith('http://') || origin.startsWith('https://')
-    ? ` --origin ${origin}`
-    : '';
-  return `pnpm ai-bridge --provider ${choice} --image-provider ${imageProvider}${choice === 'codex' ? ' --enable-codex-beta' : ''}${originFlag}${portFlag}`;
 }
 
 function CommandRow({
@@ -101,8 +89,17 @@ export function ConnectionCard({
     if (copiedCommandTimerRef.current) clearTimeout(copiedCommandTimerRef.current);
   }, []);
 
+  const [studioCanStart, setStudioCanStart] = useState(false);
+  const [manualAnyway, setManualAnyway] = useState(false);
+
   const normalizedUrl = useMemo(() => normalizeLocalBridgeUrl(urlValue), [urlValue]);
-  const command = bridgeCommand(providerChoice, imageProviderChoice, normalizedUrl.ok ? normalizedUrl.url : urlValue);
+  const launch = bridgeLaunchInstruction({
+    origin: currentBrowserOrigin(),
+    provider: providerChoice,
+    imageProvider: imageProviderChoice,
+    url: normalizedUrl.ok ? normalizedUrl.url : urlValue,
+  });
+  const command = launch.command;
   const selected = AI_PROVIDER_INFO[providerChoice];
   const connected = state === 'connected';
   const hasError = state === 'unauthorized' || state === 'error' || state === 'challenge';
@@ -164,6 +161,16 @@ export function ConnectionCard({
         ) : null}
       </View>
 
+      <StudioBridgeSection
+        provider={providerChoice}
+        onAvailabilityChange={setStudioCanStart}
+        onPaired={(pairedUrl, pairedToken) => {
+          setValue(pairedToken);
+          setUrlValue(pairedUrl);
+          onConnect(pairedToken, pairedUrl, providerChoice);
+        }}
+      />
+
       {state === 'connecting' || state === 'reconnecting' ? (
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           <ActivityIndicator />
@@ -216,7 +223,9 @@ export function ConnectionCard({
         </Pressable>
         {showInstall ? (
           <View style={{ gap: 6 }}>
-            <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.connection.installHint')}</Text>
+            <Text style={{ color: colors.muted, fontSize: 11 }}>
+              {t(launch.kind === 'packaged' ? 'aiChat.connection.installHintPackaged' : 'aiChat.connection.installHint')}
+            </Text>
             {selected.setup.map(step => step.kind === 'command' ? (
               <CommandRow key={step.value} command={step.value} copied={copiedCommand === step.value} onCopy={() => void copy(step.value)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
             ) : (
@@ -250,6 +259,16 @@ export function ConnectionCard({
         <Text style={{ color: colors.muted, fontSize: 11 }}>{t(`aiChat.connection.imageProviderHelp.${imageProviderChoice}`)}</Text>
       </View>
 
+      {/* The manual route: a command to run and a token to paste. Kept out of
+          the way when the studio can start a bridge itself — but only out of
+          the way, because an author with a bridge of their own, or one the
+          studio failed to start, still needs it. */}
+      {studioCanStart && !manualAnyway ? (
+        <Pressable accessibilityRole="button" onPress={() => setManualAnyway(true)}>
+          <Text style={{ color: colors.primary, fontSize: 12 }}>{t('aiChat.studioBridge.manual')}</Text>
+        </Pressable>
+      ) : (
+        <>
       <View style={{ gap: 8 }}>
         <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.connection.startBridge')}</Text>
         <CommandRow command={command} copied={copiedCommand === command} onCopy={() => void copy(command)} colors={colors} copyLabel={t('aiChat.connection.copy')} />
@@ -293,14 +312,19 @@ export function ConnectionCard({
         </View>
       ) : null}
 
-      <Pressable
-        accessibilityRole="button"
-        disabled={!value.trim() || !normalizedUrl.ok}
-        onPress={connect}
-        style={{ backgroundColor: colors.primary, borderRadius: 8, padding: 10, opacity: value.trim() && normalizedUrl.ok ? 1 : 0.5 }}
-      >
-        <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700' }}>{t('aiChat.connection.connect')}</Text>
-      </Pressable>
+        </>
+      )}
+
+      {studioCanStart && !manualAnyway ? null : (
+        <Pressable
+          accessibilityRole="button"
+          disabled={!value.trim() || !normalizedUrl.ok}
+          onPress={connect}
+          style={{ backgroundColor: colors.primary, borderRadius: 8, padding: 10, opacity: value.trim() && normalizedUrl.ok ? 1 : 0.5 }}
+        >
+          <Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700' }}>{t('aiChat.connection.connect')}</Text>
+        </Pressable>
+      )}
       {state === 'closed' ? (
         <Pressable accessibilityRole="button" onPress={onRetry} style={{ borderWidth: 1, borderColor: colors.primary, borderRadius: 8, padding: 9 }}>
           <Text style={{ color: colors.primary, textAlign: 'center', fontWeight: '700' }}>{t('aiChat.connection.reconnect')}</Text>

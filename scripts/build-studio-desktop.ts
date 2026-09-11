@@ -28,6 +28,7 @@ import {
   stageStudioProject,
   verifyStagedStudioProject,
 } from './lib/stage-studio';
+import { resolveBridgePackage } from './lib/stage-bridge-package';
 
 import { beginOutPath } from '../tools/lib/out-path';
 
@@ -36,6 +37,7 @@ const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
 const TEMPLATE_DIR = path.join(REPO_ROOT, 'tools', 'studio-shell');
 const ENGINE_ICON = path.join(REPO_ROOT, 'assets', 'images', 'icon.png');
 const DEFAULT_BUNDLE = path.join(REPO_ROOT, 'dist');
+const DEFAULT_BRIDGE = path.join(REPO_ROOT, 'dist-bridge-package', 'VNE-AI-Bridge');
 const DEFAULT_OUT = path.join(REPO_ROOT, 'dist-studio-desktop');
 
 const color = {
@@ -56,6 +58,8 @@ function fail(message: string, details: string[] = []): never {
 
 interface Args {
   bundle?: string;
+  bridge?: string;
+  noBridge: boolean;
   out?: string;
   targets: string[];
   icon?: string;
@@ -65,11 +69,13 @@ interface Args {
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { targets: [], stageOnly: false, debug: false, help: false };
+  const args: Args = { targets: [], stageOnly: false, debug: false, help: false, noBridge: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     switch (arg) {
       case '--bundle': args.bundle = argv[++i]; break;
+      case '--bridge': args.bridge = argv[++i]; break;
+      case '--no-bridge': args.noBridge = true; break;
       case '--out': args.out = argv[++i]; break;
       case '--targets': args.targets = (argv[++i] ?? '').split(',').map((t) => t.trim()).filter(Boolean); break;
       case '--icon': args.icon = argv[++i]; break;
@@ -97,6 +103,11 @@ Options:
                      Default: dist-studio-desktop/
   --targets a,b      Bundle targets. Default: nsis on Windows, deb+appimage on
                      Linux, dmg on macOS.
+  --bridge <dir>     The AI bridge package to ship inside the installer.
+                     Default: dist-bridge-package/VNE-AI-Bridge, used when it is
+                     there. Written by pnpm build:bridge-package.
+  --no-bridge        Build without it. The studio still pairs with a bridge the
+                     author starts; it just cannot start one.
   --icon <file.png>  Square PNG, at least 512px. Defaults to the engine icon.
   --stage-only       Write the project and stop. Needs no Rust toolchain.
   --debug            Build the debug profile: much faster, much larger.
@@ -252,6 +263,37 @@ async function main(): Promise<void> {
   });
   try {
     let staged;
+    /**
+     * Ship the bridge when there is one, unless told not to.
+     *
+     * Absent by default rather than required: `build:bridge-package` downloads a
+     * runtime, and a build machine without a network should still be able to
+     * produce a studio. What such a studio cannot do is start a bridge, and
+     * saying so here is cheaper than finding out from a button.
+     */
+    const choice = resolveBridgePackage({
+      noBridge: args.noBridge,
+      ...(args.bridge ? { explicit: args.bridge } : {}),
+      defaultDir: DEFAULT_BRIDGE,
+      exists: (candidate) => fs.existsSync(candidate),
+      resolve: (candidate) => path.resolve(candidate),
+    });
+    const bridgePackageDir = choice.ship ? choice.dir : undefined;
+    if (choice.ship) {
+      console.log(color.dim(`  shipping the AI bridge from ${choice.dir}`));
+    } else if (choice.because === 'asked') {
+      console.log(color.dim('  no AI bridge in this build, as asked'));
+    } else {
+      // Not dim. Omitting the bridge is the difference between "press a button"
+      // and "go and find one", and the documented recipe's first two commands
+      // are the easy ones to skip — so arriving here usually means a step was
+      // missed rather than declined. `--no-bridge` says it was declined, and
+      // silences this.
+      console.warn(color.yellow('  ! This studio will not carry the AI bridge.'));
+      console.warn(color.yellow(`    Nothing was found at ${choice.looked}.`));
+      console.warn(color.yellow('    Run pnpm build:bridge-package first, or pass --no-bridge to mean it.'));
+    }
+
     try {
       staged = stageStudioProject({
         bundleDir,
@@ -259,6 +301,7 @@ async function main(): Promise<void> {
         templateDir: TEMPLATE_DIR,
         version,
         targets: args.targets.length > 0 ? args.targets : defaultTargets(),
+        ...(bridgePackageDir ? { bridgePackageDir } : {}),
         repoRoot: REPO_ROOT,
       });
     } catch (error) {

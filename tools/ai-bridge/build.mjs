@@ -15,6 +15,9 @@ await build({
   platform: 'node',
   format: 'esm',
   target: 'node20',
+  // Tells the bundle it is one: a packaged bridge must not read a `.env` from
+  // whatever directory it was double-clicked from.
+  define: { __VNE_BUNDLED__: 'true' },
   banner: {
     js: '#!/usr/bin/env node\nimport { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
   },

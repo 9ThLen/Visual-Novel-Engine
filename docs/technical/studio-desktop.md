@@ -10,13 +10,22 @@ The two share a shape and nothing else: a novel's identity is derived per
 release, the studio's is a constant it must never lose.
 
 ```bash
+pnpm ai-bridge:build        # writes tools/ai-bridge/dist
+pnpm build:bridge-package   # wraps it with a Node runtime — needs a network
 pnpm build:web              # writes dist/ — the studio's web build
-pnpm build:studio-desktop   # wraps dist/ in a native window and an installer
+pnpm build:studio-desktop   # wraps both in a native window and an installer
 ```
 
-Two commands rather than one, for the reason the player channel gives: the
-desktop build consumes exactly what the web build publishes, so there is one
-answer to "what is in this build".
+Separate commands rather than one, for the reason the player channel gives: each
+build consumes exactly what the one before it publishes, so there is one answer
+to "what is in this build".
+
+**The first two are easy to skip, and skipping them is quiet.** Without the
+package, `build:studio-desktop` still produces a working installer — one whose
+AI panel can only pair with a bridge the author starts and finds for themselves.
+That is a supported build, and `--no-bridge` is how to ask for it; asking makes
+the build say so calmly. Leaving the package out by accident makes it warn
+instead, because the difference is "press a button" against "go and find one".
 
 ## `build:web`, not `expo export`
 
@@ -90,20 +99,105 @@ archive and restore it before shipping an installer to anyone.
 
 ## What the window can do
 
-Nothing but show the page. `main.rs` registers no commands and
-`capabilities/default.json` grants `core:default` — no filesystem, no shell, no
-dialog, no HTTP plugin. The studio's own storage needs no permission.
+Show the page, and run one program: the AI bridge that ships beside it.
 
-The AI bridge is the known exception, and it is not done yet. It is a Node
-process on a loopback WebSocket, and an installed studio cannot ask its user to
-run `pnpm ai-bridge` by hand. Making it a sidecar needs a packaged Node runtime
-(`pnpm ai-bridge:build` emits `cli.mjs`, which is not an executable),
-`tauri-plugin-shell` scoped to that one binary, a session token handed to the
-window rather than copied by the author, and a change to
-`tools/ai-bridge/src/origin-policy.ts`, which today allows `localhost`,
-`127.0.0.1` and `[::1]` only and so rejects `http://tauri.localhost` before the
-server starts.
+`capabilities/default.json` grants `core:default` and nothing more — no
+filesystem, no dialog, no HTTP plugin, and in particular no
+`tauri-plugin-shell`. A permission to run programs is general; what the window
+has instead is four specific commands, defined in
+`tools/studio-shell/src-tauri/src/bridge.rs`:
 
-Until that lands, AI features in the installed studio work only if the author
-starts the bridge from a source checkout — which is most of the reason the
-installer exists.
+| | |
+| --- | --- |
+| `ai_bridge_start` | Start it. No arguments. |
+| `ai_bridge_status` | Is it up, and where. No arguments. |
+| `ai_bridge_stop` | Stop it. No arguments. |
+| `ai_bridge_save_settings` | A provider and an API key. Two values, no path. |
+
+Nothing the page sends chooses a path, a program or a flag. The executable is
+resolved from this application's own resource directory; the settings are the
+bridge's own, in a directory it derives from the account. App commands invoked
+from a local origin need no capability entry at all, so the narrow surface is the
+whole surface.
+
+### The bridge in the installer
+
+`build:bridge-package` produces a folder with a Node runtime and the bridge
+bundle; staging copies it to `src-tauri/resources/ai-bridge/` and names it in
+`bundle.resources`. Tauri reproduces the **whole** relative path under the
+installed resource directory, so the studio resolves `resources/ai-bridge/…`, not
+`ai-bridge/…`. Those two strings live in different languages and once disagreed:
+the installer carried the bridge and the studio reported it missing. A test in
+`stage-studio.test.ts` reads the Rust constant and compares it.
+
+A studio built without the package is a supported shape. It says so in its status
+(`installed: false`), the panel renders nothing, and the manual URL-and-token
+form is the way in.
+
+### What an author does
+
+Opens the studio. It starts the bridge as it opens, in the background, so the AI
+panel is usually already paired by the time anyone gets there. If the bridge
+refuses — most often because no API key has been entered yet — the panel shows
+the bridge's own words and a field to type the key into.
+
+The key field is there in **every** state the author can act on, including a
+bridge that is running and paired. A wrong key is not a missing key: the bridge
+starts, pairs, and the provider rejects every message. Offering the replacement
+only after a failed *start* left that author with nowhere to go.
+
+### Where the key goes
+
+Not into `bridge.env`. The studio hands it to the bridge on standard input —
+never as an argument, since every process on Windows can read every other
+process's command line — and the bridge seals it with DPAPI under the current
+user, in `secrets.json` beside its settings. The ciphertext is useless on another
+machine and to another account on this one, which is what a file's permissions
+cannot offer. A plaintext copy left in `bridge.env` is cleared at the same time,
+so there is one answer to "which key is in use".
+
+There is no DPAPI on POSIX without asking for a second password, so there the
+stored record says `"protection": "file"` and the `0600` mode is the protection.
+The installer is a Windows artefact; this is the honest state elsewhere rather
+than an implied seal.
+
+The same command is available from a terminal:
+
+```bash
+printf %s "$KEY" | vne-ai-bridge --save-key openai
+```
+
+### The folder those files live in
+
+`%LOCALAPPDATA%\VisualNovelEngine\Bridge`, restricted to the owner before
+anything secret is written into it, and verified afterwards by SID rather than by
+account name. The bridge refuses to start when it cannot do that: it is about to
+write an API key and a pairing token, and continuing would be the false assurance
+the check exists to remove.
+
+Inheritance is required of the **directory** and of nothing else. The directory
+blocks inheritance from `%LOCALAPPDATA%` and grants `(OI)(CI)` to the owner, so a
+file inheriting from it is already owner-only — and `icacls /reset`, which is how
+an existing secret is handed that ACL, turns inheritance back on. Demanding it of
+the files too made the bridge start once and refuse every run after, on the
+machine where it had just worked.
+
+### Reachable IPC
+
+The CSP written by `scripts/lib/harden-web-output.mjs` allowed `ws:` — so the
+bridge connection always passed — but not `http://ipc.localhost`, so IPC was
+refused and fell back to postMessage. Staging relaxes that one directive **in the
+studio's copy only**, because `build:web` writes one bundle that the web channel
+and the player also use, and neither has a Tauri to talk to.
+`verifyStagedStudioProject` fails a build whose page lost it.
+
+### Connecting to a bridge the author started
+
+Still works, verified on a Windows build: the handshake carries
+`Origin: http://tauri.localhost`, and the panel reports the connected provider.
+Both allowlists that gate it read `src/lib/ai/studio-origins.ts` — the bridge's
+`origin-policy.ts` answers the studio's handshake, and the editor's
+`platform-support.ts` shows the AI tab. They were separate once and disagreed,
+and the editor's check ran first, so the symptom was not a refused connection but
+a missing tab. Anything added to that list must be an origin **measured** off a
+real handshake, never one read from documentation.

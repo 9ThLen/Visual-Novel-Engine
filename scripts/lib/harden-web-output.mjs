@@ -4,6 +4,60 @@ import path from 'node:path';
 export const WEB_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; media-src 'self' blob: data: https:; font-src 'self' data:; connect-src 'self' https: wss: ws:; frame-src 'self' https:;";
 
 const SECURITY_MARKER = 'data-vne-web-security';
+
+/**
+ * The origin Tauri serves its IPC from, which the web CSP has no reason to know
+ * about and every reason not to carry.
+ *
+ * `connect-src 'self' https: wss: ws:` does not cover `http://ipc.localhost`, so
+ * in the installed studio Tauri's IPC is refused and it silently falls back to
+ * the postMessage interface. Nothing registers a command today, so nothing is
+ * visibly broken — the first thing to depend on IPC would be the first to find
+ * out, which is the sort of failure that costs a day.
+ *
+ * Only the Windows origin is listed, because only it has been observed. Tauri
+ * uses `ipc://localhost` elsewhere and the studio ships `nsis` alone; whoever
+ * builds for another platform adds it after seeing it, the same rule
+ * `src/lib/ai/studio-origins.ts` follows.
+ */
+export const TAURI_IPC_ORIGINS = ['http://ipc.localhost'];
+
+/**
+ * The web CSP with Tauri's IPC origin allowed to be connected to.
+ *
+ * Derived rather than written out, so the policy has one source and a future
+ * tightening of `WEB_CSP` cannot leave this copy behind.
+ */
+export function desktopStudioCsp(csp = WEB_CSP) {
+  const directive = /connect-src ([^;]*);/;
+  if (!directive.test(csp)) {
+    throw new Error('The web CSP has no connect-src directive to extend.');
+  }
+  return csp.replace(directive, (_match, sources) => {
+    const present = new Set(String(sources).trim().split(/\s+/));
+    const added = TAURI_IPC_ORIGINS.filter((origin) => !present.has(origin));
+    return `connect-src ${String(sources).trim()}${added.length ? ` ${added.join(' ')}` : ''};`;
+  });
+}
+
+/**
+ * Rewrites an already-hardened `index.html` for the desktop studio.
+ *
+ * Applied while staging rather than while building, so `build:web` keeps
+ * producing one bundle that the web channel and the player both use unchanged.
+ * Only the studio's own copy is relaxed.
+ *
+ * @param {string} indexPath
+ */
+export function relaxCspForDesktopStudio(indexPath) {
+  const html = fs.readFileSync(indexPath, 'utf8');
+  const tag = new RegExp(`<meta ${SECURITY_MARKER} http-equiv="Content-Security-Policy" content="([^"]*)">`);
+  const match = tag.exec(html);
+  if (!match) throw new Error(`No hardened CSP to relax in ${indexPath}`);
+  const relaxed = html.replace(match[0], match[0].replace(match[1], desktopStudioCsp(match[1])));
+  fs.writeFileSync(indexPath, relaxed);
+  return desktopStudioCsp(match[1]);
+}
 const FRAME_GUARD = "if(window.top!==window.self){document.documentElement.style.display='none';try{window.top.location=window.self.location}catch{}}";
 
 /**
