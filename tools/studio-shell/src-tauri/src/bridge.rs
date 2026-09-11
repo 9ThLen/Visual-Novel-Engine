@@ -275,6 +275,15 @@ pub fn ensure_running(
     state: &BridgeSupervisor,
 ) -> Result<BridgeReport, String> {
     let _turn = state.starting.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    ensure_running_locked(node, entry, state)
+}
+
+/// Caller holds the lifecycle lock across any settings update and restart.
+fn ensure_running_locked(
+    node: &std::path::Path,
+    entry: &std::path::Path,
+    state: &BridgeSupervisor,
+) -> Result<BridgeReport, String> {
     if state.shutting_down.load(Ordering::SeqCst) {
         return Err("The studio is closing.".to_string());
     }
@@ -442,11 +451,15 @@ pub async fn ai_bridge_save_settings<R: Runtime>(
     let supervisor = (*state).clone();
     installed(
         blocking(move || {
+            let _turn = supervisor.starting.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            if supervisor.shutting_down.load(Ordering::SeqCst) {
+                return Err("The studio is closing.".to_string());
+            }
             save_key(&node, &entry, &provider, api_key.trim())?;
             // A running bridge read the old settings at startup and will not read
             // them again, so the new key only takes effect on a fresh process.
             stop_bridge(&supervisor);
-            ensure_running(&node, &entry, &supervisor)
+            ensure_running_locked(&node, &entry, &supervisor)
         })
         .await,
     )
@@ -518,10 +531,15 @@ pub async fn ai_bridge_stop<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, BridgeSupervisor>,
 ) -> Result<BridgeReport, String> {
-    stop_bridge(&state);
-    let mut report = state.report.lock().expect("bridge report lock");
-    *report = BridgeReport::default();
-    Ok(BridgeReport { installed: bridge_installed(&app), ..report.clone() })
+    let installed = bridge_installed(&app);
+    let supervisor = (*state).clone();
+    blocking(move || {
+        let _turn = supervisor.starting.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        stop_bridge(&supervisor);
+        let mut report = supervisor.report.lock().expect("bridge report lock");
+        *report = BridgeReport::default();
+        Ok(BridgeReport { installed, ..report.clone() })
+    }).await
 }
 
 /// Kills the bridge when the studio goes away.

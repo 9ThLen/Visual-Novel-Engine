@@ -1,5 +1,6 @@
 import { spawnSync, type SpawnSyncOptionsWithStringEncoding, type SpawnSyncReturns } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { powershellEnv } from './powershell-env';
 
 /**
@@ -116,12 +117,16 @@ const CURRENT_VERSION = 1;
 export function parseSecretsFile(raw: string): Record<string, ProtectedSecret> {
   const parsed = JSON.parse(raw) as Partial<SecretsFile>;
   const secrets = parsed?.secrets;
-  if (!secrets || typeof secrets !== 'object') return {};
+  if (parsed?.version !== CURRENT_VERSION || !secrets || typeof secrets !== 'object' || Array.isArray(secrets)) {
+    throw new Error('Invalid or unsupported key store.');
+  }
   const out: Record<string, ProtectedSecret> = {};
   for (const [name, entry] of Object.entries(secrets)) {
     const record = entry as Partial<ProtectedSecret>;
-    if (typeof record?.value !== 'string') continue;
-    if (record.protection !== 'dpapi' && record.protection !== 'file') continue;
+    if (typeof record?.value !== 'string' || !record.value
+      || (record.protection !== 'dpapi' && record.protection !== 'file')) {
+      throw new Error('Invalid saved key record.');
+    }
     out[name] = { protection: record.protection, value: record.value };
   }
   return out;
@@ -137,8 +142,9 @@ export function readSecretsFile(path: string): Record<string, ProtectedSecret> {
   let raw: string;
   try {
     raw = readFileSync(path, 'utf8');
-  } catch {
-    return {};
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+    throw new Error(`could not read the saved keys: ${path}`);
   }
   try {
     return parseSecretsFile(raw);
@@ -191,6 +197,13 @@ export function storeSecret(
 ): ProtectedSecret {
   const sealed = protectSecret(plain, options);
   const secrets = { ...readSecretsFile(path), [name]: sealed };
-  writeFileSync(path, serializeSecrets(secrets), { encoding: 'utf8', mode: 0o600 });
+  // Replace only after the complete store has been written on the same volume.
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporary, serializeSecrets(secrets), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    renameSync(temporary, path);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
   return sealed;
 }

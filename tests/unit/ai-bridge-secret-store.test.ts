@@ -125,6 +125,23 @@ describe('the store on disk', () => {
     writeFileSync(file, '{ not json');
     expect(() => revealStoredSecrets(file)).toThrow(/could not read the saved keys/);
   });
+
+  it.each([
+    { version: 2, secrets: {} },
+    { version: 1, secrets: { GEMINI_API_KEY: { protection: 'unknown', value: 'existing' } } },
+    { version: 1, secrets: [] },
+  ])('preserves an unsupported store instead of replacing it when saving a key', contents => {
+    const file = join(home(), 'secrets.json');
+    const before = JSON.stringify(contents);
+    writeFileSync(file, before);
+    expect(() => storeSecret(file, 'OPENAI_API_KEY', 'replacement', { platform: 'linux' }))
+      .toThrow(/could not read the saved keys/);
+    expect(readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  it('reports a filesystem read failure instead of pretending that no keys exist', () => {
+    expect(() => revealStoredSecrets(home())).toThrow(/could not read the saved keys/);
+  });
 });
 
 describe('the PowerShell it runs', () => {
