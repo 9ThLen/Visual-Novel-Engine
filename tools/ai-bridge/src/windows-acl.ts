@@ -1,4 +1,5 @@
 import { spawnSync, type SpawnSyncOptionsWithStringEncoding, type SpawnSyncReturns } from 'node:child_process';
+import { powershellEnv } from './powershell-env';
 
 /**
  * Restrict the bridge's directory and secrets to the account that owns them, on
@@ -226,7 +227,9 @@ export function restrictDirectoryToOwner(dir: string, options: RestrictOptions =
   const run = options.run ?? spawnSync;
   const files = options.files ?? [];
   const exec = (command: string, args: readonly string[]) =>
-    run(command, args, { encoding: 'utf8', windowsHide: true });
+    run(command, args, { encoding: 'utf8', windowsHide: true,
+      ...(command === 'powershell' ? { env: powershellEnv() } : {}),
+    });
 
   const identity = exec('powershell', powershellArgs(ownerSidScript()));
   const identityFailure = failureOf(identity);

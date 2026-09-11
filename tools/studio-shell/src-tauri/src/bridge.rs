@@ -17,6 +17,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -111,6 +112,7 @@ pub struct BridgeSupervisor {
     /// bridge that was seconds from ready. Instead it waits for the first and
     /// reads its result.
     starting: Arc<Mutex<()>>,
+    shutting_down: Arc<AtomicBool>,
 }
 
 impl BridgeSupervisor {
@@ -180,7 +182,10 @@ fn push_diagnostic(buffer: &mut String, line: &str) {
     buffer.push_str(line);
     buffer.push('\n');
     if buffer.len() > MAX_DIAGNOSTIC_BYTES {
-        let cut = buffer.len() - MAX_DIAGNOSTIC_BYTES;
+        let mut cut = buffer.len() - MAX_DIAGNOSTIC_BYTES;
+        while !buffer.is_char_boundary(cut) {
+            cut += 1;
+        }
         *buffer = buffer[cut..].to_string();
     }
 }
@@ -270,6 +275,9 @@ pub fn ensure_running(
     state: &BridgeSupervisor,
 ) -> Result<BridgeReport, String> {
     let _turn = state.starting.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if state.shutting_down.load(Ordering::SeqCst) {
+        return Err("The studio is closing.".to_string());
+    }
     if state.reconcile() {
         // Up already — including the case where this call waited for the start
         // that brought it up.
@@ -357,6 +365,12 @@ pub fn spawn_bridge(
 
     let deadline = Instant::now() + READY_TIMEOUT;
     loop {
+        if state.shutting_down.load(Ordering::SeqCst) {
+            let _ = spawned.kill();
+            let _ = spawned.wait();
+            *state.report.lock().expect("bridge report lock") = BridgeReport::default();
+            return Err("The studio is closing.".to_string());
+        }
         if state.snapshot().ready {
             *state.child.lock().expect("bridge child lock") = Some(spawned);
             return Ok(state.snapshot());
@@ -386,6 +400,7 @@ pub fn spawn_bridge(
         }
         if Instant::now() >= deadline {
             let _ = spawned.kill();
+            let _ = spawned.wait();
             let mut report = state.report.lock().expect("bridge report lock");
             report.running = false;
             let message = "The AI bridge did not finish starting.".to_string();
@@ -514,6 +529,10 @@ pub async fn ai_bridge_stop<R: Runtime>(
 /// Without this a closed studio leaves a Node process holding the port, and the
 /// next start finds it taken by something the author cannot see.
 pub fn shut_down(state: &BridgeSupervisor) {
+    state.shutting_down.store(true, Ordering::SeqCst);
+    // A pending start notices cancellation and reaps its locally owned child.
+    // Holding the start lock also covers readiness racing with this request.
+    let _turn = state.starting.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     stop_bridge(state);
 }
 
@@ -560,6 +579,40 @@ mod tests {
         assert!(buffer.ends_with("line 19999\n"));
     }
 
+    #[test]
+    fn trims_cyrillic_diagnostics_at_a_character_boundary() {
+        let mut buffer = String::new();
+        push_diagnostic(&mut buffer, &"ї".repeat(MAX_DIAGNOSTIC_BYTES));
+        assert!(buffer.len() <= MAX_DIAGNOSTIC_BYTES);
+        assert!(buffer.ends_with("ї\n"));
+    }
+
+    #[test]
+    fn closing_cancels_a_start_before_readiness() {
+        let node = which_node().expect("Node is required for the supervisor cancellation test");
+        let entry = std::env::temp_dir().join(format!("vne-cancel-{}.cjs", std::process::id()));
+        std::fs::write(&entry, "setInterval(() => {}, 1000);").unwrap();
+        let state = BridgeSupervisor::default();
+        let worker_state = state.clone();
+        let worker_entry = entry.clone();
+        let worker = thread::spawn(move || ensure_running(&node, &worker_entry, &worker_state));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !state.snapshot().running && Instant::now() < deadline {
+            thread::sleep(POLL);
+        }
+        let was_running = state.snapshot().running;
+        let closing = Instant::now();
+        shut_down(&state);
+        let outcome = worker.join().unwrap();
+        std::fs::remove_file(entry).unwrap();
+        assert!(was_running, "the delayed child never started");
+        assert!(outcome.unwrap_err().contains("closing"));
+        assert!(closing.elapsed() < Duration::from_secs(3));
+        assert!(state.child.lock().unwrap().is_none());
+        assert!(!state.snapshot().running);
+        assert!(ensure_running(std::path::Path::new("unused"), std::path::Path::new("unused"), &state).unwrap_err().contains("closing"));
+    }
+
     /// Drives a real bridge, when one is pointed at.
     ///
     /// `cargo test` alone skips these: CI does not build Rust and the bundle is
@@ -581,9 +634,9 @@ mod tests {
     }
 
     fn which_node() -> Option<std::path::PathBuf> {
-        let output = Command::new("which").arg("node").output().ok()?;
+        let output = Command::new(if cfg!(windows) { "where.exe" } else { "which" }).arg("node").output().ok()?;
         let path = String::from_utf8(output.stdout).ok()?;
-        let path = std::path::PathBuf::from(path.trim());
+        let path = std::path::PathBuf::from(path.lines().next()?.trim());
         path.exists().then_some(path)
     }
 

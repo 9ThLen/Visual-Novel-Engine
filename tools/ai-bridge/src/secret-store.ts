@@ -1,5 +1,6 @@
 import { spawnSync, type SpawnSyncOptionsWithStringEncoding, type SpawnSyncReturns } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { powershellEnv } from './powershell-env';
 
 /**
  * Where the author's API key lives, and what protects it.
@@ -73,6 +74,7 @@ function powershell(script: string, input: string, options: SecretOptions): stri
   const result = run('powershell', powershellArgs(script), {
     encoding: 'utf8',
     windowsHide: true,
+    env: powershellEnv(),
     input,
   });
   if (result.error) throw new Error(result.error.message);
