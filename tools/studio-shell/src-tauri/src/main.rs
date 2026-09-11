@@ -25,6 +25,14 @@ use tauri::{Manager, RunEvent};
 fn main() {
     tauri::Builder::default()
         .manage(bridge::BridgeSupervisor::default())
+        .setup(|app| {
+            // Start it now rather than when the author finds the button. An
+            // editor that was configured once should open connected; the panel
+            // reads whatever this produced when it is opened, and a studio built
+            // without the bridge simply has nothing to start.
+            bridge::start_in_background(app.handle(), &app.state::<bridge::BridgeSupervisor>());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             bridge::ai_bridge_start,
             bridge::ai_bridge_status,

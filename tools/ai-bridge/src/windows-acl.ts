@@ -18,6 +18,10 @@ import { spawnSync, type SpawnSyncOptionsWithStringEncoding, type SpawnSyncRetur
  *   identifies accounts by SID; so does this.
  * - Checking the directory alone. A `token` that predates this, or that someone
  *   gave an explicit entry, keeps its own ACL regardless of the directory's.
+ * - Then demanding of those secrets what only the directory can provide. The
+ *   repair for such a file is `icacls /reset`, which makes it inherit the
+ *   directory's ACL — and the check called inheritance a fault, so the bridge
+ *   worked once and refused on every run after. See `inspectionProblems`.
  */
 export type AclResult =
   | { applied: true }
@@ -124,15 +128,37 @@ export function unexpectedSids(sids: readonly string[], ownerSid: string): strin
   return [...new Set(sids.filter(sid => !permitted.has(sid)))];
 }
 
-/** Everything wrong with an inspection, in words that name the path. */
-export function inspectionProblems(inspection: AclInspection, expectedPaths: readonly string[]): string[] {
+/**
+ * Everything wrong with an inspection, in words that name the path.
+ *
+ * Inheritance is required of the directory and of nothing else. That is not a
+ * relaxation, it is what the design says: the directory blocks inheritance from
+ * `%LOCALAPPDATA%` and grants `(OI)(CI)` to the owner, so a file that inherits
+ * *from it* is already owner-only — which is the whole reason the grant carries
+ * those flags.
+ *
+ * Demanding it of files as well made the bridge refuse to start a second time.
+ * `icacls <file> /reset` is what hands a pre-existing secret the directory's
+ * ACL, and it does that by turning inheritance back **on**; the check then read
+ * the result of its own repair as a fault. The first run passed because neither
+ * secret existed yet, so the failure appeared only on a machine that had
+ * already succeeded once.
+ *
+ * What is still demanded of every path is the part that matters: nobody holds
+ * access but the owner and the two system accounts.
+ */
+export function inspectionProblems(
+  inspection: AclInspection,
+  dir: string,
+  expectedPaths: readonly string[],
+): string[] {
   const problems: string[] = [];
   for (const entry of inspection.entries) {
     const unexpected = unexpectedSids(entry.sids, inspection.ownerSid);
     if (unexpected.length > 0) {
       problems.push(`${entry.path} is also accessible to ${unexpected.join(', ')}`);
     }
-    if (!entry.protected) {
+    if (entry.path === dir && !entry.protected) {
       problems.push(`${entry.path} still inherits permissions from the folders above it`);
     }
   }
@@ -241,6 +267,6 @@ export function restrictDirectoryToOwner(dir: string, options: RestrictOptions =
 
   // Only paths that exist are reported on, and only the directory is guaranteed
   // to exist at this point.
-  const problems = inspectionProblems(inspection, [dir]);
+  const problems = inspectionProblems(inspection, dir, [dir]);
   return problems.length === 0 ? { applied: true } : { applied: false, reason: problems.join('; ') };
 }

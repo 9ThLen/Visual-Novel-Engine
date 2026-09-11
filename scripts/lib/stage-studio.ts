@@ -45,8 +45,13 @@ export const FRONTEND_DIR_NAME = 'frontend';
 /**
  * Where the packaged AI bridge goes, relative to `src-tauri`.
  *
- * `src/bridge.rs` resolves `ai-bridge/node.exe` against the resource directory,
- * so this name is half of a contract and cannot be changed alone.
+ * `src/bridge.rs` resolves this same path against the installed resource
+ * directory, so the string is half of a contract and cannot be changed alone —
+ * `stage-studio.test.ts` reads the Rust constant and compares it.
+ *
+ * The whole path matters, not just the last component: Tauri copies a resource
+ * to the relative path it was named by, so files staged here install to
+ * `<resources>/resources/ai-bridge/` rather than `<resources>/ai-bridge/`.
  */
 export const BRIDGE_RESOURCE_DIR = 'resources/ai-bridge';
 

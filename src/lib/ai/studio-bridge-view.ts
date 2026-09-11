@@ -32,11 +32,17 @@ export function studioBridgeView(
   if (result === null || !result.available) return { kind: 'absent' };
   if ('failed' in result) return { kind: 'blocked', message: result.message };
 
-  const { ready, url, token, error } = result.report;
+  const { installed, running, ready, url, token, error } = result.report;
+  // A studio built without the bridge package is a supported shape: it pairs
+  // with a bridge the author runs. Offering to start one that is not there would
+  // replace that path with a button whose only outcome is a failure.
+  if (!installed && !running) return { kind: 'absent' };
   if (ready && url && token) return { kind: 'paired', url, token };
-  // Running but not ready is not a state anyone can act on differently: the
-  // supervisor waits for readiness before returning, so arriving here means it
-  // gave up or never started.
+  // Started, not finished starting. The studio begins this as it opens, so an
+  // author can reach the panel while it is still happening.
+  if (running) return { kind: 'busy' };
+  // Not running, and it said why: a missing key, a settings folder it could not
+  // protect, whatever it found. Its own words.
   if (error) return { kind: 'blocked', message: error };
   return { kind: 'offer' };
 }
@@ -44,4 +50,18 @@ export function studioBridgeView(
 /** Whether the manual URL-and-token form is the author's only way in. */
 export function needsManualPairing(view: StudioBridgeView): boolean {
   return view.kind === 'absent';
+}
+
+/**
+ * Whether the author can type an API key right now.
+ *
+ * Every state but "nothing to talk to" and "mid-start", including a bridge that
+ * is running and paired. That last one is the reported failure: a key can be
+ * non-empty, accepted by the bridge at startup and still rejected by the
+ * provider on the first message, and the field that replaces it only appeared
+ * when the *start* had failed. An author with a mistyped key had a working
+ * bridge, a model that refused everything, and nowhere to correct it.
+ */
+export function offersKeyEntry(view: StudioBridgeView): boolean {
+  return view.kind === 'offer' || view.kind === 'blocked' || view.kind === 'paired';
 }

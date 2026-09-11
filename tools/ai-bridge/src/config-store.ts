@@ -75,6 +75,9 @@ export function settingsTemplate(): string {
     '#AI_BRIDGE_PROVIDER=openai',
     '',
     '# Your key. Read by this bridge alone: it is never sent to the studio.',
+    '# Typing it into the studio\'s AI panel instead stores it protected for your',
+    '# account (Windows DPAPI) rather than as text in this file, and clears any',
+    '# copy left here.',
     '#OPENAI_API_KEY=',
     '#GEMINI_API_KEY=',
     '',
@@ -124,4 +127,56 @@ export function settingsSources(options: {
   return options.packaged
     ? [options.settingsFile]
     : [options.cwdEnvFile, options.settingsFile];
+}
+
+/**
+ * Sets one `KEY=value`, leaving the rest of the file alone.
+ *
+ * The template a first run writes is entirely commented out, so the line to
+ * change is usually `#AI_BRIDGE_PROVIDER=`. Both forms are replaced in place;
+ * appending instead would leave the commented original above a live value, which
+ * reads as though the file has two answers.
+ *
+ * This used to live in `bridge.rs`, which meant the settings format had two
+ * implementations in two languages. It has one, here, next to the parser that
+ * has to agree with it.
+ */
+export function applySetting(contents: string, key: string, value: string): string {
+  return rewriteSetting(contents, key, `${key}=${value}`, true);
+}
+
+/**
+ * Comments a setting out, keeping the key visible as the template writes it.
+ *
+ * Used when a value moves somewhere safer: an API key that has been sealed into
+ * the protected store must not also sit in this file in plain text, or the file
+ * is both a second answer and the leak the sealing was for.
+ */
+export function clearSetting(contents: string, key: string): string {
+  return rewriteSetting(contents, key, `#${key}=`, false);
+}
+
+/**
+ * The first line for `key` becomes `replacement`; any later one is emptied.
+ *
+ * Later ones matter because `parseEnvFile` keeps the last value it reads, so a
+ * file with the key twice is answered by the *second* line. Rewriting only the
+ * first would leave the old key in force while the file appeared to have been
+ * updated — and for `clearSetting`, would leave a plaintext key behind after
+ * reporting it gone.
+ */
+function rewriteSetting(contents: string, key: string, replacement: string, appendIfAbsent: boolean): string {
+  let replaced = false;
+  const lines = contents.split(/\r?\n/).map(line => {
+    const candidate = line.trimStart().replace(/^#+\s*/, '');
+    if (!candidate.startsWith(`${key}=`)) return line;
+    if (replaced) return `#${key}=`;
+    replaced = true;
+    return replacement;
+  });
+  // A trailing newline splits into a trailing empty string; writing the line
+  // into it rather than after it avoids growing a blank line on every save.
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  if (!replaced && appendIfAbsent) lines.push(replacement);
+  return `${lines.join('\n')}\n`;
 }
