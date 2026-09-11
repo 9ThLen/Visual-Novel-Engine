@@ -10,13 +10,22 @@ The two share a shape and nothing else: a novel's identity is derived per
 release, the studio's is a constant it must never lose.
 
 ```bash
+pnpm ai-bridge:build        # writes tools/ai-bridge/dist
+pnpm build:bridge-package   # wraps it with a Node runtime — needs a network
 pnpm build:web              # writes dist/ — the studio's web build
-pnpm build:studio-desktop   # wraps dist/ in a native window and an installer
+pnpm build:studio-desktop   # wraps both in a native window and an installer
 ```
 
-Two commands rather than one, for the reason the player channel gives: the
-desktop build consumes exactly what the web build publishes, so there is one
-answer to "what is in this build".
+Separate commands rather than one, for the reason the player channel gives: each
+build consumes exactly what the one before it publishes, so there is one answer
+to "what is in this build".
+
+**The first two are easy to skip, and skipping them is quiet.** Without the
+package, `build:studio-desktop` still produces a working installer — one whose
+AI panel can only pair with a bridge the author starts and finds for themselves.
+That is a supported build, and `--no-bridge` is how to ask for it; asking makes
+the build say so calmly. Leaving the package out by accident makes it warn
+instead, because the difference is "press a button" against "go and find one".
 
 ## `build:web`, not `expo export`
 

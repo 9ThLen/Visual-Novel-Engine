@@ -276,3 +276,34 @@ export function zipExtractors(platform: NodeJS.Platform = process.platform): { c
   return platform === 'win32' ? [bsdtar, expandArchive] : [unzip, bsdtar];
 }
 
+
+/**
+ * Whether this studio build ships the bridge, and why not when it does not.
+ *
+ * Two ways to arrive without one, and they deserve different volumes. Passing
+ * `--no-bridge` is a decision; finding nothing at the default path is usually a
+ * missed step, because the documented recipe runs four commands and the two that
+ * build the package are the easy ones to skip. A build that omits the bridge
+ * still works — its AI panel can only pair with a bridge the author starts — so
+ * this reports rather than refuses.
+ */
+export type BridgePackageChoice =
+  | { ship: true; dir: string }
+  | { ship: false; because: 'asked' }
+  | { ship: false; because: 'missing'; looked: string };
+
+export function resolveBridgePackage(input: {
+  noBridge: boolean;
+  explicit?: string;
+  defaultDir: string;
+  exists: (path: string) => boolean;
+  resolve: (path: string) => string;
+}): BridgePackageChoice {
+  if (input.noBridge) return { ship: false, because: 'asked' };
+  // An explicit path is a decision too: a missing one is an error the caller
+  // should see, not a silent fallback to shipping nothing.
+  if (input.explicit) return { ship: true, dir: input.resolve(input.explicit) };
+  return input.exists(input.defaultDir)
+    ? { ship: true, dir: input.defaultDir }
+    : { ship: false, because: 'missing', looked: input.defaultDir };
+}
