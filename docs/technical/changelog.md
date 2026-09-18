@@ -14,6 +14,10 @@
 - `claude` still means Claude Code and still needs that CLI; the two are separate
   providers with separate cards.
 - New: `pnpm test:ai-anthropic-live` (billable, opt-in) and its release gate.
+- Added `.github/workflows/studio-desktop.yml`: the studio installer built on a
+  Windows runner and uploaded as an artifact, so producing the `.exe` no longer
+  needs a local Rust and MSVC toolchain. Windows only, because the bridge
+  package it carries is.
 
 ## 2026-07-02 - Stabilization Cleanup
 

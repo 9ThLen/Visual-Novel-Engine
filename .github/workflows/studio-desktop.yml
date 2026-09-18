@@ -1,0 +1,104 @@
+name: Studio installer
+
+# The editor packaged for an author, not one novel packaged for a reader — the
+# sibling of `desktop.yml`, which builds the player. They are separate
+# applications with separate identities, so they are separate workflows.
+#
+# Expensive and slow — a Rust toolchain compiled from scratch, plus a ~95 MB
+# Node runtime downloaded and checksummed — so it is asked for rather than run
+# on every commit. It does run by itself when the studio pipeline changes,
+# because a channel that is only built by hand is a channel that is broken by
+# the time anyone tries.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/studio-shell/**'
+      - 'tools/ai-bridge/**'
+      - 'scripts/build-studio-desktop.ts'
+      - 'scripts/lib/stage-studio.ts'
+      - 'scripts/build-bridge-package.ts'
+      - 'scripts/lib/stage-bridge-package.ts'
+      - '.github/workflows/studio-desktop.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Windows installer
+    runs-on: windows-latest
+
+    # Windows alone, unlike the player channel's three.
+    #
+    # `build-bridge-package.ts` pins `win-x64` and ships `node.exe`, while
+    # `bridge.rs` resolves `node` on everything that is not Windows. A Linux or
+    # macOS studio built from that package therefore installs the bridge and
+    # then reports `installed: false` — a green job producing an artifact whose
+    # AI panel is quietly the `--no-bridge` shape. Building only where the
+    # bridge actually runs keeps this job's success meaning what it says.
+    #
+    # The staging rules themselves are covered on every platform by
+    # `tests/unit/scripts/stage-studio.test.ts`, which needs no Rust.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # pnpm before setup-node, so that `cache: pnpm` can find it.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Not a dependency of the repository: it carries a prebuilt binary per
+      # platform and is useless without the Rust toolchain below, which no
+      # lockfile can install. See docs/technical/releases-desktop.md.
+      - name: Install the Tauri CLI
+        run: pnpm add -D @tauri-apps/cli@^2
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # The four commands from docs/technical/studio-desktop.md, in that order
+      # and separately, because each consumes exactly what the one before it
+      # published. Collapsing them would remove the one answer to "what is in
+      # this build".
+      - name: Build the AI bridge bundle
+        run: pnpm ai-bridge:build
+
+      # Downloads an official node.exe from nodejs.org and checks it against
+      # the release's published SHASUMS256.txt. Skipping this step is the quiet
+      # failure the build script warns about: the installer still builds, and
+      # its AI panel can then only pair with a bridge the author starts.
+      - name: Package the bridge with a Node runtime
+        run: pnpm build:bridge-package
+
+      # No VNE_WEB_BASE_URL here, unlike the Pages build: the studio is served
+      # from the root of tauri.localhost, and a base path would move the origin
+      # every project an author has written is stored under.
+      - name: Build the studio web bundle
+        run: pnpm build:web
+
+      - name: Build the installer
+        run: pnpm build:studio-desktop --targets nsis
+
+      # `if-no-files-found: error` because a job that ends green having produced
+      # nothing is the one failure mode this whole workflow exists to catch.
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-installer-windows
+          if-no-files-found: error
+          path: |
+            dist-studio-desktop/src-tauri/target/release/bundle/**/*.exe
+            dist-studio-desktop/src-tauri/target/release/bundle/**/*.msi

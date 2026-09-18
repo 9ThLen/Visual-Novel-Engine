@@ -54,6 +54,18 @@ per-platform pieces — listed in [releases-desktop.md](releases-desktop.md#what
 `pnpm build:studio-desktop --stage-only` needs none of it. It writes the project
 and stops, which is how the staging rules are tested on machines with no Rust.
 
+Or none of it on your own machine: `.github/workflows/studio-desktop.yml` runs
+the four commands on a Windows runner and uploads the installer as an artifact.
+It is `workflow_dispatch`, plus a push to the studio pipeline itself, for the
+reason the player channel gives — a channel only ever built by hand is broken by
+the time someone tries it.
+
+Windows alone, where the player channel builds three. `build-bridge-package.ts`
+pins `win-x64` and ships `node.exe`; `bridge.rs` resolves `node` everywhere that
+is not Windows. A Linux or macOS studio built from that package installs the
+bridge and then reports `installed: false` — a green build whose AI panel is
+quietly the `--no-bridge` shape.
+
 ## Options
 
 | | |
