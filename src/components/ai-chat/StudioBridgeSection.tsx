@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-nativ
 
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
-import { aiProviderLabel } from '@/lib/ai/providers';
+import { aiProviderLabel, isKeyedBridgeProvider } from '@/lib/ai/providers';
 import {
   isStudioShell,
   saveStudioBridgeSettings,
@@ -98,7 +98,7 @@ export function StudioBridgeSection({ provider, onPaired, onAvailabilityChange }
 
   const saveKey = useCallback(() => {
     const key = apiKey.trim();
-    if (!key || (provider !== 'openai' && provider !== 'gemini')) return;
+    if (!key || !isKeyedBridgeProvider(provider)) return;
     // Forgotten as soon as it is handed over. The bridge is the only thing that
     // needs it, and the studio keeping a copy would be a second place to leak
     // from for no benefit.
@@ -108,7 +108,7 @@ export function StudioBridgeSection({ provider, onPaired, onAvailabilityChange }
 
   if (view.kind === 'absent') return null;
 
-  const canTypeKey = (provider === 'openai' || provider === 'gemini') && offersKeyEntry(view);
+  const canTypeKey = isKeyedBridgeProvider(provider) && offersKeyEntry(view);
   const running = view.kind === 'paired';
   const keyLabel = t(
     running ? 'aiChat.studioBridge.replaceKey' : 'aiChat.studioBridge.keyLabel',

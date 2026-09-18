@@ -41,7 +41,7 @@ export interface BridgeError {
   details?: unknown;
 }
 
-export type BridgeProvider = 'claude' | 'openai' | 'codex' | 'gemini';
+export type BridgeProvider = 'claude' | 'anthropic' | 'openai' | 'codex' | 'gemini';
 export type BridgeImageProvider = 'openai' | 'gemini';
 
 export type BridgeImagePlacement =
@@ -84,6 +84,9 @@ export type SessionChallengeReason =
   | 'GEMINI_API_KEY_MISSING'
   | 'GEMINI_API_AUTH_FAILED'
   | 'GEMINI_MODEL_UNAVAILABLE'
+  | 'ANTHROPIC_API_KEY_MISSING'
+  | 'ANTHROPIC_API_AUTH_FAILED'
+  | 'ANTHROPIC_MODEL_UNAVAILABLE'
   | 'CODEX_BETA_CONSENT_REQUIRED'
   | 'CODEX_BETA_CONSENT_STALE'
   | 'CODEX_KEYRING_REQUIRED'

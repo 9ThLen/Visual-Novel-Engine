@@ -5,6 +5,7 @@ import type { ColorScheme } from '@/constants/theme';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import type { AiPermissions } from '@/lib/ai/permissions';
+import { isKeyedBridgeProvider } from '@/lib/ai/providers';
 import type { BridgeConnectionState, BridgeProvider } from '@/lib/bridge-client';
 import type { BridgeCapabilities } from '@/lib/bridge-protocol';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -64,7 +65,7 @@ export function AiSettingsPanel(props: AiSettingsPanelProps) {
         <View style={section}>
           <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.settings.provider')}</Text>
           <Text style={{ color: colors.muted, fontSize: 12 }}>{t('aiChat.settings.bridgeManaged')}</Text>
-          {(props.provider === 'openai' || props.provider === 'gemini') && props.capabilities?.modelPolicy ? <>
+          {isKeyedBridgeProvider(props.provider) && props.capabilities?.modelPolicy ? <>
             <TextInput value={model} onChangeText={setModel} editable={!props.capabilities.modelPolicy.modelLocked} placeholder={props.capabilities.modelPolicy.effectiveModel ?? 'Model'} placeholderTextColor={colors.muted} style={{ color: colors.foreground, borderWidth: 1, borderColor: colors.border, borderRadius: 7, padding: 8 }} />
             <TextInput value={budget} onChangeText={setBudget} editable={!props.capabilities.modelPolicy.tokenBudgetLocked} keyboardType="numeric" placeholder={props.capabilities.modelPolicy.effectiveTokenBudget?.toString() ?? 'Token budget'} placeholderTextColor={colors.muted} style={{ color: colors.foreground, borderWidth: 1, borderColor: colors.border, borderRadius: 7, padding: 8 }} />
             {action(t('aiChat.settings.applyProvider'), () => props.onApplyProviderSettings(model.trim() || undefined, Number(budget) > 0 ? Math.floor(Number(budget)) : undefined))}

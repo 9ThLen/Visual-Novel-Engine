@@ -1,3 +1,4 @@
+import type { KeyedBridgeProvider } from '@/lib/ai/providers';
 import { isStudioOrigin } from '@/lib/ai/studio-origins';
 
 /**
@@ -96,7 +97,7 @@ export function stopStudioBridge(): Promise<StudioBridgeResult> {
  * the only thing that ever needs it is the bridge.
  */
 export function saveStudioBridgeSettings(
-  provider: 'openai' | 'gemini',
+  provider: KeyedBridgeProvider,
   apiKey: string,
 ): Promise<StudioBridgeResult> {
   return call('ai_bridge_save_settings', { provider, apiKey });

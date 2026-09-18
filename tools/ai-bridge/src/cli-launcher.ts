@@ -21,7 +21,7 @@ export function providerAuthCommand(
   platform: NodeJS.Platform = process.platform,
   comSpec = process.env.ComSpec,
 ): ProviderAuthCommand {
-  if (provider === 'openai' || provider === 'gemini') {
+  if (provider !== 'claude' && provider !== 'codex') {
     throw new Error(`${provider} authentication does not use a CLI`);
   }
   if (platform !== 'win32') {
@@ -44,7 +44,7 @@ export function checkProviderAuthentication(
   provider: BridgeProvider,
   run: ProviderAuthRunner = spawnSync,
 ): SpawnSyncReturns<string> {
-  if (provider === 'openai' || provider === 'gemini') {
+  if (provider !== 'claude' && provider !== 'codex') {
     return { pid: 0, output: [], stdout: '', stderr: '', status: 0, signal: null };
   }
   const command = providerAuthCommand(provider);
@@ -72,5 +72,6 @@ export function missingProviderKey(
 ): string | null {
   if (provider === 'openai') return env.OPENAI_API_KEY?.trim() ? null : 'OPENAI_API_KEY';
   if (provider === 'gemini') return env.GEMINI_API_KEY?.trim() ? null : 'GEMINI_API_KEY';
+  if (provider === 'anthropic') return env.ANTHROPIC_API_KEY?.trim() ? null : 'ANTHROPIC_API_KEY';
   return null;
 }

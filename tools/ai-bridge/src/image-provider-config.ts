@@ -17,8 +17,10 @@ export function parseImageProviderSelection(value: string | undefined): ImagePro
 }
 
 /**
- * Auto keeps API providers native. CLI providers preserve the former OpenAI
- * image behaviour when both keys exist, then fall back to Gemini.
+ * Auto keeps a chat provider that draws on its own images native. Everything
+ * else — the two CLI providers, and Claude through the Anthropic API, which has
+ * no image endpoint — preserves the former OpenAI image behaviour when both keys
+ * exist, then falls back to Gemini.
  */
 export function resolveImageProvider(
   selection: ImageProviderSelection,
