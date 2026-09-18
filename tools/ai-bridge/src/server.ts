@@ -154,6 +154,9 @@ export class AiBridgeServer {
     if (provider === 'gemini' && !process.env.GEMINI_API_KEY?.trim()) {
       return { provider, reason: 'GEMINI_API_KEY_MISSING', retryable: true };
     }
+    if (provider === 'anthropic' && !process.env.ANTHROPIC_API_KEY?.trim()) {
+      return { provider, reason: 'ANTHROPIC_API_KEY_MISSING', retryable: true };
+    }
     if (provider === 'codex') {
       if (!this.options.enableCodexBeta) return { provider, reason: 'CODEX_HARDENING_UNSUPPORTED', retryable: false };
       const capability = getCodexHardeningCapability();
@@ -328,6 +331,7 @@ export class AiBridgeServer {
 
   private capabilities() {
     const supported = this.options.provider === 'openai' || this.options.provider === 'gemini'
+      || this.options.provider === 'anthropic'
       || (this.options.provider === 'claude' && this.options.enableClaudeAttachments === true);
     const policy = this.options.modelPolicy;
     return {

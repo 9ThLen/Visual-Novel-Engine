@@ -1,4 +1,5 @@
 import { BRIDGE_PROTOCOL_VERSION, MAX_DECODED_IMAGE_BYTES } from '../../src/lib/bridge-protocol';
+import { AnthropicProvider } from './src/anthropic-provider';
 import { ClaudeAgentProvider } from './src/claude-provider';
 import { createImageToolHandlers } from './src/image-tools';
 import { OpenAiProvider } from './src/openai-provider';
@@ -10,8 +11,17 @@ import {
   type ProviderDiagnostics,
   type ToolInvoker,
 } from './src/provider';
-type LiveProvider = 'openai' | 'claude' | 'gemini';
+type LiveProvider = 'openai' | 'anthropic' | 'claude' | 'gemini';
 type ChatLiveProvider = Exclude<LiveProvider, 'gemini'>;
+
+/**
+ * Providers reached with a key rather than through a CLI.
+ *
+ * They share a surface the CLI providers do not: a tool round the harness can
+ * demand, and an abort the harness can prove. `claude` here is Claude Code,
+ * whose smoke is the shorter one.
+ */
+const isApiProvider = (provider: ChatLiveProvider): boolean => provider !== 'claude';
 
 const args = process.argv.slice(2);
 const providerFlagIndex = args.indexOf('--provider');
@@ -19,21 +29,24 @@ const providerName = (providerFlagIndex >= 0 ? args[providerFlagIndex + 1] : arg
 const imageMode = args.includes('--image');
 const optInVariable = imageMode
   ? 'RUN_GEMINI_IMAGE_LIVE_SMOKE'
-  : providerName === 'claude' ? 'RUN_CLAUDE_LIVE_SMOKE' : 'RUN_OPENAI_LIVE_SMOKE';
+  : providerName === 'claude' ? 'RUN_CLAUDE_LIVE_SMOKE'
+    : providerName === 'anthropic' ? 'RUN_ANTHROPIC_LIVE_SMOKE' : 'RUN_OPENAI_LIVE_SMOKE';
+const requiredKey = providerName === 'openai' ? 'OPENAI_API_KEY'
+  : providerName === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'GEMINI_API_KEY';
 
-if ((imageMode && providerName !== 'gemini') || (!imageMode && providerName !== 'openai' && providerName !== 'claude')) {
-  console.error('Usage: tsx tools/ai-bridge/smoke-provider.ts <openai|claude> | --provider gemini --image');
+if ((imageMode && providerName !== 'gemini')
+  || (!imageMode && providerName !== 'openai' && providerName !== 'anthropic' && providerName !== 'claude')) {
+  console.error('Usage: tsx tools/ai-bridge/smoke-provider.ts <openai|anthropic|claude> | --provider gemini --image');
   process.exitCode = 2;
 } else if (process.env[optInVariable] !== 'true') {
   console.error(`Set ${optInVariable}=true to run the billable ${providerName}${imageMode ? ' image' : ''} smoke test.`);
   process.exitCode = 2;
-} else if ((providerName === 'openai' && !process.env.OPENAI_API_KEY?.trim())
-  || (imageMode && !process.env.GEMINI_API_KEY?.trim())) {
-  console.error(`${providerName === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY'} is required.`);
+} else if (((providerName === 'openai' || providerName === 'anthropic' || imageMode) && !process.env[requiredKey]?.trim())) {
+  console.error(`${requiredKey} is required.`);
   process.exitCode = 2;
 } else if (imageMode) {
   await runGeminiImage();
-} else if (providerName === 'openai' || providerName === 'claude') {
+} else if (providerName === 'openai' || providerName === 'anthropic' || providerName === 'claude') {
   await run(providerName);
 }
 
@@ -128,14 +141,22 @@ async function run(providerName: ChatLiveProvider): Promise<void> {
       return { ok: true };
     },
   };
+  const systemPrompt = 'You are a Visual Novel Engine smoke-test assistant. Keep replies concise.';
   const provider: AgentProvider = providerName === 'openai'
     ? new OpenAiProvider(tools, { locale: 'en' }, {
         apiKey: process.env.OPENAI_API_KEY!,
         model: process.env.OPENAI_CHAT_MODEL,
-        systemPrompt: 'You are a Visual Novel Engine smoke-test assistant. Keep replies concise.',
+        systemPrompt,
         turnTimeoutMs: 30_000,
       })
-    : new ClaudeAgentProvider(tools, { locale: 'en' });
+    : providerName === 'anthropic'
+      ? new AnthropicProvider(tools, { locale: 'en' }, {
+          apiKey: process.env.ANTHROPIC_API_KEY!,
+          model: process.env.ANTHROPIC_CHAT_MODEL,
+          systemPrompt,
+          turnTimeoutMs: 30_000,
+        })
+      : new ClaudeAgentProvider(tools, { locale: 'en' });
 
   try {
     const first = await consume(provider.send({ text: 'Reply with exactly: OK', attachments: [] }));
@@ -143,7 +164,7 @@ async function run(providerName: ChatLiveProvider): Promise<void> {
     await provider.resetConversation();
 
     let diagnostics = first.diagnostics;
-    if (providerName === 'openai') {
+    if (isApiProvider(providerName)) {
       const toolTurn = await consume(provider.send({
         text: 'Call list_scenes once, then reply with exactly: TOOL OK',
         attachments: [],
@@ -179,7 +200,7 @@ async function run(providerName: ChatLiveProvider): Promise<void> {
     const afterReset = await consume(provider.send({ text: 'Reply exactly: RESET OK', attachments: [] }));
     assertIncludes(afterReset.text, 'RESET OK', 'RESET_FAILED');
 
-    if (providerName === 'openai') {
+    if (isApiProvider(providerName)) {
       const interrupted = consume(provider.send({ text: 'Wait before answering.', attachments: [] }));
       provider.abort();
       await interrupted.catch((error: unknown) => {

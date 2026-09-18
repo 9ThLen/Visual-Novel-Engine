@@ -114,6 +114,13 @@ has instead is four specific commands, defined in
 | `ai_bridge_stop` | Stop it. No arguments. |
 | `ai_bridge_save_settings` | A provider and an API key. Two values, no path. |
 
+The provider that fourth command accepts is one of the three an author can
+authenticate by typing a key: `anthropic` (Claude through the Anthropic API),
+`openai` and `gemini`. `src/lib/ai/providers.ts` holds that list, and the panel,
+the bridge's `--save-key` and `bridge.rs` all read it rather than each keeping
+their own. `claude` (Claude Code) and `codex` are not on it: they authenticate
+through their own CLI, which an installed studio has no way to provide.
+
 Nothing the page sends chooses a path, a program or a flag. The executable is
 resolved from this application's own resource directory; the settings are the
 bridge's own, in a directory it derives from the account. App commands invoked

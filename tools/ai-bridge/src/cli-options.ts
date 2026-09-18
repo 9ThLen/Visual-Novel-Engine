@@ -64,8 +64,8 @@ export function resolveBridgeCliConfig(
   env: Readonly<Record<string, string | undefined>>,
 ): BridgeCliConfig {
   const providerValue = (cli.provider ?? env.AI_BRIDGE_PROVIDER ?? 'claude').toLowerCase();
-  if (providerValue !== 'claude' && providerValue !== 'openai' && providerValue !== 'codex' && providerValue !== 'gemini') {
-    throw new Error('AI bridge provider must be "claude", "openai", "codex", or "gemini"');
+  if (providerValue !== 'claude' && providerValue !== 'anthropic' && providerValue !== 'openai' && providerValue !== 'codex' && providerValue !== 'gemini') {
+    throw new Error('AI bridge provider must be "claude", "anthropic", "openai", "codex", or "gemini"');
   }
   const fallbackValue = cli.fallbackProvider?.toLowerCase();
   if (fallbackValue !== undefined && fallbackValue !== 'gemini') {
@@ -105,15 +105,17 @@ export function bridgeCliHelp(): string {
     'Usage: vne-ai-bridge [options]',
     '',
     'Options:',
-    '  --provider <claude|openai|codex|gemini>  AI provider (default: claude)',
+    '  --provider <claude|anthropic|openai|codex|gemini>  AI provider (default: claude)',
+    '                             "claude" is Claude Code and needs that CLI; "anthropic" is the',
+    '                             Claude API and needs only a key',
     '  --fallback-provider <gemini>  Explicitly consent to pre-output OpenAI -> Gemini fallback',
     '  --image-provider <auto|openai|gemini|none>  Image backend (default: auto)',
     '  --enable-codex-beta        Explicitly enable experimental Codex CLI',
     '  --origin <origin>          Allowed loopback browser origin; repeatable',
     '  --port <port>              Bridge WebSocket port (default: 8787)',
     '  --reset-token              Issue a new pairing token and exit',
-    '  --save-key <openai|gemini>  Read an API key from standard input, protect it for your',
-    '                             account, select that provider, and exit',
+    '  --save-key <anthropic|openai|gemini>  Read an API key from standard input, protect it for',
+    '                             your account, select that provider, and exit',
     '  -h, --help                 Show this help',
     '  -v, --version              Show the bridge version',
     '',

@@ -415,8 +415,12 @@ pub async fn ai_bridge_save_settings<R: Runtime>(
     provider: String,
     api_key: String,
 ) -> Result<BridgeReport, String> {
+    // The same three the bridge's own `--save-key` accepts, and the same three
+    // the panel offers a key field for — `src/lib/ai/providers.ts` holds that
+    // list. `claude` and `codex` are absent because they authenticate through
+    // their own CLI, where a key typed here would go nowhere.
     let provider = match provider.as_str() {
-        "openai" | "gemini" => provider,
+        "anthropic" | "openai" | "gemini" => provider,
         other => return Err(format!("{other} is not a provider this panel can configure.")),
     };
     if api_key.trim().is_empty() {

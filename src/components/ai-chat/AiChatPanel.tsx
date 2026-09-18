@@ -50,7 +50,7 @@ import {
 import { APP_BRIDGE_TOOL_NAMES } from '@/lib/ai/bridge-tools';
 import { AI_CAPABILITIES, normalizeAiPermissions, resolveCapability, resolveEffectiveCapability, type AiCapability, type AiPermissions } from '@/lib/ai/permissions';
 import { resolveAiBridgeConfig, selectAiBridgeProvider, updateActiveAiBridgeProfile } from '@/lib/ai/bridge-config';
-import { aiProviderLabel } from '@/lib/ai/providers';
+import { aiProviderLabel, isBridgeProvider } from '@/lib/ai/providers';
 import { buildAiStoryContext } from '@/lib/ai/story-context';
 import { buildAiChangeSetState, buildPatchProjectContext } from '@/lib/ai/project-context';
 import { BridgeClient, type BridgeConnectionState, type BridgeProvider } from '@/lib/bridge-client';
@@ -131,6 +131,22 @@ type BridgeRuntimeErrorReason =
   | 'GEMINI_MALFORMED_FUNCTION_CALL'
   | 'GEMINI_REQUEST_TOO_LARGE'
   | 'GEMINI_SESSION_BUDGET_EXHAUSTED'
+  | 'ANTHROPIC_API_AUTH_FAILED'
+  | 'ANTHROPIC_API_FORBIDDEN'
+  | 'ANTHROPIC_RATE_LIMITED'
+  | 'ANTHROPIC_MODEL_UNAVAILABLE'
+  | 'ANTHROPIC_API_TIMEOUT'
+  | 'ANTHROPIC_RESPONSE_INCOMPLETE'
+  | 'ANTHROPIC_MALFORMED_RESPONSE'
+  | 'ANTHROPIC_REFUSAL'
+  | 'ANTHROPIC_STREAM_TOO_LARGE'
+  | 'ANTHROPIC_STREAM_EVENT_TOO_LARGE'
+  | 'ANTHROPIC_STREAM_INCOMPLETE'
+  | 'ANTHROPIC_API_FAILED'
+  | 'ANTHROPIC_ROUND_LIMIT'
+  | 'ANTHROPIC_MALFORMED_FUNCTION_CALL'
+  | 'ANTHROPIC_REQUEST_TOO_LARGE'
+  | 'ANTHROPIC_SESSION_BUDGET_EXHAUSTED'
   | 'PROVIDER_ERROR';
 
 const OPENAI_RUNTIME_REASONS = new Set<BridgeRuntimeErrorReason>([
@@ -145,6 +161,12 @@ const OPENAI_RUNTIME_REASONS = new Set<BridgeRuntimeErrorReason>([
   'GEMINI_STREAM_TOO_LARGE', 'GEMINI_STREAM_EVENT_TOO_LARGE', 'GEMINI_STREAM_INCOMPLETE',
   'GEMINI_API_FAILED', 'GEMINI_ROUND_LIMIT',
   'GEMINI_MALFORMED_FUNCTION_CALL', 'GEMINI_REQUEST_TOO_LARGE', 'GEMINI_SESSION_BUDGET_EXHAUSTED',
+  'ANTHROPIC_API_AUTH_FAILED', 'ANTHROPIC_API_FORBIDDEN', 'ANTHROPIC_RATE_LIMITED',
+  'ANTHROPIC_MODEL_UNAVAILABLE', 'ANTHROPIC_API_TIMEOUT', 'ANTHROPIC_RESPONSE_INCOMPLETE',
+  'ANTHROPIC_MALFORMED_RESPONSE', 'ANTHROPIC_REFUSAL', 'ANTHROPIC_STREAM_TOO_LARGE',
+  'ANTHROPIC_STREAM_EVENT_TOO_LARGE', 'ANTHROPIC_STREAM_INCOMPLETE', 'ANTHROPIC_API_FAILED',
+  'ANTHROPIC_ROUND_LIMIT', 'ANTHROPIC_MALFORMED_FUNCTION_CALL', 'ANTHROPIC_REQUEST_TOO_LARGE',
+  'ANTHROPIC_SESSION_BUDGET_EXHAUSTED',
 ]);
 
 function resolveBridgeRuntimeError(payload: Record<string, unknown>): BridgeRuntimeErrorReason {
@@ -367,14 +389,14 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
       },
       onEvent: (message) => {
         const payload = typeof message.payload === 'object' && message.payload ? message.payload as Record<string, unknown> : {};
-        if (message.type === 'session_started' && (payload.provider === 'claude' || payload.provider === 'openai' || payload.provider === 'codex' || payload.provider === 'gemini')) {
+        if (message.type === 'session_started' && isBridgeProvider(payload.provider)) {
           setProvider(payload.provider);
           if (payload.capabilities && typeof payload.capabilities === 'object') setCapabilities(payload.capabilities as BridgeCapabilities);
         }
         if (message.type === 'session_challenge' && typeof payload.reason === 'string') {
           setConnectionReason(payload.reason);
           setConnectionRetryable(payload.retryable !== false);
-          if (payload.provider === 'claude' || payload.provider === 'openai' || payload.provider === 'codex' || payload.provider === 'gemini') {
+          if (isBridgeProvider(payload.provider)) {
             setProvider(payload.provider);
           }
         }

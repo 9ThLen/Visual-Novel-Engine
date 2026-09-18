@@ -1,5 +1,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
+import {
+  isKeyedBridgeProvider,
+  KEYED_AI_PROVIDERS,
+  type KeyedBridgeProvider,
+} from '../../../src/lib/ai/providers';
+
 import { bridgeConfigFile, bridgeSecretsFile } from './config-paths';
 import { applySetting, clearSetting, ensureSettingsTemplate } from './config-store';
 import { storeSecret, type SecretOptions, type SecretProtection } from './secret-store';
@@ -13,16 +19,16 @@ import { storeSecret, type SecretOptions, type SecretProtection } from './secret
  * reads the key is the only one that writes it — and the studio's part is to run
  * the bridge with `--save-key` and hand the key over on standard input.
  */
-export const KEYED_PROVIDERS = ['openai', 'gemini'] as const;
-export type KeyedProvider = (typeof KEYED_PROVIDERS)[number];
+export const KEYED_PROVIDERS = KEYED_AI_PROVIDERS;
+export type KeyedProvider = KeyedBridgeProvider;
 
-export function isKeyedProvider(value: string): value is KeyedProvider {
-  return (KEYED_PROVIDERS as readonly string[]).includes(value);
-}
+export const isKeyedProvider = isKeyedBridgeProvider;
 
 /** The environment variable each provider authenticates with. */
 export function keyVariableFor(provider: KeyedProvider): string {
-  return provider === 'gemini' ? 'GEMINI_API_KEY' : 'OPENAI_API_KEY';
+  if (provider === 'gemini') return 'GEMINI_API_KEY';
+  if (provider === 'anthropic') return 'ANTHROPIC_API_KEY';
+  return 'OPENAI_API_KEY';
 }
 
 export interface SavedKey {

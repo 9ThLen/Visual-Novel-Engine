@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-18 — Claude by API key
+
+- Added `anthropic`, a fifth bridge provider: Claude through the Anthropic
+  Messages API, authenticated by a key rather than by a separately installed CLI.
+  `tools/ai-bridge/src/anthropic-provider.ts` streams it, replays thinking blocks
+  unchanged across tool rounds, and carries the same limits, retries and failure
+  taxonomy as the OpenAI and Gemini providers.
+- The installed studio can now configure it: `KEYED_AI_PROVIDERS` in
+  `src/lib/ai/providers.ts` is the one list the AI panel, `--save-key` and
+  `bridge.rs` all read, and a test pins the Rust copy against it. An author with
+  one `.exe` and a key reaches Claude without a terminal.
+- `claude` still means Claude Code and still needs that CLI; the two are separate
+  providers with separate cards.
+- New: `pnpm test:ai-anthropic-live` (billable, opt-in) and its release gate.
+
 ## 2026-07-02 - Stabilization Cleanup
 
 - Removed dead UI/reference files: `ReaderTransitions`, `SplashScreen`, `WebTopBar`, and `ShortcutHint`.

@@ -30,6 +30,7 @@
     "test:studio-e2e": "playwright test --config=config/playwright.studio.config.ts",
     "test:ai-live": "playwright test --config=config/playwright.ai-live.config.ts",
     "test:ai-openai-live": "tsx tools/ai-bridge/smoke-provider.ts openai",
+    "test:ai-anthropic-live": "tsx tools/ai-bridge/smoke-provider.ts anthropic",
     "test:ai-claude-live": "tsx tools/ai-bridge/smoke-provider.ts claude",
     "test:ai-gemini-image-live": "tsx tools/ai-bridge/smoke-provider.ts --provider gemini --image",
     "android": "expo run:android",
