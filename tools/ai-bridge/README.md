@@ -1,8 +1,26 @@
 # Local AI Bridge
 
-Runs Claude Code, OpenAI API, Google Gemini, or the fail-closed Codex CLI Beta behind a local WebSocket process bound only to `127.0.0.1`.
+Runs the Claude API, Claude Code, the OpenAI API, Google Gemini, or the fail-closed Codex CLI Beta behind a local WebSocket process bound only to `127.0.0.1`.
 
 ## Start
+
+The shortest route is a key. `--provider anthropic` talks to the Anthropic
+Messages API directly, so nothing else has to be installed and nothing has to be
+signed in:
+
+```sh
+pnpm ai-bridge --provider anthropic
+```
+
+Put `ANTHROPIC_API_KEY` in the bridge environment (or type it into the studio's
+AI panel, which seals it for your account), and optionally pin
+`ANTHROPIC_CHAT_MODEL`; the default is `claude-opus-5`. API billing is separate
+from a Claude subscription.
+
+This is a different provider from `claude` below, which is **Claude Code**: the
+same model, reached through a CLI that has to be installed and signed in
+separately. An installed studio can configure `anthropic` from its own panel and
+cannot configure `claude` at all.
 
 Install Claude Code, start it once, and complete its sign-in:
 
@@ -226,7 +244,7 @@ The connected-state menu offers:
 Available CLI options:
 
 ```text
---provider <claude|openai|codex|gemini>
+--provider <claude|anthropic|openai|codex|gemini>
 --fallback-provider <gemini>
 --image-provider <auto|openai|gemini|none>
 --enable-codex-beta       Required for Codex CLI Beta
@@ -239,6 +257,15 @@ Available CLI options:
 `@visual-novel-engine/ai-bridge` is not currently published to npm. Do not use
 the old `npx @visual-novel-engine/ai-bridge` examples. Build and inspect the
 future publishable package with `pnpm ai-bridge:build` and `pnpm ai-bridge:pack`.
+
+Before an Anthropic release, run its own billable smoke. It is the same
+harness the OpenAI gate uses — a text turn, one VNE model-tool round, the three
+attachment kinds, a follow-up, a reset and an abort — and it prints only
+allowlisted diagnostics:
+
+```sh
+RUN_ANTHROPIC_LIVE_SMOKE=true ANTHROPIC_API_KEY=... pnpm test:ai-anthropic-live
+```
 
 Before an OpenAI release, run the explicit, billable smoke test. It refuses to
 run unless both the opt-in flag and API key are present and prints only
@@ -291,6 +318,7 @@ The bridge is local, but messages and required story context are still sent to t
 - `Codex CLI is missing or unavailable`: run `codex login`.
 - `CODEX_HARDENING_UNSUPPORTED`: use Claude; this Codex CLI cannot be
   restricted to the VNE app-tool surface deterministically.
+- `ANTHROPIC_API_KEY is not set`: type the key into the studio's AI panel, or put it in the bridge settings file and start the bridge again.
 - `UNAUTHORIZED`: paste the fresh token printed by the current bridge process.
 - `PROVIDER_MISMATCH`: use the provider detected by the editor, or start the selected provider on a different port.
 - Origin rejected: use Expo web on port 8081 or start the bridge with the exact loopback origin, for example `--origin http://localhost:8092`.

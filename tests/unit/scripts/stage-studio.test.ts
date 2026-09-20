@@ -36,6 +36,7 @@ import {
   BRIDGE_RESOURCE_GLOB,
   assertBridgePackage,
 } from '../../../scripts/lib/stage-studio';
+import { KEYED_AI_PROVIDERS } from '@/lib/ai/providers';
 import { inlinePlayerConfig, type PlayerBootConfig } from '@/lib/release/player-bundle';
 import { PLAYER_SHELL_DESCRIPTOR_PATH } from '@/lib/release/shell';
 
@@ -384,6 +385,22 @@ describe('staging the studio', () => {
     const declared = /const RESOURCE_DIR: &str = "([^"]+)";/.exec(rust);
 
     expect(declared?.[1]).toBe(BRIDGE_RESOURCE_DIR);
+  });
+
+  it('configures exactly the providers a typed key can authenticate', () => {
+    // The third place this list is written, and the one no compiler checks
+    // against the other two. A panel that offers a key field for a provider the
+    // supervisor rejects is a field that saves into an error message; a
+    // supervisor that accepts one the bridge's `--save-key` refuses is the same
+    // failure one process further along.
+    const rust = fs.readFileSync(
+      path.join(REPO_ROOT, 'tools/studio-shell/src-tauri/src/bridge.rs'),
+      'utf8',
+    );
+    const arm = /match provider\.as_str\(\) \{\s*((?:"[a-z]+"(?: \| )?)+) => provider,/.exec(rust);
+    const accepted = [...(arm?.[1] ?? '').matchAll(/"([a-z]+)"/g)].map(([, name]) => name);
+
+    expect(accepted.slice().sort()).toEqual([...KEYED_AI_PROVIDERS].sort());
   });
 
   it('builds without one, and does not claim to carry it', () => {

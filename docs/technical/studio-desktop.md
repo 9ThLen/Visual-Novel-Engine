@@ -54,6 +54,18 @@ per-platform pieces — listed in [releases-desktop.md](releases-desktop.md#what
 `pnpm build:studio-desktop --stage-only` needs none of it. It writes the project
 and stops, which is how the staging rules are tested on machines with no Rust.
 
+Or none of it on your own machine: `.github/workflows/studio-desktop.yml` runs
+the four commands on a Windows runner and uploads the installer as an artifact.
+It is `workflow_dispatch`, plus a push to the studio pipeline itself, for the
+reason the player channel gives — a channel only ever built by hand is broken by
+the time someone tries it.
+
+Windows alone, where the player channel builds three. `build-bridge-package.ts`
+pins `win-x64` and ships `node.exe`; `bridge.rs` resolves `node` everywhere that
+is not Windows. A Linux or macOS studio built from that package installs the
+bridge and then reports `installed: false` — a green build whose AI panel is
+quietly the `--no-bridge` shape.
+
 ## Options
 
 | | |
@@ -113,6 +125,13 @@ has instead is four specific commands, defined in
 | `ai_bridge_status` | Is it up, and where. No arguments. |
 | `ai_bridge_stop` | Stop it. No arguments. |
 | `ai_bridge_save_settings` | A provider and an API key. Two values, no path. |
+
+The provider that fourth command accepts is one of the three an author can
+authenticate by typing a key: `anthropic` (Claude through the Anthropic API),
+`openai` and `gemini`. `src/lib/ai/providers.ts` holds that list, and the panel,
+the bridge's `--save-key` and `bridge.rs` all read it rather than each keeping
+their own. `claude` (Claude Code) and `codex` are not on it: they authenticate
+through their own CLI, which an installed studio has no way to provide.
 
 Nothing the page sends chooses a path, a program or a flag. The executable is
 resolved from this application's own resource directory; the settings are the

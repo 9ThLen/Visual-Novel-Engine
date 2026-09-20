@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
+import { AnthropicProvider } from './anthropic-provider';
 import { ClaudeAgentProvider } from './claude-provider';
 import { CodexCliProvider } from './codex-provider';
 import { GeminiProvider } from './gemini-provider';
@@ -179,10 +180,21 @@ async function main(): Promise<void> {
       allowedModels: csv(process.env.GEMINI_ALLOWED_CHAT_MODELS),
       defaultTokenBudget: positiveNumber(process.env.GEMINI_SESSION_TOKEN_BUDGET),
       maxTokenBudget: positiveNumber(process.env.GEMINI_MAX_SESSION_TOKEN_BUDGET),
+    } : provider === 'anthropic' ? {
+      defaultModel: process.env.ANTHROPIC_CHAT_MODEL,
+      allowedModels: csv(process.env.ANTHROPIC_ALLOWED_CHAT_MODELS),
+      defaultTokenBudget: positiveNumber(process.env.ANTHROPIC_SESSION_TOKEN_BUDGET),
+      maxTokenBudget: positiveNumber(process.env.ANTHROPIC_MAX_SESSION_TOKEN_BUDGET),
     } : undefined,
     providerFactory: (tools, session) => {
       switch (provider) {
         case 'claude': return new ClaudeAgentProvider(tools, session);
+        case 'anthropic': return new AnthropicProvider(tools, session, {
+          apiKey: process.env.ANTHROPIC_API_KEY ?? '',
+          model: session?.model ?? process.env.ANTHROPIC_CHAT_MODEL,
+          systemPrompt: OPENAI_SYSTEM_PROMPT,
+          sessionTokenBudget: session?.sessionTokenBudget ?? positiveNumber(process.env.ANTHROPIC_SESSION_TOKEN_BUDGET),
+        });
         case 'codex': return new CodexCliProvider(tools, session);
         case 'openai': {
           const createOpenAi = (providerTools: ToolInvoker) => new OpenAiProvider(providerTools, session, {

@@ -203,7 +203,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeProvider(value: unknown, fallback: BridgeProvider): BridgeProvider {
-  return value === 'claude' || value === 'openai' || value === 'codex' || value === 'gemini' ? value : fallback;
+  return value === 'claude' || value === 'anthropic' || value === 'openai' || value === 'codex' || value === 'gemini' ? value : fallback;
 }
 
 function normalizeBridgeProfile(value: unknown): AiBridgeConnectionProfile | undefined {
@@ -225,7 +225,7 @@ function normalizeBridgeProfile(value: unknown): AiBridgeConnectionProfile | und
 function normalizeBridgeProfiles(value: unknown): NonNullable<AiBridgeSettings['profiles']> {
   if (!isRecord(value)) return {};
   const profiles: NonNullable<AiBridgeSettings['profiles']> = {};
-  for (const provider of ['claude', 'openai', 'codex', 'gemini'] as const) {
+  for (const provider of ['claude', 'anthropic', 'openai', 'codex', 'gemini'] as const) {
     const profile = normalizeBridgeProfile(value[provider]);
     if (profile) profiles[provider] = profile;
   }

@@ -100,6 +100,11 @@ describe('AI bridge CLI options', () => {
     expect(normalizeLoopbackOrigin('http://[::1]:8081')).toBe('http://[::1]:8081');
   });
 
+  it('accepts the Claude API as a provider of its own, apart from Claude Code', () => {
+    expect(resolveBridgeCliConfig({ help: false, provider: 'anthropic' }, {}).provider).toBe('anthropic');
+    expect(resolveBridgeCliConfig({ help: false }, { AI_BRIDGE_PROVIDER: 'anthropic' }).provider).toBe('anthropic');
+  });
+
   it('rejects invalid providers and ports', () => {
     expect(() => resolveBridgeCliConfig({ help: false, provider: 'unknown' }, {})).toThrow(/provider/);
     expect(() => resolveBridgeCliConfig({ help: false, port: '0' }, {})).toThrow(/port/);
@@ -107,12 +112,13 @@ describe('AI bridge CLI options', () => {
   });
 
   it('prints the supported options in help', () => {
-    expect(bridgeCliHelp()).toContain('--provider <claude|openai|codex|gemini>');
+    expect(bridgeCliHelp()).toContain('--provider <claude|anthropic|openai|codex|gemini>');
     expect(bridgeCliHelp()).toContain('--enable-codex-beta');
     expect(bridgeCliHelp()).toContain('--image-provider <auto|openai|gemini|none>');
     expect(bridgeCliHelp()).toContain('--origin <origin>');
     expect(bridgeCliHelp()).toContain('--port <port>');
     expect(bridgeCliHelp()).toContain('--fallback-provider <gemini>');
+    expect(bridgeCliHelp()).toContain('--save-key <anthropic|openai|gemini>');
     expect(bridgeCliHelp()).toContain('prior chat and attachments');
   });
 
