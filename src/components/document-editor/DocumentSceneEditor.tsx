@@ -44,7 +44,8 @@ import {
   computeMountDelta,
   seedMountedSceneIds,
 } from '@/lib/document-editor/scene-mount-range';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatCommand, VNPlateFormatState, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatCommand, VNPlateFormatState, VNPlateSelectionState, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
+import { useEditorContextStore } from '@/stores/editor-context-store';
 import type { Character } from '@/lib/character-types';
 import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { DocumentScene } from '@/lib/document-editor/types';
@@ -736,6 +737,16 @@ export function DocumentSceneEditor({
     }
   }, []);
   const getOnFormatStateChange = useSceneCallback(handleFormatStateImpl, documentsResetKey);
+  // Goes straight to its own store, never into this component's state: the
+  // assistant's chip is the only reader, and rerendering the document chrome
+  // mid-selection is what makes the ScrollView jump (see above).
+  const handleSelectionStateImpl = useCallback((sceneId: string, state: VNPlateSelectionState | null) => {
+    const store = useEditorContextStore.getState();
+    if (state) store.reportSelection(storyId, sceneId, state);
+    else store.clearFrame(storyId, sceneId);
+  }, [storyId]);
+  const getOnSelectionStateChange = useSceneCallback(handleSelectionStateImpl, documentsResetKey);
+  useEffect(() => () => useEditorContextStore.getState().clearStory(storyId), [storyId]);
   const formatSceneId = focusedEditorSceneId ?? activeSceneId;
   const activeFormatState = formatStateByScene[formatSceneId] ?? {
     bold: false,
@@ -961,6 +972,7 @@ export function DocumentSceneEditor({
               registerEditorRef={getRegisterEditorRef(documentScene.sceneId)}
               onHistoryStateChange={getOnHistoryStateChange(documentScene.sceneId)}
               onFormatStateChange={getOnFormatStateChange(documentScene.sceneId)}
+              onSelectionStateChange={getOnSelectionStateChange(documentScene.sceneId)}
               onFrameLayout={getOnFrameLayout(documentScene.sceneId)}
               measureVersion={measureVersion}
             />

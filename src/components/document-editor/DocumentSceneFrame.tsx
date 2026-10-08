@@ -19,7 +19,7 @@ import { withAlpha } from '@/lib/_core/theme';
 import type { Character } from '@/lib/character-types';
 import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { DocumentScene } from '@/lib/document-editor/types';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatState, VNPlateSceneRef, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatState, VNPlateSceneRef, VNPlateSelectionState, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
 
 interface DocumentSceneFrameProps {
   scene: DocumentScene;
@@ -52,6 +52,7 @@ interface DocumentSceneFrameProps {
   registerEditorRef: (handle: PlateWebViewEditorHandle | null) => void;
   onHistoryStateChange: (canUndo: boolean, canRedo: boolean) => void;
   onFormatStateChange: (state: VNPlateFormatState) => void;
+  onSelectionStateChange?: (state: VNPlateSelectionState | null) => void;
   onFrameLayout: (y: number, height: number) => void;
   /**
    * Bumped by the host after a document rebuild wipes its layout map. React
@@ -88,6 +89,7 @@ function DocumentSceneFrameImpl({
   registerEditorRef,
   onHistoryStateChange,
   onFormatStateChange,
+  onSelectionStateChange,
   onFrameLayout,
   measureVersion,
 }: DocumentSceneFrameProps) {
@@ -325,6 +327,7 @@ function DocumentSceneFrameImpl({
           onInteraction={closeSceneMenu}
           onHistoryStateChange={onHistoryStateChange}
           onFormatStateChange={onFormatStateChange}
+          onSelectionStateChange={onSelectionStateChange}
         />
         ) : (
         <View

@@ -1,5 +1,5 @@
 import type { Character } from '@/lib/character-types';
-import type { DocumentScene } from '@/lib/document-editor/types';
+import type { DocumentBlockKind, DocumentScene } from '@/lib/document-editor/types';
 import type { Language } from '@/lib/translations';
 import type { EmbeddedCommand } from './embedded-commands';
 
@@ -122,11 +122,51 @@ export interface VNPlateFormatState {
   canFormat: boolean;
 }
 
+/** One text part of a block that carries inline chips, numbered as the frame serializes them. */
+export interface VNPlateSelectionPart {
+  index: number;
+  quote: string;
+  occurrence: number;
+}
+
+export interface VNPlateSelectionBlock {
+  id: string;
+  kind: DocumentBlockKind;
+  /** The selected text inside this block. */
+  quote: string;
+  /** Which repeat of `quote` in the block's visible text, counted from zero. */
+  occurrence: number;
+  /** Present when the block carries inline chips: the selection split per text part. */
+  parts?: VNPlateSelectionPart[];
+}
+
+/**
+ * What the author has selected in one editor frame. Text is visible text, not
+ * story markup, and `seq` only orders states that came from the same frame.
+ */
+export interface VNPlateSelectionState {
+  seq: number;
+  collapsed: boolean;
+  text: string;
+  textLength: number;
+  truncated: boolean;
+  before: string;
+  after: string;
+  crossesChip: boolean;
+  blocks: VNPlateSelectionBlock[];
+}
+
 export type VNPlateEditorMessage =
   | {
       source: 'vn-plate-editor';
       editorId: string;
       type: 'ready';
+    }
+  | {
+      source: 'vn-plate-editor';
+      editorId: string;
+      type: 'selectionState';
+      state: VNPlateSelectionState;
     }
   | {
       source: 'vn-plate-editor';
@@ -162,6 +202,10 @@ export type VNPlateEditorMessage =
       requestId: string;
       scene: DocumentScene;
       characters?: Character[];
+      /** Only on a flush that asked for it; null when nothing in the editor is selected. */
+      selection?: VNPlateSelectionState | null;
+      /** The frame held edits it had not yet reported when this was taken. */
+      hasUnreportedChanges?: boolean;
     }
   | {
       source: 'vn-plate-editor';
@@ -237,6 +281,8 @@ export type VNPlateHostMessage =
       editorId: string;
       type: 'flush';
       requestId: string;
+      /** Also report the selection, taken in the same pass as the content. */
+      withSelection?: boolean;
     }
   | {
       source: 'vn-plate-host';

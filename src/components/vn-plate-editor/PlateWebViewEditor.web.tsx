@@ -10,7 +10,8 @@ import { getEmbeddedCommands } from '@/lib/vn-plate-editor/embedded-commands';
 import { createVNPlateEditorHtml } from '@/lib/vn-plate-editor/embedded-html';
 import { getSharedEditorAssets } from '@/lib/vn-plate-editor/shared-assets';
 import { normalizePlateDocumentScene } from '@/lib/vn-plate-editor/scene-normalizer';
-import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateEditorMessage, VNPlateFormatCommand, VNPlateFormatState, VNPlateSceneRef, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
+import { sanitizeSelectionState } from '@/lib/vn-plate-editor/selection-state';
+import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateEditorMessage, VNPlateFormatCommand, VNPlateFormatState, VNPlateSceneRef, VNPlateSelectionState, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
 import type { Character } from '@/lib/character-types';
 import type { DocumentScene } from '@/lib/document-editor/types';
 
@@ -62,8 +63,24 @@ export interface PlateWebViewEditorSnapshot {
   characters: Character[];
 }
 
+/**
+ * Content and selection read from the frame in one pass, so a selection can be
+ * addressed against exactly the text it was made in.
+ */
+export interface PlateWebViewEditorCapture extends PlateWebViewEditorSnapshot {
+  /**
+   * The scene as the frame serialized it, before normalization. Selection part
+   * positions count against this one.
+   */
+  rawScene: DocumentScene;
+  selection: VNPlateSelectionState | null;
+  /** The frame held edits the host had not been told about yet. */
+  hasUnreportedChanges: boolean;
+}
+
 export interface PlateWebViewEditorHandle {
   flush: () => Promise<PlateWebViewEditorSnapshot>;
+  capture: () => Promise<PlateWebViewEditorCapture>;
   undo: () => void;
   redo: () => void;
   formatText: (command: VNPlateFormatCommand, value?: string) => void;
@@ -100,6 +117,8 @@ interface PlateWebViewEditorProps {
   onInteraction?: () => void;
   onHistoryStateChange?: (canUndo: boolean, canRedo: boolean) => void;
   onFormatStateChange?: (state: VNPlateFormatState) => void;
+  /** The author's selection in this frame; null once the frame is gone. */
+  onSelectionStateChange?: (state: VNPlateSelectionState | null) => void;
   /** The author asked to switch the rendered branch of a choice block. */
   onSelectChoiceOption?: (choiceStepId: string, optionId: string) => void;
   /** The author asked to create a new scene as the target of an empty choice option. */
@@ -128,6 +147,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   onInteraction,
   onHistoryStateChange,
   onFormatStateChange,
+  onSelectionStateChange,
   onSelectChoiceOption,
   onStartBranchOption,
 }: PlateWebViewEditorProps, ref) {
@@ -146,7 +166,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
   const charactersRef = useRef(characters);
   const latestSnapshotRef = useRef<PlateWebViewEditorSnapshot>({ scene, characters });
   const pendingFlushesRef = useRef(new Map<string, {
-    resolve: (snapshot: PlateWebViewEditorSnapshot) => void;
+    resolve: (capture: PlateWebViewEditorCapture) => void;
     reject: (error: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   }>());
@@ -381,34 +401,48 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     postCharacters();
   }, [postCharacters]);
 
+  const requestFlush = useCallback((withSelection: boolean): Promise<PlateWebViewEditorCapture> => {
+    if (!readyRef.current) {
+      return Promise.reject(new Error('Editor is not ready to flush its current content'));
+    }
+    const frameWindow = iframeRef.current?.contentWindow;
+    if (!frameWindow) {
+      return Promise.reject(new Error('Editor frame is unavailable'));
+    }
+    const requestId = `${editorId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    return new Promise<PlateWebViewEditorCapture>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingFlushesRef.current.delete(requestId);
+        reject(new Error('Editor flush timed out before current content was received'));
+      }, FLUSH_TIMEOUT_MS);
+      pendingFlushesRef.current.set(requestId, { resolve, reject, timer });
+      frameWindow.postMessage({
+        source: 'vn-plate-host',
+        editorId,
+        type: 'flush',
+        requestId,
+        ...(withSelection ? { withSelection: true } : {}),
+      }, window.location.origin);
+    });
+  }, [editorId]);
+
   useImperativeHandle(ref, () => ({
-    flush: () => {
-      if (!readyRef.current) {
-        return Promise.reject(new Error('Editor is not ready to flush its current content'));
-      }
-      const frameWindow = iframeRef.current?.contentWindow;
-      if (!frameWindow) {
-        return Promise.reject(new Error('Editor frame is unavailable'));
-      }
-      const requestId = `${editorId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      return new Promise<PlateWebViewEditorSnapshot>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          pendingFlushesRef.current.delete(requestId);
-          reject(new Error('Editor flush timed out before current content was received'));
-        }, FLUSH_TIMEOUT_MS);
-        pendingFlushesRef.current.set(requestId, { resolve, reject, timer });
-        frameWindow.postMessage({
-          source: 'vn-plate-host',
-          editorId,
-          type: 'flush',
-          requestId,
-        }, window.location.origin);
-      });
-    },
+    flush: () => requestFlush(false).then(({ scene: flushedScene, characters: flushedCharacters }) => ({
+      scene: flushedScene,
+      characters: flushedCharacters,
+    })),
+    capture: () => requestFlush(true),
     undo: () => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'undo' }, window.location.origin),
     redo: () => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'redo' }, window.location.origin),
     formatText: (command, value) => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'formatText', command, value }, window.location.origin),
-  }), [editorId]);
+  }), [editorId, requestFlush]);
+
+  // A frame that goes away takes its selection with it. The latest callback is
+  // read through a ref because its identity changes whenever the document is
+  // rebuilt, and that must not look like the frame leaving.
+  const onSelectionStateChangeRef = useRef(onSelectionStateChange);
+  onSelectionStateChangeRef.current = onSelectionStateChange;
+  useEffect(() => () => onSelectionStateChangeRef.current?.(null), []);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent<VNPlateEditorMessage | string>) => {
@@ -455,6 +489,11 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       }
       if (message.type === 'formatState') {
         onFormatStateChange?.(message.state);
+        return;
+      }
+      if (message.type === 'selectionState') {
+        const state = sanitizeSelectionState(message.state);
+        if (state) onSelectionStateChangeRef.current?.(state);
         return;
       }
       if (message.type === 'selectChoiceOption') {
@@ -588,7 +627,12 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         if (pending) {
           clearTimeout(pending.timer);
           pendingFlushesRef.current.delete(message.requestId);
-          pending.resolve(normalized);
+          pending.resolve({
+            ...normalized,
+            rawScene: message.scene,
+            selection: sanitizeSelectionState(message.selection),
+            hasUnreportedChanges: message.hasUnreportedChanges === true,
+          });
         }
         return;
       }
