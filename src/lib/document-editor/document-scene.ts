@@ -693,21 +693,28 @@ function timelineStepFromInlineChip(part: Exclude<DocumentInlinePart, { type: 't
   return soundStepFromInlinePart(part);
 }
 
-function timelineFromInlineParts(parts: DocumentInlinePart[]): TimelineStep[] {
-  return parts.flatMap((part) => {
-    if (part.type === 'text') return textStepFromInlineText(part.text);
-    return [timelineStepFromInlineChip(part)];
+type OnTextBearingStep = (step: TimelineStep, partIndex: number) => void;
+
+function timelineFromInlineParts(parts: DocumentInlinePart[], onTextStep?: OnTextBearingStep): TimelineStep[] {
+  return parts.flatMap((part, partIndex) => {
+    if (part.type !== 'text') return [timelineStepFromInlineChip(part)];
+    const steps = textStepFromInlineText(part.text);
+    steps.forEach((step) => onTextStep?.(step, partIndex));
+    return steps;
   });
 }
 
 function timelineFromDialogueInlineParts(
   block: DocumentDialogueBlock,
   characters: Character[],
+  onDialogueStep?: OnTextBearingStep,
 ): TimelineStep[] {
-  return (block.parts ?? []).flatMap((part) => {
+  return (block.parts ?? []).flatMap((part, partIndex) => {
     if (part.type !== 'text') return [timelineStepFromInlineChip(part)];
     const dialogueStep = dialogueStepForInlineText(block, characters, part.text);
-    return dialogueStep ? [dialogueStep] : [];
+    if (!dialogueStep) return [];
+    onDialogueStep?.(dialogueStep, partIndex);
+    return [dialogueStep];
   });
 }
 
@@ -804,12 +811,40 @@ function applyExplicitCharacterState(
   if (data.position) currentPositionByCharacter.set(data.characterId, data.position);
 }
 
-export function documentSceneToTimeline(documentScene: DocumentScene, characters: Character[] = []): TimelineStep[] {
+/**
+ * Where a text-bearing step of a converted timeline came from in the document.
+ *
+ * Step ids do not survive a save: a block typed in this session, and every
+ * text part of a block carrying inline chips, becomes a fresh step each time.
+ * The pairing is therefore reported by the same pass that mints the ids.
+ */
+export interface DocumentStepOrigin {
+  stepId: string;
+  blockId: string;
+  /** Index into the block's `parts`; null when the block has no inline parts. */
+  partIndex: number | null;
+  field: 'content' | 'entryText';
+  /** The dialogue entry holding the text, when `field` is `entryText`. */
+  entryId?: string;
+}
+
+export function documentSceneToTimelineWithOrigins(
+  documentScene: DocumentScene,
+  characters: Character[] = [],
+): { timeline: TimelineStep[]; origins: DocumentStepOrigin[] } {
   const visibleCharacters = new Set<string>();
   const currentSpriteByCharacter = new Map<string, string>();
   const currentPositionByCharacter = new Map<string, string>();
+  const origins: DocumentStepOrigin[] = [];
+  const recordText = (step: TimelineStep, blockId: string, partIndex: number | null) => {
+    origins.push({ stepId: step.id, blockId, partIndex, field: 'content' });
+  };
+  const recordDialogue = (step: TimelineStep, blockId: string, partIndex: number | null) => {
+    const entryId = (step.data as DialogueBlockData).entries[0]?.id;
+    origins.push({ stepId: step.id, blockId, partIndex, field: 'entryText', ...(entryId ? { entryId } : {}) });
+  };
 
-  return documentScene.blocks.flatMap((block, index) => {
+  const timeline = documentScene.blocks.flatMap((block, index) => {
     if (block.kind === 'technical') {
       applyExplicitCharacterState(block.step, visibleCharacters, currentSpriteByCharacter, currentPositionByCharacter);
       return [block.step];
@@ -817,21 +852,22 @@ export function documentSceneToTimeline(documentScene: DocumentScene, characters
 
     if (block.kind === 'text') {
       if (block.parts?.length) {
-        return timelineFromInlineParts(block.parts);
+        return timelineFromInlineParts(block.parts, (step, partIndex) => recordText(step, block.id, partIndex));
       }
       if (!block.sourceStep && index === documentScene.blocks.length - 1 && block.content.trim() === '') {
         return [];
       }
-      if (block.sourceStep?.blockType === 'text') {
-        return [{
-          ...block.sourceStep,
-          data: {
-            ...(block.sourceStep.data as TextBlockData),
-            content: block.content,
-          },
-        }];
-      }
-      return [createTextStep({ content: block.content })];
+      const textStep: TimelineStep = block.sourceStep?.blockType === 'text'
+        ? {
+            ...block.sourceStep,
+            data: {
+              ...(block.sourceStep.data as TextBlockData),
+              content: block.content,
+            },
+          }
+        : createTextStep({ content: block.content });
+      recordText(textStep, block.id, null);
+      return [textStep];
     }
 
     if (block.kind === 'dialogue') {
@@ -859,10 +895,12 @@ export function documentSceneToTimeline(documentScene: DocumentScene, characters
       );
       const hideStep = generatedCharacterHideStep(block, characters);
       const contentSteps = block.parts?.length
-        ? timelineFromDialogueInlineParts(block, characters)
+        ? timelineFromDialogueInlineParts(block, characters, (step, partIndex) => recordDialogue(step, block.id, partIndex))
         : (() => {
             const dialogueStep = dialogueStepForBlock(block, characters);
-            return dialogueStep ? [dialogueStep] : [];
+            if (!dialogueStep) return [];
+            recordDialogue(dialogueStep, block.id, null);
+            return [dialogueStep];
           })();
       if (hideStep) {
         applyExplicitCharacterState(hideStep, visibleCharacters, currentSpriteByCharacter, currentPositionByCharacter);
@@ -900,6 +938,12 @@ export function documentSceneToTimeline(documentScene: DocumentScene, characters
 
     return [];
   });
+
+  return { timeline, origins };
+}
+
+export function documentSceneToTimeline(documentScene: DocumentScene, characters: Character[] = []): TimelineStep[] {
+  return documentSceneToTimelineWithOrigins(documentScene, characters).timeline;
 }
 
 /**

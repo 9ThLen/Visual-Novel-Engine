@@ -27,6 +27,11 @@ const EMBEDDED_SCRIPT_BODY = `
     // Scopes the phone-only bottom-sheet menu styles (see isCompactViewport).
     if (payload.isPhone) document.documentElement.classList.add('is-phone');
     var saveTimer = 0;
+    // True while an edit is waiting out the save debounce, i.e. the host has
+    // not been told about it yet.
+    var hasUnreportedChanges = false;
+    var selectionTimer = 0;
+    var selectionSeq = 0;
     var resizeTimer = 0;
     var activeSlash = null;
     var activeBackgroundBlock = null;
@@ -187,6 +192,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function scheduleSave() {
+      hasUnreportedChanges = true;
       window.clearTimeout(saveTimer);
       saveTimer = window.setTimeout(saveNow, 260);
     }
@@ -573,6 +579,177 @@ const EMBEDDED_SCRIPT_BODY = `
       recordHistoryChange('structural', '', '');
       saveSnapshotNow();
       postFormatState();
+    }
+
+    var SELECTION_TEXT_LIMIT = 4000;
+    var SELECTION_CONTEXT_LIMIT = 300;
+    var SELECTION_BLOCK_LIMIT = 20;
+
+    function selectionPlainText(value) {
+      return String(value || '').replace(/\\u00a0/g, ' ');
+    }
+
+    function occurrenceBefore(haystack, needle, startOffset) {
+      if (!needle) return 0;
+      var count = 0;
+      var from = haystack.indexOf(needle);
+      while (from !== -1 && from < startOffset) {
+        count += 1;
+        from = haystack.indexOf(needle, from + 1);
+      }
+      return count;
+    }
+
+    /**
+     * Visits a block's children the way serializeInlineParts numbers them, so a
+     * selection names the same part positions the serialized document will
+     * have. The two walks must change together.
+     */
+    function forEachInlinePartNode(block, visit) {
+      var index = 0;
+      Array.prototype.slice.call(block.childNodes).forEach(function(child) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          if (child.textContent) {
+            visit(child, index, 'text');
+            index += 1;
+          }
+          return;
+        }
+        if (isEffectChip(child) || isAudioChip(child)) {
+          visit(child, index, 'chip');
+          index += 1;
+          return;
+        }
+        if (child.nodeType === Node.ELEMENT_NODE && child.classList && child.classList.contains('speaker-token')) {
+          return;
+        }
+        if (child.nodeName !== 'BR' && child.textContent) {
+          visit(child, index, 'text');
+          index += 1;
+        }
+      });
+    }
+
+    // The piece of a range that falls inside one node: its visible text, and
+    // where that text starts within the node.
+    function rangeSliceWithin(range, node) {
+      if (!range.intersectsNode(node)) return null;
+      var inner = document.createRange();
+      inner.selectNodeContents(node);
+      if (range.compareBoundaryPoints(Range.START_TO_START, inner) > 0) {
+        inner.setStart(range.startContainer, range.startOffset);
+      }
+      if (range.compareBoundaryPoints(Range.END_TO_END, inner) < 0) {
+        inner.setEnd(range.endContainer, range.endOffset);
+      }
+      var lead = document.createRange();
+      lead.selectNodeContents(node);
+      lead.setEnd(inner.startContainer, inner.startOffset);
+      return {
+        text: selectionPlainText(inner.toString()),
+        start: selectionPlainText(lead.toString()).length
+      };
+    }
+
+    function currentSelectionRange() {
+      var selection = window.getSelection();
+      if (selectionIsInEditor() && selection && selection.rangeCount) return selection.getRangeAt(0);
+      // Once the author is typing in the host (the chat), the frame's own
+      // selection may be gone; the last one made in the editor still stands.
+      if (!document.hasFocus() && savedFormatRange && editor.contains(savedFormatRange.commonAncestorContainer)) {
+        return savedFormatRange;
+      }
+      return null;
+    }
+
+    /**
+     * Describes the selection in terms the host can map onto saved steps:
+     * block ids, part positions, and the visible text selected in each.
+     * Returns null when nothing in the editor is selected.
+     */
+    function buildSelectionState() {
+      var range = currentSelectionRange();
+      if (!range) return null;
+      var blocks = [];
+      var pieces = [];
+      var crossesChip = false;
+      var before = '';
+      var after = '';
+
+      Array.prototype.slice.call(editor.children).forEach(function(block) {
+        var kind = block.dataset ? block.dataset.kind : '';
+        if ((kind !== 'text' && kind !== 'dialogue') || !range.intersectsNode(block)) return;
+        var parts = [];
+        var blockText = '';
+        var quote = '';
+        var quoteStart = -1;
+        var hasChip = false;
+        var chipSinceTouch = false;
+
+        forEachInlinePartNode(block, function(child, index, type) {
+          if (type === 'chip') {
+            hasChip = true;
+            if (parts.length) chipSinceTouch = true;
+            return;
+          }
+          var text = selectionPlainText(child.textContent);
+          var slice = rangeSliceWithin(range, child);
+          // A caret sits on one part; a boundary it shares with the next is not a second hit.
+          var touched = slice && (slice.text ? true : range.collapsed && !parts.length);
+          if (touched) {
+            if (quoteStart < 0) quoteStart = blockText.length + slice.start;
+            if (chipSinceTouch) crossesChip = true;
+            chipSinceTouch = false;
+            quote += slice.text;
+            parts.push({
+              index: index,
+              quote: slice.text.slice(0, SELECTION_TEXT_LIMIT),
+              occurrence: occurrenceBefore(text, slice.text, slice.start)
+            });
+          }
+          blockText += text;
+        });
+
+        // A selection that only grazes a block's edge selects nothing in it.
+        if (!parts.length && !range.collapsed) return;
+        var start = Math.max(0, quoteStart);
+        var entry = {
+          id: block.dataset.id || '',
+          kind: kind,
+          quote: quote.slice(0, SELECTION_TEXT_LIMIT),
+          occurrence: occurrenceBefore(blockText, quote, start)
+        };
+        if (hasChip) entry.parts = parts;
+        if (!pieces.length) before = blockText.slice(0, start).slice(-SELECTION_CONTEXT_LIMIT);
+        after = blockText.slice(start + quote.length).slice(0, SELECTION_CONTEXT_LIMIT);
+        pieces.push(quote);
+        if (blocks.length < SELECTION_BLOCK_LIMIT) blocks.push(entry);
+      });
+
+      var text = pieces.join('\\n');
+      selectionSeq += 1;
+      return {
+        seq: selectionSeq,
+        collapsed: range.collapsed,
+        text: text.slice(0, SELECTION_TEXT_LIMIT),
+        textLength: text.length,
+        truncated: text.length > SELECTION_TEXT_LIMIT,
+        before: before,
+        after: after,
+        crossesChip: crossesChip,
+        blocks: blocks
+      };
+    }
+
+    // Only the chip in the chat reads this, so it can lag; a request that needs
+    // the selection asks for it through flush instead.
+    function scheduleSelectionState() {
+      window.clearTimeout(selectionTimer);
+      selectionTimer = window.setTimeout(function() {
+        if (!selectionIsInEditor()) return;
+        var state = buildSelectionState();
+        if (state) post({ type: 'selectionState', state: state });
+      }, 150);
     }
 
     function serializeInlineParts(node) {
@@ -4418,6 +4595,7 @@ const EMBEDDED_SCRIPT_BODY = `
     function saveSnapshotNow() {
       scheduleResize();
       var snapshot = buildSnapshot();
+      hasUnreportedChanges = false;
       post(Object.assign({ type: 'save' }, snapshot));
     }
 
@@ -6062,7 +6240,13 @@ const EMBEDDED_SCRIPT_BODY = `
       if (!message || message.source !== 'vn-plate-host' || message.editorId !== payload.editorId) return;
       if (message.type === 'flush' && message.requestId) {
         var snapshot = buildSnapshot();
-        post(Object.assign({ type: 'flushed', requestId: message.requestId }, snapshot));
+        var flushed = Object.assign({ type: 'flushed', requestId: message.requestId }, snapshot);
+        // Read in the same pass as the content, so the two describe one moment.
+        if (message.withSelection) {
+          flushed.selection = buildSelectionState();
+          flushed.hasUnreportedChanges = hasUnreportedChanges;
+        }
+        post(flushed);
       }
       if (message.type === 'undo' || message.type === 'redo') {
         if (message.type === 'undo') undoHistory();
@@ -6288,6 +6472,7 @@ const EMBEDDED_SCRIPT_BODY = `
     document.addEventListener('selectionchange', function() {
       rememberFormatSelection();
       postFormatState();
+      scheduleSelectionState();
       if (document.activeElement !== editor || !activeSlash) return;
       // Typing opens the menu; moving the caret only follows or dismisses it.
       var slash = currentSlashQuery();
