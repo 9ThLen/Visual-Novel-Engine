@@ -79,7 +79,13 @@ export interface PlateWebViewEditorCapture extends PlateWebViewEditorSnapshot {
 }
 
 export interface PlateWebViewEditorHandle {
+  /**
+   * The frame's content as it is now, ahead of its debounced report. Whoever
+   * receives it has been told of any edit it holds: `onChange` will not report
+   * that same edit a second time.
+   */
   flush: () => Promise<PlateWebViewEditorSnapshot>;
+  /** A flush that also reads the selection, in the same pass of the frame. */
   capture: () => Promise<PlateWebViewEditorCapture>;
   undo: () => void;
   redo: () => void;
@@ -170,6 +176,11 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
     reject: (error: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   }>());
+  // The flush whose answer reached its caller while holding an edit the frame
+  // had not reported. The frame's debounce still reports that edit, naming the
+  // flush; taking it for a new change would mark a scene unsaved that its
+  // caller may just have saved.
+  const deliveredFlushIdRef = useRef<string | null>(null);
   // Safety net for the shared-script path: if the boot script never reports
   // 'ready' (e.g. a strict CSP blocking blob: URLs), rebuild the frame with
   // the fully inlined srcDoc instead of leaving a dead editor.
@@ -627,6 +638,7 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         if (pending) {
           clearTimeout(pending.timer);
           pendingFlushesRef.current.delete(message.requestId);
+          if (message.hasUnreportedChanges === true) deliveredFlushIdRef.current = message.requestId;
           pending.resolve({
             ...normalized,
             rawScene: message.scene,
@@ -637,6 +649,11 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
         return;
       }
       if (message.type !== 'save' && message.type !== 'createNextScene') return;
+
+      // Only the report that follows a flush directly can repeat it.
+      const deliveredFlushId = deliveredFlushIdRef.current;
+      deliveredFlushIdRef.current = null;
+      if (message.type === 'save' && deliveredFlushId && message.flushedBy === deliveredFlushId) return;
 
       const incomingCharacters = 'characters' in message && Array.isArray(message.characters)
         ? message.characters

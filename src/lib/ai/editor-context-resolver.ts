@@ -7,8 +7,8 @@
  * knows which block became which step is the document converter, so the
  * captured document is converted again here and its output is laid over the
  * stored timeline position by position. The pairing is trusted only when the
- * two line up exactly; anything else falls back to finding the quote, which is
- * never reported as `exact`.
+ * two line up exactly and the pair itself is shown to be one step; anything
+ * else falls back to finding the quote, which is never reported as `exact`.
  *
  * A block that is not text — a background, a choice, an inline effect — is
  * addressed whole, and mostly carries its step's id with it, so it has a
@@ -28,7 +28,7 @@ import {
   type AiEditorFocus,
   type AiEditorSelectionAnchor,
 } from './editor-context';
-import { computeSceneRevision } from './scene-revision';
+import { computeSceneRevision, stableStringify } from './scene-revision';
 
 export type CapturedSelectionBlock = VNPlateSelectionBlock;
 
@@ -73,6 +73,13 @@ function partCount(parts: unknown): number {
 /**
  * Pairs each document block with the stored steps it produced, or returns null
  * when the captured document and the stored scene are not the same content.
+ *
+ * Lining up by place and kind shows the two have the same shape, not that a
+ * step is the one across from it: two backgrounds swapped in an unsaved draft
+ * still line up. So each pair is proven on its own. A block saved before
+ * carries its step's id, and then the id is the whole answer. A step whose id
+ * this conversion minted has only its place, and is trusted when the stored
+ * step there belongs to no other block and holds the same content.
  */
 function alignOrigins(
   scene: SceneRecord,
@@ -83,6 +90,8 @@ function alignOrigins(
   const { timeline, origins, blockSteps } = documentSceneToTimelineWithOrigins(normalized.scene, normalized.characters);
   if (timeline.length !== scene.timeline.length) return null;
 
+  const storedIds = new Set(scene.timeline.map((step) => step.id));
+  const carriedIds = new Set(timeline.filter((step) => storedIds.has(step.id)).map((step) => step.id));
   const storedByConvertedId = new Map<string, TimelineStep>();
   for (let index = 0; index < timeline.length; index += 1) {
     const converted = timeline[index];
@@ -90,7 +99,11 @@ function alignOrigins(
     if (converted.blockType !== stored.blockType) return null;
     const text = textOfStep(converted);
     if (text !== null && text !== textOfStep(stored)) return null;
-    storedByConvertedId.set(converted.id, stored);
+    const isSameStep = carriedIds.has(converted.id)
+      ? converted.id === stored.id
+      : !carriedIds.has(stored.id)
+        && (text !== null || stableStringify(converted.data) === stableStringify(stored.data));
+    if (isSameStep) storedByConvertedId.set(converted.id, stored);
   }
 
   // The frame numbers parts before normalization. A block whose part list
@@ -205,6 +218,14 @@ export interface ResolveFocusedBlockInput {
   focus: VNPlateFocusedBlock | null | undefined;
 }
 
+/**
+ * The step a technical block holds. The frame sends a block of a kind it has
+ * no form for without one, whatever the type says; the save makes it then.
+ */
+function heldStep(block: DocumentBlock | undefined): TimelineStep | null {
+  return block?.kind === 'technical' ? (block.step as TimelineStep | null) ?? null : null;
+}
+
 /** The id of the step a block will be saved as, when the block carries one. */
 function carriedStepId(block: DocumentBlock | undefined, partIndex: number | null): string | null {
   if (!block) return null;
@@ -212,7 +233,7 @@ function carriedStepId(block: DocumentBlock | undefined, partIndex: number | nul
     const part = (block.kind === 'text' || block.kind === 'dialogue') ? block.parts?.[partIndex] : undefined;
     return part && part.type !== 'text' ? part.id : null;
   }
-  if (block.kind === 'technical') return block.step.id;
+  if (block.kind === 'technical') return heldStep(block)?.id ?? null;
   return block.sourceStep?.id ?? null;
 }
 
@@ -256,13 +277,13 @@ export function resolveFocusedBlock(input: ResolveFocusedBlockInput): AiEditorFo
     // of the step it was built from.
     const carriedId = input.document ? carriedStepId(block, partIndex) : (partIndex === null ? focus.id : null);
     const candidate = carriedId ? input.scene.timeline.find((item) => item.id === carriedId) : undefined;
-    const expectedType = block?.kind === 'technical' ? block.step.blockType : block?.kind === 'choice' ? 'choice' : null;
+    const expectedType = heldStep(block)?.blockType ?? (block?.kind === 'choice' ? 'choice' : null);
     if (candidate && (!expectedType || candidate.blockType === expectedType)) step = candidate;
   }
 
   const summary = clip(describeFocusedBlock(block, partIndex), AI_EDITOR_CONTEXT_LIMITS.focusSummary);
   const blockType = step?.blockType
-    ?? (block?.kind === 'technical' ? block.step.blockType : null)
+    ?? heldStep(block)?.blockType
     ?? (focus.command || focus.kind);
   return {
     sceneId: input.scene.id,

@@ -219,6 +219,8 @@ export type VNPlateEditorMessage =
       type: 'save';
       scene: DocumentScene;
       characters?: Character[];
+      /** The flush that already delivered exactly this content, when one did. */
+      flushedBy?: string;
     }
   | {
       source: 'vn-plate-editor';

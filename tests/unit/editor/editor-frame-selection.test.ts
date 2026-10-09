@@ -285,6 +285,89 @@ describe('editor frame selection', () => {
       expect(frame.flush(true).hasUnreportedChanges).toBe(false);
     });
   });
+
+  // A flush answers ahead of the debounce, and the debounce still reports. The
+  // host has to be able to tell that report from a new edit, or a scene saved
+  // from the flush turns unsaved again a moment later.
+  describe('the debounced report after a flush', () => {
+    const type = (text: string) => {
+      frame.textNodes('blk_first')[0].data = text;
+      frame.block('blk_first').dispatchEvent(new frame.target.Event('input', { bubbles: true }));
+    };
+    const saves = () => frame.posted.filter((message) => message.type === 'save');
+
+    it('names the flush that already delivered the edit', async () => {
+      type('Перший абзац, дописаний.');
+      const flushed = frame.flush(true);
+      await settle(400);
+
+      expect(saves()).toHaveLength(1);
+      expect(saves()[0].flushedBy).toBe(flushed.requestId);
+      expect(JSON.stringify(saves()[0].scene)).toContain('дописаний');
+    });
+
+    it('names a plain flush too, which says so only when it carried an edit', async () => {
+      type('Перший абзац, дописаний.');
+      const flushed = frame.flush(false);
+      await settle(400);
+
+      expect(flushed.hasUnreportedChanges).toBe(true);
+      expect(flushed).not.toHaveProperty('selection');
+      expect(saves()[0].flushedBy).toBe(flushed.requestId);
+    });
+
+    it('holds an edit as reported once a flush has carried it', () => {
+      type('Перший абзац, дописаний.');
+      frame.flush(false);
+
+      expect(frame.flush(true).hasUnreportedChanges).toBe(false);
+    });
+
+    it('keeps naming the flush that carried the edit after later ones that carried nothing', async () => {
+      type('Перший абзац, дописаний.');
+      const first = frame.flush(true);
+      frame.flush(true);
+      await settle(400);
+
+      expect(saves()[0].flushedBy).toBe(first.requestId);
+    });
+
+    it('names no flush once the text has changed again', async () => {
+      type('Перший абзац, дописаний.');
+      frame.flush(true);
+      type('Перший абзац, дописаний двічі.');
+      await settle(400);
+
+      expect(saves()).toHaveLength(1);
+      expect(saves()[0]).not.toHaveProperty('flushedBy');
+      expect(JSON.stringify(saves()[0].scene)).toContain('двічі');
+    });
+
+    it('names no flush when nothing came between the edit and its report', async () => {
+      type('Перший абзац, дописаний.');
+      await settle(400);
+
+      expect(saves()).toHaveLength(1);
+      expect(saves()[0]).not.toHaveProperty('flushedBy');
+    });
+
+    // An undo reports itself at once, without the debounce; the timer armed by
+    // the typing is still running and must not pass that report off as flushed.
+    it('names no flush once a change that reports itself has followed', async () => {
+      type('Перший абзац, дописаний.');
+      frame.flush(true);
+      frame.target.dispatchEvent(new frame.target.MessageEvent('message', {
+        data: { source: 'vn-plate-host', editorId: 'frame', type: 'undo' },
+        source: frame.dom.window,
+      }));
+      const immediate = saves().length;
+      await settle(400);
+
+      expect(immediate).toBe(1);
+      expect(saves().length).toBeGreaterThanOrEqual(1);
+      saves().forEach((message) => expect(message).not.toHaveProperty('flushedBy'));
+    });
+  });
 });
 
 describe('editor frame focus on a block that is not text', () => {
