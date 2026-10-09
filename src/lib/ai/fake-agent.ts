@@ -12,6 +12,7 @@ import { STORY_THEME_PRESETS, type StoryReaderTheme } from '@/lib/story-theme';
 import { allTranslations, type Language } from '@/lib/translations';
 import { useAppStore } from '@/stores/use-app-store';
 import type { AiReaderAppearancePatch, ThemeColorKey } from './appearance-patch';
+import type { AiEditorContext } from './editor-context';
 import { listStoryImages } from './asset-tools';
 import type { AiSceneView, AiStoryContext } from './story-context';
 import type { AiScenePatch } from './scene-patch-types';
@@ -140,7 +141,18 @@ function buildDarkerThemePatch(storyId: string, current: StoryReaderTheme, revis
   };
 }
 
-export async function respond(userText: string, ctx: AiStoryContext): Promise<FakeAgentResponse> {
+/** The dialogue line the author selected, when the context names it for certain. */
+function findSelectedDialogueStep(scene: AiSceneView, editorContext?: AiEditorContext | null): TimelineStep | null {
+  const stepId = editorContext?.selection?.anchors
+    .find((anchor) => anchor.match === 'exact' && anchor.blockKind === 'dialogue')?.stepId;
+  return (stepId && scene.timeline.find((step) => step.id === stepId && step.blockType === 'dialogue')) || null;
+}
+
+export async function respond(
+  userText: string,
+  ctx: AiStoryContext,
+  editorContext?: AiEditorContext | null,
+): Promise<FakeAgentResponse> {
   await new Promise((resolve) => setTimeout(resolve, THINKING_DELAY_MS));
 
   if (THEME_PATTERN.test(userText)) {
@@ -155,7 +167,7 @@ export async function respond(userText: string, ctx: AiStoryContext): Promise<Fa
   }
 
   if (ctx.activeScene && REWRITE_PATTERN.test(userText)) {
-    const dialogueStep = findFirstDialogueStep(ctx.activeScene);
+    const dialogueStep = findSelectedDialogueStep(ctx.activeScene, editorContext) ?? findFirstDialogueStep(ctx.activeScene);
     if (dialogueStep) {
       return { kind: 'patch', patch: buildRewritePatch(ctx.story.id, ctx.activeScene, dialogueStep) };
     }

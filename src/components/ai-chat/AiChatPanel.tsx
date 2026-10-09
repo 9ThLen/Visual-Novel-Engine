@@ -52,6 +52,16 @@ import { AI_CAPABILITIES, normalizeAiPermissions, resolveCapability, resolveEffe
 import { resolveAiBridgeConfig, selectAiBridgeProvider, updateActiveAiBridgeProfile } from '@/lib/ai/bridge-config';
 import { aiProviderLabel, isBridgeProvider } from '@/lib/ai/providers';
 import { buildAiStoryContext } from '@/lib/ai/story-context';
+import type { AiEditorContext } from '@/lib/ai/editor-context';
+import {
+  buildEditorContextFromCapture,
+  describeEditorContextPointer,
+  focusBlockNameKey,
+  type CaptureEditorContext,
+  type EditorContextCapture,
+} from '@/lib/ai/editor-context-capture';
+import { computeSceneRevision } from '@/lib/ai/scene-revision';
+import { generateId } from '@/lib/id-utils';
 import { buildAiChangeSetState, buildPatchProjectContext } from '@/lib/ai/project-context';
 import { BridgeClient, type BridgeConnectionState, type BridgeProvider } from '@/lib/bridge-client';
 import type { BridgeCapabilities } from '@/lib/bridge-protocol';
@@ -72,6 +82,7 @@ import { ConnectionCard } from './ConnectionCard';
 import { MarkdownText } from './MarkdownText';
 import { AiSettingsPanel } from './AiSettingsPanel';
 import { CapabilityConfirmChip } from './CapabilityConfirmChip';
+import { EditorContextChip } from './EditorContextChip';
 import { ImageResultCard } from './ImageResultCard';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
@@ -88,6 +99,12 @@ interface AiChatPanelProps {
    * all of them into false negatives.
    */
   beforeStoryMutation: () => Promise<boolean>;
+  /**
+   * Reads the open scene and the author's selection in one pass, saving first
+   * when asked to. Absent where there is no editor to read; the chat then
+   * works as it did before it knew about selections.
+   */
+  captureEditorContext?: CaptureEditorContext;
 }
 
 type BridgeRuntimeErrorReason =
@@ -241,7 +258,7 @@ export function executeAuthorizeCapability(
   return waitForDecision().then(result => ({ ok: true as const, result }));
 }
 
-export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMutation }: AiChatPanelProps) {
+export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMutation, captureEditorContext }: AiChatPanelProps) {
   const colors = useColors(colorScheme);
   const { t, language } = useI18n();
 
@@ -266,7 +283,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
   const clearMessages = useAiChatStore((s) => s.clearMessages);
   const markAttachmentImported = useAiChatStore((s) => s.markAttachmentImported);
   const restored = useAiChatStore((s) => s.restoredStoryIds[storyId] === true);
-  const addMessage = useCallback((role: AiChatRole, text: string, attachments?: AttachmentRef[]) => addMessageToStore(role, text, storyId, attachments), [addMessageToStore, storyId]);
+  const addMessage = useCallback((role: AiChatRole, text: string, attachments?: AttachmentRef[], contextLabel?: string) => addMessageToStore(role, text, storyId, attachments, contextLabel), [addMessageToStore, storyId]);
   const setStatus = useAiChatStore((s) => s.setStatus);
   const setPendingInteraction = useAiChatStore((s) => s.setPendingInteraction);
   const cancelPendingInteraction = useAiChatStore((s) => s.cancelPendingInteraction);
@@ -332,10 +349,47 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
    * without entering that effect's dependency list.
    */
   const passesSaveBarrierRef = useRef<() => Promise<boolean>>(async () => true);
+  /** Read through a ref for the same reason as the save barrier above. */
+  const captureEditorContextRef = useRef(captureEditorContext);
+  captureEditorContextRef.current = captureEditorContext;
+  /** Set synchronously on send, so a second press cannot start a second capture while the first is awaited. */
+  const sendInFlightRef = useRef(false);
+  /**
+   * The context that went out with the message of the turn in progress. The
+   * model reads it back with `get_editor_context`; it is dropped when the turn
+   * ends, and stops being offered once its scene has changed.
+   */
+  const turnEditorContextRef = useRef<AiEditorContext | null>(null);
   const enqueueMutationRef = useRef<<T>(task: () => Promise<T>) => Promise<T>>((task) => task());
 
   useEffect(() => setActiveStory(storyId), [setActiveStory, storyId]);
   useEffect(() => { activeSceneIdRef.current = activeSceneId; }, [activeSceneId]);
+
+  /** Pairs what the editor captured with the stored scene; the store is read now, after any save the capture made. */
+  const buildEditorContext = useCallback((capture: EditorContextCapture, kind: AiEditorContext['kind']): AiEditorContext => {
+    const state = useAppStore.getState();
+    return buildEditorContextFromCapture({
+      storyId,
+      capture,
+      kind,
+      scene: state.sceneRecordsByStory[storyId]?.[capture.sceneId] ?? null,
+      characters: state.characterLibraries[storyId] ?? [],
+      snapshotId: generateId('ctx'),
+      capturedAt: Date.now(),
+    });
+  }, [storyId]);
+
+  /** A few words for the transcript; the context itself is not kept there. */
+  const describeContextForTranscript = useCallback((context: AiEditorContext | null): string | undefined => {
+    if (!context) return undefined;
+    const pointer = describeEditorContextPointer(context);
+    if (pointer.kind === 'none') return undefined;
+    const place = context.scene ? t('aiChat.context.inScene', { scene: context.scene.name }) : '';
+    const what = pointer.kind === 'selection'
+      ? `«${pointer.quote}»`
+      : t('aiChat.context.block', { name: t(focusBlockNameKey(pointer.blockType)) });
+    return [what, place, pointer.exact ? '' : `· ${t('aiChat.context.inexact')}`].filter(Boolean).join(' ');
+  }, [t]);
   useEffect(() => {
     let active = true;
     void pendingImageRepository.listForStory(storyId).then((images) => {
@@ -427,10 +481,12 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
             addMessage('assistant', [assistantTextRef.current, incompleteWarning].filter(Boolean).join('\n\n'));
           }
           assistantTextRef.current = '';
+          turnEditorContextRef.current = null;
           const chat = useAiChatStore.getState();
           setStatus(chat.pendingInteraction?.storyId === storyId ? 'awaiting_confirmation' : 'idle');
         }
         if (message.type === 'error') {
+          turnEditorContextRef.current = null;
           setRuntimeErrorReason(resolveBridgeRuntimeError(payload));
           setStatus('idle');
         }
@@ -451,6 +507,27 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
           const sceneId = typeof value.sceneId === 'string' ? value.sceneId : currentSceneId;
           const context = sceneId ? buildAiStoryContext(storyId, sceneId) : null;
           return context ? { ok: true, result: context } : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Scene not found' };
+        }
+        if (name === 'get_editor_context') {
+          if (value.mode === 'live') {
+            const capture = captureEditorContextRef.current;
+            if (!capture) return { ok: true, result: { context: null, hint: 'No editor is open.' } };
+            // Reading never saves: the author did not ask for anything to be written.
+            const outcome = await capture({ save: false });
+            return outcome.ok
+              ? { ok: true, result: { context: buildEditorContext(outcome.capture, 'live') } }
+              : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'The editor did not answer' };
+          }
+          const fixed = turnEditorContextRef.current;
+          const fixedScene = fixed?.scene ? state.sceneRecordsByStory[storyId]?.[fixed.scene.id] : null;
+          if (fixed?.scene && (!fixedScene || computeSceneRevision(fixedScene) !== fixed.scene.revision)) {
+            // Its addresses held for one revision of the scene, and that one is gone.
+            turnEditorContextRef.current = null;
+            return { ok: true, result: { context: null, hint: 'The scene changed after this context was captured. Read the scene again, or ask for mode "live".' } };
+          }
+          return fixed
+            ? { ok: true, result: { context: fixed } }
+            : { ok: true, result: { context: null, hint: 'No context came with this message. Ask for mode "live" to read the editor now.' } };
         }
         if (name === 'list_story_images') return { ok: true, result: listStoryImages(storyId) };
         if (name === 'get_image_details') {
@@ -561,19 +638,35 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
       client.close();
       bridgeRef.current = null;
     };
-  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.preferredProvider, bridgeConfig.codexBetaConsent, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, addMessage, cancelPendingInteraction, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, t]);
+  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.preferredProvider, bridgeConfig.codexBetaConsent, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, addMessage, buildEditorContext, cancelPendingInteraction, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, t]);
 
-  const handleSend = useCallback(async () => {
+  const sendMessage = useCallback(async () => {
     const text = inputText.trim();
     if ((!text && draftAttachments.length === 0) || status !== 'idle') return;
-    const ctx = activeSceneId ? buildAiStoryContext(storyId, activeSceneId) : null;
+    if (bridgeRef.current && connectionState !== 'connected') return;
+
+    // Before anything else: the capture reads the selection as it is now, and
+    // saves the text it was made in, so the context names steps that exist.
+    let editorContext: AiEditorContext | null = null;
+    let turnSceneId = activeSceneId;
+    if (captureEditorContext) {
+      const outcome = await captureEditorContext({ save: true });
+      if (!outcome.ok) {
+        addMessage('system', t('aiChat.sendSaveFailed'));
+        return;
+      }
+      editorContext = buildEditorContext(outcome.capture, 'fixed');
+      turnSceneId = outcome.capture.sceneId;
+    }
+
+    const ctx = turnSceneId ? buildAiStoryContext(storyId, turnSceneId) : null;
     if (!ctx) {
       addMessage('assistant', t('aiChat.noActiveScene'));
       return;
     }
+    const contextLabel = describeContextForTranscript(editorContext);
 
     if (bridgeRef.current) {
-      if (connectionState !== 'connected') return;
       assistantTextRef.current = '';
       let wireAttachments;
       try {
@@ -585,17 +678,18 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
         setAttachmentError(t('aiChat.attach.readFailed'));
         return;
       }
-      const delivered = bridgeRef.current.sendUserMessage(text, wireAttachments);
+      const delivered = bridgeRef.current?.sendUserMessage(text, wireAttachments, editorContext) ?? { ok: false as const };
       if (!delivered.ok) {
         setInputText(text);
         setStatus('idle');
         setRuntimeErrorReason('PROVIDER_ERROR');
         return;
       }
+      turnEditorContextRef.current = editorContext;
       setRuntimeErrorReason(undefined);
       setInputText('');
       const refs = draftAttachments.map(({ blob: _blob, storyId: _storyId, createdAt: _createdAt, messageId: _messageId, ...ref }) => ref);
-      const message = addMessage('user', text, refs);
+      const message = addMessage('user', text, refs, contextLabel);
       await Promise.all(draftAttachments.map((attachment) => chatAttachmentRepository.put({ ...attachment, messageId: message.id })));
       setDraftAttachments([]);
       setStatus('thinking');
@@ -603,9 +697,9 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
     }
     setRuntimeErrorReason(undefined);
     setInputText('');
-    addMessage('user', text);
+    addMessage('user', text, undefined, contextLabel);
     setStatus('thinking');
-    const response = await respond(text, ctx);
+    const response = await respond(text, ctx, editorContext);
 
     if (response.kind === 'text') {
       addMessage('assistant', response.text);
@@ -650,7 +744,22 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
     const description = describeAiScenePatch(scene, response.patch);
     addMessage('assistant', response.patch.explanation);
     setPendingPatch({ patch: response.patch, description });
-  }, [inputText, draftAttachments, status, activeSceneId, storyId, addMessage, setStatus, setPendingPatch, setPendingAppearance, t, connectionState]);
+  }, [inputText, draftAttachments, status, activeSceneId, storyId, addMessage, buildEditorContext, captureEditorContext, describeContextForTranscript, setStatus, setPendingPatch, setPendingAppearance, t, connectionState]);
+
+  /**
+   * Sending is one operation. The guard is a ref because the capture is
+   * awaited before any state changes: with `status` alone the button stays
+   * live for that whole wait and a second press would send the message twice.
+   */
+  const handleSend = useCallback(async () => {
+    if (sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
+    try {
+      await sendMessage();
+    } finally {
+      sendInFlightRef.current = false;
+    }
+  }, [sendMessage]);
 
   const addDraftFiles = useCallback(async (files: readonly File[]) => {
     if (!files.length) return;
@@ -1132,7 +1241,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
         {restored && messages.length > 0 ? <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.restoredNote')}</Text> : null}
 
         {messages.map((message) => (
-          <MessageBubble key={message.id} role={message.role} text={message.text} attachments={message.attachments} colors={colors} importLabel={t('aiChat.attach.import')} unavailableLabel={t('aiChat.attach.unavailable')} onImport={async (attachment) => {
+          <MessageBubble key={message.id} role={message.role} text={message.text} attachments={message.attachments} contextLabel={message.contextLabel} colors={colors} importLabel={t('aiChat.attach.import')} unavailableLabel={t('aiChat.attach.unavailable')} onImport={async (attachment) => {
             if (attachment.assetId || attachment.kind !== 'image') return;
             const stored = await chatAttachmentRepository.get(attachment.id);
             if (!stored) return;
@@ -1271,6 +1380,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
           </ScrollView>
         ) : null}
         {attachmentError ? <Text accessibilityRole="alert" style={{ color: colors.danger, paddingHorizontal: 10, paddingBottom: 5, fontSize: 11 }}>{attachmentError}</Text> : null}
+        {captureEditorContext ? <EditorContextChip storyId={storyId} colorScheme={colorScheme} /> : null}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10 }}>
           <Pressable
             accessibilityRole="button"
@@ -1410,6 +1520,7 @@ function MessageBubble({
   role,
   text,
   attachments,
+  contextLabel,
   onImport,
   importLabel,
   unavailableLabel,
@@ -1418,6 +1529,8 @@ function MessageBubble({
   role: AiChatRole;
   text: string;
   attachments?: AttachmentRef[];
+  /** What the message pointed at in the editor; shown under the author's words. */
+  contextLabel?: string;
   onImport?: (attachment: AttachmentRef) => void | Promise<void>;
   importLabel: string;
   unavailableLabel: string;
@@ -1443,6 +1556,11 @@ function MessageBubble({
       {role === 'assistant'
         ? <MarkdownText text={text} color={colors.foreground} />
         : <Text style={{ color: isUser ? '#ffffff' : colors.foreground, fontSize: 13, lineHeight: 18 }}>{text}</Text>}
+      {contextLabel ? (
+        <Text numberOfLines={2} style={{ color: isUser ? '#ffffff' : colors.muted, opacity: 0.82, fontSize: 11, lineHeight: 15, marginTop: 4 }}>
+          {`↳ ${contextLabel}`}
+        </Text>
+      ) : null}
     </View>
   );
 }
