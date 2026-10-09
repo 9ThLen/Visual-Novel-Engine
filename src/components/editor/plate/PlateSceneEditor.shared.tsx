@@ -46,7 +46,8 @@ interface PlateSceneEditorProps {
   audioAssets: VNPlateAudioAsset[];
   protectedCharacterIds?: string[];
   onSave: (sceneRecords: SceneRecord[], characters: Character[]) => void;
-  onCreateNextScene?: (sourceSceneId: string, sceneRecords: SceneRecord[], characters: Character[]) => void;
+  /** Returns whether the records were written; the editor only then counts them as saved. */
+  onCreateNextScene?: (sourceSceneId: string, sceneRecords: SceneRecord[], characters: Character[]) => boolean;
   onDuplicateScene?: (sceneId: string) => void;
   onDeleteScene?: (sceneId: string) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
@@ -126,7 +127,7 @@ export function PlateSceneEditor({
   ) => {
     const nextRecords = documentsToRecords(documentScenes, nextCharacters);
     sceneContentLedger.noteWritten(nextRecords);
-    onCreateNextScene?.(sourceSceneId, nextRecords, nextCharacters);
+    return onCreateNextScene?.(sourceSceneId, nextRecords, nextCharacters) ?? false;
   };
 
   return (

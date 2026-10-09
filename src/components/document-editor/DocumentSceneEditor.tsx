@@ -92,7 +92,11 @@ interface DocumentSceneEditorProps {
   videoAssets?: VNPlateVideoAsset[];
   protectedCharacterIds?: string[];
   onSave: (documentScenes: DocumentScene[], characters: Character[]) => void;
-  onCreateNextScene: (sourceSceneId: string, documentScenes: DocumentScene[], characters: Character[]) => void;
+  /**
+   * Writes the documents it is handed along with the new scene. Returns whether
+   * that write happened — a host that could not create the scene wrote nothing.
+   */
+  onCreateNextScene: (sourceSceneId: string, documentScenes: DocumentScene[], characters: Character[]) => boolean;
   onDuplicateScene?: (sceneId: string) => void;
   onDeleteScene?: (sceneId: string) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
@@ -689,15 +693,22 @@ export function DocumentSceneEditor({
   }, [applyDraftSnapshot]);
 
   const handleCreateNextSceneImpl = useCallback((_sceneId: string, nextScene: DocumentScene, nextCharacters: Character[]) => {
-    const nextDocuments = documentsWithDrafts().map((documentScene) =>
-      documentScene.sceneId === nextScene.sceneId ? nextScene : documentScene,
-    );
-    draftRegistryRef.current.set(nextScene.sceneId, { scene: nextScene, characters: nextCharacters });
-    localCharactersRef.current = nextCharacters;
-    setLocalCharacters(nextCharacters);
-    setDocumentScenes(nextDocuments);
-    onCreateNextScene(nextScene.sceneId, nextDocuments, nextCharacters);
-  }, [documentsWithDrafts, onCreateNextScene]);
+    // What the frame sends along is a draft like any other until the host has
+    // written it — and the frame will not report it a second time.
+    applyDraftSnapshot({ scene: nextScene, characters: nextCharacters });
+    const nextDocuments = documentsWithDrafts();
+    if (!onCreateNextScene(nextScene.sceneId, nextDocuments, nextCharacters)) return;
+    // The host wrote every document it was handed, so this was a save and has
+    // to leave the editor as clean as performSave does. The host has also just
+    // pushed the new scene's editor on top of this one, which stays mounted. An
+    // editor with unsaved work in the scene it is on takes nothing from the
+    // store, so left dirty it would miss everything saved from up there — and
+    // once the author came back, its next save would write its old copy of
+    // every scene over that work.
+    externalCharactersRef.current = nextCharacters;
+    draftRegistryRef.current.clear();
+    setDirtySceneIds(new Set());
+  }, [applyDraftSnapshot, documentsWithDrafts, onCreateNextScene]);
 
   const registerEditorRefImpl = useCallback((sceneId: string, handle: PlateWebViewEditorHandle | null) => {
     if (handle) {

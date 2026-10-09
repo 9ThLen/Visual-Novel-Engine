@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Frame, type Locator, type Page } from '@playwright/test';
 
 const validToken = 'ai-e2e-token';
 
@@ -252,4 +252,82 @@ test('undoing an AI change puts the old text back in the open editor', async ({ 
   await page.getByRole('button', { name: /Undo AI changes|Відкотити AI-зміни/ }).click();
   await expect(editable).not.toContainText('AI rewrote this line.');
   expect(await editable.innerText()).toBe(before);
+});
+
+/**
+ * Scene-to-scene navigation stacks editor screens, and a covered one stays in
+ * the DOM with its frames and its sidebar. These reach only the screen in front.
+ */
+async function sceneEditable(page: Page, sceneName: string): Promise<Locator> {
+  // By frame, not by position: frames mount and unmount around the scene in
+  // view, so the nth visible iframe is a different scene a moment later.
+  const find = async (): Promise<Frame | null> => {
+    for (const frame of page.frames()) {
+      const element = await frame.frameElement().catch(() => null);
+      if (!element || await element.getAttribute('title') !== 'VN Plate editor') continue;
+      if (!(await element.isVisible())) continue;
+      const name = await frame.locator('#title').inputValue({ timeout: 1_000 }).catch(() => null);
+      if (name === sceneName) return frame;
+    }
+    return null;
+  };
+  await expect.poll(async () => Boolean(await find())).toBe(true);
+  return ((await find()) as Frame).locator('#editor');
+}
+
+/** The sidebar's mark on a scene the editor in front holds unsaved work for. */
+function unsavedMark(page: Page, sceneName: string): Locator {
+  return page.getByText(`* ${sceneName}`, { exact: true }).filter({ visible: true });
+}
+
+async function typeAtEndOf(page: Page, line: Locator, text: string): Promise<void> {
+  await line.click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(text);
+}
+
+/**
+ * The frame's «new scene» command saves the scene it was typed in and opens the
+ * new scene's editor on top of the one it came from. That one used to go on
+ * believing its scene was unsaved, and an editor with unsaved work takes nothing
+ * from the store: after the browser's Back button it still held every scene as
+ * it had loaded it, and its next save wrote those copies over whatever had been
+ * saved in between.
+ */
+test('an editor left through the frame’s «new scene» command does not undo what was saved after it', async ({ page }) => {
+  await openStoryEditor(page, 'The Forgotten Library');
+  const opening = await sceneEditable(page, 'scene_1');
+  await typeAtEndOf(page, opening.getByText('You wake up in a vast'), ' Typed before the new scene.');
+  await expect(unsavedMark(page, 'scene_1')).toBeVisible();
+
+  // No pause before Enter: the command runs while the frame is still waiting
+  // to report this typing, and that report must not arrive after the save.
+  await page.keyboard.type(' /newScene');
+  await page.keyboard.press('Enter');
+  await page.waitForURL((url) => url.searchParams.get('sceneId') !== 'scene_1');
+
+  // In the new scene's editor, rewrite a scene the first editor holds too.
+  await page.getByText('scene_2', { exact: true }).filter({ visible: true }).first().click();
+  const above = await sceneEditable(page, 'scene_2');
+  await typeAtEndOf(page, above.getByText('You approach the towering shelves'), ' Saved from the screen above.');
+  await expect(unsavedMark(page, 'scene_2')).toBeVisible();
+  await page.getByRole('button', { name: /Save|Зберегти/ }).click();
+  await expect(unsavedMark(page, 'scene_2')).toHaveCount(0);
+
+  await page.goBack();
+  await page.waitForURL((url) => url.searchParams.get('sceneId') === 'scene_1');
+  // The editor underneath has caught up with the store while it was covered.
+  await expect(await sceneEditable(page, 'scene_2')).toContainText('Saved from the screen above.');
+
+  const returned = await sceneEditable(page, 'scene_1');
+  await typeAtEndOf(page, returned.getByText('Typed before the new scene.'), ' And after coming back.');
+  await expect(unsavedMark(page, 'scene_1')).toBeVisible();
+  await page.getByRole('button', { name: /Save|Зберегти/ }).click();
+  await expect(unsavedMark(page, 'scene_1')).toHaveCount(0);
+  // The store reaches IndexedDB a beat after the save.
+  await page.waitForTimeout(1_200);
+
+  await page.reload();
+  await expect(await sceneEditable(page, 'scene_1')).toContainText('Typed before the new scene. And after coming back.');
+  await expect(await sceneEditable(page, 'scene_2')).toContainText('Saved from the screen above.');
 });

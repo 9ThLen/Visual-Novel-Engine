@@ -352,7 +352,9 @@ export default function DocumentEditorRoute() {
     editedRecords.forEach((record) => recordsById.set(record.id, record));
 
     const sourceRecord = recordsById.get(sourceSceneId);
-    if (!sourceRecord) return;
+    // Nothing has been written yet, the edited records included: the editor
+    // must go on treating them as unsaved.
+    if (!sourceRecord) return false;
 
     const nextScene = createNextSceneRecordAfter(sourceRecord, [...recordsById.values()]);
     const withNextScene = [...recordsById.values(), nextScene];
@@ -368,6 +370,7 @@ export default function DocumentEditorRoute() {
     reorderScenes(storyId, nextOrder);
     updateStoryMetadata(storyId, { sceneCount: connectedRecords.length });
     router.push({ pathname: '/document-editor', params: { storyId, sceneId: nextScene.id } });
+    return true;
   };
 
   const handleSelectChoiceOption = (choiceStepId: string, optionId: string) => {

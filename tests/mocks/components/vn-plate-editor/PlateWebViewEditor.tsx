@@ -43,6 +43,11 @@ export interface PlateEditorFrameForTests {
   builtFrom: PlateWebViewEditorSnapshot['scene'];
   /** Report an edit to the host, as a frame does after the author types. */
   reportEdit: (scene: PlateWebViewEditorSnapshot['scene']) => void;
+  /**
+   * Ask the host for the next scene, as the frame's «new scene» command does.
+   * A real frame sends its whole content along, reported or not.
+   */
+  requestNextScene: (scene: PlateWebViewEditorSnapshot['scene']) => void;
 }
 
 let builtFrames: PlateEditorFrameForTests[] = [];
@@ -89,13 +94,16 @@ export const PlateWebViewEditor = React.forwardRef(function PlateWebViewEditorSt
     if (reportsOnMount) onChange?.(scene, characters ?? []);
   }, [characters, onChange, scene]);
 
-  const latest = React.useRef({ onChange, characters });
-  latest.current = { onChange, characters };
+  const onCreateNextScene = props.onCreateNextScene as typeof onChange;
+  const latest = React.useRef({ onChange, onCreateNextScene, characters });
+  latest.current = { onChange, onCreateNextScene, characters };
   React.useEffect(() => {
     builtFrames.push({
       sceneId: scene.sceneId,
       builtFrom: scene,
       reportEdit: (edited) => latest.current.onChange?.(edited, latest.current.characters ?? []),
+      requestNextScene: (edited) =>
+        latest.current.onCreateNextScene?.(edited, latest.current.characters ?? []),
     });
     // Once per frame: the scene a frame was built from is fixed for its life.
     // eslint-disable-next-line react-hooks/exhaustive-deps

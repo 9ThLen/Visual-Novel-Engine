@@ -5230,6 +5230,12 @@ const EMBEDDED_SCRIPT_BODY = `
       if (commandId === 'newScene') {
         removeSlashToken(p, slashToken);
         closeSlashMenu();
+        // The request carries everything this frame holds and the host saves
+        // it. A typing report still waiting on its debounce would land after
+        // that save and mark the scene unsaved again, in an editor the author
+        // has just left for the new scene.
+        window.clearTimeout(saveTimer);
+        hasUnreportedChanges = false;
         post({ type: 'createNextScene', scene: buildScenePayload(), characters: characters });
         return;
       }
