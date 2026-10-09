@@ -5,6 +5,7 @@ import {
 } from '@/lib/ai/editor-context';
 import {
   buildAiEditorContext,
+  resolveFocusedBlock,
   resolveSelectionAnchors,
   type CapturedSelection,
 } from '@/lib/ai/editor-context-resolver';
@@ -12,15 +13,17 @@ import { computeSceneRevision } from '@/lib/ai/scene-revision';
 import { migrateCharacter } from '@/lib/character-migration';
 import type { Character } from '@/lib/character-types';
 import {
+  createDocumentTechnicalBlock,
   documentSceneToTimeline,
   documentSceneToTimelineWithOrigins,
   sceneRecordToDocumentScene,
 } from '@/lib/document-editor/document-scene';
-import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
+import type { DocumentBlock, DocumentChoiceBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import { saveDocumentSceneToRecord } from '@/lib/document-scene-persistence';
 import { createTextStep } from '@/lib/engine/event-factory';
 import type { DialogueBlockData, SceneRecord, TextBlockData, TimelineStep } from '@/lib/engine/types';
 import { normalizePlateDocumentScene } from '@/lib/vn-plate-editor/scene-normalizer';
+import type { VNPlateFocusedBlock } from '@/lib/vn-plate-editor/types';
 
 function createSceneRecord(timeline: TimelineStep[] = []): SceneRecord {
   return {
@@ -112,6 +115,159 @@ describe('document step origins', () => {
     expect(timeline[0].id).toBe(existing.id);
     expect(contentOf(timeline[0])).toBe('Стало.');
     expect(origins).toEqual([{ stepId: existing.id, blockId: existing.id, partIndex: null, field: 'content' }]);
+  });
+});
+
+describe('document block steps', () => {
+  it('says which block or chip each step without text is, and leaves text to the origins', () => {
+    const background = createDocumentTechnicalBlock('background');
+    const choice: DocumentChoiceBlock = {
+      id: 'blk_choice',
+      kind: 'choice',
+      question: '',
+      options: [{ id: 'opt_1', text: 'Йти', targetSceneId: null }],
+    };
+    const document = documentOf([
+      background,
+      {
+        id: 'blk_chip',
+        kind: 'text',
+        content: 'Дощ почався. Він не вщухав.',
+        parts: [{ type: 'text', text: 'Дощ почався. ' }, rain, { type: 'text', text: 'Він не вщухав.' }],
+      },
+      choice,
+    ]);
+
+    const { timeline, origins, blockSteps } = documentSceneToTimelineWithOrigins(document);
+
+    expect(timeline.map((step) => step.blockType)).toEqual(['background', 'text', 'effect', 'text', 'choice']);
+    expect(blockSteps).toEqual([
+      { stepId: timeline[0].id, blockId: background.id, partIndex: null },
+      { stepId: timeline[2].id, blockId: 'blk_chip', partIndex: 1 },
+      { stepId: timeline[4].id, blockId: 'blk_choice', partIndex: null },
+    ]);
+    expect(origins.map((origin) => origin.stepId)).toEqual([timeline[1].id, timeline[3].id]);
+  });
+});
+
+describe('resolveFocusedBlock', () => {
+  const focusOn = (id: string, extra: Partial<VNPlateFocusedBlock> = {}): VNPlateFocusedBlock => ({
+    id,
+    kind: 'technical',
+    command: 'background',
+    state: 'selected',
+    ...extra,
+  });
+
+  it('names the stored step of a block loaded from the store', () => {
+    const background = createDocumentTechnicalBlock('background');
+    const scene = saveDocument(createSceneRecord(), documentOf([
+      background,
+      { id: 'blk_text', kind: 'text', content: 'Тиша.' },
+    ]));
+    const document = sceneRecordToDocumentScene(scene);
+    const block = document.blocks.find((item) => item.kind === 'technical')!;
+
+    const focus = resolveFocusedBlock({ scene, document, characters: [], focus: focusOn(block.id, { state: 'editing' }) });
+
+    expect(focus).toMatchObject({
+      sceneId: scene.id,
+      blockType: 'background',
+      stepId: scene.timeline[0].id,
+      match: 'exact',
+      state: 'editing',
+    });
+    expect(focus?.summary).toBeTruthy();
+  });
+
+  it('names the step an inline chip became', () => {
+    const document = documentOf([{
+      id: 'blk_chip',
+      kind: 'text',
+      content: 'Дощ почався. Він не вщухав.',
+      parts: [{ type: 'text', text: 'Дощ почався. ' }, rain, { type: 'text', text: 'Він не вщухав.' }],
+    }]);
+    const scene = saveDocument(createSceneRecord(), document);
+
+    const focus = resolveFocusedBlock({
+      scene,
+      document,
+      characters: [],
+      focus: { id: 'blk_chip', kind: 'text', command: 'effect', partIndex: 1, state: 'editing' },
+    });
+
+    expect(focus).toMatchObject({ blockType: 'effect', match: 'exact', summary: 'rain' });
+    expect(scene.timeline.find((step) => step.id === focus?.stepId)?.blockType).toBe('effect');
+  });
+
+  // The author typed elsewhere and has not saved: the document no longer lines
+  // up with the stored scene, but the block still carries its step's id.
+  it('still names the step when the rest of the document has moved on', () => {
+    const background = createDocumentTechnicalBlock('background');
+    const scene = saveDocument(createSceneRecord(), documentOf([
+      background,
+      { id: 'blk_text', kind: 'text', content: 'Тиша.' },
+    ]));
+    const document = sceneRecordToDocumentScene(scene);
+    const edited = documentOf(document.blocks.map((block) =>
+      (block.kind === 'text' && block.content ? { ...block, content: 'Тиша. І кроки.' } : block)));
+    const block = edited.blocks.find((item) => item.kind === 'technical')!;
+
+    const focus = resolveFocusedBlock({ scene, document: edited, characters: [], focus: focusOn(block.id) });
+
+    expect(focus).toMatchObject({ stepId: scene.timeline[0].id, match: 'exact' });
+  });
+
+  it('names no step once the block is gone from the stored scene', () => {
+    const background = createDocumentTechnicalBlock('background');
+    const document = documentOf([background, { id: 'blk_text', kind: 'text', content: 'Тиша.' }]);
+    const scene = saveDocument(createSceneRecord(), documentOf([{ id: 'blk_text', kind: 'text', content: 'Тиша.' }]));
+
+    const focus = resolveFocusedBlock({ scene, document, characters: [], focus: focusOn(background.id) });
+
+    expect(focus).toMatchObject({ blockType: 'background', stepId: null, match: 'none' });
+  });
+
+  it('does not take a step of another kind for the block, whatever its id', () => {
+    const background = createDocumentTechnicalBlock('background');
+    const impostor = { ...createTextStep({ content: 'Тиша.' }), id: background.step.id };
+    const scene = createSceneRecord([impostor, createTextStep({ content: 'Кроки.' })]);
+
+    const focus = resolveFocusedBlock({
+      scene,
+      document: documentOf([background]),
+      characters: [],
+      focus: focusOn(background.id),
+    });
+
+    expect(focus).toMatchObject({ blockType: 'background', stepId: null, match: 'none' });
+  });
+
+  describe('when the frame could not answer', () => {
+    const background = createDocumentTechnicalBlock('background');
+    const scene = saveDocument(createSceneRecord(), documentOf([background]));
+
+    it('goes by the id a stored block shares with its step', () => {
+      const focus = resolveFocusedBlock({ scene, document: null, characters: [], focus: focusOn(scene.timeline[0].id) });
+
+      expect(focus).toMatchObject({ blockType: 'background', stepId: scene.timeline[0].id, match: 'exact' });
+      expect(focus).not.toHaveProperty('summary');
+    });
+
+    it('falls back to the editor’s own name for a block it cannot place', () => {
+      const focus = resolveFocusedBlock({
+        scene,
+        document: null,
+        characters: [],
+        focus: focusOn('doc_block_unsaved', { command: 'goto' }),
+      });
+
+      expect(focus).toEqual({ sceneId: scene.id, blockType: 'goto', stepId: null, match: 'none', state: 'selected' });
+    });
+  });
+
+  it('has nothing to say without a focus', () => {
+    expect(resolveFocusedBlock({ scene: createSceneRecord(), document: null, characters: [], focus: undefined })).toBeNull();
   });
 });
 
@@ -424,6 +580,30 @@ describe('buildAiEditorContext', () => {
     expect(context.selection?.anchors[0]).toMatchObject({ stepId: step.id, match: 'exact' });
   });
 
+  it('carries the block in focus next to the selection', () => {
+    const focus = { sceneId: scene.id, blockType: 'background', stepId: 'step_bg', match: 'exact', state: 'editing' } as const;
+    const context = build({ focus });
+
+    expect(context.focus).toEqual(focus);
+    expect(context.selection?.text).toBe('Один');
+    expect(parseAiEditorContext(context).ok).toBe(true);
+  });
+
+  // A block clicked with no caret anywhere arrives as a state with no text and
+  // no blocks: there is a focus to pass on, and no selection to speak of.
+  it('reports no selection when only a block is in focus', () => {
+    const focus = { sceneId: scene.id, blockType: 'choice', stepId: null, match: 'none', state: 'selected' } as const;
+    const context = build({
+      selection: { ...selection, collapsed: true, text: '', textLength: 0, after: '', blocks: [] },
+      anchors: [],
+      focus,
+    });
+
+    expect(context.selection).toBeNull();
+    expect(context.focus).toEqual(focus);
+    expect(parseAiEditorContext(context).ok).toBe(true);
+  });
+
   it('describes a place with no selection', () => {
     const context = build({ selection: null, anchors: [], sceneSource: 'scroll' });
 
@@ -527,6 +707,25 @@ describe('parseAiEditorContext', () => {
 
   it('rejects an unresolved anchor that names a step anyway', () => {
     expect(parseAiEditorContext(withAnchor({ stepId: 'step_1', match: 'ambiguous' }))).toEqual({ ok: false, reason: 'INVALID_SHAPE' });
+  });
+
+  const focus = { sceneId: 'scene_1', blockType: 'background', state: 'recent' };
+
+  it('accepts a focus that names its step and one that names none', () => {
+    expect(parseAiEditorContext({ ...valid, focus: { ...focus, stepId: 'step_1', match: 'exact' } }).ok).toBe(true);
+    expect(parseAiEditorContext({ ...valid, focus: { ...focus, stepId: null, match: 'none' } }).ok).toBe(true);
+  });
+
+  it('rejects a focus whose match and step disagree', () => {
+    expect(parseAiEditorContext({ ...valid, focus: { ...focus, stepId: null, match: 'exact' } }))
+      .toEqual({ ok: false, reason: 'INVALID_SHAPE' });
+    expect(parseAiEditorContext({ ...valid, focus: { ...focus, stepId: 'step_1', match: 'none' } }))
+      .toEqual({ ok: false, reason: 'INVALID_SHAPE' });
+  });
+
+  it('rejects a focus in a state it does not know', () => {
+    expect(parseAiEditorContext({ ...valid, focus: { ...focus, stepId: null, match: 'none', state: 'hovered' } }))
+      .toEqual({ ok: false, reason: 'INVALID_SHAPE' });
   });
 
   it('rejects a well-formed context that is too large', () => {

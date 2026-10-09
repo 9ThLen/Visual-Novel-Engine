@@ -1,4 +1,9 @@
-import type { VNPlateSelectionBlock, VNPlateSelectionPart, VNPlateSelectionState } from './types';
+import type {
+  VNPlateFocusedBlock,
+  VNPlateSelectionBlock,
+  VNPlateSelectionPart,
+  VNPlateSelectionState,
+} from './types';
 
 /**
  * Limits the frame applies before posting. The host applies them again: a
@@ -9,7 +14,12 @@ export const SELECTION_STATE_LIMITS = {
   surroundingText: 300,
   blocks: 20,
   partsPerBlock: 64,
+  blockId: 200,
+  command: 40,
 } as const;
+
+const FOCUS_KINDS = ['text', 'dialogue', 'choice', 'technical'] as const;
+const FOCUS_STATES = ['editing', 'selected', 'recent'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -50,9 +60,34 @@ function sanitizeBlock(value: unknown): VNPlateSelectionBlock | null {
   };
 }
 
+function sanitizeFocus(value: unknown): VNPlateFocusedBlock | null {
+  if (!isRecord(value) || typeof value.id !== 'string' || !value.id || value.id.length > SELECTION_STATE_LIMITS.blockId) return null;
+  const kind = FOCUS_KINDS.find((item) => item === value.kind);
+  const state = FOCUS_STATES.find((item) => item === value.state);
+  if (!kind || !state) return null;
+  // Becomes part of what the assistant reads, so it stays a plain identifier.
+  const command = typeof value.command === 'string' && /^[A-Za-z_]+$/.test(value.command)
+    ? value.command.slice(0, SELECTION_STATE_LIMITS.command)
+    : '';
+  const isChip = kind === 'text' || kind === 'dialogue';
+  const partIndex = typeof value.partIndex === 'number' && Number.isInteger(value.partIndex) && value.partIndex >= 0
+    ? value.partIndex
+    : null;
+  // A text block is only ever in focus through one of its chips.
+  if (isChip && partIndex === null) return null;
+  return {
+    id: value.id,
+    kind,
+    command,
+    ...(isChip && partIndex !== null ? { partIndex } : {}),
+    state,
+  };
+}
+
 export function sanitizeSelectionState(value: unknown): VNPlateSelectionState | null {
   if (!isRecord(value) || typeof value.seq !== 'number' || !Number.isFinite(value.seq)) return null;
   const text = clippedString(value.text, SELECTION_STATE_LIMITS.text);
+  const focus = sanitizeFocus(value.focus);
   return {
     seq: value.seq,
     collapsed: value.collapsed === true,
@@ -68,5 +103,6 @@ export function sanitizeSelectionState(value: unknown): VNPlateSelectionState | 
           .map(sanitizeBlock)
           .filter((block): block is VNPlateSelectionBlock => block !== null)
       : [],
+    ...(focus ? { focus } : {}),
   };
 }

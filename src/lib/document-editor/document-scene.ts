@@ -693,11 +693,25 @@ function timelineStepFromInlineChip(part: Exclude<DocumentInlinePart, { type: 't
   return soundStepFromInlinePart(part);
 }
 
-type OnTextBearingStep = (step: TimelineStep, partIndex: number) => void;
+type OnPartStep = (step: TimelineStep, partIndex: number) => void;
 
-function timelineFromInlineParts(parts: DocumentInlinePart[], onTextStep?: OnTextBearingStep): TimelineStep[] {
+function chipStepFromInlinePart(
+  part: Exclude<DocumentInlinePart, { type: 'text' }>,
+  partIndex: number,
+  onChipStep?: OnPartStep,
+): TimelineStep {
+  const step = timelineStepFromInlineChip(part);
+  onChipStep?.(step, partIndex);
+  return step;
+}
+
+function timelineFromInlineParts(
+  parts: DocumentInlinePart[],
+  onTextStep?: OnPartStep,
+  onChipStep?: OnPartStep,
+): TimelineStep[] {
   return parts.flatMap((part, partIndex) => {
-    if (part.type !== 'text') return [timelineStepFromInlineChip(part)];
+    if (part.type !== 'text') return [chipStepFromInlinePart(part, partIndex, onChipStep)];
     const steps = textStepFromInlineText(part.text);
     steps.forEach((step) => onTextStep?.(step, partIndex));
     return steps;
@@ -707,10 +721,11 @@ function timelineFromInlineParts(parts: DocumentInlinePart[], onTextStep?: OnTex
 function timelineFromDialogueInlineParts(
   block: DocumentDialogueBlock,
   characters: Character[],
-  onDialogueStep?: OnTextBearingStep,
+  onDialogueStep?: OnPartStep,
+  onChipStep?: OnPartStep,
 ): TimelineStep[] {
   return (block.parts ?? []).flatMap((part, partIndex) => {
-    if (part.type !== 'text') return [timelineStepFromInlineChip(part)];
+    if (part.type !== 'text') return [chipStepFromInlinePart(part, partIndex, onChipStep)];
     const dialogueStep = dialogueStepForInlineText(block, characters, part.text);
     if (!dialogueStep) return [];
     onDialogueStep?.(dialogueStep, partIndex);
@@ -828,14 +843,31 @@ export interface DocumentStepOrigin {
   entryId?: string;
 }
 
+/**
+ * Which block a step that carries no text is: a technical block, a choice, or
+ * an inline chip of a text block. Kept apart from `DocumentStepOrigin` because
+ * these are addressed whole — there is no quote inside them to point at.
+ */
+export interface DocumentBlockStep {
+  stepId: string;
+  blockId: string;
+  /** Index into the block's `parts` for an inline chip; null for a block that is one step. */
+  partIndex: number | null;
+}
+
 export function documentSceneToTimelineWithOrigins(
   documentScene: DocumentScene,
   characters: Character[] = [],
-): { timeline: TimelineStep[]; origins: DocumentStepOrigin[] } {
+): { timeline: TimelineStep[]; origins: DocumentStepOrigin[]; blockSteps: DocumentBlockStep[] } {
   const visibleCharacters = new Set<string>();
   const currentSpriteByCharacter = new Map<string, string>();
   const currentPositionByCharacter = new Map<string, string>();
   const origins: DocumentStepOrigin[] = [];
+  const blockSteps: DocumentBlockStep[] = [];
+  const recordBlock = (step: TimelineStep, blockId: string, partIndex: number | null = null): TimelineStep => {
+    blockSteps.push({ stepId: step.id, blockId, partIndex });
+    return step;
+  };
   const recordText = (step: TimelineStep, blockId: string, partIndex: number | null) => {
     origins.push({ stepId: step.id, blockId, partIndex, field: 'content' });
   };
@@ -847,12 +879,16 @@ export function documentSceneToTimelineWithOrigins(
   const timeline = documentScene.blocks.flatMap((block, index) => {
     if (block.kind === 'technical') {
       applyExplicitCharacterState(block.step, visibleCharacters, currentSpriteByCharacter, currentPositionByCharacter);
-      return [block.step];
+      return [recordBlock(block.step, block.id)];
     }
 
     if (block.kind === 'text') {
       if (block.parts?.length) {
-        return timelineFromInlineParts(block.parts, (step, partIndex) => recordText(step, block.id, partIndex));
+        return timelineFromInlineParts(
+          block.parts,
+          (step, partIndex) => recordText(step, block.id, partIndex),
+          (step, partIndex) => recordBlock(step, block.id, partIndex),
+        );
       }
       if (!block.sourceStep && index === documentScene.blocks.length - 1 && block.content.trim() === '') {
         return [];
@@ -895,7 +931,12 @@ export function documentSceneToTimelineWithOrigins(
       );
       const hideStep = generatedCharacterHideStep(block, characters);
       const contentSteps = block.parts?.length
-        ? timelineFromDialogueInlineParts(block, characters, (step, partIndex) => recordDialogue(step, block.id, partIndex))
+        ? timelineFromDialogueInlineParts(
+            block,
+            characters,
+            (step, partIndex) => recordDialogue(step, block.id, partIndex),
+            (step, partIndex) => recordBlock(step, block.id, partIndex),
+          )
         : (() => {
             const dialogueStep = dialogueStepForBlock(block, characters);
             if (!dialogueStep) return [];
@@ -912,7 +953,7 @@ export function documentSceneToTimelineWithOrigins(
       if (block.sourceStep?.blockType === 'choice') {
         const sourceData = block.sourceStep.data as ChoiceBlockData;
         const sourceOptions = new Map(sourceData.options.map((option) => [option.id, option]));
-        return [{
+        return [recordBlock({
           ...block.sourceStep,
           data: {
             ...sourceData,
@@ -923,23 +964,23 @@ export function documentSceneToTimelineWithOrigins(
               targetSceneId: option.targetSceneId,
             })),
           },
-        }];
+        }, block.id)];
       }
       return [
-        createChoiceStep({
+        recordBlock(createChoiceStep({
           options: block.options.map((option) => ({
             id: option.id,
             text: option.text,
             targetSceneId: option.targetSceneId,
           })),
-        }),
+        }), block.id),
       ];
     }
 
     return [];
   });
 
-  return { timeline, origins };
+  return { timeline, origins, blockSteps };
 }
 
 export function documentSceneToTimeline(documentScene: DocumentScene, characters: Character[] = []): TimelineStep[] {

@@ -13,6 +13,8 @@ export const AI_EDITOR_CONTEXT_LIMITS = {
   surroundingText: 300,
   anchors: 20,
   activePathScenes: 100,
+  focusBlockType: 40,
+  focusSummary: 200,
   bytes: 16_384,
 } as const;
 
@@ -49,6 +51,31 @@ const selectionSchema = z.object({
   anchors: z.array(anchorSchema).max(AI_EDITOR_CONTEXT_LIMITS.anchors),
 });
 
+/**
+ * `editing`: the block's settings are open. `selected`: it is highlighted.
+ * `recent`: the last block the author worked with before turning to the chat.
+ */
+export const AI_EDITOR_FOCUS_STATES = ['editing', 'selected', 'recent'] as const;
+
+/**
+ * A block that is not a run of text — a background, a choice, a transition, an
+ * inline effect — which the author has in hand. It is addressed whole: there
+ * is no quote inside it, so a focus either names its step or names none.
+ */
+const focusSchema = z.object({
+  sceneId: z.string().min(1),
+  /** The step's block type; the editor's own name for the block when no step could be named. */
+  blockType: z.string().min(1).max(AI_EDITOR_CONTEXT_LIMITS.focusBlockType),
+  stepId: z.string().min(1).nullable(),
+  match: z.enum(['exact', 'none']),
+  state: z.enum(AI_EDITOR_FOCUS_STATES),
+  /** What the block shows in the editor, so it can be told from its neighbours. */
+  summary: z.string().max(AI_EDITOR_CONTEXT_LIMITS.focusSummary).optional(),
+}).refine(
+  (focus) => (focus.match === 'exact') === (focus.stepId !== null),
+  { message: 'A focus names a step exactly when its match is exact' },
+);
+
 export const aiEditorContextSchema = z.object({
   version: z.literal(AI_EDITOR_CONTEXT_VERSION),
   snapshotId: z.string().min(1).max(100),
@@ -64,11 +91,13 @@ export const aiEditorContextSchema = z.object({
   activePathSceneIds: z.array(z.string().min(1)).max(AI_EDITOR_CONTEXT_LIMITS.activePathScenes).optional(),
   hasUnsavedChanges: z.boolean(),
   selection: selectionSchema.nullable(),
+  focus: focusSchema.optional(),
   capturedAt: z.number(),
 });
 
 export type AiEditorContext = z.infer<typeof aiEditorContextSchema>;
 export type AiEditorSelectionAnchor = z.infer<typeof anchorSchema>;
+export type AiEditorFocus = z.infer<typeof focusSchema>;
 
 export type ParseAiEditorContextResult =
   | { ok: true; context: AiEditorContext }

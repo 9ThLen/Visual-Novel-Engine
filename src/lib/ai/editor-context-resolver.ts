@@ -9,18 +9,23 @@
  * stored timeline position by position. The pairing is trusted only when the
  * two line up exactly; anything else falls back to finding the quote, which is
  * never reported as `exact`.
+ *
+ * A block that is not text — a background, a choice, an inline effect — is
+ * addressed whole, and mostly carries its step's id with it, so it has a
+ * second way to be found; see `resolveFocusedBlock`.
  */
 import type { Character } from '@/lib/character-types';
 import { documentSceneToTimelineWithOrigins } from '@/lib/document-editor/document-scene';
-import type { DocumentBlockKind, DocumentScene } from '@/lib/document-editor/types';
+import type { DocumentBlock, DocumentBlockKind, DocumentScene } from '@/lib/document-editor/types';
 import type { DialogueBlockData, SceneRecord, TextBlockData, TimelineStep } from '@/lib/engine/types';
 import { stripRichText } from '@/lib/rich-text';
 import { normalizePlateDocumentScene } from '@/lib/vn-plate-editor/scene-normalizer';
-import type { VNPlateSelectionBlock, VNPlateSelectionState } from '@/lib/vn-plate-editor/types';
+import type { VNPlateFocusedBlock, VNPlateSelectionBlock, VNPlateSelectionState } from '@/lib/vn-plate-editor/types';
 import {
   AI_EDITOR_CONTEXT_LIMITS,
   AI_EDITOR_CONTEXT_VERSION,
   type AiEditorContext,
+  type AiEditorFocus,
   type AiEditorSelectionAnchor,
 } from './editor-context';
 import { computeSceneRevision } from './scene-revision';
@@ -46,6 +51,15 @@ interface AlignedOrigin {
   step: TimelineStep;
 }
 
+interface AlignedDocument {
+  /** Stored steps holding the text of each block. */
+  textByBlock: Map<string, AlignedOrigin[]>;
+  /** The stored step a non-text block, or one of its inline chips, became. */
+  stepByBlockPart: Map<string, TimelineStep>;
+}
+
+const blockPartKey = (blockId: string, partIndex: number | null) => `${blockId}\u0000${partIndex ?? ''}`;
+
 function textOfStep(step: TimelineStep): string | null {
   if (step.blockType === 'text') return (step.data as TextBlockData).content ?? '';
   if (step.blockType === 'dialogue') return (step.data as DialogueBlockData).entries[0]?.text ?? '';
@@ -64,9 +78,9 @@ function alignOrigins(
   scene: SceneRecord,
   document: DocumentScene,
   characters: Character[],
-): Map<string, AlignedOrigin[]> | null {
+): AlignedDocument | null {
   const normalized = normalizePlateDocumentScene(document, characters);
-  const { timeline, origins } = documentSceneToTimelineWithOrigins(normalized.scene, normalized.characters);
+  const { timeline, origins, blockSteps } = documentSceneToTimelineWithOrigins(normalized.scene, normalized.characters);
   if (timeline.length !== scene.timeline.length) return null;
 
   const storedByConvertedId = new Map<string, TimelineStep>();
@@ -98,7 +112,15 @@ function alignOrigins(
     list.push({ partIndex: origin.partIndex, step });
     byBlock.set(origin.blockId, list);
   }
-  return byBlock;
+
+  const stepByBlockPart = new Map<string, TimelineStep>();
+  for (const blockStep of blockSteps) {
+    // A chip is named by its part number, which renumbering makes meaningless.
+    if (blockStep.partIndex !== null && renumbered.has(blockStep.blockId)) continue;
+    const step = storedByConvertedId.get(blockStep.stepId);
+    if (step) stepByBlockPart.set(blockPartKey(blockStep.blockId, blockStep.partIndex), step);
+  }
+  return { textByBlock: byBlock, stepByBlockPart };
 }
 
 function anchorForStep(
@@ -155,7 +177,7 @@ export function resolveSelectionAnchors(input: ResolveSelectionAnchorsInput): Ai
   const anchors: AiEditorSelectionAnchor[] = [];
 
   for (const block of input.blocks) {
-    const origins = aligned?.get(block.id) ?? [];
+    const origins = aligned?.textByBlock.get(block.id) ?? [];
     if (block.parts?.length) {
       for (const part of block.parts) {
         const origin = origins.find((item) => item.partIndex === part.index);
@@ -174,6 +196,84 @@ export function resolveSelectionAnchors(input: ResolveSelectionAnchorsInput): Ai
   return anchors.slice(0, AI_EDITOR_CONTEXT_LIMITS.anchors);
 }
 
+export interface ResolveFocusedBlockInput {
+  /** The scene as stored — after the save the capture triggered, if there was one. */
+  scene: SceneRecord;
+  /** The editor document the focus was captured from; null when the frame could not answer. */
+  document: DocumentScene | null;
+  characters: Character[];
+  focus: VNPlateFocusedBlock | null | undefined;
+}
+
+/** The id of the step a block will be saved as, when the block carries one. */
+function carriedStepId(block: DocumentBlock | undefined, partIndex: number | null): string | null {
+  if (!block) return null;
+  if (partIndex !== null) {
+    const part = (block.kind === 'text' || block.kind === 'dialogue') ? block.parts?.[partIndex] : undefined;
+    return part && part.type !== 'text' ? part.id : null;
+  }
+  if (block.kind === 'technical') return block.step.id;
+  return block.sourceStep?.id ?? null;
+}
+
+function clip(value: string, limit: number): string {
+  return value.replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+/** What the block shows in the editor, in the document's own words. */
+function describeFocusedBlock(block: DocumentBlock | undefined, partIndex: number | null): string {
+  if (!block) return '';
+  if (partIndex !== null) {
+    const part = (block.kind === 'text' || block.kind === 'dialogue') ? block.parts?.[partIndex] : undefined;
+    if (!part || part.type === 'text') return '';
+    return part.type === 'effect' ? part.effectType : part.mode;
+  }
+  if (block.kind === 'technical') return [block.label, block.summary].filter(Boolean).join(': ');
+  if (block.kind === 'choice') return [block.question, ...block.options.map((option) => option.text)].filter(Boolean).join(' / ');
+  return '';
+}
+
+/**
+ * Names the stored step of the non-text block the author is working with.
+ *
+ * Unlike a line of text, such a block usually carries its step's id through a
+ * save, so there are two ways to it. The converter's pairing comes first, and
+ * is the only one that reaches a block made in this session whose step id is
+ * minted on save. When the captured document and the stored scene have drifted
+ * apart — the author typed elsewhere and has not saved — the id the block
+ * carries still names its step, provided the stored step is the same kind.
+ */
+export function resolveFocusedBlock(input: ResolveFocusedBlockInput): AiEditorFocus | null {
+  const focus = input.focus;
+  if (!focus) return null;
+  const partIndex = focus.partIndex ?? null;
+  const block = input.document?.blocks.find((item) => item.id === focus.id);
+  const aligned = input.document ? alignOrigins(input.scene, input.document, input.characters) : null;
+
+  let step = aligned?.stepByBlockPart.get(blockPartKey(focus.id, partIndex)) ?? null;
+  if (!step) {
+    // With no document to read, a block loaded from the store still has the id
+    // of the step it was built from.
+    const carriedId = input.document ? carriedStepId(block, partIndex) : (partIndex === null ? focus.id : null);
+    const candidate = carriedId ? input.scene.timeline.find((item) => item.id === carriedId) : undefined;
+    const expectedType = block?.kind === 'technical' ? block.step.blockType : block?.kind === 'choice' ? 'choice' : null;
+    if (candidate && (!expectedType || candidate.blockType === expectedType)) step = candidate;
+  }
+
+  const summary = clip(describeFocusedBlock(block, partIndex), AI_EDITOR_CONTEXT_LIMITS.focusSummary);
+  const blockType = step?.blockType
+    ?? (block?.kind === 'technical' ? block.step.blockType : null)
+    ?? (focus.command || focus.kind);
+  return {
+    sceneId: input.scene.id,
+    blockType: blockType.slice(0, AI_EDITOR_CONTEXT_LIMITS.focusBlockType),
+    stepId: step?.id ?? null,
+    match: step ? 'exact' : 'none',
+    state: focus.state,
+    ...(summary ? { summary } : {}),
+  };
+}
+
 export interface BuildAiEditorContextInput {
   snapshotId: string;
   kind: AiEditorContext['kind'];
@@ -184,6 +284,7 @@ export interface BuildAiEditorContextInput {
   hasUnsavedChanges: boolean;
   selection: CapturedSelection | null;
   anchors: AiEditorSelectionAnchor[];
+  focus?: AiEditorFocus | null;
   capturedAt: number;
 }
 
@@ -228,7 +329,11 @@ function fitToBudget(context: AiEditorContext): AiEditorContext {
 }
 
 export function buildAiEditorContext(input: BuildAiEditorContextInput): AiEditorContext {
-  const selection = input.selection;
+  // A state reported for a block in focus may hold no text selection at all;
+  // an empty one would only tell the assistant there is something to look for.
+  const selection = input.selection && (input.selection.blocks.length || input.selection.text)
+    ? input.selection
+    : null;
   const text = selection ? selection.text.slice(0, AI_EDITOR_CONTEXT_LIMITS.selectionText) : '';
 
   return fitToBudget({
@@ -266,6 +371,7 @@ export function buildAiEditorContext(input: BuildAiEditorContextInput): AiEditor
           })),
         }
       : null,
+    ...(input.focus ? { focus: input.focus } : {}),
     capturedAt: input.capturedAt,
   });
 }

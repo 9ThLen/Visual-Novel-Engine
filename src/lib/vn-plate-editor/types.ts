@@ -141,6 +141,29 @@ export interface VNPlateSelectionBlock {
 }
 
 /**
+ * `editing`: the block's settings are open. `selected`: it is highlighted.
+ * `recent`: the last block the author worked with, kept until they type or
+ * click into text — so "do the same to the next one" still has an object once
+ * the settings are closed.
+ */
+export type VNPlateFocusState = 'editing' | 'selected' | 'recent';
+
+/**
+ * A block the author is working with that is not a run of text: a background,
+ * a choice, a transition, an inline effect or sound.
+ */
+export interface VNPlateFocusedBlock {
+  /** The block's id in the frame's document; for an inline chip, the text block it sits in. */
+  id: string;
+  kind: DocumentBlockKind;
+  /** The editor's own name for it: a command id (`background`, `goto`), or a chip kind. */
+  command: string;
+  /** Position among the block's inline parts, when the focus is a chip. */
+  partIndex?: number;
+  state: VNPlateFocusState;
+}
+
+/**
  * What the author has selected in one editor frame. Text is visible text, not
  * story markup, and `seq` only orders states that came from the same frame.
  */
@@ -154,6 +177,8 @@ export interface VNPlateSelectionState {
   after: string;
   crossesChip: boolean;
   blocks: VNPlateSelectionBlock[];
+  /** Present when a non-text block is in play; `blocks` may then be empty. */
+  focus?: VNPlateFocusedBlock;
 }
 
 export type VNPlateEditorMessage =
