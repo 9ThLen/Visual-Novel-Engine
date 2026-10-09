@@ -25,8 +25,17 @@ export async function applyAiScenePatchToStore(patch: AiScenePatch): Promise<App
 
   const snapshot = await state.createStorySnapshot(patch.storyId, `AI: ${patch.explanation.slice(0, 40)}`, true);
   if (!snapshot) return { ok: false, code: 'VALIDATION_FAILED', errors: ['Could not create rollback snapshot'] };
-  const description = describeAiScenePatch(scene, patch);
-  state.saveSceneRecord(applyAiScenePatch(scene, patch));
+
+  // Re-read because snapshot creation is async; reject if the live scene changed.
+  // The snapshot stays behind on rejection, same as the changeset adapter.
+  const live = useAppStore.getState();
+  const liveScene = live.sceneRecordsByStory[patch.storyId]?.[patch.sceneId];
+  if (!liveScene) return { ok: false, code: 'SCENE_NOT_FOUND', errors: [`Scene '${patch.sceneId}' not found`] };
+  const revalidated = validateAiScenePatch(liveScene, patch, buildPatchProjectContext(patch.storyId, live));
+  if (!revalidated.ok) return revalidated;
+
+  const description = describeAiScenePatch(liveScene, patch);
+  live.saveSceneRecord(applyAiScenePatch(liveScene, patch));
   useAiChatStore.getState().pushAppliedChange({
     kind: 'scene',
     storyId: patch.storyId,
