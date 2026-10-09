@@ -24,7 +24,7 @@ const FINISHED_INTERACTIONS_KEPT = 64;
 type PendingTool = { toolName: string; awaitsAuthor: boolean; resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
 /** How a call that waited for the author ended. A status, once set, does not change. */
 export type InteractionStatus = 'applied' | 'rejected' | 'expired' | 'cancelled' | 'failed' | 'unknown';
-type FinishedInteraction = { status: InteractionStatus; reason?: string };
+type FinishedInteraction = { status: InteractionStatus; reason?: string; settledByBridge?: boolean };
 type LiveSession = {
   id: string;
   provider: AgentProvider;
@@ -361,7 +361,7 @@ export class AiBridgeServer {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.sendCurrent('tool_cancel', { toolCallId, reason: 'EXPIRED' });
-        this.finishAuthorWait(toolCallId, { status: 'unknown' })?.reject(new BridgeToolError(
+        this.finishAuthorWait(toolCallId, { status: 'unknown', settledByBridge: true })?.reject(new BridgeToolError(
           'PROVIDER_UNAVAILABLE',
           'The app did not answer before the proposal expired, so whether it was applied is unknown. Read the current state again before proposing anything else.',
           { status: 'unknown' },
@@ -396,7 +396,7 @@ export class AiBridgeServer {
     for (const [toolCallId, pending] of [...this.pendingTools]) {
       if (!pending.awaitsAuthor) continue;
       this.sendCurrent('tool_cancel', { toolCallId, reason });
-      this.finishAuthorWait(toolCallId, { status: 'cancelled', reason })?.reject(new BridgeToolError(
+      this.finishAuthorWait(toolCallId, { status: 'cancelled', reason, settledByBridge: true })?.reject(new BridgeToolError(
         'PROVIDER_UNAVAILABLE',
         'The proposal was withdrawn before the author decided on it.',
         { status: 'cancelled', reason },
@@ -405,8 +405,10 @@ export class AiBridgeServer {
   }
 
   /** The status of a call that waited for the author; undefined while it waits or if it never did. */
-  interactionStatus(toolCallId: string): FinishedInteraction | undefined {
-    return this.finishedInteractions.get(toolCallId);
+  interactionStatus(toolCallId: string): { status: InteractionStatus; reason?: string } | undefined {
+    const finished = this.finishedInteractions.get(toolCallId);
+    if (!finished) return undefined;
+    return { status: finished.status, ...(finished.reason ? { reason: finished.reason } : {}) };
   }
 
   private resolveTool(payload: unknown): void {
@@ -415,9 +417,18 @@ export class AiBridgeServer {
     const pending = this.pendingTools.get(id);
     if (!pending) {
       // Sent again because the first copy was never acknowledged, or sent after
-      // the call was withdrawn. Either way the status stands; saying "received"
-      // is what lets the app stop resending.
-      if (this.finishedInteractions.has(id)) this.sendCurrent('tool_result_ack', { toolCallId: id });
+      // the bridge gave the call up. Saying "received" lets the app stop
+      // resending. A status the app decided stands. One the bridge had to
+      // settle without the app gives way to what the app reports: `unknown` to
+      // anything, and a withdrawal or an expiry to a change that had already
+      // been written when it crossed them — the app writes nothing after either.
+      const finished = this.finishedInteractions.get(id);
+      if (!finished) return;
+      const reported = interactionOutcome(value);
+      if (finished.status === 'unknown' || (reported.status === 'applied' && finished.settledByBridge)) {
+        this.finishedInteractions.set(id, reported);
+      }
+      this.sendCurrent('tool_result_ack', { toolCallId: id });
       return;
     }
     if (pending.awaitsAuthor) {

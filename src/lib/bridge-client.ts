@@ -11,6 +11,7 @@ import {
   parseEnvelope,
 } from './bridge-protocol';
 import type { AiEditorContext } from './ai/editor-context';
+import { BridgeResultQueue } from './bridge-result-queue';
 
 export type { BridgeProvider } from './bridge-protocol';
 
@@ -41,7 +42,10 @@ export interface BridgeClientOptions {
   requestedModel?: string;
   requestedTokenBudget?: number;
   onEvent: (msg: BridgeEnvelope) => void;
-  onToolCall: (toolCallId: string, toolName: string, input: unknown, context?: { untrustedAttachmentMode: boolean }) => Promise<ToolResult>;
+  /** `ttlMs` comes with a call that waits for the author: how long its card may stay up. */
+  onToolCall: (toolCallId: string, toolName: string, input: unknown, context?: { untrustedAttachmentMode: boolean; ttlMs?: number }) => Promise<ToolResult>;
+  /** The bridge has withdrawn a call that was waiting for the author; its card has to go. */
+  onToolCancel?: (toolCallId: string, reason: string) => void;
   onConnectionChange: (state: BridgeConnectionState, reason?: BridgeConnectionReason) => void;
   logger?: (message: string, error?: unknown) => void;
 }
@@ -58,7 +62,12 @@ export class BridgeClient {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingReset: ((result: BridgeConversationResetResult) => void) | null = null;
-  constructor(private readonly options: BridgeClientOptions) {}
+  private readonly results: BridgeResultQueue;
+  private readonly callsInFlight = new Set<string>();
+  private readonly withdrawnCalls = new Set<string>();
+  constructor(private readonly options: BridgeClientOptions) {
+    this.results = new BridgeResultQueue(`vne-bridge-results:${options.url}`);
+  }
 
   static clearPersistedSession(url: string): void {
     try {
@@ -118,6 +127,7 @@ export class BridgeClient {
     this.socketFailed = false;
     this.resolvePendingReset({ ok: false, reason: 'RESET_FAILED' });
     BridgeClient.clearPersistedSession(this.options.url);
+    this.results.clear();
     this.options.onConnectionChange('closed');
   }
 
@@ -190,6 +200,20 @@ export class BridgeClient {
       this.reconnectAttempt = 0;
       this.options.onConnectionChange('connected');
       this.startHeartbeat();
+      // Whatever was answered while the bridge could not hear it.
+      this.results.adopt(this.sessionId);
+      for (const [toolCallId, result] of this.results.entries()) this.send('tool_result', { toolCallId, ...result });
+    }
+    if (parsed.type === 'tool_result_ack') {
+      if (this.isRecord(parsed.payload) && typeof parsed.payload.toolCallId === 'string') this.results.remove(parsed.payload.toolCallId);
+      return;
+    }
+    if (parsed.type === 'tool_cancel') {
+      if (!this.isRecord(parsed.payload) || typeof parsed.payload.toolCallId !== 'string') return;
+      const toolCallId = parsed.payload.toolCallId;
+      if (this.callsInFlight.has(toolCallId)) this.withdrawnCalls.add(toolCallId);
+      this.options.onToolCancel?.(toolCallId, typeof parsed.payload.reason === 'string' ? parsed.payload.reason : '');
+      return;
     }
     if (parsed.type === 'conversation_reset_ack') {
       this.resolvePendingReset({ ok: true });
@@ -244,10 +268,14 @@ export class BridgeClient {
   private async handleToolCall(payload: unknown): Promise<void> {
     if (!this.isRecord(payload) || typeof payload.toolCallId !== 'string'
       || typeof payload.toolName !== 'string') return;
+    const toolCallId = payload.toolCallId;
+    const awaitsAuthor = typeof payload.ttlMs === 'number';
     let result: ToolResult;
+    this.callsInFlight.add(toolCallId);
     try {
-      result = await this.options.onToolCall(payload.toolCallId, payload.toolName, payload.input, {
+      result = await this.options.onToolCall(toolCallId, payload.toolName, payload.input, {
         untrustedAttachmentMode: payload.untrustedAttachmentMode === true,
+        ...(awaitsAuthor ? { ttlMs: payload.ttlMs as number } : {}),
       });
     } catch (error: unknown) {
       result = {
@@ -255,8 +283,15 @@ export class BridgeClient {
         errorCode: 'VALIDATION_FAILED',
         errorMessage: error instanceof Error ? error.message : 'Tool execution failed',
       };
+    } finally {
+      this.callsInFlight.delete(toolCallId);
     }
-    if (this.isOpen()) this.send('tool_result', { toolCallId: payload.toolCallId, ...result });
+    // Nobody is waiting for the answer to a withdrawn call — unless the change
+    // was written before the withdrawal got here, which the bridge has to hear.
+    if (this.withdrawnCalls.delete(toolCallId) && !reportsWrittenChange(result)) return;
+    // Kept until acknowledged: this send may be going into a dead socket.
+    if (awaitsAuthor) this.results.add(toolCallId, result);
+    if (this.isOpen()) this.send('tool_result', { toolCallId, ...result });
   }
 
   private startHeartbeat(): void {
@@ -330,6 +365,7 @@ export class BridgeClient {
     this.resolvePendingReset({ ok: false, reason: 'RESET_FAILED' });
     this.reconnectAttempt = 0;
     BridgeClient.clearPersistedSession(this.options.url);
+    this.results.clear();
     this.options.onConnectionChange(state, reason);
     const socket = this.socket;
     this.socket = null;
@@ -370,4 +406,9 @@ export class BridgeClient {
     this.clearHeartbeatTimers();
     this.clearReconnectTimer();
   }
+}
+
+function reportsWrittenChange(result: ToolResult): boolean {
+  return result.ok && typeof result.result === 'object' && result.result !== null
+    && (result.result as { accepted?: unknown }).accepted === true;
 }

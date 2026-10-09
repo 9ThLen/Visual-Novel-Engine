@@ -159,9 +159,44 @@ describe('a bridge call that waits for the author', () => {
 
     expect(payloadOf(await turn.message('tool_cancel'))).toEqual({ toolCallId, reason: 'INTERRUPTED' });
     expect(payloadOf(await turn.message('assistant_done'))).toMatchObject({ stopReason: 'interrupted' });
-    turn.send('tool_result', { toolCallId, ok: true, result: { accepted: true } });
+    turn.send('tool_result', { toolCallId, ok: true, result: { accepted: false, reason: 'rejected' } });
     await turn.message('tool_result_ack');
     expect(turn.server.interactionStatus(toolCallId)).toEqual({ status: 'cancelled', reason: 'INTERRUPTED' });
+  });
+
+  // The app writes nothing for a call it knows was withdrawn, so "applied"
+  // after a withdrawal means the write had already happened when they crossed.
+  it('takes the app’s word that a change was written before the withdrawal reached it', async () => {
+    const turn = await startTurn(async function* (provider) {
+      await askPermission(provider.tools).catch(() => undefined);
+      yield { type: 'done' };
+    });
+    const toolCallId = String(payloadOf(await turn.message('tool_call')).toolCallId);
+    turn.send('interrupt', {});
+    await turn.message('tool_cancel');
+
+    turn.send('tool_result', { toolCallId, ok: true, result: { accepted: true } });
+    await turn.message('tool_result_ack');
+
+    expect(turn.server.interactionStatus(toolCallId)).toEqual({ status: 'applied' });
+  });
+
+  it.each([
+    [{ ok: true, result: { accepted: true } }, { status: 'applied' }],
+    [{ ok: true, result: { accepted: false, reason: 'rejected' } }, { status: 'rejected', reason: 'rejected' }],
+  ])('learns how an unknown outcome ended when the app comes back with %j', async (answer, outcome) => {
+    const turn = await startTurn(async function* (provider) {
+      await askPermission(provider.tools).catch(() => undefined);
+      yield { type: 'done' };
+    }, { authorWaitTtlMs: 20, authorWaitGraceMs: 10 });
+    const toolCallId = String(payloadOf(await turn.message('tool_call')).toolCallId);
+    await turn.message('tool_cancel');
+    expect(turn.server.interactionStatus(toolCallId)).toEqual({ status: 'unknown' });
+
+    turn.send('tool_result', { toolCallId, ...answer });
+    await turn.message('tool_result_ack');
+
+    expect(turn.server.interactionStatus(toolCallId)).toEqual(outcome);
   });
 
   it('withdraws the card when its turn ends without waiting for it', async () => {
