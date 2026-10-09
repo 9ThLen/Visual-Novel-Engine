@@ -141,6 +141,24 @@ describe('document editor and scenes rewritten from outside', () => {
     expect(textsOf(frames()[1])).toEqual(['Snow.']);
   });
 
+  // A frame reports an edit a quarter of a second after it is made. A save in
+  // that gap used to find nothing to save: the host had not heard of the edit.
+  it('saves what a frame is still holding back', async () => {
+    const { onSave } = renderEditor(record('Rain.'));
+    const [frame] = frames();
+    frame.typeWithoutReporting({
+      ...frame.builtFrom,
+      blocks: (frame.builtFrom.blocks as { kind?: string; content?: string }[])
+        .map((block) => (block.content === 'Rain.' ? { ...block, content: 'Rain. And wind.' } : block)),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview Story' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+
+    const [saved] = onSave.mock.calls[0][0];
+    expect(saved.timeline.map((step) => (step.data as { content?: string }).content)).toEqual(['Rain. And wind.']);
+  });
+
   it('does not rebuild for a change the frame never shows', async () => {
     const original = record('Rain.');
     const { showStore } = renderEditor(original);

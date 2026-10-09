@@ -87,6 +87,13 @@ export interface PlateWebViewEditorHandle {
   flush: () => Promise<PlateWebViewEditorSnapshot>;
   /** A flush that also reads the selection, in the same pass of the frame. */
   capture: () => Promise<PlateWebViewEditorCapture>;
+  /**
+   * The frame's content if it holds an edit it has not reported yet, else null.
+   * A frame reports on a debounce, so for a moment after a keystroke the host
+   * believes a scene is saved that is not; this is how a save finds out. A
+   * frame that is not up yet has nothing to hold.
+   */
+  unreportedDraft: () => Promise<PlateWebViewEditorSnapshot | null>;
   undo: () => void;
   redo: () => void;
   formatText: (command: VNPlateFormatCommand, value?: string) => void;
@@ -443,6 +450,9 @@ export const PlateWebViewEditor = forwardRef<PlateWebViewEditorHandle, PlateWebV
       characters: flushedCharacters,
     })),
     capture: () => requestFlush(true),
+    unreportedDraft: () => (readyRef.current
+      ? requestFlush(false).then(flushed => (flushed.hasUnreportedChanges ? { scene: flushed.scene, characters: flushed.characters } : null))
+      : Promise.resolve(null)),
     undo: () => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'undo' }, window.location.origin),
     redo: () => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'redo' }, window.location.origin),
     formatText: (command, value) => iframeRef.current?.contentWindow?.postMessage({ source: 'vn-plate-host', editorId, type: 'formatText', command, value }, window.location.origin),

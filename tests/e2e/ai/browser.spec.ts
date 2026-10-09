@@ -406,6 +406,35 @@ test('a paragraph typed a moment before sending does not make the proposal stale
   await expect(editable).toContainText('A paragraph typed just now.');
 });
 
+/**
+ * The frame tells the host about a keystroke a quarter of a second later. A
+ * change applied inside that quarter second used to go into the store over a
+ * scene the host believed was saved, and the frame was then rebuilt from the
+ * store: the words just typed were gone. The barrier in front of the change
+ * now asks the frames themselves, saves what they hold, and the change — made
+ * for the text as it was before — is refused as out of date.
+ */
+test('a change applied a moment after a keystroke does not cost the author that keystroke', async ({ page }) => {
+  await openAi(page);
+  await pair(page);
+  await expect(page.getByText(/Connected · Claude Code|Підключено · Claude Code/).first()).toBeVisible();
+  const editable = page.frameLocator('iframe[title="VN Plate editor"]').first().locator('#editor');
+  await send(page, '[rewrite]');
+  const apply = page.getByRole('button', { name: /Apply|Застосувати/ });
+  await expect(apply).toBeVisible();
+
+  await editable.locator('p[data-kind="text"]').first().click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Typed late.');
+  await apply.click();
+
+  await expect(page.getByText(/scene changed since this patch|Сцена змінилася відтоді/)).toBeVisible();
+  await expect(editable).toContainText('Typed late.');
+  await expect(editable).not.toContainText('AI rewrote this line.');
+  await page.reload();
+  await expect(editable).toContainText('Typed late.');
+});
+
 test('the assistant is told which block the author has open', async ({ page }) => {
   await openAi(page);
   await pair(page);
