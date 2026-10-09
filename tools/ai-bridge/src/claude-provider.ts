@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import { createSdkMcpServer, query, tool, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { MODEL_BRIDGE_TOOLS } from '../../../src/lib/ai/bridge-tools';
+import { AUTHOR_WAIT_TTL_MS, MODEL_BRIDGE_TOOLS } from '../../../src/lib/ai/bridge-tools';
 import { ClaudeConversation } from './claude-conversation';
+import { envForAuthorWait } from './turn-budget';
 import { buildSessionSystemPrompt, modelToolErrorValue, type AgentEvent, type AgentProvider, type AgentSessionContext, type AgentUserInput, type ToolInvoker } from './provider';
 
 const prompt = readFileSync(fileURLToPath(new URL('./system-prompt.md', import.meta.url)), 'utf8');
@@ -31,6 +32,8 @@ export class ClaudeAgentProvider implements AgentProvider {
       abortController: this.controller, systemPrompt: this.systemPrompt, includePartialMessages: true,
       tools: [], mcpServers: { visualNovel: mcp }, allowedTools: MODEL_BRIDGE_TOOLS.map(def => `mcp__visualNovel__${def.name}`),
       settingSources: [], strictMcpConfig: true,
+      // Replaces the process environment rather than adding to it, hence the spread inside.
+      env: envForAuthorWait(process.env, AUTHOR_WAIT_TTL_MS),
     }) });
     for await (const message of stream) {
       this.conversation.observe(message);

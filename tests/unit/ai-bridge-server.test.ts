@@ -535,9 +535,10 @@ describe('AI bridge protocol server', () => {
       send(socket, 'user_message', { text: 'generate' }, sessionId);
       const authorization = await next(socket);
       expect(authorization).toMatchObject({ type: 'tool_call', payload: { toolName: 'authorize_capability' } });
+      const image = nextMatching(socket, message => message.type === 'image_result');
       send(socket, 'tool_result', { toolCallId: payload(authorization).toolCallId, ok: true, result: { allowed: true } }, sessionId);
-      const result = await next(socket);
-      expect(result.type).toBe('image_result');
+      // The permission's answer is acknowledged first; the image follows.
+      const result = await image;
       const requestId = String(payload(result).requestId);
       const closed = once(socket, 'close'); socket.close(); await closed;
 

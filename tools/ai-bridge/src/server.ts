@@ -2,7 +2,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { MAX_IMAGE_MESSAGE_BYTES, MAX_MESSAGE_BYTES, makeEnvelope, parseEnvelope, type BridgeEnvelope, type BridgeErrorCode, type BridgeProvider, type SessionChallengePayload } from '../../../src/lib/bridge-protocol';
-import { getBridgeTool } from '../../../src/lib/ai/bridge-tools';
+import { AUTHOR_WAIT_TTL_MS, getBridgeTool } from '../../../src/lib/ai/bridge-tools';
 import { BridgeToolError, ProviderFailure, type AgentAttachment, type AgentProvider, type AgentProviderFactory, type AgentUserInput } from './provider';
 import { BridgeToolRuntime } from './tool-runtime';
 import { createImageToolHandlers, describeImageToolCapability, type ImageToolOptions } from './image-tools';
@@ -11,12 +11,20 @@ import { getCodexHardeningCapability } from './codex-launch-policy';
 import { validateCodexBetaConsent } from '../../../src/lib/ai/codex-beta-consent';
 import { parseAiEditorContext } from '../../../src/lib/ai/editor-context';
 import { appendEditorContext } from './editor-context-block';
+import { startTurnBudget } from './turn-budget';
 
 const TURN_TIMEOUT_MS = 120_000;
 const TOOL_TIMEOUT_MS = 30_000;
 const PATCH_TIMEOUT_MS = 600_000;
 const MAX_TOOL_CALLS = 15;
-type PendingTool = { toolName: string; resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
+// The app drops a card when its lifetime ends and says so. This is how much
+// longer the bridge waits to hear it before giving up on an app that is gone.
+const AUTHOR_WAIT_GRACE_MS = 5_000;
+const FINISHED_INTERACTIONS_KEPT = 64;
+type PendingTool = { toolName: string; awaitsAuthor: boolean; resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
+/** How a call that waited for the author ended. A status, once set, does not change. */
+export type InteractionStatus = 'applied' | 'rejected' | 'expired' | 'cancelled' | 'failed' | 'unknown';
+type FinishedInteraction = { status: InteractionStatus; reason?: string };
 type LiveSession = {
   id: string;
   provider: AgentProvider;
@@ -29,13 +37,16 @@ type LiveSession = {
   untrustedAttachmentMode: boolean;
 };
 
-export interface BridgeServerOptions { port?: number; token?: string; allowedOrigins?: string[]; provider?: BridgeProvider; imageTools?: ImageToolOptions; enableCodexBeta?: boolean; enableClaudeAttachments?: boolean; providerFactory: AgentProviderFactory; logger?: (line: string) => void; toolTimeoutMs?: number; turnTimeoutMs?: number; modelPolicy?: { defaultModel?: string; allowedModels?: string[]; defaultTokenBudget?: number; maxTokenBudget?: number } }
+export interface BridgeServerOptions { port?: number; token?: string; allowedOrigins?: string[]; provider?: BridgeProvider; imageTools?: ImageToolOptions; enableCodexBeta?: boolean; enableClaudeAttachments?: boolean; providerFactory: AgentProviderFactory; logger?: (line: string) => void; toolTimeoutMs?: number; turnTimeoutMs?: number; authorWaitTtlMs?: number; authorWaitGraceMs?: number; modelPolicy?: { defaultModel?: string; allowedModels?: string[]; defaultTokenBudget?: number; maxTokenBudget?: number } }
 
 export class AiBridgeServer {
   readonly token: string;
   private server: WebSocketServer | null = null;
   private session: LiveSession | null = null;
   private readonly pendingTools = new Map<string, PendingTool>();
+  // Kept after the call is over, so a result the app sends twice — it resends
+  // until it is acknowledged — is recognised and not taken for a new one.
+  private readonly finishedInteractions = new Map<string, FinishedInteraction>();
   private readonly allowedOrigins: Set<string>;
   private readonly log: (line: string) => void;
   private readonly toolRuntime: BridgeToolRuntime;
@@ -68,6 +79,7 @@ export class AiBridgeServer {
   async close(): Promise<void> {
     this.session?.provider.abort();
     await this.session?.provider.close?.();
+    this.cancelAuthorWaits('BRIDGE_SHUTTING_DOWN');
     for (const pending of this.pendingTools.values()) { clearTimeout(pending.timer); pending.reject(new Error('Bridge shutting down')); }
     this.pendingTools.clear();
     for (const client of this.server?.clients ?? []) client.close(1001, 'Server shutting down');
@@ -175,7 +187,12 @@ export class AiBridgeServer {
     if (!this.session || socket !== this.session.socket || (message.sessionId && message.sessionId !== this.session.id)) return this.protocolClose(socket, 'Invalid session');
     if (message.type === 'ping') return this.send(socket, 'pong', {}, this.session.id);
     if (message.type === 'session_end') { this.disposeSession(); return; }
-    if (message.type === 'interrupt') { this.session.interruptReason = 'user'; this.session.provider.abort(); return; }
+    if (message.type === 'interrupt') {
+      this.session.interruptReason = 'user';
+      this.cancelAuthorWaits('INTERRUPTED');
+      this.session.provider.abort();
+      return;
+    }
     if (message.type === 'conversation_reset') {
       if (this.session.resetting) {
         return this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'Conversation reset is already running', { reason: 'RESET_ALREADY_RUNNING' });
@@ -198,6 +215,11 @@ export class AiBridgeServer {
     if (decoded.input.attachments.length && !this.capabilities().attachments.supported) {
       return this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'Attachments are not supported by this provider', { reason: 'ATTACHMENTS_UNSUPPORTED' });
     }
+    // One interaction at a time: a proposal in front of the author holds the
+    // session, whether or not the turn that made it is still running.
+    if (this.authorWaitPending()) {
+      return this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'A proposal is waiting for the author', { reason: 'PROPOSAL_PENDING' });
+    }
     if (this.session.generating) {
       return this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'A turn is already running', { reason: 'TURN_ALREADY_RUNNING' });
     }
@@ -210,6 +232,7 @@ export class AiBridgeServer {
     try {
       if (session.generating) {
         session.interruptReason = 'user';
+        this.cancelAuthorWaits('CONVERSATION_RESET');
         session.provider.abort();
         await session.turn;
       }
@@ -233,7 +256,11 @@ export class AiBridgeServer {
     const session = this.session!;
     session.generating = true; session.interruptReason = null; session.toolCalls = 0;
     this.toolRuntime.beginTurn();
-    const timer = setTimeout(() => { session.interruptReason = 'timeout'; session.provider.abort(); }, this.options.turnTimeoutMs ?? TURN_TIMEOUT_MS);
+    // Time the author spends on a proposal is theirs, not the turn's.
+    const budget = startTurnBudget(this.options.turnTimeoutMs ?? TURN_TIMEOUT_MS, () => {
+      session.interruptReason = 'timeout';
+      session.provider.abort();
+    }, this.toolRuntime);
     try {
       for await (const event of session.provider.send(input)) {
         if (session.interruptReason) break;
@@ -252,7 +279,10 @@ export class AiBridgeServer {
         details: { reason: error instanceof ProviderFailure ? error.reason : 'PROVIDER_ERROR' },
       });
     } finally {
-      clearTimeout(timer);
+      budget.stop();
+      // A card must not outlive the turn that put it up: its answer would
+      // start work nobody is waiting for.
+      if (this.session === session) this.cancelAuthorWaits('TURN_ENDED');
       session.generating = false;
       session.turn = null;
     }
@@ -309,19 +339,93 @@ export class AiBridgeServer {
       return Promise.reject(new Error('Tool call limit exceeded'));
     }
     const toolCallId = randomUUID();
+    if (getBridgeTool(toolName)?.awaitsAuthor) return this.callForAuthor(toolCallId, toolName, input, session);
     this.sendCurrent('tool_call', { toolCallId, toolName, input, untrustedAttachmentMode: session.untrustedAttachmentMode });
     const timeout = timeoutMs ?? (toolName === 'propose_scene_patch' ? PATCH_TIMEOUT_MS : (this.options.toolTimeoutMs ?? TOOL_TIMEOUT_MS));
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pendingTools.delete(toolCallId); reject(new Error(`Tool ${toolName} timed out`)); }, timeout);
-      this.pendingTools.set(toolCallId, { toolName, resolve, reject, timer });
+      this.pendingTools.set(toolCallId, { toolName, awaitsAuthor: false, resolve, reject, timer });
     });
+  }
+
+  /**
+   * A call that shows the author a card. The app owns its lifetime: it drops
+   * the card when `ttlMs` is up and answers `expired`. The timer here only
+   * covers an app that never answers — then nobody knows whether the change
+   * was applied, and that is what the model is told.
+   */
+  private callForAuthor(toolCallId: string, toolName: string, input: unknown, session: LiveSession): Promise<unknown> {
+    const ttlMs = this.options.authorWaitTtlMs ?? AUTHOR_WAIT_TTL_MS;
+    this.sendCurrent('tool_call', { toolCallId, toolName, input, untrustedAttachmentMode: session.untrustedAttachmentMode, origin: 'chat', ttlMs });
+    this.toolRuntime.authorWait.begin();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.sendCurrent('tool_cancel', { toolCallId, reason: 'EXPIRED' });
+        this.finishAuthorWait(toolCallId, { status: 'unknown' })?.reject(new BridgeToolError(
+          'PROVIDER_UNAVAILABLE',
+          'The app did not answer before the proposal expired, so whether it was applied is unknown. Read the current state again before proposing anything else.',
+          { status: 'unknown' },
+        ));
+      }, ttlMs + (this.options.authorWaitGraceMs ?? AUTHOR_WAIT_GRACE_MS));
+      this.pendingTools.set(toolCallId, { toolName, awaitsAuthor: true, resolve, reject, timer });
+    });
+  }
+
+  /** Takes a waiting call out of play under its final status; null if it was already over. */
+  private finishAuthorWait(toolCallId: string, outcome: FinishedInteraction): PendingTool | null {
+    const pending = this.pendingTools.get(toolCallId);
+    if (!pending) return null;
+    clearTimeout(pending.timer);
+    this.pendingTools.delete(toolCallId);
+    this.finishedInteractions.set(toolCallId, outcome);
+    for (const id of this.finishedInteractions.keys()) {
+      if (this.finishedInteractions.size <= FINISHED_INTERACTIONS_KEPT) break;
+      this.finishedInteractions.delete(id);
+    }
+    this.toolRuntime.authorWait.end();
+    return pending;
+  }
+
+  private authorWaitPending(): boolean {
+    for (const pending of this.pendingTools.values()) if (pending.awaitsAuthor) return true;
+    return false;
+  }
+
+  /** Withdraws every card that is still up: the app removes it, and the call that put it up fails. */
+  private cancelAuthorWaits(reason: string): void {
+    for (const [toolCallId, pending] of [...this.pendingTools]) {
+      if (!pending.awaitsAuthor) continue;
+      this.sendCurrent('tool_cancel', { toolCallId, reason });
+      this.finishAuthorWait(toolCallId, { status: 'cancelled', reason })?.reject(new BridgeToolError(
+        'PROVIDER_UNAVAILABLE',
+        'The proposal was withdrawn before the author decided on it.',
+        { status: 'cancelled', reason },
+      ));
+    }
+  }
+
+  /** The status of a call that waited for the author; undefined while it waits or if it never did. */
+  interactionStatus(toolCallId: string): FinishedInteraction | undefined {
+    return this.finishedInteractions.get(toolCallId);
   }
 
   private resolveTool(payload: unknown): void {
     const value = this.record(payload); const id = value?.toolCallId;
     if (typeof id !== 'string') return;
-    const pending = this.pendingTools.get(id); if (!pending) return;
-    clearTimeout(pending.timer); this.pendingTools.delete(id);
+    const pending = this.pendingTools.get(id);
+    if (!pending) {
+      // Sent again because the first copy was never acknowledged, or sent after
+      // the call was withdrawn. Either way the status stands; saying "received"
+      // is what lets the app stop resending.
+      if (this.finishedInteractions.has(id)) this.sendCurrent('tool_result_ack', { toolCallId: id });
+      return;
+    }
+    if (pending.awaitsAuthor) {
+      this.finishAuthorWait(id, interactionOutcome(value));
+      this.sendCurrent('tool_result_ack', { toolCallId: id });
+    } else {
+      clearTimeout(pending.timer); this.pendingTools.delete(id);
+    }
     if (value?.ok === true) pending.resolve(value.result);
     else pending.reject(new BridgeToolError(
       typeof value?.errorCode === 'string' ? value.errorCode : 'VALIDATION_FAILED',
@@ -366,10 +470,12 @@ export class AiBridgeServer {
   private disposeSession(): void {
     const session = this.session;
     if (!session) return;
+    this.cancelAuthorWaits('SESSION_ENDED');
     session.provider.abort();
     void session.provider.close?.();
     for (const pending of this.pendingTools.values()) { clearTimeout(pending.timer); pending.reject(new Error('Session ended')); }
     this.pendingTools.clear();
+    this.finishedInteractions.clear();
     this.session = null;
   }
 
@@ -396,6 +502,22 @@ export class AiBridgeServer {
     socket.close(1008, message);
   }
   private protocolClose(socket: WebSocket, message: string): void { this.errorAndClose(socket, 'PROTOCOL_ERROR', message); }
+}
+
+/**
+ * Reads the status off what the app answered. The chat's models go on getting
+ * the answer itself, `{accepted, reason}`; the status is the same fact in the
+ * words an outside agent is told it in.
+ */
+function interactionOutcome(result: Record<string, unknown> | null): FinishedInteraction {
+  if (result?.ok !== true) {
+    return { status: 'failed', reason: typeof result?.errorCode === 'string' ? result.errorCode : 'VALIDATION_FAILED' };
+  }
+  const answer = typeof result.result === 'object' && result.result !== null ? result.result as Record<string, unknown> : {};
+  if (answer.accepted === true || answer.allowed === true) return { status: 'applied' };
+  const reason = typeof answer.reason === 'string' ? answer.reason : undefined;
+  if (reason === 'expired' || reason === 'cancelled' || reason === 'unknown') return { status: reason };
+  return { status: 'rejected', ...(reason ? { reason } : {}) };
 }
 
 function detectAttachmentBytes(bytes: Uint8Array): { kind: 'image' | 'pdf' | 'text'; mimeType: string } | null {
