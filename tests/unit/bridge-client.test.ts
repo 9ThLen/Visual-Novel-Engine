@@ -328,6 +328,25 @@ describe('BridgeClient', () => {
     client.close();
   });
 
+  it('sends the editor context with the message, and no field when there is none', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'claude' }, 'session-1'));
+    const editorContext = {
+      version: 1, snapshotId: 'snap_1', kind: 'fixed', screen: 'editor', storyId: 'story_1',
+      scene: null, hasUnsavedChanges: false, selection: null, capturedAt: 1,
+    } as const;
+
+    expect(client.sendUserMessage('with context', undefined, editorContext)).toEqual({ ok: true });
+    expect(client.sendUserMessage('without', undefined, null)).toEqual({ ok: true });
+
+    expect(frame(socket, 1)).toMatchObject({ type: 'user_message', payload: { text: 'with context', editorContext } });
+    expect(frame(socket, 2).payload).toEqual({ text: 'without' });
+    client.close();
+  });
+
   it('never delivers a stale turn after invalid-token reconnect', () => {
     const client = new BridgeClient(options);
     client.connect();

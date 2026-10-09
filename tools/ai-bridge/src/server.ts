@@ -9,6 +9,8 @@ import { createImageToolHandlers, describeImageToolCapability, type ImageToolOpt
 import { normalizeAllowedOrigins } from './origin-policy';
 import { getCodexHardeningCapability } from './codex-launch-policy';
 import { validateCodexBetaConsent } from '../../../src/lib/ai/codex-beta-consent';
+import { parseAiEditorContext } from '../../../src/lib/ai/editor-context';
+import { appendEditorContext } from './editor-context-block';
 
 const TURN_TIMEOUT_MS = 120_000;
 const TOOL_TIMEOUT_MS = 30_000;
@@ -189,7 +191,10 @@ export class AiBridgeServer {
     }
     if (message.type !== 'user_message') return this.protocolClose(socket, 'Unexpected client message');
     const decoded = this.decodeUserInput(message.payload);
-    if (!decoded.ok) return this.sendError(socket, 'VALIDATION_FAILED', 'Invalid attachment payload', { reason: decoded.reason });
+    if (!decoded.ok) {
+      const about = decoded.reason.startsWith('EDITOR_CONTEXT') ? 'editor context' : 'attachment payload';
+      return this.sendError(socket, 'VALIDATION_FAILED', `Invalid ${about}`, { reason: decoded.reason });
+    }
     if (decoded.input.attachments.length && !this.capabilities().attachments.supported) {
       return this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'Attachments are not supported by this provider', { reason: 'ATTACHMENTS_UNSUPPORTED' });
     }
@@ -279,7 +284,14 @@ export class AiBridgeServer {
       attachments.push({ id: item.id, name: item.name.slice(0, 120), kind: detected.kind, mimeType: detected.mimeType, bytes });
     }
     if (!text.trim() && attachments.length === 0) return { ok: false, reason: 'EMPTY_MESSAGE' };
-    return { ok: true, input: { text, attachments } };
+    // Checked again here whatever the app did: the limits protect the model's
+    // context, and a turn must not start on a context nobody validated.
+    if (value?.editorContext === undefined || value.editorContext === null) return { ok: true, input: { text, attachments } };
+    const context = parseAiEditorContext(value.editorContext);
+    if (!context.ok) {
+      return { ok: false, reason: context.reason === 'TOO_LARGE' ? 'EDITOR_CONTEXT_TOO_LARGE' : 'EDITOR_CONTEXT_INVALID' };
+    }
+    return { ok: true, input: { text: appendEditorContext(text, context.context), attachments } };
   }
 
   private callClientTool(toolName: string, input: unknown, timeoutMs?: number): Promise<unknown> {
@@ -335,6 +347,7 @@ export class AiBridgeServer {
       || (this.options.provider === 'claude' && this.options.enableClaudeAttachments === true);
     const policy = this.options.modelPolicy;
     return {
+      chat: { supported: true },
       attachments: { supported, kinds: supported ? ['image', 'pdf', 'text'] as ('image' | 'pdf' | 'text')[] : [], maxCount: 4, maxDecodedBytes: 5 * 1024 * 1024 },
       imageGeneration: describeImageToolCapability(this.options.imageTools),
       modelPolicy: { effectiveModel: policy?.defaultModel, allowedModels: policy?.allowedModels, modelLocked: !policy?.allowedModels?.length, effectiveTokenBudget: policy?.defaultTokenBudget, maxTokenBudget: policy?.maxTokenBudget, tokenBudgetLocked: !policy?.maxTokenBudget },

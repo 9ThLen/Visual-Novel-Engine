@@ -33,6 +33,16 @@ describe('bridge tool registry', () => {
     })).toMatchObject({ estimate: { provider: 'Google Gemini' } });
   });
 
+  it('lets the model read the editor context, fixed by default or live on request', () => {
+    const tool = BRIDGE_TOOLS.find(item => item.name === 'get_editor_context');
+
+    expect(tool).toMatchObject({ exposure: 'model', site: 'app', effect: 'read' });
+    expect(tool?.requiresCapability).toBeUndefined();
+    expect(tool?.inputSchema.safeParse({}).success).toBe(true);
+    expect(tool?.inputSchema.safeParse({ mode: 'live' }).success).toBe(true);
+    expect(tool?.inputSchema.safeParse({ mode: 'screenshot' }).success).toBe(false);
+  });
+
   it('exposes only the closed reader layout preset enum', () => {
     const tool = BRIDGE_TOOLS.find(item => item.name === 'propose_appearance_patch');
     expect(tool?.inputSchema.safeParse({
