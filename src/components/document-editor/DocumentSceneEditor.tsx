@@ -17,6 +17,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -38,6 +39,7 @@ import { charactersEquivalent, mergeExternalCharacters } from '@/lib/character-m
 import { crumbsForSceneIndex, type BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
 import { exitEditorToStoryHome } from '@/lib/document-editor/editor-exit';
 import { ensureDocumentCharactersInBlocks } from '@/lib/document-editor/document-scene';
+import type { SceneContentLedger } from '@/lib/document-editor/scene-content-ledger';
 import { loadSceneHeights, persistSceneHeight } from '@/lib/document-editor/scene-height-cache';
 import {
   computeActiveSceneId,
@@ -79,6 +81,11 @@ interface DocumentSceneEditorProps {
   sceneCount: number;
   initialDocuments: DocumentScene[];
   documentsResetKey: string;
+  /**
+   * Knows what this editor wrote, and so which scenes somebody else rewrote.
+   * Without it a frame keeps showing the text it was built from.
+   */
+  sceneContentLedger?: SceneContentLedger;
   characters: Character[];
   backgroundAssets: VNPlateBackgroundAsset[];
   audioAssets: VNPlateAudioAsset[];
@@ -151,6 +158,7 @@ export function DocumentSceneEditor({
   sceneCount,
   initialDocuments,
   documentsResetKey,
+  sceneContentLedger,
   characters,
   backgroundAssets,
   audioAssets,
@@ -194,6 +202,10 @@ export function DocumentSceneEditor({
   // re-measures itself — RNW's onLayout does not re-fire for frames whose
   // geometry did not change, which would leave the layout map empty forever.
   const [measureVersion, setMeasureVersion] = useState(0);
+  // Bumping a scene's entry rebuilds its frame from the current document. It is
+  // the only way new content reaches a mounted frame.
+  const [frameEpochBySceneId, setFrameEpochBySceneId] = useState<Record<string, number>>({});
+  const isFocused = useIsFocused();
 
   const editorRefsRef = useRef(new Map<string, PlateWebViewEditorHandle>());
   const draftRegistryRef = useRef(new Map<string, PlateWebViewEditorSnapshot>());
@@ -228,7 +240,11 @@ export function DocumentSceneEditor({
   const scrollViewRef = useRef<ScrollView>(null);
   const prevResetKeyRef = useRef(documentsResetKey);
   const prevRouteSceneIdRef = useRef(sceneRecord.id);
+  const prevSceneOrderKeyRef = useRef(initialDocuments.map((ds) => ds.sceneId).join('|'));
   const savingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Scenes rewritten in the store whose frames still show the old content.
+  const staleFrameSceneIdsRef = useRef(new Set<string>());
+  const isFocusedRef = useRef(isFocused);
   // Starts at 1 so the initial mount renders without an entrance animation.
   const branchSwitchAnim = useRef(new Animated.Value(1)).current;
 
@@ -248,6 +264,30 @@ export function DocumentSceneEditor({
     dirtySceneIdsRef.current = dirtySceneIds;
   }, [dirtySceneIds]);
 
+  const rebuildStaleFrames = useCallback(() => {
+    const stale = staleFrameSceneIdsRef.current;
+    if (!stale.size) return;
+    const sceneIds = Array.from(stale);
+    stale.clear();
+    setFrameEpochBySceneId((current) => {
+      const next = { ...current };
+      sceneIds.forEach((sceneId) => {
+        next[sceneId] = (next[sceneId] ?? 0) + 1;
+      });
+      return next;
+    });
+  }, []);
+
+  // Scene-to-scene navigation stacks editor screens, and every one of them sees
+  // each save of the one on top as somebody else's write. Rebuilding frames
+  // nobody is looking at would reload iframes on every save, so a covered
+  // editor only remembers which frames went stale and catches up when the
+  // author comes back to it.
+  useEffect(() => {
+    isFocusedRef.current = isFocused;
+    if (isFocused) rebuildStaleFrames();
+  }, [isFocused, rebuildStaleFrames]);
+
   useEffect(() => {
     return () => {
       if (savingTimerRef.current) {
@@ -263,6 +303,18 @@ export function DocumentSceneEditor({
     prevResetKeyRef.current = documentsResetKey;
     prevRouteSceneIdRef.current = sceneRecord.id;
     if (!routeSceneChanged && dirtySceneIds.has(activeSceneId)) return;
+
+    // A frame is never refreshed from props, so a scene rewritten from outside
+    // — an applied AI change, a rollback, a restored snapshot — needs its frame
+    // rebuilt, or the author keeps editing the old text and the next save
+    // writes it back over that change. An unsaved draft is the one thing a
+    // rebuild would destroy, so a dirty scene keeps its frame; every AI
+    // mutation saves through the barrier first, which is what keeps the two
+    // from meeting.
+    for (const sceneId of sceneContentLedger?.reconcile(scenes) ?? []) {
+      if (!dirtySceneIds.has(sceneId)) staleFrameSceneIdsRef.current.add(sceneId);
+    }
+    if (isFocusedRef.current) rebuildStaleFrames();
 
     // Clamp to a scene that exists in the rebuilt document: switching an
     // ancestor branch (e.g. from the breadcrumb) can drop the scene the
@@ -281,12 +333,22 @@ export function DocumentSceneEditor({
     externalCharactersRef.current = characters;
     setActiveSceneId(nextActiveSceneId);
     draftRegistryRef.current.clear();
-    sceneLayoutRef.current.clear();
     editorRefsRef.current.clear();
     focusedEditorSceneIdRef.current = null;
     setFocusedEditorSceneId(null);
     setHistoryStateByScene({});
     setFormatStateByScene({});
+
+    // The same scenes in the same order means only their content moved — a
+    // save, or a scene rewritten from outside. Every frame keeps its place, so
+    // the layout, the mounted set and the scroll position stay as they are;
+    // re-pinning them is what threw the author back to the top of the scene.
+    const sceneOrderKey = initialDocuments.map((ds) => ds.sceneId).join('|');
+    const sceneOrderChanged = prevSceneOrderKeyRef.current !== sceneOrderKey;
+    prevSceneOrderKeyRef.current = sceneOrderKey;
+    if (!routeSceneChanged && !sceneOrderChanged) return;
+
+    sceneLayoutRef.current.clear();
     setMeasureVersion((version) => version + 1);
     setMountedSceneIds(seedMountedSceneIds(initialDocuments.map((ds) => ds.sceneId), nextActiveSceneId));
     pendingScrollSceneIdRef.current = nextActiveSceneId;
@@ -303,7 +365,7 @@ export function DocumentSceneEditor({
       easing: Easing.out(Easing.cubic),
       useNativeDriver: Platform.OS !== 'web',
     }).start();
-  }, [activeSceneId, branchSwitchAnim, characters, dirtySceneIds, documentsResetKey, initialDocuments, sceneRecord.id]);
+  }, [activeSceneId, branchSwitchAnim, characters, dirtySceneIds, documentsResetKey, initialDocuments, rebuildStaleFrames, sceneContentLedger, sceneRecord.id, scenes]);
 
   // A store write that touches only characters — the media library, an AI
   // rollback — leaves `scenes` alone, so `documentsResetKey` never changes and
@@ -961,6 +1023,7 @@ export function DocumentSceneEditor({
               branchColor={branchColorBySceneId?.[documentScene.sceneId]}
               isPhone={isPhone}
               isMounted={mountedSceneIds.has(documentScene.sceneId)}
+              contentEpoch={frameEpochBySceneId[documentScene.sceneId] ?? 0}
               cachedHeight={sceneLayoutRef.current.get(documentScene.sceneId)?.height ?? persistedHeights[documentScene.sceneId]}
               onChange={getOnChange(documentScene.sceneId)}
               onCreateNextScene={getOnCreateNextScene(documentScene.sceneId)}

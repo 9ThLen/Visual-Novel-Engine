@@ -40,7 +40,16 @@ interface DocumentSceneFrameProps {
   branchColor?: string;
   isPhone: boolean;
   isMounted: boolean;
-  /** Last known rendered height for this scene, used to seed/replace the frame without a visible jump. */
+  /**
+   * Bumped by the host when the stored scene was rewritten from outside the
+   * editor. The editor is rebuilt from `scene`: a live frame takes no content
+   * from props after it has loaded.
+   */
+  contentEpoch?: number;
+  /**
+   * Last known rendered height of this whole frame, merge-point banner
+   * included; used to seed/replace the editor without a visible jump.
+   */
   cachedHeight?: number;
   onChange: (scene: DocumentScene, characters: Character[]) => void;
   onCreateNextScene: (scene: DocumentScene, characters: Character[]) => void;
@@ -78,6 +87,7 @@ function DocumentSceneFrameImpl({
   branchColor,
   isPhone,
   isMounted,
+  contentEpoch = 0,
   cachedHeight,
   onChange,
   onCreateNextScene,
@@ -99,6 +109,10 @@ function DocumentSceneFrameImpl({
   const [isSceneMenuOpen, setIsSceneMenuOpen] = useState(false);
   const [isMergePointTooltipVisible, setIsMergePointTooltipVisible] = useState(false);
   const frameRef = useRef<View>(null);
+  const contentRef = useRef<View>(null);
+  // Height of whatever sits above the editor inside this frame — the
+  // merge-point banner. State, so the first measurement re-renders the frame.
+  const [leadingHeight, setLeadingHeight] = useState(0);
   const sceneMenuRef = useRef<View>(null);
   const closeSceneMenu = useCallback(() => setIsSceneMenuOpen(false), []);
   const onFrameLayoutRef = useRef(onFrameLayout);
@@ -132,7 +146,11 @@ function DocumentSceneFrameImpl({
   useEffect(() => {
     const node = frameRef.current as unknown as HTMLElement | null;
     if (!node || typeof node.offsetTop !== 'number' || typeof node.offsetHeight !== 'number') return;
-    const report = () => onFrameLayoutRef.current(node.offsetTop, node.offsetHeight);
+    const report = () => {
+      const contentNode = contentRef.current as unknown as HTMLElement | null;
+      if (contentNode && typeof contentNode.offsetTop === 'number') setLeadingHeight(contentNode.offsetTop);
+      onFrameLayoutRef.current(node.offsetTop, node.offsetHeight);
+    };
     report();
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(report);
@@ -146,7 +164,12 @@ function DocumentSceneFrameImpl({
     onFrameLayout(y, height);
   };
 
-  const placeholderHeight = cachedHeight ?? getMinFrameHeight(isPhone);
+  // `cachedHeight` measures the whole frame. Handing it to the editor or the
+  // placeholder as it is would add the banner a second time, the host would
+  // measure the taller frame and hand that back, and a merge-point scene would
+  // grow by one banner on every render of the document.
+  const contentHeight = cachedHeight === undefined ? undefined : Math.max(0, cachedHeight - leadingHeight);
+  const placeholderHeight = contentHeight ?? getMinFrameHeight(isPhone);
   const isMergePoint = (incomingCount ?? 0) >= 2;
   const incomingPathDetails = (incomingPaths ?? []).map((path) => ({
     ...path,
@@ -248,7 +271,7 @@ function DocumentSceneFrameImpl({
           ) : null}
         </View>
       ) : null}
-      <View style={{ width: '100%', position: 'relative' }}>
+      <View ref={contentRef} style={{ width: '100%', position: 'relative' }}>
         <View ref={sceneMenuRef} style={{ position: 'absolute', top: isPhone ? 40 : 56, right: isPhone ? 24 : 82, alignItems: 'flex-end', zIndex: 120 }}>
           <Pressable
             accessibilityRole="button"
@@ -303,6 +326,7 @@ function DocumentSceneFrameImpl({
         </View>
         {isMounted ? (
         <PlateWebViewEditor
+          key={contentEpoch}
           ref={registerEditorRef}
           editorId={editorId}
           scene={scene}
@@ -316,7 +340,7 @@ function DocumentSceneFrameImpl({
           onSelectChoiceOption={onSelectChoiceOption}
           onStartBranchOption={onStartBranchOption}
           isPhone={isPhone}
-          initialHeight={cachedHeight}
+          initialHeight={contentHeight}
           style={{ width: '100%', overflow: 'visible' }}
           onChange={onChange}
           onCreateNextScene={onCreateNextScene}

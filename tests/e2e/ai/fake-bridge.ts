@@ -28,6 +28,31 @@ class DeterministicProvider implements AgentProvider {
         },
       });
       yield { type: 'text', text: 'Proposal resolved.' };
+    } else if (text.includes('[rewrite]')) {
+      // Unlike `[proposal]`, this one changes text the open editor is showing.
+      const context = await this.tools.call('get_scene', { sceneId: 'scene_1' }) as {
+        activeScene?: {
+          revision?: string;
+          timeline?: { id: string; blockType: string; data: Record<string, unknown> }[];
+        };
+      };
+      const step = context.activeScene?.timeline?.find(item => item.blockType === 'text');
+      if (step) {
+        await this.tools.call('propose_scene_patch', {
+          patch: {
+            storyId: 'demo-story-001',
+            sceneId: 'scene_1',
+            expectedRevision: context.activeScene?.revision,
+            explanation: 'Deterministic browser rewrite',
+            operations: [{
+              op: 'replace_step',
+              stepId: step.id,
+              step: { ...step, data: { ...step.data, content: 'AI rewrote this line.' } },
+            }],
+          },
+        });
+      }
+      yield { type: 'text', text: step ? 'Rewrite resolved.' : 'No text step to rewrite.' };
     } else if (text.includes('[long]')) {
       yield { type: 'text', text: 'Long turn started. ' };
       await new Promise<void>(resolve => {

@@ -171,3 +171,85 @@ test('manual editing after an AI change requires cancel or explicit force undo',
   await page.getByRole('button', { name: /Undo anyway|Все одно скасувати/ }).click();
   await expect(page.getByRole('button', { name: /Undo AI changes|Відкотити AI-зміни/ })).toHaveCount(0);
 });
+
+/**
+ * An editor frame is built once and takes no content from props afterwards, so
+ * a scene rewritten in the store used to stay invisible in the open editor —
+ * and the next manual save wrote the old text back over the applied change.
+ * `[rewrite]` changes text the editor is showing; `[proposal]` does not.
+ */
+async function applyRewrite(page: Page): Promise<void> {
+  await page.getByPlaceholder(/Message the assistant|Повідомлення асистенту/).fill('[rewrite]');
+  await page.getByRole('button', { name: /Send|Надіслати/ }).click();
+  await page.getByRole('button', { name: /Apply|Застосувати/ }).click();
+}
+
+/** Where the document is scrolled to and how tall it is; pass a number to scroll first. */
+async function documentScroll(page: Page, scrollTo?: number): Promise<{ top: number; height: number }> {
+  return page.evaluate((target) => {
+    let node: HTMLElement | null = document.querySelector('iframe[title="VN Plate editor"]');
+    while (node && !(node.scrollHeight > node.clientHeight + 4 && getComputedStyle(node).overflowY !== 'visible')) {
+      node = node.parentElement;
+    }
+    if (!node) return { top: -1, height: -1 };
+    if (typeof target === 'number') node.scrollTop = target;
+    return { top: Math.round(node.scrollTop), height: node.scrollHeight };
+  }, scrollTo);
+}
+
+test('an applied AI change shows in the open editor and survives the next manual save', async ({ page }) => {
+  await openAi(page);
+  await pair(page);
+  const editable = page.frameLocator('iframe[title="VN Plate editor"]').first().locator('#editor');
+  await expect(editable).toBeVisible();
+  await expect(editable).not.toContainText('AI rewrote this line.');
+  expect((await documentScroll(page, 300)).top).toBe(300);
+
+  await applyRewrite(page);
+  await expect(editable).toContainText('AI rewrote this line.');
+  // The author stays where they were reading, not thrown back to the top of
+  // the scene. The offset may shift by however much the rewritten text shrank.
+  expect((await documentScroll(page)).top).toBeGreaterThan(0);
+
+  // The editor's own save must leave the frame alone: rebuilding it would drop
+  // the caret on every save. A mark on the frame's window dies with the frame.
+  await editable.evaluate(() => {
+    (window as unknown as { keptAcrossSave?: boolean }).keptAcrossSave = true;
+  });
+  // Keys go through the page: pressing them on the line's locator would focus
+  // that element first, which takes the caret out of the editable.
+  await editable.getByText('AI rewrote this line.').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' manual edit');
+  await expect(editable).toContainText('AI rewrote this line. manual edit');
+  // The frame reports an edit on a debounce, and a save only collects what has
+  // been reported: the sidebar's star is the editor saying it has heard.
+  await expect(page.getByText('* scene_1', { exact: true })).toBeVisible();
+  const scrollBeforeSave = await documentScroll(page);
+  await page.getByRole('button', { name: /Save|Зберегти/ }).click();
+  await expect(page.getByText('* scene_1', { exact: true })).toHaveCount(0);
+  await page.waitForTimeout(1_200);
+  expect(await editable.evaluate(() =>
+    (window as unknown as { keptAcrossSave?: boolean }).keptAcrossSave === true)).toBe(true);
+  // Nor may it move the page: a save used to re-pin the scroll to the top of
+  // the scene, and scenes below a merge point grew taller on every render.
+  await expect.poll(() => documentScroll(page)).toEqual(scrollBeforeSave);
+
+  await page.reload();
+  await expect(editable).toContainText('AI rewrote this line. manual edit');
+});
+
+test('undoing an AI change puts the old text back in the open editor', async ({ page }) => {
+  await openAi(page);
+  await pair(page);
+  const editable = page.frameLocator('iframe[title="VN Plate editor"]').first().locator('#editor');
+  await expect(editable).toBeVisible();
+  const before = await editable.innerText();
+
+  await applyRewrite(page);
+  await expect(editable).toContainText('AI rewrote this line.');
+
+  await page.getByRole('button', { name: /Undo AI changes|Відкотити AI-зміни/ }).click();
+  await expect(editable).not.toContainText('AI rewrote this line.');
+  expect(await editable.innerText()).toBe(before);
+});
