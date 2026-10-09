@@ -7,6 +7,10 @@
  *
  * `setPlateEditorFlushForTests` is the seam a test uses to make a frame refuse
  * to hand over its content — the only way to exercise a failed save.
+ *
+ * `plateEditorFramesForTests` records each frame as it is built. A real frame
+ * takes its content once, at load, so "the frame was rebuilt" is the only way
+ * new content can have reached it — and the thing a test has to observe.
  */
 import React from 'react';
 
@@ -33,6 +37,39 @@ export function setPlateEditorFlushForTests(impl?: FlushImpl): void {
   flushImpl = impl ?? defaultFlush;
 }
 
+export interface PlateEditorFrameForTests {
+  sceneId: string;
+  /** The scene the frame was built from, which is all a real frame ever shows. */
+  builtFrom: PlateWebViewEditorSnapshot['scene'];
+  /** Report an edit to the host, as a frame does after the author types. */
+  reportEdit: (scene: PlateWebViewEditorSnapshot['scene']) => void;
+  /**
+   * Ask the host for the next scene, as the frame's «new scene» command does.
+   * A real frame sends its whole content along, reported or not.
+   */
+  requestNextScene: (scene: PlateWebViewEditorSnapshot['scene']) => void;
+}
+
+let builtFrames: PlateEditorFrameForTests[] = [];
+let reportsOnMount = true;
+
+/**
+ * Every frame built since the last reset, oldest first.
+ *
+ * By default a frame reports its scene as soon as it mounts, which marks the
+ * scene dirty so a save has something to flush. Pass `reportsOnMount: false`
+ * for a frame that stays quiet until the test calls `reportEdit` — the only way
+ * to have a clean editor, which is what an external write normally meets.
+ */
+export function resetPlateEditorFramesForTests(options: { reportsOnMount?: boolean } = {}): void {
+  builtFrames = [];
+  reportsOnMount = options.reportsOnMount ?? true;
+}
+
+export function plateEditorFramesForTests(sceneId?: string): PlateEditorFrameForTests[] {
+  return sceneId ? builtFrames.filter((frame) => frame.sceneId === sceneId) : [...builtFrames];
+}
+
 export function getMinFrameHeight(isPhone: boolean): number {
   return isPhone ? 640 : 760;
 }
@@ -54,8 +91,23 @@ export const PlateWebViewEditor = React.forwardRef(function PlateWebViewEditorSt
   const onChange = props.onChange as ((scene: unknown, characters: unknown[]) => void) | undefined;
   const characters = props.characters as unknown[] | undefined;
   React.useEffect(() => {
-    onChange?.(scene, characters ?? []);
+    if (reportsOnMount) onChange?.(scene, characters ?? []);
   }, [characters, onChange, scene]);
+
+  const onCreateNextScene = props.onCreateNextScene as typeof onChange;
+  const latest = React.useRef({ onChange, onCreateNextScene, characters });
+  latest.current = { onChange, onCreateNextScene, characters };
+  React.useEffect(() => {
+    builtFrames.push({
+      sceneId: scene.sceneId,
+      builtFrom: scene,
+      reportEdit: (edited) => latest.current.onChange?.(edited, latest.current.characters ?? []),
+      requestNextScene: (edited) =>
+        latest.current.onCreateNextScene?.(edited, latest.current.characters ?? []),
+    });
+    // Once per frame: the scene a frame was built from is fixed for its life.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return null;
 });

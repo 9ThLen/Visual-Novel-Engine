@@ -197,7 +197,20 @@ export const Animated = {
     interpolate(config: { outputRange: unknown[] }) { return config.outputRange[0] }
   },
 };
-export const Easing = { linear: (t: number) => t, ease: (t: number) => t };
+// `Animated.timing` above never runs a curve; these only have to exist for code
+// that builds one on its way to starting an animation.
+const easingCurve = (t: number) => t;
+const easingModifier = (curve: (t: number) => number) => curve;
+export const Easing = {
+  linear: easingCurve,
+  ease: easingCurve,
+  quad: easingCurve,
+  cubic: easingCurve,
+  sin: easingCurve,
+  in: easingModifier,
+  out: easingModifier,
+  inOut: easingModifier,
+};
 
 const mock = { Platform, NativeModules, StyleSheet };
 export default mock;

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { useRouter } from 'expo-router';
 
 import {
@@ -7,6 +7,7 @@ import {
 import { buildDocumentsResetKey } from '@/lib/document-editor/document-reset-key';
 import { exitEditorToStoryHome } from '@/lib/document-editor/editor-exit';
 import { resolveNextSceneIdForSave } from '@/lib/document-editor/document-scene';
+import { createSceneContentLedger, type SceneContentLedger } from '@/lib/document-editor/scene-content-ledger';
 import type { BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
 import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { Character } from '@/lib/character-types';
@@ -45,7 +46,8 @@ interface PlateSceneEditorProps {
   audioAssets: VNPlateAudioAsset[];
   protectedCharacterIds?: string[];
   onSave: (sceneRecords: SceneRecord[], characters: Character[]) => void;
-  onCreateNextScene?: (sourceSceneId: string, sceneRecords: SceneRecord[], characters: Character[]) => void;
+  /** Returns whether the records were written; the editor only then counts them as saved. */
+  onCreateNextScene?: (sourceSceneId: string, sceneRecords: SceneRecord[], characters: Character[]) => boolean;
   onDuplicateScene?: (sceneId: string) => void;
   onDeleteScene?: (sceneId: string) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
@@ -94,6 +96,12 @@ export function PlateSceneEditor({
     () => buildDocumentsResetKey(sceneRecord.id, scenes),
     [sceneRecord.id, scenes],
   );
+  // This is where documents become records, so it is the one place that knows
+  // what the editor wrote — and can tell the store's echo of it from a scene
+  // somebody else rewrote.
+  const sceneContentLedgerRef = useRef<SceneContentLedger | null>(null);
+  if (!sceneContentLedgerRef.current) sceneContentLedgerRef.current = createSceneContentLedger(scenes);
+  const sceneContentLedger = sceneContentLedgerRef.current;
 
   const documentsToRecords = (documentScenes: PlateDocumentScene[], nextCharacters: Character[]) => {
     const recordsById = new Map(scenes.map((scene) => [scene.id, scene]));
@@ -108,6 +116,7 @@ export function PlateSceneEditor({
 
   const saveDocuments = (documentScenes: PlateDocumentScene[], nextCharacters: Character[]) => {
     const nextRecords = documentsToRecords(documentScenes, nextCharacters);
+    sceneContentLedger.noteWritten(nextRecords);
     onSave(nextRecords, nextCharacters);
   };
 
@@ -117,7 +126,8 @@ export function PlateSceneEditor({
     nextCharacters: Character[],
   ) => {
     const nextRecords = documentsToRecords(documentScenes, nextCharacters);
-    onCreateNextScene?.(sourceSceneId, nextRecords, nextCharacters);
+    sceneContentLedger.noteWritten(nextRecords);
+    return onCreateNextScene?.(sourceSceneId, nextRecords, nextCharacters) ?? false;
   };
 
   return (
@@ -139,6 +149,7 @@ export function PlateSceneEditor({
       sceneCount={sceneCount}
       initialDocuments={initialDocuments}
       documentsResetKey={documentsResetKey}
+      sceneContentLedger={sceneContentLedger}
       characters={characters}
       backgroundAssets={backgroundAssets}
       videoAssets={videoAssets}
