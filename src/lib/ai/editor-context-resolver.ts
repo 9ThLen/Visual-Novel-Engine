@@ -44,6 +44,8 @@ export interface ResolveSelectionAnchorsInput {
   document: DocumentScene | null;
   characters: Character[];
   blocks: CapturedSelectionBlock[];
+  /** See `ResolveFocusedBlockInput.hasUnsavedChanges`. */
+  hasUnsavedChanges?: boolean;
 }
 
 interface AlignedOrigin {
@@ -71,26 +73,56 @@ function partCount(parts: unknown): number {
 }
 
 /**
+ * The step a technical block holds. The frame sends a block of a kind it has
+ * no form for without one, whatever the type says; the save makes it then.
+ */
+function heldStep(block: DocumentBlock | undefined): TimelineStep | null {
+  return block?.kind === 'technical' ? (block.step as TimelineStep | null) ?? null : null;
+}
+
+/**
+ * Step ids the document itself holds. A block is saved under the id it holds,
+ * so one of these that the store does not have belongs to a block that has not
+ * been saved yet.
+ */
+function stepIdsHeldBy(document: DocumentScene): Set<string> {
+  const ids = new Set<string>();
+  for (const block of document.blocks) {
+    const held = heldStep(block)?.id ?? block.sourceStep?.id;
+    if (held) ids.add(held);
+    if (block.kind !== 'text' && block.kind !== 'dialogue') continue;
+    for (const part of block.parts ?? []) {
+      if (part.type !== 'text') ids.add(part.id);
+    }
+  }
+  return ids;
+}
+
+/**
  * Pairs each document block with the stored steps it produced, or returns null
  * when the captured document and the stored scene are not the same content.
  *
  * Lining up by place and kind shows the two have the same shape, not that a
  * step is the one across from it: two backgrounds swapped in an unsaved draft
- * still line up. So each pair is proven on its own. A block saved before
- * carries its step's id, and then the id is the whole answer. A step whose id
- * this conversion minted has only its place, and is trusted when the stored
- * step there belongs to no other block and holds the same content.
+ * still line up, and so does a new background put where a deleted one was. So
+ * each pair is proven on its own. A block saved before holds its step's id, and
+ * then the id is the whole answer — including "no step" for an id the store has
+ * never seen. Only a step whose id this conversion made up is placed by
+ * position: when the editor has nothing unsaved, the stored step there belongs
+ * to no other block, and the two hold the same content.
  */
 function alignOrigins(
   scene: SceneRecord,
   document: DocumentScene,
   characters: Character[],
+  hasUnsavedChanges: boolean,
 ): AlignedDocument | null {
   const normalized = normalizePlateDocumentScene(document, characters);
   const { timeline, origins, blockSteps } = documentSceneToTimelineWithOrigins(normalized.scene, normalized.characters);
   if (timeline.length !== scene.timeline.length) return null;
 
   const storedIds = new Set(scene.timeline.map((step) => step.id));
+  const heldIds = stepIdsHeldBy(document);
   const carriedIds = new Set(timeline.filter((step) => storedIds.has(step.id)).map((step) => step.id));
   const storedByConvertedId = new Map<string, TimelineStep>();
   for (let index = 0; index < timeline.length; index += 1) {
@@ -101,7 +133,9 @@ function alignOrigins(
     if (text !== null && text !== textOfStep(stored)) return null;
     const isSameStep = carriedIds.has(converted.id)
       ? converted.id === stored.id
-      : !carriedIds.has(stored.id)
+      : !hasUnsavedChanges
+        && !heldIds.has(converted.id)
+        && !carriedIds.has(stored.id)
         && (text !== null || stableStringify(converted.data) === stableStringify(stored.data));
     if (isSameStep) storedByConvertedId.set(converted.id, stored);
   }
@@ -186,7 +220,9 @@ function findByQuote(
 }
 
 export function resolveSelectionAnchors(input: ResolveSelectionAnchorsInput): AiEditorSelectionAnchor[] {
-  const aligned = input.document ? alignOrigins(input.scene, input.document, input.characters) : null;
+  const aligned = input.document
+    ? alignOrigins(input.scene, input.document, input.characters, input.hasUnsavedChanges === true)
+    : null;
   const anchors: AiEditorSelectionAnchor[] = [];
 
   for (const block of input.blocks) {
@@ -216,14 +252,12 @@ export interface ResolveFocusedBlockInput {
   document: DocumentScene | null;
   characters: Character[];
   focus: VNPlateFocusedBlock | null | undefined;
-}
-
-/**
- * The step a technical block holds. The frame sends a block of a kind it has
- * no form for without one, whatever the type says; the save makes it then.
- */
-function heldStep(block: DocumentBlock | undefined): TimelineStep | null {
-  return block?.kind === 'technical' ? (block.step as TimelineStep | null) ?? null : null;
+  /**
+   * The editor holds work the store does not have. The document and the scene
+   * are then two different things, and a step is named only by an id the
+   * document holds: a place in one says nothing about the other.
+   */
+  hasUnsavedChanges?: boolean;
 }
 
 /** The id of the step a block will be saved as, when the block carries one. */
@@ -269,7 +303,9 @@ export function resolveFocusedBlock(input: ResolveFocusedBlockInput): AiEditorFo
   if (!focus) return null;
   const partIndex = focus.partIndex ?? null;
   const block = input.document?.blocks.find((item) => item.id === focus.id);
-  const aligned = input.document ? alignOrigins(input.scene, input.document, input.characters) : null;
+  const aligned = input.document
+    ? alignOrigins(input.scene, input.document, input.characters, input.hasUnsavedChanges === true)
+    : null;
 
   let step = aligned?.stepByBlockPart.get(blockPartKey(focus.id, partIndex)) ?? null;
   if (!step) {

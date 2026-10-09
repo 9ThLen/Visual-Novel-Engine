@@ -4649,6 +4649,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function buildScenePayload() {
+      ensureUniqueLineIds();
       var blocks = Array.prototype.slice.call(editor.children)
         .map(serializeBlock)
         .filter(function(block) {
@@ -4726,6 +4727,30 @@ const EMBEDDED_SCRIPT_BODY = `
 
     function isEditableLineElement(node) {
       return Boolean(node && node.tagName === 'P' && (!node.classList || !node.classList.contains('void-block')));
+    }
+
+    // The browser splits a line by cloning it, id and all. Two lines under one
+    // id are read back as the same saved block and stored as two steps with one
+    // id, which nothing after that can tell apart. The first of them that holds
+    // anything keeps the id; the others get their own, and with it become the
+    // new lines they are.
+    function ensureUniqueLineIds() {
+      var linesById = {};
+      Array.prototype.forEach.call(editor.children, function(node) {
+        if (!isEditableLineElement(node) || !node.dataset.id) return;
+        (linesById[node.dataset.id] = linesById[node.dataset.id] || []).push(node);
+      });
+      Object.keys(linesById).forEach(function(id) {
+        var lines = linesById[id];
+        if (lines.length < 2) return;
+        var keeper = lines.filter(lineHasContent)[0] || lines[0];
+        lines.forEach(function(line) {
+          if (line === keeper) return;
+          line.dataset.id = uid(line.dataset.kind === 'dialogue' ? 'doc_dialogue' : 'doc_text');
+          var token = line.querySelector('.speaker-token');
+          if (token) token.dataset.blockId = line.dataset.id;
+        });
+      });
     }
 
     function selectedVoidBlock() {
@@ -6513,6 +6538,7 @@ const EMBEDDED_SCRIPT_BODY = `
       deselectAllVoidBlocks();
       forgetRecentFocus();
       ensureParagraph();
+      ensureUniqueLineIds();
       transformDialogueIfNeeded();
       transformAllDialogueIfNeeded();
       var slash = currentSlashQuery();

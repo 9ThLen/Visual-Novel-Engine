@@ -367,6 +367,45 @@ test('a request about the selection changes the selected line and no other', asy
   await expect(page.getByText(/↳ «/)).toBeVisible();
 });
 
+/**
+ * Two things that used to make a change unusable for a scene the author had
+ * just typed a new paragraph into.
+ *
+ * Enter splits a line by cloning it, and both halves were saved under the step
+ * id of the paragraph that was loaded; a scene with two steps under one id
+ * fails validation, so no change to it could even be proposed.
+ *
+ * And the frame reports an edit a quarter of a second after it is made, while
+ * the capture on send takes it sooner. That later report must not turn the
+ * scene unsaved again: the next save would give the new paragraph a new step
+ * id, and the change waiting to be applied would be for a revision that no
+ * longer exists.
+ */
+test('a paragraph typed a moment before sending does not make the proposal stale', async ({ page }) => {
+  await openAi(page);
+  await pair(page);
+  await expect(page.getByText(/Connected · Claude Code|Підключено · Claude Code/).first()).toBeVisible();
+  const editable = page.frameLocator('iframe[title="VN Plate editor"]').first().locator('#editor');
+
+  // Written first, so one click is all that stands between the last key and the send.
+  await page.getByPlaceholder(/Message the assistant|Повідомлення асистенту/).fill('[proposal]');
+  await editable.locator('p[data-kind="text"]').first().click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('A paragraph typed just now.');
+  await page.getByRole('button', { name: /Send|Надіслати/ }).click();
+
+  await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toBeVisible();
+  // Long enough for the frame's own report to have come and gone.
+  await page.waitForTimeout(600);
+  await expect(page.getByText('* scene_1', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: /Apply|Застосувати/ }).click();
+  await expect(page.getByRole('button', { name: /Undo AI changes|Відкотити AI-зміни/ })).toBeVisible();
+
+  await page.reload();
+  await expect(editable).toContainText('A paragraph typed just now.');
+});
+
 test('the assistant is told which block the author has open', async ({ page }) => {
   await openAi(page);
   await pair(page);

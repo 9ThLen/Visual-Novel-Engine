@@ -139,6 +139,25 @@ describe('buildEditorContextFromCapture', () => {
 
     expect(context).toMatchObject({ kind: 'live', hasUnsavedChanges: true, scene: { source: 'scroll' } });
   });
+
+  // The paragraph was typed, not loaded: it holds no step id, and with unsaved
+  // work its place in the document proves nothing.
+  it('does not call an address exact on the strength of a place while work is unsaved', () => {
+    const { scene, document } = savedScene();
+    const typed: DocumentScene = {
+      ...document,
+      blocks: document.blocks.map((block) => (block.kind === 'text' && block.content
+        ? { id: 'blk_text', kind: 'text' as const, content: block.content }
+        : block)),
+    };
+    const selection = selectionOf(typed);
+
+    const saved = build(captureOf(typed, selection), scene, 'live');
+    const unsaved = build({ ...captureOf(typed, selection), hasUnsavedChanges: true }, scene, 'live');
+
+    expect(saved.selection?.anchors[0].match).toBe('exact');
+    expect(unsaved.selection?.anchors[0]).toMatchObject({ match: 'quote', stepId: saved.selection?.anchors[0].stepId });
+  });
 });
 
 describe('what a context points at', () => {

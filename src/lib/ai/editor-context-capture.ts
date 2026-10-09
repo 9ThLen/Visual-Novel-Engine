@@ -51,12 +51,9 @@ export interface BuildEditorContextFromCaptureInput {
 export function buildEditorContextFromCapture(input: BuildEditorContextFromCaptureInput): AiEditorContext {
   const { capture, scene } = input;
   const selection = capture.selection;
-  const anchors = scene && selection
-    ? resolveSelectionAnchors({ scene, document: capture.document, characters: input.characters, blocks: selection.blocks })
-    : [];
-  const focus = scene
-    ? resolveFocusedBlock({ scene, document: capture.document, characters: input.characters, focus: selection?.focus })
-    : null;
+  const captured = { document: capture.document, characters: input.characters, hasUnsavedChanges: capture.hasUnsavedChanges };
+  const anchors = scene && selection ? resolveSelectionAnchors({ scene, ...captured, blocks: selection.blocks }) : [];
+  const focus = scene ? resolveFocusedBlock({ scene, ...captured, focus: selection?.focus }) : null;
 
   return buildAiEditorContext({
     snapshotId: input.snapshotId,
