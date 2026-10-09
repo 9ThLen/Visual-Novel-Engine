@@ -80,6 +80,35 @@ describe('scene patch store adapter', () => {
     expect(createStorySnapshot).not.toHaveBeenCalled();
   });
 
+  it('rejects the patch when the scene changes while the snapshot is being created', async () => {
+    const record = scene();
+    const saveSceneRecord = vi.fn();
+    // The author edits the scene during the await, after the first validation passed.
+    const createStorySnapshot = vi.fn(async () => {
+      useAppStore.setState({ sceneRecordsByStory: { 'story-1': { 'scene-1': { ...record, description: 'Written by the author' } } } });
+      return { id: 'snap-1', name: 'AI', createdAt: 1, sceneCount: 1, words: 0, automatic: true };
+    });
+    useAppStore.setState({ sceneRecordsByStory: { 'story-1': { 'scene-1': record } }, characterLibraries: {}, imageAssetIdsByStory: {}, mediaLibrary: [], createStorySnapshot, saveSceneRecord });
+
+    expect(await applyAiScenePatchToStore(patch(record))).toMatchObject({ ok: false, code: 'STALE_REVISION' });
+    expect(createStorySnapshot).toHaveBeenCalledTimes(1);
+    expect(saveSceneRecord).not.toHaveBeenCalled();
+    expect(useAppStore.getState().sceneRecordsByStory['story-1']['scene-1']).toMatchObject({ name: 'Before', description: 'Written by the author' });
+  });
+
+  it('reports a missing scene when it is deleted while the snapshot is being created', async () => {
+    const record = scene();
+    const saveSceneRecord = vi.fn();
+    const createStorySnapshot = vi.fn(async () => {
+      useAppStore.setState({ sceneRecordsByStory: { 'story-1': {} } });
+      return { id: 'snap-1', name: 'AI', createdAt: 1, sceneCount: 1, words: 0, automatic: true };
+    });
+    useAppStore.setState({ sceneRecordsByStory: { 'story-1': { 'scene-1': record } }, characterLibraries: {}, imageAssetIdsByStory: {}, mediaLibrary: [], createStorySnapshot, saveSceneRecord });
+
+    expect(await applyAiScenePatchToStore(patch(record))).toMatchObject({ ok: false, code: 'SCENE_NOT_FOUND' });
+    expect(saveSceneRecord).not.toHaveBeenCalled();
+  });
+
   it('delegates rollback to snapshot restore', async () => {
     const restoreStorySnapshot = vi.fn().mockResolvedValue(true);
     useAppStore.setState({ restoreStorySnapshot });
