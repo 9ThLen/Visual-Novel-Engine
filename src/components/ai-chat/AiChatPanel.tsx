@@ -141,6 +141,8 @@ function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; 
     pendingCapability,
     pendingChangeSet,
     pendingPatch,
+    pendingFromExternalAgent,
+    externalAgentAccess,
     pendingProviderSwitch,
     provider,
     resolveCapabilityDecision,
@@ -220,6 +222,8 @@ function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; 
     token={aiBridgeSettings.token}
     url={aiBridgeSettings.url || bridgeConfig.url}
     permissions={normalizeAiPermissions(settings.aiPermissions)}
+    externalAgentAccess={externalAgentAccess}
+    onExternalAgentAccessChange={(value) => updateSettings({ externalAgentAccess: value })}
     capabilities={capabilities}
     requestedModel={aiBridgeSettings.requestedModel}
     requestedTokenBudget={aiBridgeSettings.requestedTokenBudget}
@@ -319,6 +323,10 @@ function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; 
 
         {status === 'thinking' ? (
           <Text style={{ color: colors.muted, fontSize: 12, fontStyle: 'italic' }}>{t('aiChat.thinking')}</Text>
+        ) : null}
+
+        {pendingFromExternalAgent ? (
+          <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>{t('aiChat.external.proposalLabel')}</Text>
         ) : null}
 
         {pendingPatch ? (

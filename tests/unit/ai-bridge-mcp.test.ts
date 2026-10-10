@@ -502,6 +502,20 @@ describe('a proposal from an external agent', () => {
     });
   });
 
+  // The author can take the agent's access away while its proposal is up. The
+  // app says so, and the agent is told that, not merely that the card went.
+  it('reads cancelled with the app’s own reason when the author took the access away', async () => {
+    const { tab, agent, binding } = await setUp();
+    const proposalId = String((await agent.call('propose_scene_patch', { binding, patch: patch() })).value.proposalId);
+
+    tab.answer(payloadOf(await tab.message('tool_call', 1)), { ok: true, result: { accepted: false, allowed: false, reason: 'cancelled', detail: 'ACCESS_REVOKED' } });
+    await tab.message('tool_result_ack');
+
+    expect((await agent.call('get_proposal_status', { binding, proposalId })).value).toEqual({
+      proposalId, status: 'cancelled', reason: 'ACCESS_REVOKED', hint: 'Read the current state again before proposing anything else.',
+    });
+  });
+
   it('reads unknown when the editor never said how it ended', async () => {
     const { tab, agent, binding } = await setUp({ authorWaitTtlMs: 40, authorWaitGraceMs: 10 });
     const proposed = await agent.call('propose_scene_patch', { binding, patch: patch() });

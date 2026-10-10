@@ -67,11 +67,15 @@ export interface AiChatPendingCapability {
   };
 }
 
-export type AiPendingInteraction =
+export type AiPendingInteraction = (
   | { kind: 'scene_patch'; storyId: string; value: AiChatPendingPatch }
   | { kind: 'appearance'; storyId: string; value: AiChatPendingAppearance }
   | { kind: 'changeset'; storyId: string; value: AiChatPendingChangeSet }
-  | { kind: 'capability'; storyId: string; value: AiChatPendingCapability };
+  | { kind: 'capability'; storyId: string; value: AiChatPendingCapability }
+) & {
+  /** Set when an agent outside the app proposed it; the card says so. */
+  origin?: 'external';
+};
 
 /**
  * The two change kinds roll back differently: scenes restore a story snapshot,

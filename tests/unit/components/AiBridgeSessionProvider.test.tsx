@@ -270,8 +270,9 @@ describe('the assistant’s session, held by the editor', () => {
     expect(composer().value).toBe('');
   });
 
-  // The switch that lets an agent outside the app in is not built yet. Until
-  // it is, the answer is no — the bridge can offer MCP before the app can.
+  // An agent outside the app is let in by the author, and has not been here:
+  // the answer is no, whatever the bridge offers. What the switch does when it
+  // is turned is in AiExternalAgent.test.tsx.
   it('refuses a call an external agent made through the bridge, a read as much as a proposal', async () => {
     render(<Editor />);
     openTab('AI');

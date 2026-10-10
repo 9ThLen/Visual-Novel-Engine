@@ -16,6 +16,7 @@ describe('normalizeUserSettings', () => {
       aiPermissions: {
         scene_edit: 'confirm', appearance: 'confirm', changeset: 'confirm', image_generate: 'confirm',
       },
+      externalAgentAccess: 'off',
     });
   });
 
@@ -45,6 +46,7 @@ describe('normalizeUserSettings', () => {
       aiPermissions: {
         scene_edit: 'confirm', appearance: 'confirm', changeset: 'confirm', image_generate: 'confirm',
       },
+      externalAgentAccess: 'off',
     });
   });
 });

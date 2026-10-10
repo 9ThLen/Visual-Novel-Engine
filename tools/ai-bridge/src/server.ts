@@ -726,7 +726,11 @@ function interactionOutcome(result: Record<string, unknown> | null): FinishedInt
   const answer = typeof result.result === 'object' && result.result !== null ? result.result as Record<string, unknown> : {};
   if (answer.accepted === true || answer.allowed === true) return { status: 'applied' };
   const reason = typeof answer.reason === 'string' ? answer.reason : undefined;
-  if (reason === 'expired' || reason === 'cancelled' || reason === 'unknown') return { status: reason };
+  if (reason === 'expired' || reason === 'cancelled' || reason === 'unknown') {
+    // The app says why when it can: the author taking an agent's access away
+    // is a cancellation the agent has to be able to tell from any other.
+    return { status: reason, ...(typeof answer.detail === 'string' ? { reason: answer.detail.slice(0, 100) } : {}) };
+  }
   return { status: 'rejected', ...(reason ? { reason } : {}) };
 }
 

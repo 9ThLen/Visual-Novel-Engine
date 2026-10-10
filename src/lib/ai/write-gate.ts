@@ -10,13 +10,13 @@
  * awaited in between. Once the write has happened it stands, whatever arrives
  * afterwards.
  */
-export type WriteRefusal = 'CANCELLED' | 'EXPIRED' | 'PERMISSION_DENIED' | 'SESSION_ENDED';
+export type WriteRefusal = 'CANCELLED' | 'EXPIRED' | 'PERMISSION_DENIED' | 'SESSION_ENDED' | 'ACCESS_REVOKED';
 
 /** Returns why the change must not be written, or null to let it through. */
 export type WriteGate = () => WriteRefusal | null;
 
 export function isWriteRefusal(code: string): code is WriteRefusal {
-  return code === 'CANCELLED' || code === 'EXPIRED' || code === 'PERMISSION_DENIED' || code === 'SESSION_ENDED';
+  return code === 'CANCELLED' || code === 'EXPIRED' || code === 'PERMISSION_DENIED' || code === 'SESSION_ENDED' || code === 'ACCESS_REVOKED';
 }
 
 const REFUSAL_MESSAGE: Record<WriteRefusal, string> = {
@@ -24,6 +24,7 @@ const REFUSAL_MESSAGE: Record<WriteRefusal, string> = {
   EXPIRED: 'The request for this change ran out of time',
   PERMISSION_DENIED: 'This kind of change is blocked',
   SESSION_ENDED: 'The session this change was asked for in has ended',
+  ACCESS_REVOKED: 'The author no longer lets an external agent propose this',
 };
 
 export function writeRefusalMessage(refusal: WriteRefusal): string {

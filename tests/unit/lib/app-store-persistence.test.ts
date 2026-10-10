@@ -93,6 +93,7 @@ function makeState(): AppStorePersistenceState {
       aiPermissions: {
         scene_edit: 'confirm', appearance: 'confirm', changeset: 'confirm', image_generate: 'confirm',
       },
+      externalAgentAccess: 'off',
     },
     aiBridgeSettings: { url: '', token: '', disabled: false },
     saveSlots: [],

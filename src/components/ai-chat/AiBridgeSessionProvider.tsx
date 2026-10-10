@@ -40,9 +40,9 @@ import {
   type AttachmentRef,
   type StoredChatAttachment,
 } from '@/lib/ai/attachments';
-import { normalizeAiPermissions, resolveEffectiveCapability, type AiCapability } from '@/lib/ai/permissions';
+import { normalizeAiPermissions, normalizeExternalAgentAccess, resolveCapability, resolveEffectiveCapability, type AiCapability } from '@/lib/ai/permissions';
 import { isWriteRefusal, type WriteGate, type WriteRefusal } from '@/lib/ai/write-gate';
-import { createAppToolExecutor, refusalReason } from '@/lib/ai/app-tool-executor';
+import { createAppToolExecutor, refusalDetail, refusalReason } from '@/lib/ai/app-tool-executor';
 import { resolveAiBridgeConfig, selectAiBridgeProvider, updateActiveAiBridgeProfile } from '@/lib/ai/bridge-config';
 import { aiProviderLabel, isBridgeProvider } from '@/lib/ai/providers';
 import { buildAiStoryContext } from '@/lib/ai/story-context';
@@ -167,9 +167,13 @@ function resolveBridgeRuntimeError(payload: Record<string, unknown>): BridgeRunt
 interface AiInteraction {
   /** The capability was narrowed for this call because the turn carries untrusted attachments. */
   untrusted: boolean;
+  /** An agent outside the app made the call, through the bridge's MCP endpoint. */
+  external: boolean;
   expiresAt: number;
   timer: ReturnType<typeof setTimeout> | null;
   ended: 'cancelled' | 'expired' | null;
+  /** What narrows `cancelled`: the author took the agent's access away. */
+  detail?: 'ACCESS_REVOKED';
 }
 
 export interface AiBridgeSessionProps {
@@ -194,9 +198,16 @@ export interface AiBridgeSessionProps {
    * Read once, when the session for the story begins.
    */
   startOnMount?: boolean;
+  /**
+   * Whether the editor can show the author a card right now. It cannot on a
+   * phone, where there is no rail, or in focus mode, where the rail is hidden;
+   * a proposal from an external agent is then refused at once instead of
+   * waiting where nobody will see it. True where nothing says otherwise.
+   */
+  approvalSurface?: boolean;
 }
 
-function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, captureEditorContext, startOnMount }: AiBridgeSessionProps) {
+function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, captureEditorContext, startOnMount, approvalSurface }: AiBridgeSessionProps) {
   const [started, setStarted] = useState(startOnMount === true);
   const start = useCallback(() => setStarted(true), []);
   const { t, language } = useI18n();
@@ -226,14 +237,15 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
   const setStatus = useAiChatStore((s) => s.setStatus);
   const setPendingInteraction = useAiChatStore((s) => s.setPendingInteraction);
   const cancelPendingInteraction = useAiChatStore((s) => s.cancelPendingInteraction);
-  const setPendingPatch = useCallback((value: NonNullable<typeof pendingPatch> | null) => {
-    setPendingInteraction(value ? { kind: 'scene_patch', storyId, value } : null);
+  // `origin` marks a card an external agent put up; the card says whose it is.
+  const setPendingPatch = useCallback((value: NonNullable<typeof pendingPatch> | null, origin?: 'external') => {
+    setPendingInteraction(value ? { kind: 'scene_patch', storyId, value, ...(origin ? { origin } : {}) } : null);
   }, [setPendingInteraction, storyId]);
-  const setPendingAppearance = useCallback((value: NonNullable<typeof pendingAppearance> | null) => {
-    setPendingInteraction(value ? { kind: 'appearance', storyId, value } : null);
+  const setPendingAppearance = useCallback((value: NonNullable<typeof pendingAppearance> | null, origin?: 'external') => {
+    setPendingInteraction(value ? { kind: 'appearance', storyId, value, ...(origin ? { origin } : {}) } : null);
   }, [setPendingInteraction, storyId]);
-  const setPendingChangeSet = useCallback((value: AiChatPendingChangeSet | null) => {
-    setPendingInteraction(value ? { kind: 'changeset', storyId, value } : null);
+  const setPendingChangeSet = useCallback((value: AiChatPendingChangeSet | null, origin?: 'external') => {
+    setPendingInteraction(value ? { kind: 'changeset', storyId, value, ...(origin ? { origin } : {}) } : null);
   }, [setPendingInteraction, storyId]);
   const setPendingCapability = useCallback((value: AiChatPendingCapability | null) => {
     setPendingInteraction(value ? { kind: 'capability', storyId, value } : null);
@@ -294,6 +306,11 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
    * draft to be saved, or for a snapshot, can outlast a closed editor.
    */
   const endedSessionsRef = useRef(0);
+  /** Whose card is up: an external agent's, or the chat's. */
+  const cardOrigin = useCallback((): 'external' | undefined => {
+    const toolCallId = cardCallIdRef.current;
+    return toolCallId && interactionsRef.current.get(toolCallId)?.external ? 'external' : undefined;
+  }, []);
   /** Forgets a call that is over; with no id, the one behind the card on screen. */
   const settleInteraction = useCallback((toolCallId: string | null = cardCallIdRef.current) => {
     if (!toolCallId) return;
@@ -303,25 +320,31 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     if (cardCallIdRef.current === toolCallId) cardCallIdRef.current = null;
   }, []);
 
-  /** A call was withdrawn or ran out of time: nothing more is written for it, and its card goes. */
-  const endInteraction = useCallback((toolCallId: string, how: 'cancelled' | 'expired') => {
+  /**
+   * A call was withdrawn or ran out of time: nothing more is written for it,
+   * and its card goes. `detail` says the author took an external agent's
+   * access away, which the agent is told apart from any other withdrawal.
+   */
+  const endInteraction = useCallback((toolCallId: string, how: 'cancelled' | 'expired', detail?: 'ACCESS_REVOKED') => {
     const interaction = interactionsRef.current.get(toolCallId);
     if (!interaction || interaction.ended) return;
     interaction.ended = how;
+    interaction.detail = detail;
     // With a write on its way, the gate in front of that write stops it and
     // its handler takes the card down. Without a card there is nothing to take down.
     if (cardCallIdRef.current !== toolCallId || mutationInFlightRef.current) return;
-    patchDecisionRef.current?.({ accepted: false, allowed: false, reason: how });
+    patchDecisionRef.current?.({ accepted: false, allowed: false, reason: how, ...(detail ? { detail } : {}) });
     patchDecisionRef.current = null;
     settleInteraction(toolCallId);
     cancelPendingInteraction(storyId);
-    addMessage('system', t(how === 'expired' ? 'aiChat.proposalExpired' : 'aiChat.proposalWithdrawn'));
+    addMessage('system', t(detail ? 'aiChat.proposalAccessRevoked' : how === 'expired' ? 'aiChat.proposalExpired' : 'aiChat.proposalWithdrawn'));
   }, [addMessage, cancelPendingInteraction, settleInteraction, storyId, t]);
 
-  const beginInteraction = useCallback((toolCallId: string, ttlMs: number | undefined, untrusted: boolean, card: boolean) => {
+  const beginInteraction = useCallback((toolCallId: string, ttlMs: number | undefined, untrusted: boolean, card: boolean, external = false) => {
     if (card) settleInteraction();
     interactionsRef.current.set(toolCallId, {
       untrusted,
+      external,
       ended: null,
       expiresAt: ttlMs === undefined ? Number.POSITIVE_INFINITY : Date.now() + ttlMs,
       timer: ttlMs === undefined ? null : setTimeout(() => endInteraction(toolCallId, 'expired'), ttlMs),
@@ -342,10 +365,18 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     return () => {
       if (endedSessionsRef.current !== session) return 'SESSION_ENDED';
       const interaction = toolCallId ? interactionsRef.current.get(toolCallId) : undefined;
-      if (interaction?.ended) return interaction.ended === 'expired' ? 'EXPIRED' : 'CANCELLED';
+      if (interaction?.ended) {
+        return interaction.ended === 'expired' ? 'EXPIRED' : interaction.detail === 'ACCESS_REVOKED' ? 'ACCESS_REVOKED' : 'CANCELLED';
+      }
       if (interaction && Date.now() >= interaction.expiresAt) return 'EXPIRED';
-      const permissions = normalizeAiPermissions(useAppStore.getState().settings.aiPermissions);
-      return resolveEffectiveCapability(capability, permissions, interaction?.untrusted === true) === 'blocked' ? 'PERMISSION_DENIED' : null;
+      const settings = useAppStore.getState().settings;
+      const blocked = resolveEffectiveCapability(capability, normalizeAiPermissions(settings.aiPermissions), interaction?.untrusted === true) === 'blocked';
+      // For an agent outside the app both are the author taking access away:
+      // the switch that lets it propose, and the kind of change it proposed.
+      if (interaction?.external) {
+        return blocked || normalizeExternalAgentAccess(settings.externalAgentAccess) !== 'propose' ? 'ACCESS_REVOKED' : null;
+      }
+      return blocked ? 'PERMISSION_DENIED' : null;
     };
   }, []);
 
@@ -393,8 +424,32 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     refusal === 'EXPIRED' ? 'aiChat.proposalExpired'
       : refusal === 'CANCELLED' ? 'aiChat.proposalWithdrawn'
         : refusal === 'SESSION_ENDED' ? 'aiChat.applySessionEnded'
-          : 'aiChat.applyBlocked',
+          : refusal === 'ACCESS_REVOKED' ? 'aiChat.applyAccessRevoked'
+            : 'aiChat.applyBlocked',
   ), [t]);
+
+  /** Read through a ref: the editor entering focus mode must not reconnect the bridge. */
+  const approvalSurfaceRef = useRef(approvalSurface !== false);
+  approvalSurfaceRef.current = approvalSurface !== false;
+
+  /**
+   * The author can take an external agent's access away while its proposal is
+   * on screen: by turning proposals off, or by blocking the kind of change it
+   * proposed. The card goes at once and the agent is told why — it is not left
+   * up for a click that would then be refused.
+   */
+  const externalAgentAccess = normalizeExternalAgentAccess(settings.externalAgentAccess);
+  const pendingKind = pendingInteraction?.storyId === storyId ? pendingInteraction.kind : null;
+  useEffect(() => {
+    const toolCallId = cardCallIdRef.current;
+    if (!toolCallId || !interactionsRef.current.get(toolCallId)?.external) return;
+    const capability: AiCapability | null = pendingKind === 'scene_patch' ? 'scene_edit'
+      : pendingKind === 'appearance' ? 'appearance'
+        : pendingKind === 'changeset' ? 'changeset'
+          : null;
+    const blocked = capability !== null && resolveCapability(capability, normalizeAiPermissions(settings.aiPermissions)) === 'blocked';
+    if (externalAgentAccess !== 'propose' || blocked) endInteraction(toolCallId, 'cancelled', 'ACCESS_REVOKED');
+  }, [endInteraction, externalAgentAccess, pendingKind, settings.aiPermissions]);
 
   /**
    * The bridge effect below owns the tool handlers and must not re-run when the
@@ -557,9 +612,13 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
         beginInteraction,
         settleInteraction,
         writeGate,
-        showScenePatch: setPendingPatch,
-        showAppearancePatch: setPendingAppearance,
-        showChangeSet: setPendingChangeSet,
+        hasApprovalSurface: () => approvalSurfaceRef.current,
+        interactionPending: () => cardCallIdRef.current !== null || mutationInFlightRef.current
+          || useAiChatStore.getState().pendingInteraction?.storyId === storyId,
+        // The card is the call that was just begun; whose it is was said then.
+        showScenePatch: pending => setPendingPatch(pending, cardOrigin()),
+        showAppearancePatch: pending => setPendingAppearance(pending, cardOrigin()),
+        showChangeSet: pending => setPendingChangeSet(pending, cardOrigin()),
         showCapability: setPendingCapability,
         waitForDecision: () => new Promise((resolve) => { patchDecisionRef.current = resolve; }),
         enqueueMutation: task => enqueueMutationRef.current(task),
@@ -581,7 +640,7 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
       client.close();
       bridgeRef.current = null;
     };
-  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.preferredProvider, bridgeConfig.codexBetaConsent, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, started, addMessage, beginInteraction, buildEditorContext, endInteraction, endSession, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, settleInteraction, t, writeGate]);
+  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.preferredProvider, bridgeConfig.codexBetaConsent, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, started, addMessage, beginInteraction, buildEditorContext, cardOrigin, endInteraction, endSession, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, settleInteraction, t, writeGate]);
 
   const sendMessage = useCallback(async () => {
     const text = inputText.trim();
@@ -856,7 +915,7 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
                 ? t('aiChat.applyFailedValidation', { errors: result.errors.join('; ') })
                 : t('aiChat.applyFailedGeneric');
           addMessage('system', message);
-          decision = { accepted: false, reason: refusalReason(result.code) };
+          decision = { accepted: false, reason: refusalReason(result.code), ...refusalDetail(result.code) };
         }
       } finally {
         finish(() => setPendingPatch(null), decision);
@@ -892,7 +951,7 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
               ? t('aiChat.applyFailedValidation', { errors: result.errors.join('; ') })
               : t('aiChat.applyFailedGeneric');
         addMessage('system', message);
-        decision = { accepted: false, reason: refusalReason(result.code) };
+        decision = { accepted: false, reason: refusalReason(result.code), ...refusalDetail(result.code) };
       }
     } finally {
       setApplying(false);
@@ -924,7 +983,7 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
           addMessage('system', isWriteRefusal(result.code)
             ? refusalMessage(result.code)
             : result.code === 'STALE_REVISION' ? t('aiChat.applyFailedStale') : t('aiChat.applyFailedValidation', { errors: result.message }));
-          decision = { accepted: false, reason: refusalReason(result.code) };
+          decision = { accepted: false, reason: refusalReason(result.code), ...refusalDetail(result.code) };
         }
       } finally {
         finish(() => setPendingChangeSet(null), decision);
@@ -1097,6 +1156,9 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     pendingAppearance,
     pendingChangeSet,
     pendingCapability,
+    /** The card on screen was put up by an agent outside the app. */
+    pendingFromExternalAgent: pendingInteraction?.storyId === storyId && pendingInteraction.origin === 'external',
+    externalAgentAccess,
     lastAppliedChange,
     addMessageToStore,
     setActiveStory,
@@ -1232,7 +1294,8 @@ function sameEditor(a: AiBridgeSessionProps, b: AiBridgeSessionProps): boolean {
     && a.activeSceneId === b.activeSceneId
     && a.beforeStoryMutation === b.beforeStoryMutation
     && a.captureEditorContext === b.captureEditorContext
-    && a.startOnMount === b.startOnMount;
+    && a.startOnMount === b.startOnMount
+    && a.approvalSurface === b.approvalSurface;
 }
 
 /**
@@ -1299,7 +1362,7 @@ export function AiBridgeSessionHost({ children }: { children: React.ReactNode })
 }
 
 /** Tells the host this editor is open, and keeps it told where the author is. */
-function OpenEditorScope({ children, storyId, activeSceneId, beforeStoryMutation, captureEditorContext, startOnMount, focused }: AiBridgeSessionProps & {
+function OpenEditorScope({ children, storyId, activeSceneId, beforeStoryMutation, captureEditorContext, startOnMount, approvalSurface, focused }: AiBridgeSessionProps & {
   focused: boolean;
   children: React.ReactNode;
 }) {
@@ -1320,8 +1383,8 @@ function OpenEditorScope({ children, storyId, activeSceneId, beforeStoryMutation
 
   useEffect(() => () => editors?.remove(id), [editors, id]);
   useEffect(() => {
-    editors?.put(id, { storyId, activeSceneId, beforeStoryMutation: barrier, captureEditorContext: capture, startOnMount }, focused);
-  }, [activeSceneId, barrier, capture, editors, focused, id, startOnMount, storyId]);
+    editors?.put(id, { storyId, activeSceneId, beforeStoryMutation: barrier, captureEditorContext: capture, startOnMount, approvalSurface }, focused);
+  }, [activeSceneId, approvalSurface, barrier, capture, editors, focused, id, startOnMount, storyId]);
 
   const scope = useMemo(() => ({ id, storyId }), [id, storyId]);
   return <EditorScopeContext.Provider value={scope}>{children}</EditorScopeContext.Provider>;

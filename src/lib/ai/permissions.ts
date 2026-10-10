@@ -25,6 +25,19 @@ export function formatUsdEstimate(value: unknown): string | null {
   return min === max ? `$${min.toFixed(3)}` : `$${min.toFixed(3)}–$${max.toFixed(3)}`;
 }
 
+/**
+ * What an agent outside the app may do in the editor — one the author runs
+ * themselves and connects through the bridge's MCP endpoint. Off unless the
+ * author turns it on. `read` lets it read the story; `propose` also lets it
+ * put a change in front of the author. At no level does it write by itself.
+ */
+export const EXTERNAL_AGENT_ACCESS_LEVELS = ['off', 'read', 'propose'] as const;
+export type ExternalAgentAccess = typeof EXTERNAL_AGENT_ACCESS_LEVELS[number];
+
+export function normalizeExternalAgentAccess(value: unknown): ExternalAgentAccess {
+  return EXTERNAL_AGENT_ACCESS_LEVELS.includes(value as ExternalAgentAccess) ? value as ExternalAgentAccess : 'off';
+}
+
 export const defaultAiPermissions: AiPermissions = {
   scene_edit: 'confirm',
   appearance: 'confirm',

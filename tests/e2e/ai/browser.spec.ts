@@ -518,8 +518,8 @@ test('an editor opened on top of another shares the assistant’s session', asyn
 /**
  * The bridge offers the editor to an agent outside the app over MCP, on the
  * port the editor itself is connected to. Until the author lets such an agent
- * in — and the switch for that is not built yet — the editor's answer to it is
- * no, while the built-in assistant goes on working over the same connection.
+ * in, the editor's answer to it is no, while the built-in assistant goes on
+ * working over the same connection.
  */
 test('an external agent is refused by the editor, and the chat is not disturbed', async ({ page, request }) => {
   const mcp = `${process.env.AI_E2E_BRIDGE_HTTP ?? 'http://127.0.0.1:18787'}/mcp`;
