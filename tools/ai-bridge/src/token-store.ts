@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { bridgeTokenFile } from './config-paths';
+import { bridgeMcpTokenFile, bridgeTokenFile } from './config-paths';
 
 /**
  * The pairing token, kept across restarts.
@@ -23,17 +23,30 @@ export function generateBridgeToken(): string {
 
 export class BridgeTokenError extends Error {}
 
-function invalid(path: string, detail: string): never {
+/**
+ * The two tokens the bridge keeps: the one the editor pairs with, and the one
+ * an external agent presents at the MCP endpoint. They are stored the same way
+ * and never stand in for each other.
+ */
+export type BridgeTokenKind = 'pairing' | 'mcp';
+
+const TOKEN_FILES: Record<BridgeTokenKind, { file: (dir: string) => string; reset: string; holder: string }> = {
+  pairing: { file: bridgeTokenFile, reset: '--reset-token', holder: 'the editor' },
+  mcp: { file: bridgeMcpTokenFile, reset: '--reset-mcp-token', holder: 'your agent' },
+};
+
+function invalid(path: string, detail: string, kind: BridgeTokenKind = 'pairing'): never {
+  const { reset, holder } = TOKEN_FILES[kind];
   throw new BridgeTokenError(
     `The bridge token file is ${detail}: ${path}\n`
-    + 'Refusing to replace it silently — a new token would disconnect the editor without saying why.\n'
-    + 'Run the bridge with --reset-token to issue a new one, then re-pair the editor.',
+    + `Refusing to replace it silently — a new token would disconnect ${holder} without saying why.\n`
+    + `Run the bridge with ${reset} to issue a new one, then ${kind === 'pairing' ? 're-pair the editor' : 'give it to your agent'}.`,
   );
 }
 
 /** Reads the stored token, or `null` when none has been issued yet. */
-export function readStoredToken(dir: string): string | null {
-  const path = bridgeTokenFile(dir);
+export function readStoredToken(dir: string, kind: BridgeTokenKind = 'pairing'): string | null {
+  const path = TOKEN_FILES[kind].file(dir);
   let raw: string;
   try {
     raw = readFileSync(path, 'utf8');
@@ -42,8 +55,8 @@ export function readStoredToken(dir: string): string | null {
     throw error;
   }
   const token = raw.trim();
-  if (!token) invalid(path, 'empty');
-  if (!TOKEN_PATTERN.test(token)) invalid(path, 'not a valid token');
+  if (!token) invalid(path, 'empty', kind);
+  if (!TOKEN_PATTERN.test(token)) invalid(path, 'not a valid token', kind);
   return token;
 }
 
@@ -58,19 +71,20 @@ export function readStoredToken(dir: string): string | null {
  * inherits the ACL of the per-user directory it sits in — which is protection
  * worth verifying on a real machine rather than assuming here.
  */
-export function readOrCreateToken(dir: string): { token: string; created: boolean } {
-  const existing = readStoredToken(dir);
+export function readOrCreateToken(dir: string, kind: BridgeTokenKind = 'pairing'): { token: string; created: boolean } {
+  const existing = readStoredToken(dir, kind);
   if (existing) return { token: existing, created: false };
 
+  const path = TOKEN_FILES[kind].file(dir);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const token = generateBridgeToken();
   try {
-    writeFileSync(bridgeTokenFile(dir), `${token}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    writeFileSync(path, `${token}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
     return { token, created: true };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    const won = readStoredToken(dir);
-    if (!won) invalid(bridgeTokenFile(dir), 'unreadable after a concurrent write');
+    const won = readStoredToken(dir, kind);
+    if (!won) invalid(path, 'unreadable after a concurrent write', kind);
     return { token: won, created: false };
   }
 }
@@ -83,9 +97,9 @@ export function readOrCreateToken(dir: string): { token: string; created: boolea
  * restarted. That restart is what actually closes the sessions authenticated
  * with the old token.
  */
-export function resetStoredToken(dir: string): string {
+export function resetStoredToken(dir: string, kind: BridgeTokenKind = 'pairing'): string {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const token = generateBridgeToken();
-  writeFileSync(bridgeTokenFile(dir), `${token}\n`, { encoding: 'utf8', mode: 0o600, flag: 'w' });
+  writeFileSync(TOKEN_FILES[kind].file(dir), `${token}\n`, { encoding: 'utf8', mode: 0o600, flag: 'w' });
   return token;
 }
