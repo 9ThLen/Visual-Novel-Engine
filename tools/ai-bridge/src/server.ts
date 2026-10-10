@@ -12,7 +12,7 @@ import { validateCodexBetaConsent } from '../../../src/lib/ai/codex-beta-consent
 import { parseAiEditorContext } from '../../../src/lib/ai/editor-context';
 import { appendEditorContext } from './editor-context-block';
 import { startTurnBudget } from './turn-budget';
-import { ExternalAgentGate, PROPOSALS_AT_MOST, type EditorSessionView, type ProposalOutcome } from './external-agent-gate';
+import { ExternalAgentGate, type EditorSessionView, type ProposalOutcome } from './external-agent-gate';
 import { MCP_PATH, createMcpEndpoint } from './mcp-server';
 
 const TURN_TIMEOUT_MS = 120_000;
@@ -22,16 +22,14 @@ const MAX_TOOL_CALLS = 15;
 // The app drops a card when its lifetime ends and says so. This is how much
 // longer the bridge waits to hear it before giving up on an app that is gone.
 const AUTHOR_WAIT_GRACE_MS = 5_000;
-// As many as the gate may still owe an agent an answer about. An ending the
-// bridge had to settle alone can be corrected by a late answer from the app
-// only while the call is remembered here; forgetting it sooner would leave an
-// applied change reported as cancelled.
-const FINISHED_INTERACTIONS_KEPT = PROPOSALS_AT_MOST;
+// How many of the chat's finished calls are remembered. An external agent's
+// are not counted here and not limited by it: see `rememberFinished`.
+const FINISHED_INTERACTIONS_KEPT = 64;
 /** `external` marks a call an agent outside the app made: no turn is waiting on it and none is charged for it. */
 type PendingTool = { toolName: string; awaitsAuthor: boolean; external?: boolean; resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
 /** How a call that waited for the author ended. A status, once set, does not change. */
 export type InteractionStatus = 'applied' | 'rejected' | 'expired' | 'cancelled' | 'failed' | 'unknown';
-type FinishedInteraction = { status: InteractionStatus; reason?: string; detail?: string; message?: string; settledByBridge?: boolean };
+type FinishedInteraction = { status: InteractionStatus; reason?: string; detail?: string; message?: string; settledByBridge?: boolean; external?: boolean };
 type LiveSession = {
   id: string;
   /** Null on a bridge that runs without chat. */
@@ -482,15 +480,36 @@ export class AiBridgeServer {
     if (!pending) return null;
     clearTimeout(pending.timer);
     this.pendingTools.delete(toolCallId);
-    this.finishedInteractions.set(toolCallId, outcome);
-    for (const id of this.finishedInteractions.keys()) {
-      if (this.finishedInteractions.size <= FINISHED_INTERACTIONS_KEPT) break;
-      this.finishedInteractions.delete(id);
-    }
+    this.rememberFinished(toolCallId, pending.external ? { ...outcome, external: true } : outcome);
     // Only a turn has a clock to stop, and an external agent has none.
     if (pending.external) this.external?.settle(toolCallId, proposalOutcome(outcome));
     else this.toolRuntime.authorWait.end();
     return pending;
+  }
+
+  /**
+   * Notes how a call ended, for an answer that arrives after it — sent twice,
+   * or late enough to correct an ending the bridge had to settle alone.
+   *
+   * The chat's and an external agent's are kept by different rules and do not
+   * compete. The chat's are kept by number: the oldest goes when there are too
+   * many. An agent's proposal is kept for as long as the gate still answers
+   * for it, however many calls the chat makes meanwhile — the chat is not held
+   * to the agent's limit, and enough of its calls used to push an agent's
+   * ending out, leaving an applied change reported as cancelled.
+   */
+  private rememberFinished(toolCallId: string, outcome: FinishedInteraction): void {
+    this.finishedInteractions.set(toolCallId, outcome);
+    let ofChat = 0;
+    for (const finished of this.finishedInteractions.values()) if (!finished.external) ofChat += 1;
+    for (const [id, finished] of this.finishedInteractions) {
+      if (finished.external) {
+        if (!this.external?.remembers(id)) this.finishedInteractions.delete(id);
+      } else if (ofChat > FINISHED_INTERACTIONS_KEPT) {
+        this.finishedInteractions.delete(id);
+        ofChat -= 1;
+      }
+    }
   }
 
   private authorWaitPending(): boolean {
@@ -592,9 +611,9 @@ export class AiBridgeServer {
       if (!finished) return;
       const reported = interactionOutcome(value);
       if (finished.status === 'unknown' || (reported.status === 'applied' && finished.settledByBridge)) {
-        this.finishedInteractions.set(id, reported);
-        // Ignored unless the call was an external agent's proposal.
-        this.external?.settle(id, proposalOutcome(reported));
+        // In place: it is the same call, and whose it was does not change.
+        this.finishedInteractions.set(id, finished.external ? { ...reported, external: true } : reported);
+        if (finished.external) this.external?.settle(id, proposalOutcome(reported));
       }
       this.sendCurrent('tool_result_ack', { toolCallId: id });
       return;

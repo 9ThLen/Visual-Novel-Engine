@@ -209,6 +209,16 @@ export class ExternalAgentGate {
   }
 
   /**
+   * Whether this proposal's outcome is still being kept. The server keeps its
+   * own note of how the call ended for exactly as long: without that note a
+   * late answer from the app cannot correct an ending the bridge settled alone.
+   */
+  remembers(proposalId: string): boolean {
+    const record = this.proposals.get(proposalId);
+    return record !== undefined && (record.settledAt === undefined || record.settledAt > this.now() - PROPOSAL_KEPT_MS);
+  }
+
+  /**
    * The server's word on how a proposal ended. It may come twice: a status the
    * bridge had to settle alone gives way to what the app reports afterwards,
    * and which of the two stands is the server's decision, not the gate's.

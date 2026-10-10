@@ -415,6 +415,59 @@ describe('a proposal from an external agent', () => {
     expect((await agent.call('get_proposal_status', { binding, proposalId })).value).toEqual({ proposalId, status: 'applied' });
   });
 
+  // The chat's calls are not the agent's and are not held to its limit, and
+  // the bridge kept the endings of both in one list, forgetting the oldest
+  // beyond a number. Enough of the chat's pushed an agent's out.
+  it('still learns it after the chat has made more calls than the bridge remembers of its own', async () => {
+    const perTurn = 15;
+    const turns = 140;
+    const { tab, agent, binding } = await setUp({
+      providerFactory: tools => new FakeProvider(tools, async function* () {
+        for (let index = 0; index < perTurn; index += 1) await tools.call('authorize_capability', { capability: 'image_generate' });
+        yield { type: 'done' };
+      }),
+    });
+    const proposalId = String((await agent.call('propose_scene_patch', { binding, patch: patch() })).value.proposalId);
+    const card = payloadOf(await tab.message('tool_call', 1));
+    await agent.call('cancel_proposal', { binding, proposalId });
+    tab.answerEverything(() => ({ ok: true, result: { allowed: true } }));
+    for (let turn = 0; turn < turns; turn += 1) {
+      tab.send('user_message', { text: 'go' });
+      await tab.message('assistant_done', turn);
+    }
+    expect(tab.received.filter(item => item.type === 'tool_result_ack')).toHaveLength(turns * perTurn);
+
+    // The author's Apply had crossed the withdrawal, and the tab says so only now.
+    tab.answer(card, { ok: true, result: { accepted: true } });
+
+    expect(payloadOf(await tab.message('tool_result_ack', turns * perTurn))).toEqual({ toolCallId: proposalId });
+    expect((await agent.call('get_proposal_status', { binding, proposalId })).value).toEqual({ proposalId, status: 'applied' });
+  }, 30_000);
+
+  // And the other way round: the two are kept apart, so neither crowds the other.
+  it('does not push the chat’s own endings out with an agent’s', async () => {
+    const { tab, agent, binding } = await setUp({
+      providerFactory: tools => new FakeProvider(tools, async function* () {
+        await tools.call('authorize_capability', { capability: 'image_generate' });
+        yield { type: 'done' };
+      }),
+    });
+    tab.send('user_message', { text: 'go' });
+    const asked = payloadOf(await tab.message('tool_call', 1));
+    tab.answer(asked, { ok: true, result: { allowed: true } });
+    await tab.message('assistant_done');
+    tab.answerEverything(() => ({ ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Not now' }));
+    for (let index = 0; index < 70; index += 1) {
+      expect((await agent.call('propose_scene_patch', { binding, patch: patch() })).isError, String(index)).toBe(false);
+      await tab.message('tool_result_ack', index + 1);
+    }
+
+    // The chat's answer once more, as a tab that never heard the acknowledgement sends it.
+    tab.answer(asked, { ok: true, result: { allowed: true } });
+
+    expect(payloadOf(await tab.message('tool_result_ack', 71))).toEqual({ toolCallId: asked.toolCallId });
+  });
+
   it('frees the session once it has ended, for the next proposal and for the chat', async () => {
     const { tab, agent, binding, providers } = await setUp();
     const proposalId = String((await agent.call('propose_scene_patch', { binding, patch: patch() })).value.proposalId);
