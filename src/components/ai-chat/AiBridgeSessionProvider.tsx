@@ -499,6 +499,43 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
       : t('aiChat.context.block', { name: t(focusBlockNameKey(pointer.blockType)) });
     return [what, place, pointer.exact ? '' : `· ${t('aiChat.context.inexact')}`].filter(Boolean).join(' ');
   }, [t]);
+  /**
+   * The context the author handed to an external agent. A slot of its own:
+   * what went out with a chat message is the chat's, and each of the two is
+   * replaced and dropped without touching the other.
+   */
+  const handedEditorContextRef = useRef<AiEditorContext | null>(null);
+  const [handedOver, setHandedOver] = useState<{ label?: string; at: number } | null>(null);
+  const [handingOver, setHandingOver] = useState(false);
+  const handOverInFlightRef = useRef(false);
+  /** The last call an external agent made that the editor let through. */
+  const [lastExternalCall, setLastExternalCall] = useState<{ toolName: string; at: number } | null>(null);
+
+  /**
+   * «Save and hand to agent». The one way an external agent gets a context it
+   * can act on: this saves — the author asked for that by pressing it — so the
+   * context names steps that exist, and an agent reading it later never makes
+   * the editor save anything.
+   */
+  const handOverToAgent = useCallback(async () => {
+    if (!captureEditorContext || handOverInFlightRef.current) return;
+    handOverInFlightRef.current = true;
+    setHandingOver(true);
+    try {
+      const outcome = await captureEditorContext({ save: true });
+      if (!outcome.ok) {
+        addMessage('system', t('aiChat.external.handOverFailed'));
+        return;
+      }
+      const context = buildEditorContext(outcome.capture, 'fixed');
+      handedEditorContextRef.current = context;
+      setHandedOver({ label: describeContextForTranscript(context), at: Date.now() });
+    } finally {
+      handOverInFlightRef.current = false;
+      setHandingOver(false);
+    }
+  }, [addMessage, buildEditorContext, captureEditorContext, describeContextForTranscript, t]);
+
   useEffect(() => {
     if (!started) return;
     let active = true;
@@ -609,6 +646,12 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
         buildEditorContext,
         getTurnEditorContext: () => turnEditorContextRef.current,
         dropTurnEditorContext: () => { turnEditorContextRef.current = null; },
+        getHandedEditorContext: () => handedEditorContextRef.current,
+        dropHandedEditorContext: () => {
+          handedEditorContextRef.current = null;
+          setHandedOver(null);
+        },
+        noteExternalCall: toolName => setLastExternalCall({ toolName, at: Date.now() }),
         beginInteraction,
         settleInteraction,
         writeGate,
@@ -1159,6 +1202,10 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     /** The card on screen was put up by an agent outside the app. */
     pendingFromExternalAgent: pendingInteraction?.storyId === storyId && pendingInteraction.origin === 'external',
     externalAgentAccess,
+    handOverToAgent,
+    handedOver,
+    handingOver,
+    lastExternalCall,
     lastAppliedChange,
     addMessageToStore,
     setActiveStory,

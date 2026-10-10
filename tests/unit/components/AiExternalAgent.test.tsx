@@ -11,6 +11,9 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AiBridgeSessionProvider } from '@/components/ai-chat/AiBridgeSessionProvider';
 import { DocumentRightRail } from '@/components/document-editor/DocumentRightRail';
 import { EXTERNAL_ACCESS_OFF, externalCallRefusal } from '@/lib/ai/app-tool-executor';
+import type { CaptureEditorContext, EditorContextCapture } from '@/lib/ai/editor-context-capture';
+import { sceneRecordToDocumentScene } from '@/lib/document-editor/document-scene';
+import type { VNPlateSelectionState } from '@/lib/vn-plate-editor/types';
 import { defaultAiPermissions, type AiPermissions, type ExternalAgentAccess } from '@/lib/ai/permissions';
 import type { AiScenePatch } from '@/lib/ai/scene-patch-types';
 import { computeSceneRevision } from '@/lib/ai/scene-revision';
@@ -82,9 +85,37 @@ class SocketMock {
 
 const passes = async () => true;
 
-function Editor({ approvalSurface, barrier = passes }: { approvalSurface?: boolean; barrier?: () => Promise<boolean> }) {
+const selection: VNPlateSelectionState = {
+  seq: 1,
+  collapsed: false,
+  text: 'Дощ почався',
+  textLength: 11,
+  truncated: false,
+  before: '',
+  after: '.',
+  crossesChip: false,
+  blocks: [{ id: 'step_rain', kind: 'text', quote: 'Дощ почався', occurrence: 0 }],
+};
+
+/** What the editor hands back when asked where the author is: the stored scene, with a line selected. */
+function captureOf(record: SceneRecord): EditorContextCapture {
+  return {
+    sceneId: record.id,
+    sceneSource: 'selection',
+    document: sceneRecordToDocumentScene(record),
+    selection,
+    hasUnsavedChanges: false,
+    activePathSceneIds: [record.id],
+  };
+}
+
+function Editor({ approvalSurface, barrier = passes, capture }: {
+  approvalSurface?: boolean;
+  barrier?: () => Promise<boolean>;
+  capture?: CaptureEditorContext;
+}) {
   return (
-    <AiBridgeSessionProvider storyId="story-1" activeSceneId="scene-1" beforeStoryMutation={barrier} approvalSurface={approvalSurface}>
+    <AiBridgeSessionProvider storyId="story-1" activeSceneId="scene-1" beforeStoryMutation={barrier} approvalSurface={approvalSurface} captureEditorContext={capture}>
       <DocumentRightRail
         scene={null}
         storyId="story-1"
@@ -439,6 +470,212 @@ describe('an external agent in the editor', () => {
 
       expect(screen.queryByText(/started without --mcp/)).toBeNull();
     });
+  });
+});
+
+/**
+ * An agent outside the app has no message to carry a context with. What it is
+ * given to act on is what the author hands over, by a button of their own:
+ * that saves, so the context names steps that exist, and the agent reading it
+ * afterwards never makes the editor save anything.
+ */
+describe('what the author hands to an external agent', () => {
+  let saveSceneRecord: ReturnType<typeof vi.fn>;
+  let capture: ReturnType<typeof vi.fn<CaptureEditorContext>>;
+
+  beforeEach(() => {
+    SocketMock.instances = [];
+    vi.stubGlobal('WebSocket', SocketMock);
+    saveSceneRecord = vi.fn();
+    const record = scene();
+    capture = vi.fn<CaptureEditorContext>(async () => ({ ok: true, capture: captureOf(scene()) }));
+    useAppStore.setState({
+      storiesMetadata: [metadata],
+      sceneRecordsByStory: { 'story-1': { [record.id]: record } },
+      characterLibraries: {},
+      imageAssetIdsByStory: {},
+      mediaLibrary: [],
+      createStorySnapshot: vi.fn(async () => snapshotRecord),
+      saveSceneRecord,
+      settings: normalizeUserSettings({}),
+      updateSettings: changeSettings,
+      aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'token', disabled: false },
+    });
+    useAiChatStore.setState({
+      messagesByStory: {},
+      messages: [],
+      status: 'idle',
+      pendingInteraction: null,
+      appliedChangesByStory: {},
+      appliedChanges: [],
+      lastAppliedChange: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useAppStore.setState({ aiBridgeSettings: { url: '', token: '', disabled: false }, settings: normalizeUserSettings({}) });
+  });
+
+  const contextOf = (result: Record<string, unknown> | undefined) => (result?.result as { context: Record<string, any> | null; hint?: string });
+  const handOver = () => fireEvent.click(screen.getByRole('button', { name: 'Save and hand to agent' }));
+
+  it('is not offered, and nothing is said about an agent, while access is off', async () => {
+    render(<Editor capture={capture} />);
+    await connect();
+
+    expect(screen.queryByRole('button', { name: 'Save and hand to agent' })).toBeNull();
+    expect(screen.queryByText(/External agent ·/)).toBeNull();
+
+    allow('read');
+
+    expect(screen.getByRole('button', { name: 'Save and hand to agent' })).toBeTruthy();
+    expect(screen.getByText('External agent · no calls yet')).toBeTruthy();
+  });
+
+  it('is nothing until the author presses the button, and the agent is told how to get it', async () => {
+    render(<Editor capture={capture} />);
+    const socket = await connect();
+    allow('read');
+
+    external(socket, 'context', 'get_editor_context', {});
+
+    await waitFor(() => expect(socket.resultFor('context')).toBeTruthy());
+    expect(contextOf(socket.resultFor('context'))).toEqual({ context: null, hint: expect.stringContaining('Save and hand to agent') });
+    // Asking is not a reason to save, or even to look.
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it('is the selection, saved and addressed, once the button is pressed', async () => {
+    render(<Editor capture={capture} />);
+    const socket = await connect();
+    allow('read');
+
+    handOver();
+
+    expect(await screen.findByText(/^Handed over at .*Дощ почався/)).toBeTruthy();
+    expect(capture).toHaveBeenCalledTimes(1);
+    expect(capture).toHaveBeenCalledWith({ save: true });
+
+    external(socket, 'context', 'get_editor_context', {});
+    await waitFor(() => expect(socket.resultFor('context')).toBeTruthy());
+    const { context } = contextOf(socket.resultFor('context'));
+    expect(context).toMatchObject({
+      kind: 'fixed',
+      storyId: 'story-1',
+      scene: { id: 'scene-1', revision: computeSceneRevision(scene()) },
+      selection: { text: 'Дощ почався', anchors: [{ stepId: 'step_rain', match: 'exact' }] },
+    });
+    // Reading it back saved nothing more.
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it('belongs to the agent alone: the built-in assistant has a slot of its own', async () => {
+    render(<Editor capture={capture} />);
+    const socket = await connect();
+    allow('read');
+    handOver();
+    await screen.findByText(/^Handed over at/);
+
+    act(() => socket.receive('tool_call', { toolCallId: 'chat-context', toolName: 'get_editor_context', input: {}, origin: 'chat' }));
+
+    await waitFor(() => expect(socket.resultFor('chat-context')).toBeTruthy());
+    expect(contextOf(socket.resultFor('chat-context'))).toEqual({ context: null, hint: expect.stringContaining('No context came with this message') });
+  });
+
+  it('lets the agent read the editor as it is now, without saving', async () => {
+    render(<Editor capture={capture} />);
+    const socket = await connect();
+    allow('read');
+
+    external(socket, 'live', 'get_editor_context', { mode: 'live' });
+
+    await waitFor(() => expect(socket.resultFor('live')).toBeTruthy());
+    expect(contextOf(socket.resultFor('live')).context).toMatchObject({ kind: 'live' });
+    expect(capture).toHaveBeenCalledWith({ save: false });
+    expect(screen.queryByText(/^Handed over at/)).toBeNull();
+  });
+
+  it('stops being offered once its scene has changed', async () => {
+    render(<Editor capture={capture} />);
+    const socket = await connect();
+    allow('read');
+    handOver();
+    await screen.findByText(/^Handed over at/);
+
+    act(() => {
+      useAppStore.setState({ sceneRecordsByStory: { 'story-1': { 'scene-1': { ...scene(), description: 'Edited since' } } } });
+    });
+    external(socket, 'context', 'get_editor_context', {});
+
+    await waitFor(() => expect(socket.resultFor('context')).toBeTruthy());
+    expect(contextOf(socket.resultFor('context'))).toEqual({ context: null, hint: expect.stringContaining('The scene changed') });
+    await waitFor(() => expect(screen.queryByText(/^Handed over at/)).toBeNull());
+  });
+
+  it('hands nothing over when the document could not be saved, and says so', async () => {
+    capture.mockResolvedValue({ ok: false });
+    render(<Editor capture={capture} />);
+    const socket = await connect();
+    allow('read');
+
+    handOver();
+
+    await waitFor(() => expect(systemMessages()).toContain('The open document could not be saved, so nothing was handed to the agent.'));
+    expect(screen.queryByText(/^Handed over at/)).toBeNull();
+    external(socket, 'context', 'get_editor_context', {});
+    await waitFor(() => expect(socket.resultFor('context')).toBeTruthy());
+    expect(contextOf(socket.resultFor('context')).context).toBeNull();
+  });
+
+  // What the button is for: the agent acts on the revision it was handed, and
+  // the change it proposes for it goes in at the first attempt.
+  it('gives the agent a revision its proposal is applied on', async () => {
+    render(<Editor capture={capture} />);
+    const socket = await connect();
+    allow('propose');
+    handOver();
+    await screen.findByText(/^Handed over at/);
+    external(socket, 'context', 'get_editor_context', {});
+    await waitFor(() => expect(socket.resultFor('context')).toBeTruthy());
+    const handed = contextOf(socket.resultFor('context')).context!;
+
+    external(socket, 'proposal-1', 'propose_scene_patch', {
+      patch: {
+        storyId: handed.storyId,
+        sceneId: handed.scene.id,
+        expectedRevision: handed.scene.revision,
+        explanation: 'Rewrite the selected line',
+        operations: [{ op: 'update_scene_metadata', updates: { description: 'For the line the author selected' } }],
+      },
+    }, 600_000);
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => expect(socket.resultFor('proposal-1')).toEqual({ toolCallId: 'proposal-1', ok: true, result: { accepted: true } }));
+    expect(saveSceneRecord).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows which call the agent made last', async () => {
+    render(<Editor capture={capture} />);
+    const socket = await connect();
+    allow('read');
+
+    external(socket, 'one', 'list_scenes', {});
+    external(socket, 'two', 'get_scene', { sceneId: 'scene-1' });
+
+    expect(await screen.findByText(/^External agent · last call get_scene · /)).toBeTruthy();
+    expect(screen.queryByText('External agent · no calls yet')).toBeNull();
+  });
+
+  it('does not count a call the editor refused', async () => {
+    render(<Editor capture={capture} />);
+    const socket = await connect();
+    allow('read');
+
+    propose(socket);
+
+    await waitFor(() => expect(socket.resultFor('proposal-1')).toBeTruthy());
+    expect(screen.getByText('External agent · no calls yet')).toBeTruthy();
   });
 });
 

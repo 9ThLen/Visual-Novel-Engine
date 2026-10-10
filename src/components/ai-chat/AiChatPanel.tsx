@@ -80,6 +80,11 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
   );
 }
 
+/** A time of day for a line of status: when the agent last called, when something was handed over. */
+function clockTime(at: number, language: string): string {
+  return new Date(at).toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' });
+}
+
 /**
  * Draws the session, when this editor has it. An editor under another one does
  * not — the session is with the one in front — and nothing is drawn there.
@@ -143,6 +148,11 @@ function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; 
     pendingPatch,
     pendingFromExternalAgent,
     externalAgentAccess,
+    handOverToAgent,
+    handedOver,
+    handingOver,
+    lastExternalCall,
+    language,
     pendingProviderSwitch,
     provider,
     resolveCapabilityDecision,
@@ -431,6 +441,34 @@ function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; 
           </ScrollView>
         ) : null}
         {attachmentError ? <Text accessibilityRole="alert" style={{ color: colors.danger, paddingHorizontal: 10, paddingBottom: 5, fontSize: 11 }}>{attachmentError}</Text> : null}
+        {externalAgentAccess !== 'off' ? (
+          <View style={{ paddingHorizontal: 10, paddingBottom: 6, gap: 5 }}>
+            <Text style={{ color: colors.muted, fontSize: 11 }}>
+              {lastExternalCall
+                ? t('aiChat.external.activity', { tool: lastExternalCall.toolName, time: clockTime(lastExternalCall.at, language) })
+                : t('aiChat.external.noActivity')}
+            </Text>
+            {captureEditorContext ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={handingOver}
+                  onPress={() => { void handOverToAgent(); }}
+                  style={{ borderWidth: 1, borderColor: colors.primary, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, opacity: handingOver ? 0.6 : 1 }}
+                >
+                  <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>{t('aiChat.external.handOver')}</Text>
+                </Pressable>
+                {handedOver ? (
+                  <Text style={{ color: colors.muted, fontSize: 11, flexShrink: 1 }}>
+                    {handedOver.label
+                      ? t('aiChat.external.handedOver', { time: clockTime(handedOver.at, language), what: handedOver.label })
+                      : t('aiChat.external.handedOverPlain', { time: clockTime(handedOver.at, language) })}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
         {captureEditorContext ? <EditorContextChip storyId={storyId} colorScheme={colorScheme} /> : null}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10 }}>
           <Pressable
