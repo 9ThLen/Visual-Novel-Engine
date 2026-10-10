@@ -172,8 +172,25 @@ What the agent gets, and what it does not:
   and do not interrupt one.
 
 The app has its own say on top of this. Access for an external agent is **off in
-the editor** until the author turns it on there, and the bridge cannot turn it
-on: with it off, every call from an agent is answered `EXTERNAL_ACCESS_OFF`.
+the editor** until the author turns it on there — AI settings, "External agent":
+off, read, or read and propose — and the bridge cannot turn it on: with it off,
+every call from an agent is answered `EXTERNAL_ACCESS_OFF`. At "read" a proposal
+is answered `EXTERNAL_PROPOSALS_OFF`. Turning the access down while a proposal
+is on screen withdraws it; the agent reads `cancelled` with `ACCESS_REVOKED`.
+
+In the editor:
+
+- To connect to a bridge started with `--provider none`, choose **No chat** in
+  the connection card instead of a provider. It asks for the pairing token only.
+- With an agent let in, the editor connects to the bridge as soon as it opens,
+  so the agent can reach it after a reload without the AI tab being clicked.
+- `get_editor_context` returns what the author handed over with **Save and
+  hand to agent**: the selection and the scene as they were saved at that
+  press. Until something is handed over it returns `context: null` and says so;
+  `mode: "live"` reads the editor as it is now, possibly unsaved, and saves
+  nothing.
+- A proposal needs somewhere to be shown. On a phone, and while the editor is in
+  focus mode, it is refused with `NO_APPROVAL_SURFACE`.
 
 ## The packaged bridge
 
