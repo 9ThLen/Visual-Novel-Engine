@@ -38,13 +38,19 @@ export interface BridgeClientOptions {
   url: string;
   token: string;
   locale?: string;
+  /** The story the editor has open. The bridge tells an external agent which one it is talking about. */
+  storyId?: string;
   preferredProvider?: BridgeProvider;
   codexBetaConsent?: CodexBetaConsent;
   requestedModel?: string;
   requestedTokenBudget?: number;
   onEvent: (msg: BridgeEnvelope) => void;
   /** `ttlMs` comes with a call that waits for the author: how long its card may stay up. */
-  onToolCall: (toolCallId: string, toolName: string, input: unknown, context?: { untrustedAttachmentMode: boolean; ttlMs?: number }) => Promise<ToolResult>;
+  /**
+   * `ttlMs` comes with a call that waits for the author: how long its card may stay up.
+   * `origin` is `external` for a call an agent outside the app made through the bridge.
+   */
+  onToolCall: (toolCallId: string, toolName: string, input: unknown, context?: { untrustedAttachmentMode: boolean; ttlMs?: number; origin?: 'chat' | 'external' }) => Promise<ToolResult>;
   /** The bridge has withdrawn a call that was waiting for the author; its card has to go. */
   onToolCancel?: (toolCallId: string, reason: string) => void;
   onConnectionChange: (state: BridgeConnectionState, reason?: BridgeConnectionReason) => void;
@@ -150,7 +156,7 @@ export class BridgeClient {
         ...(this.options.codexBetaConsent ? { codexBetaConsent: this.options.codexBetaConsent } : {}),
         ...(this.options.requestedModel ? { requestedModel: this.options.requestedModel } : {}),
         ...(this.options.requestedTokenBudget ? { requestedTokenBudget: this.options.requestedTokenBudget } : {}),
-        context: { locale: this.options.locale },
+        context: { locale: this.options.locale, ...(this.options.storyId ? { storyId: this.options.storyId } : {}) },
       };
       this.send('session_start', payload);
     };
@@ -281,6 +287,8 @@ export class BridgeClient {
     try {
       result = await this.options.onToolCall(toolCallId, payload.toolName, payload.input, {
         untrustedAttachmentMode: payload.untrustedAttachmentMode === true,
+        // Only the bridge's word counts here: the app never marks a call itself.
+        ...(payload.origin === 'external' ? { origin: 'external' as const } : {}),
         ...(awaitsAuthor ? { ttlMs: payload.ttlMs as number } : {}),
       });
     } catch (error: unknown) {

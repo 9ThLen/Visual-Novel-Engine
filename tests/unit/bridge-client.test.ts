@@ -93,6 +93,36 @@ describe('BridgeClient', () => {
     client.close();
   });
 
+  it('says which story the editor has open when it starts a session', () => {
+    options.storyId = 'story-9';
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    expect(frame(socket)).toMatchObject({ type: 'session_start', payload: { context: { storyId: 'story-9' } } });
+    client.close();
+  });
+
+  // The app has to tell an agent outside it from its own assistant, and only the bridge can say which a call is.
+  it('passes on that a call came from an external agent, and nothing else about where it came from', async () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false }, 'session-1'));
+
+    socket.receive(makeEnvelope('tool_call', { toolCallId: 'c1', toolName: 'get_scene', input: {}, origin: 'external', untrustedAttachmentMode: true }, 'session-1'));
+    socket.receive(makeEnvelope('tool_call', { toolCallId: 'c2', toolName: 'get_scene', input: {}, origin: 'chat' }, 'session-1'));
+    socket.receive(makeEnvelope('tool_call', { toolCallId: 'c3', toolName: 'get_scene', input: {}, origin: 'somewhere' }, 'session-1'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(options.onToolCall).toHaveBeenNthCalledWith(1, 'c1', 'get_scene', {}, { untrustedAttachmentMode: true, origin: 'external' });
+    expect(options.onToolCall).toHaveBeenNthCalledWith(2, 'c2', 'get_scene', {}, { untrustedAttachmentMode: false });
+    expect(options.onToolCall).toHaveBeenNthCalledWith(3, 'c3', 'get_scene', {}, { untrustedAttachmentMode: false });
+    client.close();
+  });
+
   it('reports connected only after the authenticated session starts', () => {
     const client = new BridgeClient(options);
     client.connect();
