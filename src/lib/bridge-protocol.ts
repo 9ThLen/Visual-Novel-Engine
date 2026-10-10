@@ -10,6 +10,13 @@ import type { AiEditorContext } from './ai/editor-context';
  */
 export const BRIDGE_PROTOCOL_VERSION = 5 as const;
 
+/**
+ * The reason the bridge closes a socket with when another one has resumed its
+ * session. The client it is sent to must not reconnect: that would take the
+ * session back, and the other client would do the same in turn.
+ */
+export const SESSION_RESUMED_ELSEWHERE = 'Session resumed elsewhere';
+
 export const MAX_MESSAGE_BYTES = 1_000_000;
 export const MAX_IMAGE_MESSAGE_BYTES = 8_000_000;
 export const MAX_DECODED_IMAGE_BYTES = 5_500_000;

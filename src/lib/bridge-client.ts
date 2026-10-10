@@ -1,5 +1,6 @@
 import {
   BRIDGE_PROTOCOL_VERSION,
+  SESSION_RESUMED_ELSEWHERE,
   type BridgeEnvelope,
   type BridgeErrorCode,
   type BridgeProvider,
@@ -159,10 +160,15 @@ export class BridgeClient {
       this.options.logger?.('WebSocket error', event);
       this.options.onConnectionChange('error', 'CONNECTION_FAILED_OR_ORIGIN');
     };
-    socket.onclose = () => {
-      if (this.socket === socket) this.socket = null;
+    socket.onclose = (event?: CloseEvent) => {
+      const wasCurrent = this.socket === socket;
+      if (wasCurrent) this.socket = null;
       this.authenticated = false;
       this.clearHeartbeatTimers();
+      if (wasCurrent && event?.reason === SESSION_RESUMED_ELSEWHERE && !this.intentionallyClosed) {
+        this.yieldSession();
+        return;
+      }
       if (!this.intentionallyClosed && !this.reconnectBlocked) this.scheduleReconnect(!this.socketFailed);
     };
   }
@@ -370,6 +376,22 @@ export class BridgeClient {
     const socket = this.socket;
     this.socket = null;
     if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
+  }
+
+  /**
+   * Another client has resumed this session — a duplicated tab carries the
+   * session's id with it. Reconnecting would take the session back and the
+   * other client would answer in kind, without end, so this one stops and says
+   * where the session went. What is kept for a resume is left alone: it is the
+   * other client's now. Connecting again by hand takes the session back.
+   */
+  private yieldSession(): void {
+    this.reconnectBlocked = true;
+    this.clearAllTimers();
+    this.sessionId = '';
+    this.reconnectAttempt = 0;
+    this.resolvePendingReset({ ok: false, reason: 'RESET_FAILED' });
+    this.options.onConnectionChange('error', 'SESSION_ALREADY_ACTIVE');
   }
 
   private isOpen(): boolean {

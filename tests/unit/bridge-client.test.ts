@@ -1,5 +1,5 @@
 import { BridgeClient, type BridgeClientOptions } from '@/lib/bridge-client';
-import { makeEnvelope } from '@/lib/bridge-protocol';
+import { SESSION_RESUMED_ELSEWHERE, makeEnvelope } from '@/lib/bridge-protocol';
 
 class MockWebSocket {
   static readonly CONNECTING = 0;
@@ -170,6 +170,32 @@ describe('BridgeClient', () => {
     expect(options.onEvent).not.toHaveBeenCalled();
     vi.advanceTimersByTime(60_000);
     expect(MockWebSocket.instances).toHaveLength(1);
+    client.close();
+  });
+
+  // A duplicated tab carries the session's id with it. Each of the two used to
+  // reconnect the moment the other took the socket, and they never stopped.
+  it('does not take the session back from a client that resumed it elsewhere', () => {
+    const storage = sessionStorage as unknown as { removeItem: ReturnType<typeof vi.fn> };
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false }, 'session-1'));
+    storage.removeItem.mockClear();
+
+    socket.readyState = MockWebSocket.CLOSED;
+    socket.onclose?.({ code: 1000, reason: SESSION_RESUMED_ELSEWHERE } as CloseEvent);
+
+    expect(options.onConnectionChange).toHaveBeenLastCalledWith('error', 'SESSION_ALREADY_ACTIVE');
+    vi.advanceTimersByTime(60_000);
+    expect(MockWebSocket.instances).toHaveLength(1);
+    // What is kept for a resume belongs to the other client now.
+    expect(storage.removeItem).not.toHaveBeenCalled();
+
+    // Connecting again by hand is the author saying «continue here».
+    client.connect();
+    expect(MockWebSocket.instances).toHaveLength(2);
     client.close();
   });
 

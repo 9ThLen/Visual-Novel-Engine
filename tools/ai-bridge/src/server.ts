@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { MAX_IMAGE_MESSAGE_BYTES, MAX_MESSAGE_BYTES, makeEnvelope, parseEnvelope, type BridgeEnvelope, type BridgeErrorCode, type BridgeProvider, type SessionChallengePayload } from '../../../src/lib/bridge-protocol';
+import { MAX_IMAGE_MESSAGE_BYTES, MAX_MESSAGE_BYTES, SESSION_RESUMED_ELSEWHERE, makeEnvelope, parseEnvelope, type BridgeEnvelope, type BridgeErrorCode, type BridgeProvider, type SessionChallengePayload } from '../../../src/lib/bridge-protocol';
 import { AUTHOR_WAIT_TTL_MS, getBridgeTool } from '../../../src/lib/ai/bridge-tools';
 import { BridgeToolError, ProviderFailure, type AgentAttachment, type AgentProvider, type AgentProviderFactory, type AgentUserInput } from './provider';
 import { BridgeToolRuntime } from './tool-runtime';
@@ -122,7 +122,7 @@ export class AiBridgeServer {
       }
       if (resumeId !== this.session.id) this.disposeSession();
       else {
-        this.session.socket?.close(1000, 'Session resumed elsewhere');
+        this.session.socket?.close(1000, SESSION_RESUMED_ELSEWHERE);
         this.session.socket = socket;
         this.send(socket, 'session_started', { sessionId: this.session.id, resumed: true, provider: this.options.provider ?? 'claude', capabilities: this.capabilities(), untrustedAttachmentMode: this.session.untrustedAttachmentMode }, this.session.id);
         this.toolRuntime.reemitBufferedImages();
