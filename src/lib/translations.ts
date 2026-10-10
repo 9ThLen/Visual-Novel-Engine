@@ -1258,6 +1258,7 @@ const EN: Record<string, string> = {
   // Document right rail (Inspector | AI tabs)
   'document.rightRail.inspector': 'Inspector',
   'document.rightRail.ai': 'AI',
+  'document.rightRail.aiWaiting': 'AI — a proposal is waiting for you',
   'document.preview.title': 'Preview',
   'document.preview.deviceMobile': 'Phone',
   'document.preview.deviceDesktop': 'Browser',
@@ -2851,6 +2852,7 @@ const UK: Record<string, string> = {
   // Права колонка документ-редактора (вкладки Inspector | AI)
   'document.rightRail.inspector': 'Інспектор',
   'document.rightRail.ai': 'ШІ',
+  'document.rightRail.aiWaiting': 'ШІ — пропозиція чекає на вас',
   'document.preview.title': 'Превʼю',
   'document.preview.deviceMobile': 'Телефон',
   'document.preview.deviceDesktop': 'Браузер',

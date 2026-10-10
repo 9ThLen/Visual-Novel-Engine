@@ -435,6 +435,33 @@ test('a change applied a moment after a keystroke does not cost the author that 
   await expect(editable).toContainText('Typed late.');
 });
 
+/**
+ * The rail unmounts the chat when the author opens the inspector. The session
+ * used to live in the chat, so that one click closed the connection and threw
+ * away a proposal the author had not decided on. It is held by the editor now.
+ */
+test('a proposal waits behind the inspector tab, and the connection with it', async ({ page }) => {
+  await openAi(page);
+  await pair(page);
+  await expect(page.getByText(/Connected · Claude Code|Підключено · Claude Code/).first()).toBeVisible();
+  await send(page, '[proposal]');
+  const apply = page.getByRole('button', { name: /Apply|Застосувати/ });
+  await expect(apply).toBeVisible();
+
+  await page.getByText(/^(Inspector|Інспектор)$/).click();
+  await expect(apply).toHaveCount(0);
+  const waiting = page.getByLabel(/a proposal is waiting|пропозиція чекає/);
+  await expect(waiting).toBeVisible();
+
+  await waiting.click();
+  await expect(apply).toBeVisible();
+  // Still the same session: no reconnect, no pairing again.
+  await expect(page.getByText(/Connected · Claude Code|Підключено · Claude Code/).first()).toBeVisible();
+  await apply.click();
+  await expect(page.getByRole('button', { name: /Undo AI changes|Відкотити AI-зміни/ })).toBeVisible();
+  await expect(page.getByText('Proposal resolved.')).toBeVisible();
+});
+
 test('the assistant is told which block the author has open', async ({ page }) => {
   await openAi(page);
   await pair(page);

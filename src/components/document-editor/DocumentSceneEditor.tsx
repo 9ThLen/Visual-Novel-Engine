@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DocumentBranchBreadcrumb } from '@/components/document-editor/DocumentBranchBreadcrumb';
 import { DocumentEditorHeader } from '@/components/document-editor/DocumentEditorHeader';
+import { AiBridgeSessionProvider } from '@/components/ai-chat/AiBridgeSessionProvider';
 import { DocumentRightRail } from '@/components/document-editor/DocumentRightRail';
 import { DocumentSceneFrame } from '@/components/document-editor/DocumentSceneFrame';
 import { DocumentSceneSidebar } from '@/components/document-editor/DocumentSceneSidebar';
@@ -978,7 +979,15 @@ export function DocumentSceneEditor({
   }, [scheduleMountRecompute]);
 
   return (
-    <>
+    // Above the rail, so the assistant's session outlives a switch to the
+    // inspector and a spell in focus mode. It starts when the chat is first
+    // opened, never on its own.
+    <AiBridgeSessionProvider
+      storyId={storyId}
+      activeSceneId={activeSceneId}
+      beforeStoryMutation={handleStoryMutationBarrier}
+      captureEditorContext={captureEditorContext}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: colors.background }}
         behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
@@ -1130,6 +1139,6 @@ export function DocumentSceneEditor({
         onCancel={() => setPendingDeleteSceneId(null)}
         destructive
       />
-    </>
+    </AiBridgeSessionProvider>
   );
 }
