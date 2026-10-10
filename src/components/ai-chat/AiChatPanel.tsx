@@ -11,26 +11,14 @@ import { applyAiAppearancePatchToStore, rollbackAiAppearancePatch } from '@/lib/
 import { rollbackTopAppliedChange } from '@/lib/ai/applied-change-journal';
 import { applyAiChangeSetToStore } from '@/lib/ai/change-set-adapter';
 import {
-  aiChangeSetSchema,
-  describeAiChangeSet,
-  validateAiChangeSet,
-  type AiChangeSet,
-  type AiChangeSetErrorCode,
-  type AiChangeSetState,
-} from '@/lib/ai/change-set';
-import {
   describeAiAppearancePatch,
   validateAiAppearancePatch,
-  type AiReaderAppearancePatch,
 } from '@/lib/ai/appearance-patch';
-import { findAssetUsage, getImageDetails, listStoryImages } from '@/lib/ai/asset-tools';
 import {
   decodeImageResult,
   blobToBase64,
   downscaleImage,
-  executeRemoveBackground,
   fromPendingAiImage,
-  getStoryImageBinary,
   toPendingAiImage,
   type AiImageResult,
 } from '@/lib/ai/image-tools';
@@ -47,9 +35,9 @@ import {
   type AttachmentRef,
   type StoredChatAttachment,
 } from '@/lib/ai/attachments';
-import { APP_BRIDGE_TOOL_NAMES } from '@/lib/ai/bridge-tools';
-import { AI_CAPABILITIES, normalizeAiPermissions, resolveCapability, resolveEffectiveCapability, type AiCapability, type AiPermissions } from '@/lib/ai/permissions';
+import { normalizeAiPermissions, resolveEffectiveCapability, type AiCapability } from '@/lib/ai/permissions';
 import { isWriteRefusal, type WriteGate } from '@/lib/ai/write-gate';
+import { createAppToolExecutor, refusalReason } from '@/lib/ai/app-tool-executor';
 import { resolveAiBridgeConfig, selectAiBridgeProvider, updateActiveAiBridgeProfile } from '@/lib/ai/bridge-config';
 import { aiProviderLabel, isBridgeProvider } from '@/lib/ai/providers';
 import { buildAiStoryContext } from '@/lib/ai/story-context';
@@ -61,13 +49,10 @@ import {
   type CaptureEditorContext,
   type EditorContextCapture,
 } from '@/lib/ai/editor-context-capture';
-import { computeSceneRevision } from '@/lib/ai/scene-revision';
 import { generateId } from '@/lib/id-utils';
-import { buildAiChangeSetState, buildPatchProjectContext } from '@/lib/ai/project-context';
+import { buildPatchProjectContext } from '@/lib/ai/project-context';
 import { BridgeClient, type BridgeConnectionState, type BridgeProvider } from '@/lib/bridge-client';
 import type { BridgeCapabilities } from '@/lib/bridge-protocol';
-import { removeImageBackground } from '@/lib/remove-background';
-import type { AiScenePatch } from '@/lib/ai/scene-patch-types';
 import { useAppStore } from '@/stores/use-app-store';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
 import {
@@ -203,16 +188,6 @@ function resolveBridgeRuntimeError(payload: Record<string, unknown>): BridgeRunt
   return 'PROVIDER_ERROR';
 }
 
-function buildChangeSetState(storyId: string): AiChangeSetState {
-  return buildAiChangeSetState(storyId);
-}
-
-function mapChangeSetError(code: AiChangeSetErrorCode, message: string) {
-  return code === 'STALE_REVISION'
-    ? { ok: false as const, errorCode: 'STALE_REVISION' as const, errorMessage: message }
-    : { ok: false as const, errorCode: 'VALIDATION_FAILED' as const, errorMessage: message, details: { reason: code } };
-}
-
 interface AiInteraction {
   /** The capability was narrowed for this call because the turn carries untrusted attachments. */
   untrusted: boolean;
@@ -221,56 +196,8 @@ interface AiInteraction {
   ended: 'cancelled' | 'expired' | null;
 }
 
-/** The reason a refused change is reported under: the bridge reads `expired` and `cancelled` as statuses. */
-function refusalReason(code: string): string {
-  return code === 'EXPIRED' ? 'expired' : code === 'CANCELLED' ? 'cancelled' : code;
-}
-
-export function executeProposeChangeSet(
-  storyId: string,
-  input: unknown,
-  setPending: (pending: AiChatPendingChangeSet) => void,
-  waitForDecision: () => Promise<unknown>,
-) {
-  const parsed = aiChangeSetSchema.safeParse(input);
-  if (!parsed.success) {
-    return Promise.resolve({ ok: false as const, errorCode: 'VALIDATION_FAILED' as const, errorMessage: parsed.error.issues.map(issue => issue.message).join('; '), details: { reason: 'VALIDATION_FAILED' } });
-  }
-  const changeSet: AiChangeSet = parsed.data;
-  if (changeSet.storyId !== storyId) {
-    return Promise.resolve({ ok: false as const, errorCode: 'VALIDATION_FAILED' as const, errorMessage: 'Changeset belongs to another story', details: { reason: 'VALIDATION_FAILED' } });
-  }
-  const live = buildChangeSetState(storyId);
-  const validation = validateAiChangeSet(changeSet, live);
-  if (!validation.ok) return Promise.resolve(mapChangeSetError(validation.code, validation.message));
-  setPending({ changeSet, description: describeAiChangeSet(changeSet, live) });
-  return waitForDecision().then(result => ({ ok: true as const, result }));
-}
-
-export function executeAuthorizeCapability(
-  input: unknown,
-  permissions: AiPermissions,
-  setPending: (pending: AiChatPendingCapability) => void,
-  waitForDecision: () => Promise<{ allowed: boolean }>,
-) {
-  const value = typeof input === 'object' && input ? input as Record<string, unknown> : {};
-  const capability = value.capability;
-  if (typeof capability !== 'string' || !AI_CAPABILITIES.includes(capability as AiCapability)) {
-    return Promise.resolve({ ok: false as const, errorCode: 'VALIDATION_FAILED' as const, errorMessage: 'Unknown capability' });
-  }
-  const level = resolveCapability(capability as AiCapability, permissions);
-  if (level === 'blocked') {
-    return Promise.resolve({ ok: false as const, errorCode: 'PERMISSION_DENIED' as const, errorMessage: 'Capability is blocked', details: { reason: 'USER_BLOCKED' } });
-  }
-  if (level === 'auto') return Promise.resolve({ ok: true as const, result: { allowed: true } });
-  const estimate = typeof value.estimate === 'string'
-    ? value.estimate
-    : value.estimate && typeof value.estimate === 'object'
-      ? value.estimate as NonNullable<AiChatPendingCapability['estimate']>
-      : undefined;
-  setPending({ capability: capability as AiCapability, estimate });
-  return waitForDecision().then(result => ({ ok: true as const, result }));
-}
+// Kept here for the callers that have always imported them from the panel.
+export { executeAuthorizeCapability, executeProposeChangeSet } from '@/lib/ai/app-tool-executor';
 
 export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMutation, captureEditorContext }: AiChatPanelProps) {
   const colors = useColors(colorScheme);
@@ -566,151 +493,32 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
         }
       },
       onToolCancel: toolCallId => endInteraction(toolCallId, 'cancelled'),
-      onToolCall: async (_id, name, input, toolContext) => {
-        if (!APP_BRIDGE_TOOL_NAMES.includes(name)) return { ok: false, errorCode: 'PROTOCOL_ERROR', errorMessage: `Unsupported tool: ${name}` };
-        const untrusted = toolContext?.untrustedAttachmentMode === true;
-        const showCard = () => beginInteraction(_id, toolContext?.ttlMs, untrusted, true);
-        const state = useAppStore.getState();
-        const value = typeof input === 'object' && input ? input as Record<string, unknown> : {};
-        const currentSceneId = activeSceneIdRef.current;
-        if (name === 'get_story_overview') {
-          const context = buildAiStoryContext(storyId, currentSceneId);
-          return context
-            ? { ok: true, result: { story: context.story, appearance: context.appearance, activeSceneId: currentSceneId } }
-            : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Story not found' };
-        }
-        if (name === 'list_scenes') return { ok: true, result: Object.values(state.sceneRecordsByStory[storyId] ?? {}).map(scene => ({ id: scene.id, name: scene.name })) };
-        if (name === 'get_scene') {
-          const sceneId = typeof value.sceneId === 'string' ? value.sceneId : currentSceneId;
-          const context = sceneId ? buildAiStoryContext(storyId, sceneId) : null;
-          return context ? { ok: true, result: context } : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Scene not found' };
-        }
-        if (name === 'get_editor_context') {
-          if (value.mode === 'live') {
-            const capture = captureEditorContextRef.current;
-            if (!capture) return { ok: true, result: { context: null, hint: 'No editor is open.' } };
-            // Reading never saves: the author did not ask for anything to be written.
-            const outcome = await capture({ save: false });
-            return outcome.ok
-              ? { ok: true, result: { context: buildEditorContext(outcome.capture, 'live') } }
-              : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'The editor did not answer' };
-          }
-          const fixed = turnEditorContextRef.current;
-          const fixedScene = fixed?.scene ? state.sceneRecordsByStory[storyId]?.[fixed.scene.id] : null;
-          if (fixed?.scene && (!fixedScene || computeSceneRevision(fixedScene) !== fixed.scene.revision)) {
-            // Its addresses held for one revision of the scene, and that one is gone.
-            turnEditorContextRef.current = null;
-            return { ok: true, result: { context: null, hint: 'The scene changed after this context was captured. Read the scene again, or ask for mode "live".' } };
-          }
-          return fixed
-            ? { ok: true, result: { context: fixed } }
-            : { ok: true, result: { context: null, hint: 'No context came with this message. Ask for mode "live" to read the editor now.' } };
-        }
-        if (name === 'list_story_images') return { ok: true, result: listStoryImages(storyId) };
-        if (name === 'get_image_details') {
-          const details = typeof value.assetId === 'string' ? getImageDetails(storyId, value.assetId) : null;
-          return details
-            ? { ok: true, result: details }
-            : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Image not found in this story' };
-        }
-        if (name === 'find_asset_usage') {
-          const usage = typeof value.assetId === 'string' ? findAssetUsage(storyId, value.assetId) : null;
-          return usage
-            ? { ok: true, result: usage }
-            : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Asset not found in this story' };
-        }
-        if (name === 'get_image_binary') {
-          return typeof value.assetId === 'string'
-            ? getStoryImageBinary(storyId, value.assetId)
-            : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'assetId is required' };
-        }
-        if (name === 'remove_background') {
-          if (typeof value.assetId !== 'string') return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'assetId is required' };
-          const permission = resolveEffectiveCapability('image_generate', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
-          return executeRemoveBackground(
-            storyId,
-            value.assetId,
-            permission,
-            () => {
-              setPendingCapability({ capability: 'image_generate' });
-              return new Promise<boolean>((resolve) => { patchDecisionRef.current = value => resolve(Boolean((value as { allowed?: boolean })?.allowed)); });
-            },
-            removeImageBackground,
-            async result => {
-              const persisted = await pendingImageRepository.put(toPendingAiImage(result, storyId));
-              URL.revokeObjectURL(result.blobUrl);
-              imageResultIdsRef.current.add(persisted.requestId);
-              setImageResults(current => current.some(item => item.requestId === persisted.requestId)
-                ? current
-                : [...current, fromPendingAiImage(persisted)]);
-            },
-          );
-        }
-        if (name === 'propose_scene_patch') {
-          const patch = value.patch as AiScenePatch;
-          const scene = state.sceneRecordsByStory[storyId]?.[patch?.sceneId];
-          if (!scene) return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Scene not found' };
-          const validation = validateAiScenePatch(scene, patch, buildPatchProjectContext(storyId));
-          if (!validation.ok) return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: validation.errors.join('; ') };
-          const permission = resolveEffectiveCapability('scene_edit', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
-          if (permission === 'blocked') return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Scene editing is blocked', details: { reason: 'USER_BLOCKED' } };
-          if (permission === 'auto') {
-            // No dialog is shown here, so nothing else would land the author's
-            // draft first — and `validateAiScenePatch` above compared the patch
-            // against the store, which is exactly what the draft has moved past.
-            // Queued, because concurrent tool calls would otherwise interleave.
-            // No card, but the bridge can still withdraw the call while the
-            // author's draft is being saved in front of it.
-            beginInteraction(_id, toolContext?.ttlMs, untrusted, false);
-            const result = await enqueueMutationRef.current(async () => {
-              if (!(await passesSaveBarrierRef.current())) return null;
-              return applyAiScenePatchToStore(patch, writeGate(_id, 'scene_edit'));
-            }).finally(() => settleInteraction(_id));
-            if (!result) {
-              return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Could not save the open document' };
-            }
-            if (!result.ok && isWriteRefusal(result.code)) return { ok: true, result: { accepted: false, reason: refusalReason(result.code) } };
-            return result.ok
-              ? { ok: true, result: { accepted: true, automatic: true } }
-              : { ok: false, errorCode: result.code === 'STALE_REVISION' ? 'STALE_REVISION' : 'VALIDATION_FAILED', errorMessage: result.errors.join('; ') };
-          }
-          showCard();
-          setPendingPatch({ patch, description: describeAiScenePatch(scene, patch) });
-          return new Promise(resolve => { patchDecisionRef.current = result => resolve({ ok: true, result }); });
-        }
-        if (name === 'propose_appearance_patch') {
-          const patch = value.patch as AiReaderAppearancePatch;
-          const metadata = state.storiesMetadata.find((story) => story.id === storyId);
-          if (!metadata) return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Story not found' };
-          const validation = validateAiAppearancePatch(metadata, patch);
-          if (!validation.ok) return { ok: false, errorCode: validation.code, errorMessage: validation.errors.join('; ') };
-          const permission = resolveEffectiveCapability('appearance', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
-          if (permission === 'blocked') return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Appearance editing is blocked', details: { reason: 'USER_BLOCKED' } };
-          if (permission === 'auto') {
-            const result = await applyAiAppearancePatchToStore(patch);
-            return result.ok
-              ? { ok: true, result: { accepted: true, automatic: true } }
-              : { ok: false, errorCode: result.code === 'STALE_REVISION' ? 'STALE_REVISION' : 'VALIDATION_FAILED', errorMessage: result.errors.join('; ') };
-          }
-          showCard();
-          setPendingAppearance({ patch, description: describeAiAppearancePatch(metadata, patch) });
-          return new Promise(resolve => { patchDecisionRef.current = result => resolve({ ok: true, result }); });
-        }
-        if (name === 'propose_changeset') {
-          if (resolveEffectiveCapability('changeset', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true) === 'blocked') {
-            return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Story changes are blocked', details: { reason: 'USER_BLOCKED' } };
-          }
-          return executeProposeChangeSet(storyId, input, (pending) => { showCard(); setPendingChangeSet(pending); }, () => new Promise(resolve => { patchDecisionRef.current = resolve; }));
-        }
-        if (name === 'authorize_capability') {
-          const permissions = normalizeAiPermissions(useAppStore.getState().settings.aiPermissions);
-          const effectivePermissions = toolContext?.untrustedAttachmentMode
-            ? Object.fromEntries(AI_CAPABILITIES.map(capability => [capability, resolveEffectiveCapability(capability, permissions, true)])) as AiPermissions
-            : permissions;
-          return executeAuthorizeCapability(input, effectivePermissions, (pending) => { showCard(); setPendingCapability(pending); }, () => new Promise(resolve => { patchDecisionRef.current = resolve as (value: unknown) => void; }));
-        }
-        return { ok: false, errorCode: 'PROTOCOL_ERROR', errorMessage: `Unsupported tool: ${name}` };
-      },
+      onToolCall: createAppToolExecutor({
+        storyId,
+        getActiveSceneId: () => activeSceneIdRef.current,
+        getCaptureEditorContext: () => captureEditorContextRef.current,
+        buildEditorContext,
+        getTurnEditorContext: () => turnEditorContextRef.current,
+        dropTurnEditorContext: () => { turnEditorContextRef.current = null; },
+        beginInteraction,
+        settleInteraction,
+        writeGate,
+        showScenePatch: setPendingPatch,
+        showAppearancePatch: setPendingAppearance,
+        showChangeSet: setPendingChangeSet,
+        showCapability: setPendingCapability,
+        waitForDecision: () => new Promise((resolve) => { patchDecisionRef.current = resolve; }),
+        enqueueMutation: task => enqueueMutationRef.current(task),
+        passesSaveBarrier: () => passesSaveBarrierRef.current(),
+        keepImageResult: async (result) => {
+          const persisted = await pendingImageRepository.put(toPendingAiImage(result, storyId));
+          URL.revokeObjectURL(result.blobUrl);
+          imageResultIdsRef.current.add(persisted.requestId);
+          setImageResults(current => current.some(item => item.requestId === persisted.requestId)
+            ? current
+            : [...current, fromPendingAiImage(persisted)]);
+        },
+      }),
     });
     bridgeRef.current = client;
     client.connect();
