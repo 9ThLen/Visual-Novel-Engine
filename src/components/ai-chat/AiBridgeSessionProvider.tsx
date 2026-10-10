@@ -43,7 +43,8 @@ import {
 import { normalizeAiPermissions, normalizeExternalAgentAccess, resolveCapability, resolveEffectiveCapability, type AiCapability } from '@/lib/ai/permissions';
 import { isWriteRefusal, type WriteGate, type WriteRefusal } from '@/lib/ai/write-gate';
 import { createAppToolExecutor, refusalDetail, refusalReason } from '@/lib/ai/app-tool-executor';
-import { resolveAiBridgeConfig, selectAiBridgeProvider, updateActiveAiBridgeProfile } from '@/lib/ai/bridge-config';
+import { resolveAiBridgeConfig, selectAiBridgeAgentOnly, selectAiBridgeProvider, updateActiveAiBridgeProfile } from '@/lib/ai/bridge-config';
+import { getAiPlatformSupport } from '@/lib/ai/platform-support';
 import { aiProviderLabel, isBridgeProvider } from '@/lib/ai/providers';
 import { buildAiStoryContext } from '@/lib/ai/story-context';
 import type { AiEditorContext } from '@/lib/ai/editor-context';
@@ -71,6 +72,7 @@ const EMPTY_AI_BRIDGE_SETTINGS = { url: '', token: '', disabled: false } as cons
 
 type BridgeRuntimeErrorReason =
   | 'TURN_ALREADY_RUNNING'
+  | 'CHAT_UNSUPPORTED'
   | 'TOOL_LIMIT_EXCEEDED'
   | 'PERMISSION_DENIED'
   | 'CANCELLED'
@@ -152,7 +154,7 @@ function resolveBridgeRuntimeError(payload: Record<string, unknown>): BridgeRunt
   const details = typeof payload.details === 'object' && payload.details
     ? payload.details as Record<string, unknown>
     : {};
-  if (details.reason === 'TURN_ALREADY_RUNNING' || details.reason === 'TOOL_LIMIT_EXCEEDED' || details.reason === 'PROVIDER_ERROR') {
+  if (details.reason === 'TURN_ALREADY_RUNNING' || details.reason === 'CHAT_UNSUPPORTED' || details.reason === 'TOOL_LIMIT_EXCEEDED' || details.reason === 'PROVIDER_ERROR') {
     return details.reason;
   }
   if (typeof details.reason === 'string' && OPENAI_RUNTIME_REASONS.has(details.reason as BridgeRuntimeErrorReason)) {
@@ -451,6 +453,15 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     if (externalAgentAccess !== 'propose' || blocked) endInteraction(toolCallId, 'cancelled', 'ACCESS_REVOKED');
   }, [endInteraction, externalAgentAccess, pendingKind, settings.aiPermissions]);
 
+  // The session waits for the chat to be opened because, without it, there is
+  // nobody to decide on what the assistant proposes. An author who has let an
+  // agent of their own in has asked for something else: that the agent can
+  // reach the editor. It should not have to wait for a tab to be clicked after
+  // every reload — where no card can be shown, a proposal is refused as such.
+  useEffect(() => {
+    if (externalAgentAccess !== 'off' && getAiPlatformSupport().supported) setStarted(true);
+  }, [externalAgentAccess]);
+
   /**
    * The bridge effect below owns the tool handlers and must not re-run when the
    * editor's save callback changes identity — that would reconnect the bridge
@@ -590,8 +601,10 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
       },
       onEvent: (message) => {
         const payload = typeof message.payload === 'object' && message.payload ? message.payload as Record<string, unknown> : {};
-        if (message.type === 'session_started' && isBridgeProvider(payload.provider)) {
-          setProvider(payload.provider);
+        if (message.type === 'session_started') {
+          // A bridge that runs without chat names no provider, and says what
+          // it can do all the same.
+          setProvider(isBridgeProvider(payload.provider) ? payload.provider : undefined);
           if (payload.capabilities && typeof payload.capabilities === 'object') setCapabilities(payload.capabilities as BridgeCapabilities);
         }
         if (message.type === 'session_challenge' && typeof payload.reason === 'string') {
@@ -683,12 +696,13 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
       client.close();
       bridgeRef.current = null;
     };
-  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.preferredProvider, bridgeConfig.codexBetaConsent, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, started, addMessage, beginInteraction, buildEditorContext, cardOrigin, endInteraction, endSession, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, settleInteraction, t, writeGate]);
+  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.agentOnly, bridgeConfig.preferredProvider, bridgeConfig.codexBetaConsent, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, started, addMessage, beginInteraction, buildEditorContext, cardOrigin, endInteraction, endSession, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, settleInteraction, t, writeGate]);
 
   const sendMessage = useCallback(async () => {
     const text = inputText.trim();
     if ((!text && draftAttachments.length === 0) || status !== 'idle') return;
     if (bridgeRef.current && connectionState !== 'connected') return;
+    if (bridgeConfig.agentOnly || (bridgeRef.current && capabilities?.chat?.supported === false)) return;
 
     // Before anything else: the capture reads the selection as it is now, and
     // saves the text it was made in, so the context names steps that exist.
@@ -789,7 +803,7 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     const description = describeAiScenePatch(scene, response.patch);
     addMessage('assistant', response.patch.explanation);
     setPendingPatch({ patch: response.patch, description });
-  }, [inputText, draftAttachments, status, activeSceneId, storyId, addMessage, buildEditorContext, captureEditorContext, describeContextForTranscript, setStatus, setPendingPatch, setPendingAppearance, t, connectionState]);
+  }, [inputText, draftAttachments, status, activeSceneId, storyId, addMessage, bridgeConfig.agentOnly, buildEditorContext, capabilities, captureEditorContext, describeContextForTranscript, setStatus, setPendingPatch, setPendingAppearance, t, connectionState]);
 
   /**
    * Sending is one operation. The guard is a ref because the capture is
@@ -1079,7 +1093,16 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     });
   }, [addMessage, runStoryMutation, storyId, t]);
 
+  /**
+   * There is nobody to chat with on this connection: the author connects for
+   * an agent of their own only, or the bridge on the other end runs without
+   * chat. Not an error — the connection does what it is for.
+   */
+  const chatUnavailable = bridgeConfig.agentOnly === true
+    || (connectionState === 'connected' && capabilities?.chat?.supported === false);
+
   const canSend = status === 'idle'
+    && !chatUnavailable
     && (inputText.trim().length > 0 || draftAttachments.length > 0)
     && (draftAttachments.length === 0 || (connectionState === 'connected' && attachmentsSupported))
     && (connectionState === 'demo' || connectionState === 'connected');
@@ -1105,16 +1128,37 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     setRetryKey(value => value + 1);
   }, [aiBridgeSettings, updateAiBridgeSettings]);
 
+  /** Connect for an external agent only: no provider is chosen, and none is named to the bridge. */
+  const handleConnectAgentOnly = useCallback((token: string, url: string) => {
+    setProvider(undefined);
+    setConnectionReason(undefined);
+    updateAiBridgeSettings(updateActiveAiBridgeProfile({ ...selectAiBridgeAgentOnly(aiBridgeSettings), disabled: false }, { token, url }));
+    setRetryKey(value => value + 1);
+  }, [aiBridgeSettings, updateAiBridgeSettings]);
+
+  /** Switches to the agent-only connection, with the address and token last used for it. */
+  const handleSelectAgentOnly = useCallback(() => {
+    if (aiBridgeSettings.agentOnly) return;
+    bridgeRef.current?.close();
+    setProvider(undefined);
+    setCapabilities(undefined);
+    setConnectionReason(undefined);
+    setConnectionRetryable(true);
+    updateAiBridgeSettings(selectAiBridgeAgentOnly(aiBridgeSettings));
+    setRetryKey(value => value + 1);
+  }, [aiBridgeSettings, updateAiBridgeSettings]);
+
   const applyProviderSwitch = useCallback((nextProvider: BridgeProvider) => {
     const previousProvider = aiBridgeSettings.preferredProvider ?? 'openai';
-    if (nextProvider === previousProvider && nextProvider === aiBridgeSettings.preferredProvider) return;
+    // Coming back from agent-only is a switch even to the provider that was selected before it.
+    if (!aiBridgeSettings.agentOnly && nextProvider === previousProvider && nextProvider === aiBridgeSettings.preferredProvider) return;
     bridgeRef.current?.close();
     setProvider(undefined);
     setCapabilities(undefined);
     setConnectionReason(undefined);
     setConnectionRetryable(true);
     updateAiBridgeSettings(selectAiBridgeProvider(aiBridgeSettings, nextProvider));
-    if (connectionState === 'connected') {
+    if (connectionState === 'connected' && !aiBridgeSettings.agentOnly) {
       addMessage('system', t('aiChat.providerChanged', {
         from: aiProviderLabel(previousProvider),
         to: aiProviderLabel(nextProvider),
@@ -1124,14 +1168,14 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
   }, [addMessage, aiBridgeSettings, connectionState, t, updateAiBridgeSettings]);
 
   const handleProviderChange = useCallback((nextProvider: BridgeProvider) => {
-    if (nextProvider === (aiBridgeSettings.preferredProvider ?? 'openai')) return;
+    if (!aiBridgeSettings.agentOnly && nextProvider === (aiBridgeSettings.preferredProvider ?? 'openai')) return;
     if (status !== 'idle' || (pendingInteraction?.storyId === storyId)) {
       setShowSettings(false);
       setPendingProviderSwitch(nextProvider);
       return;
     }
     applyProviderSwitch(nextProvider);
-  }, [aiBridgeSettings.preferredProvider, applyProviderSwitch, pendingInteraction, status, storyId]);
+  }, [aiBridgeSettings.agentOnly, aiBridgeSettings.preferredProvider, applyProviderSwitch, pendingInteraction, status, storyId]);
 
   const handleRetryConnection = useCallback(() => {
     updateAiBridgeSettings({ disabled: false });
@@ -1154,7 +1198,7 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
   const handleResetConnection = useCallback(() => {
     bridgeRef.current?.close();
     BridgeClient.clearPersistedSession(bridgeConfig.url);
-    updateAiBridgeSettings({ url: '', token: '', disabled: true, preferredProvider: 'openai', profiles: {}, requestedModel: undefined, requestedTokenBudget: undefined, codexBetaConsent: undefined });
+    updateAiBridgeSettings({ url: '', token: '', disabled: true, preferredProvider: 'openai', profiles: {}, agentOnly: undefined, agentProfile: undefined, requestedModel: undefined, requestedTokenBudget: undefined, codexBetaConsent: undefined });
     setProvider(undefined);
     setConnectionReason(undefined);
     setConnectionState('demo');
@@ -1206,6 +1250,9 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     handedOver,
     handingOver,
     lastExternalCall,
+    chatUnavailable,
+    handleConnectAgentOnly,
+    handleSelectAgentOnly,
     lastAppliedChange,
     addMessageToStore,
     setActiveStory,

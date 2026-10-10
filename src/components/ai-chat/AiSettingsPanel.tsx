@@ -25,6 +25,10 @@ export interface AiSettingsPanelProps {
   externalAgentAccess?: ExternalAgentAccess;
   onExternalAgentAccessChange?(value: ExternalAgentAccess): void;
   capabilities?: BridgeCapabilities;
+  /** The author connects for an agent of their own only. */
+  agentOnly?: boolean;
+  onSelectAgentOnly?(): void;
+  onConnectAgentOnly?(token: string, url: string): void;
   requestedModel?: string;
   requestedTokenBudget?: number;
   colorScheme?: ColorScheme;
@@ -62,7 +66,24 @@ export function AiSettingsPanel(props: AiSettingsPanelProps) {
       <ScrollView contentContainerStyle={{ padding: 12, gap: 10 }}>
         <View style={section}>
           <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.settings.connection')}</Text>
-          <ConnectionCard state={props.connectionState} provider={props.provider} preferredProvider={props.preferredProvider} reason={props.reason} retryable={props.retryable} token={props.token} url={props.url} colorScheme={props.colorScheme} onConnect={props.onConnect} onProviderChange={props.onProviderChange} onRetry={props.onRetry} />
+          <ConnectionCard
+            state={props.connectionState}
+            provider={props.provider}
+            preferredProvider={props.preferredProvider}
+            reason={props.reason}
+            retryable={props.retryable}
+            token={props.token}
+            url={props.url}
+            colorScheme={props.colorScheme}
+            agentOnly={props.agentOnly}
+            chatSupported={props.capabilities?.chat?.supported}
+            offerMcp={props.externalAgentAccess !== undefined && props.externalAgentAccess !== 'off'}
+            onConnect={props.onConnect}
+            onProviderChange={props.onProviderChange}
+            onSelectAgentOnly={props.onSelectAgentOnly}
+            onConnectAgentOnly={props.onConnectAgentOnly}
+            onRetry={props.onRetry}
+          />
           {props.connectionState === 'connected' ? action(t('aiChat.connection.disconnect'), props.onDisconnect) : null}
         </View>
         <View style={section}>

@@ -152,6 +152,9 @@ function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; 
     handedOver,
     handingOver,
     lastExternalCall,
+    chatUnavailable,
+    handleConnectAgentOnly,
+    handleSelectAgentOnly,
     language,
     pendingProviderSwitch,
     provider,
@@ -234,6 +237,9 @@ function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; 
     permissions={normalizeAiPermissions(settings.aiPermissions)}
     externalAgentAccess={externalAgentAccess}
     onExternalAgentAccessChange={(value) => updateSettings({ externalAgentAccess: value })}
+    agentOnly={bridgeConfig.agentOnly}
+    onSelectAgentOnly={handleSelectAgentOnly}
+    onConnectAgentOnly={handleConnectAgentOnly}
     capabilities={capabilities}
     requestedModel={aiBridgeSettings.requestedModel}
     requestedTokenBudget={aiBridgeSettings.requestedTokenBudget}
@@ -260,7 +266,7 @@ function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; 
     <View style={{ flex: 1 }}>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ color: connectionState === 'connected' ? colors.primary : colors.muted, fontSize: 11, fontWeight: '700' }}>
-          {connectionState === 'demo' ? t('aiChat.connection.demo') : connectionState === 'connected' ? t('aiChat.connection.connected', { provider: aiProviderLabel(provider) }) : connectionState === 'connecting' || connectionState === 'reconnecting' ? t('aiChat.connection.connecting') : t('aiChat.connection.error')}
+          {connectionState === 'demo' ? t('aiChat.connection.demo') : connectionState === 'connected' ? (capabilities?.chat?.supported === false ? t('aiChat.connection.connectedAgentOnly') : t('aiChat.connection.connected', { provider: aiProviderLabel(provider) })) : connectionState === 'connecting' || connectionState === 'reconnecting' ? t('aiChat.connection.connecting') : t('aiChat.connection.error')}
         </Text>
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <Pressable accessibilityRole="button" accessibilityLabel={t('aiChat.settings.open')} onPress={() => setShowSettings(true)}><Text style={{ color: colors.muted, fontSize: 15 }}>⚙</Text></Pressable>
@@ -276,8 +282,13 @@ function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; 
             reason={connectionReason}
             retryable={connectionRetryable}
             colorScheme={colorScheme}
+            agentOnly={bridgeConfig.agentOnly}
+            chatSupported={capabilities?.chat?.supported}
+            offerMcp={externalAgentAccess !== 'off'}
             onConnect={handleConnect}
             onProviderChange={handleProviderChange}
+            onSelectAgentOnly={handleSelectAgentOnly}
+            onConnectAgentOnly={handleConnectAgentOnly}
             onRetry={handleRetryConnection}
           />
         {runtimeErrorReason ? (
@@ -292,7 +303,9 @@ function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; 
             {t('aiChat.images.persistenceFailed')}
           </Text>
         ) : null}
-        {messages.length === 0 ? (
+        {chatUnavailable ? (
+          <Text style={{ color: colors.muted, fontSize: 12 }}>{t('aiChat.chatless.note')}</Text>
+        ) : messages.length === 0 ? (
           <Text style={{ color: colors.muted, fontSize: 12 }}>{t('aiChat.emptyState')}</Text>
         ) : null}
         {restored && messages.length > 0 ? <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.restoredNote')}</Text> : null}
@@ -492,9 +505,9 @@ function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; 
           <TextInput
             value={inputText}
             onChangeText={setInputText}
-            placeholder={t('aiChat.inputPlaceholder')}
+            placeholder={chatUnavailable ? t('aiChat.chatless.placeholder') : t('aiChat.inputPlaceholder')}
             placeholderTextColor={colors.muted}
-            editable={status === 'idle'}
+            editable={status === 'idle' && !chatUnavailable}
             multiline
             onSubmitEditing={handleSend}
             style={{

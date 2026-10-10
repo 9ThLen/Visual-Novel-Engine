@@ -569,6 +569,61 @@ test('an external agent is refused by the editor, and the chat is not disturbed'
   await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toHaveCount(0);
 });
 
+/**
+ * A bridge can run with no chat at all, for an agent the author runs
+ * themselves. An author who has set up no AI provider connects to it without
+ * choosing one, lets the agent in, and the agent reads the story through the
+ * editor — the path that has to work on a clean browser profile.
+ */
+test('an author with no AI provider connects a bridge without chat, and an agent reads the story through it', async ({ page, request }) => {
+  const agentBridge = process.env.AI_E2E_AGENT_BRIDGE ?? '127.0.0.1:18789';
+  const call = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await request.post(`http://${agentBridge}/mcp`, {
+      headers: { authorization: 'Bearer ai-e2e-mcp-token', accept: 'application/json, text/event-stream' },
+      data: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
+    });
+    expect(answer.status()).toBe(200);
+    const result = (await answer.json()).result as { isError?: boolean; content: { text: string }[] };
+    return { isError: result.isError === true, value: JSON.parse(result.content[0].text) };
+  };
+  await openAi(page);
+
+  await page.getByText(/^(No chat|Без чату)$/).click();
+  await expect(page.getByText(/--provider none --mcp/)).toBeVisible();
+  await page.getByText(/Advanced connection settings|Розширені налаштування підключення/).click();
+  await page.getByLabel(/Local bridge URL|Локальна адреса моста/).fill(`ws://${agentBridge}`);
+  await page.getByLabel(/Pairing token|Токен підключення/).fill(validToken);
+  await page.getByRole('button', { name: /Connect|Підключити/ }).click();
+
+  await expect(page.getByText(/Connected · external agent only|Підключено · лише зовнішній агент/).first()).toBeVisible();
+  await expect(page.getByPlaceholder(/No chat on this connection|На цьому з’єднанні чату немає/)).toBeVisible();
+
+  // Connected is not let in: that is the author's to say.
+  expect((await call('get_editor_context')).value).toMatchObject({ details: { reason: 'EXTERNAL_ACCESS_OFF' } });
+
+  await page.getByLabel(/AI settings|Налаштування AI/).click();
+  await page.getByLabel(/^(External agent access: Read|Доступ зовнішнього агента: Читання)$/).click();
+  await page.getByLabel(/^(Close|Закрити)$/).click();
+  await expect(page.getByText(/External agent · no calls yet|Зовнішній агент · викликів ще не було/)).toBeVisible();
+
+  const context = await call('get_editor_context', { mode: 'live' });
+  expect(context.isError).toBe(false);
+  expect(context.value).toMatchObject({ storyId: 'demo-story-001', context: { kind: 'live', scene: { id: 'scene_1' } } });
+  const scenes = await call('list_scenes', { binding: context.value.binding });
+  expect(scenes.isError).toBe(false);
+  expect((scenes.value as { id: string }[]).map(item => item.id)).toContain('scene_1');
+  await expect(page.getByText(/External agent · last call list_scenes|Зовнішній агент · останній виклик list_scenes/)).toBeVisible();
+
+  // Reading was let in; proposing was not.
+  const proposal = await call('propose_scene_patch', {
+    binding: context.value.binding,
+    patch: { storyId: 'demo-story-001', sceneId: 'scene_1', expectedRevision: context.value.context.scene.revision, explanation: 'x', operations: [] },
+  });
+  expect(proposal.value).toMatchObject({ status: 'pending' });
+  const outcome = await call('get_proposal_status', { binding: context.value.binding, proposalId: proposal.value.proposalId, waitSeconds: 10 });
+  expect(outcome.value).toMatchObject({ status: 'failed', detail: 'EXTERNAL_PROPOSALS_OFF' });
+});
+
 test('the assistant is told which block the author has open', async ({ page }) => {
   await openAi(page);
   await pair(page);

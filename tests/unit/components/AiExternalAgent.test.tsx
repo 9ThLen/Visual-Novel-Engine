@@ -11,6 +11,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AiBridgeSessionProvider } from '@/components/ai-chat/AiBridgeSessionProvider';
 import { DocumentRightRail } from '@/components/document-editor/DocumentRightRail';
 import { EXTERNAL_ACCESS_OFF, externalCallRefusal } from '@/lib/ai/app-tool-executor';
+import { withActiveAiBridgeProfileStored, type AiBridgeSettings } from '@/lib/ai/bridge-config';
 import type { CaptureEditorContext, EditorContextCapture } from '@/lib/ai/editor-context-capture';
 import { sceneRecordToDocumentScene } from '@/lib/document-editor/document-scene';
 import type { VNPlateSelectionState } from '@/lib/vn-plate-editor/types';
@@ -136,6 +137,12 @@ function Editor({ approvalSurface, barrier = passes, capture }: {
  */
 function changeSettings(partial: Partial<ReturnType<typeof normalizeUserSettings>>) {
   useAppStore.setState({ settings: normalizeUserSettings({ ...useAppStore.getState().settings, ...partial }) });
+  useAiChatStore.setState(state => ({ messages: [...state.messages] }));
+}
+
+/** The store's own way of writing the bridge settings, with the same nudge. */
+function changeBridgeSettings(partial: Partial<AiBridgeSettings>) {
+  useAppStore.setState({ aiBridgeSettings: withActiveAiBridgeProfileStored({ ...useAppStore.getState().aiBridgeSettings, ...partial }) });
   useAiChatStore.setState(state => ({ messages: [...state.messages] }));
 }
 
@@ -676,6 +683,219 @@ describe('what the author hands to an external agent', () => {
 
     await waitFor(() => expect(socket.resultFor('proposal-1')).toBeTruthy());
     expect(screen.getByText('External agent · no calls yet')).toBeTruthy();
+  });
+});
+
+/**
+ * A bridge can run with no chat at all, for an agent of the author's own. The
+ * author who wants only that connects without choosing a provider, and the
+ * author who has one chosen and meets such a bridge is told what it is.
+ */
+describe('a bridge that runs without chat, from the editor', () => {
+  const chatless = { chat: { supported: false }, externalAgent: { enabled: true }, attachments: { supported: false, kinds: [], maxCount: 4, maxDecodedBytes: 5 * 1024 * 1024 } };
+
+  beforeEach(() => {
+    SocketMock.instances = [];
+    vi.stubGlobal('WebSocket', SocketMock);
+    const record = scene();
+    useAppStore.setState({
+      storiesMetadata: [metadata],
+      sceneRecordsByStory: { 'story-1': { [record.id]: record } },
+      characterLibraries: {},
+      imageAssetIdsByStory: {},
+      mediaLibrary: [],
+      createStorySnapshot: vi.fn(async () => snapshotRecord),
+      saveSceneRecord: vi.fn(),
+      settings: normalizeUserSettings({}),
+      updateSettings: changeSettings,
+      updateAiBridgeSettings: changeBridgeSettings,
+      // An author who has never set up an AI provider.
+      aiBridgeSettings: { url: '', token: '', disabled: false, preferredProvider: 'openai' },
+    });
+    useAiChatStore.setState({
+      messagesByStory: {},
+      messages: [],
+      status: 'idle',
+      pendingInteraction: null,
+      appliedChangesByStory: {},
+      appliedChanges: [],
+      lastAppliedChange: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useAppStore.setState({ aiBridgeSettings: { url: '', token: '', disabled: false }, settings: normalizeUserSettings({}) });
+  });
+
+  /** The bridge accepts the session the way one started with `--provider none --mcp` does: it names no provider. */
+  async function accept(socket: SocketMock) {
+    act(() => {
+      socket.readyState = 1;
+      socket.onopen?.(new Event('open'));
+      socket.receive('session_started', { sessionId: 'session-1', capabilities: chatless });
+    });
+    await waitFor(() => expect(screen.getAllByText('Connected · external agent only').length).toBeGreaterThan(0));
+  }
+  const sessionStart = (socket: SocketMock) => socket.send.mock.calls
+    .map(([raw]) => JSON.parse(raw as string) as BridgeEnvelope)
+    .find(envelope => envelope.type === 'session_start')?.payload as Record<string, unknown>;
+
+  it('is connected to by an author who has set up no AI provider at all', async () => {
+    render(<Editor />);
+    fireEvent.click(screen.getByText('AI'));
+
+    fireEvent.click(screen.getByText('No chat'));
+
+    // The command to start it asks for no model and no key.
+    expect(screen.getByText(/--provider none --mcp/)).toBeTruthy();
+    expect(screen.queryByText(/--image-provider/)).toBeNull();
+    fireEvent.change(screen.getByLabelText('Pairing token'), { target: { value: 'pairing-for-agent' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
+    const socket = SocketMock.instances[0];
+    await accept(socket);
+
+    expect(sessionStart(socket)).toMatchObject({ token: 'pairing-for-agent' });
+    // No provider is named: there is none to prefer.
+    expect(sessionStart(socket)).not.toHaveProperty('preferredProvider');
+    expect(sessionStart(socket)).not.toHaveProperty('requestedModel');
+    expect(screen.getByText(/There is no chat on this connection/)).toBeTruthy();
+    expect(screen.getByPlaceholderText('No chat on this connection')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    const saved = useAppStore.getState().aiBridgeSettings as AiBridgeSettings;
+    expect(saved).toMatchObject({ agentOnly: true, agentProfile: { token: 'pairing-for-agent' } });
+    // The agent's token is nobody's provider profile.
+    expect(JSON.stringify(saved.profiles)).not.toContain('pairing-for-agent');
+  });
+
+  it('serves the agent the author let in, over that connection', async () => {
+    useAppStore.setState({ aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'pairing', disabled: false, agentOnly: true, agentProfile: { url: 'ws://127.0.0.1:8787', token: 'pairing' } } });
+    render(<Editor />);
+    fireEvent.click(screen.getByText('AI'));
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
+    const socket = SocketMock.instances[0];
+    await accept(socket);
+    allow('read');
+
+    external(socket, 'read', 'list_scenes', {});
+
+    await waitFor(() => expect(socket.resultFor('read')).toMatchObject({ ok: true, result: [{ id: 'scene-1', name: 'Library' }] }));
+  });
+
+  it('is told apart from an error by an author who has a provider chosen', async () => {
+    useAppStore.setState({ aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'pairing', disabled: false, preferredProvider: 'openai' } });
+    render(<Editor />);
+    fireEvent.click(screen.getByText('AI'));
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
+    const socket = SocketMock.instances[0];
+    await accept(socket);
+
+    // The provider the author prefers was named, and was not a reason to refuse.
+    expect(sessionStart(socket)).toMatchObject({ preferredProvider: 'openai' });
+    expect(screen.getByText(/This bridge runs without chat: it serves an agent of your own/)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText('Connection error')).toBeNull();
+
+    fireEvent.change(screen.getByPlaceholderText('No chat on this connection'), { target: { value: 'hello?' } });
+    fireEvent.click(screen.getByText('Send'));
+    await act(async () => { await Promise.resolve(); });
+    expect(socket.send.mock.calls.map(([raw]) => (JSON.parse(raw as string) as BridgeEnvelope).type)).not.toContain('user_message');
+  });
+
+  it('says why if a message reaches it all the same', async () => {
+    useAppStore.setState({ aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'pairing', disabled: false, preferredProvider: 'openai' } });
+    render(<Editor />);
+    fireEvent.click(screen.getByText('AI'));
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
+    const socket = SocketMock.instances[0];
+    await accept(socket);
+
+    act(() => socket.receive('error', { code: 'PROVIDER_UNAVAILABLE', message: 'This bridge runs without chat', details: { reason: 'CHAT_UNSUPPORTED' } }));
+
+    expect(await screen.findByText('This bridge runs without chat.')).toBeTruthy();
+  });
+
+  it('takes the author back to their provider, with that provider’s own token', async () => {
+    useAppStore.setState({
+      aiBridgeSettings: {
+        url: 'ws://127.0.0.1:8899', token: 'pairing-for-agent', disabled: false, preferredProvider: 'openai',
+        profiles: { openai: { url: 'ws://127.0.0.1:8787', token: 'openai-pairing' } },
+        agentOnly: true, agentProfile: { url: 'ws://127.0.0.1:8899', token: 'pairing-for-agent' },
+      },
+    });
+    render(<Editor />);
+    fireEvent.click(screen.getByText('AI'));
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
+    await accept(SocketMock.instances[0]);
+
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.click(screen.getByText(/^OpenAI API/));
+
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(2));
+    const next = SocketMock.instances[1];
+    act(() => { next.readyState = 1; next.onopen?.(new Event('open')); });
+    expect(sessionStart(next)).toMatchObject({ token: 'openai-pairing', preferredProvider: 'openai' });
+    expect(useAppStore.getState().aiBridgeSettings).toMatchObject({ agentOnly: false, agentProfile: { token: 'pairing-for-agent' } });
+  });
+});
+
+/**
+ * The session waits for the chat to be opened, because without it nobody can
+ * decide on a proposal. An author who let an agent of their own in asked for
+ * the agent to reach the editor — after a reload as well, with no tab to click.
+ */
+describe('when the session starts', () => {
+  beforeEach(() => {
+    SocketMock.instances = [];
+    vi.stubGlobal('WebSocket', SocketMock);
+    const record = scene();
+    useAppStore.setState({
+      storiesMetadata: [metadata],
+      sceneRecordsByStory: { 'story-1': { [record.id]: record } },
+      characterLibraries: {},
+      imageAssetIdsByStory: {},
+      mediaLibrary: [],
+      settings: normalizeUserSettings({}),
+      updateSettings: changeSettings,
+      aiBridgeSettings: { url: 'ws://127.0.0.1:8787', token: 'token', disabled: false },
+    });
+    useAiChatStore.setState({ messagesByStory: {}, messages: [], status: 'idle', pendingInteraction: null, appliedChangesByStory: {}, appliedChanges: [], lastAppliedChange: null });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useAppStore.setState({ aiBridgeSettings: { url: '', token: '', disabled: false }, settings: normalizeUserSettings({}) });
+  });
+
+  it('is with the editor for an author who has let an agent in', async () => {
+    useAppStore.setState({ settings: normalizeUserSettings({ externalAgentAccess: 'read' }) });
+
+    render(<Editor />);
+
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
+  });
+
+  it('is with the first opening of the chat for an author who has not', async () => {
+    render(<Editor />);
+    await act(async () => { await Promise.resolve(); });
+
+    expect(SocketMock.instances).toHaveLength(0);
+  });
+
+  it('is at once when the author lets an agent in with the editor already open', async () => {
+    render(<Editor />);
+    await act(async () => { await Promise.resolve(); });
+    expect(SocketMock.instances).toHaveLength(0);
+
+    act(() => {
+      useAppStore.setState({ settings: normalizeUserSettings({ externalAgentAccess: 'propose' }) });
+    });
+    // Nothing above re-reads the settings in these tests; opening the inspector's sibling does.
+    fireEvent.click(screen.getByText('AI'));
+
+    await waitFor(() => expect(SocketMock.instances).toHaveLength(1));
   });
 });
 

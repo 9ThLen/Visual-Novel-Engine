@@ -24,8 +24,17 @@ export interface ConnectionCardProps {
   reason?: string;
   retryable?: boolean;
   colorScheme?: ColorScheme;
+  /** The author connects for an agent of their own only: no chat, no provider. */
+  agentOnly?: boolean;
+  /** False when the bridge that is connected runs without chat. */
+  chatSupported?: boolean;
+  /** The author has let an external agent in, so the command for a bridge with chat offers it MCP too. */
+  offerMcp?: boolean;
   onConnect(token: string, url: string, provider: BridgeProvider): void;
   onProviderChange(provider: BridgeProvider): void;
+  /** Absent where connecting without chat is not on offer. */
+  onSelectAgentOnly?(): void;
+  onConnectAgentOnly?(token: string, url: string): void;
   onRetry(): void;
 }
 
@@ -65,8 +74,13 @@ export function ConnectionCard({
   reason,
   retryable,
   colorScheme,
+  agentOnly = false,
+  chatSupported,
+  offerMcp = false,
   onConnect,
   onProviderChange,
+  onSelectAgentOnly,
+  onConnectAgentOnly,
   onRetry,
 }: ConnectionCardProps) {
   const colors = useColors(colorScheme);
@@ -95,8 +109,9 @@ export function ConnectionCard({
   const normalizedUrl = useMemo(() => normalizeLocalBridgeUrl(urlValue), [urlValue]);
   const launch = bridgeLaunchInstruction({
     origin: currentBrowserOrigin(),
-    provider: providerChoice,
+    provider: agentOnly ? 'none' : providerChoice,
     imageProvider: imageProviderChoice,
+    mcp: offerMcp,
     url: normalizedUrl.ok ? normalizedUrl.url : urlValue,
   });
   const command = launch.command;
@@ -130,20 +145,28 @@ export function ConnectionCard({
 
   const connect = () => {
     if (!normalizedUrl.ok || !value.trim()) return;
-    onConnect(value.trim(), normalizedUrl.url, providerChoice);
+    if (agentOnly && onConnectAgentOnly) onConnectAgentOnly(value.trim(), normalizedUrl.url);
+    else onConnect(value.trim(), normalizedUrl.url, providerChoice);
   };
+
+  // A bridge without chat is a bridge doing what it was started for, not one
+  // that failed to start a provider.
+  const withoutChat = chatSupported === false;
 
   if (connected && !showSwitch) {
     return (
-      <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12 }}>
+      <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, gap: 6 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <Text style={{ color: colors.foreground, fontWeight: '700' }}>
-            {t('aiChat.connection.connected', { provider: aiProviderLabel(provider) })}
+            {withoutChat ? t('aiChat.connection.connectedAgentOnly') : t('aiChat.connection.connected', { provider: aiProviderLabel(provider) })}
           </Text>
           <Pressable accessibilityRole="button" onPress={() => setShowSwitch(true)}>
             <Text style={{ color: colors.primary, fontWeight: '700' }}>{t('aiChat.connection.changeProvider')}</Text>
           </Pressable>
         </View>
+        {withoutChat && !agentOnly ? (
+          <Text style={{ color: colors.muted, fontSize: 12 }}>{t('aiChat.connection.bridgeWithoutChat')}</Text>
+        ) : null}
       </View>
     );
   }
@@ -161,15 +184,18 @@ export function ConnectionCard({
         ) : null}
       </View>
 
-      <StudioBridgeSection
-        provider={providerChoice}
-        onAvailabilityChange={setStudioCanStart}
-        onPaired={(pairedUrl, pairedToken) => {
-          setValue(pairedToken);
-          setUrlValue(pairedUrl);
-          onConnect(pairedToken, pairedUrl, providerChoice);
-        }}
-      />
+      {/* The studio starts a bridge for a provider it holds a key for; there is none to hold here. */}
+      {agentOnly ? null : (
+        <StudioBridgeSection
+          provider={providerChoice}
+          onAvailabilityChange={setStudioCanStart}
+          onPaired={(pairedUrl, pairedToken) => {
+            setValue(pairedToken);
+            setUrlValue(pairedUrl);
+            onConnect(pairedToken, pairedUrl, providerChoice);
+          }}
+        />
+      )}
 
       {state === 'connecting' || state === 'reconnecting' ? (
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
@@ -196,7 +222,7 @@ export function ConnectionCard({
         <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.connection.chooseProvider')}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {VISIBLE_AI_PROVIDERS.map(choice => {
-            const active = providerChoice === choice;
+            const active = !agentOnly && providerChoice === choice;
             const unavailable = false;
             return (
               <Pressable
@@ -206,7 +232,7 @@ export function ConnectionCard({
                 disabled={unavailable}
                 onPress={() => {
                   setProviderChoice(choice);
-                  if (choice !== preferredProvider) onProviderChange(choice);
+                  if (agentOnly || choice !== preferredProvider) onProviderChange(choice);
                 }}
                 style={{ flexGrow: 1, flexBasis: 140, borderWidth: 1, borderColor: active ? colors.primary : colors.border, borderRadius: 8, padding: 10, opacity: unavailable ? 0.55 : 1 }}
               >
@@ -217,11 +243,27 @@ export function ConnectionCard({
               </Pressable>
             );
           })}
+          {onSelectAgentOnly ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: agentOnly }}
+              onPress={onSelectAgentOnly}
+              style={{ flexGrow: 1, flexBasis: 140, borderWidth: 1, borderColor: agentOnly ? colors.primary : colors.border, borderRadius: 8, padding: 10 }}
+            >
+              <Text style={{ color: agentOnly ? colors.primary : colors.foreground, textAlign: 'center', fontWeight: '700' }}>{t('aiChat.connection.agentOnly')}</Text>
+              <Text style={{ color: colors.muted, textAlign: 'center', fontSize: 10 }}>{agentOnly ? t('aiChat.connection.selected') : ''}</Text>
+            </Pressable>
+          ) : null}
         </View>
+        {agentOnly ? (
+          <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.connection.agentOnlyHint')}</Text>
+        ) : null}
+        {agentOnly ? null : (
         <Pressable accessibilityRole="button" onPress={() => setShowInstall(current => !current)}>
           <Text style={{ color: colors.primary, fontSize: 12 }}>{t('aiChat.connection.install')}</Text>
         </Pressable>
-        {showInstall ? (
+        )}
+        {showInstall && !agentOnly ? (
           <View style={{ gap: 6 }}>
             <Text style={{ color: colors.muted, fontSize: 11 }}>
               {t(launch.kind === 'packaged' ? 'aiChat.connection.installHintPackaged' : 'aiChat.connection.installHint')}
@@ -235,6 +277,8 @@ export function ConnectionCard({
         ) : null}
       </View>
 
+      {/* The tools that draw are the chat's; a bridge without chat has no image backend to choose. */}
+      {agentOnly ? null : (
       <View style={{ gap: 8 }}>
         <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.connection.chooseImageProvider')}</Text>
         <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.connection.imageProviderHint')}</Text>
@@ -258,12 +302,13 @@ export function ConnectionCard({
         </View>
         <Text style={{ color: colors.muted, fontSize: 11 }}>{t(`aiChat.connection.imageProviderHelp.${imageProviderChoice}`)}</Text>
       </View>
+      )}
 
       {/* The manual route: a command to run and a token to paste. Kept out of
           the way when the studio can start a bridge itself — but only out of
           the way, because an author with a bridge of their own, or one the
           studio failed to start, still needs it. */}
-      {studioCanStart && !manualAnyway ? (
+      {studioCanStart && !manualAnyway && !agentOnly ? (
         <Pressable accessibilityRole="button" onPress={() => setManualAnyway(true)}>
           <Text style={{ color: colors.primary, fontSize: 12 }}>{t('aiChat.studioBridge.manual')}</Text>
         </Pressable>
@@ -315,7 +360,7 @@ export function ConnectionCard({
         </>
       )}
 
-      {studioCanStart && !manualAnyway ? null : (
+      {studioCanStart && !manualAnyway && !agentOnly ? null : (
         <Pressable
           accessibilityRole="button"
           disabled={!value.trim() || !normalizedUrl.ok}
