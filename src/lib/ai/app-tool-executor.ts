@@ -55,6 +55,7 @@ export interface AppToolExecutorDeps {
   /** Starts tracking a call the bridge may withdraw; `card` says it is the one on screen. */
   beginInteraction: (toolCallId: string, ttlMs: number | undefined, untrusted: boolean, card: boolean) => void;
   settleInteraction: (toolCallId: string) => void;
+  /** Ask for it before the first wait: a gate belongs to the session it was made in. */
   writeGate: (toolCallId: string | null, capability: AiCapability) => WriteGate;
   showScenePatch: (pending: { patch: AiScenePatch; description: ScenePatchDescription }) => void;
   showAppearancePatch: (pending: { patch: AiReaderAppearancePatch; description: AppearancePatchDescription }) => void;
@@ -84,7 +85,7 @@ function mapChangeSetError(code: AiChangeSetErrorCode, message: string) {
 
 /** The reason a refused change is reported under: the bridge reads `expired` and `cancelled` as statuses. */
 export function refusalReason(code: string): string {
-  return code === 'EXPIRED' ? 'expired' : code === 'CANCELLED' ? 'cancelled' : code;
+  return code === 'EXPIRED' ? 'expired' : code === 'CANCELLED' || code === 'SESSION_ENDED' ? 'cancelled' : code;
 }
 
 export function executeProposeChangeSet(
@@ -224,9 +225,12 @@ export function createAppToolExecutor(deps: AppToolExecutorDeps): AppToolExecuto
         // No card, but the bridge can still withdraw the call while the
         // author's draft is being saved in front of it.
         deps.beginInteraction(toolCallId, toolContext?.ttlMs, untrusted, false);
+        // Made now, before the queue and the save: the gate then belongs to the
+        // session this call came in, and closes with it.
+        const mayWrite = deps.writeGate(toolCallId, 'scene_edit');
         const result = await deps.enqueueMutation(async () => {
           if (!(await deps.passesSaveBarrier())) return null;
-          return applyAiScenePatchToStore(patch, deps.writeGate(toolCallId, 'scene_edit'));
+          return applyAiScenePatchToStore(patch, mayWrite);
         }).finally(() => deps.settleInteraction(toolCallId));
         if (!result) {
           return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Could not save the open document' };

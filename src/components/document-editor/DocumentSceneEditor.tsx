@@ -979,14 +979,17 @@ export function DocumentSceneEditor({
   }, [scheduleMountRecompute]);
 
   return (
-    // Above the rail, so the assistant's session outlives a switch to the
-    // inspector and a spell in focus mode. It starts when the chat is first
-    // opened, never on its own.
+    // This editor's place in the assistant's session. The session itself is
+    // held above the screens, one for the whole stack of editors: it outlives a
+    // switch to the inspector, a spell in focus mode and a second editor opened
+    // on top of this one, and reads the scene and the draft from whichever
+    // editor the author is looking at.
     <AiBridgeSessionProvider
       storyId={storyId}
       activeSceneId={activeSceneId}
       beforeStoryMutation={handleStoryMutationBarrier}
       captureEditorContext={captureEditorContext}
+      focused={isFocused}
     >
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: colors.background }}

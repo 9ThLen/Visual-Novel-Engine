@@ -34,7 +34,7 @@ import { CapabilityConfirmChip } from './CapabilityConfirmChip';
 import { EditorContextChip } from './EditorContextChip';
 import { ImageResultCard } from './ImageResultCard';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { AiBridgeSessionProvider, useAiBridgeSession } from './AiBridgeSessionProvider';
+import { AiBridgeSessionProvider, useAiBridgeSession, useIsInAiBridgeEditor, type AiBridgeSession } from './AiBridgeSessionProvider';
 
 interface AiChatPanelProps {
   storyId: string;
@@ -65,8 +65,8 @@ export { executeAuthorizeCapability, executeProposeChangeSet } from '@/lib/ai/ap
  * on its own it holds a session itself, as it always has.
  */
 export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMutation, captureEditorContext }: AiChatPanelProps) {
-  const session = useAiBridgeSession();
-  if (session && session.storyId === storyId) return <AiChatPanelView colorScheme={colorScheme} />;
+  const inEditor = useIsInAiBridgeEditor();
+  if (inEditor) return <AiChatPanelOfSession colorScheme={colorScheme} />;
   return (
     <AiBridgeSessionProvider
       storyId={storyId}
@@ -75,14 +75,22 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
       captureEditorContext={captureEditorContext}
       startOnMount
     >
-      <AiChatPanelView colorScheme={colorScheme} />
+      <AiChatPanelOfSession colorScheme={colorScheme} />
     </AiBridgeSessionProvider>
   );
 }
 
-function AiChatPanelView({ colorScheme }: { colorScheme?: ColorScheme }) {
+/**
+ * Draws the session, when this editor has it. An editor under another one does
+ * not — the session is with the one in front — and nothing is drawn there.
+ */
+function AiChatPanelOfSession({ colorScheme }: { colorScheme?: ColorScheme }) {
+  const session = useAiBridgeSession();
+  return session ? <AiChatPanelView colorScheme={colorScheme} session={session} /> : null;
+}
+
+function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; session: AiBridgeSession }) {
   const colors = useColors(colorScheme);
-  const session = useAiBridgeSession()!;
   const {
     start,
     addDraftFiles,

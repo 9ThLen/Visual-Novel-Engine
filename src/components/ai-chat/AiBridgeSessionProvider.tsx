@@ -1,11 +1,13 @@
 /**
- * The assistant's session, held above the chat panel.
+ * The assistant's session, held above the chat panel and above the editors.
  *
  * Everything the chat does that is not drawing — the bridge client, the cards
  * waiting for the author, applying and undoing changes, sending — lives in the
- * hook below. `AiChatPanel` is the view of it.
+ * hook below. `AiChatPanel` is the view of it. The host at the end of this
+ * file runs that hook once for all the editors that are open, and each editor
+ * takes a place in it.
  */
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useI18n } from '@/hooks/use-i18n';
 import { respond } from '@/lib/ai/fake-agent';
@@ -39,7 +41,7 @@ import {
   type StoredChatAttachment,
 } from '@/lib/ai/attachments';
 import { normalizeAiPermissions, resolveEffectiveCapability, type AiCapability } from '@/lib/ai/permissions';
-import { isWriteRefusal, type WriteGate } from '@/lib/ai/write-gate';
+import { isWriteRefusal, type WriteGate, type WriteRefusal } from '@/lib/ai/write-gate';
 import { createAppToolExecutor, refusalReason } from '@/lib/ai/app-tool-executor';
 import { resolveAiBridgeConfig, selectAiBridgeProvider, updateActiveAiBridgeProfile } from '@/lib/ai/bridge-config';
 import { aiProviderLabel, isBridgeProvider } from '@/lib/ai/providers';
@@ -187,8 +189,9 @@ export interface AiBridgeSessionProps {
   captureEditorContext?: CaptureEditorContext;
   /**
    * Start at once instead of waiting for the chat to be opened. A session held
-   * by the editor waits: where the chat is never shown — the phone layout,
+   * for an editor waits: where the chat is never shown — the phone layout,
    * focus mode — there is nobody to decide on what the assistant proposes.
+   * Read once, when the session for the story begins.
    */
   startOnMount?: boolean;
 }
@@ -285,6 +288,12 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
    * clear their revision check and the second then overwrites the first.
    */
   const mutationQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  /**
+   * Counts the sessions that have ended here. A gate remembers the one it was
+   * made in and lets nothing through once that one is over: the wait for a
+   * draft to be saved, or for a snapshot, can outlast a closed editor.
+   */
+  const endedSessionsRef = useRef(0);
   /** Forgets a call that is over; with no id, the one behind the card on screen. */
   const settleInteraction = useCallback((toolCallId: string | null = cardCallIdRef.current) => {
     if (!toolCallId) return;
@@ -321,19 +330,70 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
   }, [endInteraction, settleInteraction]);
 
   /**
-   * What an adapter asks in the step that writes: is the call behind this
-   * change still alive, and is this kind of change still allowed.
+   * What an adapter asks in the step that writes: is the session the change was
+   * asked for in still going, is the call behind it still alive, and is this
+   * kind of change still allowed.
+   *
+   * Make the gate before the first wait, not after it. Made afterwards it would
+   * belong to whatever session is current by then, and pass.
    */
-  const writeGate = useCallback((toolCallId: string | null, capability: AiCapability): WriteGate => () => {
-    const interaction = toolCallId ? interactionsRef.current.get(toolCallId) : undefined;
-    if (interaction?.ended) return interaction.ended === 'expired' ? 'EXPIRED' : 'CANCELLED';
-    if (interaction && Date.now() >= interaction.expiresAt) return 'EXPIRED';
-    const permissions = normalizeAiPermissions(useAppStore.getState().settings.aiPermissions);
-    return resolveEffectiveCapability(capability, permissions, interaction?.untrusted === true) === 'blocked' ? 'PERMISSION_DENIED' : null;
+  const writeGate = useCallback((toolCallId: string | null, capability: AiCapability): WriteGate => {
+    const session = endedSessionsRef.current;
+    return () => {
+      if (endedSessionsRef.current !== session) return 'SESSION_ENDED';
+      const interaction = toolCallId ? interactionsRef.current.get(toolCallId) : undefined;
+      if (interaction?.ended) return interaction.ended === 'expired' ? 'EXPIRED' : 'CANCELLED';
+      if (interaction && Date.now() >= interaction.expiresAt) return 'EXPIRED';
+      const permissions = normalizeAiPermissions(useAppStore.getState().settings.aiPermissions);
+      return resolveEffectiveCapability(capability, permissions, interaction?.untrusted === true) === 'blocked' ? 'PERMISSION_DENIED' : null;
+    };
   }, []);
 
-  const refusalMessage = useCallback((refusal: 'CANCELLED' | 'EXPIRED' | 'PERMISSION_DENIED') => t(
-    refusal === 'EXPIRED' ? 'aiChat.proposalExpired' : refusal === 'CANCELLED' ? 'aiChat.proposalWithdrawn' : 'aiChat.applyBlocked',
+  /**
+   * The session is over: the editor was left, or the connection is closed for
+   * good. What was waiting for the author is turned down, and a change still
+   * on its way to the store is stopped by its gate — forgetting the call
+   * instead, as this once did, left that change free to be written.
+   */
+  const endSession = useCallback((reason: string) => {
+    endedSessionsRef.current += 1;
+    for (const interaction of interactionsRef.current.values()) {
+      if (interaction.timer) clearTimeout(interaction.timer);
+    }
+    interactionsRef.current.clear();
+    cardCallIdRef.current = null;
+    patchDecisionRef.current?.({ accepted: false, allowed: false, reason });
+    patchDecisionRef.current = null;
+    cancelPendingInteraction(storyId);
+  }, [cancelPendingInteraction, storyId]);
+
+  // Without a bridge there is no connection to close, and the holder of the
+  // session going away is the only end it has.
+  useEffect(() => () => { endedSessionsRef.current += 1; }, []);
+
+  /**
+   * Finishes an Apply click: answers the call behind the card and takes the
+   * card down. Ask for it at the click. Applying waits on the way to the
+   * store, and if the session ended in one of those waits it took the card and
+   * the answer with it — whatever is up by then belongs to another session and
+   * is left alone.
+   */
+  const cardFinisher = useCallback(() => {
+    const session = endedSessionsRef.current;
+    return (hide: () => void, decision?: unknown) => {
+      if (endedSessionsRef.current !== session) return;
+      if (decision !== undefined) patchDecisionRef.current?.(decision);
+      hide();
+      patchDecisionRef.current = null;
+      settleInteraction();
+    };
+  }, [settleInteraction]);
+
+  const refusalMessage = useCallback((refusal: WriteRefusal) => t(
+    refusal === 'EXPIRED' ? 'aiChat.proposalExpired'
+      : refusal === 'CANCELLED' ? 'aiChat.proposalWithdrawn'
+        : refusal === 'SESSION_ENDED' ? 'aiChat.applySessionEnded'
+          : 'aiChat.applyBlocked',
   ), [t]);
 
   /**
@@ -431,10 +491,7 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
         setConnectionReason(reason);
         if (next === 'unauthorized' || next === 'closed') {
           assistantTextRef.current = '';
-          patchDecisionRef.current?.({ accepted: false, allowed: false, reason: reason ?? next });
-          patchDecisionRef.current = null;
-          settleInteraction();
-          cancelPendingInteraction(storyId);
+          endSession(reason ?? next);
           setStatus('idle');
         }
       },
@@ -519,14 +576,11 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     bridgeRef.current = client;
     client.connect();
     return () => {
-      patchDecisionRef.current?.({ accepted: false, allowed: false, reason: 'panel_closed' });
-      patchDecisionRef.current = null;
-      settleInteraction();
-      cancelPendingInteraction(storyId);
+      endSession('panel_closed');
       client.close();
       bridgeRef.current = null;
     };
-  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.preferredProvider, bridgeConfig.codexBetaConsent, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, started, addMessage, beginInteraction, buildEditorContext, cancelPendingInteraction, endInteraction, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, settleInteraction, t, writeGate]);
+  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.preferredProvider, bridgeConfig.codexBetaConsent, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, started, addMessage, beginInteraction, buildEditorContext, endInteraction, endSession, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, settleInteraction, t, writeGate]);
 
   const sendMessage = useCallback(async () => {
     const text = inputText.trim();
@@ -783,12 +837,15 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
 
   const handleApply = useCallback(async () => {
     if (!pendingPatch) return;
+    const mayWrite = writeGate(cardCallIdRef.current, 'scene_edit');
+    const finish = cardFinisher();
     await runStoryMutation(async () => {
+      let decision: unknown;
       try {
-        const result = await applyAiScenePatchToStore(pendingPatch.patch, writeGate(cardCallIdRef.current, 'scene_edit'));
+        const result = await applyAiScenePatchToStore(pendingPatch.patch, mayWrite);
         if (result.ok) {
           addMessage('system', t('aiChat.applySuccess'));
-          patchDecisionRef.current?.({ accepted: true });
+          decision = { accepted: true };
         } else {
           const message = isWriteRefusal(result.code)
             ? refusalMessage(result.code)
@@ -798,15 +855,13 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
                 ? t('aiChat.applyFailedValidation', { errors: result.errors.join('; ') })
                 : t('aiChat.applyFailedGeneric');
           addMessage('system', message);
-          patchDecisionRef.current?.({ accepted: false, reason: refusalReason(result.code) });
+          decision = { accepted: false, reason: refusalReason(result.code) };
         }
       } finally {
-        setPendingPatch(null);
-        patchDecisionRef.current = null;
-        settleInteraction();
+        finish(() => setPendingPatch(null), decision);
       }
     });
-  }, [pendingPatch, addMessage, refusalMessage, runStoryMutation, setPendingPatch, settleInteraction, t, writeGate]);
+  }, [pendingPatch, addMessage, cardFinisher, refusalMessage, runStoryMutation, setPendingPatch, t, writeGate]);
 
   const handleReject = useCallback(() => {
     if (mutationInFlightRef.current) return;
@@ -819,12 +874,14 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
 
   const handleApplyAppearance = useCallback(async () => {
     if (!pendingAppearance) return;
+    const finish = cardFinisher();
+    let decision: unknown;
     setApplying(true);
     try {
       const result = await applyAiAppearancePatchToStore(pendingAppearance.patch, writeGate(cardCallIdRef.current, 'appearance'));
       if (result.ok) {
         addMessage('system', t('aiChat.applySuccess'));
-        patchDecisionRef.current?.({ accepted: true });
+        decision = { accepted: true };
       } else {
         const message = isWriteRefusal(result.code)
           ? refusalMessage(result.code)
@@ -834,15 +891,13 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
               ? t('aiChat.applyFailedValidation', { errors: result.errors.join('; ') })
               : t('aiChat.applyFailedGeneric');
         addMessage('system', message);
-        patchDecisionRef.current?.({ accepted: false, reason: refusalReason(result.code) });
+        decision = { accepted: false, reason: refusalReason(result.code) };
       }
     } finally {
       setApplying(false);
-      setPendingAppearance(null);
-      patchDecisionRef.current = null;
-      settleInteraction();
+      finish(() => setPendingAppearance(null), decision);
     }
-  }, [pendingAppearance, addMessage, refusalMessage, setPendingAppearance, settleInteraction, t, writeGate]);
+  }, [pendingAppearance, addMessage, cardFinisher, refusalMessage, setPendingAppearance, t, writeGate]);
 
   const handleRejectAppearance = useCallback(() => {
     if (mutationInFlightRef.current) return;
@@ -855,25 +910,26 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
 
   const handleApplyChangeSet = useCallback(async () => {
     if (!pendingChangeSet) return;
+    const mayWrite = writeGate(cardCallIdRef.current, 'changeset');
+    const finish = cardFinisher();
     await runStoryMutation(async () => {
+      let decision: unknown;
       try {
-        const result = await applyAiChangeSetToStore(pendingChangeSet.changeSet, writeGate(cardCallIdRef.current, 'changeset'));
+        const result = await applyAiChangeSetToStore(pendingChangeSet.changeSet, mayWrite);
         if (result.ok) {
           addMessage('system', t('aiChat.applySuccess'));
-          patchDecisionRef.current?.({ accepted: true, summary: pendingChangeSet.description });
+          decision = { accepted: true, summary: pendingChangeSet.description };
         } else {
           addMessage('system', isWriteRefusal(result.code)
             ? refusalMessage(result.code)
             : result.code === 'STALE_REVISION' ? t('aiChat.applyFailedStale') : t('aiChat.applyFailedValidation', { errors: result.message }));
-          patchDecisionRef.current?.({ accepted: false, reason: refusalReason(result.code) });
+          decision = { accepted: false, reason: refusalReason(result.code) };
         }
       } finally {
-        setPendingChangeSet(null);
-        patchDecisionRef.current = null;
-        settleInteraction();
+        finish(() => setPendingChangeSet(null), decision);
       }
     });
-  }, [pendingChangeSet, addMessage, refusalMessage, runStoryMutation, setPendingChangeSet, settleInteraction, t, writeGate]);
+  }, [pendingChangeSet, addMessage, cardFinisher, refusalMessage, runStoryMutation, setPendingChangeSet, t, writeGate]);
 
   const handleRejectChangeSet = useCallback(() => {
     if (mutationInFlightRef.current) return;
@@ -1154,24 +1210,150 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
 
 export type AiBridgeSession = ReturnType<typeof useAiBridgeSessionState>;
 
-const AiBridgeSessionContext = createContext<AiBridgeSession | null>(null);
-
-/**
- * Holds the assistant's session for one story: the socket, what it is waiting
- * for, the queue every change goes through.
- *
- * It used to live in the chat panel, and the panel goes away whenever the
- * author switches the rail to the inspector — taking the connection, and any
- * proposal still on screen, with it. Held here, above the rail, the session
- * lasts as long as the editor has the story open: a change of story ends it,
- * and leaving the editor turns down whatever was still waiting, as before.
- */
-export function AiBridgeSessionProvider({ children, ...props }: AiBridgeSessionProps & { children: React.ReactNode }) {
-  const session = useAiBridgeSessionState(props);
-  return <AiBridgeSessionContext.Provider value={session}>{children}</AiBridgeSessionContext.Provider>;
+/** An editor that is open, and whether the author is looking at it. */
+interface OpenEditor {
+  id: symbol;
+  focused: boolean;
+  editor: AiBridgeSessionProps;
 }
 
-/** The session above this component, or null where nothing holds one. */
+interface OpenEditors {
+  put: (id: symbol, editor: AiBridgeSessionProps, focused: boolean) => void;
+  remove: (id: symbol) => void;
+}
+
+const OpenEditorsContext = createContext<OpenEditors | null>(null);
+const HeldSessionContext = createContext<{ session: AiBridgeSession | null; frontId: symbol | null }>({ session: null, frontId: null });
+const EditorScopeContext = createContext<{ id: symbol; storyId: string } | null>(null);
+
+function sameEditor(a: AiBridgeSessionProps, b: AiBridgeSessionProps): boolean {
+  return a.storyId === b.storyId
+    && a.activeSceneId === b.activeSceneId
+    && a.beforeStoryMutation === b.beforeStoryMutation
+    && a.captureEditorContext === b.captureEditorContext
+    && a.startOnMount === b.startOnMount;
+}
+
+/**
+ * The open editors, in the order the author last looked at them: the last one
+ * is in front. An editor covered by a preview stays where it is — nothing took
+ * its place — and one the author returns to moves back to the end.
+ */
+export function placeOpenEditor(open: readonly OpenEditor[], next: OpenEditor): readonly OpenEditor[] {
+  const index = open.findIndex(item => item.id === next.id);
+  if (index < 0) return next.focused ? [...open, next] : [next, ...open];
+  const was = open[index];
+  if (next.focused && !was.focused) return [...open.filter(item => item.id !== next.id), next];
+  if (was.focused === next.focused && sameEditor(was.editor, next.editor)) return open;
+  return open.map(item => (item.id === next.id ? next : item));
+}
+
+/**
+ * Runs the session and hands what it returns to the host. It renders nothing
+ * and has no children, which is what lets the host key it by story: a new
+ * story gets every piece of state fresh, and no screen is remounted for it.
+ */
+const SessionHolder = React.memo(function SessionHolder({ editor, publish }: {
+  editor: AiBridgeSessionProps;
+  publish: (session: AiBridgeSession | null) => void;
+}) {
+  const session = useAiBridgeSessionState(editor);
+  // After every render: what the hook returns closes over that render's state.
+  useLayoutEffect(() => { publish(session); });
+  useLayoutEffect(() => () => publish(null), [publish]);
+  return null;
+});
+
+/**
+ * Holds the one session of the assistant for whatever editors are open below.
+ *
+ * Opening a scene off the current path puts a second editor on top of the
+ * first and leaves the first mounted. While each editor held a session of its
+ * own, the two resumed the same session at the bridge and kept taking the
+ * socket from each other. So the session is held here, above the stack of
+ * screens: the editors only say where the author is, and the one in front is
+ * the one the session reads the scene, the selection and the draft from.
+ *
+ * The session lasts while an editor of its story is open. It is not ended by
+ * the inspector tab, by focus mode, by a preview on top, or by a second editor
+ * of the same story; it is ended by leaving the last editor and by an editor of
+ * another story coming to the front.
+ */
+export function AiBridgeSessionHost({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState<readonly OpenEditor[]>([]);
+  const [session, setSession] = useState<AiBridgeSession | null>(null);
+  const editors = useMemo<OpenEditors>(() => ({
+    put: (id, editor, focused) => setOpen(current => placeOpenEditor(current, { id, editor, focused })),
+    remove: id => setOpen(current => current.filter(item => item.id !== id)),
+  }), []);
+  const front = open.length ? open[open.length - 1] : null;
+  const frontId = front?.id ?? null;
+  const held = useMemo(() => ({ session: frontId ? session : null, frontId }), [frontId, session]);
+  return (
+    <OpenEditorsContext.Provider value={editors}>
+      {front ? <SessionHolder key={front.editor.storyId} editor={front.editor} publish={setSession} /> : null}
+      <HeldSessionContext.Provider value={held}>{children}</HeldSessionContext.Provider>
+    </OpenEditorsContext.Provider>
+  );
+}
+
+/** Tells the host this editor is open, and keeps it told where the author is. */
+function OpenEditorScope({ children, storyId, activeSceneId, beforeStoryMutation, captureEditorContext, startOnMount, focused }: AiBridgeSessionProps & {
+  focused: boolean;
+  children: React.ReactNode;
+}) {
+  const editors = useContext(OpenEditorsContext);
+  const [id] = useState(() => Symbol('editor'));
+  // The editor's callbacks change identity as it renders. The session is given
+  // two that do not, so that an editor rendering is not news to it.
+  const latest = useRef({ beforeStoryMutation, captureEditorContext });
+  latest.current = { beforeStoryMutation, captureEditorContext };
+  const barrier = useCallback(() => latest.current.beforeStoryMutation(), []);
+  const canCapture = captureEditorContext !== undefined;
+  const capture = useMemo<CaptureEditorContext | undefined>(() => (canCapture
+    ? async (options) => {
+      const read = latest.current.captureEditorContext;
+      return read ? read(options) : { ok: false };
+    }
+    : undefined), [canCapture]);
+
+  useEffect(() => () => editors?.remove(id), [editors, id]);
+  useEffect(() => {
+    editors?.put(id, { storyId, activeSceneId, beforeStoryMutation: barrier, captureEditorContext: capture, startOnMount }, focused);
+  }, [activeSceneId, barrier, capture, editors, focused, id, startOnMount, storyId]);
+
+  const scope = useMemo(() => ({ id, storyId }), [id, storyId]);
+  return <EditorScopeContext.Provider value={scope}>{children}</EditorScopeContext.Provider>;
+}
+
+/**
+ * An editor's place in the assistant's session: wrap the editor in it.
+ *
+ * Under a host — the app has one above its screens — this only reports the
+ * editor to it. With no host above, as in a test or a panel rendered on its
+ * own, it brings one of its own, and the session is then this editor's alone.
+ */
+export function AiBridgeSessionProvider({ children, focused = true, ...editor }: AiBridgeSessionProps & {
+  /** Whether the author is looking at this editor; a screen under another one is not. */
+  focused?: boolean;
+  children: React.ReactNode;
+}) {
+  const hosted = useContext(OpenEditorsContext) !== null;
+  const scope = <OpenEditorScope {...editor} focused={focused}>{children}</OpenEditorScope>;
+  return hosted ? scope : <AiBridgeSessionHost>{scope}</AiBridgeSessionHost>;
+}
+
+/** Whether an editor above this component has a place in a session. */
+export function useIsInAiBridgeEditor(): boolean {
+  return useContext(EditorScopeContext) !== null;
+}
+
+/**
+ * The session, for the editor in front. An editor under another one gets null,
+ * and so does anything outside an editor: one session, in one pair of hands.
+ */
 export function useAiBridgeSession(): AiBridgeSession | null {
-  return useContext(AiBridgeSessionContext);
+  const scope = useContext(EditorScopeContext);
+  const { session, frontId } = useContext(HeldSessionContext);
+  return scope && session && scope.id === frontId && session.storyId === scope.storyId ? session : null;
 }
