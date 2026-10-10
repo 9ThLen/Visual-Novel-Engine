@@ -439,6 +439,37 @@ describe('an external agent in the editor', () => {
       expect(saveSceneRecord).not.toHaveBeenCalled();
       expect(systemMessages()).toContain('You no longer let the external agent propose this, so nothing was applied.');
     });
+
+    // Apply saves the open document first. If that fails there is no write
+    // for the gate to stop, and nothing the write would have done afterwards:
+    // the agent must be told all the same, and the card must not stay.
+    it('tells the agent and takes the card down when the document then could not be saved', async () => {
+      const save = deferred<boolean>();
+      const barrier = vi.fn(() => save.promise);
+      render(<Editor barrier={barrier} />);
+      const socket = await connect();
+      allow('propose');
+      propose(socket);
+      fireEvent.click(await screen.findByRole('button', { name: 'Apply' }));
+      await waitFor(() => expect(barrier).toHaveBeenCalled());
+
+      allow('read');
+      await act(async () => { save.resolve(false); await save.promise; });
+
+      await waitFor(() => expect(socket.resultFor('proposal-1')).toEqual({
+        toolCallId: 'proposal-1', ok: true, result: { accepted: false, allowed: false, reason: 'cancelled', detail: 'ACCESS_REVOKED' },
+      }));
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull());
+      expect(useAiChatStore.getState().pendingInteraction).toBeNull();
+      expect(systemMessages()).toContain('You no longer let the external agent propose this, so its proposal was withdrawn.');
+      expect(saveSceneRecord).not.toHaveBeenCalled();
+
+      // The queue is free again: the next proposal is shown, not refused.
+      allow('propose');
+      propose(socket, 'proposal-2');
+      expect(await screen.findByRole('button', { name: 'Apply' })).toBeTruthy();
+      expect(socket.resultFor('proposal-2')).toBeUndefined();
+    });
   });
 
   describe('the switch', () => {

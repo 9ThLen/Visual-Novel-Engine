@@ -244,6 +244,99 @@ describe('AiChatPanel and the life of a proposal', () => {
     expect(screen.getByText(/waited too long/)).toBeTruthy();
   });
 
+  // The gate stops a write, and the write's handler takes the card down. When
+  // the document could not be saved there is no write and no handler: the
+  // ending of the call still has to be finished.
+  it('takes the card down when the call was withdrawn and the document then could not be saved', async () => {
+    const record = scene();
+    const story = setup(record);
+    const held = heldBarrier();
+    render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" beforeStoryMutation={held.barrier} />);
+    const socket = await story.open();
+    await proposeTo(socket, record);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(held.barrier).toHaveBeenCalled());
+    act(() => socket.receive('tool_cancel', { toolCallId: 'call-1', reason: 'INTERRUPTED' }));
+    await held.open(false);
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull());
+    expect(useAiChatStore.getState().pendingInteraction).toBeNull();
+    expect(screen.getByText(/withdrew this proposal/)).toBeTruthy();
+    expect(story.saveSceneRecord).not.toHaveBeenCalled();
+    await settle();
+    expect(socket.results()).toEqual([]);
+  });
+
+  it('says the card’s time ran out when the document then could not be saved', async () => {
+    const record = scene();
+    const story = setup(record);
+    const held = heldBarrier();
+    render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" beforeStoryMutation={held.barrier} />);
+    const socket = await story.open();
+    await proposeTo(socket, record, 80);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(held.barrier).toHaveBeenCalled());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 120)); });
+    await held.open(false);
+
+    await waitFor(() => expect(socket.results()).toEqual([
+      { toolCallId: 'call-1', ok: true, result: { accepted: false, allowed: false, reason: 'expired' } },
+    ]));
+    expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
+    expect(useAiChatStore.getState().pendingInteraction).toBeNull();
+    expect(story.saveSceneRecord).not.toHaveBeenCalled();
+  });
+
+  // A failed save on its own ends nothing: the call is alive, and the author
+  // may press Apply again once the document saves.
+  it('keeps the card for another try when the document could not be saved and the call is alive', async () => {
+    const record = scene();
+    const story = setup(record);
+    const held = heldBarrier();
+    render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" beforeStoryMutation={held.barrier} />);
+    const socket = await story.open();
+    await proposeTo(socket, record);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(held.barrier).toHaveBeenCalledTimes(1));
+    await held.open(false);
+    await settle();
+
+    expect(socket.results()).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(held.barrier).toHaveBeenCalledTimes(2));
+    await held.open(true);
+
+    await waitFor(() => expect(socket.results()).toEqual([{ toolCallId: 'call-1', ok: true, result: { accepted: true } }]));
+    expect(story.saveSceneRecord).toHaveBeenCalledTimes(1);
+  });
+
+  // An Undo holds the same guard as an Apply and has no card of its own, so
+  // nothing it runs would ever take down a card whose call ended meanwhile.
+  it('takes the card down when its call was withdrawn while an earlier change was being undone', async () => {
+    const record = scene();
+    const story = setup(record);
+    const restoreStorySnapshot = vi.fn(async () => true);
+    useAppStore.setState({ restoreStorySnapshot });
+    useAiChatStore.setState({ lastAppliedChange: { kind: 'scene', storyId: 'story-1', snapshotId: 'snap-0' } });
+    const held = heldBarrier();
+    render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" beforeStoryMutation={held.barrier} />);
+    const socket = await story.open();
+    await proposeTo(socket, record);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo AI changes' }));
+    await waitFor(() => expect(held.barrier).toHaveBeenCalled());
+    act(() => socket.receive('tool_cancel', { toolCallId: 'call-1', reason: 'TURN_ENDED' }));
+    await held.open(true);
+
+    await waitFor(() => expect(restoreStorySnapshot).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull());
+    expect(useAiChatStore.getState().pendingInteraction).toBeNull();
+    expect(screen.getByText(/withdrew this proposal/)).toBeTruthy();
+  });
+
   it('writes nothing when the capability is blocked while the card is up', async () => {
     const record = scene();
     const story = setup(record);

@@ -323,6 +323,21 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
   }, []);
 
   /**
+   * Answers a call that is over and takes its card down. Without a card there
+   * is nothing to take down, and a call that is still alive is left alone.
+   */
+  const dismissEnded = useCallback((toolCallId: string | null) => {
+    const interaction = toolCallId ? interactionsRef.current.get(toolCallId) : undefined;
+    if (!toolCallId || !interaction?.ended || cardCallIdRef.current !== toolCallId) return;
+    const { ended: how, detail } = interaction;
+    patchDecisionRef.current?.({ accepted: false, allowed: false, reason: how, ...(detail ? { detail } : {}) });
+    patchDecisionRef.current = null;
+    settleInteraction(toolCallId);
+    cancelPendingInteraction(storyId);
+    addMessage('system', t(detail ? 'aiChat.proposalAccessRevoked' : how === 'expired' ? 'aiChat.proposalExpired' : 'aiChat.proposalWithdrawn'));
+  }, [addMessage, cancelPendingInteraction, settleInteraction, storyId, t]);
+
+  /**
    * A call was withdrawn or ran out of time: nothing more is written for it,
    * and its card goes. `detail` says the author took an external agent's
    * access away, which the agent is told apart from any other withdrawal.
@@ -333,14 +348,11 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     interaction.ended = how;
     interaction.detail = detail;
     // With a write on its way, the gate in front of that write stops it and
-    // its handler takes the card down. Without a card there is nothing to take down.
-    if (cardCallIdRef.current !== toolCallId || mutationInFlightRef.current) return;
-    patchDecisionRef.current?.({ accepted: false, allowed: false, reason: how, ...(detail ? { detail } : {}) });
-    patchDecisionRef.current = null;
-    settleInteraction(toolCallId);
-    cancelPendingInteraction(storyId);
-    addMessage('system', t(detail ? 'aiChat.proposalAccessRevoked' : how === 'expired' ? 'aiChat.proposalExpired' : 'aiChat.proposalWithdrawn'));
-  }, [addMessage, cancelPendingInteraction, settleInteraction, storyId, t]);
+    // its handler takes the card down. Whatever that write leaves up — it may
+    // never be reached, or be another card's — `runStoryMutation` takes down
+    // when it is through.
+    if (!mutationInFlightRef.current) dismissEnded(toolCallId);
+  }, [dismissEnded]);
 
   const beginInteraction = useCallback((toolCallId: string, ttlMs: number | undefined, untrusted: boolean, card: boolean, external = false) => {
     if (card) settleInteraction();
@@ -949,8 +961,13 @@ function useAiBridgeSessionState({ storyId, activeSceneId, beforeStoryMutation, 
     } finally {
       mutationInFlightRef.current = false;
       setApplying(false);
+      // A call that ended in the meantime left its card to the write's own
+      // handler. That handler never runs if the document could not be saved,
+      // and an Undo has no card of its own: the ending is finished here, or
+      // the card stays up for a call that is over and nobody is ever told.
+      dismissEnded(cardCallIdRef.current);
     }
-  }, [enqueueMutation, passesSaveBarrier]);
+  }, [dismissEnded, enqueueMutation, passesSaveBarrier]);
 
   const handleApply = useCallback(async () => {
     if (!pendingPatch) return;
