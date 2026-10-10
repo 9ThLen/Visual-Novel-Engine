@@ -281,6 +281,10 @@ export class BridgeClient {
     if (!this.isRecord(payload) || typeof payload.toolCallId !== 'string'
       || typeof payload.toolName !== 'string') return;
     const toolCallId = payload.toolCallId;
+    // The bridge sends a waiting call again whenever a session is resumed, for
+    // the tab that reloaded and lost its card. This one either still has the
+    // card up, or has answered and is only waiting to hear the answer arrived.
+    if (this.callsInFlight.has(toolCallId) || this.results.has(toolCallId)) return;
     const awaitsAuthor = typeof payload.ttlMs === 'number';
     let result: ToolResult;
     this.callsInFlight.add(toolCallId);

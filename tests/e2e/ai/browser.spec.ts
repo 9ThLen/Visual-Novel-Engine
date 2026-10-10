@@ -463,6 +463,30 @@ test('a proposal waits behind the inspector tab, and the connection with it', as
 });
 
 /**
+ * A page that reloads comes back to the same session without the card that
+ * was on screen. The bridge sends the waiting call again, so the proposal is
+ * there to decide on instead of holding the session until its time runs out.
+ */
+test('a proposal on screen survives a reload of the page', async ({ page }) => {
+  await openAi(page);
+  await pair(page);
+  await expect(page.getByText(/Connected · Claude Code|Підключено · Claude Code/).first()).toBeVisible();
+  await send(page, '[proposal]');
+  const apply = page.getByRole('button', { name: /Apply|Застосувати/ });
+  await expect(apply).toBeVisible();
+
+  await page.reload();
+  // The session starts with the first opening of the chat.
+  await page.getByText('AI', { exact: true }).click();
+
+  await expect(apply).toBeVisible();
+  await apply.click();
+  await expect(page.getByRole('button', { name: /Undo AI changes|Відкотити AI-зміни/ })).toBeVisible();
+  // The turn that proposed it was still running, and ends as it would have.
+  await expect(page.getByText('Proposal resolved.')).toBeVisible();
+});
+
+/**
  * Opening a scene from another one puts a second editor on top of the first,
  * and the first stays mounted. Each editor used to hold a session of its own:
  * the two resumed the same session at the bridge and took the socket from each

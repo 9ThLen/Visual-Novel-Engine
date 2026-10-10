@@ -101,6 +101,56 @@ describe('answers to calls that waited for the author', () => {
     expect(options.onToolCall).toHaveBeenNthCalledWith(2, 'call-2', 'get_scene', {}, { untrustedAttachmentMode: false });
   });
 
+  // The bridge sends a waiting call again whenever a session is resumed, for a
+  // tab that reloaded and lost its card. A tab that did not must not show two.
+  it('does not put a card up twice when the bridge sends its call again', async () => {
+    const socket = connected(new BridgeClient(options));
+    propose(socket);
+    await flush();
+
+    propose(socket);
+    await flush();
+
+    expect(options.onToolCall).toHaveBeenCalledTimes(1);
+    decide(applied);
+    await flush();
+    expect(socket.payloads('tool_result')).toEqual([{ toolCallId: 'call-1', ...applied }]);
+  });
+
+  it('does not ask the author again about a call it has answered and is still waiting to hear back on', async () => {
+    const client = new BridgeClient(options);
+    const first = connected(client);
+    propose(first);
+    await flush();
+    first.close();
+    decide(applied);
+    await flush();
+    vi.advanceTimersByTime(500);
+    const second = connected(client, 1, true);
+
+    // The bridge has not processed the answer yet when it repeats the call.
+    propose(second);
+    await flush();
+
+    expect(options.onToolCall).toHaveBeenCalledTimes(1);
+    expect(second.payloads('tool_result')).toEqual([{ toolCallId: 'call-1', ...applied }]);
+  });
+
+  it('puts the card up again once the answer to the first one has been heard', async () => {
+    const socket = connected(new BridgeClient(options));
+    propose(socket);
+    await flush();
+    decide(rejected);
+    await flush();
+    socket.receive('tool_result_ack', { toolCallId: 'call-1' });
+
+    // Not something the bridge does; only that nothing is remembered for ever.
+    propose(socket);
+    await flush();
+
+    expect(options.onToolCall).toHaveBeenCalledTimes(2);
+  });
+
   it('sends an answer again after the socket comes back, until it is acknowledged', async () => {
     const client = new BridgeClient(options);
     const first = connected(client);

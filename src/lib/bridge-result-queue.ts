@@ -52,6 +52,11 @@ export class BridgeResultQueue {
     return [...this.items];
   }
 
+  /** An answer to this call is kept here, sent or about to be sent again. */
+  has(toolCallId: string): boolean {
+    return this.items.has(toolCallId);
+  }
+
   clear(): void {
     this.sessionId = '';
     this.items.clear();
