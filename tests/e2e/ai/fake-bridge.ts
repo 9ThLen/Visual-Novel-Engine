@@ -4,6 +4,8 @@ import { AiBridgeServer } from '../../../tools/ai-bridge/src/server';
 import type { AgentEvent, AgentProvider, AgentUserInput, ToolInvoker } from '../../../tools/ai-bridge/src/provider';
 
 const TOKEN = 'ai-e2e-token';
+/** What an agent outside the app presents at `/mcp`; never the pairing token. */
+const MCP_TOKEN = 'ai-e2e-mcp-token';
 
 interface SeenEditorContext {
   scene?: { id?: string };
@@ -132,6 +134,7 @@ class DeterministicProvider implements AgentProvider {
 const bridge = new AiBridgeServer({
   port: 18787,
   token: TOKEN,
+  mcp: { token: MCP_TOKEN },
   provider: 'claude',
   allowedOrigins: ['http://127.0.0.1:8081', 'http://localhost:8081'],
   providerFactory: tools => new DeterministicProvider(tools),
