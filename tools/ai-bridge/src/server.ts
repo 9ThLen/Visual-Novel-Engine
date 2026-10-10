@@ -12,7 +12,7 @@ import { validateCodexBetaConsent } from '../../../src/lib/ai/codex-beta-consent
 import { parseAiEditorContext } from '../../../src/lib/ai/editor-context';
 import { appendEditorContext } from './editor-context-block';
 import { startTurnBudget } from './turn-budget';
-import { ExternalAgentGate, type EditorSessionView, type ProposalOutcome } from './external-agent-gate';
+import { ExternalAgentGate, PROPOSALS_AT_MOST, type EditorSessionView, type ProposalOutcome } from './external-agent-gate';
 import { MCP_PATH, createMcpEndpoint } from './mcp-server';
 
 const TURN_TIMEOUT_MS = 120_000;
@@ -22,7 +22,11 @@ const MAX_TOOL_CALLS = 15;
 // The app drops a card when its lifetime ends and says so. This is how much
 // longer the bridge waits to hear it before giving up on an app that is gone.
 const AUTHOR_WAIT_GRACE_MS = 5_000;
-const FINISHED_INTERACTIONS_KEPT = 64;
+// As many as the gate may still owe an agent an answer about. An ending the
+// bridge had to settle alone can be corrected by a late answer from the app
+// only while the call is remembered here; forgetting it sooner would leave an
+// applied change reported as cancelled.
+const FINISHED_INTERACTIONS_KEPT = PROPOSALS_AT_MOST;
 /** `external` marks a call an agent outside the app made: no turn is waiting on it and none is charged for it. */
 type PendingTool = { toolName: string; awaitsAuthor: boolean; external?: boolean; resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
 /** How a call that waited for the author ended. A status, once set, does not change. */
@@ -187,26 +191,35 @@ export class AiBridgeServer {
       return false;
     }
     const resumeId = typeof payload?.resumeSessionId === 'string' ? payload.resumeSessionId : undefined;
+    const context = this.record(payload?.context);
+    const locale = typeof context?.locale === 'string' ? context.locale : undefined;
+    const storyId = typeof context?.storyId === 'string' && context.storyId.length <= 200 ? context.storyId : undefined;
     if (this.session) {
       if (this.session.socket?.readyState === WebSocket.OPEN && resumeId !== this.session.id) {
         this.sendError(socket, 'PROVIDER_UNAVAILABLE', 'Another session is already active', { reason: 'SESSION_ALREADY_ACTIVE' });
         socket.close();
         return false;
       }
-      if (resumeId !== this.session.id) this.disposeSession();
-      else {
+      // The id alone does not make it the same session. A tab keeps the id
+      // across a reload, and may have another story open by the time it comes
+      // back; a session — its binding, its conversation, what was proposed in
+      // it — is about one story. Naming a story where none was named, or the
+      // other way round, counts as another story: it cannot be shown to be the same.
+      if (resumeId === this.session.id && storyId === this.session.storyId) {
         this.session.socket?.close(1000, SESSION_RESUMED_ELSEWHERE);
         this.session.socket = socket;
         this.send(socket, 'session_started', this.sessionStarted(this.session, true), this.session.id);
         this.toolRuntime.reemitBufferedImages();
         return true;
       }
+      // Still on the line only if it is the tab's own earlier connection:
+      // anybody else was turned away above.
+      const previous = this.session.socket;
+      this.disposeSession();
+      previous?.close(1000, SESSION_RESUMED_ELSEWHERE);
     }
     const id = randomUUID();
     const tools = this.toolRuntime;
-    const context = this.record(payload?.context);
-    const locale = typeof context?.locale === 'string' ? context.locale : undefined;
-    const storyId = typeof context?.storyId === 'string' && context.storyId.length <= 200 ? context.storyId : undefined;
     const policy = this.resolveModelPolicy(payload);
     if (!policy.ok) {
       this.sendError(socket, 'VALIDATION_FAILED', 'Requested model or token budget is not allowed', { reason: policy.reason });

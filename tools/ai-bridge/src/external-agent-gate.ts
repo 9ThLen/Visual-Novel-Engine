@@ -23,7 +23,14 @@ export const EXTERNAL_CALLS_PER_MINUTE = 120;
 const RATE_WINDOW_MS = 60_000;
 /** How long the outcome of a proposal can still be read after it is known. */
 export const PROPOSAL_KEPT_MS = 15 * 60_000;
-const PROPOSALS_KEPT = 64;
+/**
+ * A ceiling, not a rule for forgetting. An outcome is kept for its fifteen
+ * minutes whatever comes after it: dropping it early loses its status and
+ * turns a repeat of its request key into a second proposal. The agent's limit
+ * of calls a minute keeps the number below this on its own; if something ever
+ * gets past that, a new proposal is refused instead.
+ */
+export const PROPOSALS_AT_MOST = 2048;
 export const MAX_STATUS_WAIT_SECONDS = 30;
 
 export type ProposalStatus = 'pending' | 'applied' | 'rejected' | 'expired' | 'cancelled' | 'failed' | 'unknown';
@@ -156,6 +163,11 @@ export class ExternalAgentGate {
     if (session.interactionPending) {
       refuse('PROVIDER_UNAVAILABLE', 'Another proposal is waiting for the author', 'INTERACTION_PENDING');
     }
+    if (this.proposals.size >= PROPOSALS_AT_MOST) {
+      refuse('PROVIDER_UNAVAILABLE', 'Too many recent proposals are still being kept', 'TOO_MANY_PROPOSALS', {
+        retryAfterSeconds: this.secondsUntilRoom(),
+      });
+    }
     const proposalId = this.editor.propose(toolName, valid, this.ttlMs);
     const record: ProposalRecord = {
       proposalId,
@@ -274,14 +286,20 @@ export class ExternalAgentGate {
     };
   }
 
+  /** Forgets only what has had its time; a pending proposal has no time to run out here. */
   private prune(): void {
     const cutoff = this.now() - PROPOSAL_KEPT_MS;
     for (const [id, record] of this.proposals) {
       if (record.settledAt !== undefined && record.settledAt <= cutoff) this.proposals.delete(id);
     }
-    for (const [id, record] of this.proposals) {
-      if (this.proposals.size <= PROPOSALS_KEPT) break;
-      if (record.settledAt !== undefined) this.proposals.delete(id);
+  }
+
+  private secondsUntilRoom(): number {
+    let earliest = Number.POSITIVE_INFINITY;
+    for (const record of this.proposals.values()) {
+      if (record.settledAt !== undefined) earliest = Math.min(earliest, record.settledAt);
     }
+    const waitMs = Number.isFinite(earliest) ? earliest + PROPOSAL_KEPT_MS - this.now() : PROPOSAL_KEPT_MS;
+    return Math.max(1, Math.ceil(waitMs / 1000));
   }
 }

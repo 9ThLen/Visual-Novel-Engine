@@ -11,7 +11,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { BRIDGE_TOOLS, EXTERNAL_BRIDGE_TOOLS } from '../../src/lib/ai/bridge-tools';
 import { makeEnvelope, type BridgeEnvelope } from '../../src/lib/bridge-protocol';
-import { EXTERNAL_CALLS_PER_MINUTE, ExternalAgentGate, PROPOSAL_KEPT_MS, type EditorPort, type EditorSessionView } from '../../tools/ai-bridge/src/external-agent-gate';
+import { EXTERNAL_CALLS_PER_MINUTE, ExternalAgentGate, PROPOSALS_AT_MOST, PROPOSAL_KEPT_MS, type EditorPort, type EditorSessionView } from '../../tools/ai-bridge/src/external-agent-gate';
+import { SESSION_RESUMED_ELSEWHERE } from '../../src/lib/bridge-protocol';
 import { modelToolErrorValue, type AgentEvent, type AgentProvider, type ToolInvoker } from '../../tools/ai-bridge/src/provider';
 import { AiBridgeServer, type BridgeServerOptions } from '../../tools/ai-bridge/src/server';
 
@@ -394,6 +395,26 @@ describe('a proposal from an external agent', () => {
     expect((await agent.call('get_proposal_status', { binding, proposalId })).value).toEqual({ proposalId, status: 'applied' });
   });
 
+  // The bridge remembers how a call ended so that a late answer can correct an
+  // ending it had to settle alone. It used to remember sixty-four of them.
+  it('still learns that a withdrawn proposal was applied after many others have come and gone', async () => {
+    const { tab, agent, binding } = await setUp();
+    const proposalId = String((await agent.call('propose_scene_patch', { binding, patch: patch() })).value.proposalId);
+    const card = payloadOf(await tab.message('tool_call', 1));
+    await agent.call('cancel_proposal', { binding, proposalId });
+    tab.answerEverything(() => ({ ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Not now' }));
+    for (let index = 0; index < 70; index += 1) {
+      expect((await agent.call('propose_scene_patch', { binding, patch: patch() })).isError, String(index)).toBe(false);
+      // Refused by the tab at once; the next one can go when the bridge has heard.
+      await tab.message('tool_result_ack', index);
+    }
+
+    tab.answer(card, { ok: true, result: { accepted: true } });
+
+    expect(payloadOf(await tab.message('tool_result_ack', 70))).toEqual({ toolCallId: proposalId });
+    expect((await agent.call('get_proposal_status', { binding, proposalId })).value).toEqual({ proposalId, status: 'applied' });
+  });
+
   it('frees the session once it has ended, for the next proposal and for the chat', async () => {
     const { tab, agent, binding, providers } = await setUp();
     const proposalId = String((await agent.call('propose_scene_patch', { binding, patch: patch() })).value.proposalId);
@@ -483,6 +504,66 @@ describe('when the author moves to another story', () => {
     const fresh = (await asked).value;
     expect(fresh.binding).not.toBe(binding);
     expect(fresh.storyId).toBe('story-2');
+  });
+
+  // A reload leaves the session's id in the tab, and nothing tells the bridge
+  // the old page is gone. The id used to be enough to resume: the binding and
+  // the story's name stayed, and the agent went on reading whatever the tab
+  // had open by then.
+  it('does not carry the binding over when the tab that kept the session id has another story open', async () => {
+    const { port, tab, agent, binding } = await setUp();
+    const sessionId = String(payloadOf(tab.started).sessionId);
+    const proposalId = String((await agent.call('propose_scene_patch', { binding, patch: patch() })).value.proposalId);
+    await tab.message('tool_call', 1);
+    // No session_end: the page was reloaded, or went to another address.
+    tab.socket.close();
+    await once(tab.socket, 'close');
+
+    const next = await openTab(port, { resumeSessionId: sessionId, context: { storyId: 'story-2' } });
+
+    expect(payloadOf(next.started)).toMatchObject({ resumed: false });
+    expect(payloadOf(next.started).sessionId).not.toBe(sessionId);
+    expect(reason(await agent.call('get_scene', { binding, sceneId: 'scene-1' }))).toBe('BINDING_STALE');
+    expect(reason(await agent.call('propose_scene_patch', { binding, patch: patch() }))).toBe('BINDING_STALE');
+    expect(next.calls()).toEqual([]);
+    // What was proposed for the first story does not wait for the author of the second.
+    expect((await agent.call('get_proposal_status', { binding, proposalId })).value).toMatchObject({ status: 'cancelled', reason: 'SESSION_ENDED' });
+
+    const asked = agent.call('get_editor_context');
+    next.answer(payloadOf(await next.message('tool_call')), { ok: true, result: { context: null } });
+    const fresh = (await asked).value;
+    expect(fresh.binding).not.toBe(binding);
+    expect(fresh.storyId).toBe('story-2');
+  });
+
+  it('ends the first story’s session even for a tab that is still on the line', async () => {
+    const { port, tab, agent, binding } = await setUp();
+    const sessionId = String(payloadOf(tab.started).sessionId);
+    const closed = once(tab.socket, 'close') as Promise<[number, Buffer]>;
+
+    const next = await openTab(port, { resumeSessionId: sessionId, context: { storyId: 'story-2' } });
+
+    const [code, why] = await closed;
+    expect([code, why.toString()]).toEqual([1000, SESSION_RESUMED_ELSEWHERE]);
+    expect(payloadOf(next.started)).toMatchObject({ resumed: false });
+    expect(reason(await agent.call('list_scenes', { binding }))).toBe('BINDING_STALE');
+  });
+
+  it('takes a story named for the first time, or no longer named, for another story', async () => {
+    const { port } = await startBridge();
+    const unnamed = await openTab(port, { context: {} });
+    const sessionId = String(payloadOf(unnamed.started).sessionId);
+    unnamed.socket.close();
+    await once(unnamed.socket, 'close');
+
+    const named = await openTab(port, { resumeSessionId: sessionId, context: { storyId: 'story-1' } });
+    expect(payloadOf(named.started)).toMatchObject({ resumed: false });
+    const namedId = String(payloadOf(named.started).sessionId);
+    named.socket.close();
+    await once(named.socket, 'close');
+
+    const again = await openTab(port, { resumeSessionId: namedId, context: {} });
+    expect(payloadOf(again.started)).toMatchObject({ resumed: false });
   });
 
   it('keeps the binding for a tab that only reconnected', async () => {
@@ -683,6 +764,38 @@ describe('the gate, on its own clock', () => {
     expect(gate.propose('propose_scene_patch', 'b1', 'key', { patch: patch() })).toMatchObject({ proposalId: first.proposalId, status: 'rejected' });
     expect(editor.propose).toHaveBeenCalledTimes(1);
     expect(() => gate.propose('propose_scene_patch', 'b2', 'key', { patch: patch() })).toThrow(/no longer the one that is open/);
+  });
+
+  // An outcome used to be dropped as soon as sixty-four later ones existed:
+  // its status was gone, and its request key made a second proposal.
+  it('keeps an outcome for its fifteen minutes however many proposals come after it', async () => {
+    const { gate, editor } = gateWith();
+    const first = gate.propose('propose_scene_patch', 'b1', 'first', { patch: patch() });
+    gate.settle(first.proposalId, { status: 'applied' });
+    for (let index = 0; index < 200; index += 1) {
+      const later = gate.propose('propose_scene_patch', 'b1', `later-${index}`, { patch: patch() });
+      gate.settle(later.proposalId, { status: 'rejected' });
+    }
+
+    expect(gate.propose('propose_scene_patch', 'b1', 'first', { patch: patch() })).toEqual({ proposalId: first.proposalId, status: 'applied' });
+    expect(editor.propose).toHaveBeenCalledTimes(201);
+    expect((await gate.proposalStatus(first.proposalId, 'b1')).status).toBe('applied');
+  });
+
+  it('refuses a new proposal rather than forget one it still owes an answer about', () => {
+    const { gate, editor, advance } = gateWith();
+    for (let index = 0; index < PROPOSALS_AT_MOST; index += 1) {
+      gate.settle(gate.propose('propose_scene_patch', 'b1', undefined, { patch: patch() }).proposalId, { status: 'rejected' });
+    }
+
+    let refused: unknown;
+    try { gate.propose('propose_scene_patch', 'b1', 'one-too-many', { patch: patch() }); } catch (error) { refused = modelToolErrorValue(error); }
+    expect(refused).toMatchObject({ errorCode: 'PROVIDER_UNAVAILABLE', details: { reason: 'TOO_MANY_PROPOSALS' } });
+    expect(editor.propose).toHaveBeenCalledTimes(PROPOSALS_AT_MOST);
+
+    // The oldest have had their fifteen minutes; there is room again.
+    advance(PROPOSAL_KEPT_MS + 1);
+    expect(gate.propose('propose_scene_patch', 'b1', 'one-too-many', { patch: patch() })).toMatchObject({ status: 'pending' });
   });
 
   it('proposes nothing through a tool that only reads, and reads nothing the registry does not offer outside', async () => {
