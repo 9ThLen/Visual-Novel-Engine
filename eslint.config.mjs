@@ -11,6 +11,10 @@ export default defineConfig([
       "no-duplicate-imports": "warn",
       "@typescript-eslint/no-explicit-any": "error",
       "react-hooks/exhaustive-deps": "warn",
+      // Browser globals that read like local state. A component that forgets
+      // to take `status` from its props or a hook still compiles, and then
+      // compares `window.status` — an empty string — with its states.
+      "no-restricted-globals": ["error", "status", "name", "event", "length", "closed"],
     },
   },
   {

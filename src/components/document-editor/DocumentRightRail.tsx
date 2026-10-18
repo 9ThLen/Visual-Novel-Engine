@@ -12,6 +12,7 @@ import type { ColorScheme } from '@/constants/theme';
 import type { Character } from '@/lib/character-types';
 import type { SceneRef } from '@/components/document-editor/inspector/SceneFactsCard';
 import type { DocumentScene } from '@/lib/document-editor/types';
+import { useAiChatStore } from '@/stores/ai-chat-store';
 
 type RightRailTab = 'inspector' | 'ai';
 
@@ -51,6 +52,9 @@ export function DocumentRightRail({
   const { t } = useI18n();
   const [tab, setTab] = useState<RightRailTab>('inspector');
   const aiSupport = getAiPlatformSupport();
+  // The session stays up while the inspector is shown, so a proposal can
+  // arrive, or go on waiting, behind a tab the author is not looking at.
+  const proposalWaiting = useAiChatStore((state) => state.pendingInteraction?.storyId === storyId) && tab !== 'ai';
   const tabs: RightRailTab[] = aiSupport.supported ? ['inspector', 'ai'] : ['inspector'];
 
   return (
@@ -75,9 +79,13 @@ export function DocumentRightRail({
           <Pressable
             key={item}
             onPress={() => setTab(item)}
+            accessibilityRole="tab"
+            accessibilityLabel={item === 'ai' && proposalWaiting ? t('document.rightRail.aiWaiting') : undefined}
             style={{
               flex: 1,
               minHeight: 34,
+              flexDirection: 'row',
+              gap: 6,
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: 7,
@@ -95,6 +103,9 @@ export function DocumentRightRail({
             >
               {item === 'inspector' ? t('document.rightRail.inspector') : t('document.rightRail.ai')}
             </Text>
+            {item === 'ai' && proposalWaiting ? (
+              <View testID="ai-tab-waiting" style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary }} />
+            ) : null}
           </Pressable>
         ))}
       </View>

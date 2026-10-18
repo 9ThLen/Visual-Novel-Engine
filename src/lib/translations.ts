@@ -1258,6 +1258,7 @@ const EN: Record<string, string> = {
   // Document right rail (Inspector | AI tabs)
   'document.rightRail.inspector': 'Inspector',
   'document.rightRail.ai': 'AI',
+  'document.rightRail.aiWaiting': 'AI — a proposal is waiting for you',
   'document.preview.title': 'Preview',
   'document.preview.deviceMobile': 'Phone',
   'document.preview.deviceDesktop': 'Browser',
@@ -1344,6 +1345,7 @@ const EN: Record<string, string> = {
   'aiChat.proposalExpired': 'This proposal waited too long and is no longer valid. Ask the assistant again.',
   'aiChat.proposalWithdrawn': 'The assistant withdrew this proposal before you decided on it.',
   'aiChat.applyBlocked': 'This kind of change is blocked in the AI permissions, so nothing was applied.',
+  'aiChat.applySessionEnded': 'The session with the assistant ended before this change was written, so nothing was applied.',
   'aiChat.patch.added': 'Added ({count})',
   'aiChat.patch.removed': 'Removed ({count})',
   'aiChat.patch.changed': 'Changed ({count})',
@@ -2851,6 +2853,7 @@ const UK: Record<string, string> = {
   // Права колонка документ-редактора (вкладки Inspector | AI)
   'document.rightRail.inspector': 'Інспектор',
   'document.rightRail.ai': 'ШІ',
+  'document.rightRail.aiWaiting': 'ШІ — пропозиція чекає на вас',
   'document.preview.title': 'Превʼю',
   'document.preview.deviceMobile': 'Телефон',
   'document.preview.deviceDesktop': 'Браузер',
@@ -2937,6 +2940,7 @@ const UK: Record<string, string> = {
   'aiChat.proposalExpired': 'Ця пропозиція чекала надто довго й більше не чинна. Попросіть асистента ще раз.',
   'aiChat.proposalWithdrawn': 'Асистент відкликав цю пропозицію до вашого рішення.',
   'aiChat.applyBlocked': 'Такі зміни заблоковано в дозволах AI, тож нічого не застосовано.',
+  'aiChat.applySessionEnded': 'Сесія з асистентом завершилася раніше, ніж цю зміну було записано, тож нічого не застосовано.',
   'aiChat.patch.added': 'Додано ({count})',
   'aiChat.patch.removed': 'Видалено ({count})',
   'aiChat.patch.changed': 'Змінено ({count})',

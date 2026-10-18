@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DocumentBranchBreadcrumb } from '@/components/document-editor/DocumentBranchBreadcrumb';
 import { DocumentEditorHeader } from '@/components/document-editor/DocumentEditorHeader';
+import { AiBridgeSessionProvider } from '@/components/ai-chat/AiBridgeSessionProvider';
 import { DocumentRightRail } from '@/components/document-editor/DocumentRightRail';
 import { DocumentSceneFrame } from '@/components/document-editor/DocumentSceneFrame';
 import { DocumentSceneSidebar } from '@/components/document-editor/DocumentSceneSidebar';
@@ -978,7 +979,18 @@ export function DocumentSceneEditor({
   }, [scheduleMountRecompute]);
 
   return (
-    <>
+    // This editor's place in the assistant's session. The session itself is
+    // held above the screens, one for the whole stack of editors: it outlives a
+    // switch to the inspector, a spell in focus mode and a second editor opened
+    // on top of this one, and reads the scene and the draft from whichever
+    // editor the author is looking at.
+    <AiBridgeSessionProvider
+      storyId={storyId}
+      activeSceneId={activeSceneId}
+      beforeStoryMutation={handleStoryMutationBarrier}
+      captureEditorContext={captureEditorContext}
+      focused={isFocused}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: colors.background }}
         behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
@@ -1130,6 +1142,6 @@ export function DocumentSceneEditor({
         onCancel={() => setPendingDeleteSceneId(null)}
         destructive
       />
-    </>
+    </AiBridgeSessionProvider>
   );
 }
