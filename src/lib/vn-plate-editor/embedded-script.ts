@@ -369,10 +369,16 @@ const EMBEDDED_SCRIPT_BODY = `
       return (node.textContent || '').replace(/\\u00a0/g, ' ').trimEnd();
     }
 
-    function originalBlockForNode(node) {
-      var id = node.dataset.id;
+    function payloadBlock(id) {
       if (!id || !payload.scene || !payload.scene.blocks) return null;
       return payload.scene.blocks.find(function(block) { return block.id === id; }) || null;
+    }
+
+    // A pasted copy is under an id of its own, and the frame may hold the
+    // settings it was copied with under the id of the block it came from
+    // alone: data-copy-of names that block.
+    function originalBlockForNode(node) {
+      return payloadBlock(node.dataset.id) || payloadBlock(node.dataset.copyOf);
     }
 
     function normalizeAssetName(value) {
@@ -4649,9 +4655,9 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function buildScenePayload() {
-      ensureUniqueLineIds();
+      ensureUniqueIds();
       var blocks = Array.prototype.slice.call(editor.children)
-        .map(serializeBlock)
+        .map(function(node) { return asOwnBlock(node, serializeBlock(node)); })
         .filter(function(block) {
           if (block.kind !== 'text') return true;
           return block.content.trim() !== '' || Boolean(block.parts && block.parts.length) || editor.children.length === 1;
@@ -4751,6 +4757,67 @@ const EMBEDDED_SCRIPT_BODY = `
           if (token) token.dataset.blockId = line.dataset.id;
         });
       });
+    }
+
+    // A paste brings a block's attributes with it, its id among them, and a
+    // second block under one id is stored as a second step under that id. The
+    // first block under an id keeps it; a copy gets one of its own and keeps
+    // the id it was copied from in data-copy-of. A copied choice gets options
+    // of its own too: an option is a way out of the scene, named by its id.
+    function ensureUniqueVoidBlockIds() {
+      var seen = {};
+      Array.prototype.forEach.call(editor.children, function(node) {
+        if (!node.classList || !node.classList.contains('void-block') || !node.dataset.id) return;
+        if (!seen[node.dataset.id]) {
+          seen[node.dataset.id] = true;
+          return;
+        }
+        var choice = node.dataset.kind === 'choice' ? choiceDataFromNode(node) : null;
+        node.dataset.copyOf = node.dataset.copyOf || node.dataset.id;
+        node.dataset.id = uid(choice ? 'doc_choice' : 'doc_block');
+        seen[node.dataset.id] = true;
+        if (choice) {
+          node.dataset.choice = JSON.stringify({
+            question: choice.question,
+            options: choice.options.map(function(option) {
+              return { id: uid('choice'), text: option.text, targetSceneId: option.targetSceneId };
+            })
+          });
+          renderChoiceBlockContent(node);
+        }
+      });
+    }
+
+    // A chip holds everything it is in its attributes, and its id becomes the
+    // id of its step: a pasted one needs only an id of its own.
+    function ensureUniqueChipIds() {
+      var seen = {};
+      Array.prototype.forEach.call(editor.querySelectorAll('.effect-chip, .audio-chip'), function(chip) {
+        if (!chip.dataset.id) return;
+        if (!seen[chip.dataset.id]) {
+          seen[chip.dataset.id] = true;
+          return;
+        }
+        chip.dataset.id = uid(chip.dataset.kind === 'effect' ? 'inline_effect' : chip.dataset.kind === 'sound' ? 'inline_sound' : 'inline_music');
+        seen[chip.dataset.id] = true;
+      });
+    }
+
+    function ensureUniqueIds() {
+      ensureUniqueLineIds();
+      ensureUniqueVoidBlockIds();
+      ensureUniqueChipIds();
+    }
+
+    // A copy is read with the settings of the block it came from, and with
+    // them that block's step and its id. It is saved as a step of its own.
+    function asOwnBlock(node, block) {
+      if (!block || !node.dataset || !node.dataset.copyOf) return block;
+      var own = Object.assign({}, block, { id: node.dataset.id });
+      if (own.step) own.step = Object.assign({}, own.step, { id: node.dataset.id });
+      if (own.sourceStep) own.sourceStep = Object.assign({}, own.sourceStep, { id: node.dataset.id });
+      if (own.sourceStepId) own.sourceStepId = node.dataset.id;
+      return own;
     }
 
     function selectedVoidBlock() {
@@ -6538,7 +6605,7 @@ const EMBEDDED_SCRIPT_BODY = `
       deselectAllVoidBlocks();
       forgetRecentFocus();
       ensureParagraph();
-      ensureUniqueLineIds();
+      ensureUniqueIds();
       transformDialogueIfNeeded();
       transformAllDialogueIfNeeded();
       var slash = currentSlashQuery();
