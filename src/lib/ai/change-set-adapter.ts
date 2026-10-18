@@ -10,10 +10,11 @@ import {
 } from './change-set';
 import { capturePostRevisions } from './applied-change-journal';
 import { buildAiChangeSetState } from './project-context';
+import { writeRefusalMessage, type WriteGate, type WriteRefusal } from './write-gate';
 
 export type ApplyAiChangeSetToStoreResult =
   | { ok: true; snapshotId: string; description: AiChangeSetDescription }
-  | { ok: false; code: AiChangeSetErrorCode; message: string };
+  | { ok: false; code: AiChangeSetErrorCode | WriteRefusal; message: string };
 
 function buildCharacterUndo(before: Character[], after: Character[]) {
   const beforeById = new Map(before.map((character) => [character.id, character]));
@@ -42,7 +43,7 @@ function buildLiveState(changeSet: AiChangeSet) {
   return buildAiChangeSetState(changeSet.storyId);
 }
 
-export async function applyAiChangeSetToStore(changeSet: AiChangeSet): Promise<ApplyAiChangeSetToStoreResult> {
+export async function applyAiChangeSetToStore(changeSet: AiChangeSet, mayWrite?: WriteGate): Promise<ApplyAiChangeSetToStoreResult> {
   const live = buildLiveState(changeSet);
   const result = applyAiChangeSet(changeSet, live);
   if (!result.ok) return result;
@@ -60,6 +61,9 @@ export async function applyAiChangeSetToStore(changeSet: AiChangeSet): Promise<A
   // Re-read because snapshot creation is async; reject if live revisions changed.
   const revalidated = applyAiChangeSet(changeSet, buildLiveState(changeSet));
   if (!revalidated.ok) return revalidated;
+  // Asked here and not earlier: nothing is awaited between this and the write.
+  const refusal = mayWrite?.() ?? null;
+  if (refusal) return { ok: false, code: refusal, message: writeRefusalMessage(refusal) };
   const characterUndo = revalidated.charactersToSave
     ? buildCharacterUndo(previousCharacters, revalidated.charactersToSave)
     : undefined;

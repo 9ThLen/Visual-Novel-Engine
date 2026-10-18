@@ -15,6 +15,7 @@ import {
   type ToolInvoker,
 } from './provider';
 import { fetchWithProviderRetry, type ProviderRetryOptions } from './provider-retry';
+import { startTurnBudget } from './turn-budget';
 
 export const DEFAULT_OPENAI_CHAT_MODEL = 'gpt-5.6';
 const RESPONSES_URL = 'https://api.openai.com/v1/responses';
@@ -84,7 +85,8 @@ export class OpenAiProvider implements AgentProvider {
     this.controller = new AbortController();
     const signal = this.controller.signal;
     let timedOut = false;
-    const timeout = setTimeout(() => { timedOut = true; this.controller?.abort(); }, this.options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS);
+    // Stops while a proposal waits for the author, and goes on with what was left.
+    const budget = startTurnBudget(this.options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS, () => { timedOut = true; this.controller?.abort(); }, this.bridge);
     const pending: ResponseItem[] = [openAiUserMessage(input)];
     let safeToRetry = true;
     try {
@@ -158,7 +160,7 @@ export class OpenAiProvider implements AgentProvider {
       if (timedOut && isAbortError(error)) throw new ProviderFailure('OPENAI_API_TIMEOUT');
       throw error;
     } finally {
-      clearTimeout(timeout);
+      budget.stop();
     }
   }
 

@@ -49,6 +49,7 @@ import {
 } from '@/lib/ai/attachments';
 import { APP_BRIDGE_TOOL_NAMES } from '@/lib/ai/bridge-tools';
 import { AI_CAPABILITIES, normalizeAiPermissions, resolveCapability, resolveEffectiveCapability, type AiCapability, type AiPermissions } from '@/lib/ai/permissions';
+import { isWriteRefusal, type WriteGate } from '@/lib/ai/write-gate';
 import { resolveAiBridgeConfig, selectAiBridgeProvider, updateActiveAiBridgeProfile } from '@/lib/ai/bridge-config';
 import { aiProviderLabel, isBridgeProvider } from '@/lib/ai/providers';
 import { buildAiStoryContext } from '@/lib/ai/story-context';
@@ -212,6 +213,19 @@ function mapChangeSetError(code: AiChangeSetErrorCode, message: string) {
     : { ok: false as const, errorCode: 'VALIDATION_FAILED' as const, errorMessage: message, details: { reason: code } };
 }
 
+interface AiInteraction {
+  /** The capability was narrowed for this call because the turn carries untrusted attachments. */
+  untrusted: boolean;
+  expiresAt: number;
+  timer: ReturnType<typeof setTimeout> | null;
+  ended: 'cancelled' | 'expired' | null;
+}
+
+/** The reason a refused change is reported under: the bridge reads `expired` and `cancelled` as statuses. */
+function refusalReason(code: string): string {
+  return code === 'EXPIRED' ? 'expired' : code === 'CANCELLED' ? 'cancelled' : code;
+}
+
 export function executeProposeChangeSet(
   storyId: string,
   input: unknown,
@@ -333,6 +347,14 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
   const imageResultIdsRef = useRef(new Set<string>());
   const assistantTextRef = useRef('');
   const patchDecisionRef = useRef<((value: unknown) => void) | null>(null);
+  /**
+   * Bridge calls that are waiting on the author or on a change being written.
+   * The bridge can withdraw one, and one with a lifetime stops being valid when
+   * it is up; after either, nothing more is written for it.
+   */
+  const interactionsRef = useRef(new Map<string, AiInteraction>());
+  /** The call the card on screen belongs to. */
+  const cardCallIdRef = useRef<string | null>(null);
   /** Set synchronously on click so a second click cannot enter while the save barrier is awaited. */
   const mutationInFlightRef = useRef(false);
   /**
@@ -342,6 +364,57 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
    * clear their revision check and the second then overwrites the first.
    */
   const mutationQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  /** Forgets a call that is over; with no id, the one behind the card on screen. */
+  const settleInteraction = useCallback((toolCallId: string | null = cardCallIdRef.current) => {
+    if (!toolCallId) return;
+    const interaction = interactionsRef.current.get(toolCallId);
+    if (interaction?.timer) clearTimeout(interaction.timer);
+    interactionsRef.current.delete(toolCallId);
+    if (cardCallIdRef.current === toolCallId) cardCallIdRef.current = null;
+  }, []);
+
+  /** A call was withdrawn or ran out of time: nothing more is written for it, and its card goes. */
+  const endInteraction = useCallback((toolCallId: string, how: 'cancelled' | 'expired') => {
+    const interaction = interactionsRef.current.get(toolCallId);
+    if (!interaction || interaction.ended) return;
+    interaction.ended = how;
+    // With a write on its way, the gate in front of that write stops it and
+    // its handler takes the card down. Without a card there is nothing to take down.
+    if (cardCallIdRef.current !== toolCallId || mutationInFlightRef.current) return;
+    patchDecisionRef.current?.({ accepted: false, allowed: false, reason: how });
+    patchDecisionRef.current = null;
+    settleInteraction(toolCallId);
+    cancelPendingInteraction(storyId);
+    addMessage('system', t(how === 'expired' ? 'aiChat.proposalExpired' : 'aiChat.proposalWithdrawn'));
+  }, [addMessage, cancelPendingInteraction, settleInteraction, storyId, t]);
+
+  const beginInteraction = useCallback((toolCallId: string, ttlMs: number | undefined, untrusted: boolean, card: boolean) => {
+    if (card) settleInteraction();
+    interactionsRef.current.set(toolCallId, {
+      untrusted,
+      ended: null,
+      expiresAt: ttlMs === undefined ? Number.POSITIVE_INFINITY : Date.now() + ttlMs,
+      timer: ttlMs === undefined ? null : setTimeout(() => endInteraction(toolCallId, 'expired'), ttlMs),
+    });
+    if (card) cardCallIdRef.current = toolCallId;
+  }, [endInteraction, settleInteraction]);
+
+  /**
+   * What an adapter asks in the step that writes: is the call behind this
+   * change still alive, and is this kind of change still allowed.
+   */
+  const writeGate = useCallback((toolCallId: string | null, capability: AiCapability): WriteGate => () => {
+    const interaction = toolCallId ? interactionsRef.current.get(toolCallId) : undefined;
+    if (interaction?.ended) return interaction.ended === 'expired' ? 'EXPIRED' : 'CANCELLED';
+    if (interaction && Date.now() >= interaction.expiresAt) return 'EXPIRED';
+    const permissions = normalizeAiPermissions(useAppStore.getState().settings.aiPermissions);
+    return resolveEffectiveCapability(capability, permissions, interaction?.untrusted === true) === 'blocked' ? 'PERMISSION_DENIED' : null;
+  }, []);
+
+  const refusalMessage = useCallback((refusal: 'CANCELLED' | 'EXPIRED' | 'PERMISSION_DENIED') => t(
+    refusal === 'EXPIRED' ? 'aiChat.proposalExpired' : refusal === 'CANCELLED' ? 'aiChat.proposalWithdrawn' : 'aiChat.applyBlocked',
+  ), [t]);
+
   /**
    * The bridge effect below owns the tool handlers and must not re-run when the
    * editor's save callback changes identity — that would reconnect the bridge
@@ -437,6 +510,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
           assistantTextRef.current = '';
           patchDecisionRef.current?.({ accepted: false, allowed: false, reason: reason ?? next });
           patchDecisionRef.current = null;
+          settleInteraction();
           cancelPendingInteraction(storyId);
           setStatus('idle');
         }
@@ -491,8 +565,11 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
           setStatus('idle');
         }
       },
+      onToolCancel: toolCallId => endInteraction(toolCallId, 'cancelled'),
       onToolCall: async (_id, name, input, toolContext) => {
         if (!APP_BRIDGE_TOOL_NAMES.includes(name)) return { ok: false, errorCode: 'PROTOCOL_ERROR', errorMessage: `Unsupported tool: ${name}` };
+        const untrusted = toolContext?.untrustedAttachmentMode === true;
+        const showCard = () => beginInteraction(_id, toolContext?.ttlMs, untrusted, true);
         const state = useAppStore.getState();
         const value = typeof input === 'object' && input ? input as Record<string, unknown> : {};
         const currentSceneId = activeSceneIdRef.current;
@@ -582,17 +659,22 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
             // draft first — and `validateAiScenePatch` above compared the patch
             // against the store, which is exactly what the draft has moved past.
             // Queued, because concurrent tool calls would otherwise interleave.
+            // No card, but the bridge can still withdraw the call while the
+            // author's draft is being saved in front of it.
+            beginInteraction(_id, toolContext?.ttlMs, untrusted, false);
             const result = await enqueueMutationRef.current(async () => {
               if (!(await passesSaveBarrierRef.current())) return null;
-              return applyAiScenePatchToStore(patch);
-            });
+              return applyAiScenePatchToStore(patch, writeGate(_id, 'scene_edit'));
+            }).finally(() => settleInteraction(_id));
             if (!result) {
               return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Could not save the open document' };
             }
+            if (!result.ok && isWriteRefusal(result.code)) return { ok: true, result: { accepted: false, reason: refusalReason(result.code) } };
             return result.ok
               ? { ok: true, result: { accepted: true, automatic: true } }
               : { ok: false, errorCode: result.code === 'STALE_REVISION' ? 'STALE_REVISION' : 'VALIDATION_FAILED', errorMessage: result.errors.join('; ') };
           }
+          showCard();
           setPendingPatch({ patch, description: describeAiScenePatch(scene, patch) });
           return new Promise(resolve => { patchDecisionRef.current = result => resolve({ ok: true, result }); });
         }
@@ -610,6 +692,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
               ? { ok: true, result: { accepted: true, automatic: true } }
               : { ok: false, errorCode: result.code === 'STALE_REVISION' ? 'STALE_REVISION' : 'VALIDATION_FAILED', errorMessage: result.errors.join('; ') };
           }
+          showCard();
           setPendingAppearance({ patch, description: describeAiAppearancePatch(metadata, patch) });
           return new Promise(resolve => { patchDecisionRef.current = result => resolve({ ok: true, result }); });
         }
@@ -617,14 +700,14 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
           if (resolveEffectiveCapability('changeset', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true) === 'blocked') {
             return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Story changes are blocked', details: { reason: 'USER_BLOCKED' } };
           }
-          return executeProposeChangeSet(storyId, input, setPendingChangeSet, () => new Promise(resolve => { patchDecisionRef.current = resolve; }));
+          return executeProposeChangeSet(storyId, input, (pending) => { showCard(); setPendingChangeSet(pending); }, () => new Promise(resolve => { patchDecisionRef.current = resolve; }));
         }
         if (name === 'authorize_capability') {
           const permissions = normalizeAiPermissions(useAppStore.getState().settings.aiPermissions);
           const effectivePermissions = toolContext?.untrustedAttachmentMode
             ? Object.fromEntries(AI_CAPABILITIES.map(capability => [capability, resolveEffectiveCapability(capability, permissions, true)])) as AiPermissions
             : permissions;
-          return executeAuthorizeCapability(input, effectivePermissions, setPendingCapability, () => new Promise(resolve => { patchDecisionRef.current = resolve as (value: unknown) => void; }));
+          return executeAuthorizeCapability(input, effectivePermissions, (pending) => { showCard(); setPendingCapability(pending); }, () => new Promise(resolve => { patchDecisionRef.current = resolve as (value: unknown) => void; }));
         }
         return { ok: false, errorCode: 'PROTOCOL_ERROR', errorMessage: `Unsupported tool: ${name}` };
       },
@@ -634,11 +717,12 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
     return () => {
       patchDecisionRef.current?.({ accepted: false, allowed: false, reason: 'panel_closed' });
       patchDecisionRef.current = null;
+      settleInteraction();
       cancelPendingInteraction(storyId);
       client.close();
       bridgeRef.current = null;
     };
-  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.preferredProvider, bridgeConfig.codexBetaConsent, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, addMessage, buildEditorContext, cancelPendingInteraction, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, t]);
+  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.preferredProvider, bridgeConfig.codexBetaConsent, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, addMessage, beginInteraction, buildEditorContext, cancelPendingInteraction, endInteraction, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, settleInteraction, t, writeGate]);
 
   const sendMessage = useCallback(async () => {
     const text = inputText.trim();
@@ -938,26 +1022,28 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
     if (!pendingPatch) return;
     await runStoryMutation(async () => {
       try {
-        const result = await applyAiScenePatchToStore(pendingPatch.patch);
+        const result = await applyAiScenePatchToStore(pendingPatch.patch, writeGate(cardCallIdRef.current, 'scene_edit'));
         if (result.ok) {
           addMessage('system', t('aiChat.applySuccess'));
           patchDecisionRef.current?.({ accepted: true });
         } else {
-          const message =
-            result.code === 'STALE_REVISION'
+          const message = isWriteRefusal(result.code)
+            ? refusalMessage(result.code)
+            : result.code === 'STALE_REVISION'
               ? t('aiChat.applyFailedStale')
               : result.code === 'VALIDATION_FAILED'
                 ? t('aiChat.applyFailedValidation', { errors: result.errors.join('; ') })
                 : t('aiChat.applyFailedGeneric');
           addMessage('system', message);
-          patchDecisionRef.current?.({ accepted: false, reason: result.code });
+          patchDecisionRef.current?.({ accepted: false, reason: refusalReason(result.code) });
         }
       } finally {
         setPendingPatch(null);
         patchDecisionRef.current = null;
+        settleInteraction();
       }
     });
-  }, [pendingPatch, addMessage, runStoryMutation, setPendingPatch, t]);
+  }, [pendingPatch, addMessage, refusalMessage, runStoryMutation, setPendingPatch, settleInteraction, t, writeGate]);
 
   const handleReject = useCallback(() => {
     if (mutationInFlightRef.current) return;
@@ -965,32 +1051,35 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
     addMessage('system', t('aiChat.rejected'));
     patchDecisionRef.current?.({ accepted: false, reason: 'rejected' });
     patchDecisionRef.current = null;
-  }, [addMessage, setPendingPatch, t]);
+    settleInteraction();
+  }, [addMessage, setPendingPatch, settleInteraction, t]);
 
   const handleApplyAppearance = useCallback(async () => {
     if (!pendingAppearance) return;
     setApplying(true);
     try {
-      const result = await applyAiAppearancePatchToStore(pendingAppearance.patch);
+      const result = await applyAiAppearancePatchToStore(pendingAppearance.patch, writeGate(cardCallIdRef.current, 'appearance'));
       if (result.ok) {
         addMessage('system', t('aiChat.applySuccess'));
         patchDecisionRef.current?.({ accepted: true });
       } else {
-        const message =
-          result.code === 'STALE_REVISION'
+        const message = isWriteRefusal(result.code)
+          ? refusalMessage(result.code)
+          : result.code === 'STALE_REVISION'
             ? t('aiChat.applyFailedStale')
             : result.code === 'VALIDATION_FAILED'
               ? t('aiChat.applyFailedValidation', { errors: result.errors.join('; ') })
               : t('aiChat.applyFailedGeneric');
         addMessage('system', message);
-        patchDecisionRef.current?.({ accepted: false, reason: result.code });
+        patchDecisionRef.current?.({ accepted: false, reason: refusalReason(result.code) });
       }
     } finally {
       setApplying(false);
       setPendingAppearance(null);
       patchDecisionRef.current = null;
+      settleInteraction();
     }
-  }, [pendingAppearance, addMessage, setPendingAppearance, t]);
+  }, [pendingAppearance, addMessage, refusalMessage, setPendingAppearance, settleInteraction, t, writeGate]);
 
   const handleRejectAppearance = useCallback(() => {
     if (mutationInFlightRef.current) return;
@@ -998,26 +1087,30 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
     addMessage('system', t('aiChat.rejected'));
     patchDecisionRef.current?.({ accepted: false, reason: 'rejected' });
     patchDecisionRef.current = null;
-  }, [addMessage, setPendingAppearance, t]);
+    settleInteraction();
+  }, [addMessage, setPendingAppearance, settleInteraction, t]);
 
   const handleApplyChangeSet = useCallback(async () => {
     if (!pendingChangeSet) return;
     await runStoryMutation(async () => {
       try {
-        const result = await applyAiChangeSetToStore(pendingChangeSet.changeSet);
+        const result = await applyAiChangeSetToStore(pendingChangeSet.changeSet, writeGate(cardCallIdRef.current, 'changeset'));
         if (result.ok) {
           addMessage('system', t('aiChat.applySuccess'));
           patchDecisionRef.current?.({ accepted: true, summary: pendingChangeSet.description });
         } else {
-          addMessage('system', result.code === 'STALE_REVISION' ? t('aiChat.applyFailedStale') : t('aiChat.applyFailedValidation', { errors: result.message }));
-          patchDecisionRef.current?.({ accepted: false, reason: result.code });
+          addMessage('system', isWriteRefusal(result.code)
+            ? refusalMessage(result.code)
+            : result.code === 'STALE_REVISION' ? t('aiChat.applyFailedStale') : t('aiChat.applyFailedValidation', { errors: result.message }));
+          patchDecisionRef.current?.({ accepted: false, reason: refusalReason(result.code) });
         }
       } finally {
         setPendingChangeSet(null);
         patchDecisionRef.current = null;
+        settleInteraction();
       }
     });
-  }, [pendingChangeSet, addMessage, runStoryMutation, setPendingChangeSet, t]);
+  }, [pendingChangeSet, addMessage, refusalMessage, runStoryMutation, setPendingChangeSet, settleInteraction, t, writeGate]);
 
   const handleRejectChangeSet = useCallback(() => {
     if (mutationInFlightRef.current) return;
@@ -1025,7 +1118,8 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
     addMessage('system', t('aiChat.rejected'));
     patchDecisionRef.current?.({ accepted: false, reason: 'rejected' });
     patchDecisionRef.current = null;
-  }, [addMessage, setPendingChangeSet, t]);
+    settleInteraction();
+  }, [addMessage, setPendingChangeSet, settleInteraction, t]);
 
   const handleRollback = useCallback(async () => {
     if (!lastAppliedChange) return;
@@ -1077,8 +1171,9 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
   const resolveCapabilityDecision = useCallback((allowed: boolean) => {
     patchDecisionRef.current?.({ allowed });
     patchDecisionRef.current = null;
+    settleInteraction();
     setPendingCapability(null);
-  }, [setPendingCapability]);
+  }, [setPendingCapability, settleInteraction]);
 
   const handleConnect = useCallback((token: string, url: string, preferredProvider: BridgeProvider) => {
     setProvider(undefined);

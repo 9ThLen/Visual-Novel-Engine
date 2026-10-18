@@ -41,6 +41,10 @@ export class ProviderFailure extends Error {
 
 export interface ToolInvoker {
   call(toolName: string, input: unknown, timeoutMs?: number): Promise<unknown>;
+  /** A call is waiting for the author right now. */
+  isAwaitingAuthor?(): boolean;
+  /** Told when the first wait for the author begins and when the last one ends. */
+  watchAuthorWait?(listener: (waiting: boolean) => void): () => void;
 }
 
 export class BridgeToolError extends Error {

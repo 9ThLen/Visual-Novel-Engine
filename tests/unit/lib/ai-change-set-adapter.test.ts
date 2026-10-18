@@ -61,6 +61,18 @@ describe('AI change-set store adapter', () => {
     expect(useAppStore.getState().sceneRecordsByStory['story-1']['scene-1'].name).toBe('Before');
   });
 
+  it('commits nothing when the request behind the change is no longer alive', async () => {
+    const record = useAppStore.getState().sceneRecordsByStory['story-1']['scene-1'];
+    const changeSet = { storyId: 'story-1', expectedSceneRevisions: { 'scene-1': computeSceneRevision(record) }, explanation: 'rename', items: [{ kind: 'patch_scene' as const, sceneRef: 'scene-1', operations: [{ op: 'update_scene_metadata' as const, updates: { name: 'After' } }] }] };
+
+    const result = await applyAiChangeSetToStore(changeSet, () => 'EXPIRED');
+
+    expect(result).toMatchObject({ ok: false, code: 'EXPIRED' });
+    expect(useAppStore.getState().commitAiChangeSet).not.toHaveBeenCalled();
+    expect(useAppStore.getState().sceneRecordsByStory['story-1']['scene-1'].name).toBe('Before');
+    expect(useAiChatStore.getState().appliedChanges).toEqual([]);
+  });
+
   it('commits the result and records its automatic rollback snapshot', async () => {
     const record = useAppStore.getState().sceneRecordsByStory['story-1']['scene-1'];
     const result = await applyAiChangeSetToStore({ storyId: 'story-1', expectedSceneRevisions: { 'scene-1': computeSceneRevision(record) }, explanation: 'rename', items: [{ kind: 'patch_scene', sceneRef: 'scene-1', operations: [{ op: 'update_scene_metadata', updates: { name: 'After' } }] }] });

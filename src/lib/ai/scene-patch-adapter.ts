@@ -9,12 +9,13 @@ import { buildPatchProjectContext } from './project-context';
 import type { AiScenePatch } from './scene-patch-types';
 import { capturePostRevisions } from './applied-change-journal';
 import { useAiChatStore } from '@/stores/ai-chat-store';
+import { writeRefusalMessage, type WriteGate, type WriteRefusal } from './write-gate';
 
 export type ApplyAiScenePatchToStoreResult =
   | { ok: true; snapshotId: string; description: ScenePatchDescription }
-  | { ok: false; code: 'STALE_REVISION' | 'VALIDATION_FAILED' | 'SCENE_NOT_FOUND'; errors: string[] };
+  | { ok: false; code: 'STALE_REVISION' | 'VALIDATION_FAILED' | 'SCENE_NOT_FOUND' | WriteRefusal; errors: string[] };
 
-export async function applyAiScenePatchToStore(patch: AiScenePatch): Promise<ApplyAiScenePatchToStoreResult> {
+export async function applyAiScenePatchToStore(patch: AiScenePatch, mayWrite?: WriteGate): Promise<ApplyAiScenePatchToStoreResult> {
   const state = useAppStore.getState();
   const scene = state.sceneRecordsByStory[patch.storyId]?.[patch.sceneId];
   if (!scene) return { ok: false, code: 'SCENE_NOT_FOUND', errors: [`Scene '${patch.sceneId}' not found`] };
@@ -33,6 +34,10 @@ export async function applyAiScenePatchToStore(patch: AiScenePatch): Promise<App
   if (!liveScene) return { ok: false, code: 'SCENE_NOT_FOUND', errors: [`Scene '${patch.sceneId}' not found`] };
   const revalidated = validateAiScenePatch(liveScene, patch, buildPatchProjectContext(patch.storyId, live));
   if (!revalidated.ok) return revalidated;
+
+  // Asked here and not earlier: nothing is awaited between this and the write.
+  const refusal = mayWrite?.() ?? null;
+  if (refusal) return { ok: false, code: refusal, errors: [writeRefusalMessage(refusal)] };
 
   const description = describeAiScenePatch(liveScene, patch);
   live.saveSceneRecord(applyAiScenePatch(liveScene, patch));

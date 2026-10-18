@@ -524,8 +524,26 @@ export function DocumentSceneEditor({
     );
   }, [applyDraftSnapshot, dirtySceneIds]);
 
+  /**
+   * Takes over the edits frames are still holding back. A frame reports an edit
+   * a quarter of a second after it is made, so until then the host calls a
+   * scene saved that is not — and a save, or a change written for the
+   * assistant, would go ahead without the author's last words. Returns whether
+   * any frame had something.
+   */
+  const collectUnreportedDrafts = useCallback(async (alreadyCapturedSceneId?: string): Promise<boolean> => {
+    const drafts = await Promise.all(
+      Array.from(editorRefsRef.current)
+        .filter(([sceneId]) => sceneId !== alreadyCapturedSceneId)
+        .map(([, handle]) => handle.unreportedDraft()),
+    );
+    drafts.forEach((draft) => { if (draft) applyDraftSnapshot(draft); });
+    return drafts.some(Boolean);
+  }, [applyDraftSnapshot]);
+
   const performSave = useCallback(async (alreadyCapturedSceneId?: string): Promise<boolean> => {
     try {
+      await collectUnreportedDrafts(alreadyCapturedSceneId);
       await flushDirtyMountedEditors(alreadyCapturedSceneId);
     } catch {
       // A frame that will not give up its content must not be silently dropped:
@@ -565,7 +583,7 @@ export function DocumentSceneEditor({
       savingTimerRef.current = null;
     }, 250);
     return true;
-  }, [documentsWithDrafts, flushDirtyMountedEditors, onSave]);
+  }, [collectUnreportedDrafts, documentsWithDrafts, flushDirtyMountedEditors, onSave]);
 
   /**
    * Persist the document. Returns whether the store now holds this editor's
@@ -600,9 +618,18 @@ export function DocumentSceneEditor({
    * aside rather than invalidating the proposal it was meant to guard.
    */
   const handleStoryMutationBarrier = useCallback(async (): Promise<boolean> => {
-    if (!dirtySceneIdsRef.current.size) return true;
+    // Asked of the frames, not only of what the host has heard: a change the
+    // assistant applies a moment after a keystroke would otherwise be written
+    // over a scene whose newest text exists nowhere but in its frame.
+    let heldBack: boolean;
+    try {
+      heldBack = await collectUnreportedDrafts();
+    } catch {
+      return false;
+    }
+    if (!heldBack && !dirtySceneIdsRef.current.size) return true;
     return handleSave();
-  }, [handleSave]);
+  }, [collectUnreportedDrafts, handleSave]);
 
   // See lib/document-editor/capture-editor-context for what this does and in
   // which order; here the editor only lends it its frames, dirty state and save.

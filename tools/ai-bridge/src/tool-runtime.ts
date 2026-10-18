@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getBridgeTool } from '../../../src/lib/ai/bridge-tools';
 
 import { BridgeToolError, type ToolInvoker } from './provider';
+import { AuthorWait } from './turn-budget';
 
 const IMAGE_BUFFER_TTL_MS = 10 * 60_000;
 const IMAGE_BUFFER_MAX_ENTRIES = 5;
@@ -34,6 +35,8 @@ export class BridgeToolRuntime implements ToolInvoker {
   private readonly handlers: Record<string, BridgeToolHandler>;
   private readonly now: () => number;
   private imageCallsThisTurn = 0;
+  /** Opened and closed by whoever forwards calls to the app; providers only watch it. */
+  readonly authorWait = new AuthorWait();
 
   constructor(private readonly options: BridgeToolRuntimeOptions) {
     this.handlers = options.handlers ?? {};
@@ -45,6 +48,10 @@ export class BridgeToolRuntime implements ToolInvoker {
   }
 
   beginTurn(): void { this.imageCallsThisTurn = 0; }
+
+  isAwaitingAuthor(): boolean { return this.authorWait.waiting; }
+
+  watchAuthorWait(listener: (waiting: boolean) => void): () => void { return this.authorWait.watch(listener); }
 
   async call(toolName: string, input: unknown, timeoutMs?: number): Promise<unknown> {
     const definition = getBridgeTool(toolName);

@@ -15,6 +15,7 @@ import {
   type ToolInvoker,
 } from './provider';
 import { fetchWithProviderRetry, type ProviderRetryOptions } from './provider-retry';
+import { startTurnBudget } from './turn-budget';
 
 /**
  * Claude through the Anthropic Messages API — a key, not a CLI.
@@ -102,7 +103,8 @@ export class AnthropicProvider implements AgentProvider {
     this.controller = new AbortController();
     const signal = this.controller.signal;
     let timedOut = false;
-    const timeout = setTimeout(() => { timedOut = true; this.controller?.abort(); }, this.options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS);
+    // Stops while a proposal waits for the author, and goes on with what was left.
+    const budget = startTurnBudget(this.options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS, () => { timedOut = true; this.controller?.abort(); }, this.bridge);
     const pending: AnthropicMessage[] = [anthropicUserMessage(input)];
     let safeToRetry = true;
     try {
@@ -172,7 +174,7 @@ export class AnthropicProvider implements AgentProvider {
       if (timedOut && isAbortError(error)) throw new ProviderFailure('ANTHROPIC_API_TIMEOUT');
       throw error;
     } finally {
-      clearTimeout(timeout);
+      budget.stop();
     }
   }
 
