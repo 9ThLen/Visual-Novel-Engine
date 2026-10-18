@@ -292,12 +292,13 @@ async function openFromSidebar(page: Page, sceneName: string): Promise<Locator> 
 }
 
 /**
- * Waits until a scene record in IndexedDB holds `text`. The store writes
- * there a beat after a save, and on a slow machine the beat is long: a reload
- * taken before it brings back what was there before the save.
+ * Waits until a value in IndexedDB — a scene record, unless another key is
+ * named — holds `text`. The store writes there a beat after a change, and on
+ * a slow machine the beat is long: a reload taken before it brings back what
+ * was there before.
  */
-async function persisted(page: Page, text: string): Promise<void> {
-  await expect.poll(() => page.evaluate((needle) => new Promise<boolean>((resolve) => {
+async function persisted(page: Page, text: string, keyPrefix = 'vne_scene_record_'): Promise<void> {
+  await expect.poll(() => page.evaluate(([needle, prefix]) => new Promise<boolean>((resolve) => {
     const open = indexedDB.open('vne-storage');
     open.onerror = () => resolve(false);
     open.onsuccess = () => {
@@ -312,11 +313,11 @@ async function persisted(page: Page, text: string): Promise<void> {
           resolve(found);
           return;
         }
-        if (String(entry.key).startsWith('vne_scene_record_') && typeof entry.value === 'string' && entry.value.includes(needle)) found = true;
+        if (String(entry.key).startsWith(prefix) && typeof entry.value === 'string' && entry.value.includes(needle)) found = true;
         entry.continue();
       };
     };
-  }), text), { timeout: 30_000 }).toBe(true);
+  }), [text, keyPrefix] as const), { timeout: 30_000 }).toBe(true);
 }
 
 /** The sidebar's mark on a scene the editor in front holds unsaved work for. */
@@ -520,6 +521,9 @@ test('a proposal on screen survives a reload of the page', async ({ page }) => {
   const apply = page.getByRole('button', { name: /Apply|Застосувати/ });
   await expect(apply).toBeVisible();
 
+  // The pairing reaches IndexedDB a beat after it is made. On CI the reload
+  // came 0.3 s after it, and the editor came back never having been paired.
+  await persisted(page, '"preferredProvider":"claude"', 'vne_app_state');
   await page.reload();
   // The session starts with the first opening of the chat.
   await page.getByText('AI', { exact: true }).click();
