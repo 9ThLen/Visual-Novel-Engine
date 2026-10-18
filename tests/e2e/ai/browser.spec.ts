@@ -1,4 +1,5 @@
 import { expect, test, type Frame, type Locator, type Page } from '@playwright/test';
+import { changesBeyondTheLine, storyState } from './live-mcp-support';
 
 const validToken = 'ai-e2e-token';
 
@@ -678,6 +679,8 @@ test('an external agent rewrites the line the author handed it, and only that li
   expect(activeScene.revision).toBe(context.scene.revision);
   const step = activeScene.timeline.find(item => item.id === stepId);
   expect(step?.data.content).toEqual(expect.stringContaining('Fresh words.'));
+  const read = async (name: string, args: Record<string, unknown>) => (await call(name, args)).value;
+  const before = await storyState(read, binding);
 
   const proposal = await call('propose_scene_patch', {
     binding,
@@ -699,6 +702,9 @@ test('an external agent rewrites the line the author handed it, and only that li
   expect(await neighbour.innerText()).toBe(untouched);
   const outcome = await call('get_proposal_status', { binding, proposalId: proposal.value.proposalId, waitSeconds: 10 });
   expect(outcome.value).toMatchObject({ status: 'applied' });
+  // In the store too: that step rewritten, and nothing else in the story.
+  const target = { sceneId: context.scene.id, stepId: stepId as string, content: 'An agent rewrote the handed line.' };
+  expect(changesBeyondTheLine(before, await storyState(read, binding), target)).toEqual([]);
 });
 
 test('the assistant is told which block the author has open', async ({ page }) => {

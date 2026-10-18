@@ -1,8 +1,8 @@
-import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test, type APIRequestContext } from '@playwright/test';
+import { changesBeyondTheLine, startClientProcess, storyState, type ClientRun } from './live-mcp-support';
 
 /**
  * The plan's live smoke test: one real MCP client, the author's own, does
@@ -25,20 +25,16 @@ const PROMPT = [
   'Use only the tools of "vne". Do not run shell commands and do not touch any files.',
 ].join('\n');
 
-interface AgentRun {
-  code: number | null;
-  output: string;
+interface AgentRun extends ClientRun {
   lastMessage: string;
 }
 
-/** Windows starts `claude` and `codex` through a `.cmd` shim, which only a shell runs. */
-function argForShell(arg: string): string {
-  return /[\s"&|<>^]/.test(arg) ? `"${arg.replace(/"/g, '""')}"` : arg;
-}
-
 /** What went wrong, without the pages of instructions a client prints on the way. */
-function failureOf(run: AgentRun): string {
-  const errors = [...new Set(run.output.split(/\r?\n|\r/)
+function failureOf(run: ClientRun): string {
+  // Under Playwright a client colours its output, and a line then starts with
+  // an escape code rather than with the word.
+  // eslint-disable-next-line no-control-regex
+  const errors = [...new Set(run.output.replace(/\x1b\[[0-9;]*m/g, '').split(/\r?\n|\r/)
     .filter(line => /^(ERROR|Error)\b/.test(line.trim()))
     // A client may echo a whole request back in one of them.
     .map(line => (line.length > 600 ? `${line.slice(0, 150)} … ${line.slice(-300)}` : line)))];
@@ -56,7 +52,7 @@ function codexModel(): string | undefined {
  * The client, started for this run alone: no MCP server of the author's own
  * configuration, only this bridge, and no session kept afterwards.
  */
-function startAgent(client: 'claude' | 'codex', workdir: string): { done: Promise<AgentRun>; stop: () => void } {
+function startAgent(client: 'claude' | 'codex', workdir: string): { done: Promise<AgentRun>; stop: () => Promise<void> } {
   const endpoint = `http://${process.env.AI_MCP_LIVE_BRIDGE}/mcp`;
   const token = process.env.AI_MCP_LIVE_MCP_TOKEN ?? '';
   const lastMessageFile = path.join(workdir, 'last-message.txt');
@@ -79,31 +75,35 @@ function startAgent(client: 'claude' | 'codex', workdir: string): { done: Promis
       '-c', `mcp_servers.vne.url=${endpoint}`, '-c', 'mcp_servers.vne.bearer_token_env_var=VNE_MCP_TOKEN',
       '-o', lastMessageFile, '-'];
   }
-  const env = { ...process.env, VNE_MCP_TOKEN: token };
-  const child = process.platform === 'win32'
-    ? spawn([command, ...args.map(argForShell)].join(' '), { cwd: workdir, env, shell: true, windowsHide: true })
-    : spawn(command, args, { cwd: workdir, env });
-  let output = '';
-  child.stdout.setEncoding('utf8');
-  child.stderr.setEncoding('utf8');
-  child.stdout.on('data', (chunk: string) => { output += chunk; });
-  child.stderr.on('data', (chunk: string) => { output += chunk; });
-  child.stdin.end(PROMPT);
-  const done = new Promise<AgentRun>((resolve) => {
-    child.on('close', (code) => {
-      rmSync(secrets, { recursive: true, force: true });
-      const lastMessage = client === 'codex'
-        ? (existsSync(lastMessageFile) ? readFileSync(lastMessageFile, 'utf8') : '')
-        : output;
-      resolve({ code, output, lastMessage: lastMessage.trim() });
-    });
+  const run = startClientProcess(command, args, { cwd: workdir, env: { ...process.env, VNE_MCP_TOKEN: token }, input: PROMPT });
+  const done = run.done.then((finished) => {
+    rmSync(secrets, { recursive: true, force: true });
+    const lastMessage = client === 'codex'
+      ? (existsSync(lastMessageFile) ? readFileSync(lastMessageFile, 'utf8') : '')
+      : finished.output;
+    return { ...finished, lastMessage: lastMessage.trim() };
   });
-  return { done, stop: () => { if (child.exitCode === null) child.kill(); } };
+  return { done, stop: run.stop };
 }
 
-test('a real MCP client rewrites the line the author handed it, and only that line', async ({ page }, testInfo) => {
+/** The bridge's MCP endpoint, as the agent sees it, for the test's own reading of the story. */
+function mcpReader(request: APIRequestContext) {
+  return async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await request.post(`http://${process.env.AI_MCP_LIVE_BRIDGE}/mcp`, {
+      headers: { authorization: `Bearer ${process.env.AI_MCP_LIVE_MCP_TOKEN}`, accept: 'application/json, text/event-stream' },
+      data: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
+    });
+    expect(answer.status()).toBe(200);
+    const result = (await answer.json()).result as { isError?: boolean; content: { text: string }[] };
+    expect(result.isError, result.content[0].text).not.toBe(true);
+    return JSON.parse(result.content[0].text);
+  };
+}
+
+test('a real MCP client rewrites the line the author handed it, and only that line', async ({ page, request }, testInfo) => {
   const client = process.env.AI_MCP_CLIENT as 'claude' | 'codex';
   test.setTimeout(8 * 60_000);
+  const read = mcpReader(request);
 
   // The way the author gets there; a scene's address alone opens nothing on a fresh profile.
   await page.goto('/');
@@ -123,12 +123,19 @@ test('a real MCP client rewrites the line the author handed it, and only that li
   await page.getByLabel(/^(Close|Закрити)$/).click();
 
   const editable = page.frameLocator('iframe[title="VN Plate editor"]').first().locator('#editor');
-  const selected = editable.locator('p[data-kind="text"]').first();
-  const neighbour = editable.locator('.choice-block').first();
-  const untouched = await neighbour.innerText();
-  await selected.click({ clickCount: 3 });
+  await editable.locator('p[data-kind="text"]').first().click({ clickCount: 3 });
   await page.getByRole('button', { name: /Save and hand to agent|Зберегти й передати агенту/ }).click();
   await expect(page.getByText(/^(Handed over at|Передано о)/)).toBeVisible();
+
+  // Where the line is and how the story stands, read before the agent starts.
+  const handed = await read('get_editor_context') as {
+    binding: string;
+    context: { scene: { id: string }; selection: { anchors: { stepId?: string; match: string }[] } };
+  };
+  const stepId = handed.context.selection.anchors.find(anchor => anchor.match === 'exact')?.stepId;
+  expect(stepId, 'the handed selection is addressed to one step').toBeTruthy();
+  const target = { sceneId: handed.context.scene.id, stepId: stepId as string, content: NEW_LINE };
+  const before = await storyState(read, handed.binding);
 
   const agent = startAgent(client, testInfo.outputPath());
   try {
@@ -138,19 +145,21 @@ test('a real MCP client rewrites the line the author handed it, and only that li
       agent.done.then(() => 'finished' as const),
     ]);
     if (first !== 'card') {
-      agent.stop();
+      await agent.stop();
       const run = await agent.done;
       throw new Error(`${client} put no proposal in front of the author (exit ${run.code}):\n${failureOf(run)}`);
     }
     await page.getByRole('button', { name: /Apply|Застосувати/ }).click();
-
     await expect(editable).toContainText(NEW_LINE);
-    expect(await neighbour.innerText()).toBe(untouched);
+
     const run = await agent.done;
     expect(run.code, failureOf(run)).toBe(0);
     expect(run.lastMessage.toLowerCase()).toContain('applied');
+    // The selected step, and nothing else in the story: an added step with
+    // the same text would have shown on the page just as well.
+    expect(changesBeyondTheLine(before, await storyState(read, handed.binding), target)).toEqual([]);
     console.log(JSON.stringify({ client, result: 'passed', lastMessage: run.lastMessage, recordedAt: new Date().toISOString() }));
   } finally {
-    agent.stop();
+    await agent.stop();
   }
 });

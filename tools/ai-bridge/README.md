@@ -220,8 +220,9 @@ It starts a bridge with `--provider none --mcp` on port 18790, with settings
 in a fresh temporary directory and two one-off tokens, so the bridge you use
 day to day is not touched. The client is given only the goal — rewrite the
 handed line, wait for the author, say how it ended — and has to find its way
-from what the bridge says about its tools. It runs with none of your own MCP
-servers. `AI_MCP_LIVE_MODEL` picks the model; for Codex it is otherwise the
+from what the bridge says about its tools. Afterwards the test reads the
+whole story back and requires exactly one change: the text of the handed
+step. It runs with none of your own MCP servers. `AI_MCP_LIVE_MODEL` picks the model; for Codex it is otherwise the
 `model` in `~/.codex/config.toml`. The run spends a little of that account.
 
 ## The packaged bridge

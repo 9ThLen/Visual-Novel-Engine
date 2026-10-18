@@ -2,7 +2,7 @@
 
 ## 2026-10-18 — The assistant sees the author's place; an agent of your own
 
-Plan: `docs/technical/ai-editor-context-and-mcp-plan.md` (v1.19).
+Plan: `docs/technical/ai-editor-context-and-mcp-plan.md` (v1.20).
 
 - **The assistant is told where the author is.** A message carries what the
   author selected and the block they have open, as a snapshot taken on send:
