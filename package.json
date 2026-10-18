@@ -29,6 +29,7 @@
     "test:player-e2e": "playwright test --config=config/playwright.player.config.ts",
     "test:studio-e2e": "playwright test --config=config/playwright.studio.config.ts",
     "test:ai-live": "playwright test --config=config/playwright.ai-live.config.ts",
+    "test:ai-mcp-live": "playwright test --config=config/playwright.ai-mcp-live.config.ts",
     "test:ai-openai-live": "tsx tools/ai-bridge/smoke-provider.ts openai",
     "test:ai-anthropic-live": "tsx tools/ai-bridge/smoke-provider.ts anthropic",
     "test:ai-claude-live": "tsx tools/ai-bridge/smoke-provider.ts claude",

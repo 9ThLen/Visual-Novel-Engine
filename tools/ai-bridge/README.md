@@ -192,6 +192,38 @@ In the editor:
 - A proposal needs somewhere to be shown. On a phone, and while the editor is in
   focus mode, it is refused with `NO_APPROVAL_SURFACE`.
 
+Codex takes the same endpoint in its own configuration; the token is read
+from an environment variable rather than written into the file:
+
+```toml
+[mcp_servers.visual-novel]
+url = "http://127.0.0.1:8787/mcp"
+bearer_token_env_var = "VNE_MCP_TOKEN"
+```
+
+### Checking it
+
+`pnpm test:ai-e2e` walks an agent's whole way in a browser, against the real
+bridge server with a scripted chat: the author selects a line and hands it
+over, the agent reads the handed context over MCP, proposes a change to the
+step the selection is addressed to, the author applies it, and only that line
+changes. Nothing in it needs an account.
+
+`pnpm test:ai-mcp-live` does the same with a real client, the author's own:
+
+```sh
+AI_MCP_CLIENT=claude pnpm test:ai-mcp-live   # Claude Code, signed in
+AI_MCP_CLIENT=codex pnpm test:ai-mcp-live    # Codex CLI, signed in
+```
+
+It starts a bridge with `--provider none --mcp` on port 18790, with settings
+in a fresh temporary directory and two one-off tokens, so the bridge you use
+day to day is not touched. The client is given only the goal — rewrite the
+handed line, wait for the author, say how it ended — and has to find its way
+from what the bridge says about its tools. It runs with none of your own MCP
+servers. `AI_MCP_LIVE_MODEL` picks the model; for Codex it is otherwise the
+`model` in `~/.codex/config.toml`. The run spends a little of that account.
+
 ## The packaged bridge
 
 `pnpm build:bridge-package` writes a folder an author can run on a Windows
