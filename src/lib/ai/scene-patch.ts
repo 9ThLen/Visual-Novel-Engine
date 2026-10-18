@@ -1,6 +1,6 @@
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import { computeSceneRevision } from './scene-revision';
-import type { AiScenePatch, ScenePatchOperation } from './scene-patch-types';
+import { stepDataUpdateProblems, type AiScenePatch, type ScenePatchOperation } from './scene-patch-types';
 
 export type PatchProjectContext = {
   sceneIds: string[];
@@ -16,9 +16,14 @@ export interface ScenePatchDescription { sceneId: string; sceneName: string; cha
 export class InvalidPatchError extends Error { constructor(message: string) { super(message); this.name = 'InvalidPatchError'; } }
 
 function clone<T>(value: T): T { return structuredClone(value); }
+/** A step with some fields of its `data` changed. Fields not named stay as they were; a named field is replaced whole. */
+function updatedStep(step: TimelineStep, data: Record<string, unknown>): TimelineStep {
+  return { ...step, data: { ...(step.data as unknown as Record<string, unknown>), ...clone(data) } } as unknown as TimelineStep;
+}
 function applyOperation(scene: SceneRecord, operation: ScenePatchOperation): void {
   if (operation.op === 'insert_steps') { const index = operation.afterStepId === null ? 0 : scene.timeline.findIndex(s => s.id === operation.afterStepId) + 1; if (index < 0) throw new InvalidPatchError(`Unknown afterStepId: ${operation.afterStepId}`); scene.timeline.splice(index, 0, ...clone(operation.steps)); }
   else if (operation.op === 'replace_step') { const index = scene.timeline.findIndex(s => s.id === operation.stepId); if (index < 0) throw new InvalidPatchError(`Unknown stepId: ${operation.stepId}`); scene.timeline[index] = clone(operation.step); }
+  else if (operation.op === 'update_step') { const index = scene.timeline.findIndex(s => s.id === operation.stepId); if (index < 0) throw new InvalidPatchError(`Unknown stepId: ${operation.stepId}`); scene.timeline[index] = updatedStep(scene.timeline[index], operation.data); }
   else if (operation.op === 'delete_steps') { const ids = new Set(operation.stepIds); scene.timeline = scene.timeline.filter(s => !ids.has(s.id)); }
   else if (operation.op === 'update_scene_metadata') Object.assign(scene, clone(operation.updates));
   else { const index = scene.connections.findIndex(c => c.outputPort === operation.outputPort); if (operation.targetSceneId === null) { if (index >= 0) scene.connections.splice(index, 1); } else { const connection = { outputPort: operation.outputPort, targetSceneId: operation.targetSceneId, ...(operation.label === undefined ? {} : { label: operation.label }) }; if (index < 0) scene.connections.push(connection); else scene.connections[index] = connection; } }
@@ -68,6 +73,26 @@ export function validateAiScenePatch(scene: SceneRecord, patch: AiScenePatch, ct
         }
       });
     });
+    if (operation.op === 'update_step') {
+      const current = working.timeline.find(s => s.id === operation.stepId);
+      if (!current) errors.push(`stepId '${operation.stepId}' does not exist`);
+      else {
+        const updated = updatedStep(current, operation.data);
+        stepDataUpdateProblems(current.blockType, updated.data as unknown as Record<string, unknown>, Object.keys(operation.data))
+          .forEach(problem => errors.push(`update_step '${operation.stepId}': ${problem}`));
+        // Only what the change names is the assistant's to answer for. A field
+        // left as it was keeps whatever it pointed at — a bundled asset the
+        // story's library does not list, say — and must not block the change.
+        references({ ...current, data: operation.data as unknown as TimelineStep['data'], conditions: undefined })
+          .forEach(([kind, id]) => { if (!allowed[kind].has(id)) errors.push(`${kind} '${id}' does not exist`); });
+        const touchesSprite = ['characterId', 'spriteId', 'entries'].some(field => field in operation.data);
+        if (touchesSprite) characterSpriteReferences(updated).forEach(({ characterId, spriteId }) => {
+          if (!(ctx.spritesByCharacterId[characterId] ?? []).includes(spriteId)) {
+            errors.push(`spriteId '${spriteId}' does not exist for characterId '${characterId}'`);
+          }
+        });
+      }
+    }
     if (errors.length) continue;
     applyOperation(working, operation);
     const ids = working.timeline.map(s => s.id); new Set(ids.filter((id, i) => ids.indexOf(id) !== i)).forEach(id => errors.push(`Duplicate step id '${id}'`));
@@ -84,6 +109,7 @@ export function describeAiScenePatch(scene: SceneRecord, patch: AiScenePatch): S
   for (const op of patch.operations) {
     if (op.op === 'insert_steps') { const start = op.afterStepId === null ? 0 : working.timeline.findIndex(s => s.id === op.afterStepId) + 1; op.steps.forEach((step, offset) => changes.push({ kind: 'step_added', step: clone(step), index: start + offset })); }
     else if (op.op === 'replace_step') { const before = working.timeline.find(s => s.id === op.stepId); if (!before) throw new InvalidPatchError(`Unknown stepId: ${op.stepId}`); changes.push({ kind: 'step_changed', before: clone(before), after: clone(op.step) }); }
+    else if (op.op === 'update_step') { const before = working.timeline.find(s => s.id === op.stepId); if (!before) throw new InvalidPatchError(`Unknown stepId: ${op.stepId}`); changes.push({ kind: 'step_changed', before: clone(before), after: updatedStep(before, op.data) }); }
     else if (op.op === 'delete_steps') op.stepIds.forEach(id => { const step = working.timeline.find(s => s.id === id); if (!step) throw new InvalidPatchError(`Unknown stepId: ${id}`); changes.push({ kind: 'step_removed', step: clone(step) }); });
     else if (op.op === 'update_scene_metadata') (['name', 'description', 'tags'] as const).forEach(field => { if (field in op.updates) changes.push({ kind: 'metadata_changed', field, before: clone(working[field]), after: clone(op.updates[field]) }); });
     else { const before = working.connections.find(c => c.outputPort === op.outputPort)?.targetSceneId ?? null; changes.push({ kind: 'connection_changed', outputPort: op.outputPort, before, after: op.targetSceneId }); }

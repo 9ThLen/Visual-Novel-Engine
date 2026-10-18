@@ -39,6 +39,85 @@ describe('ScenePatch', () => {
   it('does not mutate a deeply frozen input', () => { const s = deepFreeze(scene()); const result = applyAiScenePatch(s, patch(s, { op: 'insert_steps', afterStepId: 'a', steps: [text('b')] })); expect(result).not.toBe(s); expect(s.timeline).toHaveLength(1); });
 });
 
+describe('update_step', () => {
+  const background = (data: Record<string, unknown> = {}): TimelineStep => ({ id: 'bg', blockType: 'background', data: { assetId: null, transition: 'fade', duration: 0.5, ...data }, collapsed: false, enabled: true, conditions: [] } as unknown as TimelineStep);
+  const withBackground = () => { const s = scene(); s.timeline = [background(), text('a')]; return s; };
+  const errorsOf = (s: SceneRecord, operation: ScenePatchOperation) => { const result = validateAiScenePatch(s, patch(s, operation), ctx); return result.ok ? [] : result.errors; };
+
+  it('changes the named fields and leaves every other one, and the rest of the step, as it was', () => {
+    const s = withBackground();
+    const p = patch(s, { op: 'update_step', stepId: 'bg', data: { assetId: 'asset-1', transition: 'dissolve' } });
+
+    expect(validateAiScenePatch(s, p, ctx)).toEqual({ ok: true, warnings: [] });
+    const [updated, untouched] = applyAiScenePatch(s, p).timeline;
+    expect(updated).toEqual({ ...background(), data: { assetId: 'asset-1', transition: 'dissolve', duration: 0.5 } });
+    expect(untouched).toEqual(s.timeline[1]);
+  });
+
+  it('is shown as the step it changes, before and after', () => {
+    const s = withBackground();
+
+    expect(describeAiScenePatch(s, patch(s, { op: 'update_step', stepId: 'bg', data: { duration: 2 } })).changes).toEqual([
+      { kind: 'step_changed', before: background(), after: background({ duration: 2 }) },
+    ]);
+  });
+
+  it('refuses a field the step’s block type does not have, naming it', () => {
+    expect(errorsOf(withBackground(), { op: 'update_step', stepId: 'bg', data: { asset_id: 'asset-1' } }))
+      .toEqual(["update_step 'bg': 'asset_id' is not a field of a background step"]);
+  });
+
+  it('refuses a value the block type does not accept', () => {
+    expect(errorsOf(withBackground(), { op: 'update_step', stepId: 'bg', data: { transition: 'spin' } }))
+      .toEqual([expect.stringMatching(/^update_step 'bg': data\.transition: /)]);
+  });
+
+  it('checks what the changed settings refer to, as for a new step', () => {
+    expect(errorsOf(withBackground(), { op: 'update_step', stepId: 'bg', data: { assetId: 'asset-missing' } }))
+      .toEqual(["assetId 'asset-missing' does not exist"]);
+  });
+
+  // The demo story's backgrounds point at bundled files the story's library
+  // does not list; changing their transition must still go through.
+  it('does not hold a setting it leaves alone against the change', () => {
+    const s = scene();
+    s.timeline = [background({ assetId: 'assets/background/bundled.png' })];
+
+    expect(errorsOf(s, { op: 'update_step', stepId: 'bg', data: { transition: 'dissolve' } })).toEqual([]);
+  });
+
+  it('checks a sprite against its character when the change touches either', () => {
+    const s = scene();
+    s.timeline = [{ id: 'char', blockType: 'character', data: { characterId: 'char-1', spriteId: 'sprite-1', position: 'left', transition: 'instant', delay: 0, duration: null }, collapsed: false, enabled: true }];
+
+    expect(errorsOf(s, { op: 'update_step', stepId: 'char', data: { position: 'right' } })).toEqual([]);
+    expect(errorsOf(s, { op: 'update_step', stepId: 'char', data: { spriteId: 'sprite-other' } }))
+      .toEqual(["spriteId 'sprite-other' does not exist for characterId 'char-1'"]);
+  });
+
+  it('refuses a step that is not there, and a change that names no field', () => {
+    expect(errorsOf(withBackground(), { op: 'update_step', stepId: 'missing', data: { duration: 1 } })).toEqual(["stepId 'missing' does not exist"]);
+    expect(errorsOf(withBackground(), { op: 'update_step', stepId: 'bg', data: {} })).toEqual(["update_step 'bg': update_step names no field to change"]);
+  });
+
+  it('replaces a named field whole, an array included', () => {
+    const s = scene();
+    s.timeline = [{ id: 'choice', blockType: 'choice', data: { options: [{ id: 'o1', text: 'Stay', targetSceneId: null }, { id: 'o2', text: 'Go', targetSceneId: 'scene-2' }] }, collapsed: false, enabled: true }];
+    const options = [{ id: 'o1', text: 'Stay a while', targetSceneId: null }];
+
+    expect(errorsOf(s, { op: 'update_step', stepId: 'choice', data: { options } })).toEqual([]);
+    expect(applyAiScenePatch(s, patch(s, { op: 'update_step', stepId: 'choice', data: { options } })).timeline[0].data).toEqual({ options });
+  });
+
+  it('follows the operations before it in the same patch', () => {
+    const s = scene();
+    const inserted = background();
+
+    expect(errorsOf(s, { op: 'update_step', stepId: 'bg', data: { duration: 1 } })).toEqual(["stepId 'bg' does not exist"]);
+    expect(validateAiScenePatch(s, patch(s, { op: 'insert_steps', afterStepId: null, steps: [inserted] }, { op: 'update_step', stepId: 'bg', data: { duration: 1 } }), ctx).ok).toBe(true);
+  });
+});
+
 describe('computeSceneRevision', () => {
   it('is stable across object key order', () => { const a = scene(); const b = { ...a, sceneState: Object.fromEntries(Object.entries(a.sceneState).reverse()) } as SceneRecord; expect(computeSceneRevision(a)).toBe(computeSceneRevision(b)); });
   it('changes with timeline content', () => { const a = scene(); const b = scene(); b.timeline[0] = text('a', 'changed'); expect(computeSceneRevision(a)).not.toBe(computeSceneRevision(b)); });

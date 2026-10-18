@@ -180,6 +180,37 @@ describe('resolveFocusedBlock', () => {
     expect(focus?.summary).toBeTruthy();
   });
 
+  // What the step says as stored, so a change to its settings needs no read of
+  // the scene first.
+  it('brings the settings of the step it names', () => {
+    const background = createDocumentTechnicalBlock('background');
+    const scene = saveDocument(createSceneRecord(), documentOf([background, { id: 'blk_text', kind: 'text', content: 'Тиша.' }]));
+    const document = sceneRecordToDocumentScene(scene);
+    const block = document.blocks.find((item) => item.kind === 'technical')!;
+
+    const focus = resolveFocusedBlock({ scene, document, characters: [], focus: focusOn(block.id) });
+
+    expect(focus?.data).toEqual(scene.timeline[0].data);
+    expect(parseAiEditorContext({
+      version: 1, snapshotId: 's', kind: 'fixed', screen: 'editor', storyId: 'story_1', scene: null,
+      hasUnsavedChanges: false, selection: null, focus, capturedAt: 1,
+    }).ok).toBe(true);
+  });
+
+  it('leaves out settings too large to come with it, and still names the step', () => {
+    const options = Array.from({ length: 30 }, (_, index) => ({ id: `opt_${index}`, text: 'Варіант, '.repeat(12), targetSceneId: null }));
+    const choice: DocumentChoiceBlock = { id: 'blk_choice', kind: 'choice', question: 'Куди?', options };
+    const scene = saveDocument(createSceneRecord(), documentOf([choice]));
+    const document = sceneRecordToDocumentScene(scene);
+    const block = document.blocks.find((item) => item.kind === 'choice')!;
+
+    const focus = resolveFocusedBlock({ scene, document, characters: [], focus: { id: block.id, kind: 'choice', command: 'choice', state: 'selected' } });
+
+    expect(JSON.stringify(scene.timeline[0].data).length).toBeGreaterThan(AI_EDITOR_CONTEXT_LIMITS.focusData);
+    expect(focus).toMatchObject({ blockType: 'choice', match: 'exact', stepId: scene.timeline[0].id });
+    expect(focus).not.toHaveProperty('data');
+  });
+
   it('names the step an inline chip became', () => {
     const document = documentOf([{
       id: 'blk_chip',
@@ -226,6 +257,7 @@ describe('resolveFocusedBlock', () => {
     const focus = resolveFocusedBlock({ scene, document, characters: [], focus: focusOn(background.id) });
 
     expect(focus).toMatchObject({ blockType: 'background', stepId: null, match: 'none' });
+    expect(focus).not.toHaveProperty('data');
   });
 
   it('does not take a step of another kind for the block, whatever its id', () => {
@@ -863,6 +895,50 @@ describe('buildAiEditorContext', () => {
     expect(context.selection?.truncated).toBe(true);
     expect(context.selection?.textLength).toBe(AI_EDITOR_CONTEXT_LIMITS.selectionText);
   });
+
+  describe('with the settings of a block in focus', () => {
+    const data = { note: 'ж'.repeat(1_700) };
+    const focusIn = (state: 'selected' | 'editing') => ({ sceneId: scene.id, blockType: 'background', stepId: 'step_bg', match: 'exact', state, data } as const);
+    const withFocus = (state: 'selected' | 'editing') => {
+      const long = 'щ'.repeat(AI_EDITOR_CONTEXT_LIMITS.selectionText);
+      return build({
+        selection: { ...selection, text: long, textLength: long.length },
+        anchors: Array.from({ length: AI_EDITOR_CONTEXT_LIMITS.anchors }, () => ({
+          stepId: step.id, blockKind: 'text' as const, field: 'content' as const, quote: long, occurrence: 0, match: 'exact' as const,
+        })),
+        focus: focusIn(state),
+      });
+    };
+
+    it('carries them when the context fits', () => {
+      const context = build({ focus: focusIn('selected') });
+
+      expect(context.focus?.data).toEqual(data);
+      expect(parseAiEditorContext(context).ok).toBe(true);
+    });
+
+    // A block merely selected or used last comes after the text the author
+    // selected; its step id still says where it is.
+    it('sheds them before the selection when the block is only selected', () => {
+      const context = withFocus('selected');
+
+      expect(parseAiEditorContext(context)).toEqual({ ok: true, context });
+      expect(context.focus).toMatchObject({ stepId: 'step_bg', match: 'exact' });
+      expect(context.focus).not.toHaveProperty('data');
+      expect(context.selection?.text).toHaveLength(AI_EDITOR_CONTEXT_LIMITS.selectionText);
+      expect(context.selection?.truncated).toBe(false);
+    });
+
+    // A block whose settings are open is what the author is working on.
+    it('keeps them and shortens the selection when the block’s settings are open', () => {
+      const context = withFocus('editing');
+
+      expect(parseAiEditorContext(context)).toEqual({ ok: true, context });
+      expect(context.focus?.data).toEqual(data);
+      expect(context.selection?.text.length).toBeLessThan(AI_EDITOR_CONTEXT_LIMITS.selectionText);
+      expect(context.selection?.truncated).toBe(true);
+    });
+  });
 });
 
 describe('parseAiEditorContext', () => {
@@ -916,6 +992,19 @@ describe('parseAiEditorContext', () => {
     expect(parseAiEditorContext({ ...valid, focus: { ...focus, stepId: null, match: 'exact' } }))
       .toEqual({ ok: false, reason: 'INVALID_SHAPE' });
     expect(parseAiEditorContext({ ...valid, focus: { ...focus, stepId: 'step_1', match: 'none' } }))
+      .toEqual({ ok: false, reason: 'INVALID_SHAPE' });
+  });
+
+  it('accepts the settings of a step a focus names, and none for a focus that names no step', () => {
+    expect(parseAiEditorContext({ ...valid, focus: { ...focus, stepId: 'step_1', match: 'exact', data: { assetId: null } } }).ok).toBe(true);
+    expect(parseAiEditorContext({ ...valid, focus: { ...focus, stepId: null, match: 'none', data: { assetId: null } } }))
+      .toEqual({ ok: false, reason: 'INVALID_SHAPE' });
+  });
+
+  it('rejects settings larger than a focus may carry', () => {
+    const data = { note: 'x'.repeat(AI_EDITOR_CONTEXT_LIMITS.focusData) };
+
+    expect(parseAiEditorContext({ ...valid, focus: { ...focus, stepId: 'step_1', match: 'exact', data } }))
       .toEqual({ ok: false, reason: 'INVALID_SHAPE' });
   });
 

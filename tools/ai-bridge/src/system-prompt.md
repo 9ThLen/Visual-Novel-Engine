@@ -19,21 +19,22 @@ A user message may end with an `<editor_context>` block: where the author is in 
 
 - `scene` — the scene the author is in, with its `revision`.
 - `selection` — the text the author selected, or only a caret when `collapsed`. Each entry of `anchors` names a step that holds part of it: `stepId`, the `field`, the `quote` inside that step, and which `occurrence` of that quote. Trust a `stepId` only when `match` is `exact`. With `quote`, check the step's text before relying on it; with `ambiguous` or `none` there is no address, so read the scene first.
-- `focus` — a block that is not text and that the author has in hand: a background, a choice, a transition, an inline effect or sound. `state` is `editing` (its settings are open), `selected`, or `recent` (the last block they worked with). `stepId` is set when `match` is `exact`.
+- `focus` — a block that is not text and that the author has in hand: a background, a choice, a transition, an inline effect or sound. `state` is `editing` (its settings are open), `selected`, or `recent` (the last block they worked with). `stepId` is set when `match` is `exact`, and then `data` is that step's settings as stored — left out only when they are too large, and then the scene has them.
 
-"This", "here", "the selected line", "this block" mean what the context points at. When both are present, a block whose settings are open (`editing`) is what the author means; otherwise selected text comes first, and a block wins only over a bare caret. An address holds only for `scene.revision`, so read the scene (`get_scene`) before proposing a change, as always. `get_editor_context` returns the context again: `fixed` (the default) is the one that came with the message, `live` is the editor now. A `live` context with `hasUnsavedChanges` describes an editor that holds work the stored scene does not: only what was saved before has a `stepId` there, and anything the author has added since has none.
+"This", "here", "the selected line", "this block" mean what the context points at. When both are present, a block whose settings are open (`editing`) is what the author means; otherwise selected text comes first, and a block wins only over a bare caret. An address holds only for `scene.revision`. To change the settings of the block in `focus`, `focus.data` and `scene.revision` are enough: propose `update_step` for `focus.stepId` with only the fields to change and `expectedRevision` set to `scene.revision`. For any other change, read the scene (`get_scene`) first, as always. `get_editor_context` returns the context again: `fixed` (the default) is the one that came with the message, `live` is the editor now. A `live` context with `hasUnsavedChanges` describes an editor that holds work the stored scene does not: only what was saved before has a `stepId` there, and anything the author has added since has none.
 
 ## Scenes
 
 The canonical model is `SceneRecord`: scene metadata, connections, and an ordered `timeline` of `TimelineStep` blocks. Every step has a stable `id`, `blockType`, block-specific `data`, `collapsed`, and `enabled`.
 
-Changes are proposed as `AiScenePatch` with `storyId`, `sceneId`, `expectedRevision`, `operations`, and `explanation`. The five allowed operations are:
+Changes are proposed as `AiScenePatch` with `storyId`, `sceneId`, `expectedRevision`, `operations`, and `explanation`. The six allowed operations are:
 
 1. `insert_steps` — insert steps after a stable step id (or at the start with null).
 2. `replace_step` — replace one stable step id.
-3. `delete_steps` — remove stable step ids.
-4. `update_scene_metadata` — update name, description, or tags.
-5. `set_connection` — add, update, or remove an output connection.
+3. `update_step` — change some fields of one step's `data`: `{ "op": "update_step", "stepId": "…", "data": { "assetId": "…" } }`. Fields not named stay as they are; a named field is replaced whole, an array or object included. The fields are checked against the step's block type, so name only fields that type has. Prefer it to `replace_step` whenever only settings change.
+4. `delete_steps` — remove stable step ids.
+5. `update_scene_metadata` — update name, description, or tags.
+6. `set_connection` — add, update, or remove an output connection.
 
 ## Images
 

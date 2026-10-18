@@ -15,8 +15,15 @@ export const AI_EDITOR_CONTEXT_LIMITS = {
   activePathScenes: 100,
   focusBlockType: 40,
   focusSummary: 200,
+  /** Bytes of JSON for a focused step's settings; a step with more goes without them. */
+  focusData: 4_096,
   bytes: 16_384,
 } as const;
+
+/** The size a value takes in the context, which travels as JSON. */
+export function jsonByteLength(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+}
 
 /**
  * `exact` comes from the document converter's own block-to-step pairing.
@@ -71,9 +78,20 @@ const focusSchema = z.object({
   state: z.enum(AI_EDITOR_FOCUS_STATES),
   /** What the block shows in the editor, so it can be told from its neighbours. */
   summary: z.string().max(AI_EDITOR_CONTEXT_LIMITS.focusSummary).optional(),
+  /**
+   * The step's settings as stored — its `data` — so the assistant can change
+   * them without reading the scene first. Left out when they do not fit.
+   */
+  data: z.record(z.string(), z.unknown()).optional(),
 }).refine(
   (focus) => (focus.match === 'exact') === (focus.stepId !== null),
   { message: 'A focus names a step exactly when its match is exact' },
+).refine(
+  (focus) => focus.data === undefined || focus.stepId !== null,
+  { message: 'Only a step named exactly comes with its settings' },
+).refine(
+  (focus) => focus.data === undefined || jsonByteLength(focus.data) <= AI_EDITOR_CONTEXT_LIMITS.focusData,
+  { message: 'A focused step’s settings are too large to come with it' },
 );
 
 export const aiEditorContextSchema = z.object({
@@ -107,7 +125,6 @@ export type ParseAiEditorContextResult =
 export function parseAiEditorContext(value: unknown): ParseAiEditorContextResult {
   const parsed = aiEditorContextSchema.safeParse(value);
   if (!parsed.success) return { ok: false, reason: 'INVALID_SHAPE' };
-  const bytes = new TextEncoder().encode(JSON.stringify(parsed.data)).byteLength;
-  if (bytes > AI_EDITOR_CONTEXT_LIMITS.bytes) return { ok: false, reason: 'TOO_LARGE' };
+  if (jsonByteLength(parsed.data) > AI_EDITOR_CONTEXT_LIMITS.bytes) return { ok: false, reason: 'TOO_LARGE' };
   return { ok: true, context: parsed.data };
 }
