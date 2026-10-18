@@ -445,6 +445,7 @@ test('a paragraph typed a moment before sending does not make the proposal stale
   await page.getByRole('button', { name: /Apply|Застосувати/ }).click();
   await expect(page.getByRole('button', { name: /Undo AI changes|Відкотити AI-зміни/ })).toBeVisible();
 
+  await persisted(page, 'A paragraph typed just now.');
   await page.reload();
   await expect(editable).toContainText('A paragraph typed just now.');
 });
