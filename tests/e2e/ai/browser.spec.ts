@@ -475,6 +475,7 @@ test('a change applied a moment after a keystroke does not cost the author that 
   await expect(page.getByText(/scene changed since this patch|Сцена змінилася відтоді/)).toBeVisible();
   await expect(editable).toContainText('Typed late.');
   await expect(editable).not.toContainText('AI rewrote this line.');
+  await persisted(page, 'Typed late.');
   await page.reload();
   await expect(editable).toContainText('Typed late.');
 });
