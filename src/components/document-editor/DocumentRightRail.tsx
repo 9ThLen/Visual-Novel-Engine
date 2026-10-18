@@ -6,6 +6,7 @@ import { DocumentInspectorPanel } from '@/components/document-editor/DocumentIns
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { withAlpha } from '@/lib/_core/theme';
+import type { CaptureEditorContext } from '@/lib/ai/editor-context-capture';
 import { getAiPlatformSupport } from '@/lib/ai/platform-support';
 import type { ColorScheme } from '@/constants/theme';
 import type { Character } from '@/lib/character-types';
@@ -31,6 +32,8 @@ interface DocumentRightRailProps {
    * silently run mutations against a state the author has already moved past.
    */
   beforeStoryMutation: () => Promise<boolean>;
+  /** Reads the open scene and the author's selection for the assistant; see the editor. */
+  captureEditorContext: CaptureEditorContext;
 }
 
 export function DocumentRightRail({
@@ -42,6 +45,7 @@ export function DocumentRightRail({
   storyScenes,
   onOpenScene,
   beforeStoryMutation,
+  captureEditorContext,
 }: DocumentRightRailProps) {
   const colors = useColors(colorScheme);
   const { t } = useI18n();
@@ -121,6 +125,7 @@ export function DocumentRightRail({
             activeSceneId={activeSceneId}
             colorScheme={colorScheme}
             beforeStoryMutation={beforeStoryMutation}
+            captureEditorContext={captureEditorContext}
           />
         )}
       </View>

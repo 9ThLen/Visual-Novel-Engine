@@ -5,6 +5,23 @@ import type { AgentEvent, AgentProvider, AgentUserInput, ToolInvoker } from '../
 
 const TOKEN = 'ai-e2e-token';
 
+interface SeenEditorContext {
+  scene?: { id?: string };
+  selection?: { text?: string; anchors?: { stepId?: string | null; match?: string }[] } | null;
+  focus?: { blockType?: string; state?: string; match?: string; stepId?: string | null };
+}
+
+/** The context block the bridge appended to the user's words, as the model would read it. */
+function readEditorContext(text: string): SeenEditorContext | null {
+  const match = /<editor_context>\n([\s\S]*?)\n<\/editor_context>/.exec(text);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]) as SeenEditorContext;
+  } catch {
+    return null;
+  }
+}
+
 class DeterministicProvider implements AgentProvider {
   private aborted = false;
   private releaseDelay: (() => void) | null = null;
@@ -28,6 +45,39 @@ class DeterministicProvider implements AgentProvider {
         },
       });
       yield { type: 'text', text: 'Proposal resolved.' };
+    } else if (text.includes('[context]')) {
+      // Says back what it was told the author is pointing at.
+      const seen = readEditorContext(text);
+      const anchors = seen?.selection?.anchors?.map(anchor => anchor.match).join(',') ?? '';
+      const focus = seen?.focus ? `${seen.focus.blockType}/${seen.focus.state}/${seen.focus.match}` : 'none';
+      yield { type: 'text', text: seen ? `Saw selection="${seen.selection?.text ?? ''}" anchors=${anchors} focus=${focus}` : 'Saw no context.' };
+    } else if (text.includes('[rewrite-selection]')) {
+      // Rewrites the step the selection is addressed to, and nothing else.
+      const seen = readEditorContext(text);
+      const stepId = seen?.selection?.anchors?.find(anchor => anchor.match === 'exact')?.stepId;
+      const sceneId = seen?.scene?.id;
+      const context = stepId && sceneId
+        ? await this.tools.call('get_scene', { sceneId }) as {
+            activeScene?: { revision?: string; timeline?: { id: string; blockType: string; data: Record<string, unknown> }[] };
+          }
+        : null;
+      const step = context?.activeScene?.timeline?.find(item => item.id === stepId);
+      if (step && sceneId) {
+        await this.tools.call('propose_scene_patch', {
+          patch: {
+            storyId: 'demo-story-001',
+            sceneId,
+            expectedRevision: context?.activeScene?.revision,
+            explanation: 'Deterministic rewrite of the selection',
+            operations: [{
+              op: 'replace_step',
+              stepId: step.id,
+              step: { ...step, data: { ...step.data, content: 'AI rewrote the selected line.' } },
+            }],
+          },
+        });
+      }
+      yield { type: 'text', text: step ? 'Selection rewrite resolved.' : 'No exact selection to rewrite.' };
     } else if (text.includes('[rewrite]')) {
       // Unlike `[proposal]`, this one changes text the open editor is showing.
       const context = await this.tools.call('get_scene', { sceneId: 'scene_1' }) as {

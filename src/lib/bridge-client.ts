@@ -10,6 +10,7 @@ import {
   maxBytesForEnvelope,
   parseEnvelope,
 } from './bridge-protocol';
+import type { AiEditorContext } from './ai/editor-context';
 
 export type { BridgeProvider } from './bridge-protocol';
 
@@ -75,9 +76,13 @@ export class BridgeClient {
     this.openSocket(this.reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
   }
 
-  sendUserMessage(text: string, attachments?: WireAttachment[]): BridgeDeliveryResult {
+  sendUserMessage(text: string, attachments?: WireAttachment[], editorContext?: AiEditorContext | null): BridgeDeliveryResult {
     if (!this.authenticated || !this.isOpen()) return { ok: false, reason: 'NOT_AUTHENTICATED' };
-    return this.send('user_message', { text, ...(attachments?.length ? { attachments } : {}) });
+    return this.send('user_message', {
+      text,
+      ...(attachments?.length ? { attachments } : {}),
+      ...(editorContext ? { editorContext } : {}),
+    });
   }
 
   interrupt(): BridgeDeliveryResult {

@@ -30,6 +30,10 @@ const EMBEDDED_SCRIPT_BODY = `
     // True while an edit is waiting out the save debounce, i.e. the host has
     // not been told about it yet.
     var hasUnreportedChanges = false;
+    // The flush that took that waiting edit to the host ahead of the debounce.
+    // The report the debounce still sends names it, so the host can tell an
+    // edit it has already been given from a new one.
+    var deliveredByFlush = '';
     var selectionTimer = 0;
     var selectionSeq = 0;
     // What the host was last told, without its counter: a state that says
@@ -198,8 +202,9 @@ const EMBEDDED_SCRIPT_BODY = `
 
     function scheduleSave() {
       hasUnreportedChanges = true;
+      deliveredByFlush = '';
       window.clearTimeout(saveTimer);
-      saveTimer = window.setTimeout(saveNow, 260);
+      saveTimer = window.setTimeout(saveDebounced, 260);
     }
 
     function historySnapshot() {
@@ -4644,6 +4649,7 @@ const EMBEDDED_SCRIPT_BODY = `
     }
 
     function buildScenePayload() {
+      ensureUniqueLineIds();
       var blocks = Array.prototype.slice.call(editor.children)
         .map(serializeBlock)
         .filter(function(block) {
@@ -4668,16 +4674,28 @@ const EMBEDDED_SCRIPT_BODY = `
       };
     }
 
-    function saveSnapshotNow() {
+    function saveSnapshotNow(flushedBy) {
       scheduleResize();
       var snapshot = buildSnapshot();
       hasUnreportedChanges = false;
-      post(Object.assign({ type: 'save' }, snapshot));
+      deliveredByFlush = '';
+      var message = Object.assign({ type: 'save' }, snapshot);
+      if (flushedBy) message.flushedBy = flushedBy;
+      post(message);
     }
 
     function saveNow() {
       recordHistoryChange('structural', '', '');
       saveSnapshotNow();
+    }
+
+    // The debounce running out. Whatever has changed since the edit that armed
+    // it has either re-armed it or reported itself, and both forget the flush;
+    // so a flush still remembered here delivered exactly what this report holds.
+    function saveDebounced() {
+      var flushedBy = deliveredByFlush;
+      recordHistoryChange('structural', '', '');
+      saveSnapshotNow(flushedBy);
     }
 
     function ensureParagraph() {
@@ -4709,6 +4727,30 @@ const EMBEDDED_SCRIPT_BODY = `
 
     function isEditableLineElement(node) {
       return Boolean(node && node.tagName === 'P' && (!node.classList || !node.classList.contains('void-block')));
+    }
+
+    // The browser splits a line by cloning it, id and all. Two lines under one
+    // id are read back as the same saved block and stored as two steps with one
+    // id, which nothing after that can tell apart. The first of them that holds
+    // anything keeps the id; the others get their own, and with it become the
+    // new lines they are.
+    function ensureUniqueLineIds() {
+      var linesById = {};
+      Array.prototype.forEach.call(editor.children, function(node) {
+        if (!isEditableLineElement(node) || !node.dataset.id) return;
+        (linesById[node.dataset.id] = linesById[node.dataset.id] || []).push(node);
+      });
+      Object.keys(linesById).forEach(function(id) {
+        var lines = linesById[id];
+        if (lines.length < 2) return;
+        var keeper = lines.filter(lineHasContent)[0] || lines[0];
+        lines.forEach(function(line) {
+          if (line === keeper) return;
+          line.dataset.id = uid(line.dataset.kind === 'dialogue' ? 'doc_dialogue' : 'doc_text');
+          var token = line.querySelector('.speaker-token');
+          if (token) token.dataset.blockId = line.dataset.id;
+        });
+      });
     }
 
     function selectedVoidBlock() {
@@ -6327,9 +6369,15 @@ const EMBEDDED_SCRIPT_BODY = `
         var snapshot = buildSnapshot();
         var flushed = Object.assign({ type: 'flushed', requestId: message.requestId }, snapshot);
         // Read in the same pass as the content, so the two describe one moment.
-        if (message.withSelection) {
-          flushed.selection = buildSelectionState();
-          flushed.hasUnreportedChanges = hasUnreportedChanges;
+        if (message.withSelection) flushed.selection = buildSelectionState();
+        // This answer carries the waiting edit, so it is no longer unreported;
+        // the debounce still runs, in case the host never takes the answer.
+        if (hasUnreportedChanges) {
+          flushed.hasUnreportedChanges = true;
+          hasUnreportedChanges = false;
+          deliveredByFlush = message.requestId;
+        } else if (message.withSelection) {
+          flushed.hasUnreportedChanges = false;
         }
         post(flushed);
       }
@@ -6490,6 +6538,7 @@ const EMBEDDED_SCRIPT_BODY = `
       deselectAllVoidBlocks();
       forgetRecentFocus();
       ensureParagraph();
+      ensureUniqueLineIds();
       transformDialogueIfNeeded();
       transformAllDialogueIfNeeded();
       var slash = currentSlashQuery();

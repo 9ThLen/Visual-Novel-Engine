@@ -7,8 +7,8 @@
  * knows which block became which step is the document converter, so the
  * captured document is converted again here and its output is laid over the
  * stored timeline position by position. The pairing is trusted only when the
- * two line up exactly; anything else falls back to finding the quote, which is
- * never reported as `exact`.
+ * two line up exactly and the pair itself is shown to be one step; anything
+ * else falls back to finding the quote, which is never reported as `exact`.
  *
  * A block that is not text — a background, a choice, an inline effect — is
  * addressed whole, and mostly carries its step's id with it, so it has a
@@ -28,7 +28,7 @@ import {
   type AiEditorFocus,
   type AiEditorSelectionAnchor,
 } from './editor-context';
-import { computeSceneRevision } from './scene-revision';
+import { computeSceneRevision, stableStringify } from './scene-revision';
 
 export type CapturedSelectionBlock = VNPlateSelectionBlock;
 
@@ -44,6 +44,8 @@ export interface ResolveSelectionAnchorsInput {
   document: DocumentScene | null;
   characters: Character[];
   blocks: CapturedSelectionBlock[];
+  /** See `ResolveFocusedBlockInput.hasUnsavedChanges`. */
+  hasUnsavedChanges?: boolean;
 }
 
 interface AlignedOrigin {
@@ -71,18 +73,57 @@ function partCount(parts: unknown): number {
 }
 
 /**
+ * The step a technical block holds. The frame sends a block of a kind it has
+ * no form for without one, whatever the type says; the save makes it then.
+ */
+function heldStep(block: DocumentBlock | undefined): TimelineStep | null {
+  return block?.kind === 'technical' ? (block.step as TimelineStep | null) ?? null : null;
+}
+
+/**
+ * Step ids the document itself holds. A block is saved under the id it holds,
+ * so one of these that the store does not have belongs to a block that has not
+ * been saved yet.
+ */
+function stepIdsHeldBy(document: DocumentScene): Set<string> {
+  const ids = new Set<string>();
+  for (const block of document.blocks) {
+    const held = heldStep(block)?.id ?? block.sourceStep?.id;
+    if (held) ids.add(held);
+    if (block.kind !== 'text' && block.kind !== 'dialogue') continue;
+    for (const part of block.parts ?? []) {
+      if (part.type !== 'text') ids.add(part.id);
+    }
+  }
+  return ids;
+}
+
+/**
  * Pairs each document block with the stored steps it produced, or returns null
  * when the captured document and the stored scene are not the same content.
+ *
+ * Lining up by place and kind shows the two have the same shape, not that a
+ * step is the one across from it: two backgrounds swapped in an unsaved draft
+ * still line up, and so does a new background put where a deleted one was. So
+ * each pair is proven on its own. A block saved before holds its step's id, and
+ * then the id is the whole answer — including "no step" for an id the store has
+ * never seen. Only a step whose id this conversion made up is placed by
+ * position: when the editor has nothing unsaved, the stored step there belongs
+ * to no other block, and the two hold the same content.
  */
 function alignOrigins(
   scene: SceneRecord,
   document: DocumentScene,
   characters: Character[],
+  hasUnsavedChanges: boolean,
 ): AlignedDocument | null {
   const normalized = normalizePlateDocumentScene(document, characters);
   const { timeline, origins, blockSteps } = documentSceneToTimelineWithOrigins(normalized.scene, normalized.characters);
   if (timeline.length !== scene.timeline.length) return null;
 
+  const storedIds = new Set(scene.timeline.map((step) => step.id));
+  const heldIds = stepIdsHeldBy(document);
+  const carriedIds = new Set(timeline.filter((step) => storedIds.has(step.id)).map((step) => step.id));
   const storedByConvertedId = new Map<string, TimelineStep>();
   for (let index = 0; index < timeline.length; index += 1) {
     const converted = timeline[index];
@@ -90,7 +131,13 @@ function alignOrigins(
     if (converted.blockType !== stored.blockType) return null;
     const text = textOfStep(converted);
     if (text !== null && text !== textOfStep(stored)) return null;
-    storedByConvertedId.set(converted.id, stored);
+    const isSameStep = carriedIds.has(converted.id)
+      ? converted.id === stored.id
+      : !hasUnsavedChanges
+        && !heldIds.has(converted.id)
+        && !carriedIds.has(stored.id)
+        && (text !== null || stableStringify(converted.data) === stableStringify(stored.data));
+    if (isSameStep) storedByConvertedId.set(converted.id, stored);
   }
 
   // The frame numbers parts before normalization. A block whose part list
@@ -173,7 +220,9 @@ function findByQuote(
 }
 
 export function resolveSelectionAnchors(input: ResolveSelectionAnchorsInput): AiEditorSelectionAnchor[] {
-  const aligned = input.document ? alignOrigins(input.scene, input.document, input.characters) : null;
+  const aligned = input.document
+    ? alignOrigins(input.scene, input.document, input.characters, input.hasUnsavedChanges === true)
+    : null;
   const anchors: AiEditorSelectionAnchor[] = [];
 
   for (const block of input.blocks) {
@@ -203,6 +252,12 @@ export interface ResolveFocusedBlockInput {
   document: DocumentScene | null;
   characters: Character[];
   focus: VNPlateFocusedBlock | null | undefined;
+  /**
+   * The editor holds work the store does not have. The document and the scene
+   * are then two different things, and a step is named only by an id the
+   * document holds: a place in one says nothing about the other.
+   */
+  hasUnsavedChanges?: boolean;
 }
 
 /** The id of the step a block will be saved as, when the block carries one. */
@@ -212,7 +267,7 @@ function carriedStepId(block: DocumentBlock | undefined, partIndex: number | nul
     const part = (block.kind === 'text' || block.kind === 'dialogue') ? block.parts?.[partIndex] : undefined;
     return part && part.type !== 'text' ? part.id : null;
   }
-  if (block.kind === 'technical') return block.step.id;
+  if (block.kind === 'technical') return heldStep(block)?.id ?? null;
   return block.sourceStep?.id ?? null;
 }
 
@@ -248,7 +303,9 @@ export function resolveFocusedBlock(input: ResolveFocusedBlockInput): AiEditorFo
   if (!focus) return null;
   const partIndex = focus.partIndex ?? null;
   const block = input.document?.blocks.find((item) => item.id === focus.id);
-  const aligned = input.document ? alignOrigins(input.scene, input.document, input.characters) : null;
+  const aligned = input.document
+    ? alignOrigins(input.scene, input.document, input.characters, input.hasUnsavedChanges === true)
+    : null;
 
   let step = aligned?.stepByBlockPart.get(blockPartKey(focus.id, partIndex)) ?? null;
   if (!step) {
@@ -256,13 +313,13 @@ export function resolveFocusedBlock(input: ResolveFocusedBlockInput): AiEditorFo
     // of the step it was built from.
     const carriedId = input.document ? carriedStepId(block, partIndex) : (partIndex === null ? focus.id : null);
     const candidate = carriedId ? input.scene.timeline.find((item) => item.id === carriedId) : undefined;
-    const expectedType = block?.kind === 'technical' ? block.step.blockType : block?.kind === 'choice' ? 'choice' : null;
+    const expectedType = heldStep(block)?.blockType ?? (block?.kind === 'choice' ? 'choice' : null);
     if (candidate && (!expectedType || candidate.blockType === expectedType)) step = candidate;
   }
 
   const summary = clip(describeFocusedBlock(block, partIndex), AI_EDITOR_CONTEXT_LIMITS.focusSummary);
   const blockType = step?.blockType
-    ?? (block?.kind === 'technical' ? block.step.blockType : null)
+    ?? heldStep(block)?.blockType
     ?? (focus.command || focus.kind);
   return {
     sceneId: input.scene.id,

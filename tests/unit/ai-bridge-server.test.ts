@@ -50,7 +50,86 @@ const textAttachment = (text = 'hello') => {
   return { id: 'a1', name: 'note.txt', kind: 'text', mimeType: 'text/plain', byteSize: bytes.length, base64: bytes.toString('base64') };
 };
 
+const editorContext = (overrides: Record<string, unknown> = {}) => ({
+  version: 1,
+  snapshotId: 'snap_1',
+  kind: 'fixed',
+  screen: 'editor',
+  storyId: 'story_1',
+  scene: { id: 'scene_1', name: 'Scene', revision: 'rev_1', source: 'selection' },
+  hasUnsavedChanges: false,
+  selection: {
+    sceneId: 'scene_1',
+    collapsed: false,
+    text: 'Rain.',
+    textLength: 5,
+    truncated: false,
+    before: '',
+    after: '',
+    crossesChip: false,
+    anchors: [{ stepId: 'step_1', blockKind: 'text', field: 'content', quote: 'Rain.', occurrence: 0, match: 'exact' }],
+  },
+  capturedAt: 1,
+  ...overrides,
+});
+
 describe('AI bridge protocol server', () => {
+  describe('editor context on a user message', () => {
+    async function sendWithContext(context: unknown, text = 'Rewrite this') {
+      let observed: AgentUserInput | undefined;
+      const { port } = await setup(async function* (_provider, input) { observed = input; yield { type: 'done' }; });
+      const socket = connect(port);
+      const started = await handshake(socket);
+      send(socket, 'user_message', { text, editorContext: context }, String(payload(started).sessionId));
+      const reply = await next(socket);
+      return { reply, get observed() { return observed; } };
+    }
+
+    it('hands the model the user’s words followed by the validated context', async () => {
+      const result = await sendWithContext(editorContext());
+
+      expect(result.reply.type).toBe('assistant_done');
+      const [words, block] = result.observed!.text.split('\n\n');
+      expect(words).toBe('Rewrite this');
+      expect(block.startsWith('<editor_context>\n')).toBe(true);
+      expect(JSON.parse(block.split('\n')[1])).toMatchObject({
+        scene: { id: 'scene_1', revision: 'rev_1' },
+        selection: { text: 'Rain.', anchors: [{ stepId: 'step_1', match: 'exact' }] },
+      });
+    });
+
+    it('does not start the turn on a context it cannot validate', async () => {
+      const result = await sendWithContext(editorContext({ screen: 'reader' }));
+
+      expect(result.reply).toMatchObject({
+        type: 'error',
+        payload: { code: 'VALIDATION_FAILED', details: { reason: 'EDITOR_CONTEXT_INVALID' } },
+      });
+      expect(result.observed).toBeUndefined();
+    });
+
+    it('does not start the turn on a context past the size limit', async () => {
+      const oversized = editorContext({ activePathSceneIds: Array.from({ length: 100 }, () => 'x'.repeat(200)) });
+      const result = await sendWithContext(oversized);
+
+      expect(result.reply).toMatchObject({ type: 'error', payload: { details: { reason: 'EDITOR_CONTEXT_TOO_LARGE' } } });
+      expect(result.observed).toBeUndefined();
+    });
+
+    it('leaves a message without a context exactly as it was typed', async () => {
+      const result = await sendWithContext(undefined, 'Just a question');
+
+      expect(result.observed?.text).toBe('Just a question');
+    });
+  });
+
+  it('says it can chat when a session starts', async () => {
+    const { port } = await setup(async function* () {});
+    const socket = connect(port);
+
+    expect(payload(await handshake(socket))).toMatchObject({ capabilities: { chat: { supported: true } } });
+  });
+
   it('rejects a selected provider that does not match the running bridge', async () => {
     const { port } = await setup(async function* () {}, 30, undefined, 'claude');
     const socket = connect(port);

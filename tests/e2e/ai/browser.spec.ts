@@ -374,3 +374,108 @@ test('an editor left through the frame’s «new scene» command does not undo w
   await expect(await sceneEditable(page, 'scene_1')).toContainText('Typed before the new scene. And after coming back.');
   await expect(await sceneEditable(page, 'scene_2')).toContainText('Saved from the screen above.');
 });
+
+/**
+ * The assistant is told what the author is pointing at: the fake bridge reads
+ * the context block the real bridge appended and answers from it alone.
+ */
+async function send(page: Page, text: string): Promise<void> {
+  await page.getByPlaceholder(/Message the assistant|Повідомлення асистенту/).fill(text);
+  await page.getByRole('button', { name: /Send|Надіслати/ }).click();
+}
+
+test('a request about the selection changes the selected line and no other', async ({ page }) => {
+  await openAi(page);
+  await pair(page);
+  await expect(page.getByText(/Connected · Claude Code|Підключено · Claude Code/).first()).toBeVisible();
+  const editable = page.frameLocator('iframe[title="VN Plate editor"]').first().locator('#editor');
+  const selected = editable.locator('p[data-kind="text"]').first();
+  const neighbour = editable.locator('.choice-block').first();
+  const untouched = await neighbour.innerText();
+  expect((await selected.innerText()).trim().length).toBeGreaterThan(0);
+
+  // Typed a moment before sending: the capture has to save it for the address to be exact.
+  await selected.click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Fresh words.');
+  await selected.click({ clickCount: 3 });
+  await expect(page.getByText(/Selected text|Виділений текст/)).toBeVisible();
+
+  await send(page, '[rewrite-selection]');
+  await page.getByRole('button', { name: /Apply|Застосувати/ }).click();
+
+  await expect(editable).toContainText('AI rewrote the selected line.');
+  await expect(editable).not.toContainText('Fresh words.');
+  expect(await neighbour.innerText()).toBe(untouched);
+  await expect(page.getByText(/↳ «/)).toBeVisible();
+});
+
+/**
+ * Two things that used to make a change unusable for a scene the author had
+ * just typed a new paragraph into.
+ *
+ * Enter splits a line by cloning it, and both halves were saved under the step
+ * id of the paragraph that was loaded; a scene with two steps under one id
+ * fails validation, so no change to it could even be proposed.
+ *
+ * And the frame reports an edit a quarter of a second after it is made, while
+ * the capture on send takes it sooner. That later report must not turn the
+ * scene unsaved again: the next save would give the new paragraph a new step
+ * id, and the change waiting to be applied would be for a revision that no
+ * longer exists.
+ */
+test('a paragraph typed a moment before sending does not make the proposal stale', async ({ page }) => {
+  await openAi(page);
+  await pair(page);
+  await expect(page.getByText(/Connected · Claude Code|Підключено · Claude Code/).first()).toBeVisible();
+  const editable = page.frameLocator('iframe[title="VN Plate editor"]').first().locator('#editor');
+
+  // Written first, so one click is all that stands between the last key and the send.
+  await page.getByPlaceholder(/Message the assistant|Повідомлення асистенту/).fill('[proposal]');
+  await editable.locator('p[data-kind="text"]').first().click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('A paragraph typed just now.');
+  await page.getByRole('button', { name: /Send|Надіслати/ }).click();
+
+  await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toBeVisible();
+  // Long enough for the frame's own report to have come and gone.
+  await page.waitForTimeout(600);
+  await expect(page.getByText('* scene_1', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: /Apply|Застосувати/ }).click();
+  await expect(page.getByRole('button', { name: /Undo AI changes|Відкотити AI-зміни/ })).toBeVisible();
+
+  await persisted(page, 'A paragraph typed just now.');
+  await page.reload();
+  await expect(editable).toContainText('A paragraph typed just now.');
+});
+
+test('the assistant is told which block the author has open', async ({ page }) => {
+  await openAi(page);
+  await pair(page);
+  await expect(page.getByText(/Connected · Claude Code|Підключено · Claude Code/).first()).toBeVisible();
+  const editable = page.frameLocator('iframe[title="VN Plate editor"]').first().locator('#editor');
+
+  await editable.getByRole('button', { name: 'Edit' }).first().click();
+  await expect(page.getByText(/Block: Background|Блок: Фон/)).toBeVisible();
+
+  await send(page, '[context]');
+
+  await expect(page.getByText(/focus=background\/editing\/exact/)).toBeVisible();
+});
+
+test('a dismissed selection is not sent', async ({ page }) => {
+  await openAi(page);
+  await pair(page);
+  await expect(page.getByText(/Connected · Claude Code|Підключено · Claude Code/).first()).toBeVisible();
+  const editable = page.frameLocator('iframe[title="VN Plate editor"]').first().locator('#editor');
+
+  await editable.locator('p[data-kind="text"]').first().click({ clickCount: 3 });
+  await expect(page.getByText(/Selected text|Виділений текст/)).toBeVisible();
+  await page.getByRole('button', { name: /Do not send this to the assistant|Не передавати це помічнику/ }).click();
+  await expect(page.getByText(/Selected text|Виділений текст/)).toHaveCount(0);
+
+  await send(page, '[context]');
+
+  await expect(page.getByText(/Saw selection="" anchors= focus=none/)).toBeVisible();
+});

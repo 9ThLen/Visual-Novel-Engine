@@ -47,7 +47,9 @@ import {
   seedMountedSceneIds,
 } from '@/lib/document-editor/scene-mount-range';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatCommand, VNPlateFormatState, VNPlateSelectionState, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
-import { useEditorContextStore } from '@/stores/editor-context-store';
+import { selectVisibleEditorSelection, useEditorContextStore } from '@/stores/editor-context-store';
+import type { EditorContextCaptureOutcome } from '@/lib/ai/editor-context-capture';
+import { captureEditorContext as captureEditorContextFromEditor } from '@/lib/document-editor/capture-editor-context';
 import type { Character } from '@/lib/character-types';
 import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { DocumentScene } from '@/lib/document-editor/types';
@@ -509,8 +511,9 @@ export function DocumentSceneEditor({
     });
   }, [recomputeMounted]);
 
-  const flushDirtyMountedEditors = useCallback(async () => {
-    const targets = Array.from(dirtySceneIds).filter((sceneId) => editorRefsRef.current.has(sceneId));
+  const flushDirtyMountedEditors = useCallback(async (alreadyCapturedSceneId?: string) => {
+    const targets = Array.from(dirtySceneIds)
+      .filter((sceneId) => sceneId !== alreadyCapturedSceneId && editorRefsRef.current.has(sceneId));
     await Promise.all(
       targets.map(async (sceneId) => {
         const handle = editorRefsRef.current.get(sceneId);
@@ -521,9 +524,9 @@ export function DocumentSceneEditor({
     );
   }, [applyDraftSnapshot, dirtySceneIds]);
 
-  const performSave = useCallback(async (): Promise<boolean> => {
+  const performSave = useCallback(async (alreadyCapturedSceneId?: string): Promise<boolean> => {
     try {
-      await flushDirtyMountedEditors();
+      await flushDirtyMountedEditors(alreadyCapturedSceneId);
     } catch {
       // A frame that will not give up its content must not be silently dropped:
       // reporting failure lets the save barrier hold back the caller's mutation.
@@ -575,14 +578,17 @@ export function DocumentSceneEditor({
    * were still holding. Before this returned a boolean the same guarantee came
    * from the promise rejecting.
    */
-  const handleSave = useCallback((): Promise<boolean> => {
+  const runSave = useCallback((alreadyCapturedSceneId?: string): Promise<boolean> => {
     if (savingPromiseRef.current) return savingPromiseRef.current;
-    const run = performSave().finally(() => {
+    const run = performSave(alreadyCapturedSceneId).finally(() => {
       savingPromiseRef.current = null;
     });
     savingPromiseRef.current = run;
     return run;
   }, [performSave]);
+
+  // Takes no arguments on purpose: it is handed to buttons as a press handler.
+  const handleSave = useCallback((): Promise<boolean> => runSave(), [runSave]);
 
   /**
    * Save barrier for AI mutations.
@@ -597,6 +603,24 @@ export function DocumentSceneEditor({
     if (!dirtySceneIdsRef.current.size) return true;
     return handleSave();
   }, [handleSave]);
+
+  // See lib/document-editor/capture-editor-context for what this does and in
+  // which order; here the editor only lends it its frames, dirty state and save.
+  const captureEditorContext = useCallback((options: { save: boolean }): Promise<EditorContextCaptureOutcome> => {
+    const store = useEditorContextStore.getState();
+    const reported = store.selection?.storyId === storyId ? store.selection : null;
+    return captureEditorContextFromEditor({
+      documentSceneIds: documentScenesRef.current.map((documentScene) => documentScene.sceneId),
+      activeSceneId: activeSceneIdRef.current,
+      reported,
+      dismissed: Boolean(reported) && !selectVisibleEditorSelection(store),
+      frameFor: (sceneId) => editorRefsRef.current.get(sceneId),
+      hasUnsavedScenes: () => dirtySceneIdsRef.current.size > 0,
+      saveInFlight: () => savingPromiseRef.current,
+      adoptDraft: applyDraftSnapshot,
+      save: runSave,
+    }, options);
+  }, [applyDraftSnapshot, runSave, storyId]);
 
   const handleSelectChoiceOption = useCallback(async (choiceStepId: string, optionId: string) => {
     if (!onSelectChoiceOption) return;
@@ -1065,6 +1089,7 @@ export function DocumentSceneEditor({
             storyScenes={storySceneRefs}
             onOpenScene={handleInspectorScenePress}
             beforeStoryMutation={handleStoryMutationBarrier}
+            captureEditorContext={captureEditorContext}
           />
         ) : null}
       </View>
