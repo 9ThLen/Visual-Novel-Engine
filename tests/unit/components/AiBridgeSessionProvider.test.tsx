@@ -270,6 +270,30 @@ describe('the assistant’s session, held by the editor', () => {
     expect(composer().value).toBe('');
   });
 
+  // The switch that lets an agent outside the app in is not built yet. Until
+  // it is, the answer is no — the bridge can offer MCP before the app can.
+  it('refuses a call an external agent made through the bridge, a read as much as a proposal', async () => {
+    render(<Editor />);
+    openTab('AI');
+    const socket = await connect();
+
+    act(() => socket.receive('tool_call', { toolCallId: 'ext-read', toolName: 'get_scene', input: { sceneId: 'scene-1' }, origin: 'external', untrustedAttachmentMode: true }));
+    act(() => socket.receive('tool_call', { toolCallId: 'ext-propose', toolName: 'propose_scene_patch', input: { patch: patchFor(scene()) }, origin: 'external', untrustedAttachmentMode: true, ttlMs: 600_000 }));
+
+    await waitFor(() => expect(socket.sent('tool_result')).toHaveLength(2));
+    for (const result of socket.sent('tool_result')) {
+      expect(result).toMatchObject({ ok: false, errorCode: 'PERMISSION_DENIED', details: { reason: 'EXTERNAL_ACCESS_OFF' } });
+    }
+    expect(useAiChatStore.getState().pendingInteraction).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
+    expect(saveSceneRecord).not.toHaveBeenCalled();
+
+    // The same kind of read from the built-in assistant is answered as ever.
+    act(() => socket.receive('tool_call', { toolCallId: 'chat-read', toolName: 'list_scenes', input: {} }));
+    await waitFor(() => expect(socket.sent('tool_result')).toHaveLength(3));
+    expect(socket.sent('tool_result')[2]).toMatchObject({ toolCallId: 'chat-read', ok: true });
+  });
+
   it('ends the session when the editor turns to another story', async () => {
     const view = render(<Editor />);
     openTab('AI');

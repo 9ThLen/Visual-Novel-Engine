@@ -560,6 +560,36 @@ test('an editor opened on top of another shares the assistant’s session', asyn
   expect(bridgeSockets.length).toBe(opened);
 });
 
+/**
+ * The bridge offers the editor to an agent outside the app over MCP, on the
+ * port the editor itself is connected to. Until the author lets such an agent
+ * in — and the switch for that is not built yet — the editor's answer to it is
+ * no, while the built-in assistant goes on working over the same connection.
+ */
+test('an external agent is refused by the editor, and the chat is not disturbed', async ({ page, request }) => {
+  const mcp = `${process.env.AI_E2E_BRIDGE_HTTP ?? 'http://127.0.0.1:18787'}/mcp`;
+  const call = (name: string, args: Record<string, unknown> = {}, token = 'ai-e2e-mcp-token') => request.post(mcp, {
+    headers: { authorization: `Bearer ${token}`, accept: 'application/json, text/event-stream' },
+    data: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
+  });
+  await openAi(page);
+  await pair(page);
+  await expect(page.getByText(/Connected · Claude Code|Підключено · Claude Code/).first()).toBeVisible();
+
+  // The editor's own token opens nothing here.
+  expect((await call('get_editor_context', {}, validToken)).status()).toBe(401);
+
+  const answer = await call('get_editor_context');
+  expect(answer.status()).toBe(200);
+  const result = (await answer.json()).result as { isError?: boolean; content: { text: string }[] };
+  expect(result.isError).toBe(true);
+  expect(JSON.parse(result.content[0].text)).toMatchObject({ errorCode: 'PERMISSION_DENIED', details: { reason: 'EXTERNAL_ACCESS_OFF' } });
+
+  await send(page, 'still here?');
+  await expect(page.getByText('Deterministic reply: still here?')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Apply|Застосувати/ })).toHaveCount(0);
+});
+
 test('the assistant is told which block the author has open', async ({ page }) => {
   await openAi(page);
   await pair(page);

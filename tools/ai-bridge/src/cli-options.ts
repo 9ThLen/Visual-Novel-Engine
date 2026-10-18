@@ -13,17 +13,25 @@ export interface BridgeCliArgs {
   version?: boolean;
   enableCodexBeta?: boolean;
   resetToken?: boolean;
+  /** Offer the tools to an external agent over MCP. */
+  mcp?: boolean;
+  resetMcpToken?: boolean;
   /** Seal the API key arriving on standard input, then exit. */
   saveKey?: string;
 }
 
+/** `none` is a bridge without chat: it starts no model and answers only an external agent. */
+export type BridgeCliProvider = BridgeProvider | 'none';
+
 export interface BridgeCliConfig {
-  provider: BridgeProvider;
+  provider: BridgeCliProvider;
   fallbackProvider?: 'gemini';
   imageProvider: ImageProviderSelection;
   origins: string[];
   port: number;
   enableCodexBeta: boolean;
+  /** Set only when the MCP endpoint is on. */
+  mcp?: boolean;
 }
 
 export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
@@ -41,6 +49,8 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
       version: { type: 'boolean', short: 'v' },
       'enable-codex-beta': { type: 'boolean' },
       'reset-token': { type: 'boolean' },
+      mcp: { type: 'boolean' },
+      'reset-mcp-token': { type: 'boolean' },
       'save-key': { type: 'string' },
     },
   });
@@ -55,6 +65,8 @@ export function parseBridgeCliArgs(args: readonly string[]): BridgeCliArgs {
     ...(parsed.values.version ? { version: true } : {}),
     ...(parsed.values['enable-codex-beta'] ? { enableCodexBeta: true } : {}),
     ...(parsed.values['reset-token'] ? { resetToken: true } : {}),
+    ...(parsed.values.mcp ? { mcp: true } : {}),
+    ...(parsed.values['reset-mcp-token'] ? { resetMcpToken: true } : {}),
     ...(parsed.values['save-key'] ? { saveKey: parsed.values['save-key'] } : {}),
   };
 }
@@ -64,8 +76,12 @@ export function resolveBridgeCliConfig(
   env: Readonly<Record<string, string | undefined>>,
 ): BridgeCliConfig {
   const providerValue = (cli.provider ?? env.AI_BRIDGE_PROVIDER ?? 'claude').toLowerCase();
-  if (providerValue !== 'claude' && providerValue !== 'anthropic' && providerValue !== 'openai' && providerValue !== 'codex' && providerValue !== 'gemini') {
-    throw new Error('AI bridge provider must be "claude", "anthropic", "openai", "codex", or "gemini"');
+  if (providerValue !== 'claude' && providerValue !== 'anthropic' && providerValue !== 'openai' && providerValue !== 'codex' && providerValue !== 'gemini' && providerValue !== 'none') {
+    throw new Error('AI bridge provider must be "claude", "anthropic", "openai", "codex", "gemini", or "none"');
+  }
+  const mcp = cli.mcp ?? env.AI_BRIDGE_MCP === '1';
+  if (providerValue === 'none' && !mcp) {
+    throw new Error('--provider none needs --mcp: a bridge with no chat and no external agent has nothing to do');
   }
   const fallbackValue = cli.fallbackProvider?.toLowerCase();
   if (fallbackValue !== undefined && fallbackValue !== 'gemini') {
@@ -97,7 +113,7 @@ export function resolveBridgeCliConfig(
     throw new Error('Codex CLI Beta requires --enable-codex-beta');
   }
   const imageProvider = parseImageProviderSelection(cli.imageProvider ?? env.AI_BRIDGE_IMAGE_PROVIDER);
-  return { provider: providerValue, ...(fallbackValue ? { fallbackProvider: fallbackValue } : {}), imageProvider, origins, port, enableCodexBeta };
+  return { provider: providerValue, ...(fallbackValue ? { fallbackProvider: fallbackValue } : {}), imageProvider, origins, port, enableCodexBeta, ...(mcp ? { mcp: true } : {}) };
 }
 
 export function bridgeCliHelp(): string {
@@ -105,22 +121,26 @@ export function bridgeCliHelp(): string {
     'Usage: vne-ai-bridge [options]',
     '',
     'Options:',
-    '  --provider <claude|anthropic|openai|codex|gemini>  AI provider (default: claude)',
+    '  --provider <claude|anthropic|openai|codex|gemini|none>  AI provider (default: claude)',
     '                             "claude" is Claude Code and needs that CLI; "anthropic" is the',
-    '                             Claude API and needs only a key',
+    '                             Claude API and needs only a key; "none" starts no model and',
+    '                             serves only an external agent (needs --mcp)',
+    '  --mcp                      Offer the editor to an agent of your own over MCP, at /mcp on the',
+    '                             same port, behind its own token. Off unless asked for',
     '  --fallback-provider <gemini>  Explicitly consent to pre-output OpenAI -> Gemini fallback',
     '  --image-provider <auto|openai|gemini|none>  Image backend (default: auto)',
     '  --enable-codex-beta        Explicitly enable experimental Codex CLI',
     '  --origin <origin>          Allowed loopback browser origin; repeatable',
     '  --port <port>              Bridge WebSocket port (default: 8787)',
     '  --reset-token              Issue a new pairing token and exit',
+    '  --reset-mcp-token          Issue a new MCP token and exit',
     '  --save-key <anthropic|openai|gemini>  Read an API key from standard input, protect it for',
     '                             your account, select that provider, and exit',
     '  -h, --help                 Show this help',
     '  -v, --version              Show the bridge version',
     '',
     'Fallback is CLI-only: using --fallback-provider explicitly allows prior chat and attachments to be sent to Gemini.',
-    'CLI options override AI_BRIDGE_PROVIDER, AI_BRIDGE_IMAGE_PROVIDER, AI_BRIDGE_ALLOWED_ORIGINS, and AI_BRIDGE_PORT.',
+    'CLI options override AI_BRIDGE_PROVIDER, AI_BRIDGE_IMAGE_PROVIDER, AI_BRIDGE_ALLOWED_ORIGINS, AI_BRIDGE_PORT, and AI_BRIDGE_MCP=1.',
     'Those in turn override the settings file in the bridge directory; set VNE_BRIDGE_HOME to move it.',
   ].join('\n');
 }

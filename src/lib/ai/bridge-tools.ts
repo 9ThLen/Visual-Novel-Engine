@@ -51,22 +51,29 @@ export interface BridgeToolDef {
    * against the turn's time budget while it waits.
    */
   awaitsAuthor?: boolean;
+  /**
+   * Offered to an agent outside the app, over the bridge's MCP endpoint. Off
+   * unless said: a tool is not handed to a program the author did not start
+   * from the chat just because it exists. Nothing that costs money and nothing
+   * that returns bytes is offered.
+   */
+  external?: boolean;
 }
 
 /** How long a card may wait for the author. The app drops it then; the bridge gives up a little later. */
 export const AUTHOR_WAIT_TTL_MS = 600_000;
 
 export const BRIDGE_TOOLS: BridgeToolDef[] = [
-  { name: 'get_story_overview', description: 'Get the current story summary, including the reader theme and its revision.', inputSchema: z.object({}), exposure: 'model', site: 'app', effect: 'read' },
-  { name: 'list_scenes', description: 'List scenes in the current story.', inputSchema: z.object({}), exposure: 'model', site: 'app', effect: 'read' },
-  { name: 'get_scene', description: 'Read a canonical scene including its revision.', inputSchema: z.object({ sceneId: z.string().min(1) }), exposure: 'model', site: 'app', effect: 'read' },
-  { name: 'get_editor_context', description: 'Where the author is in the editor and what they selected or have in hand. `fixed` (the default) is the snapshot that came with the current message; `live` is the editor right now, which may hold unsaved text.', inputSchema: z.object({ mode: z.enum(['fixed', 'live']).optional() }), exposure: 'model', site: 'app', effect: 'read' },
-  { name: 'list_story_images', description: "List images already in this story's library, with how often each is used.", inputSchema: z.object({}), exposure: 'model', site: 'app', effect: 'read' },
-  { name: 'get_image_details', description: 'Details for one story image, including every block that references it.', inputSchema: z.object({ assetId: z.string().min(1) }), exposure: 'model', site: 'app', effect: 'read' },
-  { name: 'find_asset_usage', description: 'Find every scene and block that references an asset.', inputSchema: z.object({ assetId: z.string().min(1) }), exposure: 'model', site: 'app', effect: 'read' },
-  { name: 'propose_scene_patch', description: 'Propose a scene patch for user review. This never applies it.', inputSchema: z.object({ patch: aiScenePatchSchema }), exposure: 'model', site: 'app', effect: 'mutation', requiresCapability: 'scene_edit', timeoutMs: 600_000, awaitsAuthor: true },
-  { name: 'propose_appearance_patch', description: 'Propose reader theme colors and/or one closed layout preset (classic, compact, top) for user review. This never applies them.', inputSchema: z.object({ patch: aiReaderAppearancePatchSchema }), exposure: 'model', site: 'app', effect: 'mutation', requiresCapability: 'appearance', timeoutMs: 600_000, awaitsAuthor: true },
-  { name: 'propose_changeset', description: 'Propose an atomic multi-scene, character, and branching change set for user review. This never applies it.', inputSchema: aiChangeSetSchema, exposure: 'model', site: 'app', effect: 'mutation', requiresCapability: 'changeset', timeoutMs: 600_000, awaitsAuthor: true },
+  { name: 'get_story_overview', description: 'Get the current story summary, including the reader theme and its revision.', inputSchema: z.object({}), exposure: 'model', site: 'app', effect: 'read', external: true },
+  { name: 'list_scenes', description: 'List scenes in the current story.', inputSchema: z.object({}), exposure: 'model', site: 'app', effect: 'read', external: true },
+  { name: 'get_scene', description: 'Read a canonical scene including its revision.', inputSchema: z.object({ sceneId: z.string().min(1) }), exposure: 'model', site: 'app', effect: 'read', external: true },
+  { name: 'get_editor_context', description: 'Where the author is in the editor and what they selected or have in hand. `fixed` (the default) is the snapshot that came with the current message; `live` is the editor right now, which may hold unsaved text.', inputSchema: z.object({ mode: z.enum(['fixed', 'live']).optional() }), exposure: 'model', site: 'app', effect: 'read', external: true },
+  { name: 'list_story_images', description: "List images already in this story's library, with how often each is used.", inputSchema: z.object({}), exposure: 'model', site: 'app', effect: 'read', external: true },
+  { name: 'get_image_details', description: 'Details for one story image, including every block that references it.', inputSchema: z.object({ assetId: z.string().min(1) }), exposure: 'model', site: 'app', effect: 'read', external: true },
+  { name: 'find_asset_usage', description: 'Find every scene and block that references an asset.', inputSchema: z.object({ assetId: z.string().min(1) }), exposure: 'model', site: 'app', effect: 'read', external: true },
+  { name: 'propose_scene_patch', description: 'Propose a scene patch for user review. This never applies it.', inputSchema: z.object({ patch: aiScenePatchSchema }), exposure: 'model', site: 'app', effect: 'mutation', requiresCapability: 'scene_edit', timeoutMs: 600_000, awaitsAuthor: true, external: true },
+  { name: 'propose_appearance_patch', description: 'Propose reader theme colors and/or one closed layout preset (classic, compact, top) for user review. This never applies them.', inputSchema: z.object({ patch: aiReaderAppearancePatchSchema }), exposure: 'model', site: 'app', effect: 'mutation', requiresCapability: 'appearance', timeoutMs: 600_000, awaitsAuthor: true, external: true },
+  { name: 'propose_changeset', description: 'Propose an atomic multi-scene, character, and branching change set for user review. This never applies it.', inputSchema: aiChangeSetSchema, exposure: 'model', site: 'app', effect: 'mutation', requiresCapability: 'changeset', timeoutMs: 600_000, awaitsAuthor: true, external: true },
   { name: 'authorize_capability', description: 'Ask the app to authorize an internal AI capability before bridge-side work begins.', inputSchema: z.object({ capability: z.enum(AI_CAPABILITIES), estimate: z.union([z.string(), z.object({ provider: z.string().min(1).optional(), costUsdRange: z.object({ min: z.number(), max: z.number(), currency: z.literal('USD') }), model: z.string(), size: z.string(), quality: z.string() })]).optional() }), exposure: 'internal', site: 'app', effect: 'cost', timeoutMs: 600_000, awaitsAuthor: true },
   { name: 'get_image_binary', description: 'Read the bytes for an image in the active story.', inputSchema: z.object({ assetId: z.string().min(1) }), exposure: 'internal', site: 'app', effect: 'read', binaryResult: true },
   { name: 'remove_background', description: 'Remove the background from an image in the active story and offer the result for import.', inputSchema: z.object({ assetId: z.string().min(1) }), exposure: 'model', site: 'app', effect: 'cost', requiresCapability: 'image_generate', timeoutMs: 600_000 },
@@ -77,6 +84,8 @@ export const BRIDGE_TOOLS: BridgeToolDef[] = [
 export const MODEL_BRIDGE_TOOLS = BRIDGE_TOOLS.filter(tool => tool.exposure === 'model');
 export const APP_BRIDGE_TOOL_NAMES = BRIDGE_TOOLS.filter(tool => tool.site === 'app').map(tool => tool.name);
 export const BRIDGE_HANDLER_TOOL_NAMES = BRIDGE_TOOLS.filter(tool => tool.site === 'bridge').map(tool => tool.name);
+/** What an agent outside the app may call. */
+export const EXTERNAL_BRIDGE_TOOLS = BRIDGE_TOOLS.filter(tool => tool.external === true);
 
 export function getBridgeTool(name: string): BridgeToolDef | undefined {
   return BRIDGE_TOOLS.find(tool => tool.name === name);

@@ -111,8 +111,26 @@ describe('AI bridge CLI options', () => {
     expect(() => resolveBridgeCliConfig({ help: false, port: '8787x' }, {})).toThrow(/port/);
   });
 
+  it('takes "none" as a provider only together with --mcp', () => {
+    expect(resolveBridgeCliConfig(parseBridgeCliArgs(['--provider', 'none', '--mcp']), {})).toMatchObject({ provider: 'none', mcp: true });
+    expect(resolveBridgeCliConfig({ help: false }, { AI_BRIDGE_PROVIDER: 'none', AI_BRIDGE_MCP: '1' })).toMatchObject({ provider: 'none', mcp: true });
+    // No chat and no agent: such a bridge would listen and answer nobody.
+    expect(() => resolveBridgeCliConfig(parseBridgeCliArgs(['--provider', 'none']), {})).toThrow(/--mcp/);
+  });
+
+  it('leaves MCP off unless it is asked for', () => {
+    expect(resolveBridgeCliConfig(parseBridgeCliArgs([]), {})).not.toHaveProperty('mcp');
+    expect(resolveBridgeCliConfig(parseBridgeCliArgs(['--mcp']), {})).toMatchObject({ provider: 'claude', mcp: true });
+    expect(resolveBridgeCliConfig(parseBridgeCliArgs([]), { AI_BRIDGE_MCP: '1' }).mcp).toBe(true);
+    expect(resolveBridgeCliConfig(parseBridgeCliArgs([]), { AI_BRIDGE_MCP: 'true' })).not.toHaveProperty('mcp');
+    expect(parseBridgeCliArgs(['--reset-mcp-token'])).toMatchObject({ resetMcpToken: true });
+    expect(parseBridgeCliArgs([])).not.toHaveProperty('mcp');
+  });
+
   it('prints the supported options in help', () => {
-    expect(bridgeCliHelp()).toContain('--provider <claude|anthropic|openai|codex|gemini>');
+    expect(bridgeCliHelp()).toContain('--provider <claude|anthropic|openai|codex|gemini|none>');
+    expect(bridgeCliHelp()).toContain('--mcp ');
+    expect(bridgeCliHelp()).toContain('--reset-mcp-token');
     expect(bridgeCliHelp()).toContain('--enable-codex-beta');
     expect(bridgeCliHelp()).toContain('--image-provider <auto|openai|gemini|none>');
     expect(bridgeCliHelp()).toContain('--origin <origin>');

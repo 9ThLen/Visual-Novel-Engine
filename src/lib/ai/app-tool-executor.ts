@@ -40,7 +40,23 @@ export interface AppToolCallContext {
   untrustedAttachmentMode: boolean;
   /** Comes with a call that waits for the author: how long its card may stay up. */
   ttlMs?: number;
+  /** `external`: an agent outside the app made this call through the bridge's MCP endpoint. */
+  origin?: 'chat' | 'external';
 }
+
+/**
+ * What an agent outside the app is answered until the author can say
+ * otherwise. Access for such an agent is off unless the author turns it on,
+ * and the switch that turns it on is not built yet — so the answer is no, to
+ * reading as much as to proposing. The bridge can offer its MCP endpoint
+ * before the app has that switch; it must not be able to use it.
+ */
+export const EXTERNAL_ACCESS_OFF: ToolResult = {
+  ok: false,
+  errorCode: 'PERMISSION_DENIED',
+  errorMessage: 'Access for an external agent is turned off in the editor',
+  details: { reason: 'EXTERNAL_ACCESS_OFF' },
+};
 
 export interface AppToolExecutorDeps {
   storyId: string;
@@ -138,6 +154,7 @@ export function createAppToolExecutor(deps: AppToolExecutorDeps): AppToolExecuto
   const { storyId } = deps;
   return async (toolCallId, name, input, toolContext) => {
     if (!APP_BRIDGE_TOOL_NAMES.includes(name)) return { ok: false, errorCode: 'PROTOCOL_ERROR', errorMessage: `Unsupported tool: ${name}` };
+    if (toolContext?.origin === 'external') return EXTERNAL_ACCESS_OFF;
     const untrusted = toolContext?.untrustedAttachmentMode === true;
     const showCard = () => deps.beginInteraction(toolCallId, toolContext?.ttlMs, untrusted, true);
     const state = useAppStore.getState();
