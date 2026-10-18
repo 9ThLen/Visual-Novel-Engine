@@ -502,6 +502,20 @@ describe('a proposal from an external agent', () => {
     });
   });
 
+  // The author can take the agent's access away while its proposal is up. The
+  // app says so, and the agent is told that, not merely that the card went.
+  it('reads cancelled with the app’s own reason when the author took the access away', async () => {
+    const { tab, agent, binding } = await setUp();
+    const proposalId = String((await agent.call('propose_scene_patch', { binding, patch: patch() })).value.proposalId);
+
+    tab.answer(payloadOf(await tab.message('tool_call', 1)), { ok: true, result: { accepted: false, allowed: false, reason: 'cancelled', detail: 'ACCESS_REVOKED' } });
+    await tab.message('tool_result_ack');
+
+    expect((await agent.call('get_proposal_status', { binding, proposalId })).value).toEqual({
+      proposalId, status: 'cancelled', reason: 'ACCESS_REVOKED', hint: 'Read the current state again before proposing anything else.',
+    });
+  });
+
   it('reads unknown when the editor never said how it ended', async () => {
     const { tab, agent, binding } = await setUp({ authorWaitTtlMs: 40, authorWaitGraceMs: 10 });
     const proposed = await agent.call('propose_scene_patch', { binding, patch: patch() });
@@ -632,6 +646,85 @@ describe('when the author moves to another story', () => {
     back.answer(payloadOf(await back.message('tool_call')), { ok: true, result: [] });
 
     expect((await reading).isError).toBe(false);
+  });
+});
+
+/**
+ * A tab that reloads keeps the session's id and loses its cards. The bridge
+ * used to go on waiting for a decision nobody could make any more — for the
+ * rest of the card's ten minutes, holding the session against everything else.
+ */
+describe('a card the tab lost', () => {
+  const sessionOf = (tab: Awaited<ReturnType<typeof openTab>>) => String(payloadOf(tab.started).sessionId);
+  const dropped = async (tab: Awaited<ReturnType<typeof openTab>>) => { tab.socket.close(); await once(tab.socket, 'close'); };
+
+  it('is put up again when the tab comes back to the session, and the turn goes on from the answer', async () => {
+    let seen: unknown;
+    const bridge = await startBridge({
+      providerFactory: tools => new FakeProvider(tools, async function* () {
+        seen = await tools.call('authorize_capability', { capability: 'image_generate' }).catch(modelToolErrorValue);
+        yield { type: 'done' };
+      }),
+    });
+    const tab = await openTab(bridge.port);
+    tab.send('user_message', { text: 'go' });
+    const first = payloadOf(await tab.message('tool_call'));
+    await tick(15);
+    await dropped(tab);
+
+    const back = await openTab(bridge.port, { resumeSessionId: sessionOf(tab) });
+
+    const again = payloadOf(await back.message('tool_call'));
+    expect(again).toMatchObject({ toolCallId: first.toolCallId, toolName: 'authorize_capability', input: first.input, origin: 'chat' });
+    // What is left of the card's time, not a new ten minutes.
+    expect(again.ttlMs).toBeGreaterThan(0);
+    expect(again.ttlMs).toBeLessThan(Number(first.ttlMs));
+
+    back.answer(again, { ok: true, result: { allowed: true } });
+    await back.message('assistant_done');
+    expect(seen).toEqual({ allowed: true });
+  });
+
+  it('is put up again for an external agent’s proposal too', async () => {
+    const { port, tab, agent, binding } = await setUp();
+    const proposalId = String((await agent.call('propose_scene_patch', { binding, patch: patch() })).value.proposalId);
+    await tab.message('tool_call', 1);
+    await dropped(tab);
+
+    const back = await openTab(port, { resumeSessionId: sessionOf(tab) });
+
+    const again = payloadOf(await back.message('tool_call'));
+    expect(again).toMatchObject({ toolCallId: proposalId, toolName: 'propose_scene_patch', origin: 'external', untrustedAttachmentMode: true, input: { patch: patch() } });
+    back.answer(again, { ok: true, result: { accepted: true } });
+    await back.message('tool_result_ack');
+    expect((await agent.call('get_proposal_status', { binding, proposalId })).value).toEqual({ proposalId, status: 'applied' });
+  });
+
+  it('is not sent again once it has been decided', async () => {
+    const { port, tab, agent, binding } = await setUp();
+    await agent.call('propose_scene_patch', { binding, patch: patch() });
+    tab.answer(payloadOf(await tab.message('tool_call', 1)), { ok: true, result: { accepted: false, reason: 'rejected' } });
+    await tab.message('tool_result_ack');
+    await dropped(tab);
+
+    const back = await openTab(port, { resumeSessionId: sessionOf(tab) });
+    await tick(30);
+
+    expect(back.calls()).toEqual([]);
+  });
+
+  // A read is not a card: whoever wanted it can ask again, and nobody is left looking at nothing.
+  it('does not repeat a read the tab never answered', async () => {
+    const { port, tab, agent, binding } = await setUp({ toolTimeoutMs: 80 });
+    const reading = agent.call('get_scene', { binding, sceneId: 'scene-1' });
+    await tab.message('tool_call', 1);
+    await dropped(tab);
+
+    const back = await openTab(port, { resumeSessionId: sessionOf(tab) });
+    await tick(30);
+
+    expect(back.calls()).toEqual([]);
+    expect(reason(await reading)).toBe('EDITOR_TIMEOUT');
   });
 });
 

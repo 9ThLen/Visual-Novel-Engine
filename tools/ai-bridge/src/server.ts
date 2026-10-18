@@ -25,8 +25,17 @@ const AUTHOR_WAIT_GRACE_MS = 5_000;
 // How many of the chat's finished calls are remembered. An external agent's
 // are not counted here and not limited by it: see `rememberFinished`.
 const FINISHED_INTERACTIONS_KEPT = 64;
-/** `external` marks a call an agent outside the app made: no turn is waiting on it and none is charged for it. */
-type PendingTool = { toolName: string; awaitsAuthor: boolean; external?: boolean; resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> };
+/**
+ * `external` marks a call an agent outside the app made: no turn is waiting on
+ * it and none is charged for it. A call that waits for the author also keeps
+ * what was sent and when its card runs out, so it can be sent again to a tab
+ * that came back without the card.
+ */
+type PendingTool = {
+  toolName: string; awaitsAuthor: boolean; external?: boolean;
+  resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout>;
+  call?: Record<string, unknown>; expiresAt?: number;
+};
 /** How a call that waited for the author ended. A status, once set, does not change. */
 export type InteractionStatus = 'applied' | 'rejected' | 'expired' | 'cancelled' | 'failed' | 'unknown';
 type FinishedInteraction = { status: InteractionStatus; reason?: string; detail?: string; message?: string; settledByBridge?: boolean; external?: boolean };
@@ -208,6 +217,7 @@ export class AiBridgeServer {
         this.session.socket = socket;
         this.send(socket, 'session_started', this.sessionStarted(this.session, true), this.session.id);
         this.toolRuntime.reemitBufferedImages();
+        this.resendAuthorWaits();
         return true;
       }
       // Still on the line only if it is the tab's own earlier connection:
@@ -459,7 +469,8 @@ export class AiBridgeServer {
    */
   private callForAuthor(toolCallId: string, toolName: string, input: unknown, session: LiveSession): Promise<unknown> {
     const ttlMs = this.options.authorWaitTtlMs ?? AUTHOR_WAIT_TTL_MS;
-    this.sendCurrent('tool_call', { toolCallId, toolName, input, untrustedAttachmentMode: session.untrustedAttachmentMode, origin: 'chat', ttlMs });
+    const call = { toolCallId, toolName, input, untrustedAttachmentMode: session.untrustedAttachmentMode, origin: 'chat' };
+    this.sendCurrent('tool_call', { ...call, ttlMs });
     this.toolRuntime.authorWait.begin();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -470,8 +481,29 @@ export class AiBridgeServer {
           { status: 'unknown' },
         ));
       }, ttlMs + (this.options.authorWaitGraceMs ?? AUTHOR_WAIT_GRACE_MS));
-      this.pendingTools.set(toolCallId, { toolName, awaitsAuthor: true, resolve, reject, timer });
+      this.pendingTools.set(toolCallId, { toolName, awaitsAuthor: true, resolve, reject, timer, call, expiresAt: Date.now() + ttlMs });
     });
+  }
+
+  /**
+   * Sends the calls that wait for the author once more, to a tab that has just
+   * resumed the session. A tab that reloaded has the session's id and none of
+   * its cards: without this the bridge went on waiting, for the rest of the
+   * card's ten minutes, for a decision nobody could make any more, and held
+   * the session against everything else meanwhile. A tab that only lost its
+   * connection still has the card and ignores the repeat.
+   *
+   * Only calls that wait for the author are repeated. A read the tab did not
+   * answer times out and can be asked again by whoever wanted it.
+   */
+  private resendAuthorWaits(): void {
+    for (const pending of this.pendingTools.values()) {
+      if (!pending.awaitsAuthor || !pending.call || pending.expiresAt === undefined) continue;
+      const ttlMs = pending.expiresAt - Date.now();
+      // About to be settled by the bridge's own timer; a card for a moment would only mislead.
+      if (ttlMs <= 0) continue;
+      this.sendCurrent('tool_call', { ...pending.call, ttlMs });
+    }
   }
 
   /** Takes a waiting call out of play under its final status; null if it was already over. */
@@ -579,13 +611,16 @@ export class AiBridgeServer {
    */
   private proposeForExternalAgent(toolName: string, input: unknown, ttlMs: number): string {
     const toolCallId = randomUUID();
-    this.sendCurrent('tool_call', { toolCallId, toolName, input, untrustedAttachmentMode: true, origin: 'external', ttlMs });
+    const call = { toolCallId, toolName, input, untrustedAttachmentMode: true, origin: 'external' };
+    this.sendCurrent('tool_call', { ...call, ttlMs });
     const timer = setTimeout(() => {
       this.sendCurrent('tool_cancel', { toolCallId, reason: 'EXPIRED' });
       this.finishAuthorWait(toolCallId, { status: 'unknown', settledByBridge: true });
     }, ttlMs + (this.options.authorWaitGraceMs ?? AUTHOR_WAIT_GRACE_MS));
     // Nobody awaits it: the agent's call has already been answered `pending`.
-    this.pendingTools.set(toolCallId, { toolName, awaitsAuthor: true, external: true, resolve: () => undefined, reject: () => undefined, timer });
+    this.pendingTools.set(toolCallId, {
+      toolName, awaitsAuthor: true, external: true, resolve: () => undefined, reject: () => undefined, timer, call, expiresAt: Date.now() + ttlMs,
+    });
     return toolCallId;
   }
 
@@ -726,7 +761,11 @@ function interactionOutcome(result: Record<string, unknown> | null): FinishedInt
   const answer = typeof result.result === 'object' && result.result !== null ? result.result as Record<string, unknown> : {};
   if (answer.accepted === true || answer.allowed === true) return { status: 'applied' };
   const reason = typeof answer.reason === 'string' ? answer.reason : undefined;
-  if (reason === 'expired' || reason === 'cancelled' || reason === 'unknown') return { status: reason };
+  if (reason === 'expired' || reason === 'cancelled' || reason === 'unknown') {
+    // The app says why when it can: the author taking an agent's access away
+    // is a cancellation the agent has to be able to tell from any other.
+    return { status: reason, ...(typeof answer.detail === 'string' ? { reason: answer.detail.slice(0, 100) } : {}) };
+  }
   return { status: 'rejected', ...(reason ? { reason } : {}) };
 }
 

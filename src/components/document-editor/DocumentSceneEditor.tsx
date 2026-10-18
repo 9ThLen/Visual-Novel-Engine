@@ -990,6 +990,9 @@ export function DocumentSceneEditor({
       beforeStoryMutation={handleStoryMutationBarrier}
       captureEditorContext={captureEditorContext}
       focused={isFocused}
+      // The chat lives in the rail, and the rail is not there on a phone or
+      // in focus mode: a proposal from an external agent has nowhere to wait.
+      approvalSurface={!isPhone && !focusMode}
     >
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: colors.background }}

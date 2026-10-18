@@ -15,7 +15,7 @@ import type { AiChatPendingCapability, AiChatPendingChangeSet } from '@/stores/a
 import { describeAiAppearancePatch, validateAiAppearancePatch, type AiReaderAppearancePatch, type AppearancePatchDescription } from './appearance-patch';
 import { applyAiAppearancePatchToStore } from './appearance-patch-adapter';
 import { findAssetUsage, getImageDetails, listStoryImages } from './asset-tools';
-import { APP_BRIDGE_TOOL_NAMES } from './bridge-tools';
+import { APP_BRIDGE_TOOL_NAMES, getBridgeTool } from './bridge-tools';
 import {
   aiChangeSetSchema,
   describeAiChangeSet,
@@ -27,7 +27,16 @@ import {
 import type { AiEditorContext } from './editor-context';
 import type { CaptureEditorContext, EditorContextCapture } from './editor-context-capture';
 import { executeRemoveBackground, getStoryImageBinary, type AiImageResult } from './image-tools';
-import { AI_CAPABILITIES, normalizeAiPermissions, resolveCapability, resolveEffectiveCapability, type AiCapability, type AiPermissions } from './permissions';
+import {
+  AI_CAPABILITIES,
+  normalizeAiPermissions,
+  normalizeExternalAgentAccess,
+  resolveCapability,
+  resolveEffectiveCapability,
+  type AiCapability,
+  type AiPermissions,
+  type ExternalAgentAccess,
+} from './permissions';
 import { buildAiChangeSetState, buildPatchProjectContext } from './project-context';
 import { describeAiScenePatch, validateAiScenePatch, type ScenePatchDescription } from './scene-patch';
 import { applyAiScenePatchToStore } from './scene-patch-adapter';
@@ -45,11 +54,9 @@ export interface AppToolCallContext {
 }
 
 /**
- * What an agent outside the app is answered until the author can say
- * otherwise. Access for such an agent is off unless the author turns it on,
- * and the switch that turns it on is not built yet — so the answer is no, to
- * reading as much as to proposing. The bridge can offer its MCP endpoint
- * before the app has that switch; it must not be able to use it.
+ * What an agent outside the app is answered while the author has not let it
+ * in: no, to reading as much as to proposing. The bridge can offer its MCP
+ * endpoint whatever the app's switch says; it must not be able to use it.
  */
 export const EXTERNAL_ACCESS_OFF: ToolResult = {
   ok: false,
@@ -57,6 +64,38 @@ export const EXTERNAL_ACCESS_OFF: ToolResult = {
   errorMessage: 'Access for an external agent is turned off in the editor',
   details: { reason: 'EXTERNAL_ACCESS_OFF' },
 };
+
+/**
+ * Whether a call from an agent outside the app may go ahead, and if not, the
+ * answer it gets. Asked before anything else is done for the call.
+ *
+ * - `off` refuses everything, reads included.
+ * - A tool the registry does not offer outside is refused whatever the bridge
+ *   forwarded: the app keeps its own copy of that list.
+ * - A proposal needs `propose`, somewhere to show the author a card — there is
+ *   none on a phone or in focus mode — and nothing else in front of the author.
+ */
+export function externalCallRefusal(
+  toolName: string,
+  editor: { access: ExternalAgentAccess; hasApprovalSurface: boolean; interactionPending: boolean },
+): ToolResult | null {
+  if (editor.access === 'off') return EXTERNAL_ACCESS_OFF;
+  const definition = getBridgeTool(toolName);
+  if (!definition?.external) {
+    return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'This tool is not offered to an external agent', details: { reason: 'TOOL_NOT_EXTERNAL' } };
+  }
+  if (definition.effect === 'read') return null;
+  if (editor.access !== 'propose') {
+    return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'An external agent may read here, but not propose changes', details: { reason: 'EXTERNAL_PROPOSALS_OFF' } };
+  }
+  if (!editor.hasApprovalSurface) {
+    return { ok: false, errorCode: 'PROVIDER_UNAVAILABLE', errorMessage: 'Nothing in the editor can show the author a proposal right now', details: { reason: 'NO_APPROVAL_SURFACE' } };
+  }
+  if (editor.interactionPending) {
+    return { ok: false, errorCode: 'PROVIDER_UNAVAILABLE', errorMessage: 'Another proposal is waiting for the author', details: { reason: 'INTERACTION_PENDING' } };
+  }
+  return null;
+}
 
 export interface AppToolExecutorDeps {
   storyId: string;
@@ -68,8 +107,23 @@ export interface AppToolExecutorDeps {
   /** The context that went out with the message of the turn in progress. */
   getTurnEditorContext: () => AiEditorContext | null;
   dropTurnEditorContext: () => void;
-  /** Starts tracking a call the bridge may withdraw; `card` says it is the one on screen. */
-  beginInteraction: (toolCallId: string, ttlMs: number | undefined, untrusted: boolean, card: boolean) => void;
+  /**
+   * The context the author handed to an external agent with «Save and hand to
+   * agent». A slot of its own: what went out with a chat message is the chat's.
+   */
+  getHandedEditorContext?: () => AiEditorContext | null;
+  dropHandedEditorContext?: () => void;
+  /** Somewhere in the editor can show the author a card. False on a phone and in focus mode. */
+  hasApprovalSurface?: () => boolean;
+  /** A card is up, or a change is on its way to the store. */
+  interactionPending?: () => boolean;
+  /** Told of every call an external agent makes that is let through. */
+  noteExternalCall?: (toolName: string) => void;
+  /**
+   * Starts tracking a call the bridge may withdraw; `card` says it is the one
+   * on screen, `external` that an agent outside the app made it.
+   */
+  beginInteraction: (toolCallId: string, ttlMs: number | undefined, untrusted: boolean, card: boolean, external?: boolean) => void;
   settleInteraction: (toolCallId: string) => void;
   /** Ask for it before the first wait: a gate belongs to the session it was made in. */
   writeGate: (toolCallId: string | null, capability: AiCapability) => WriteGate;
@@ -101,7 +155,14 @@ function mapChangeSetError(code: AiChangeSetErrorCode, message: string) {
 
 /** The reason a refused change is reported under: the bridge reads `expired` and `cancelled` as statuses. */
 export function refusalReason(code: string): string {
-  return code === 'EXPIRED' ? 'expired' : code === 'CANCELLED' || code === 'SESSION_ENDED' ? 'cancelled' : code;
+  return code === 'EXPIRED' ? 'expired'
+    : code === 'CANCELLED' || code === 'SESSION_ENDED' || code === 'ACCESS_REVOKED' ? 'cancelled'
+      : code;
+}
+
+/** What narrows a `cancelled`: an external agent is told its access was taken away, not merely that the card went. */
+export function refusalDetail(code: string): { detail?: string } {
+  return code === 'ACCESS_REVOKED' ? { detail: 'ACCESS_REVOKED' } : {};
 }
 
 export function executeProposeChangeSet(
@@ -154,9 +215,20 @@ export function createAppToolExecutor(deps: AppToolExecutorDeps): AppToolExecuto
   const { storyId } = deps;
   return async (toolCallId, name, input, toolContext) => {
     if (!APP_BRIDGE_TOOL_NAMES.includes(name)) return { ok: false, errorCode: 'PROTOCOL_ERROR', errorMessage: `Unsupported tool: ${name}` };
-    if (toolContext?.origin === 'external') return EXTERNAL_ACCESS_OFF;
-    const untrusted = toolContext?.untrustedAttachmentMode === true;
-    const showCard = () => deps.beginInteraction(toolCallId, toolContext?.ttlMs, untrusted, true);
+    const external = toolContext?.origin === 'external';
+    if (external) {
+      const refusal = externalCallRefusal(name, {
+        access: normalizeExternalAgentAccess(useAppStore.getState().settings.externalAgentAccess),
+        hasApprovalSurface: deps.hasApprovalSurface?.() ?? true,
+        interactionPending: deps.interactionPending?.() ?? false,
+      });
+      if (refusal) return refusal;
+      deps.noteExternalCall?.(name);
+    }
+    // An agent outside the app never acts alone: whatever the author lets the
+    // built-in chat apply by itself, such an agent's change is asked about.
+    const untrusted = external || toolContext?.untrustedAttachmentMode === true;
+    const showCard = () => deps.beginInteraction(toolCallId, toolContext?.ttlMs, untrusted, true, external);
     const state = useAppStore.getState();
     const value = typeof input === 'object' && input ? input as Record<string, unknown> : {};
     const currentSceneId = deps.getActiveSceneId();
@@ -182,16 +254,26 @@ export function createAppToolExecutor(deps: AppToolExecutorDeps): AppToolExecuto
           ? { ok: true, result: { context: deps.buildEditorContext(outcome.capture, 'live') } }
           : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'The editor did not answer' };
       }
-      const fixed = deps.getTurnEditorContext();
+      // Each caller has a fixed context of its own: the chat's came with the
+      // message of its turn, an external agent's was handed over by the author.
+      const fixed = external ? deps.getHandedEditorContext?.() ?? null : deps.getTurnEditorContext();
       const fixedScene = fixed?.scene ? state.sceneRecordsByStory[storyId]?.[fixed.scene.id] : null;
       if (fixed?.scene && (!fixedScene || computeSceneRevision(fixedScene) !== fixed.scene.revision)) {
         // Its addresses held for one revision of the scene, and that one is gone.
-        deps.dropTurnEditorContext();
+        if (external) deps.dropHandedEditorContext?.();
+        else deps.dropTurnEditorContext();
         return { ok: true, result: { context: null, hint: 'The scene changed after this context was captured. Read the scene again, or ask for mode "live".' } };
       }
-      return fixed
-        ? { ok: true, result: { context: fixed } }
-        : { ok: true, result: { context: null, hint: 'No context came with this message. Ask for mode "live" to read the editor now.' } };
+      if (fixed) return { ok: true, result: { context: fixed } };
+      return {
+        ok: true,
+        result: {
+          context: null,
+          hint: external
+            ? 'The author has not handed a context over. Ask them to press «Save and hand to agent» in the editor, or ask for mode "live" to read the editor as it is now.'
+            : 'No context came with this message. Ask for mode "live" to read the editor now.',
+        },
+      };
     }
     if (name === 'list_story_images') return { ok: true, result: listStoryImages(storyId) };
     if (name === 'get_image_details') {
@@ -213,7 +295,7 @@ export function createAppToolExecutor(deps: AppToolExecutorDeps): AppToolExecuto
     }
     if (name === 'remove_background') {
       if (typeof value.assetId !== 'string') return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'assetId is required' };
-      const permission = resolveEffectiveCapability('image_generate', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
+      const permission = resolveEffectiveCapability('image_generate', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), untrusted);
       return executeRemoveBackground(
         storyId,
         value.assetId,
@@ -232,7 +314,7 @@ export function createAppToolExecutor(deps: AppToolExecutorDeps): AppToolExecuto
       if (!scene) return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Scene not found' };
       const validation = validateAiScenePatch(scene, patch, buildPatchProjectContext(storyId));
       if (!validation.ok) return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: validation.errors.join('; ') };
-      const permission = resolveEffectiveCapability('scene_edit', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
+      const permission = resolveEffectiveCapability('scene_edit', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), untrusted);
       if (permission === 'blocked') return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Scene editing is blocked', details: { reason: 'USER_BLOCKED' } };
       if (permission === 'auto') {
         // No dialog is shown here, so nothing else would land the author's
@@ -252,7 +334,7 @@ export function createAppToolExecutor(deps: AppToolExecutorDeps): AppToolExecuto
         if (!result) {
           return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Could not save the open document' };
         }
-        if (!result.ok && isWriteRefusal(result.code)) return { ok: true, result: { accepted: false, reason: refusalReason(result.code) } };
+        if (!result.ok && isWriteRefusal(result.code)) return { ok: true, result: { accepted: false, reason: refusalReason(result.code), ...refusalDetail(result.code) } };
         return result.ok
           ? { ok: true, result: { accepted: true, automatic: true } }
           : { ok: false, errorCode: result.code === 'STALE_REVISION' ? 'STALE_REVISION' : 'VALIDATION_FAILED', errorMessage: result.errors.join('; ') };
@@ -267,7 +349,7 @@ export function createAppToolExecutor(deps: AppToolExecutorDeps): AppToolExecuto
       if (!metadata) return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Story not found' };
       const validation = validateAiAppearancePatch(metadata, patch);
       if (!validation.ok) return { ok: false, errorCode: validation.code, errorMessage: validation.errors.join('; ') };
-      const permission = resolveEffectiveCapability('appearance', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
+      const permission = resolveEffectiveCapability('appearance', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), untrusted);
       if (permission === 'blocked') return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Appearance editing is blocked', details: { reason: 'USER_BLOCKED' } };
       if (permission === 'auto') {
         const result = await applyAiAppearancePatchToStore(patch);
@@ -280,14 +362,14 @@ export function createAppToolExecutor(deps: AppToolExecutorDeps): AppToolExecuto
       return deps.waitForDecision().then(result => ({ ok: true as const, result }));
     }
     if (name === 'propose_changeset') {
-      if (resolveEffectiveCapability('changeset', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true) === 'blocked') {
+      if (resolveEffectiveCapability('changeset', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), untrusted) === 'blocked') {
         return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Story changes are blocked', details: { reason: 'USER_BLOCKED' } };
       }
       return executeProposeChangeSet(storyId, input, (pending) => { showCard(); deps.showChangeSet(pending); }, deps.waitForDecision);
     }
     if (name === 'authorize_capability') {
       const permissions = normalizeAiPermissions(useAppStore.getState().settings.aiPermissions);
-      const effectivePermissions = toolContext?.untrustedAttachmentMode
+      const effectivePermissions = untrusted
         ? Object.fromEntries(AI_CAPABILITIES.map(capability => [capability, resolveEffectiveCapability(capability, permissions, true)])) as AiPermissions
         : permissions;
       return executeAuthorizeCapability(input, effectivePermissions, (pending) => { showCard(); deps.showCapability(pending); }, () => deps.waitForDecision() as Promise<{ allowed: boolean }>);

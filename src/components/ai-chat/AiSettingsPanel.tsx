@@ -4,7 +4,7 @@ import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import type { ColorScheme } from '@/constants/theme';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
-import type { AiPermissions } from '@/lib/ai/permissions';
+import { EXTERNAL_AGENT_ACCESS_LEVELS, type AiPermissions, type ExternalAgentAccess } from '@/lib/ai/permissions';
 import { isKeyedBridgeProvider } from '@/lib/ai/providers';
 import type { BridgeConnectionState, BridgeProvider } from '@/lib/bridge-client';
 import type { BridgeCapabilities } from '@/lib/bridge-protocol';
@@ -21,7 +21,14 @@ export interface AiSettingsPanelProps {
   token: string;
   url: string;
   permissions: AiPermissions;
+  /** What an agent outside the app may do. Absent where the caller has no such switch to offer. */
+  externalAgentAccess?: ExternalAgentAccess;
+  onExternalAgentAccessChange?(value: ExternalAgentAccess): void;
   capabilities?: BridgeCapabilities;
+  /** The author connects for an agent of their own only. */
+  agentOnly?: boolean;
+  onSelectAgentOnly?(): void;
+  onConnectAgentOnly?(token: string, url: string): void;
   requestedModel?: string;
   requestedTokenBudget?: number;
   colorScheme?: ColorScheme;
@@ -59,7 +66,24 @@ export function AiSettingsPanel(props: AiSettingsPanelProps) {
       <ScrollView contentContainerStyle={{ padding: 12, gap: 10 }}>
         <View style={section}>
           <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.settings.connection')}</Text>
-          <ConnectionCard state={props.connectionState} provider={props.provider} preferredProvider={props.preferredProvider} reason={props.reason} retryable={props.retryable} token={props.token} url={props.url} colorScheme={props.colorScheme} onConnect={props.onConnect} onProviderChange={props.onProviderChange} onRetry={props.onRetry} />
+          <ConnectionCard
+            state={props.connectionState}
+            provider={props.provider}
+            preferredProvider={props.preferredProvider}
+            reason={props.reason}
+            retryable={props.retryable}
+            token={props.token}
+            url={props.url}
+            colorScheme={props.colorScheme}
+            agentOnly={props.agentOnly}
+            chatSupported={props.capabilities?.chat?.supported}
+            offerMcp={props.externalAgentAccess !== undefined && props.externalAgentAccess !== 'off'}
+            onConnect={props.onConnect}
+            onProviderChange={props.onProviderChange}
+            onSelectAgentOnly={props.onSelectAgentOnly}
+            onConnectAgentOnly={props.onConnectAgentOnly}
+            onRetry={props.onRetry}
+          />
           {props.connectionState === 'connected' ? action(t('aiChat.connection.disconnect'), props.onDisconnect) : null}
         </View>
         <View style={section}>
@@ -74,6 +98,33 @@ export function AiSettingsPanel(props: AiSettingsPanelProps) {
         <View style={section}>
           <AiPermissionSettings permissions={props.permissions} onChange={props.onPermissionsChange} colorScheme={props.colorScheme} />
         </View>
+        {props.externalAgentAccess && props.onExternalAgentAccessChange ? (
+          <View style={section}>
+            <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.external.title')}</Text>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>{t('aiChat.external.hint')}</Text>
+            <View style={{ flexDirection: 'row', gap: 5 }}>
+              {EXTERNAL_AGENT_ACCESS_LEVELS.map((level) => {
+                const selected = props.externalAgentAccess === level;
+                return (
+                  <Pressable
+                    key={level}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('aiChat.external.levelLabel', { level: t(`aiChat.external.level.${level}`) })}
+                    accessibilityState={{ selected }}
+                    onPress={() => props.onExternalAgentAccessChange?.(level)}
+                    style={{ borderWidth: 1, borderColor: selected ? colors.primary : colors.border, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}
+                  >
+                    <Text style={{ color: selected ? colors.primary : colors.muted, fontSize: 11 }}>{t(`aiChat.external.level.${level}`)}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>{t(`aiChat.external.levelHint.${props.externalAgentAccess}`)}</Text>
+            {props.externalAgentAccess !== 'off' && props.connectionState === 'connected' && props.capabilities?.externalAgent?.enabled !== true ? (
+              <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 12 }}>{t('aiChat.external.bridgeWithoutMcp')}</Text>
+            ) : null}
+          </View>
+        ) : null}
         <View style={section}>
           <Text style={{ color: colors.foreground, fontWeight: '700' }}>{t('aiChat.settings.attachments')}</Text>
           <Text style={{ color: props.capabilities?.attachments.supported ? colors.primary : colors.danger, fontSize: 12, fontWeight: '700' }}>

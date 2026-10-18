@@ -93,6 +93,7 @@ function makeState(): AppStorePersistenceState {
       aiPermissions: {
         scene_edit: 'confirm', appearance: 'confirm', changeset: 'confirm', image_generate: 'confirm',
       },
+      externalAgentAccess: 'off',
     },
     aiBridgeSettings: { url: '', token: '', disabled: false },
     saveSlots: [],
@@ -602,5 +603,50 @@ describe('app store persistence helpers', () => {
 
     expect(backgroundAssetId).toBe(uploadedAsset.id);
     expect(resolveLibraryAssetUri(backgroundAssetId, rehydrated.mediaLibrary)).toBe(uploadedAsset.uri);
+  });
+});
+
+/**
+ * The bridge settings are rebuilt field by field when they are read back. A
+ * field that is not named there is not kept — and for these two that would
+ * put the author back into chat mode holding the agent's token.
+ */
+describe('the agent-only connection across a reload', () => {
+  const agentSettings = {
+    url: 'ws://127.0.0.1:8899',
+    token: 'agent-pairing',
+    disabled: false,
+    preferredProvider: 'openai',
+    profiles: { openai: { url: 'ws://127.0.0.1:8787', token: 'openai-token' } },
+    agentOnly: true,
+    agentProfile: { url: 'ws://127.0.0.1:8899', token: 'agent-pairing' },
+  };
+
+  it('comes back as it was saved', () => {
+    const merged = mergePersistedAppState({ aiBridgeSettings: agentSettings }, makeState());
+
+    expect(merged.aiBridgeSettings).toMatchObject({
+      agentOnly: true,
+      agentProfile: { url: 'ws://127.0.0.1:8899', token: 'agent-pairing' },
+      url: 'ws://127.0.0.1:8899',
+      token: 'agent-pairing',
+    });
+    expect(merged.aiBridgeSettings.profiles?.openai).toEqual({ url: 'ws://127.0.0.1:8787', token: 'openai-token' });
+  });
+
+  it('is not filed as the profile of the provider that was selected last', () => {
+    const migrated = migratePersistedAppState({ aiBridgeSettings: { ...agentSettings, profiles: {} } }, 0) as { aiBridgeSettings: typeof agentSettings };
+
+    expect(JSON.stringify(migrated.aiBridgeSettings.profiles)).not.toContain('agent-pairing');
+  });
+
+  it('is not invented from a record that never had it, nor from junk', () => {
+    const plain = mergePersistedAppState({ aiBridgeSettings: { url: '', token: 't', disabled: false } }, makeState());
+    expect(plain.aiBridgeSettings).not.toHaveProperty('agentOnly');
+    expect(plain.aiBridgeSettings).not.toHaveProperty('agentProfile');
+
+    const junk = mergePersistedAppState({ aiBridgeSettings: { url: '', token: 't', disabled: false, agentOnly: 'yes', agentProfile: 'somewhere' } }, makeState());
+    expect(junk.aiBridgeSettings).not.toHaveProperty('agentOnly');
+    expect(junk.aiBridgeSettings).not.toHaveProperty('agentProfile');
   });
 });

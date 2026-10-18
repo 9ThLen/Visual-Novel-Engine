@@ -17,6 +17,15 @@ export type AiBridgeSettings = {
   codexBetaConsent?: CodexBetaConsent;
   requestedModel?: string;
   requestedTokenBudget?: number;
+  /**
+   * Connect for an external agent only: no chat, and no provider named to the
+   * bridge. The bridge on the other end runs without one (`--provider none
+   * --mcp`). Such a connection has an address and a token of its own, kept in
+   * `agentProfile` — it is nobody's provider profile, and must never be saved
+   * as one.
+   */
+  agentOnly?: boolean;
+  agentProfile?: { url: string; token: string };
 };
 
 function activeProfile(settings: AiBridgeSettings): AiBridgeConnectionProfile {
@@ -28,17 +37,30 @@ function activeProfile(settings: AiBridgeSettings): AiBridgeConnectionProfile {
   };
 }
 
+/**
+ * Files the address and token in use under whoever they belong to: the
+ * provider that is selected, or — in agent-only mode — the agent's own
+ * profile. Every write of the settings goes through this, so a token typed for
+ * one is never left lying in the other's profile.
+ */
+export function withActiveAiBridgeProfileStored(settings: AiBridgeSettings): AiBridgeSettings {
+  if (settings.agentOnly) {
+    return { ...settings, agentProfile: { url: settings.url, token: settings.token } };
+  }
+  const provider = settings.preferredProvider ?? 'openai';
+  return { ...settings, profiles: { ...settings.profiles, [provider]: activeProfile(settings) } };
+}
+
 export function selectAiBridgeProvider(
   settings: AiBridgeSettings,
   provider: BridgeProvider,
 ): AiBridgeSettings {
-  const currentProvider = settings.preferredProvider ?? 'openai';
-  const profiles = { ...settings.profiles, [currentProvider]: activeProfile(settings) };
-  const selected = profiles[provider];
+  const stored = withActiveAiBridgeProfileStored(settings);
+  const selected = stored.profiles?.[provider];
   return {
-    ...settings,
+    ...stored,
+    agentOnly: false,
     preferredProvider: provider,
-    profiles,
     url: selected?.url ?? '',
     token: selected?.token ?? '',
     requestedModel: selected?.requestedModel,
@@ -47,24 +69,37 @@ export function selectAiBridgeProvider(
   };
 }
 
+/** Switches to connecting for an external agent only, bringing back the address and token last used for that. */
+export function selectAiBridgeAgentOnly(settings: AiBridgeSettings): AiBridgeSettings {
+  if (settings.agentOnly) return settings;
+  const stored = withActiveAiBridgeProfileStored(settings);
+  return {
+    ...stored,
+    agentOnly: true,
+    url: stored.agentProfile?.url ?? '',
+    token: stored.agentProfile?.token ?? '',
+    // A model and a budget are asked of a chat provider; there is none here.
+    requestedModel: undefined,
+    requestedTokenBudget: undefined,
+    disabled: false,
+  };
+}
+
 export function updateActiveAiBridgeProfile(
   settings: AiBridgeSettings,
   partial: Partial<AiBridgeConnectionProfile>,
 ): AiBridgeSettings {
-  const provider = settings.preferredProvider ?? 'openai';
-  const profile = { ...activeProfile(settings), ...partial };
-  return {
-    ...settings,
-    ...partial,
-    profiles: { ...settings.profiles, [provider]: profile },
-  };
+  return withActiveAiBridgeProfileStored({ ...settings, ...partial });
 }
 
 export type ResolvedAiBridgeConfig = {
   url: string;
   token: string;
   enabled: boolean;
-  preferredProvider: BridgeProvider;
+  /** Absent in agent-only mode: the browser then names no provider to the bridge. */
+  preferredProvider?: BridgeProvider;
+  /** Set only in agent-only mode. */
+  agentOnly?: boolean;
   codexBetaConsent?: CodexBetaConsent;
   requestedModel?: string;
   requestedTokenBudget?: number;
@@ -118,10 +153,15 @@ export function resolveAiBridgeConfig(
     process.env.EXPO_PUBLIC_AI_BRIDGE_TOKEN?.trim() ||
     '';
 
-  return {
+  const connection = {
     url: normalizedUrl.ok ? normalizedUrl.url : urlCandidate,
     token,
     enabled: normalizedUrl.ok && settings?.disabled !== true && token.length > 0,
+  };
+  // Nothing that is said to a chat provider goes to a bridge that has none.
+  if (settings?.agentOnly === true) return { ...connection, agentOnly: true };
+  return {
+    ...connection,
     preferredProvider: settings?.preferredProvider ?? 'openai',
     ...(settings?.codexBetaConsent ? { codexBetaConsent: settings.codexBetaConsent } : {}),
     ...(settings?.requestedModel?.trim() ? { requestedModel: settings.requestedModel.trim() } : {}),

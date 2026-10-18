@@ -141,6 +141,18 @@ const bridge = new AiBridgeServer({
   logger: () => undefined,
 });
 
+/**
+ * A second bridge, as `--provider none --mcp` starts one: no chat at all, for
+ * an agent of the author's own. On a port of its own, like any second bridge.
+ */
+const agentBridge = new AiBridgeServer({
+  port: 18789,
+  token: TOKEN,
+  mcp: { token: MCP_TOKEN },
+  allowedOrigins: ['http://127.0.0.1:8081', 'http://localhost:8081'],
+  logger: () => undefined,
+});
+
 const health = createServer((request, response) => {
   if (request.url === '/emit-image') {
     const sendCurrent = (bridge as unknown as {
@@ -166,6 +178,7 @@ const stop = async () => {
   if (stopping) return;
   stopping = true;
   await bridge.close();
+  await agentBridge.close();
   await new Promise<void>(resolve => health.close(() => resolve()));
   process.exit(0);
 };
@@ -174,6 +187,7 @@ process.on('SIGTERM', () => void stop());
 
 async function main(): Promise<void> {
   await bridge.start();
+  await agentBridge.start();
   await new Promise<void>(resolve => health.listen(18788, '127.0.0.1', resolve));
 }
 

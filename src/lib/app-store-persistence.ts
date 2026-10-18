@@ -222,6 +222,10 @@ function normalizeBridgeProfile(value: unknown): AiBridgeConnectionProfile | und
   };
 }
 
+function normalizeAgentProfile(value: unknown): AiBridgeSettings['agentProfile'] | undefined {
+  const profile = normalizeBridgeProfile(value);
+  return profile ? { url: profile.url, token: profile.token } : undefined;
+}
 function normalizeBridgeProfiles(value: unknown): NonNullable<AiBridgeSettings['profiles']> {
   if (!isRecord(value)) return {};
   const profiles: NonNullable<AiBridgeSettings['profiles']> = {};
@@ -319,7 +323,9 @@ export function migratePersistedAppState(
   if (isRecord(migrated.aiBridgeSettings)) {
     const provider = normalizeProvider(migrated.aiBridgeSettings.preferredProvider, 'openai');
     const profiles = normalizeBridgeProfiles(migrated.aiBridgeSettings.profiles);
-    if (!profiles[provider]) {
+    // In agent-only mode the address and token in use are the agent's, and
+    // must not be filed as the profile of whatever provider was selected last.
+    if (!profiles[provider] && migrated.aiBridgeSettings.agentOnly !== true) {
       profiles[provider] = normalizeBridgeProfile(migrated.aiBridgeSettings) ?? { url: '', token: '' };
     }
     migrated.aiBridgeSettings = { ...migrated.aiBridgeSettings, profiles } as AiBridgeSettings;
@@ -407,6 +413,13 @@ export function mergePersistedAppState<TState extends AppStorePersistenceState>(
             currentState.aiBridgeSettings.preferredProvider ?? 'openai',
           ),
           profiles: normalizeBridgeProfiles(persisted.aiBridgeSettings.profiles),
+          // Named here because this object is rebuilt field by field: a field
+          // that is not named is not kept, and the author would be put back
+          // into chat mode with the agent's token on every load.
+          ...(persisted.aiBridgeSettings.agentOnly === true ? { agentOnly: true } : {}),
+          ...(normalizeAgentProfile(persisted.aiBridgeSettings.agentProfile)
+            ? { agentProfile: normalizeAgentProfile(persisted.aiBridgeSettings.agentProfile) }
+            : {}),
           ...(normalizeCodexConsent(persisted.aiBridgeSettings.codexBetaConsent)
             ? { codexBetaConsent: normalizeCodexConsent(persisted.aiBridgeSettings.codexBetaConsent) }
             : {}),
