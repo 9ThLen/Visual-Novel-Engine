@@ -135,6 +135,13 @@ function heldBarrier() {
 
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
 
+/**
+ * A card's lifetime for a test that presses Apply before it is up and lets
+ * it run out while the document is being saved. At 80 ms a loaded machine
+ * did not get to the button in time.
+ */
+const CLICKABLE_TTL_MS = 600;
+
 describe('AiChatPanel and the life of a proposal', () => {
   beforeEach(() => {
     useAiChatStore.setState({
@@ -230,11 +237,11 @@ describe('AiChatPanel and the life of a proposal', () => {
     const held = heldBarrier();
     render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" beforeStoryMutation={held.barrier} />);
     const socket = await story.open();
-    await proposeTo(socket, record, 80);
+    await proposeTo(socket, record, CLICKABLE_TTL_MS);
 
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(held.barrier).toHaveBeenCalled());
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 120)); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, CLICKABLE_TTL_MS + 100)); });
     await held.open();
 
     await waitFor(() => expect(socket.results()).toEqual([
@@ -274,11 +281,11 @@ describe('AiChatPanel and the life of a proposal', () => {
     const held = heldBarrier();
     render(<AiChatPanel storyId="story-1" activeSceneId="scene-1" beforeStoryMutation={held.barrier} />);
     const socket = await story.open();
-    await proposeTo(socket, record, 80);
+    await proposeTo(socket, record, CLICKABLE_TTL_MS);
 
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(held.barrier).toHaveBeenCalled());
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 120)); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, CLICKABLE_TTL_MS + 100)); });
     await held.open(false);
 
     await waitFor(() => expect(socket.results()).toEqual([
