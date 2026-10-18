@@ -2,7 +2,7 @@
 import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { bridgeTokenFile } from '../../tools/ai-bridge/src/config-paths';
+import { bridgeMcpTokenFile, bridgeTokenFile } from '../../tools/ai-bridge/src/config-paths';
 import {
   BridgeTokenError,
   generateBridgeToken,
@@ -76,6 +76,30 @@ describe('bridge token store', () => {
     const rotated = resetStoredToken(dir);
     expect(rotated).not.toBe(original);
     expect(readStoredToken(dir)).toBe(rotated);
+  });
+
+  it('keeps the token for an external agent in a file of its own', () => {
+    const pairing = readOrCreateToken(dir).token;
+    const mcp = readOrCreateToken(dir, 'mcp');
+
+    expect(mcp.created).toBe(true);
+    expect(mcp.token).toMatch(/^[0-9a-f]{48}$/);
+    expect(mcp.token).not.toBe(pairing);
+    expect(readFileSync(bridgeMcpTokenFile(dir), 'utf8')).toBe(`${mcp.token}\n`);
+    expect(readOrCreateToken(dir, 'mcp')).toEqual({ token: mcp.token, created: false });
+
+    // Rotating one leaves the other as it was.
+    const rotated = resetStoredToken(dir, 'mcp');
+    expect(rotated).not.toBe(mcp.token);
+    expect(readStoredToken(dir, 'mcp')).toBe(rotated);
+    expect(readStoredToken(dir)).toBe(pairing);
+  });
+
+  it('names the flag that repairs the token that is damaged', () => {
+    writeFileSync(bridgeMcpTokenFile(dir), 'not-a-token\n');
+
+    expect(() => readOrCreateToken(dir, 'mcp')).toThrow(/--reset-mcp-token/);
+    expect(() => readOrCreateToken(dir, 'mcp')).toThrow(/your agent/);
   });
 
   it('tolerates a trailing newline, which is how it writes the file', () => {

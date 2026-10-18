@@ -80,6 +80,64 @@ describe('scene patch store adapter', () => {
     expect(createStorySnapshot).not.toHaveBeenCalled();
   });
 
+  // The request behind a change can be withdrawn, or run out of time, while
+  // the snapshot is being made; asking before that wait would not see it.
+  describe('the question asked before writing', () => {
+    function store(record: SceneRecord, duringSnapshot: () => void = () => undefined) {
+      const order: string[] = [];
+      const saveSceneRecord = vi.fn(() => order.push('save'));
+      const createStorySnapshot = vi.fn(async () => {
+        order.push('snapshot');
+        duringSnapshot();
+        return { id: 'snap-1', name: 'AI', createdAt: 1, sceneCount: 1, words: 0, automatic: true };
+      });
+      useAppStore.setState({ sceneRecordsByStory: { 'story-1': { 'scene-1': record } }, characterLibraries: {}, imageAssetIdsByStory: {}, mediaLibrary: [], createStorySnapshot, saveSceneRecord });
+      return { order, saveSceneRecord };
+    }
+
+    it('is asked after the snapshot and right before the write', async () => {
+      const record = scene();
+      const { order } = store(record);
+
+      const result = await applyAiScenePatchToStore(patch(record), () => { order.push('ask'); return null; });
+
+      expect(result.ok).toBe(true);
+      expect(order).toEqual(['snapshot', 'ask', 'save']);
+    });
+
+    it.each(['CANCELLED', 'EXPIRED', 'PERMISSION_DENIED'] as const)('writes nothing when the answer is %s', async (refusal) => {
+      const record = scene();
+      const { saveSceneRecord } = store(record);
+
+      const result = await applyAiScenePatchToStore(patch(record), () => refusal);
+
+      expect(result).toMatchObject({ ok: false, code: refusal });
+      expect(saveSceneRecord).not.toHaveBeenCalled();
+      expect(useAppStore.getState().sceneRecordsByStory['story-1']['scene-1'].name).toBe('Before');
+    });
+
+    it('sees a withdrawal that arrived while the snapshot was being made', async () => {
+      const record = scene();
+      let withdrawn = false;
+      const { saveSceneRecord } = store(record, () => { withdrawn = true; });
+
+      const result = await applyAiScenePatchToStore(patch(record), () => (withdrawn ? 'CANCELLED' : null));
+
+      expect(result).toMatchObject({ ok: false, code: 'CANCELLED' });
+      expect(saveSceneRecord).not.toHaveBeenCalled();
+    });
+
+    it('is not asked about a patch that would not be written anyway', async () => {
+      const record = scene();
+      store(record);
+      const ask = vi.fn(() => null);
+
+      await applyAiScenePatchToStore({ ...patch(record), expectedRevision: 'stale' }, ask);
+
+      expect(ask).not.toHaveBeenCalled();
+    });
+  });
+
   it('rejects the patch when the scene changes while the snapshot is being created', async () => {
     const record = scene();
     const saveSceneRecord = vi.fn();

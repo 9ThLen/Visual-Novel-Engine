@@ -84,6 +84,14 @@ export function bridgeTokenFile(dir: string, platform: NodeJS.Platform = process
 }
 
 /**
+ * The token an external agent presents at the MCP endpoint. Its own file: it is
+ * handed to another program, and the editor's pairing token is not.
+ */
+export function bridgeMcpTokenFile(dir: string, platform: NodeJS.Platform = process.platform): string {
+  return pathsFor(platform).join(dir, 'mcp-token');
+}
+
+/**
  * The author's API key, sealed for this account. See `secret-store.ts` for why
  * it is not simply a line in `bridge.env`.
  */
@@ -107,6 +115,6 @@ export function ensureBridgeHome(dir: string): AclResult {
   // — or that someone gave an explicit entry — keeps its own ACL no matter what
   // the directory says, and checking only the directory missed exactly that.
   return restrictDirectoryToOwner(dir, {
-    files: [bridgeTokenFile(dir), bridgeConfigFile(dir), bridgeSecretsFile(dir)],
+    files: [bridgeTokenFile(dir), bridgeMcpTokenFile(dir), bridgeConfigFile(dir), bridgeSecretsFile(dir)],
   });
 }

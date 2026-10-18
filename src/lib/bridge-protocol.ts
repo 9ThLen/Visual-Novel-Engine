@@ -1,4 +1,21 @@
-export const BRIDGE_PROTOCOL_VERSION = 4 as const;
+import type { AiEditorContext } from './ai/editor-context';
+
+/**
+ * v5 adds everything the editor context and the external-agent work need in
+ * one step, so an older bridge answers with a version error instead of quietly
+ * dropping a field it does not know: `editorContext` on a user message,
+ * `storyId` in the session context, `origin`/`ttlMs` on a tool call, the
+ * `tool_cancel` and `tool_result_ack` messages, an optional session provider
+ * and the `chat`/`externalAgent` capabilities. Not all of them are acted on yet.
+ */
+export const BRIDGE_PROTOCOL_VERSION = 5 as const;
+
+/**
+ * The reason the bridge closes a socket with when another one has resumed its
+ * session. The client it is sent to must not reconnect: that would take the
+ * session back, and the other client would do the same in turn.
+ */
+export const SESSION_RESUMED_ELSEWHERE = 'Session resumed elsewhere';
 
 export const MAX_MESSAGE_BYTES = 1_000_000;
 export const MAX_IMAGE_MESSAGE_BYTES = 8_000_000;
@@ -21,6 +38,8 @@ export type ServerMessageType =
   | 'assistant_done'
   | 'conversation_reset_ack'
   | 'tool_call'
+  | 'tool_cancel'
+  | 'tool_result_ack'
   | 'status'
   | 'error'
   | 'pong'
@@ -100,7 +119,7 @@ export interface SessionStartPayload {
   resumeSessionId?: string;
   preferredProvider?: BridgeProvider;
   codexBetaConsent?: CodexBetaConsent;
-  context?: { locale?: string };
+  context?: { locale?: string; storyId?: string };
   requestedModel?: string;
   requestedTokenBudget?: number;
 }
@@ -113,8 +132,11 @@ export interface SessionChallengePayload {
   disclosureVersion?: number;
   isolationPolicyVersion?: number;
 }
-export interface SessionStartedPayload { sessionId: string; resumed: boolean; provider: BridgeProvider; capabilities?: BridgeCapabilities; untrustedAttachmentMode?: boolean }
+/** `provider` is absent on a bridge that runs without a chat provider. */
+export interface SessionStartedPayload { sessionId: string; resumed: boolean; provider?: BridgeProvider; capabilities?: BridgeCapabilities; untrustedAttachmentMode?: boolean }
 export interface BridgeCapabilities {
+  chat: { supported: boolean };
+  externalAgent?: { enabled: boolean };
   attachments: {
     supported: boolean;
     kinds: ('image' | 'pdf' | 'text')[];
@@ -146,7 +168,25 @@ export interface WireAttachment {
   width?: number;
   height?: number;
 }
-export interface UserMessagePayload { text: string; attachments?: WireAttachment[] }
+export interface UserMessagePayload {
+  text: string;
+  attachments?: WireAttachment[];
+  /** Where the author is and what they selected; the bridge validates it again. */
+  editorContext?: AiEditorContext;
+}
+
+export interface ToolCallPayload {
+  toolCallId: string;
+  toolName: string;
+  input: unknown;
+  untrustedAttachmentMode?: boolean;
+  /** Who asked: the chat's own model, or an agent connected from outside. */
+  origin?: 'chat' | 'external';
+  /** How long the call may wait for the author before the app drops its card. */
+  ttlMs?: number;
+}
+export interface ToolCancelPayload { toolCallId: string; reason: string }
+export interface ToolResultAckPayload { toolCallId: string }
 
 export interface BridgeEnvelope<T = unknown> {
   protocolVersion: typeof BRIDGE_PROTOCOL_VERSION;
@@ -160,7 +200,7 @@ const CLIENT_MESSAGE_TYPES: readonly ClientMessageType[] = [
   'session_start', 'session_end', 'user_message', 'interrupt', 'conversation_reset', 'tool_result', 'ping', 'image_result_ack',
 ];
 const SERVER_MESSAGE_TYPES: readonly ServerMessageType[] = [
-  'session_challenge', 'session_started', 'assistant_delta', 'assistant_done', 'conversation_reset_ack', 'tool_call', 'status', 'error', 'pong', 'image_result',
+  'session_challenge', 'session_started', 'assistant_delta', 'assistant_done', 'conversation_reset_ack', 'tool_call', 'tool_cancel', 'tool_result_ack', 'status', 'error', 'pong', 'image_result',
 ];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

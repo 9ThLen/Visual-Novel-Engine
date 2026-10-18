@@ -32,6 +32,11 @@ export interface AiChatMessage {
   text: string;
   createdAt: number;
   attachments?: AttachmentRef[];
+  /**
+   * What the message pointed at in the editor, in a few words. The context
+   * itself is not kept: a transcript should not carry a copy of the story.
+   */
+  contextLabel?: string;
 }
 
 export type AiChatStatus = 'idle' | 'thinking' | 'interrupting' | 'awaiting_confirmation';
@@ -62,11 +67,15 @@ export interface AiChatPendingCapability {
   };
 }
 
-export type AiPendingInteraction =
+export type AiPendingInteraction = (
   | { kind: 'scene_patch'; storyId: string; value: AiChatPendingPatch }
   | { kind: 'appearance'; storyId: string; value: AiChatPendingAppearance }
   | { kind: 'changeset'; storyId: string; value: AiChatPendingChangeSet }
-  | { kind: 'capability'; storyId: string; value: AiChatPendingCapability };
+  | { kind: 'capability'; storyId: string; value: AiChatPendingCapability }
+) & {
+  /** Set when an agent outside the app proposed it; the card says so. */
+  origin?: 'external';
+};
 
 /**
  * The two change kinds roll back differently: scenes restore a story snapshot,
@@ -124,7 +133,7 @@ interface AiChatStoreState {
   /** @deprecated Compatibility view; new code uses the LIFO appliedChanges journal. */
   lastAppliedChange: LegacyAppliedChange | null;
   setActiveStory: (storyId: string) => void;
-  addMessage: (role: AiChatRole, text: string, storyId?: string, attachments?: AttachmentRef[]) => AiChatMessage;
+  addMessage: (role: AiChatRole, text: string, storyId?: string, attachments?: AttachmentRef[], contextLabel?: string) => AiChatMessage;
   clearMessages: (storyId?: string) => void;
   markAttachmentImported: (storyId: string, attachmentId: string, assetId: string) => void;
   setStatus: (status: AiChatStatus) => void;
@@ -145,6 +154,7 @@ const MAX_JOURNAL_STORIES = 50;
 const LEGACY_TRANSIENT_SYSTEM_MESSAGES = new Set([
   'Another session is already active',
 ]);
+const MAX_CONTEXT_LABEL_LENGTH = 200;
 const safeText = (text: string) => /data:image\/[^;]+;base64,/i.test(text) ? '[image omitted]' : text;
 const byteLength = (value: unknown) => {
   const json = JSON.stringify(value);
@@ -209,8 +219,12 @@ export const useAiChatStore = create<AiChatStoreState>()(persist((set, get) => (
     };
   }),
 
-  addMessage: (role, text, requestedStoryId, attachments) => {
-    const message: AiChatMessage = { id: generateId('ai-msg'), role, text: safeText(text), createdAt: Date.now(), ...(attachments?.length ? { attachments } : {}) };
+  addMessage: (role, text, requestedStoryId, attachments, contextLabel) => {
+    const message: AiChatMessage = {
+      id: generateId('ai-msg'), role, text: safeText(text), createdAt: Date.now(),
+      ...(attachments?.length ? { attachments } : {}),
+      ...(contextLabel ? { contextLabel: contextLabel.slice(0, MAX_CONTEXT_LABEL_LENGTH) } : {}),
+    };
     const storyId = requestedStoryId ?? get().activeStoryId;
     if (!storyId) { set((state) => ({ messages: [...state.messages, message] })); return message; }
     set((state) => {

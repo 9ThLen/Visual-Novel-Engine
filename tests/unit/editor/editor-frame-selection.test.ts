@@ -1,5 +1,5 @@
 import { resolveFocusedBlock, resolveSelectionAnchors } from '@/lib/ai/editor-context-resolver';
-import { createDocumentTechnicalBlock } from '@/lib/document-editor/document-scene';
+import { createDocumentTechnicalBlock, sceneRecordToDocumentScene } from '@/lib/document-editor/document-scene';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import { saveDocumentSceneToRecord } from '@/lib/document-scene-persistence';
 import type { SceneRecord, TextBlockData } from '@/lib/engine/types';
@@ -285,6 +285,89 @@ describe('editor frame selection', () => {
       expect(frame.flush(true).hasUnreportedChanges).toBe(false);
     });
   });
+
+  // A flush answers ahead of the debounce, and the debounce still reports. The
+  // host has to be able to tell that report from a new edit, or a scene saved
+  // from the flush turns unsaved again a moment later.
+  describe('the debounced report after a flush', () => {
+    const type = (text: string) => {
+      frame.textNodes('blk_first')[0].data = text;
+      frame.block('blk_first').dispatchEvent(new frame.target.Event('input', { bubbles: true }));
+    };
+    const saves = () => frame.posted.filter((message) => message.type === 'save');
+
+    it('names the flush that already delivered the edit', async () => {
+      type('Перший абзац, дописаний.');
+      const flushed = frame.flush(true);
+      await settle(400);
+
+      expect(saves()).toHaveLength(1);
+      expect(saves()[0].flushedBy).toBe(flushed.requestId);
+      expect(JSON.stringify(saves()[0].scene)).toContain('дописаний');
+    });
+
+    it('names a plain flush too, which says so only when it carried an edit', async () => {
+      type('Перший абзац, дописаний.');
+      const flushed = frame.flush(false);
+      await settle(400);
+
+      expect(flushed.hasUnreportedChanges).toBe(true);
+      expect(flushed).not.toHaveProperty('selection');
+      expect(saves()[0].flushedBy).toBe(flushed.requestId);
+    });
+
+    it('holds an edit as reported once a flush has carried it', () => {
+      type('Перший абзац, дописаний.');
+      frame.flush(false);
+
+      expect(frame.flush(true).hasUnreportedChanges).toBe(false);
+    });
+
+    it('keeps naming the flush that carried the edit after later ones that carried nothing', async () => {
+      type('Перший абзац, дописаний.');
+      const first = frame.flush(true);
+      frame.flush(true);
+      await settle(400);
+
+      expect(saves()[0].flushedBy).toBe(first.requestId);
+    });
+
+    it('names no flush once the text has changed again', async () => {
+      type('Перший абзац, дописаний.');
+      frame.flush(true);
+      type('Перший абзац, дописаний двічі.');
+      await settle(400);
+
+      expect(saves()).toHaveLength(1);
+      expect(saves()[0]).not.toHaveProperty('flushedBy');
+      expect(JSON.stringify(saves()[0].scene)).toContain('двічі');
+    });
+
+    it('names no flush when nothing came between the edit and its report', async () => {
+      type('Перший абзац, дописаний.');
+      await settle(400);
+
+      expect(saves()).toHaveLength(1);
+      expect(saves()[0]).not.toHaveProperty('flushedBy');
+    });
+
+    // An undo reports itself at once, without the debounce; the timer armed by
+    // the typing is still running and must not pass that report off as flushed.
+    it('names no flush once a change that reports itself has followed', async () => {
+      type('Перший абзац, дописаний.');
+      frame.flush(true);
+      frame.target.dispatchEvent(new frame.target.MessageEvent('message', {
+        data: { source: 'vn-plate-host', editorId: 'frame', type: 'undo' },
+        source: frame.dom.window,
+      }));
+      const immediate = saves().length;
+      await settle(400);
+
+      expect(immediate).toBe(1);
+      expect(saves().length).toBeGreaterThanOrEqual(1);
+      saves().forEach((message) => expect(message).not.toHaveProperty('flushedBy'));
+    });
+  });
 });
 
 describe('editor frame focus on a block that is not text', () => {
@@ -439,5 +522,103 @@ describe('editor frame focus on a block that is not text', () => {
     expect(focus).toMatchObject({ blockType: 'choice', match: 'exact' });
     expect(scene.timeline.find((step) => step.id === focus?.stepId)?.blockType).toBe('choice');
     expect(focus?.summary).toContain('Лишитися');
+  });
+});
+
+// The browser answers Enter by cloning the line it splits, attributes and all,
+// so both halves come out under the id of the block that was loaded.
+describe('editor frame line ids', () => {
+  const stored = (() => {
+    const record = emptySceneRecord();
+    const typed = normalizePlateDocumentScene({
+      sceneId: record.id,
+      sceneName: record.name,
+      blocks: [{ id: 'doc_first', kind: 'text', content: 'Перший абзац.' }, { id: 'doc_second', kind: 'text', content: 'Другий абзац.' }],
+    }, []);
+    return saveDocumentSceneToRecord(record, typed.scene, typed.characters);
+  })();
+  const [firstStep, secondStep] = stored.timeline;
+  let frame: ReturnType<typeof bootFrame>;
+
+  beforeEach(() => {
+    frame = bootFrame(sceneRecordToDocumentScene(stored).blocks);
+  });
+
+  afterEach(() => {
+    frame.dom.window.close();
+    vi.restoreAllMocks();
+  });
+
+  /** What the browser leaves behind when Enter splits a line: a clone, placed after it. */
+  const split = (id: string, head: string, tail: string) => {
+    const line = frame.block(id);
+    const clone = line.cloneNode(false) as HTMLElement;
+    line.textContent = head;
+    clone.textContent = tail;
+    line.insertAdjacentElement('afterend', clone);
+    line.dispatchEvent(new frame.target.Event('input', { bubbles: true }));
+    return { line, clone };
+  };
+  const saved = () => {
+    const document = frame.flush(false).scene as DocumentScene;
+    const normalized = normalizePlateDocumentScene(document, []);
+    return { document, scene: saveDocumentSceneToRecord(stored, normalized.scene, normalized.characters) };
+  };
+  const textBlocks = (document: DocumentScene) => document.blocks
+    .filter((block): block is Extract<DocumentBlock, { kind: 'text' }> => block.kind === 'text' && Boolean(block.content));
+
+  it('gives the second half of a split line an id of its own, and its own step', () => {
+    const { line, clone } = split(firstStep.id, 'Перший', ' абзац, розбитий.');
+
+    const { document, scene } = saved();
+    const [head, tail] = textBlocks(document);
+
+    expect(line.dataset.id).toBe(firstStep.id);
+    expect(clone.dataset.id).not.toBe(firstStep.id);
+    expect(head).toMatchObject({ id: firstStep.id, content: 'Перший', sourceStep: { id: firstStep.id } });
+    expect(tail).toMatchObject({ id: clone.dataset.id, content: ' абзац, розбитий.' });
+    expect(tail.sourceStep).toBeUndefined();
+    expect(scene.timeline.map((step) => step.id).slice(0, 1)).toEqual([firstStep.id]);
+    expect(new Set(scene.timeline.map((step) => step.id)).size).toBe(scene.timeline.length);
+    expect(scene.timeline.at(-1)?.id).toBe(secondStep.id);
+  });
+
+  // Enter at the start of a line leaves an empty line above the text: the text
+  // is still the paragraph that was saved, so it is the one that keeps the id.
+  it('leaves the id with the half that holds the text', () => {
+    const { line, clone } = split(firstStep.id, '', 'Перший абзац.');
+
+    const { document, scene } = saved();
+
+    expect(clone.dataset.id).toBe(firstStep.id);
+    expect(line.dataset.id).not.toBe(firstStep.id);
+    expect(textBlocks(document)[0]).toMatchObject({ id: firstStep.id, content: 'Перший абзац.' });
+    expect(scene.timeline.map((step) => step.id)).toEqual([firstStep.id, secondStep.id]);
+  });
+
+  it('keeps apart a selection in the new half from the line it was split from', async () => {
+    const { clone } = split(firstStep.id, 'Перший', ' абзац, розбитий.');
+    const text = clone.firstChild as Text;
+    frame.select(text, 1, text, 6);
+    await settle();
+
+    expect(frame.lastSelection()?.blocks).toEqual([
+      { id: clone.dataset.id, kind: 'text', quote: 'абзац', occurrence: 0 },
+    ]);
+  });
+
+  // A scene saved before this was fixed can already hold two steps under one
+  // id; the next save of it sets that right.
+  it('sets right a scene that was stored with two lines under one id', () => {
+    frame.dom.window.close();
+    const twins = sceneRecordToDocumentScene({ ...stored, timeline: [firstStep, { ...secondStep, id: firstStep.id }] });
+    frame = bootFrame(twins.blocks);
+
+    const { scene } = saved();
+
+    expect(scene.timeline).toHaveLength(2);
+    expect(scene.timeline[0].id).toBe(firstStep.id);
+    expect(scene.timeline[1].id).not.toBe(firstStep.id);
+    expect((scene.timeline[1].data as TextBlockData).content).toBe('Другий абзац.');
   });
 });

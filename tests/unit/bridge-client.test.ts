@@ -1,5 +1,5 @@
 import { BridgeClient, type BridgeClientOptions } from '@/lib/bridge-client';
-import { makeEnvelope } from '@/lib/bridge-protocol';
+import { SESSION_RESUMED_ELSEWHERE, makeEnvelope } from '@/lib/bridge-protocol';
 
 class MockWebSocket {
   static readonly CONNECTING = 0;
@@ -93,6 +93,36 @@ describe('BridgeClient', () => {
     client.close();
   });
 
+  it('says which story the editor has open when it starts a session', () => {
+    options.storyId = 'story-9';
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    expect(frame(socket)).toMatchObject({ type: 'session_start', payload: { context: { storyId: 'story-9' } } });
+    client.close();
+  });
+
+  // The app has to tell an agent outside it from its own assistant, and only the bridge can say which a call is.
+  it('passes on that a call came from an external agent, and nothing else about where it came from', async () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false }, 'session-1'));
+
+    socket.receive(makeEnvelope('tool_call', { toolCallId: 'c1', toolName: 'get_scene', input: {}, origin: 'external', untrustedAttachmentMode: true }, 'session-1'));
+    socket.receive(makeEnvelope('tool_call', { toolCallId: 'c2', toolName: 'get_scene', input: {}, origin: 'chat' }, 'session-1'));
+    socket.receive(makeEnvelope('tool_call', { toolCallId: 'c3', toolName: 'get_scene', input: {}, origin: 'somewhere' }, 'session-1'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(options.onToolCall).toHaveBeenNthCalledWith(1, 'c1', 'get_scene', {}, { untrustedAttachmentMode: true, origin: 'external' });
+    expect(options.onToolCall).toHaveBeenNthCalledWith(2, 'c2', 'get_scene', {}, { untrustedAttachmentMode: false });
+    expect(options.onToolCall).toHaveBeenNthCalledWith(3, 'c3', 'get_scene', {}, { untrustedAttachmentMode: false });
+    client.close();
+  });
+
   it('reports connected only after the authenticated session starts', () => {
     const client = new BridgeClient(options);
     client.connect();
@@ -170,6 +200,32 @@ describe('BridgeClient', () => {
     expect(options.onEvent).not.toHaveBeenCalled();
     vi.advanceTimersByTime(60_000);
     expect(MockWebSocket.instances).toHaveLength(1);
+    client.close();
+  });
+
+  // A duplicated tab carries the session's id with it. Each of the two used to
+  // reconnect the moment the other took the socket, and they never stopped.
+  it('does not take the session back from a client that resumed it elsewhere', () => {
+    const storage = sessionStorage as unknown as { removeItem: ReturnType<typeof vi.fn> };
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false }, 'session-1'));
+    storage.removeItem.mockClear();
+
+    socket.readyState = MockWebSocket.CLOSED;
+    socket.onclose?.({ code: 1000, reason: SESSION_RESUMED_ELSEWHERE } as CloseEvent);
+
+    expect(options.onConnectionChange).toHaveBeenLastCalledWith('error', 'SESSION_ALREADY_ACTIVE');
+    vi.advanceTimersByTime(60_000);
+    expect(MockWebSocket.instances).toHaveLength(1);
+    // What is kept for a resume belongs to the other client now.
+    expect(storage.removeItem).not.toHaveBeenCalled();
+
+    // Connecting again by hand is the author saying «continue here».
+    client.connect();
+    expect(MockWebSocket.instances).toHaveLength(2);
     client.close();
   });
 
@@ -325,6 +381,25 @@ describe('BridgeClient', () => {
       type: 'user_message',
       payload: { text: 'delivered' },
     });
+    client.close();
+  });
+
+  it('sends the editor context with the message, and no field when there is none', () => {
+    const client = new BridgeClient(options);
+    client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.receive(makeEnvelope('session_started', { sessionId: 'session-1', resumed: false, provider: 'claude' }, 'session-1'));
+    const editorContext = {
+      version: 1, snapshotId: 'snap_1', kind: 'fixed', screen: 'editor', storyId: 'story_1',
+      scene: null, hasUnsavedChanges: false, selection: null, capturedAt: 1,
+    } as const;
+
+    expect(client.sendUserMessage('with context', undefined, editorContext)).toEqual({ ok: true });
+    expect(client.sendUserMessage('without', undefined, null)).toEqual({ ok: true });
+
+    expect(frame(socket, 1)).toMatchObject({ type: 'user_message', payload: { text: 'with context', editorContext } });
+    expect(frame(socket, 2).payload).toEqual({ text: 'without' });
     client.close();
   });
 

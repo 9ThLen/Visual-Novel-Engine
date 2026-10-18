@@ -20,13 +20,15 @@ import {
 } from './appearance-patch';
 import { capturePostRevisions } from './applied-change-journal';
 import { useAiChatStore } from '@/stores/ai-chat-store';
+import { writeRefusalMessage, type WriteGate, type WriteRefusal } from './write-gate';
 
 export type ApplyAiAppearancePatchToStoreResult =
   | { ok: true; previousTheme: StoryReaderTheme | undefined; previousLayoutPreset: StoryReaderLayoutPreset | undefined; description: AppearancePatchDescription }
-  | { ok: false; code: 'STALE_REVISION' | 'VALIDATION_FAILED' | 'STORY_NOT_FOUND'; errors: string[] };
+  | { ok: false; code: 'STALE_REVISION' | 'VALIDATION_FAILED' | 'STORY_NOT_FOUND' | WriteRefusal; errors: string[] };
 
 export async function applyAiAppearancePatchToStore(
   patch: AiReaderAppearancePatch,
+  mayWrite?: WriteGate,
 ): Promise<ApplyAiAppearancePatchToStoreResult> {
   const state = useAppStore.getState();
   const metadata = state.storiesMetadata.find((story) => story.id === patch.storyId);
@@ -34,6 +36,9 @@ export async function applyAiAppearancePatchToStore(
 
   const validation = validateAiAppearancePatch(metadata, patch);
   if (!validation.ok) return validation;
+
+  const refusal = mayWrite?.() ?? null;
+  if (refusal) return { ok: false, code: refusal, errors: [writeRefusalMessage(refusal)] };
 
   const description = describeAiAppearancePatch(metadata, patch);
   const previousTheme = metadata.theme;

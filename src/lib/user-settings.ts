@@ -1,4 +1,10 @@
-import { defaultAiPermissions, normalizeAiPermissions, type AiPermissions } from './ai/permissions';
+import {
+  defaultAiPermissions,
+  normalizeAiPermissions,
+  normalizeExternalAgentAccess,
+  type AiPermissions,
+  type ExternalAgentAccess,
+} from './ai/permissions';
 
 export const readerFontScaleOptions = [0.85, 1.0, 1.15, 1.3] as const;
 export const readerLineHeightScaleOptions = [1.0, 1.2, 1.4] as const;
@@ -20,6 +26,8 @@ export interface UserSettings {
   /** Play scene background video. Off falls back to the poster or static background. */
   backgroundVideoEnabled: boolean;
   aiPermissions: AiPermissions;
+  /** What an agent outside the app may do; off unless the author turns it on. */
+  externalAgentAccess: ExternalAgentAccess;
 }
 
 export const defaultUserSettings: UserSettings = {
@@ -34,6 +42,7 @@ export const defaultUserSettings: UserSettings = {
   parallaxEnabled: true,
   backgroundVideoEnabled: true,
   aiPermissions: defaultAiPermissions,
+  externalAgentAccess: 'off',
 };
 
 function clampUnitValue(value: unknown, fallback: number): number {
@@ -87,15 +96,22 @@ export function normalizeUserSettings(
         ? settings.backgroundVideoEnabled
         : defaultUserSettings.backgroundVideoEnabled,
     aiPermissions: normalizeAiPermissions(settings?.aiPermissions),
+    externalAgentAccess: normalizeExternalAgentAccess(settings?.externalAgentAccess),
   };
 }
 
-/** Legacy records predate AI permissions; never let them erase hydrated values. */
+/**
+ * Legacy records predate AI permissions and the external agent's switch; never
+ * let them erase hydrated values. For the switch that matters twice over: a
+ * record that lacks it normalizes to `off`, which would silently lock out an
+ * agent the author had let in.
+ */
 export function mergeLegacyUserSettings(legacy: unknown, current: UserSettings): UserSettings {
   if (!legacy || typeof legacy !== 'object') return normalizeUserSettings(current);
   const value = legacy as Partial<UserSettings>;
   return normalizeUserSettings({
     ...value,
     aiPermissions: value.aiPermissions ?? current.aiPermissions,
+    externalAgentAccess: value.externalAgentAccess ?? current.externalAgentAccess,
   });
 }

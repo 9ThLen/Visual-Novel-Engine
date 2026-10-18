@@ -33,6 +33,17 @@ describe('appearance patch store adapter', () => {
     });
   });
 
+  it('writes nothing when the request behind the change is no longer alive', async () => {
+    const metadata = story({ dialogueBg: '#ffffff' });
+    const updateStoryMetadata = vi.fn();
+    useAppStore.setState({ storiesMetadata: [metadata], createStorySnapshot: vi.fn(), updateStoryMetadata });
+
+    const result = await applyAiAppearancePatchToStore(patch(metadata), () => 'CANCELLED');
+
+    expect(result).toMatchObject({ ok: false, code: 'CANCELLED' });
+    expect(updateStoryMetadata).not.toHaveBeenCalled();
+  });
+
   it('applies and rolls back a preset-only patch', async () => {
     const metadata = { ...story({ dialogueBg: '#ffffff' }), readerLayoutPreset: 'compact' as const };
     const updateStoryMetadata = vi.fn();

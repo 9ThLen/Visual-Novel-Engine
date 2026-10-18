@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DocumentBranchBreadcrumb } from '@/components/document-editor/DocumentBranchBreadcrumb';
 import { DocumentEditorHeader } from '@/components/document-editor/DocumentEditorHeader';
+import { AiBridgeSessionProvider } from '@/components/ai-chat/AiBridgeSessionProvider';
 import { DocumentRightRail } from '@/components/document-editor/DocumentRightRail';
 import { DocumentSceneFrame } from '@/components/document-editor/DocumentSceneFrame';
 import { DocumentSceneSidebar } from '@/components/document-editor/DocumentSceneSidebar';
@@ -47,7 +48,9 @@ import {
   seedMountedSceneIds,
 } from '@/lib/document-editor/scene-mount-range';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatCommand, VNPlateFormatState, VNPlateSelectionState, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
-import { useEditorContextStore } from '@/stores/editor-context-store';
+import { selectVisibleEditorSelection, useEditorContextStore } from '@/stores/editor-context-store';
+import type { EditorContextCaptureOutcome } from '@/lib/ai/editor-context-capture';
+import { captureEditorContext as captureEditorContextFromEditor } from '@/lib/document-editor/capture-editor-context';
 import type { Character } from '@/lib/character-types';
 import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { DocumentScene } from '@/lib/document-editor/types';
@@ -509,8 +512,9 @@ export function DocumentSceneEditor({
     });
   }, [recomputeMounted]);
 
-  const flushDirtyMountedEditors = useCallback(async () => {
-    const targets = Array.from(dirtySceneIds).filter((sceneId) => editorRefsRef.current.has(sceneId));
+  const flushDirtyMountedEditors = useCallback(async (alreadyCapturedSceneId?: string) => {
+    const targets = Array.from(dirtySceneIds)
+      .filter((sceneId) => sceneId !== alreadyCapturedSceneId && editorRefsRef.current.has(sceneId));
     await Promise.all(
       targets.map(async (sceneId) => {
         const handle = editorRefsRef.current.get(sceneId);
@@ -521,9 +525,27 @@ export function DocumentSceneEditor({
     );
   }, [applyDraftSnapshot, dirtySceneIds]);
 
-  const performSave = useCallback(async (): Promise<boolean> => {
+  /**
+   * Takes over the edits frames are still holding back. A frame reports an edit
+   * a quarter of a second after it is made, so until then the host calls a
+   * scene saved that is not — and a save, or a change written for the
+   * assistant, would go ahead without the author's last words. Returns whether
+   * any frame had something.
+   */
+  const collectUnreportedDrafts = useCallback(async (alreadyCapturedSceneId?: string): Promise<boolean> => {
+    const drafts = await Promise.all(
+      Array.from(editorRefsRef.current)
+        .filter(([sceneId]) => sceneId !== alreadyCapturedSceneId)
+        .map(([, handle]) => handle.unreportedDraft()),
+    );
+    drafts.forEach((draft) => { if (draft) applyDraftSnapshot(draft); });
+    return drafts.some(Boolean);
+  }, [applyDraftSnapshot]);
+
+  const performSave = useCallback(async (alreadyCapturedSceneId?: string): Promise<boolean> => {
     try {
-      await flushDirtyMountedEditors();
+      await collectUnreportedDrafts(alreadyCapturedSceneId);
+      await flushDirtyMountedEditors(alreadyCapturedSceneId);
     } catch {
       // A frame that will not give up its content must not be silently dropped:
       // reporting failure lets the save barrier hold back the caller's mutation.
@@ -562,7 +584,7 @@ export function DocumentSceneEditor({
       savingTimerRef.current = null;
     }, 250);
     return true;
-  }, [documentsWithDrafts, flushDirtyMountedEditors, onSave]);
+  }, [collectUnreportedDrafts, documentsWithDrafts, flushDirtyMountedEditors, onSave]);
 
   /**
    * Persist the document. Returns whether the store now holds this editor's
@@ -575,14 +597,17 @@ export function DocumentSceneEditor({
    * were still holding. Before this returned a boolean the same guarantee came
    * from the promise rejecting.
    */
-  const handleSave = useCallback((): Promise<boolean> => {
+  const runSave = useCallback((alreadyCapturedSceneId?: string): Promise<boolean> => {
     if (savingPromiseRef.current) return savingPromiseRef.current;
-    const run = performSave().finally(() => {
+    const run = performSave(alreadyCapturedSceneId).finally(() => {
       savingPromiseRef.current = null;
     });
     savingPromiseRef.current = run;
     return run;
   }, [performSave]);
+
+  // Takes no arguments on purpose: it is handed to buttons as a press handler.
+  const handleSave = useCallback((): Promise<boolean> => runSave(), [runSave]);
 
   /**
    * Save barrier for AI mutations.
@@ -594,9 +619,36 @@ export function DocumentSceneEditor({
    * aside rather than invalidating the proposal it was meant to guard.
    */
   const handleStoryMutationBarrier = useCallback(async (): Promise<boolean> => {
-    if (!dirtySceneIdsRef.current.size) return true;
+    // Asked of the frames, not only of what the host has heard: a change the
+    // assistant applies a moment after a keystroke would otherwise be written
+    // over a scene whose newest text exists nowhere but in its frame.
+    let heldBack: boolean;
+    try {
+      heldBack = await collectUnreportedDrafts();
+    } catch {
+      return false;
+    }
+    if (!heldBack && !dirtySceneIdsRef.current.size) return true;
     return handleSave();
-  }, [handleSave]);
+  }, [collectUnreportedDrafts, handleSave]);
+
+  // See lib/document-editor/capture-editor-context for what this does and in
+  // which order; here the editor only lends it its frames, dirty state and save.
+  const captureEditorContext = useCallback((options: { save: boolean }): Promise<EditorContextCaptureOutcome> => {
+    const store = useEditorContextStore.getState();
+    const reported = store.selection?.storyId === storyId ? store.selection : null;
+    return captureEditorContextFromEditor({
+      documentSceneIds: documentScenesRef.current.map((documentScene) => documentScene.sceneId),
+      activeSceneId: activeSceneIdRef.current,
+      reported,
+      dismissed: Boolean(reported) && !selectVisibleEditorSelection(store),
+      frameFor: (sceneId) => editorRefsRef.current.get(sceneId),
+      hasUnsavedScenes: () => dirtySceneIdsRef.current.size > 0,
+      saveInFlight: () => savingPromiseRef.current,
+      adoptDraft: applyDraftSnapshot,
+      save: runSave,
+    }, options);
+  }, [applyDraftSnapshot, runSave, storyId]);
 
   const handleSelectChoiceOption = useCallback(async (choiceStepId: string, optionId: string) => {
     if (!onSelectChoiceOption) return;
@@ -927,7 +979,21 @@ export function DocumentSceneEditor({
   }, [scheduleMountRecompute]);
 
   return (
-    <>
+    // This editor's place in the assistant's session. The session itself is
+    // held above the screens, one for the whole stack of editors: it outlives a
+    // switch to the inspector, a spell in focus mode and a second editor opened
+    // on top of this one, and reads the scene and the draft from whichever
+    // editor the author is looking at.
+    <AiBridgeSessionProvider
+      storyId={storyId}
+      activeSceneId={activeSceneId}
+      beforeStoryMutation={handleStoryMutationBarrier}
+      captureEditorContext={captureEditorContext}
+      focused={isFocused}
+      // The chat lives in the rail, and the rail is not there on a phone or
+      // in focus mode: a proposal from an external agent has nowhere to wait.
+      approvalSurface={!isPhone && !focusMode}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: colors.background }}
         behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
@@ -1065,6 +1131,7 @@ export function DocumentSceneEditor({
             storyScenes={storySceneRefs}
             onOpenScene={handleInspectorScenePress}
             beforeStoryMutation={handleStoryMutationBarrier}
+            captureEditorContext={captureEditorContext}
           />
         ) : null}
       </View>
@@ -1078,6 +1145,6 @@ export function DocumentSceneEditor({
         onCancel={() => setPendingDeleteSceneId(null)}
         destructive
       />
-    </>
+    </AiBridgeSessionProvider>
   );
 }

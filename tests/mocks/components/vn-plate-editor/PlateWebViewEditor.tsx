@@ -21,6 +21,7 @@ export interface PlateWebViewEditorSnapshot {
 
 export interface PlateWebViewEditorHandle {
   flush: () => Promise<PlateWebViewEditorSnapshot>;
+  unreportedDraft: () => Promise<PlateWebViewEditorSnapshot | null>;
   formatText: (command: string, value?: unknown) => void;
   undo: () => void;
   redo: () => void;
@@ -43,6 +44,11 @@ export interface PlateEditorFrameForTests {
   builtFrom: PlateWebViewEditorSnapshot['scene'];
   /** Report an edit to the host, as a frame does after the author types. */
   reportEdit: (scene: PlateWebViewEditorSnapshot['scene']) => void;
+  /**
+   * Hold an edit without reporting it: the quarter second after a keystroke,
+   * while the real frame's report still waits on its debounce.
+   */
+  typeWithoutReporting: (scene: PlateWebViewEditorSnapshot['scene']) => void;
   /**
    * Ask the host for the next scene, as the frame's «new scene» command does.
    * A real frame sends its whole content along, reported or not.
@@ -79,8 +85,15 @@ export const PlateWebViewEditor = React.forwardRef(function PlateWebViewEditorSt
   ref: unknown,
 ) {
   const scene = props.scene as PlateWebViewEditorSnapshot['scene'];
+  const unreported = React.useRef<PlateWebViewEditorSnapshot['scene'] | null>(null);
   React.useImperativeHandle(ref as never, () => ({
-    flush: () => flushImpl(scene),
+    flush: () => flushImpl(unreported.current ?? scene),
+    // Handing the edit over is what reports it, as in the real frame.
+    unreportedDraft: async () => {
+      const held = unreported.current;
+      unreported.current = null;
+      return held ? { scene: held, characters: [] } : null;
+    },
     formatText: () => {},
     undo: () => {},
     redo: () => {},
@@ -102,6 +115,7 @@ export const PlateWebViewEditor = React.forwardRef(function PlateWebViewEditorSt
       sceneId: scene.sceneId,
       builtFrom: scene,
       reportEdit: (edited) => latest.current.onChange?.(edited, latest.current.characters ?? []),
+      typeWithoutReporting: (edited) => { unreported.current = edited; },
       requestNextScene: (edited) =>
         latest.current.onCreateNextScene?.(edited, latest.current.characters ?? []),
     });

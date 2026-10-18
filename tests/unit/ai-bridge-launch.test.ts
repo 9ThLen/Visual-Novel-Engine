@@ -35,6 +35,24 @@ describe('how the panel tells an author to start a bridge', () => {
     expect(instruction.command).not.toContain('--origin');
   });
 
+  it('starts no model for an author who wants the bridge for an agent of their own', () => {
+    const instruction = bridgeLaunchInstruction({ ...base, provider: 'none', origin: 'http://localhost:8081' });
+
+    expect(instruction.command).toBe('pnpm ai-bridge --provider none --mcp --origin http://localhost:8081');
+    // The tools that draw are the chat's; there is no image backend to name.
+    expect(instruction.command).not.toContain('--image-provider');
+    expect(bridgeLaunchInstruction({ ...base, provider: 'none', origin: 'http://tauri.localhost', url: 'ws://127.0.0.1:9100' }).command)
+      .toBe(`"${PACKAGED_LAUNCHER}" --provider none --mcp --port 9100`);
+  });
+
+  it('offers a bridge with chat to an external agent too, when the author has let one in', () => {
+    expect(bridgeLaunchInstruction({ ...base, mcp: true, origin: 'http://localhost:8081' }).command)
+      .toBe('pnpm ai-bridge --provider openai --image-provider auto --mcp --origin http://localhost:8081');
+    expect(bridgeLaunchInstruction({ ...base, origin: 'http://localhost:8081' }).command).not.toContain('--mcp');
+    // Said once, not twice.
+    expect(bridgeLaunchInstruction({ ...base, provider: 'none', mcp: true, origin: 'http://localhost:8081' }).command.match(/--mcp/g)).toHaveLength(1);
+  });
+
   it('carries a non-default port across, and stays quiet about the default', () => {
     expect(bridgeLaunchInstruction({ ...base, origin: 'http://tauri.localhost', url: 'ws://127.0.0.1:9100' }).command)
       .toContain('--port 9100');

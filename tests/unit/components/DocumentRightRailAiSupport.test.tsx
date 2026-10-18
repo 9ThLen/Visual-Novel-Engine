@@ -8,14 +8,14 @@ describe('DocumentRightRail AI platform gate', () => {
 
   it('does not expose the AI tab in unsupported environments', () => {
     vi.stubGlobal('WebSocket', undefined);
-    render(<DocumentRightRail scene={null} storyId="story" activeSceneId={null} characters={[]} storyScenes={[]} beforeStoryMutation={async () => true} />);
+    render(<DocumentRightRail scene={null} storyId="story" activeSceneId={null} characters={[]} storyScenes={[]} beforeStoryMutation={async () => true} captureEditorContext={async () => ({ ok: false })} />);
     expect(screen.queryByText('AI')).toBeNull();
     expect(screen.getByText(/available only when.*localhost/i)).toBeTruthy();
   });
 
   it('keeps the AI tab on supported local web', () => {
     vi.stubGlobal('WebSocket', class {});
-    render(<DocumentRightRail scene={null} storyId="story" activeSceneId={null} characters={[]} storyScenes={[]} beforeStoryMutation={async () => true} />);
+    render(<DocumentRightRail scene={null} storyId="story" activeSceneId={null} characters={[]} storyScenes={[]} beforeStoryMutation={async () => true} captureEditorContext={async () => ({ ok: false })} />);
     expect(screen.getByText('AI')).toBeTruthy();
   });
 });

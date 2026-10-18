@@ -1,5 +1,6 @@
 import {
   BRIDGE_PROTOCOL_VERSION,
+  SESSION_RESUMED_ELSEWHERE,
   type BridgeEnvelope,
   type BridgeErrorCode,
   type BridgeProvider,
@@ -10,6 +11,8 @@ import {
   maxBytesForEnvelope,
   parseEnvelope,
 } from './bridge-protocol';
+import type { AiEditorContext } from './ai/editor-context';
+import { BridgeResultQueue } from './bridge-result-queue';
 
 export type { BridgeProvider } from './bridge-protocol';
 
@@ -35,12 +38,21 @@ export interface BridgeClientOptions {
   url: string;
   token: string;
   locale?: string;
+  /** The story the editor has open. The bridge tells an external agent which one it is talking about. */
+  storyId?: string;
   preferredProvider?: BridgeProvider;
   codexBetaConsent?: CodexBetaConsent;
   requestedModel?: string;
   requestedTokenBudget?: number;
   onEvent: (msg: BridgeEnvelope) => void;
-  onToolCall: (toolCallId: string, toolName: string, input: unknown, context?: { untrustedAttachmentMode: boolean }) => Promise<ToolResult>;
+  /** `ttlMs` comes with a call that waits for the author: how long its card may stay up. */
+  /**
+   * `ttlMs` comes with a call that waits for the author: how long its card may stay up.
+   * `origin` is `external` for a call an agent outside the app made through the bridge.
+   */
+  onToolCall: (toolCallId: string, toolName: string, input: unknown, context?: { untrustedAttachmentMode: boolean; ttlMs?: number; origin?: 'chat' | 'external' }) => Promise<ToolResult>;
+  /** The bridge has withdrawn a call that was waiting for the author; its card has to go. */
+  onToolCancel?: (toolCallId: string, reason: string) => void;
   onConnectionChange: (state: BridgeConnectionState, reason?: BridgeConnectionReason) => void;
   logger?: (message: string, error?: unknown) => void;
 }
@@ -57,7 +69,12 @@ export class BridgeClient {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingReset: ((result: BridgeConversationResetResult) => void) | null = null;
-  constructor(private readonly options: BridgeClientOptions) {}
+  private readonly results: BridgeResultQueue;
+  private readonly callsInFlight = new Set<string>();
+  private readonly withdrawnCalls = new Set<string>();
+  constructor(private readonly options: BridgeClientOptions) {
+    this.results = new BridgeResultQueue(`vne-bridge-results:${options.url}`);
+  }
 
   static clearPersistedSession(url: string): void {
     try {
@@ -75,9 +92,13 @@ export class BridgeClient {
     this.openSocket(this.reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
   }
 
-  sendUserMessage(text: string, attachments?: WireAttachment[]): BridgeDeliveryResult {
+  sendUserMessage(text: string, attachments?: WireAttachment[], editorContext?: AiEditorContext | null): BridgeDeliveryResult {
     if (!this.authenticated || !this.isOpen()) return { ok: false, reason: 'NOT_AUTHENTICATED' };
-    return this.send('user_message', { text, ...(attachments?.length ? { attachments } : {}) });
+    return this.send('user_message', {
+      text,
+      ...(attachments?.length ? { attachments } : {}),
+      ...(editorContext ? { editorContext } : {}),
+    });
   }
 
   interrupt(): BridgeDeliveryResult {
@@ -113,6 +134,7 @@ export class BridgeClient {
     this.socketFailed = false;
     this.resolvePendingReset({ ok: false, reason: 'RESET_FAILED' });
     BridgeClient.clearPersistedSession(this.options.url);
+    this.results.clear();
     this.options.onConnectionChange('closed');
   }
 
@@ -134,7 +156,7 @@ export class BridgeClient {
         ...(this.options.codexBetaConsent ? { codexBetaConsent: this.options.codexBetaConsent } : {}),
         ...(this.options.requestedModel ? { requestedModel: this.options.requestedModel } : {}),
         ...(this.options.requestedTokenBudget ? { requestedTokenBudget: this.options.requestedTokenBudget } : {}),
-        context: { locale: this.options.locale },
+        context: { locale: this.options.locale, ...(this.options.storyId ? { storyId: this.options.storyId } : {}) },
       };
       this.send('session_start', payload);
     };
@@ -144,10 +166,15 @@ export class BridgeClient {
       this.options.logger?.('WebSocket error', event);
       this.options.onConnectionChange('error', 'CONNECTION_FAILED_OR_ORIGIN');
     };
-    socket.onclose = () => {
-      if (this.socket === socket) this.socket = null;
+    socket.onclose = (event?: CloseEvent) => {
+      const wasCurrent = this.socket === socket;
+      if (wasCurrent) this.socket = null;
       this.authenticated = false;
       this.clearHeartbeatTimers();
+      if (wasCurrent && event?.reason === SESSION_RESUMED_ELSEWHERE && !this.intentionallyClosed) {
+        this.yieldSession();
+        return;
+      }
       if (!this.intentionallyClosed && !this.reconnectBlocked) this.scheduleReconnect(!this.socketFailed);
     };
   }
@@ -185,6 +212,20 @@ export class BridgeClient {
       this.reconnectAttempt = 0;
       this.options.onConnectionChange('connected');
       this.startHeartbeat();
+      // Whatever was answered while the bridge could not hear it.
+      this.results.adopt(this.sessionId);
+      for (const [toolCallId, result] of this.results.entries()) this.send('tool_result', { toolCallId, ...result });
+    }
+    if (parsed.type === 'tool_result_ack') {
+      if (this.isRecord(parsed.payload) && typeof parsed.payload.toolCallId === 'string') this.results.remove(parsed.payload.toolCallId);
+      return;
+    }
+    if (parsed.type === 'tool_cancel') {
+      if (!this.isRecord(parsed.payload) || typeof parsed.payload.toolCallId !== 'string') return;
+      const toolCallId = parsed.payload.toolCallId;
+      if (this.callsInFlight.has(toolCallId)) this.withdrawnCalls.add(toolCallId);
+      this.options.onToolCancel?.(toolCallId, typeof parsed.payload.reason === 'string' ? parsed.payload.reason : '');
+      return;
     }
     if (parsed.type === 'conversation_reset_ack') {
       this.resolvePendingReset({ ok: true });
@@ -239,10 +280,20 @@ export class BridgeClient {
   private async handleToolCall(payload: unknown): Promise<void> {
     if (!this.isRecord(payload) || typeof payload.toolCallId !== 'string'
       || typeof payload.toolName !== 'string') return;
+    const toolCallId = payload.toolCallId;
+    // The bridge sends a waiting call again whenever a session is resumed, for
+    // the tab that reloaded and lost its card. This one either still has the
+    // card up, or has answered and is only waiting to hear the answer arrived.
+    if (this.callsInFlight.has(toolCallId) || this.results.has(toolCallId)) return;
+    const awaitsAuthor = typeof payload.ttlMs === 'number';
     let result: ToolResult;
+    this.callsInFlight.add(toolCallId);
     try {
-      result = await this.options.onToolCall(payload.toolCallId, payload.toolName, payload.input, {
+      result = await this.options.onToolCall(toolCallId, payload.toolName, payload.input, {
         untrustedAttachmentMode: payload.untrustedAttachmentMode === true,
+        // Only the bridge's word counts here: the app never marks a call itself.
+        ...(payload.origin === 'external' ? { origin: 'external' as const } : {}),
+        ...(awaitsAuthor ? { ttlMs: payload.ttlMs as number } : {}),
       });
     } catch (error: unknown) {
       result = {
@@ -250,8 +301,15 @@ export class BridgeClient {
         errorCode: 'VALIDATION_FAILED',
         errorMessage: error instanceof Error ? error.message : 'Tool execution failed',
       };
+    } finally {
+      this.callsInFlight.delete(toolCallId);
     }
-    if (this.isOpen()) this.send('tool_result', { toolCallId: payload.toolCallId, ...result });
+    // Nobody is waiting for the answer to a withdrawn call — unless the change
+    // was written before the withdrawal got here, which the bridge has to hear.
+    if (this.withdrawnCalls.delete(toolCallId) && !reportsWrittenChange(result)) return;
+    // Kept until acknowledged: this send may be going into a dead socket.
+    if (awaitsAuthor) this.results.add(toolCallId, result);
+    if (this.isOpen()) this.send('tool_result', { toolCallId, ...result });
   }
 
   private startHeartbeat(): void {
@@ -325,10 +383,27 @@ export class BridgeClient {
     this.resolvePendingReset({ ok: false, reason: 'RESET_FAILED' });
     this.reconnectAttempt = 0;
     BridgeClient.clearPersistedSession(this.options.url);
+    this.results.clear();
     this.options.onConnectionChange(state, reason);
     const socket = this.socket;
     this.socket = null;
     if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
+  }
+
+  /**
+   * Another client has resumed this session — a duplicated tab carries the
+   * session's id with it. Reconnecting would take the session back and the
+   * other client would answer in kind, without end, so this one stops and says
+   * where the session went. What is kept for a resume is left alone: it is the
+   * other client's now. Connecting again by hand takes the session back.
+   */
+  private yieldSession(): void {
+    this.reconnectBlocked = true;
+    this.clearAllTimers();
+    this.sessionId = '';
+    this.reconnectAttempt = 0;
+    this.resolvePendingReset({ ok: false, reason: 'RESET_FAILED' });
+    this.options.onConnectionChange('error', 'SESSION_ALREADY_ACTIVE');
   }
 
   private isOpen(): boolean {
@@ -365,4 +440,9 @@ export class BridgeClient {
     this.clearHeartbeatTimers();
     this.clearReconnectTimer();
   }
+}
+
+function reportsWrittenChange(result: ToolResult): boolean {
+  return result.ok && typeof result.result === 'object' && result.result !== null
+    && (result.result as { accepted?: unknown }).accepted === true;
 }

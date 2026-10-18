@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { AuthorWait } from '../../tools/ai-bridge/src/turn-budget';
 import { OpenAiProvider, DEFAULT_OPENAI_CHAT_MODEL } from '../../tools/ai-bridge/src/openai-provider';
 import { BridgeToolError, type AgentEvent, type ToolInvoker } from '../../tools/ai-bridge/src/provider';
 import { MODEL_BRIDGE_TOOLS } from '../../src/lib/ai/bridge-tools';
@@ -494,6 +495,48 @@ describe('OpenAiProvider failure handling', () => {
     })) as unknown as typeof fetch;
     const provider = new OpenAiProvider(new FakeBridge(), undefined, { apiKey: 'k', fetch: impl, turnTimeoutMs: 10 });
     await expect(run(provider)).rejects.toThrow('OPENAI_API_TIMEOUT');
+  });
+
+  // The bridge says when a call is waiting for the author; the turn's own
+  // deadline stands still for that long and then runs out what was left.
+  describe('while a proposal waits for the author', () => {
+    const waitingBridge = (waitMs: number) => {
+      const wait = new AuthorWait();
+      const bridge = new FakeBridge(async () => {
+        wait.begin();
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        wait.end();
+        return { accepted: true };
+      });
+      return Object.assign(bridge, {
+        isAwaitingAuthor: () => wait.waiting,
+        watchAuthorWait: (listener: (waiting: boolean) => void) => wait.watch(listener),
+      });
+    };
+
+    it('does not let the turn deadline pass', async () => {
+      const { impl } = fakeFetch(
+        () => sseResponse([completed([functionCall('list_scenes', {})])]),
+        () => sseResponse([delta('Done'), completed([message('Done')])]),
+      );
+      const provider = new OpenAiProvider(waitingBridge(120), undefined, { apiKey: 'k', fetch: impl, turnTimeoutMs: 40 });
+
+      const events = await run(provider);
+
+      expect(events.some(event => event.type === 'done')).toBe(true);
+    });
+
+    it('still ends a turn that overruns once the author has decided', async () => {
+      const { impl } = fakeFetch(
+        () => sseResponse([completed([functionCall('list_scenes', {})])]),
+        ((_body: unknown, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+        })) as unknown as Responder,
+      );
+      const provider = new OpenAiProvider(waitingBridge(80), undefined, { apiKey: 'k', fetch: impl, turnTimeoutMs: 40 });
+
+      await expect(run(provider)).rejects.toThrow('OPENAI_API_TIMEOUT');
+    });
   });
 
   it('stops immediately while an app tool promise is still pending', async () => {

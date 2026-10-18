@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-10-18 — The assistant sees the author's place; an agent of your own
+
+Plan: `docs/technical/ai-editor-context-and-mcp-plan.md` (v1.20).
+
+- **The assistant is told where the author is.** A message carries what the
+  author selected and the block they have open, as a snapshot taken on send:
+  the open document is saved first, and the selection is addressed to the
+  steps it covers, each saying how sure the address is (`exact`, `quote`,
+  `ambiguous`, `none`). The composer shows what goes
+  with the message and lets the author leave it out. `get_editor_context`
+  reads the same snapshot, or the editor as it is now (`mode: "live"`).
+- **A proposal has a life of its own.** It waits up to ten minutes for the
+  author, the bridge can withdraw it, a change on its way to the store is
+  stopped if its call ended meanwhile, and the open editor shows a written
+  change at once. A card on screen comes back after a reload of the page.
+- **The session belongs to the editor, not to the AI panel.** Switching the
+  rail's tabs or opening a scene on top keeps one connection and one card.
+- **MCP.** `pnpm ai-bridge --mcp` offers the editor to an agent the author
+  runs — Claude Code, Codex, anything that speaks Streamable HTTP — at `/mcp`,
+  with a token of its own. It reads the story the editor has open and
+  proposes changes; it writes nothing. `--provider none --mcp` runs a bridge
+  for such an agent alone, with no chat and no key.
+- **The author decides what the agent may do.** AI settings, "External
+  agent": off (the default), read, or read and propose. Its proposals are
+  always asked about and say whose they are; turning access down withdraws
+  one that is on screen. «Save and hand to agent» gives it the selection, and
+  the connection card's «No chat» connects to a bridge without chat.
+- Protocol v5: the editor and the bridge must be updated together.
+- New: `pnpm test:ai-mcp-live`, one real MCP client against the real bridge
+  (opt-in, uses the client's own account).
+
 ## 2026-09-18 — Claude by API key
 
 - Added `anthropic`, a fifth bridge provider: Claude through the Anthropic

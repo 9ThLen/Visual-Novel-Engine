@@ -39,6 +39,7 @@ const defaultSettings: UserSettings = {
   aiPermissions: {
     scene_edit: 'confirm', appearance: 'confirm', changeset: 'confirm', image_generate: 'confirm',
   },
+  externalAgentAccess: 'off',
 };
 
 const createScene = (overrides = {}): StoryScene => ({

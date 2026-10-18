@@ -22,8 +22,11 @@ export type BridgeLaunchInstruction =
 export interface BridgeLaunchInput {
   /** `window.location.origin`. */
   origin: string;
-  provider: BridgeProvider;
+  /** `none` starts a bridge with no chat, for an external agent only; it implies `mcp`. */
+  provider: BridgeProvider | 'none';
   imageProvider: string;
+  /** Also offer the editor to an external agent, at `/mcp`. */
+  mcp?: boolean;
   /** The bridge URL as typed, used only to carry across a non-default port. */
   url: string;
 }
@@ -41,8 +44,12 @@ function portFlag(url: string): string {
 }
 
 export function bridgeLaunchInstruction(input: BridgeLaunchInput): BridgeLaunchInstruction {
-  const flags = `--provider ${input.provider} --image-provider ${input.imageProvider}`
-    + (input.provider === 'codex' ? ' --enable-codex-beta' : '')
+  // A bridge without chat draws nothing either: the image tools are the chat's.
+  const flags = (input.provider === 'none'
+    ? '--provider none --mcp'
+    : `--provider ${input.provider} --image-provider ${input.imageProvider}`
+      + (input.provider === 'codex' ? ' --enable-codex-beta' : '')
+      + (input.mcp ? ' --mcp' : ''))
     + portFlag(input.url);
 
   if (isStudioOrigin(input.origin)) {

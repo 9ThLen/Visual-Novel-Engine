@@ -116,6 +116,115 @@ The bridge prints one pairing block containing the provider, WebSocket URL,
 allowed browser origins, and the pairing token. Paste the token into the
 editor's AI panel; editing the settings file is optional.
 
+## An agent of your own (MCP)
+
+The bridge can offer the editor to an agent you run yourself — Claude Code, or
+anything else that speaks MCP — instead of, or next to, the built-in chat. It is
+off unless asked for:
+
+```sh
+pnpm ai-bridge --provider anthropic --mcp   # chat and an external agent
+pnpm ai-bridge --provider none --mcp        # no chat at all: no model, no key, no CLI
+```
+
+The pairing block then has a second part: the endpoint (`/mcp` on the same
+port), a token of its own, and a ready command for Claude Code:
+
+```sh
+claude mcp add --transport http visual-novel http://127.0.0.1:8787/mcp --header "Authorization: Bearer <MCP token>"
+```
+
+Any other client takes the same address over Streamable HTTP and the header
+`Authorization: Bearer <MCP token>`. The MCP token is not the pairing token:
+the pairing token is the editor's, and an agent is not handed it. It is kept
+across restarts like the pairing token; `--reset-mcp-token` issues a new one,
+and `AI_BRIDGE_MCP_TOKEN` overrides it. `AI_BRIDGE_MCP=1` is the same as `--mcp`.
+
+What the agent gets, and what it does not:
+
+- It works on the story **the editor has open**. The bridge holds no story: every
+  call goes into the browser tab, so the editor has to be open and its AI panel
+  connected.
+- It can read — the story overview, scenes, the editor context (where the author
+  is and what they selected), the story's images and where they are used — and it
+  can propose a scene patch, a change set or a reader theme. Nothing that costs
+  money and nothing that returns image bytes is offered.
+- **It writes nothing.** A proposal is the same card the built-in chat shows, and
+  the author applies or rejects it. A call from an agent is always asked about,
+  whatever the author has allowed the built-in chat to do on its own.
+- A proposal never blocks the call that makes it. `propose_*` returns at once with
+  a `proposalId` and `pending`; `get_proposal_status` (optionally waiting up to 30
+  seconds) says how it ended — `applied`, `rejected`, `expired`, `cancelled`,
+  `failed` or `unknown` — and `cancel_proposal` takes it back. A card waits ten
+  minutes; the outcome can be read for fifteen more. `unknown` means the editor
+  went away before saying whether the change was written: read the scene again.
+- One thing is in front of the author at a time. A second proposal is refused
+  with `INTERACTION_PENDING`, a proposal during a chat turn with
+  `CHAT_TURN_RUNNING`, and a chat message while an agent's proposal waits with
+  `PROPOSAL_PENDING`.
+- `get_editor_context` returns a `binding`, and every other call must quote it.
+  When the author opens another story the binding stops being valid
+  (`BINDING_STALE`) and the proposals made under it are cancelled; calling
+  `get_editor_context` again gives the new one.
+- A retry of `propose_*` with the same `requestId` is the same proposal, not a
+  second card.
+- An agent may make 120 calls a minute. They are not counted against a chat turn
+  and do not interrupt one.
+
+The app has its own say on top of this. Access for an external agent is **off in
+the editor** until the author turns it on there — AI settings, "External agent":
+off, read, or read and propose — and the bridge cannot turn it on: with it off,
+every call from an agent is answered `EXTERNAL_ACCESS_OFF`. At "read" a proposal
+is answered `EXTERNAL_PROPOSALS_OFF`. Turning the access down while a proposal
+is on screen withdraws it; the agent reads `cancelled` with `ACCESS_REVOKED`.
+
+In the editor:
+
+- To connect to a bridge started with `--provider none`, choose **No chat** in
+  the connection card instead of a provider. It asks for the pairing token only.
+- With an agent let in, the editor connects to the bridge as soon as it opens,
+  so the agent can reach it after a reload without the AI tab being clicked.
+- `get_editor_context` returns what the author handed over with **Save and
+  hand to agent**: the selection and the scene as they were saved at that
+  press. Until something is handed over it returns `context: null` and says so;
+  `mode: "live"` reads the editor as it is now, possibly unsaved, and saves
+  nothing.
+- A proposal needs somewhere to be shown. On a phone, and while the editor is in
+  focus mode, it is refused with `NO_APPROVAL_SURFACE`.
+
+Codex takes the same endpoint in its own configuration; the token is read
+from an environment variable rather than written into the file:
+
+```toml
+[mcp_servers.visual-novel]
+url = "http://127.0.0.1:8787/mcp"
+bearer_token_env_var = "VNE_MCP_TOKEN"
+```
+
+### Checking it
+
+`pnpm test:ai-e2e` walks an agent's whole way in a browser, against the real
+bridge server with a scripted chat: the author selects a line and hands it
+over, the agent reads the handed context over MCP, proposes a change to the
+step the selection is addressed to, the author applies it, and only that line
+changes. Nothing in it needs an account.
+
+`pnpm test:ai-mcp-live` does the same with a real client, the author's own:
+
+```sh
+AI_MCP_CLIENT=claude pnpm test:ai-mcp-live   # Claude Code, signed in
+AI_MCP_CLIENT=codex pnpm test:ai-mcp-live    # Codex CLI, signed in
+```
+
+It starts a bridge with `--provider none --mcp` on port 18790, with settings
+in a fresh temporary directory and two one-off tokens, so the bridge you use
+day to day is not touched. The client is given only the goal — rewrite the
+handed line, wait for the author, say how it ended — and has to find its way
+from what the bridge says about its tools. Afterwards the test reads the
+whole story back and requires exactly one change: the text of the handed
+step. It runs with none of your own MCP servers. `AI_MCP_LIVE_MODEL` picks the model; for Codex it is otherwise the
+`model` in `~/.codex/config.toml`. The run spends a little of that account.
+
 ## The packaged bridge
 
 `pnpm build:bridge-package` writes a folder an author can run on a Windows
@@ -312,6 +421,8 @@ The server binds only to `127.0.0.1`, accepts only exact `http`/`https` loopback
 
 The bridge is local, but messages and required story context are still sent to the selected AI provider. The pairing token stays on this device.
 
+With `--mcp` the same listener also answers `POST /mcp`. It requires the MCP token in `Authorization: Bearer`, compared in constant time; refuses a request whose `Host` is not a loopback name, which is what a web page that rebinds its own domain to `127.0.0.1` would send; and refuses a request that carries an `Origin` the bridge does not already answer, so a web page cannot use it even with the token. An agent that is not a web page sends no `Origin` and is not affected. The endpoint keeps nothing between two requests, and a dropped connection cancels nothing. Whatever the agent reads goes to whatever model that agent uses. By default a log line for an agent's call names the tool, how it went and how long it took — never the selection, the scene or the patch; `AI_BRIDGE_DEBUG=true` logs the content as well.
+
 ## Troubleshooting
 
 - `Claude Code CLI is missing or not authenticated`: run `claude` and complete sign-in.
@@ -324,3 +435,8 @@ The bridge is local, but messages and required story context are still sent to t
 - Origin rejected: use Expo web on port 8081 or start the bridge with the exact loopback origin, for example `--origin http://localhost:8092`.
 - `SESSION_ALREADY_ACTIVE`: close the other editor tab or continue there. One bridge process supports one live session.
 - `PROVIDER_UNAVAILABLE`: finish or interrupt the active turn and retry.
+- An agent gets `401` from `/mcp`: it is sending no token, or the pairing token instead of the MCP token printed under it.
+- An agent gets `426 Upgrade Required` from `/mcp`: the bridge was started without `--mcp`.
+- `EDITOR_NOT_CONNECTED`: open the story in the editor and connect its AI panel to this bridge.
+- `EXTERNAL_ACCESS_OFF`: access for an external agent is turned off in the editor.
+- `BINDING_STALE`: the author opened another story; call `get_editor_context` again.

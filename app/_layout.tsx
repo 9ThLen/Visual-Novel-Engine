@@ -10,6 +10,7 @@ import { ReaderAudioRouteGuard } from "@/components/ReaderAudioRouteGuard";
 import { PlayerModeRouteGuard } from "@/components/PlayerModeRouteGuard";
 import { MigrationErrorBanner } from "@/components/MigrationErrorBanner";
 import { AppStateConflictBanner } from "@/components/AppStateConflictBanner";
+import { AiBridgeSessionHost } from "@/components/ai-chat/AiBridgeSessionProvider";
 import { ToastViewport } from "@/components/ui";
 import { ensureStorageBootstrap } from "@/stores/storage-bootstrap";
 import { useEffect, useRef } from "react";
@@ -89,9 +90,12 @@ export default function RootLayout() {
           <PlayerModeRouteGuard />
           <MigrationErrorBanner />
           <AppStateConflictBanner />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="tabs" />
-          </Stack>
+          {/* Above the screens: editors stack, and the assistant's session is one for all of them. */}
+          <AiBridgeSessionHost>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="tabs" />
+            </Stack>
+          </AiBridgeSessionHost>
           <ToastViewport />
           <StatusBar style="auto" />
         </ThemeProvider>

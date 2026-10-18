@@ -1,68 +1,27 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { useColors } from '@/hooks/use-colors';
-import { useI18n } from '@/hooks/use-i18n';
 import type { ColorScheme } from '@/constants/theme';
-import { respond } from '@/lib/ai/fake-agent';
-import { applyAiScenePatchToStore, rollbackAiPatch } from '@/lib/ai/scene-patch-adapter';
-import { describeAiScenePatch, validateAiScenePatch } from '@/lib/ai/scene-patch';
-import { applyAiAppearancePatchToStore, rollbackAiAppearancePatch } from '@/lib/ai/appearance-patch-adapter';
-import { rollbackTopAppliedChange } from '@/lib/ai/applied-change-journal';
-import { applyAiChangeSetToStore } from '@/lib/ai/change-set-adapter';
 import {
-  aiChangeSetSchema,
-  describeAiChangeSet,
-  validateAiChangeSet,
-  type AiChangeSet,
-  type AiChangeSetErrorCode,
-  type AiChangeSetState,
-} from '@/lib/ai/change-set';
-import {
-  describeAiAppearancePatch,
-  validateAiAppearancePatch,
-  type AiReaderAppearancePatch,
-} from '@/lib/ai/appearance-patch';
-import { findAssetUsage, getImageDetails, listStoryImages } from '@/lib/ai/asset-tools';
-import {
-  decodeImageResult,
   blobToBase64,
-  downscaleImage,
-  executeRemoveBackground,
-  fromPendingAiImage,
-  getStoryImageBinary,
-  toPendingAiImage,
-  type AiImageResult,
 } from '@/lib/ai/image-tools';
 import { pendingImageRepository } from '@/lib/ai/pending-image-storage';
 import { applyImportedImagePlacement } from '@/lib/ai/image-placement';
 import { chatAttachmentRepository } from '@/lib/ai/attachment-storage';
 import {
-  detectAttachment,
-  MAX_BINARY_ATTACHMENT_BYTES,
-  MAX_CHAT_ATTACHMENTS,
-  MAX_MESSAGE_ATTACHMENT_BYTES,
-  MAX_TEXT_ATTACHMENT_BYTES,
-  sanitizeAttachmentName,
   type AttachmentRef,
   type StoredChatAttachment,
 } from '@/lib/ai/attachments';
-import { APP_BRIDGE_TOOL_NAMES } from '@/lib/ai/bridge-tools';
-import { AI_CAPABILITIES, normalizeAiPermissions, resolveCapability, resolveEffectiveCapability, type AiCapability, type AiPermissions } from '@/lib/ai/permissions';
-import { resolveAiBridgeConfig, selectAiBridgeProvider, updateActiveAiBridgeProfile } from '@/lib/ai/bridge-config';
-import { aiProviderLabel, isBridgeProvider } from '@/lib/ai/providers';
-import { buildAiStoryContext } from '@/lib/ai/story-context';
-import { buildAiChangeSetState, buildPatchProjectContext } from '@/lib/ai/project-context';
-import { BridgeClient, type BridgeConnectionState, type BridgeProvider } from '@/lib/bridge-client';
-import type { BridgeCapabilities } from '@/lib/bridge-protocol';
-import { removeImageBackground } from '@/lib/remove-background';
-import type { AiScenePatch } from '@/lib/ai/scene-patch-types';
+import { normalizeAiPermissions } from '@/lib/ai/permissions';
+import { aiProviderLabel } from '@/lib/ai/providers';
+import {
+  type CaptureEditorContext,
+} from '@/lib/ai/editor-context-capture';
+import { BridgeClient } from '@/lib/bridge-client';
 import { useAppStore } from '@/stores/use-app-store';
 import { addAssetToLibrary } from '@/stores/media-library-actions';
 import {
-  useAiChatStore,
-  type AiChatPendingCapability,
-  type AiChatPendingChangeSet,
   type AiChatRole,
 } from '@/stores/ai-chat-store';
 import { AppearancePreviewCard } from './AppearancePreviewCard';
@@ -72,10 +31,10 @@ import { ConnectionCard } from './ConnectionCard';
 import { MarkdownText } from './MarkdownText';
 import { AiSettingsPanel } from './AiSettingsPanel';
 import { CapabilityConfirmChip } from './CapabilityConfirmChip';
+import { EditorContextChip } from './EditorContextChip';
 import { ImageResultCard } from './ImageResultCard';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-
-const EMPTY_AI_BRIDGE_SETTINGS = { url: '', token: '', disabled: false } as const;
+import { AiBridgeSessionProvider, useAiBridgeSession, useIsInAiBridgeEditor, type AiBridgeSession } from './AiBridgeSessionProvider';
 
 interface AiChatPanelProps {
   storyId: string;
@@ -88,654 +47,142 @@ interface AiChatPanelProps {
    * all of them into false negatives.
    */
   beforeStoryMutation: () => Promise<boolean>;
+  /**
+   * Reads the open scene and the author's selection in one pass, saving first
+   * when asked to. Absent where there is no editor to read; the chat then
+   * works as it did before it knew about selections.
+   */
+  captureEditorContext?: CaptureEditorContext;
 }
 
-type BridgeRuntimeErrorReason =
-  | 'TURN_ALREADY_RUNNING'
-  | 'TOOL_LIMIT_EXCEEDED'
-  | 'PERMISSION_DENIED'
-  | 'CANCELLED'
-  | 'PROTOCOL_ERROR'
-  | 'VALIDATION_FAILED'
-  | 'OPENAI_API_AUTH_FAILED'
-  | 'OPENAI_API_FORBIDDEN'
-  | 'OPENAI_RATE_LIMITED'
-  | 'OPENAI_MODEL_UNAVAILABLE'
-  | 'OPENAI_API_TIMEOUT'
-  | 'OPENAI_RESPONSE_INCOMPLETE'
-  | 'OPENAI_MALFORMED_RESPONSE'
-  | 'OPENAI_REFUSAL'
-  | 'OPENAI_STREAM_TOO_LARGE'
-  | 'OPENAI_STREAM_EVENT_TOO_LARGE'
-  | 'OPENAI_STREAM_INCOMPLETE'
-  | 'OPENAI_API_FAILED'
-  | 'OPENAI_ROUND_LIMIT'
-  | 'OPENAI_PARALLEL_TOOL_CALLS'
-  | 'OPENAI_MALFORMED_FUNCTION_CALL'
-  | 'OPENAI_NON_REPLAYABLE_REASONING'
-  | 'OPENAI_REQUEST_TOO_LARGE'
-  | 'OPENAI_SESSION_BUDGET_EXHAUSTED'
-  | 'GEMINI_API_AUTH_FAILED'
-  | 'GEMINI_API_FORBIDDEN'
-  | 'GEMINI_RATE_LIMITED'
-  | 'GEMINI_MODEL_UNAVAILABLE'
-  | 'GEMINI_API_TIMEOUT'
-  | 'GEMINI_RESPONSE_INCOMPLETE'
-  | 'GEMINI_MALFORMED_RESPONSE'
-  | 'GEMINI_REFUSAL'
-  | 'GEMINI_STREAM_TOO_LARGE'
-  | 'GEMINI_STREAM_EVENT_TOO_LARGE'
-  | 'GEMINI_STREAM_INCOMPLETE'
-  | 'GEMINI_API_FAILED'
-  | 'GEMINI_ROUND_LIMIT'
-  | 'GEMINI_MALFORMED_FUNCTION_CALL'
-  | 'GEMINI_REQUEST_TOO_LARGE'
-  | 'GEMINI_SESSION_BUDGET_EXHAUSTED'
-  | 'ANTHROPIC_API_AUTH_FAILED'
-  | 'ANTHROPIC_API_FORBIDDEN'
-  | 'ANTHROPIC_RATE_LIMITED'
-  | 'ANTHROPIC_MODEL_UNAVAILABLE'
-  | 'ANTHROPIC_API_TIMEOUT'
-  | 'ANTHROPIC_RESPONSE_INCOMPLETE'
-  | 'ANTHROPIC_MALFORMED_RESPONSE'
-  | 'ANTHROPIC_REFUSAL'
-  | 'ANTHROPIC_STREAM_TOO_LARGE'
-  | 'ANTHROPIC_STREAM_EVENT_TOO_LARGE'
-  | 'ANTHROPIC_STREAM_INCOMPLETE'
-  | 'ANTHROPIC_API_FAILED'
-  | 'ANTHROPIC_ROUND_LIMIT'
-  | 'ANTHROPIC_MALFORMED_FUNCTION_CALL'
-  | 'ANTHROPIC_REQUEST_TOO_LARGE'
-  | 'ANTHROPIC_SESSION_BUDGET_EXHAUSTED'
-  | 'PROVIDER_ERROR';
+// Kept here for the callers that have always imported them from the panel.
+export { executeAuthorizeCapability, executeProposeChangeSet } from '@/lib/ai/app-tool-executor';
 
-const OPENAI_RUNTIME_REASONS = new Set<BridgeRuntimeErrorReason>([
-  'OPENAI_API_AUTH_FAILED', 'OPENAI_API_FORBIDDEN', 'OPENAI_RATE_LIMITED', 'OPENAI_MODEL_UNAVAILABLE',
-  'OPENAI_API_TIMEOUT', 'OPENAI_RESPONSE_INCOMPLETE', 'OPENAI_MALFORMED_RESPONSE', 'OPENAI_REFUSAL',
-  'OPENAI_STREAM_TOO_LARGE', 'OPENAI_STREAM_EVENT_TOO_LARGE', 'OPENAI_STREAM_INCOMPLETE',
-  'OPENAI_API_FAILED', 'OPENAI_ROUND_LIMIT', 'OPENAI_PARALLEL_TOOL_CALLS',
-  'OPENAI_MALFORMED_FUNCTION_CALL', 'OPENAI_NON_REPLAYABLE_REASONING', 'OPENAI_REQUEST_TOO_LARGE',
-  'OPENAI_SESSION_BUDGET_EXHAUSTED',
-  'GEMINI_API_AUTH_FAILED', 'GEMINI_API_FORBIDDEN', 'GEMINI_RATE_LIMITED', 'GEMINI_MODEL_UNAVAILABLE',
-  'GEMINI_API_TIMEOUT', 'GEMINI_RESPONSE_INCOMPLETE', 'GEMINI_MALFORMED_RESPONSE', 'GEMINI_REFUSAL',
-  'GEMINI_STREAM_TOO_LARGE', 'GEMINI_STREAM_EVENT_TOO_LARGE', 'GEMINI_STREAM_INCOMPLETE',
-  'GEMINI_API_FAILED', 'GEMINI_ROUND_LIMIT',
-  'GEMINI_MALFORMED_FUNCTION_CALL', 'GEMINI_REQUEST_TOO_LARGE', 'GEMINI_SESSION_BUDGET_EXHAUSTED',
-  'ANTHROPIC_API_AUTH_FAILED', 'ANTHROPIC_API_FORBIDDEN', 'ANTHROPIC_RATE_LIMITED',
-  'ANTHROPIC_MODEL_UNAVAILABLE', 'ANTHROPIC_API_TIMEOUT', 'ANTHROPIC_RESPONSE_INCOMPLETE',
-  'ANTHROPIC_MALFORMED_RESPONSE', 'ANTHROPIC_REFUSAL', 'ANTHROPIC_STREAM_TOO_LARGE',
-  'ANTHROPIC_STREAM_EVENT_TOO_LARGE', 'ANTHROPIC_STREAM_INCOMPLETE', 'ANTHROPIC_API_FAILED',
-  'ANTHROPIC_ROUND_LIMIT', 'ANTHROPIC_MALFORMED_FUNCTION_CALL', 'ANTHROPIC_REQUEST_TOO_LARGE',
-  'ANTHROPIC_SESSION_BUDGET_EXHAUSTED',
-]);
-
-function resolveBridgeRuntimeError(payload: Record<string, unknown>): BridgeRuntimeErrorReason {
-  const details = typeof payload.details === 'object' && payload.details
-    ? payload.details as Record<string, unknown>
-    : {};
-  if (details.reason === 'TURN_ALREADY_RUNNING' || details.reason === 'TOOL_LIMIT_EXCEEDED' || details.reason === 'PROVIDER_ERROR') {
-    return details.reason;
-  }
-  if (typeof details.reason === 'string' && OPENAI_RUNTIME_REASONS.has(details.reason as BridgeRuntimeErrorReason)) {
-    return details.reason as BridgeRuntimeErrorReason;
-  }
-  if (payload.code === 'PERMISSION_DENIED' || payload.code === 'CANCELLED' || payload.code === 'PROTOCOL_ERROR' || payload.code === 'VALIDATION_FAILED') {
-    return payload.code;
-  }
-  return 'PROVIDER_ERROR';
+/**
+ * The chat: messages, the composer, the cards. What it shows and does comes
+ * from the session — the editor's, when it is rendered inside one, so that
+ * switching the rail away and back finds the conversation as it was. Rendered
+ * on its own it holds a session itself, as it always has.
+ */
+export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMutation, captureEditorContext }: AiChatPanelProps) {
+  const inEditor = useIsInAiBridgeEditor();
+  if (inEditor) return <AiChatPanelOfSession colorScheme={colorScheme} />;
+  return (
+    <AiBridgeSessionProvider
+      storyId={storyId}
+      activeSceneId={activeSceneId}
+      beforeStoryMutation={beforeStoryMutation}
+      captureEditorContext={captureEditorContext}
+      startOnMount
+    >
+      <AiChatPanelOfSession colorScheme={colorScheme} />
+    </AiBridgeSessionProvider>
+  );
 }
 
-function buildChangeSetState(storyId: string): AiChangeSetState {
-  return buildAiChangeSetState(storyId);
+/** A time of day for a line of status: when the agent last called, when something was handed over. */
+function clockTime(at: number, language: string): string {
+  return new Date(at).toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' });
 }
 
-function mapChangeSetError(code: AiChangeSetErrorCode, message: string) {
-  return code === 'STALE_REVISION'
-    ? { ok: false as const, errorCode: 'STALE_REVISION' as const, errorMessage: message }
-    : { ok: false as const, errorCode: 'VALIDATION_FAILED' as const, errorMessage: message, details: { reason: code } };
+/**
+ * Draws the session, when this editor has it. An editor under another one does
+ * not — the session is with the one in front — and nothing is drawn there.
+ */
+function AiChatPanelOfSession({ colorScheme }: { colorScheme?: ColorScheme }) {
+  const session = useAiBridgeSession();
+  return session ? <AiChatPanelView colorScheme={colorScheme} session={session} /> : null;
 }
 
-export function executeProposeChangeSet(
-  storyId: string,
-  input: unknown,
-  setPending: (pending: AiChatPendingChangeSet) => void,
-  waitForDecision: () => Promise<unknown>,
-) {
-  const parsed = aiChangeSetSchema.safeParse(input);
-  if (!parsed.success) {
-    return Promise.resolve({ ok: false as const, errorCode: 'VALIDATION_FAILED' as const, errorMessage: parsed.error.issues.map(issue => issue.message).join('; '), details: { reason: 'VALIDATION_FAILED' } });
-  }
-  const changeSet: AiChangeSet = parsed.data;
-  if (changeSet.storyId !== storyId) {
-    return Promise.resolve({ ok: false as const, errorCode: 'VALIDATION_FAILED' as const, errorMessage: 'Changeset belongs to another story', details: { reason: 'VALIDATION_FAILED' } });
-  }
-  const live = buildChangeSetState(storyId);
-  const validation = validateAiChangeSet(changeSet, live);
-  if (!validation.ok) return Promise.resolve(mapChangeSetError(validation.code, validation.message));
-  setPending({ changeSet, description: describeAiChangeSet(changeSet, live) });
-  return waitForDecision().then(result => ({ ok: true as const, result }));
-}
-
-export function executeAuthorizeCapability(
-  input: unknown,
-  permissions: AiPermissions,
-  setPending: (pending: AiChatPendingCapability) => void,
-  waitForDecision: () => Promise<{ allowed: boolean }>,
-) {
-  const value = typeof input === 'object' && input ? input as Record<string, unknown> : {};
-  const capability = value.capability;
-  if (typeof capability !== 'string' || !AI_CAPABILITIES.includes(capability as AiCapability)) {
-    return Promise.resolve({ ok: false as const, errorCode: 'VALIDATION_FAILED' as const, errorMessage: 'Unknown capability' });
-  }
-  const level = resolveCapability(capability as AiCapability, permissions);
-  if (level === 'blocked') {
-    return Promise.resolve({ ok: false as const, errorCode: 'PERMISSION_DENIED' as const, errorMessage: 'Capability is blocked', details: { reason: 'USER_BLOCKED' } });
-  }
-  if (level === 'auto') return Promise.resolve({ ok: true as const, result: { allowed: true } });
-  const estimate = typeof value.estimate === 'string'
-    ? value.estimate
-    : value.estimate && typeof value.estimate === 'object'
-      ? value.estimate as NonNullable<AiChatPendingCapability['estimate']>
-      : undefined;
-  setPending({ capability: capability as AiCapability, estimate });
-  return waitForDecision().then(result => ({ ok: true as const, result }));
-}
-
-export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMutation }: AiChatPanelProps) {
+function AiChatPanelView({ colorScheme, session }: { colorScheme?: ColorScheme; session: AiBridgeSession }) {
   const colors = useColors(colorScheme);
-  const { t, language } = useI18n();
-
-  const messages = useAiChatStore((s) => s.messages);
-  const status = useAiChatStore((s) => s.status);
-  const pendingInteraction = useAiChatStore((s) => s.pendingInteraction);
-  const pendingPatch = pendingInteraction?.storyId === storyId && pendingInteraction.kind === 'scene_patch'
-    ? pendingInteraction.value
-    : null;
-  const pendingAppearance = pendingInteraction?.storyId === storyId && pendingInteraction.kind === 'appearance'
-    ? pendingInteraction.value
-    : null;
-  const pendingChangeSet = pendingInteraction?.storyId === storyId && pendingInteraction.kind === 'changeset'
-    ? pendingInteraction.value
-    : null;
-  const pendingCapability = pendingInteraction?.storyId === storyId && pendingInteraction.kind === 'capability'
-    ? pendingInteraction.value
-    : null;
-  const lastAppliedChange = useAiChatStore((s) => s.lastAppliedChange);
-  const addMessageToStore = useAiChatStore((s) => s.addMessage);
-  const setActiveStory = useAiChatStore((s) => s.setActiveStory);
-  const clearMessages = useAiChatStore((s) => s.clearMessages);
-  const markAttachmentImported = useAiChatStore((s) => s.markAttachmentImported);
-  const restored = useAiChatStore((s) => s.restoredStoryIds[storyId] === true);
-  const addMessage = useCallback((role: AiChatRole, text: string, attachments?: AttachmentRef[]) => addMessageToStore(role, text, storyId, attachments), [addMessageToStore, storyId]);
-  const setStatus = useAiChatStore((s) => s.setStatus);
-  const setPendingInteraction = useAiChatStore((s) => s.setPendingInteraction);
-  const cancelPendingInteraction = useAiChatStore((s) => s.cancelPendingInteraction);
-  const setPendingPatch = useCallback((value: NonNullable<typeof pendingPatch> | null) => {
-    setPendingInteraction(value ? { kind: 'scene_patch', storyId, value } : null);
-  }, [setPendingInteraction, storyId]);
-  const setPendingAppearance = useCallback((value: NonNullable<typeof pendingAppearance> | null) => {
-    setPendingInteraction(value ? { kind: 'appearance', storyId, value } : null);
-  }, [setPendingInteraction, storyId]);
-  const setPendingChangeSet = useCallback((value: AiChatPendingChangeSet | null) => {
-    setPendingInteraction(value ? { kind: 'changeset', storyId, value } : null);
-  }, [setPendingInteraction, storyId]);
-  const setPendingCapability = useCallback((value: AiChatPendingCapability | null) => {
-    setPendingInteraction(value ? { kind: 'capability', storyId, value } : null);
-  }, [setPendingInteraction, storyId]);
-  const setLastAppliedChange = useAiChatStore((s) => s.setLastAppliedChange);
-  const aiBridgeSettings = useAppStore((s) => s.aiBridgeSettings)
-    ?? EMPTY_AI_BRIDGE_SETTINGS;
-  const updateAiBridgeSettings = useAppStore((s) => s.updateAiBridgeSettings);
-  const settings = useAppStore((s) => s.settings);
-  const storiesMetadata = useAppStore((s) => s.storiesMetadata);
-  const updateSettings = useAppStore((s) => s.updateSettings);
-  const bridgeConfig = resolveAiBridgeConfig(aiBridgeSettings);
-
-  const [inputText, setInputText] = useState('');
-  const [applying, setApplying] = useState(false);
-  const [connectionState, setConnectionState] = useState<'demo' | BridgeConnectionState>(bridgeConfig.enabled ? 'connecting' : 'demo');
-  const [connectionReason, setConnectionReason] = useState<string>();
-  const [connectionRetryable, setConnectionRetryable] = useState(true);
-  const [provider, setProvider] = useState<BridgeProvider>();
-  const [capabilities, setCapabilities] = useState<BridgeCapabilities>();
-  const [draftAttachments, setDraftAttachments] = useState<StoredChatAttachment[]>([]);
-  const [attachmentError, setAttachmentError] = useState<string>();
-  const [attachmentDropActive, setAttachmentDropActive] = useState(false);
-  const [retryKey, setRetryKey] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
-  const [imageResults, setImageResults] = useState<AiImageResult[]>([]);
-  const [runtimeErrorReason, setRuntimeErrorReason] = useState<BridgeRuntimeErrorReason>();
-  const [clearingChat, setClearingChat] = useState(false);
-  const [confirmUndo, setConfirmUndo] = useState(false);
-  const [imagePersistenceFailed, setImagePersistenceFailed] = useState(false);
-  const [pendingProviderSwitch, setPendingProviderSwitch] = useState<BridgeProvider>();
-  const bridgeRef = useRef<BridgeClient | null>(null);
+  const {
+    start,
+    addDraftFiles,
+    aiBridgeSettings,
+    applyProviderSwitch,
+    applying,
+    attachmentDropActive,
+    attachmentError,
+    attachmentHelp,
+    bridgeConfig,
+    bridgeRef,
+    canAttach,
+    canSend,
+    capabilities,
+    captureEditorContext,
+    confirmUndo,
+    connectionReason,
+    connectionRetryable,
+    connectionState,
+    draftAttachments,
+    handleApply,
+    handleApplyAppearance,
+    handleApplyChangeSet,
+    handleAttachmentButton,
+    handleClearLocalData,
+    handleConnect,
+    handleDisconnect,
+    handleForceRollback,
+    handleProviderChange,
+    handleReject,
+    handleRejectAppearance,
+    handleRejectChangeSet,
+    handleResetConnection,
+    handleResetConversation,
+    handleRetryConnection,
+    handleRollback,
+    handleSend,
+    handleStop,
+    imagePersistenceFailed,
+    imageResultIdsRef,
+    imageResults,
+    inputText,
+    lastAppliedChange,
+    markAttachmentImported,
+    messages,
+    mutationInFlightRef,
+    pendingAppearance,
+    pendingCapability,
+    pendingChangeSet,
+    pendingPatch,
+    pendingFromExternalAgent,
+    externalAgentAccess,
+    handOverToAgent,
+    handedOver,
+    handingOver,
+    lastExternalCall,
+    chatUnavailable,
+    handleConnectAgentOnly,
+    handleSelectAgentOnly,
+    language,
+    pendingProviderSwitch,
+    provider,
+    resolveCapabilityDecision,
+    restored,
+    runtimeErrorReason,
+    setAttachmentDropActive,
+    setAttachmentError,
+    setConfirmUndo,
+    setDraftAttachments,
+    setImageResults,
+    setInputText,
+    setPendingProviderSwitch,
+    setRetryKey,
+    setShowSettings,
+    settings,
+    showSettings,
+    status,
+    storyId,
+    t,
+    updateAiBridgeSettings,
+    updateSettings,
+  } = session;
   const composerRef = useRef<View | null>(null);
-  const attachmentAddingRef = useRef(false);
-  const activeSceneIdRef = useRef(activeSceneId);
-  const imageResultIdsRef = useRef(new Set<string>());
-  const assistantTextRef = useRef('');
-  const patchDecisionRef = useRef<((value: unknown) => void) | null>(null);
-  /** Set synchronously on click so a second click cannot enter while the save barrier is awaited. */
-  const mutationInFlightRef = useRef(false);
-  /**
-   * Serialises every story mutation, including the ones with no button behind
-   * them: the bridge dispatches tool calls without awaiting the previous one
-   * (`void this.handleToolCall(...)`), so two auto-applied patches can both
-   * clear their revision check and the second then overwrites the first.
-   */
-  const mutationQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-  /**
-   * The bridge effect below owns the tool handlers and must not re-run when the
-   * editor's save callback changes identity — that would reconnect the bridge
-   * mid-conversation. Reading the barrier through a ref keeps it current
-   * without entering that effect's dependency list.
-   */
-  const passesSaveBarrierRef = useRef<() => Promise<boolean>>(async () => true);
-  const enqueueMutationRef = useRef<<T>(task: () => Promise<T>) => Promise<T>>((task) => task());
 
-  useEffect(() => setActiveStory(storyId), [setActiveStory, storyId]);
-  useEffect(() => { activeSceneIdRef.current = activeSceneId; }, [activeSceneId]);
-  useEffect(() => {
-    let active = true;
-    void pendingImageRepository.listForStory(storyId).then((images) => {
-      if (!active) return;
-      imageResultIdsRef.current = new Set(images.map((image) => image.requestId));
-      setImageResults(images.map(fromPendingAiImage));
-    }).catch(() => {
-      if (active) setRuntimeErrorReason('PROVIDER_ERROR');
-    });
-    return () => { active = false; };
-  }, [storyId]);
-  useEffect(() => {
-    if (!storiesMetadata.length) return;
-    void pendingImageRepository.cleanup({
-      existingStoryIds: new Set(storiesMetadata.map((story) => story.id)),
-    }).catch(() => {
-      // Cleanup is best-effort; delivery persistence reports its own failures.
-    });
-  }, [storiesMetadata]);
-
-  useEffect(() => {
-    const token = bridgeConfig.token;
-    const url = bridgeConfig.url;
-    const enabled = bridgeConfig.enabled;
-    if (!enabled || typeof WebSocket === 'undefined') {
-      setConnectionState(aiBridgeSettings.disabled && aiBridgeSettings.token ? 'closed' : 'demo');
-      return;
-    }
-    setConnectionState('connecting');
-    setConnectionReason(undefined);
-    setConnectionRetryable(true);
-    setRuntimeErrorReason(undefined);
-    const client = new BridgeClient({
-      url,
-      token,
-      locale: language,
-      preferredProvider: bridgeConfig.preferredProvider,
-      codexBetaConsent: bridgeConfig.codexBetaConsent,
-      requestedModel: bridgeConfig.requestedModel,
-      requestedTokenBudget: bridgeConfig.requestedTokenBudget,
-      onConnectionChange: (next, reason) => {
-        setConnectionState(next);
-        setConnectionReason(reason);
-        if (next === 'unauthorized' || next === 'closed') {
-          assistantTextRef.current = '';
-          patchDecisionRef.current?.({ accepted: false, allowed: false, reason: reason ?? next });
-          patchDecisionRef.current = null;
-          cancelPendingInteraction(storyId);
-          setStatus('idle');
-        }
-      },
-      onEvent: (message) => {
-        const payload = typeof message.payload === 'object' && message.payload ? message.payload as Record<string, unknown> : {};
-        if (message.type === 'session_started' && isBridgeProvider(payload.provider)) {
-          setProvider(payload.provider);
-          if (payload.capabilities && typeof payload.capabilities === 'object') setCapabilities(payload.capabilities as BridgeCapabilities);
-        }
-        if (message.type === 'session_challenge' && typeof payload.reason === 'string') {
-          setConnectionReason(payload.reason);
-          setConnectionRetryable(payload.retryable !== false);
-          if (isBridgeProvider(payload.provider)) {
-            setProvider(payload.provider);
-          }
-        }
-        if (message.type === 'image_result' && typeof payload.requestId === 'string') {
-          const result = decodeImageResult(payload);
-          if (!result) return;
-          const isNew = !imageResultIdsRef.current.has(result.requestId);
-          imageResultIdsRef.current.add(result.requestId);
-          void pendingImageRepository.put(toPendingAiImage(result, storyId)).then((persisted) => {
-            URL.revokeObjectURL(result.blobUrl);
-            setImagePersistenceFailed(false);
-            if (isNew) {
-              setImageResults((current) => current.some((item) => item.requestId === persisted.requestId)
-                ? current
-                : [...current, fromPendingAiImage(persisted)]);
-            }
-            client.acknowledgeImageResult(result.requestId);
-          }).catch(() => {
-            URL.revokeObjectURL(result.blobUrl);
-            imageResultIdsRef.current.delete(result.requestId);
-            setImagePersistenceFailed(true);
-          });
-        }
-        if (message.type === 'assistant_delta' && typeof payload.text === 'string') assistantTextRef.current += payload.text;
-        if (message.type === 'assistant_done') {
-          const incompleteWarning = payload.stopReason === 'incomplete' ? t('aiChat.incompleteWarning') : '';
-          if (assistantTextRef.current || incompleteWarning) {
-            addMessage('assistant', [assistantTextRef.current, incompleteWarning].filter(Boolean).join('\n\n'));
-          }
-          assistantTextRef.current = '';
-          const chat = useAiChatStore.getState();
-          setStatus(chat.pendingInteraction?.storyId === storyId ? 'awaiting_confirmation' : 'idle');
-        }
-        if (message.type === 'error') {
-          setRuntimeErrorReason(resolveBridgeRuntimeError(payload));
-          setStatus('idle');
-        }
-      },
-      onToolCall: async (_id, name, input, toolContext) => {
-        if (!APP_BRIDGE_TOOL_NAMES.includes(name)) return { ok: false, errorCode: 'PROTOCOL_ERROR', errorMessage: `Unsupported tool: ${name}` };
-        const state = useAppStore.getState();
-        const value = typeof input === 'object' && input ? input as Record<string, unknown> : {};
-        const currentSceneId = activeSceneIdRef.current;
-        if (name === 'get_story_overview') {
-          const context = buildAiStoryContext(storyId, currentSceneId);
-          return context
-            ? { ok: true, result: { story: context.story, appearance: context.appearance, activeSceneId: currentSceneId } }
-            : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Story not found' };
-        }
-        if (name === 'list_scenes') return { ok: true, result: Object.values(state.sceneRecordsByStory[storyId] ?? {}).map(scene => ({ id: scene.id, name: scene.name })) };
-        if (name === 'get_scene') {
-          const sceneId = typeof value.sceneId === 'string' ? value.sceneId : currentSceneId;
-          const context = sceneId ? buildAiStoryContext(storyId, sceneId) : null;
-          return context ? { ok: true, result: context } : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Scene not found' };
-        }
-        if (name === 'list_story_images') return { ok: true, result: listStoryImages(storyId) };
-        if (name === 'get_image_details') {
-          const details = typeof value.assetId === 'string' ? getImageDetails(storyId, value.assetId) : null;
-          return details
-            ? { ok: true, result: details }
-            : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Image not found in this story' };
-        }
-        if (name === 'find_asset_usage') {
-          const usage = typeof value.assetId === 'string' ? findAssetUsage(storyId, value.assetId) : null;
-          return usage
-            ? { ok: true, result: usage }
-            : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Asset not found in this story' };
-        }
-        if (name === 'get_image_binary') {
-          return typeof value.assetId === 'string'
-            ? getStoryImageBinary(storyId, value.assetId)
-            : { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'assetId is required' };
-        }
-        if (name === 'remove_background') {
-          if (typeof value.assetId !== 'string') return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'assetId is required' };
-          const permission = resolveEffectiveCapability('image_generate', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
-          return executeRemoveBackground(
-            storyId,
-            value.assetId,
-            permission,
-            () => {
-              setPendingCapability({ capability: 'image_generate' });
-              return new Promise<boolean>((resolve) => { patchDecisionRef.current = value => resolve(Boolean((value as { allowed?: boolean })?.allowed)); });
-            },
-            removeImageBackground,
-            async result => {
-              const persisted = await pendingImageRepository.put(toPendingAiImage(result, storyId));
-              URL.revokeObjectURL(result.blobUrl);
-              imageResultIdsRef.current.add(persisted.requestId);
-              setImageResults(current => current.some(item => item.requestId === persisted.requestId)
-                ? current
-                : [...current, fromPendingAiImage(persisted)]);
-            },
-          );
-        }
-        if (name === 'propose_scene_patch') {
-          const patch = value.patch as AiScenePatch;
-          const scene = state.sceneRecordsByStory[storyId]?.[patch?.sceneId];
-          if (!scene) return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Scene not found' };
-          const validation = validateAiScenePatch(scene, patch, buildPatchProjectContext(storyId));
-          if (!validation.ok) return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: validation.errors.join('; ') };
-          const permission = resolveEffectiveCapability('scene_edit', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
-          if (permission === 'blocked') return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Scene editing is blocked', details: { reason: 'USER_BLOCKED' } };
-          if (permission === 'auto') {
-            // No dialog is shown here, so nothing else would land the author's
-            // draft first — and `validateAiScenePatch` above compared the patch
-            // against the store, which is exactly what the draft has moved past.
-            // Queued, because concurrent tool calls would otherwise interleave.
-            const result = await enqueueMutationRef.current(async () => {
-              if (!(await passesSaveBarrierRef.current())) return null;
-              return applyAiScenePatchToStore(patch);
-            });
-            if (!result) {
-              return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Could not save the open document' };
-            }
-            return result.ok
-              ? { ok: true, result: { accepted: true, automatic: true } }
-              : { ok: false, errorCode: result.code === 'STALE_REVISION' ? 'STALE_REVISION' : 'VALIDATION_FAILED', errorMessage: result.errors.join('; ') };
-          }
-          setPendingPatch({ patch, description: describeAiScenePatch(scene, patch) });
-          return new Promise(resolve => { patchDecisionRef.current = result => resolve({ ok: true, result }); });
-        }
-        if (name === 'propose_appearance_patch') {
-          const patch = value.patch as AiReaderAppearancePatch;
-          const metadata = state.storiesMetadata.find((story) => story.id === storyId);
-          if (!metadata) return { ok: false, errorCode: 'VALIDATION_FAILED', errorMessage: 'Story not found' };
-          const validation = validateAiAppearancePatch(metadata, patch);
-          if (!validation.ok) return { ok: false, errorCode: validation.code, errorMessage: validation.errors.join('; ') };
-          const permission = resolveEffectiveCapability('appearance', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true);
-          if (permission === 'blocked') return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Appearance editing is blocked', details: { reason: 'USER_BLOCKED' } };
-          if (permission === 'auto') {
-            const result = await applyAiAppearancePatchToStore(patch);
-            return result.ok
-              ? { ok: true, result: { accepted: true, automatic: true } }
-              : { ok: false, errorCode: result.code === 'STALE_REVISION' ? 'STALE_REVISION' : 'VALIDATION_FAILED', errorMessage: result.errors.join('; ') };
-          }
-          setPendingAppearance({ patch, description: describeAiAppearancePatch(metadata, patch) });
-          return new Promise(resolve => { patchDecisionRef.current = result => resolve({ ok: true, result }); });
-        }
-        if (name === 'propose_changeset') {
-          if (resolveEffectiveCapability('changeset', normalizeAiPermissions(useAppStore.getState().settings.aiPermissions), toolContext?.untrustedAttachmentMode === true) === 'blocked') {
-            return { ok: false, errorCode: 'PERMISSION_DENIED', errorMessage: 'Story changes are blocked', details: { reason: 'USER_BLOCKED' } };
-          }
-          return executeProposeChangeSet(storyId, input, setPendingChangeSet, () => new Promise(resolve => { patchDecisionRef.current = resolve; }));
-        }
-        if (name === 'authorize_capability') {
-          const permissions = normalizeAiPermissions(useAppStore.getState().settings.aiPermissions);
-          const effectivePermissions = toolContext?.untrustedAttachmentMode
-            ? Object.fromEntries(AI_CAPABILITIES.map(capability => [capability, resolveEffectiveCapability(capability, permissions, true)])) as AiPermissions
-            : permissions;
-          return executeAuthorizeCapability(input, effectivePermissions, setPendingCapability, () => new Promise(resolve => { patchDecisionRef.current = resolve as (value: unknown) => void; }));
-        }
-        return { ok: false, errorCode: 'PROTOCOL_ERROR', errorMessage: `Unsupported tool: ${name}` };
-      },
-    });
-    bridgeRef.current = client;
-    client.connect();
-    return () => {
-      patchDecisionRef.current?.({ accepted: false, allowed: false, reason: 'panel_closed' });
-      patchDecisionRef.current = null;
-      cancelPendingInteraction(storyId);
-      client.close();
-      bridgeRef.current = null;
-    };
-  }, [storyId, bridgeConfig.enabled, bridgeConfig.url, bridgeConfig.token, bridgeConfig.preferredProvider, bridgeConfig.codexBetaConsent, bridgeConfig.requestedModel, bridgeConfig.requestedTokenBudget, aiBridgeSettings.disabled, aiBridgeSettings.token, language, retryKey, addMessage, cancelPendingInteraction, setPendingPatch, setPendingAppearance, setPendingChangeSet, setPendingCapability, setStatus, t]);
-
-  const handleSend = useCallback(async () => {
-    const text = inputText.trim();
-    if ((!text && draftAttachments.length === 0) || status !== 'idle') return;
-    const ctx = activeSceneId ? buildAiStoryContext(storyId, activeSceneId) : null;
-    if (!ctx) {
-      addMessage('assistant', t('aiChat.noActiveScene'));
-      return;
-    }
-
-    if (bridgeRef.current) {
-      if (connectionState !== 'connected') return;
-      assistantTextRef.current = '';
-      let wireAttachments;
-      try {
-        wireAttachments = await Promise.all(draftAttachments.map(async (attachment) => ({
-          id: attachment.id, name: attachment.name, kind: attachment.kind, mimeType: attachment.mimeType,
-          byteSize: attachment.byteSize, base64: await blobToBase64(attachment.blob),
-        })));
-      } catch {
-        setAttachmentError(t('aiChat.attach.readFailed'));
-        return;
-      }
-      const delivered = bridgeRef.current.sendUserMessage(text, wireAttachments);
-      if (!delivered.ok) {
-        setInputText(text);
-        setStatus('idle');
-        setRuntimeErrorReason('PROVIDER_ERROR');
-        return;
-      }
-      setRuntimeErrorReason(undefined);
-      setInputText('');
-      const refs = draftAttachments.map(({ blob: _blob, storyId: _storyId, createdAt: _createdAt, messageId: _messageId, ...ref }) => ref);
-      const message = addMessage('user', text, refs);
-      await Promise.all(draftAttachments.map((attachment) => chatAttachmentRepository.put({ ...attachment, messageId: message.id })));
-      setDraftAttachments([]);
-      setStatus('thinking');
-      return;
-    }
-    setRuntimeErrorReason(undefined);
-    setInputText('');
-    addMessage('user', text);
-    setStatus('thinking');
-    const response = await respond(text, ctx);
-
-    if (response.kind === 'text') {
-      addMessage('assistant', response.text);
-      setStatus('idle');
-      return;
-    }
-
-    if (response.kind === 'appearance') {
-      const metadata = useAppStore.getState().storiesMetadata.find((story) => story.id === storyId);
-      if (!metadata) {
-        addMessage('assistant', t('aiChat.applyFailedGeneric'));
-        setStatus('idle');
-        return;
-      }
-
-      const validation = validateAiAppearancePatch(metadata, response.patch);
-      if (!validation.ok) {
-        addMessage('assistant', t('aiChat.applyFailedValidation', { errors: validation.errors.join('; ') }));
-        setStatus('idle');
-        return;
-      }
-
-      addMessage('assistant', response.patch.explanation);
-      setPendingAppearance({ patch: response.patch, description: describeAiAppearancePatch(metadata, response.patch) });
-      return;
-    }
-
-    const scene = useAppStore.getState().sceneRecordsByStory[storyId]?.[response.patch.sceneId];
-    if (!scene) {
-      addMessage('assistant', t('aiChat.applyFailedGeneric'));
-      setStatus('idle');
-      return;
-    }
-
-    const validation = validateAiScenePatch(scene, response.patch, buildPatchProjectContext(storyId));
-    if (!validation.ok) {
-      addMessage('assistant', t('aiChat.applyFailedValidation', { errors: validation.errors.join('; ') }));
-      setStatus('idle');
-      return;
-    }
-
-    const description = describeAiScenePatch(scene, response.patch);
-    addMessage('assistant', response.patch.explanation);
-    setPendingPatch({ patch: response.patch, description });
-  }, [inputText, draftAttachments, status, activeSceneId, storyId, addMessage, setStatus, setPendingPatch, setPendingAppearance, t, connectionState]);
-
-  const addDraftFiles = useCallback(async (files: readonly File[]) => {
-    if (!files.length) return;
-    if (attachmentAddingRef.current) {
-      setAttachmentError(t('aiChat.attach.wait'));
-      return;
-    }
-    attachmentAddingRef.current = true;
-    setAttachmentError(undefined);
-    const added: StoredChatAttachment[] = [];
-    try {
-      const remaining = MAX_CHAT_ATTACHMENTS - draftAttachments.length;
-      if (remaining <= 0) {
-        setAttachmentError(t('aiChat.attach.limit'));
-        return;
-      }
-      const selected = files.slice(0, remaining);
-      let totalBytes = draftAttachments.reduce((sum, attachment) => sum + attachment.byteSize, 0);
-      for (const file of selected) {
-        if (!file.size || file.size > MAX_BINARY_ATTACHMENT_BYTES) {
-          throw new Error('attachment size is invalid');
-        }
-        let blob: Blob = file;
-        let detected = detectAttachment(new Uint8Array(await blob.arrayBuffer()));
-        if (detected.kind === 'image') {
-          const sanitized = await downscaleImage(blob);
-          if (!sanitized) throw new Error('image sanitation failed');
-          blob = sanitized;
-          detected = detectAttachment(new Uint8Array(await blob.arrayBuffer()));
-        }
-        const itemLimit = detected.kind === 'text' ? MAX_TEXT_ATTACHMENT_BYTES : MAX_BINARY_ATTACHMENT_BYTES;
-        totalBytes += blob.size;
-        if (!blob.size || blob.size > itemLimit || totalBytes > MAX_MESSAGE_ATTACHMENT_BYTES) {
-          throw new Error('attachment size is invalid');
-        }
-        const value: StoredChatAttachment = {
-          id: crypto.randomUUID(), storyId, name: sanitizeAttachmentName(file.name || `attachment-${Date.now()}`),
-          kind: detected.kind, mimeType: detected.mimeType, byteSize: blob.size, blob, createdAt: Date.now(),
-        };
-        added.push(value);
-      }
-      await Promise.all(added.map(value => chatAttachmentRepository.put(value)));
-      setDraftAttachments(current => [...current, ...added]);
-      if (files.length > selected.length) setAttachmentError(t('aiChat.attach.limit'));
-    } catch {
-      await Promise.allSettled(added.map(value => chatAttachmentRepository.delete(value.id)));
-      setAttachmentError(t('aiChat.attach.invalid'));
-    } finally {
-      attachmentAddingRef.current = false;
-    }
-  }, [draftAttachments, storyId, t]);
-
-  const handleAttach = useCallback(() => {
-    if (typeof document === 'undefined') return;
-    const picker = document.createElement('input');
-    picker.type = 'file';
-    picker.multiple = true;
-    picker.accept = 'image/jpeg,image/png,image/webp,application/pdf,text/plain,text/markdown,.md,.fountain';
-    picker.onchange = () => { void addDraftFiles(Array.from(picker.files ?? [])); };
-    picker.click();
-  }, [addDraftFiles]);
-
-  const attachmentsSupported = connectionState === 'connected' && capabilities?.attachments.supported === true;
-  const canAttach = attachmentsSupported && status === 'idle' && draftAttachments.length < MAX_CHAT_ATTACHMENTS;
-  const attachmentHelp = connectionState !== 'connected'
-    ? t('aiChat.attach.connectFirst')
-    : !capabilities?.attachments.supported
-      ? provider === 'codex'
-        ? t('aiChat.attach.codexUnsupported')
-        : provider === 'claude'
-          ? t('aiChat.attach.claudeUnavailable')
-          : t('aiChat.attach.providerUnsupported')
-      : status !== 'idle'
-        ? t('aiChat.attach.wait')
-        : draftAttachments.length >= MAX_CHAT_ATTACHMENTS
-          ? t('aiChat.attach.limit')
-          : t('aiChat.attach.hint');
-
-  const handleAttachmentButton = useCallback(() => {
-    if (!canAttach) {
-      setAttachmentError(attachmentHelp);
-      return;
-    }
-    handleAttach();
-  }, [attachmentHelp, canAttach, handleAttach]);
+  // The session waits for the chat to be opened once; after that it stays up
+  // whether or not this panel is on screen.
+  useEffect(() => { start(); }, [start]);
 
   useEffect(() => {
     if (typeof HTMLElement === 'undefined') return;
@@ -777,287 +224,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
       node.removeEventListener('drop', onDrop);
       node.removeEventListener('paste', onPaste);
     };
-  }, [addDraftFiles, attachmentHelp, canAttach]);
-
-  /**
-   * Runs before every mutation. On failure the caller must abort: mutating on
-   * top of an unsaved draft would compare revisions against a story state the
-   * author has already moved past, and the editor's next save would write the
-   * stale document back over the result.
-   */
-  const passesSaveBarrier = useCallback(async (): Promise<boolean> => {
-    const saved = await beforeStoryMutation();
-    if (!saved) addMessage('system', t('aiChat.saveBarrierFailed'));
-    return saved;
-  }, [addMessage, beforeStoryMutation, t]);
-
-  const enqueueMutation = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
-    const run = mutationQueueRef.current.then(task, task);
-    // The queue must survive a failed task, so its own chain swallows results.
-    mutationQueueRef.current = run.then(() => undefined, () => undefined);
-    return run;
-  }, []);
-
-  passesSaveBarrierRef.current = passesSaveBarrier;
-  enqueueMutationRef.current = enqueueMutation;
-
-  /**
-   * Serialises story mutations. The guard is a ref, not `applying` state,
-   * because the barrier is awaited before any state update lands: with a state
-   * flag the button stays live for the whole flush and a second click would run
-   * the same patch again.
-   */
-  const runStoryMutation = useCallback(async (mutate: () => Promise<void>): Promise<void> => {
-    if (mutationInFlightRef.current) return;
-    mutationInFlightRef.current = true;
-    // Disable the decision buttons before the first await: until this lands,
-    // Reject is still live and would resolve the decision while the barrier is
-    // running, after which the mutation would apply anyway.
-    setApplying(true);
-    try {
-      await enqueueMutation(async () => {
-        if (!(await passesSaveBarrier())) return;
-        await mutate();
-      });
-    } finally {
-      mutationInFlightRef.current = false;
-      setApplying(false);
-    }
-  }, [enqueueMutation, passesSaveBarrier]);
-
-  const handleApply = useCallback(async () => {
-    if (!pendingPatch) return;
-    await runStoryMutation(async () => {
-      try {
-        const result = await applyAiScenePatchToStore(pendingPatch.patch);
-        if (result.ok) {
-          addMessage('system', t('aiChat.applySuccess'));
-          patchDecisionRef.current?.({ accepted: true });
-        } else {
-          const message =
-            result.code === 'STALE_REVISION'
-              ? t('aiChat.applyFailedStale')
-              : result.code === 'VALIDATION_FAILED'
-                ? t('aiChat.applyFailedValidation', { errors: result.errors.join('; ') })
-                : t('aiChat.applyFailedGeneric');
-          addMessage('system', message);
-          patchDecisionRef.current?.({ accepted: false, reason: result.code });
-        }
-      } finally {
-        setPendingPatch(null);
-        patchDecisionRef.current = null;
-      }
-    });
-  }, [pendingPatch, addMessage, runStoryMutation, setPendingPatch, t]);
-
-  const handleReject = useCallback(() => {
-    if (mutationInFlightRef.current) return;
-    setPendingPatch(null);
-    addMessage('system', t('aiChat.rejected'));
-    patchDecisionRef.current?.({ accepted: false, reason: 'rejected' });
-    patchDecisionRef.current = null;
-  }, [addMessage, setPendingPatch, t]);
-
-  const handleApplyAppearance = useCallback(async () => {
-    if (!pendingAppearance) return;
-    setApplying(true);
-    try {
-      const result = await applyAiAppearancePatchToStore(pendingAppearance.patch);
-      if (result.ok) {
-        addMessage('system', t('aiChat.applySuccess'));
-        patchDecisionRef.current?.({ accepted: true });
-      } else {
-        const message =
-          result.code === 'STALE_REVISION'
-            ? t('aiChat.applyFailedStale')
-            : result.code === 'VALIDATION_FAILED'
-              ? t('aiChat.applyFailedValidation', { errors: result.errors.join('; ') })
-              : t('aiChat.applyFailedGeneric');
-        addMessage('system', message);
-        patchDecisionRef.current?.({ accepted: false, reason: result.code });
-      }
-    } finally {
-      setApplying(false);
-      setPendingAppearance(null);
-      patchDecisionRef.current = null;
-    }
-  }, [pendingAppearance, addMessage, setPendingAppearance, t]);
-
-  const handleRejectAppearance = useCallback(() => {
-    if (mutationInFlightRef.current) return;
-    setPendingAppearance(null);
-    addMessage('system', t('aiChat.rejected'));
-    patchDecisionRef.current?.({ accepted: false, reason: 'rejected' });
-    patchDecisionRef.current = null;
-  }, [addMessage, setPendingAppearance, t]);
-
-  const handleApplyChangeSet = useCallback(async () => {
-    if (!pendingChangeSet) return;
-    await runStoryMutation(async () => {
-      try {
-        const result = await applyAiChangeSetToStore(pendingChangeSet.changeSet);
-        if (result.ok) {
-          addMessage('system', t('aiChat.applySuccess'));
-          patchDecisionRef.current?.({ accepted: true, summary: pendingChangeSet.description });
-        } else {
-          addMessage('system', result.code === 'STALE_REVISION' ? t('aiChat.applyFailedStale') : t('aiChat.applyFailedValidation', { errors: result.message }));
-          patchDecisionRef.current?.({ accepted: false, reason: result.code });
-        }
-      } finally {
-        setPendingChangeSet(null);
-        patchDecisionRef.current = null;
-      }
-    });
-  }, [pendingChangeSet, addMessage, runStoryMutation, setPendingChangeSet, t]);
-
-  const handleRejectChangeSet = useCallback(() => {
-    if (mutationInFlightRef.current) return;
-    setPendingChangeSet(null);
-    addMessage('system', t('aiChat.rejected'));
-    patchDecisionRef.current?.({ accepted: false, reason: 'rejected' });
-    patchDecisionRef.current = null;
-  }, [addMessage, setPendingChangeSet, t]);
-
-  const handleRollback = useCallback(async () => {
-    if (!lastAppliedChange) return;
-    await runStoryMutation(async () => {
-      const journalTop = useAiChatStore.getState().getTopAppliedChange(storyId);
-      const hasJournalEntry = !!journalTop
-        && journalTop.kind === lastAppliedChange.kind
-        && journalTop.storyId === lastAppliedChange.storyId;
-      const result = hasJournalEntry
-        ? await rollbackTopAppliedChange(storyId)
-        : { ok: lastAppliedChange.kind === 'scene' || lastAppliedChange.kind === 'changeset'
-            ? await rollbackAiPatch(lastAppliedChange.storyId, lastAppliedChange.snapshotId)
-            : rollbackAiAppearancePatch(
-                lastAppliedChange.storyId,
-                lastAppliedChange.previousTheme,
-                lastAppliedChange.previousLayoutPreset,
-              ) };
-      if (result.requiresConfirmation) {
-        setConfirmUndo(true);
-        return;
-      }
-      addMessage('system', result.ok ? t('aiChat.rollbackSuccess') : t('aiChat.rollbackFailed'));
-      if (result.ok && !hasJournalEntry) setLastAppliedChange(null);
-    });
-  }, [lastAppliedChange, addMessage, runStoryMutation, setLastAppliedChange, storyId, t]);
-
-  const handleForceRollback = useCallback(async () => {
-    // The barrier runs again: the author could have typed between the first
-    // refusal and this confirmation, and that draft must land before the
-    // snapshot restore overwrites the story.
-    await runStoryMutation(async () => {
-        const result = await rollbackTopAppliedChange(storyId, true);
-        setConfirmUndo(false);
-        addMessage('system', result.ok ? t('aiChat.rollbackSuccess') : t('aiChat.rollbackFailed'));
-    });
-  }, [addMessage, runStoryMutation, storyId, t]);
-
-  const canSend = status === 'idle'
-    && (inputText.trim().length > 0 || draftAttachments.length > 0)
-    && (draftAttachments.length === 0 || (connectionState === 'connected' && attachmentsSupported))
-    && (connectionState === 'demo' || connectionState === 'connected');
-
-  const handleStop = useCallback(() => {
-    if (status !== 'thinking') return;
-    const result = bridgeRef.current?.interrupt();
-    if (result?.ok) setStatus('interrupting');
-  }, [setStatus, status]);
-
-  const resolveCapabilityDecision = useCallback((allowed: boolean) => {
-    patchDecisionRef.current?.({ allowed });
-    patchDecisionRef.current = null;
-    setPendingCapability(null);
-  }, [setPendingCapability]);
-
-  const handleConnect = useCallback((token: string, url: string, preferredProvider: BridgeProvider) => {
-    setProvider(undefined);
-    setConnectionReason(undefined);
-    const selected = selectAiBridgeProvider(aiBridgeSettings, preferredProvider);
-    updateAiBridgeSettings(updateActiveAiBridgeProfile({ ...selected, disabled: false }, { token, url }));
-    setRetryKey(value => value + 1);
-  }, [aiBridgeSettings, updateAiBridgeSettings]);
-
-  const applyProviderSwitch = useCallback((nextProvider: BridgeProvider) => {
-    const previousProvider = aiBridgeSettings.preferredProvider ?? 'openai';
-    if (nextProvider === previousProvider && nextProvider === aiBridgeSettings.preferredProvider) return;
-    bridgeRef.current?.close();
-    setProvider(undefined);
-    setCapabilities(undefined);
-    setConnectionReason(undefined);
-    setConnectionRetryable(true);
-    updateAiBridgeSettings(selectAiBridgeProvider(aiBridgeSettings, nextProvider));
-    if (connectionState === 'connected') {
-      addMessage('system', t('aiChat.providerChanged', {
-        from: aiProviderLabel(previousProvider),
-        to: aiProviderLabel(nextProvider),
-      }));
-    }
-    setRetryKey(value => value + 1);
-  }, [addMessage, aiBridgeSettings, connectionState, t, updateAiBridgeSettings]);
-
-  const handleProviderChange = useCallback((nextProvider: BridgeProvider) => {
-    if (nextProvider === (aiBridgeSettings.preferredProvider ?? 'openai')) return;
-    if (status !== 'idle' || (pendingInteraction?.storyId === storyId)) {
-      setShowSettings(false);
-      setPendingProviderSwitch(nextProvider);
-      return;
-    }
-    applyProviderSwitch(nextProvider);
-  }, [aiBridgeSettings.preferredProvider, applyProviderSwitch, pendingInteraction, status, storyId]);
-
-  const handleRetryConnection = useCallback(() => {
-    updateAiBridgeSettings({ disabled: false });
-    setConnectionReason(undefined);
-    setConnectionRetryable(true);
-    setRetryKey(value => value + 1);
-  }, [updateAiBridgeSettings]);
-
-  const handleDisconnect = useCallback(() => {
-    bridgeRef.current?.close();
-    updateAiBridgeSettings({
-      url: aiBridgeSettings.url || bridgeConfig.url,
-      token: aiBridgeSettings.token || bridgeConfig.token,
-      disabled: true,
-    });
-    setConnectionState('closed');
-    setConnectionReason(undefined);
-  }, [aiBridgeSettings.token, aiBridgeSettings.url, bridgeConfig.token, bridgeConfig.url, updateAiBridgeSettings]);
-
-  const handleResetConnection = useCallback(() => {
-    bridgeRef.current?.close();
-    BridgeClient.clearPersistedSession(bridgeConfig.url);
-    updateAiBridgeSettings({ url: '', token: '', disabled: true, preferredProvider: 'openai', profiles: {}, requestedModel: undefined, requestedTokenBudget: undefined, codexBetaConsent: undefined });
-    setProvider(undefined);
-    setConnectionReason(undefined);
-    setConnectionState('demo');
-  }, [bridgeConfig.url, updateAiBridgeSettings]);
-
-  const handleResetConversation = useCallback(async () => {
-    if (clearingChat) return;
-    if (connectionState === 'demo') {
-      clearMessages(storyId);
-      return;
-    }
-    const client = bridgeRef.current;
-    if (!client || connectionState !== 'connected') return;
-    setClearingChat(true);
-    try {
-      const result = await client.resetConversation();
-      if (result.ok) {
-        clearMessages(storyId);
-      } else {
-        addMessage('system', t('aiChat.clearFailed'));
-      }
-    } finally {
-      setClearingChat(false);
-    }
-  }, [addMessage, clearMessages, clearingChat, connectionState, storyId, t]);
-
-  const handleClearLocalData = useCallback(() => {
-    clearMessages(storyId);
-  }, [clearMessages, storyId]);
+  }, [addDraftFiles, attachmentHelp, canAttach, setAttachmentDropActive, setAttachmentError]);
 
   if (showSettings) return <AiSettingsPanel
     connectionState={connectionState}
@@ -1068,6 +235,11 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
     token={aiBridgeSettings.token}
     url={aiBridgeSettings.url || bridgeConfig.url}
     permissions={normalizeAiPermissions(settings.aiPermissions)}
+    externalAgentAccess={externalAgentAccess}
+    onExternalAgentAccessChange={(value) => updateSettings({ externalAgentAccess: value })}
+    agentOnly={bridgeConfig.agentOnly}
+    onSelectAgentOnly={handleSelectAgentOnly}
+    onConnectAgentOnly={handleConnectAgentOnly}
     capabilities={capabilities}
     requestedModel={aiBridgeSettings.requestedModel}
     requestedTokenBudget={aiBridgeSettings.requestedTokenBudget}
@@ -1094,7 +266,7 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
     <View style={{ flex: 1 }}>
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ color: connectionState === 'connected' ? colors.primary : colors.muted, fontSize: 11, fontWeight: '700' }}>
-          {connectionState === 'demo' ? t('aiChat.connection.demo') : connectionState === 'connected' ? t('aiChat.connection.connected', { provider: aiProviderLabel(provider) }) : connectionState === 'connecting' || connectionState === 'reconnecting' ? t('aiChat.connection.connecting') : t('aiChat.connection.error')}
+          {connectionState === 'demo' ? t('aiChat.connection.demo') : connectionState === 'connected' ? (capabilities?.chat?.supported === false ? t('aiChat.connection.connectedAgentOnly') : t('aiChat.connection.connected', { provider: aiProviderLabel(provider) })) : connectionState === 'connecting' || connectionState === 'reconnecting' ? t('aiChat.connection.connecting') : t('aiChat.connection.error')}
         </Text>
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <Pressable accessibilityRole="button" accessibilityLabel={t('aiChat.settings.open')} onPress={() => setShowSettings(true)}><Text style={{ color: colors.muted, fontSize: 15 }}>⚙</Text></Pressable>
@@ -1110,8 +282,13 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
             reason={connectionReason}
             retryable={connectionRetryable}
             colorScheme={colorScheme}
+            agentOnly={bridgeConfig.agentOnly}
+            chatSupported={capabilities?.chat?.supported}
+            offerMcp={externalAgentAccess !== 'off'}
             onConnect={handleConnect}
             onProviderChange={handleProviderChange}
+            onSelectAgentOnly={handleSelectAgentOnly}
+            onConnectAgentOnly={handleConnectAgentOnly}
             onRetry={handleRetryConnection}
           />
         {runtimeErrorReason ? (
@@ -1126,13 +303,15 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
             {t('aiChat.images.persistenceFailed')}
           </Text>
         ) : null}
-        {messages.length === 0 ? (
+        {chatUnavailable ? (
+          <Text style={{ color: colors.muted, fontSize: 12 }}>{t('aiChat.chatless.note')}</Text>
+        ) : messages.length === 0 ? (
           <Text style={{ color: colors.muted, fontSize: 12 }}>{t('aiChat.emptyState')}</Text>
         ) : null}
         {restored && messages.length > 0 ? <Text style={{ color: colors.muted, fontSize: 11 }}>{t('aiChat.restoredNote')}</Text> : null}
 
         {messages.map((message) => (
-          <MessageBubble key={message.id} role={message.role} text={message.text} attachments={message.attachments} colors={colors} importLabel={t('aiChat.attach.import')} unavailableLabel={t('aiChat.attach.unavailable')} onImport={async (attachment) => {
+          <MessageBubble key={message.id} role={message.role} text={message.text} attachments={message.attachments} contextLabel={message.contextLabel} colors={colors} importLabel={t('aiChat.attach.import')} unavailableLabel={t('aiChat.attach.unavailable')} onImport={async (attachment) => {
             if (attachment.assetId || attachment.kind !== 'image') return;
             const stored = await chatAttachmentRepository.get(attachment.id);
             if (!stored) return;
@@ -1167,6 +346,10 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
 
         {status === 'thinking' ? (
           <Text style={{ color: colors.muted, fontSize: 12, fontStyle: 'italic' }}>{t('aiChat.thinking')}</Text>
+        ) : null}
+
+        {pendingFromExternalAgent ? (
+          <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>{t('aiChat.external.proposalLabel')}</Text>
         ) : null}
 
         {pendingPatch ? (
@@ -1271,6 +454,35 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
           </ScrollView>
         ) : null}
         {attachmentError ? <Text accessibilityRole="alert" style={{ color: colors.danger, paddingHorizontal: 10, paddingBottom: 5, fontSize: 11 }}>{attachmentError}</Text> : null}
+        {externalAgentAccess !== 'off' ? (
+          <View style={{ paddingHorizontal: 10, paddingBottom: 6, gap: 5 }}>
+            <Text style={{ color: colors.muted, fontSize: 11 }}>
+              {lastExternalCall
+                ? t('aiChat.external.activity', { tool: lastExternalCall.toolName, time: clockTime(lastExternalCall.at, language) })
+                : t('aiChat.external.noActivity')}
+            </Text>
+            {captureEditorContext ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={handingOver}
+                  onPress={() => { void handOverToAgent(); }}
+                  style={{ borderWidth: 1, borderColor: colors.primary, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, opacity: handingOver ? 0.6 : 1 }}
+                >
+                  <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>{t('aiChat.external.handOver')}</Text>
+                </Pressable>
+                {handedOver ? (
+                  <Text style={{ color: colors.muted, fontSize: 11, flexShrink: 1 }}>
+                    {handedOver.label
+                      ? t('aiChat.external.handedOver', { time: clockTime(handedOver.at, language), what: handedOver.label })
+                      : t('aiChat.external.handedOverPlain', { time: clockTime(handedOver.at, language) })}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+        {captureEditorContext ? <EditorContextChip storyId={storyId} colorScheme={colorScheme} /> : null}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10 }}>
           <Pressable
             accessibilityRole="button"
@@ -1293,9 +505,9 @@ export function AiChatPanel({ storyId, activeSceneId, colorScheme, beforeStoryMu
           <TextInput
             value={inputText}
             onChangeText={setInputText}
-            placeholder={t('aiChat.inputPlaceholder')}
+            placeholder={chatUnavailable ? t('aiChat.chatless.placeholder') : t('aiChat.inputPlaceholder')}
             placeholderTextColor={colors.muted}
-            editable={status === 'idle'}
+            editable={status === 'idle' && !chatUnavailable}
             multiline
             onSubmitEditing={handleSend}
             style={{
@@ -1410,6 +622,7 @@ function MessageBubble({
   role,
   text,
   attachments,
+  contextLabel,
   onImport,
   importLabel,
   unavailableLabel,
@@ -1418,6 +631,8 @@ function MessageBubble({
   role: AiChatRole;
   text: string;
   attachments?: AttachmentRef[];
+  /** What the message pointed at in the editor; shown under the author's words. */
+  contextLabel?: string;
   onImport?: (attachment: AttachmentRef) => void | Promise<void>;
   importLabel: string;
   unavailableLabel: string;
@@ -1443,6 +658,11 @@ function MessageBubble({
       {role === 'assistant'
         ? <MarkdownText text={text} color={colors.foreground} />
         : <Text style={{ color: isUser ? '#ffffff' : colors.foreground, fontSize: 13, lineHeight: 18 }}>{text}</Text>}
+      {contextLabel ? (
+        <Text numberOfLines={2} style={{ color: isUser ? '#ffffff' : colors.muted, opacity: 0.82, fontSize: 11, lineHeight: 15, marginTop: 4 }}>
+          {`↳ ${contextLabel}`}
+        </Text>
+      ) : null}
     </View>
   );
 }

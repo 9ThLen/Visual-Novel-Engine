@@ -243,6 +243,159 @@ describe('resolveFocusedBlock', () => {
     expect(focus).toMatchObject({ blockType: 'background', stepId: null, match: 'none' });
   });
 
+  // Place and kind line two blocks of one kind up with each other's steps;
+  // only what a block carries, or holds, says which step is its own.
+  describe('when a draft has moved blocks of one kind around', () => {
+    const backgroundOf = (assetId: string) => {
+      const block = createDocumentTechnicalBlock('background');
+      return { ...block, step: { ...block.step, data: { ...block.step.data, assetId } } };
+    };
+    const savedPair = () => {
+      const scene = saveDocument(createSceneRecord(), documentOf([backgroundOf('bg_forest'), backgroundOf('bg_cave')]));
+      return { scene, document: sceneRecordToDocumentScene(scene) };
+    };
+
+    it('names the step a swapped block carries, not the one in its old place', () => {
+      const { scene, document } = savedPair();
+      const [forest, cave] = document.blocks;
+      const swapped = documentOf([cave, forest, ...document.blocks.slice(2)]);
+
+      const focus = resolveFocusedBlock({ scene, document: swapped, characters: [], focus: focusOn(cave.id) });
+
+      expect(focus).toMatchObject({ stepId: scene.timeline[1].id, match: 'exact' });
+      expect(resolveFocusedBlock({ scene, document: swapped, characters: [], focus: focusOn(forest.id) }))
+        .toMatchObject({ stepId: scene.timeline[0].id, match: 'exact' });
+    });
+
+    it('names no step for a block put where a deleted one of its kind was', () => {
+      const { scene, document } = savedPair();
+      const added = backgroundOf('bg_shore');
+      const replaced = documentOf([added, ...document.blocks.slice(1)]);
+
+      const focus = resolveFocusedBlock({ scene, document: replaced, characters: [], focus: focusOn(added.id) });
+
+      expect(focus).toMatchObject({ blockType: 'background', stepId: null, match: 'none' });
+    });
+
+    // The same place, the same kind, the same settings — and a step id of its
+    // own that the store has never seen, which is what says it is not saved.
+    it('names no step for a new block with the same settings as the deleted one it replaced', () => {
+      const { scene, document } = savedPair();
+      const added = backgroundOf('bg_forest');
+      const replaced = documentOf([added, ...document.blocks.slice(1)]);
+
+      const focus = resolveFocusedBlock({ scene, document: replaced, characters: [], focus: focusOn(added.id) });
+
+      expect(focus).toMatchObject({ blockType: 'background', stepId: null, match: 'none' });
+    });
+
+    // The second block is still there, carrying its id; a copy of it added in
+    // the first one's place holds the same settings and is still not it.
+    it('does not give a new block the step another block carries', () => {
+      const scene = saveDocument(createSceneRecord(), documentOf([backgroundOf('bg_forest'), backgroundOf('bg_forest')]));
+      const document = sceneRecordToDocumentScene(scene);
+      const added = backgroundOf('bg_forest');
+      const moved = documentOf([document.blocks[1], added, ...document.blocks.slice(2)]);
+
+      expect(resolveFocusedBlock({ scene, document: moved, characters: [], focus: focusOn(added.id) }))
+        .toMatchObject({ stepId: null, match: 'none' });
+      expect(resolveFocusedBlock({ scene, document: moved, characters: [], focus: focusOn(document.blocks[1].id) }))
+        .toMatchObject({ stepId: scene.timeline[1].id, match: 'exact' });
+    });
+  });
+
+  // A block the frame made this session comes without a step, and gets a new
+  // step id from every conversion: its place and its content are all that tie
+  // it to what the save stored.
+  const stepless = (commandId: string) => documentOf([
+    { id: 'blk_text', kind: 'text', content: 'Тиша.' },
+    { id: 'doc_block_new', kind: 'technical', commandId, blockType: commandId, label: commandId, summary: '', step: null } as unknown as DocumentBlock,
+  ]);
+
+  it.each(['background', 'video', 'music', 'sound', 'transition', 'variable', 'effect', 'camera', 'label', 'goto', 'stopEffect'] as const)(
+    'follows a %s block made in this session to the step the save gave it',
+    (commandId) => {
+      const document = stepless(commandId);
+      const scene = saveDocument(createSceneRecord(), document);
+
+      const focus = resolveFocusedBlock({ scene, document, characters: [], focus: focusOn('doc_block_new', { command: commandId }) });
+
+      expect(scene.timeline).toHaveLength(2);
+      expect(focus).toMatchObject({ stepId: scene.timeline[1].id, match: 'exact' });
+    },
+  );
+
+  // An interactive object is given a new object id by every conversion, so two
+  // conversions of a stepless one never agree. The frame always sends its step;
+  // this is what happens to a block that cannot be shown to be the stored one.
+  it('names no step for a stepless block whose content the save cannot be matched to', () => {
+    const document = stepless('interactive_object');
+    const scene = saveDocument(createSceneRecord(), document);
+
+    const focus = resolveFocusedBlock({ scene, document, characters: [], focus: focusOn('doc_block_new', { command: 'interactive_object' }) });
+
+    expect(focus).toMatchObject({ blockType: 'interactive_object', stepId: null, match: 'none' });
+  });
+
+  it('follows a choice made in this session to the step the save gave it', () => {
+    const choice: DocumentChoiceBlock = {
+      id: 'doc_choice_new',
+      kind: 'choice',
+      question: '',
+      options: [{ id: 'opt_1', text: 'Йти', targetSceneId: null }, { id: 'opt_2', text: 'Лишитись', targetSceneId: null }],
+    };
+    const document = documentOf([{ id: 'blk_text', kind: 'text', content: 'Тиша.' }, choice]);
+    const scene = saveDocument(createSceneRecord(), document);
+
+    const focus = resolveFocusedBlock({
+      scene, document, characters: [], focus: { id: 'doc_choice_new', kind: 'choice', command: 'choice', state: 'editing' },
+    });
+
+    expect(focus).toMatchObject({ blockType: 'choice', stepId: scene.timeline[1].id, match: 'exact' });
+  });
+
+  it('names no step for a new choice that reads like the deleted one it replaced', () => {
+    const choiceOf = (id: string): DocumentChoiceBlock => ({
+      id,
+      kind: 'choice',
+      question: '',
+      options: [{ id: `${id}_go`, text: 'Йти', targetSceneId: null }, { id: `${id}_stay`, text: 'Лишитись', targetSceneId: null }],
+    });
+    const scene = saveDocument(createSceneRecord(), documentOf([choiceOf('doc_choice_old')]));
+    const replaced = documentOf([choiceOf('doc_choice_new')]);
+
+    const focus = resolveFocusedBlock({
+      scene, document: replaced, characters: [], focus: { id: 'doc_choice_new', kind: 'choice', command: 'choice', state: 'selected' },
+    });
+
+    expect(focus).toMatchObject({ blockType: 'choice', stepId: null, match: 'none' });
+  });
+
+  // With work the store does not have, the document and the scene are two
+  // things: a block is its step only if it holds that step's id.
+  describe('when the editor has unsaved changes', () => {
+    it('names no step for a block that holds no id of its own, wherever it sits', () => {
+      const document = stepless('label');
+      const scene = saveDocument(createSceneRecord(), document);
+      const focus = focusOn('doc_block_new', { command: 'label' });
+
+      expect(resolveFocusedBlock({ scene, document, characters: [], focus })).toMatchObject({ match: 'exact' });
+      expect(resolveFocusedBlock({ scene, document, characters: [], focus, hasUnsavedChanges: true }))
+        .toMatchObject({ blockType: 'label', stepId: null, match: 'none' });
+    });
+
+    it('still names the step of a block that holds its id', () => {
+      const scene = saveDocument(createSceneRecord(), documentOf([createDocumentTechnicalBlock('background')]));
+      const document = sceneRecordToDocumentScene(scene);
+
+      const focus = resolveFocusedBlock({
+        scene, document, characters: [], focus: focusOn(document.blocks[0].id), hasUnsavedChanges: true,
+      });
+
+      expect(focus).toMatchObject({ stepId: scene.timeline[0].id, match: 'exact' });
+    });
+  });
+
   describe('when the frame could not answer', () => {
     const background = createDocumentTechnicalBlock('background');
     const scene = saveDocument(createSceneRecord(), documentOf([background]));
@@ -412,6 +565,49 @@ describe('resolveSelectionAnchors', () => {
     });
 
     expect(anchors[0]).toMatchObject({ stepId: step.id, occurrence: 1, match: 'exact' });
+  });
+
+  // Two paragraphs that read the same and have traded places line up by place
+  // and by text; each still carries the id of its own step.
+  it('does not address a line to the step of its twin after they traded places', () => {
+    const first = createTextStep({ content: 'Тиша.' });
+    const second = createTextStep({ content: 'Тиша.' });
+    const scene = createSceneRecord([first, second]);
+    const document = sceneRecordToDocumentScene(scene);
+    const swapped = documentOf([document.blocks[1], document.blocks[0], ...document.blocks.slice(2)]);
+
+    const anchors = resolveSelectionAnchors({
+      scene,
+      document: swapped,
+      characters: [],
+      blocks: [{ id: second.id, kind: 'text', quote: 'Тиша', occurrence: 0 }],
+    });
+
+    expect(anchors[0]).toMatchObject({ stepId: null, match: 'ambiguous' });
+  });
+
+  // A paragraph typed this session holds no step id, so only its place ties it
+  // to a step — and a place is worth nothing while the editor has unsaved work.
+  it('finds a line typed this session by its words, not its place, while changes are unsaved', () => {
+    const existing = createTextStep({ content: 'Старий абзац.' });
+    const record = createSceneRecord([existing]);
+    const document = sceneRecordToDocumentScene(record);
+    document.blocks.splice(1, 0, { id: 'doc_text_new', kind: 'text', content: 'Новий абзац.' });
+    const scene = saveDocument(record, document);
+
+    const anchors = resolveSelectionAnchors({
+      scene,
+      document,
+      characters: [],
+      hasUnsavedChanges: true,
+      blocks: [
+        { id: 'doc_text_new', kind: 'text', quote: 'Новий', occurrence: 0 },
+        { id: existing.id, kind: 'text', quote: 'Старий', occurrence: 0 },
+      ],
+    });
+
+    expect(anchors[0]).toMatchObject({ stepId: scene.timeline[1].id, match: 'quote' });
+    expect(anchors[1]).toMatchObject({ stepId: existing.id, match: 'exact' });
   });
 
   describe('when the stored scene is not the captured document', () => {
