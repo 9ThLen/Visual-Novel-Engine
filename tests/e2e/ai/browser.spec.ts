@@ -235,6 +235,7 @@ test('an applied AI change shows in the open editor and survives the next manual
   // the scene, and scenes below a merge point grew taller on every render.
   await expect.poll(() => documentScroll(page)).toEqual(scrollBeforeSave);
 
+  await persisted(page, 'AI rewrote this line. manual edit');
   await page.reload();
   await expect(editable).toContainText('AI rewrote this line. manual edit');
 });
@@ -258,7 +259,7 @@ test('undoing an AI change puts the old text back in the open editor', async ({ 
  * Scene-to-scene navigation stacks editor screens, and a covered one stays in
  * the DOM with its frames and its sidebar. These reach only the screen in front.
  */
-async function sceneEditable(page: Page, sceneName: string): Promise<Locator> {
+async function sceneEditable(page: Page, sceneName: string, timeout?: number): Promise<Locator> {
   // By frame, not by position: frames mount and unmount around the scene in
   // view, so the nth visible iframe is a different scene a moment later.
   const find = async (): Promise<Frame | null> => {
@@ -271,8 +272,51 @@ async function sceneEditable(page: Page, sceneName: string): Promise<Locator> {
     }
     return null;
   };
-  await expect.poll(async () => Boolean(await find())).toBe(true);
+  await expect.poll(async () => Boolean(await find()), { timeout }).toBe(true);
   return ((await find()) as Frame).locator('#editor');
+}
+
+/**
+ * Opens a scene from the sidebar of the editor in front. An editor that has
+ * just been pushed scrolls to its own scene as it mounts, and a click that
+ * lands before that is overridden; on a slow machine the test got there
+ * first. The author would click again, and so does this.
+ */
+async function openFromSidebar(page: Page, sceneName: string): Promise<Locator> {
+  await expect(async () => {
+    // A scene the editor holds unsaved work for is listed as `* name`.
+    await page.getByText(new RegExp(`^(\\* )?${sceneName}$`)).filter({ visible: true }).first().click();
+    await sceneEditable(page, sceneName, 5_000);
+  }).toPass({ timeout: 90_000 });
+  return sceneEditable(page, sceneName);
+}
+
+/**
+ * Waits until a scene record in IndexedDB holds `text`. The store writes
+ * there a beat after a save, and on a slow machine the beat is long: a reload
+ * taken before it brings back what was there before the save.
+ */
+async function persisted(page: Page, text: string): Promise<void> {
+  await expect.poll(() => page.evaluate((needle) => new Promise<boolean>((resolve) => {
+    const open = indexedDB.open('vne-storage');
+    open.onerror = () => resolve(false);
+    open.onsuccess = () => {
+      const db = open.result;
+      let found = false;
+      const cursor = db.transaction('kv', 'readonly').objectStore('kv').openCursor();
+      cursor.onerror = () => { db.close(); resolve(false); };
+      cursor.onsuccess = () => {
+        const entry = cursor.result;
+        if (!entry || found) {
+          db.close();
+          resolve(found);
+          return;
+        }
+        if (String(entry.key).startsWith('vne_scene_record_') && typeof entry.value === 'string' && entry.value.includes(needle)) found = true;
+        entry.continue();
+      };
+    };
+  }), text), { timeout: 30_000 }).toBe(true);
 }
 
 /** The sidebar's mark on a scene the editor in front holds unsaved work for. */
@@ -307,8 +351,7 @@ test('an editor left through the frame’s «new scene» command does not undo w
   await page.waitForURL((url) => url.searchParams.get('sceneId') !== 'scene_1');
 
   // In the new scene's editor, rewrite a scene the first editor holds too.
-  await page.getByText('scene_2', { exact: true }).filter({ visible: true }).first().click();
-  const above = await sceneEditable(page, 'scene_2');
+  const above = await openFromSidebar(page, 'scene_2');
   await typeAtEndOf(page, above.getByText('You approach the towering shelves'), ' Saved from the screen above.');
   await expect(unsavedMark(page, 'scene_2')).toBeVisible();
   await page.getByRole('button', { name: /Save|Зберегти/ }).click();
@@ -324,8 +367,8 @@ test('an editor left through the frame’s «new scene» command does not undo w
   await expect(unsavedMark(page, 'scene_1')).toBeVisible();
   await page.getByRole('button', { name: /Save|Зберегти/ }).click();
   await expect(unsavedMark(page, 'scene_1')).toHaveCount(0);
-  // The store reaches IndexedDB a beat after the save.
-  await page.waitForTimeout(1_200);
+  await persisted(page, 'Typed before the new scene. And after coming back.');
+  await persisted(page, 'Saved from the screen above.');
 
   await page.reload();
   await expect(await sceneEditable(page, 'scene_1')).toContainText('Typed before the new scene. And after coming back.');
@@ -402,6 +445,7 @@ test('a paragraph typed a moment before sending does not make the proposal stale
   await page.getByRole('button', { name: /Apply|Застосувати/ }).click();
   await expect(page.getByRole('button', { name: /Undo AI changes|Відкотити AI-зміни/ })).toBeVisible();
 
+  await persisted(page, 'A paragraph typed just now.');
   await page.reload();
   await expect(editable).toContainText('A paragraph typed just now.');
 });
@@ -431,6 +475,7 @@ test('a change applied a moment after a keystroke does not cost the author that 
   await expect(page.getByText(/scene changed since this patch|Сцена змінилася відтоді/)).toBeVisible();
   await expect(editable).toContainText('Typed late.');
   await expect(editable).not.toContainText('AI rewrote this line.');
+  await persisted(page, 'Typed late.');
   await page.reload();
   await expect(editable).toContainText('Typed late.');
 });
