@@ -1,4 +1,5 @@
 import { expect, test, type Frame, type Locator, type Page } from '@playwright/test';
+import { changesBeyondTheLine, storyState } from './live-mcp-support';
 
 const validToken = 'ai-e2e-token';
 
@@ -671,6 +672,88 @@ test('an author with no AI provider connects a bridge without chat, and an agent
   expect(proposal.value).toMatchObject({ status: 'pending' });
   const outcome = await call('get_proposal_status', { binding: context.value.binding, proposalId: proposal.value.proposalId, waitSeconds: 10 });
   expect(outcome.value).toMatchObject({ status: 'failed', detail: 'EXTERNAL_PROPOSALS_OFF' });
+});
+
+/**
+ * The whole way, for an agent the author runs themselves. The author selects
+ * a line, typed into a moment before, and hands it over; the agent reads
+ * where that line is, proposes a change to that step and to nothing else, and
+ * the author applies it. The agent learns the outcome from the bridge.
+ */
+test('an external agent rewrites the line the author handed it, and only that line', async ({ page, request }) => {
+  const mcp = `${process.env.AI_E2E_BRIDGE_HTTP ?? 'http://127.0.0.1:18787'}/mcp`;
+  const call = async (name: string, args: Record<string, unknown> = {}) => {
+    const answer = await request.post(mcp, {
+      headers: { authorization: 'Bearer ai-e2e-mcp-token', accept: 'application/json, text/event-stream' },
+      data: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
+    });
+    expect(answer.status()).toBe(200);
+    const result = (await answer.json()).result as { isError?: boolean; content: { text: string }[] };
+    return { isError: result.isError === true, value: JSON.parse(result.content[0].text) };
+  };
+  await openAi(page);
+  await pair(page);
+  await expect(page.getByText(/Connected · Claude Code|Підключено · Claude Code/).first()).toBeVisible();
+  await page.getByLabel(/AI settings|Налаштування AI/).click();
+  await page.getByLabel(/^(External agent access: Read and propose|Доступ зовнішнього агента: Читання й пропозиції)$/).click();
+  await page.getByLabel(/^(Close|Закрити)$/).click();
+
+  const editable = page.frameLocator('iframe[title="VN Plate editor"]').first().locator('#editor');
+  const selected = editable.locator('p[data-kind="text"]').first();
+  const neighbour = editable.locator('.choice-block').first();
+  const untouched = await neighbour.innerText();
+  // Typed a moment before: handing over has to save it for the address to hold.
+  await selected.click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Fresh words.');
+  await selected.click({ clickCount: 3 });
+  await expect(page.getByText(/Selected text|Виділений текст/)).toBeVisible();
+  await page.getByRole('button', { name: /Save and hand to agent|Зберегти й передати агенту/ }).click();
+  await expect(page.getByText(/^(Handed over at|Передано о)/)).toBeVisible();
+
+  const handed = await call('get_editor_context');
+  expect(handed.isError).toBe(false);
+  const { binding, context } = handed.value as {
+    binding: string;
+    context: { kind: string; scene: { id: string; revision: string }; selection: { text: string; anchors: { stepId?: string; match: string }[] } };
+  };
+  expect(context).toMatchObject({ kind: 'fixed', selection: { text: expect.stringContaining('Fresh words.') } });
+  const stepId = context.selection.anchors.find(anchor => anchor.match === 'exact')?.stepId;
+  expect(stepId).toBeTruthy();
+
+  const scene = await call('get_scene', { binding, sceneId: context.scene.id });
+  expect(scene.isError).toBe(false);
+  const { activeScene } = scene.value as { activeScene: { revision: string; timeline: { id: string; data: Record<string, unknown> }[] } };
+  // What was handed over is what is stored: nothing the author typed is left unsaved.
+  expect(activeScene.revision).toBe(context.scene.revision);
+  const step = activeScene.timeline.find(item => item.id === stepId);
+  expect(step?.data.content).toEqual(expect.stringContaining('Fresh words.'));
+  const read = async (name: string, args: Record<string, unknown>) => (await call(name, args)).value;
+  const before = await storyState(read, binding);
+
+  const proposal = await call('propose_scene_patch', {
+    binding,
+    patch: {
+      storyId: 'demo-story-001',
+      sceneId: context.scene.id,
+      expectedRevision: context.scene.revision,
+      explanation: 'Rewrite the line the author handed over',
+      operations: [{ op: 'replace_step', stepId, step: { ...step, data: { ...step?.data, content: 'An agent rewrote the handed line.' } } }],
+    },
+  });
+  expect(proposal.value).toMatchObject({ status: 'pending' });
+
+  await expect(page.getByText(/Proposed by an external agent|Пропозиція зовнішнього агента/)).toBeVisible();
+  await page.getByRole('button', { name: /Apply|Застосувати/ }).click();
+
+  await expect(editable).toContainText('An agent rewrote the handed line.');
+  await expect(editable).not.toContainText('Fresh words.');
+  expect(await neighbour.innerText()).toBe(untouched);
+  const outcome = await call('get_proposal_status', { binding, proposalId: proposal.value.proposalId, waitSeconds: 10 });
+  expect(outcome.value).toMatchObject({ status: 'applied' });
+  // In the store too: that step rewritten, and nothing else in the story.
+  const target = { sceneId: context.scene.id, stepId: stepId as string, content: 'An agent rewrote the handed line.' };
+  expect(changesBeyondTheLine(before, await storyState(read, binding), target)).toEqual([]);
 });
 
 test('the assistant is told which block the author has open', async ({ page }) => {
