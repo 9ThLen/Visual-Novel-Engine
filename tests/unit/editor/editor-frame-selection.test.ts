@@ -1,4 +1,5 @@
-import { resolveSelectionAnchors } from '@/lib/ai/editor-context-resolver';
+import { resolveFocusedBlock, resolveSelectionAnchors } from '@/lib/ai/editor-context-resolver';
+import { createDocumentTechnicalBlock } from '@/lib/document-editor/document-scene';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import { saveDocumentSceneToRecord } from '@/lib/document-scene-persistence';
 import type { SceneRecord, TextBlockData } from '@/lib/engine/types';
@@ -62,7 +63,7 @@ function emptySceneRecord(): SceneRecord {
 type Posted = { type: string; [key: string]: unknown };
 
 /** Boots the real editor script in a frame and records what it posts to the host. */
-function bootFrame() {
+function bootFrame(sceneBlocks: DocumentBlock[] = blocks) {
   const dom = new JSDOM('<iframe></iframe>', { url: 'http://localhost:3000', runScripts: 'dangerously', pretendToBeVisual: true });
   const target = dom.window.document.querySelector('iframe')!.contentWindow!;
   const posted: Posted[] = [];
@@ -70,7 +71,7 @@ function bootFrame() {
   target.document.open();
   target.document.write(createVNPlateEditorHtml({
     editorId: 'frame',
-    scene: { sceneId: 'scene-1', sceneName: 'Scene', blocks },
+    scene: { sceneId: 'scene-1', sceneName: 'Scene', blocks: sceneBlocks },
     characters: [],
     isPhone: false,
   }));
@@ -108,7 +109,19 @@ function bootFrame() {
     .map((message) => message.state as VNPlateSelectionState)
     .at(-1);
 
-  return { dom, target, posted, block, textNodes, select, flush, lastSelection };
+  const selectionStates = (): VNPlateSelectionState[] => posted
+    .filter((message) => message.type === 'selectionState')
+    .map((message) => message.state as VNPlateSelectionState);
+
+  const click = (node: Element) => {
+    node.dispatchEvent(new target.MouseEvent('click', { bubbles: true, cancelable: true }));
+  };
+
+  const press = (key: string) => {
+    target.document.dispatchEvent(new target.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  };
+
+  return { dom, target, posted, block, textNodes, select, flush, lastSelection, selectionStates, click, press };
 }
 
 const settle = (ms = 220) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -271,5 +284,160 @@ describe('editor frame selection', () => {
       expect(frame.posted.some((message) => message.type === 'save')).toBe(true);
       expect(frame.flush(true).hasUnreportedChanges).toBe(false);
     });
+  });
+});
+
+describe('editor frame focus on a block that is not text', () => {
+  const background = createDocumentTechnicalBlock('background');
+  const transition = createDocumentTechnicalBlock('transition');
+  const choice: DocumentBlock = {
+    id: 'blk_choice',
+    kind: 'choice',
+    question: 'Куди далі?',
+    options: [{ id: 'opt_stay', text: 'Лишитися', targetSceneId: null }],
+  };
+  const focusBlocks: DocumentBlock[] = [background, ...blocks, transition, choice];
+
+  let frame: ReturnType<typeof bootFrame>;
+
+  beforeEach(() => {
+    frame = bootFrame(focusBlocks);
+  });
+
+  afterEach(() => {
+    frame.dom.window.close();
+    vi.restoreAllMocks();
+  });
+
+  it('reports a block the author clicked, with no text selection needed', async () => {
+    frame.click(frame.block(background.id));
+    await settle();
+
+    expect(frame.lastSelection()).toMatchObject({
+      collapsed: true,
+      text: '',
+      blocks: [],
+      focus: { id: background.id, kind: 'technical', command: 'background', state: 'selected' },
+    });
+  });
+
+  it('says so when the block’s settings are open', async () => {
+    frame.click(frame.block(transition.id));
+    await settle();
+
+    expect(frame.lastSelection()?.focus).toEqual({
+      id: transition.id,
+      kind: 'technical',
+      command: 'transition',
+      state: 'editing',
+    });
+  });
+
+  it('names a choice block as a choice', async () => {
+    frame.click(frame.block('blk_choice'));
+    await settle();
+
+    expect(frame.lastSelection()?.focus).toMatchObject({ id: 'blk_choice', kind: 'choice', command: 'choice' });
+  });
+
+  it('keeps the block as recent once its settings are closed', async () => {
+    frame.click(frame.block(transition.id));
+    await settle();
+    frame.press('Escape');
+    await settle();
+
+    expect(frame.lastSelection()?.focus).toMatchObject({ id: transition.id, state: 'recent' });
+  });
+
+  it('lets go of the block when the author goes back to the text', async () => {
+    frame.click(frame.block(transition.id));
+    await settle();
+    frame.press('Escape');
+    await settle();
+
+    // A click into a paragraph puts the caret there; jsdom has to be told.
+    const [text] = frame.textNodes('blk_first');
+    frame.select(text, 2, text, 2);
+    frame.click(frame.block('blk_first'));
+    await settle();
+
+    const state = frame.lastSelection();
+    expect(state?.focus).toBeUndefined();
+    expect(state?.blocks).toMatchObject([{ id: 'blk_first' }]);
+  });
+
+  it('carries both when a block is highlighted while the caret sits in a paragraph', async () => {
+    const [text] = frame.textNodes('blk_first');
+    frame.select(text, 2, text, 2);
+    frame.click(frame.block(background.id));
+    await settle();
+
+    expect(frame.lastSelection()).toMatchObject({
+      blocks: [{ id: 'blk_first' }],
+      focus: { id: background.id, state: 'selected' },
+    });
+  });
+
+  it('addresses an inline chip by the text block it sits in and its part number', async () => {
+    const chip = frame.block('blk_chip').querySelector('.effect-chip')!;
+    frame.click(chip);
+    await settle();
+
+    expect(frame.lastSelection()?.focus).toEqual({
+      id: 'blk_chip',
+      kind: 'text',
+      command: 'effect',
+      partIndex: 1,
+      state: 'editing',
+    });
+  });
+
+  it('does not repeat a state that says nothing new', async () => {
+    frame.click(frame.block(background.id));
+    await settle();
+    const reported = frame.selectionStates().length;
+
+    frame.target.document.dispatchEvent(new frame.target.Event('selectionchange'));
+    await settle();
+
+    expect(frame.selectionStates()).toHaveLength(reported);
+  });
+
+  it('hands the focus over with a flush, and the host finds its step', () => {
+    frame.click(frame.block(background.id));
+
+    // No waiting: the debounced report has not gone out yet.
+    const flushed = frame.flush(true);
+    const selection = flushed.selection as VNPlateSelectionState;
+    const document = flushed.scene as DocumentScene;
+    const normalized = normalizePlateDocumentScene(document, []);
+    const scene = saveDocumentSceneToRecord(emptySceneRecord(), normalized.scene, normalized.characters);
+
+    expect(frame.lastSelection()).toBeUndefined();
+    expect(selection.focus).toMatchObject({ id: background.id, state: 'selected' });
+    const focus = resolveFocusedBlock({ scene, document, characters: [], focus: selection.focus });
+    expect(focus).toMatchObject({ blockType: 'background', match: 'exact', state: 'selected' });
+    expect(scene.timeline.find((step) => step.id === focus?.stepId)?.blockType).toBe('background');
+  });
+
+  // A choice made in this session has no step yet: its id is minted on save,
+  // so only the converter's pairing can say which step it became.
+  it('finds the step of a choice block that was never saved before', () => {
+    frame.click(frame.block('blk_choice'));
+
+    const flushed = frame.flush(true);
+    const document = flushed.scene as DocumentScene;
+    const normalized = normalizePlateDocumentScene(document, []);
+    const scene = saveDocumentSceneToRecord(emptySceneRecord(), normalized.scene, normalized.characters);
+    const focus = resolveFocusedBlock({
+      scene,
+      document,
+      characters: [],
+      focus: (flushed.selection as VNPlateSelectionState).focus,
+    });
+
+    expect(focus).toMatchObject({ blockType: 'choice', match: 'exact' });
+    expect(scene.timeline.find((step) => step.id === focus?.stepId)?.blockType).toBe('choice');
+    expect(focus?.summary).toContain('Лишитися');
   });
 });

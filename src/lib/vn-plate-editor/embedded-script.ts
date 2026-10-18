@@ -32,6 +32,11 @@ const EMBEDDED_SCRIPT_BODY = `
     var hasUnreportedChanges = false;
     var selectionTimer = 0;
     var selectionSeq = 0;
+    // What the host was last told, without its counter: a state that says
+    // nothing new is not posted again.
+    var lastPostedSelection = '';
+    // The last non-text block the author worked with; see buildFocusState.
+    var recentFocusNode = null;
     var resizeTimer = 0;
     var activeSlash = null;
     var activeBackgroundBlock = null;
@@ -662,21 +667,85 @@ const EMBEDDED_SCRIPT_BODY = `
       return null;
     }
 
+    // The block the author has in hand right now: one whose settings are open
+    // wins over one that is merely highlighted.
+    function currentFocusNode() {
+      var editing = editor.querySelector('.void-block.is-editing');
+      if (editing) return editing;
+      if (activeEffectChip && editor.contains(activeEffectChip)) return activeEffectChip;
+      if (activeAudioChip && editor.contains(activeAudioChip)) return activeAudioChip;
+      return selectedVoidBlock();
+    }
+
+    function describeFocus(node, state) {
+      if (node.classList.contains('void-block')) {
+        if (!node.dataset.id) return null;
+        return {
+          id: node.dataset.id,
+          kind: node.dataset.kind === 'choice' ? 'choice' : 'technical',
+          command: node.dataset.kind === 'choice' ? 'choice' : (node.dataset.command || ''),
+          state: state
+        };
+      }
+      // An inline chip is one part of the text block it sits in.
+      var owner = node.parentNode;
+      if (!owner || owner.parentNode !== editor || !owner.dataset || !owner.dataset.id) return null;
+      var partIndex = -1;
+      forEachInlinePartNode(owner, function(child, index) {
+        if (child === node) partIndex = index;
+      });
+      if (partIndex < 0) return null;
+      return {
+        id: owner.dataset.id,
+        kind: owner.dataset.kind === 'dialogue' ? 'dialogue' : 'text',
+        command: node.dataset.kind || 'effect',
+        partIndex: partIndex,
+        state: state
+      };
+    }
+
+    /**
+     * The non-text block the author is working with, if any. Once its settings
+     * are closed it stays on as "recent" until the author types or clicks into
+     * text, so a request made right after still has its object.
+     */
+    function buildFocusState() {
+      var node = currentFocusNode();
+      if (node) {
+        recentFocusNode = node;
+        var editing = node.classList.contains('void-block')
+          ? node.classList.contains('is-editing')
+          : Boolean(isAudioChip(node) ? audioPopover : effectPopover);
+        return describeFocus(node, editing ? 'editing' : 'selected');
+      }
+      if (recentFocusNode && editor.contains(recentFocusNode)) return describeFocus(recentFocusNode, 'recent');
+      recentFocusNode = null;
+      return null;
+    }
+
+    function forgetRecentFocus() {
+      if (!recentFocusNode) return;
+      recentFocusNode = null;
+      scheduleSelectionState();
+    }
+
     /**
      * Describes the selection in terms the host can map onto saved steps:
-     * block ids, part positions, and the visible text selected in each.
-     * Returns null when nothing in the editor is selected.
+     * block ids, part positions, and the visible text selected in each — and
+     * the non-text block in play, if there is one. Returns null when the author
+     * has neither.
      */
     function buildSelectionState() {
       var range = currentSelectionRange();
-      if (!range) return null;
+      var focus = buildFocusState();
+      if (!range && !focus) return null;
       var blocks = [];
       var pieces = [];
       var crossesChip = false;
       var before = '';
       var after = '';
 
-      Array.prototype.slice.call(editor.children).forEach(function(block) {
+      Array.prototype.slice.call(range ? editor.children : []).forEach(function(block) {
         var kind = block.dataset ? block.dataset.kind : '';
         if ((kind !== 'text' && kind !== 'dialogue') || !range.intersectsNode(block)) return;
         var parts = [];
@@ -728,9 +797,9 @@ const EMBEDDED_SCRIPT_BODY = `
 
       var text = pieces.join('\\n');
       selectionSeq += 1;
-      return {
+      var state = {
         seq: selectionSeq,
-        collapsed: range.collapsed,
+        collapsed: range ? range.collapsed : true,
         text: text.slice(0, SELECTION_TEXT_LIMIT),
         textLength: text.length,
         truncated: text.length > SELECTION_TEXT_LIMIT,
@@ -739,6 +808,8 @@ const EMBEDDED_SCRIPT_BODY = `
         crossesChip: crossesChip,
         blocks: blocks
       };
+      if (focus) state.focus = focus;
+      return state;
     }
 
     // Only the chip in the chat reads this, so it can lag; a request that needs
@@ -746,9 +817,14 @@ const EMBEDDED_SCRIPT_BODY = `
     function scheduleSelectionState() {
       window.clearTimeout(selectionTimer);
       selectionTimer = window.setTimeout(function() {
-        if (!selectionIsInEditor()) return;
         var state = buildSelectionState();
-        if (state) post({ type: 'selectionState', state: state });
+        // A caret that left the editor says nothing; a block in play still does,
+        // and its settings are where the caret went.
+        if (!state || !(state.focus || selectionIsInEditor())) return;
+        var signature = JSON.stringify(Object.assign({}, state, { seq: 0 }));
+        if (signature === lastPostedSelection) return;
+        lastPostedSelection = signature;
+        post({ type: 'selectionState', state: state });
       }, 150);
     }
 
@@ -5440,7 +5516,10 @@ const EMBEDDED_SCRIPT_BODY = `
       }
       var block = target.closest('.void-block');
       if (!block) {
-        if (target.closest('p')) deselectAllVoidBlocks();
+        if (target.closest('p')) {
+          deselectAllVoidBlocks();
+          forgetRecentFocus();
+        }
         return;
       }
       selectVoidBlock(block);
@@ -6409,6 +6488,7 @@ const EMBEDDED_SCRIPT_BODY = `
 
     editor.addEventListener('input', function(event) {
       deselectAllVoidBlocks();
+      forgetRecentFocus();
       ensureParagraph();
       transformDialogueIfNeeded();
       transformAllDialogueIfNeeded();
@@ -6475,6 +6555,23 @@ const EMBEDDED_SCRIPT_BODY = `
     });
     editor.addEventListener('focus', function() { lastHistoryTarget = editor; });
     title.addEventListener('focus', function() { lastHistoryTarget = title; });
+    // Blocks come into and out of play by class alone — a dozen popovers each
+    // mark theirs — so one observer stands in for a call in every one of them.
+    if (typeof MutationObserver !== 'undefined') {
+      new MutationObserver(function(mutations) {
+        var touched = mutations.some(function(mutation) {
+          var node = mutation.target;
+          return node.classList && (node.classList.contains('void-block') || isEffectChip(node) || isAudioChip(node));
+        });
+        if (!touched) return;
+        // Remembered here as well: settings opened and closed inside one
+        // debounce would otherwise never be seen.
+        var node = currentFocusNode();
+        if (node) recentFocusNode = node;
+        scheduleSelectionState();
+      }).observe(editor, { attributes: true, attributeFilter: ['class'], subtree: true });
+    }
+
     document.addEventListener('selectionchange', function() {
       rememberFormatSelection();
       postFormatState();

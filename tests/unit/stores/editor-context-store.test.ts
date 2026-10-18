@@ -30,6 +30,13 @@ describe('editor context store', () => {
     expect(store().selection).toMatchObject({ storyId: 'story_1', sceneId: 'scene_2', text: 'інша сцена' });
   });
 
+  it('keeps the block in focus that came with the state', () => {
+    const focus = { id: 'step_bg', kind: 'technical', command: 'background', state: 'editing' } as const;
+    store().reportSelection('story_1', 'scene_1', { ...state(1, ''), blocks: [], collapsed: true, focus });
+
+    expect(selectVisibleEditorSelection(store())).toMatchObject({ sceneId: 'scene_1', blocks: [], focus });
+  });
+
   it('drops a message that arrives after a newer one from the same frame', () => {
     store().reportSelection('story_1', 'scene_1', state(5, 'нове'));
     store().reportSelection('story_1', 'scene_1', state(4, 'старе'));

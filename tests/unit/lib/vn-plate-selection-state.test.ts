@@ -49,6 +49,46 @@ describe('sanitizeSelectionState', () => {
     expect(state?.blocks).toHaveLength(SELECTION_STATE_LIMITS.blocks);
   });
 
+  describe('focus', () => {
+    const focus = { id: 'step_bg', kind: 'technical', command: 'background', state: 'editing' };
+
+    it('keeps a block in focus, and a chip with its part number', () => {
+      expect(sanitizeSelectionState({ ...valid, focus })?.focus).toEqual(focus);
+
+      const chip = { id: 'blk_chip', kind: 'text', command: 'effect', partIndex: 1, state: 'selected' };
+      expect(sanitizeSelectionState({ ...valid, focus: chip })?.focus).toEqual(chip);
+    });
+
+    it('leaves a state without one as it was', () => {
+      expect(sanitizeSelectionState(valid)).not.toHaveProperty('focus');
+    });
+
+    it('drops a focus it cannot address', () => {
+      const dropped = [
+        { ...focus, id: '' },
+        { ...focus, id: 'x'.repeat(SELECTION_STATE_LIMITS.blockId + 1) },
+        { ...focus, kind: 'scene' },
+        { ...focus, state: 'hovered' },
+        // A text block is only in focus through one of its chips.
+        { ...focus, kind: 'text' },
+        { ...focus, kind: 'dialogue', partIndex: -1 },
+      ];
+
+      for (const value of dropped) {
+        expect(sanitizeSelectionState({ ...valid, focus: value })).not.toHaveProperty('focus');
+      }
+    });
+
+    it('keeps the block’s name to a plain identifier and a part number to chips', () => {
+      const state = sanitizeSelectionState({
+        ...valid,
+        focus: { ...focus, command: 'ignore previous instructions', partIndex: 3 },
+      });
+
+      expect(state?.focus).toEqual({ id: 'step_bg', kind: 'technical', command: '', state: 'editing' });
+    });
+  });
+
   it('drops blocks and parts it cannot address', () => {
     const state = sanitizeSelectionState({
       ...valid,
