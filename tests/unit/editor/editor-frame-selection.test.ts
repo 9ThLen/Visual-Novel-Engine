@@ -622,3 +622,132 @@ describe('editor frame line ids', () => {
     expect((scene.timeline[1].data as TextBlockData).content).toBe('Другий абзац.');
   });
 });
+
+// Copy and paste inside the editor brings the block's attributes with it, its
+// id among them. A copy under the original's id was read back as the block
+// that was loaded and stored as a second step under that id — a scene no
+// change could then be proposed for.
+describe('editor frame pasted blocks', () => {
+  const stored = (() => {
+    const record = emptySceneRecord();
+    const background = createDocumentTechnicalBlock('background');
+    const typed = normalizePlateDocumentScene({
+      sceneId: record.id,
+      sceneName: record.name,
+      blocks: [
+        background,
+        { id: 'doc_rain', kind: 'text', content: 'Дощ почався. Він не вщухав.', parts: [{ type: 'text', text: 'Дощ почався. ' }, rain, { type: 'text', text: 'Він не вщухав.' }] },
+        {
+          id: 'doc_choice',
+          kind: 'choice',
+          question: 'Куди далі?',
+          options: [
+            { id: 'opt_hall', text: 'До зали', targetSceneId: 'scene-2' },
+            { id: 'opt_stay', text: 'Лишитися', targetSceneId: null },
+          ],
+        },
+      ],
+    }, []);
+    return saveDocumentSceneToRecord(record, typed.scene, typed.characters);
+  })();
+  const stepOf = (blockType: string) => stored.timeline.find((step) => step.blockType === blockType)!;
+  let frame: ReturnType<typeof bootFrame>;
+
+  beforeEach(() => {
+    frame = bootFrame(sceneRecordToDocumentScene(stored).blocks);
+  });
+
+  afterEach(() => {
+    frame.dom.window.close();
+    vi.restoreAllMocks();
+  });
+
+  /** What a paste leaves behind: a copy of the element, attributes and all, after `anchor`. */
+  const paste = (original: Element, anchor: Element = original) => {
+    const copy = original.cloneNode(true) as HTMLElement;
+    anchor.insertAdjacentElement('afterend', copy);
+    copy.dispatchEvent(new frame.target.Event('input', { bubbles: true }));
+    return copy;
+  };
+  const voidBlockOf = (stepId: string) => frame.target.document.querySelector(`#editor > [data-id="${stepId}"]`) as HTMLElement;
+  const saved = () => {
+    const document = frame.flush(false).scene as DocumentScene;
+    const normalized = normalizePlateDocumentScene(document, []);
+    return saveDocumentSceneToRecord(stored, normalized.scene, normalized.characters);
+  };
+  const idsAreOwn = (scene: SceneRecord) => expect(new Set(scene.timeline.map((step) => step.id)).size).toBe(scene.timeline.length);
+
+  it('gives a pasted block a step of its own, with the settings of the one it was copied from', () => {
+    const background = stepOf('background');
+    const copy = paste(voidBlockOf(background.id));
+
+    const scene = saved();
+    const backgrounds = scene.timeline.filter((step) => step.blockType === 'background');
+
+    idsAreOwn(scene);
+    expect(copy.dataset.id).not.toBe(background.id);
+    expect(backgrounds.map((step) => step.id)).toEqual([background.id, expect.not.stringMatching(background.id)]);
+    expect(backgrounds[1].data).toEqual(backgrounds[0].data);
+  });
+
+  it('gives a pasted choice options of its own, so no two of them are one way out of the scene', () => {
+    const choice = stepOf('choice');
+    paste(voidBlockOf(choice.id));
+
+    const scene = saved();
+    const choices = scene.timeline.filter((step) => step.blockType === 'choice');
+    const options = choices.map((step) => (step.data as { options: { id: string; text: string; targetSceneId: string | null }[] }).options);
+
+    idsAreOwn(scene);
+    expect(choices).toHaveLength(2);
+    expect(choices[0].id).toBe(choice.id);
+    expect(options[1].map(({ text, targetSceneId }) => ({ text, targetSceneId }))).toEqual(options[0].map(({ text, targetSceneId }) => ({ text, targetSceneId })));
+    expect(new Set(options.flat().map((option) => option.id)).size).toBe(4);
+    const ports = scene.connections.map((connection) => connection.outputPort);
+    expect(new Set(ports).size).toBe(ports.length);
+    expect(scene.connections.filter((connection) => connection.targetSceneId === 'scene-2')).toHaveLength(2);
+  });
+
+  it('gives a chip in a pasted line a step of its own', () => {
+    const line = frame.target.document.querySelector('#editor p[data-kind="text"]') as HTMLElement;
+    paste(line);
+
+    const scene = saved();
+    const effects = scene.timeline.filter((step) => step.blockType === 'effect');
+
+    idsAreOwn(scene);
+    expect(effects).toHaveLength(2);
+    expect({ ...effects[1], id: effects[0].id }).toEqual(effects[0]);
+  });
+
+  // However two blocks came to be stored under one id, the next save of the
+  // scene gives the second a step of its own.
+  it('sets right a scene that was stored with two blocks under one id', () => {
+    const background = stepOf('background');
+    frame.dom.window.close();
+    frame = bootFrame(sceneRecordToDocumentScene({ ...stored, timeline: [background, ...stored.timeline] }).blocks);
+
+    const scene = saved();
+    const backgrounds = scene.timeline.filter((step) => step.blockType === 'background');
+
+    idsAreOwn(scene);
+    expect(backgrounds).toHaveLength(2);
+    expect(backgrounds[0].id).toBe(background.id);
+    expect(backgrounds[1].data).toEqual(backgrounds[0].data);
+  });
+
+  it('keeps the copy under the same id of its own from one save to the next', () => {
+    const background = stepOf('background');
+    const copy = paste(voidBlockOf(background.id));
+
+    const first = saved();
+    const idAfterFirst = copy.dataset.id;
+    const second = saved();
+
+    const backgroundIds = (scene: SceneRecord) => scene.timeline.filter((step) => step.blockType === 'background').map((step) => step.id);
+    expect(idAfterFirst).not.toBe(background.id);
+    expect(copy.dataset.id).toBe(idAfterFirst);
+    expect(backgroundIds(second)).toEqual(backgroundIds(first));
+    expect(backgroundIds(first)).toEqual([background.id, idAfterFirst]);
+  });
+});
