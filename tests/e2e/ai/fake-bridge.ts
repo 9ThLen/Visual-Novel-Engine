@@ -8,9 +8,9 @@ const TOKEN = 'ai-e2e-token';
 const MCP_TOKEN = 'ai-e2e-mcp-token';
 
 interface SeenEditorContext {
-  scene?: { id?: string };
+  scene?: { id?: string; revision?: string };
   selection?: { text?: string; anchors?: { stepId?: string | null; match?: string }[] } | null;
-  focus?: { blockType?: string; state?: string; match?: string; stepId?: string | null };
+  focus?: { blockType?: string; state?: string; match?: string; stepId?: string | null; data?: Record<string, unknown> };
 }
 
 /** The context block the bridge appended to the user's words, as the model would read it. */
@@ -51,8 +51,28 @@ class DeterministicProvider implements AgentProvider {
       // Says back what it was told the author is pointing at.
       const seen = readEditorContext(text);
       const anchors = seen?.selection?.anchors?.map(anchor => anchor.match).join(',') ?? '';
-      const focus = seen?.focus ? `${seen.focus.blockType}/${seen.focus.state}/${seen.focus.match}` : 'none';
+      const focus = seen?.focus
+        ? `${seen.focus.blockType}/${seen.focus.state}/${seen.focus.match}${seen.focus.data ? ` data=${Object.keys(seen.focus.data).sort().join(',')}` : ''}`
+        : 'none';
       yield { type: 'text', text: seen ? `Saw selection="${seen.selection?.text ?? ''}" anchors=${anchors} focus=${focus}` : 'Saw no context.' };
+    } else if (text.includes('[edit-focused]')) {
+      // Changes one setting of the block the author has in hand, from the
+      // context alone: the step, its settings and the revision all came with
+      // the message, so the scene is not read.
+      const seen = readEditorContext(text);
+      const focus = seen?.focus;
+      if (focus?.stepId && focus.data && seen?.scene?.id && seen.scene.revision) {
+        await this.tools.call('propose_scene_patch', {
+          patch: {
+            storyId: 'demo-story-001',
+            sceneId: seen.scene.id,
+            expectedRevision: seen.scene.revision,
+            explanation: 'Deterministic change to the block in focus',
+            operations: [{ op: 'update_step', stepId: focus.stepId, data: { transition: 'dissolve' } }],
+          },
+        });
+      }
+      yield { type: 'text', text: focus?.data ? 'Focused block change resolved.' : 'No settings came with the focus.' };
     } else if (text.includes('[rewrite-selection]')) {
       // Rewrites the step the selection is addressed to, and nothing else.
       const seen = readEditorContext(text);

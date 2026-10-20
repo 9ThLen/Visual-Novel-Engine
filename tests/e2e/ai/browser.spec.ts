@@ -767,7 +767,32 @@ test('the assistant is told which block the author has open', async ({ page }) =
 
   await send(page, '[context]');
 
-  await expect(page.getByText(/focus=background\/editing\/exact/)).toBeVisible();
+  // With the settings of its step, so a change to them needs no read of the scene.
+  await expect(page.getByText(/focus=background\/editing\/exact data=.*assetId.*transition/)).toBeVisible();
+});
+
+/**
+ * The block the author has open is changed in one setting, from what came
+ * with the message: the assistant names the step and the field, and every
+ * other setting stays as it was.
+ */
+test('the assistant changes one setting of the block the author has open', async ({ page }) => {
+  await openAi(page);
+  await pair(page);
+  await expect(page.getByText(/Connected · Claude Code|Підключено · Claude Code/).first()).toBeVisible();
+  const editable = page.frameLocator('iframe[title="VN Plate editor"]').first().locator('#editor');
+  const background = editable.locator('.background-block').first();
+  await expect(background).toContainText('Fade · 0.5s');
+
+  await editable.getByRole('button', { name: 'Edit' }).first().click();
+  await expect(page.getByText(/Block: Background|Блок: Фон/)).toBeVisible();
+  await send(page, '[edit-focused]');
+
+  await expect(page.getByText('transition: fade → dissolve')).toBeVisible();
+  await page.getByRole('button', { name: /Apply|Застосувати/ }).click();
+
+  await expect(background).toContainText('Dissolve · 0.5s');
+  await expect(page.getByText('Focused block change resolved.')).toBeVisible();
 });
 
 test('a dismissed selection is not sent', async ({ page }) => {

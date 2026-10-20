@@ -24,6 +24,7 @@ import type { VNPlateFocusedBlock, VNPlateSelectionBlock, VNPlateSelectionState 
 import {
   AI_EDITOR_CONTEXT_LIMITS,
   AI_EDITOR_CONTEXT_VERSION,
+  jsonByteLength,
   type AiEditorContext,
   type AiEditorFocus,
   type AiEditorSelectionAnchor,
@@ -321,6 +322,12 @@ export function resolveFocusedBlock(input: ResolveFocusedBlockInput): AiEditorFo
   const blockType = step?.blockType
     ?? heldStep(block)?.blockType
     ?? (focus.command || focus.kind);
+  // The settings as stored: what the step says, not what an open settings
+  // panel may show before it is saved. A step with too many goes without them,
+  // and the assistant reads it from the scene.
+  const data = step && jsonByteLength(step.data) <= AI_EDITOR_CONTEXT_LIMITS.focusData
+    ? step.data as unknown as Record<string, unknown>
+    : null;
   return {
     sceneId: input.scene.id,
     blockType: blockType.slice(0, AI_EDITOR_CONTEXT_LIMITS.focusBlockType),
@@ -328,6 +335,7 @@ export function resolveFocusedBlock(input: ResolveFocusedBlockInput): AiEditorFo
     match: step ? 'exact' : 'none',
     state: focus.state,
     ...(summary ? { summary } : {}),
+    ...(data ? { data } : {}),
   };
 }
 
@@ -348,24 +356,29 @@ export interface BuildAiEditorContextInput {
 const SHORT_ANCHOR_QUOTE = 120;
 const MIN_SELECTION_TEXT = 200;
 
-function byteLength(value: unknown): number {
-  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+function withoutFocusData(context: AiEditorContext): AiEditorContext {
+  if (!context.focus?.data) return context;
+  const { data: _dropped, ...focus } = context.focus;
+  return { ...context, focus };
 }
 
 /**
  * Sheds the least useful detail until the context fits its byte budget: the
- * path list first, then long per-anchor quotes (the step id already says
- * where), then the tail of the selection itself.
+ * path list first, then the focused step's settings (the step id still says
+ * where, and the scene has them), then long per-anchor quotes, then the tail
+ * of the selection itself. A block whose settings are open is what the author
+ * is working on, and its settings go last.
  */
 function fitToBudget(context: AiEditorContext): AiEditorContext {
   let next = context;
-  if (byteLength(next) <= AI_EDITOR_CONTEXT_LIMITS.bytes) return next;
+  if (jsonByteLength(next) <= AI_EDITOR_CONTEXT_LIMITS.bytes) return next;
 
   if (next.activePathSceneIds) {
     const { activePathSceneIds: _dropped, ...rest } = next;
     next = rest;
   }
-  if (!next.selection || byteLength(next) <= AI_EDITOR_CONTEXT_LIMITS.bytes) return next;
+  if (next.focus?.state !== 'editing' && jsonByteLength(next) > AI_EDITOR_CONTEXT_LIMITS.bytes) next = withoutFocusData(next);
+  if (!next.selection || jsonByteLength(next) <= AI_EDITOR_CONTEXT_LIMITS.bytes) return next;
 
   next = {
     ...next,
@@ -376,13 +389,13 @@ function fitToBudget(context: AiEditorContext): AiEditorContext {
   };
   while (
     next.selection
-    && byteLength(next) > AI_EDITOR_CONTEXT_LIMITS.bytes
+    && jsonByteLength(next) > AI_EDITOR_CONTEXT_LIMITS.bytes
     && next.selection.text.length > MIN_SELECTION_TEXT
   ) {
     const length = Math.max(MIN_SELECTION_TEXT, Math.floor(next.selection.text.length / 2));
     next = { ...next, selection: { ...next.selection, text: next.selection.text.slice(0, length), truncated: true } };
   }
-  return next;
+  return jsonByteLength(next) > AI_EDITOR_CONTEXT_LIMITS.bytes ? withoutFocusData(next) : next;
 }
 
 export function buildAiEditorContext(input: BuildAiEditorContextInput): AiEditorContext {

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-10-18 — Changing the block the author has open
+
+- **The assistant sees the settings of the block in focus.** When the author
+  has a non-text block in hand — a background, a choice, a transition, a chip —
+  the editor context now carries that step's `data` as stored, next to its
+  `stepId`. Settings over 4 KB are left out (the scene still has them). When
+  the context has to shrink to its 16 KB, a block that is only selected gives
+  up its settings before the selected text does; a block whose settings are
+  open keeps them and the text is shortened instead.
+- **`update_step`**, a sixth scene patch operation: `{ op: 'update_step',
+  stepId, data: { … } }` changes only the named fields of one step's `data`
+  and leaves the rest of the step as it was. The fields are checked against the
+  step's block type — an unknown field or a value the type does not accept is
+  refused by name — and what the changed fields refer to is checked as for a
+  new step; fields left alone are not held against the change. It works in
+  change sets and for an external agent over MCP as well, and the proposal
+  card shows it as the fields it changes.
+- With both, changing a setting of the focused block needs no read of the
+  scene: `focus.stepId`, `focus.data` and `scene.revision` are enough.
+
 ## 2026-10-18 — The assistant sees the author's place; an agent of your own
 
 Plan: `docs/technical/ai-editor-context-and-mcp-plan.md` (v1.20).

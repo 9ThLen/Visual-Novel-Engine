@@ -44,6 +44,22 @@ const baseDataSchemas = {
 
 const blockTypes = Object.keys(baseDataSchemas) as (keyof typeof baseDataSchemas)[];
 
+/**
+ * What is wrong with changing some fields of a step's `data`: a block type the
+ * assistant may not change this way, a field that type does not have, or a
+ * value the merged settings do not accept. Empty when the change is sound.
+ */
+export function stepDataUpdateProblems(blockType: string, merged: Record<string, unknown>, changed: string[]): string[] {
+  const schema = (baseDataSchemas as Record<string, z.ZodObject | undefined>)[blockType];
+  if (!schema) return [`a '${blockType}' step cannot be updated field by field; replace it instead`];
+  if (changed.length === 0) return ['update_step names no field to change'];
+  const known = new Set(Object.keys(schema.shape));
+  const unknown = changed.filter((field) => !known.has(field));
+  if (unknown.length) return unknown.map((field) => `'${field}' is not a field of a ${blockType} step`);
+  const result = schema.safeParse(merged);
+  return result.success ? [] : result.error.issues.map((issue) => `data.${issue.path.join('.')}: ${issue.message}`);
+}
+
 export const timelineStepSchema = z.object({
   id: z.string().min(1),
   blockType: z.enum(blockTypes),
@@ -59,6 +75,8 @@ export const timelineStepSchema = z.object({
 export type ScenePatchOperation =
   | { op: 'insert_steps'; afterStepId: string | null; steps: TimelineStep[] }
   | { op: 'replace_step'; stepId: string; step: TimelineStep }
+  /** Changes the named fields of one step's `data`; every other field, and the rest of the step, stays. */
+  | { op: 'update_step'; stepId: string; data: Record<string, unknown> }
   | { op: 'delete_steps'; stepIds: string[] }
   | { op: 'update_scene_metadata'; updates: { name?: string; description?: string; tags?: string[] } }
   | { op: 'set_connection'; outputPort: string; targetSceneId: string | null; label?: string };
@@ -66,6 +84,7 @@ export type ScenePatchOperation =
 export const scenePatchOperationSchema: z.ZodType<ScenePatchOperation> = z.discriminatedUnion('op', [
   z.object({ op: z.literal('insert_steps'), afterStepId: z.string().nullable(), steps: z.array(timelineStepSchema) }),
   z.object({ op: z.literal('replace_step'), stepId: z.string(), step: timelineStepSchema }),
+  z.object({ op: z.literal('update_step'), stepId: z.string(), data: z.record(z.string(), z.unknown()) }),
   z.object({ op: z.literal('delete_steps'), stepIds: z.array(z.string()) }),
   z.object({ op: z.literal('update_scene_metadata'), updates: z.object({ name: z.string().optional(), description: z.string().optional(), tags: z.array(z.string()).optional() }) }),
   z.object({ op: z.literal('set_connection'), outputPort: z.string(), targetSceneId: z.string().nullable(), label: z.string().optional() }),
