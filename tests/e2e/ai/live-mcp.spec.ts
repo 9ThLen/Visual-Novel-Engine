@@ -130,12 +130,22 @@ test('a real MCP client rewrites the line the author handed it, and only that li
   // Where the line is and how the story stands, read before the agent starts.
   const handed = await read('get_editor_context') as {
     binding: string;
-    context: { scene: { id: string }; selection: { anchors: { stepId?: string; match: string }[] } };
+    context: { scene: { id: string }; selection: { anchors: { stepId?: string; match: string; quote: string }[] } };
   };
-  const stepId = handed.context.selection.anchors.find(anchor => anchor.match === 'exact')?.stepId;
-  expect(stepId, 'the handed selection is addressed to one step').toBeTruthy();
-  const target = { sceneId: handed.context.scene.id, stepId: stepId as string, content: NEW_LINE };
+  const anchor = handed.context.selection.anchors.find(item => item.match === 'exact');
+  expect(anchor?.stepId, 'the handed selection is addressed to one step').toBeTruthy();
   const before = await storyState(read, handed.binding);
+  // A step can hold more than the line selected — the demo's first one holds
+  // two, a blank line apart. The selected words are what is rewritten; the
+  // rest of the step stays. A triple click takes the line break after them
+  // along, and an agent may fairly keep it or not.
+  const held = before.scenes[handed.context.scene.id]?.timeline.find(step => step.id === anchor?.stepId)?.data?.content;
+  expect(typeof held === 'string' && held.includes(anchor!.quote), 'the selected words are in the step they are addressed to').toBe(true);
+  const target = {
+    sceneId: handed.context.scene.id,
+    stepId: anchor!.stepId as string,
+    content: [...new Set([anchor!.quote, anchor!.quote.trim()])].map(quote => (held as string).replace(quote, NEW_LINE)),
+  };
 
   const agent = startAgent(client, testInfo.outputPath());
   try {

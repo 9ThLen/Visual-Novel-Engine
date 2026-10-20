@@ -110,7 +110,9 @@ export async function storyState(
 
 /**
  * Everything a change did besides setting `content` on one step. Empty when
- * the change was exactly that.
+ * the change was exactly that. `content` may name more than one acceptable
+ * result: what the author selected can be read with or without the line break
+ * a triple click takes along.
  *
  * The text showing up somewhere on the page says little: an agent that adds
  * a step with that text, and leaves the selected one as it was, shows it too.
@@ -118,7 +120,7 @@ export async function storyState(
 export function changesBeyondTheLine(
   before: StoryState,
   after: StoryState,
-  target: { sceneId: string; stepId: string; content: string },
+  target: { sceneId: string; stepId: string; content: string | readonly string[] },
 ): string[] {
   const problems: string[] = [];
   if (after.appearanceRevision !== before.appearanceRevision) problems.push('the reader appearance changed');
@@ -144,12 +146,27 @@ export function changesBeyondTheLine(
       problems.push(`steps were added, removed or moved: ${wasSteps.join(',')} → ${isSteps.join(',')}`);
       continue;
     }
+    const contents = typeof target.content === 'string' ? [target.content] : target.content;
     was.timeline.forEach((step, index) => {
-      const expected = step.id === target.stepId ? { ...step, data: { ...step.data, content: target.content } } : step;
-      if (!isDeepStrictEqual(is.timeline[index], expected)) {
-        problems.push(step.id === target.stepId ? `step ${step.id} is not the selected line rewritten` : `step ${step.id} changed`);
-      }
+      const candidates = step.id === target.stepId
+        ? contents.map((content) => ({ ...step, data: { ...step.data, content } }))
+        : [step];
+      if (candidates.some((candidate) => isDeepStrictEqual(is.timeline[index], candidate))) return;
+      const what = step.id === target.stepId ? `step ${step.id} is not the selected line rewritten` : `step ${step.id} changed`;
+      problems.push(`${what}: ${fieldsApart(candidates[0], is.timeline[index]).join('; ')}`);
     });
   }
   return problems;
+}
+
+/** Which fields of a step, and of its `data`, are not what they should be — so a live run says how it went wrong. */
+function fieldsApart(expected: StoryStep, actual: StoryStep): string[] {
+  const apart = (path: string, want: Record<string, unknown>, got: Record<string, unknown>): string[] =>
+    [...new Set([...Object.keys(want), ...Object.keys(got)])]
+      .filter((key) => key !== 'data' && !isDeepStrictEqual(want[key], got[key]))
+      .map((key) => `${path}${key} ${JSON.stringify(want[key])} → ${JSON.stringify(got[key])}`);
+  return [
+    ...apart('', expected, actual),
+    ...apart('data.', expected.data ?? {}, actual.data ?? {}),
+  ];
 }
