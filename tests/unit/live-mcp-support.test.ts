@@ -85,13 +85,16 @@ describe('whether a change was the selected line rewritten and nothing more', ()
   it('reports the text put into the step next to it', () => {
     const after = withScene1([step('a', 'First.'), step('b', 'Second.', { speaker: 'Mira' }), step('c', 'Rewritten.')]);
 
-    expect(changesBeyondTheLine(before, after, target)).toEqual(['step b is not the selected line rewritten', 'step c changed']);
+    expect(changesBeyondTheLine(before, after, target)).toEqual([
+      'step b is not the selected line rewritten: data.content "Rewritten." → "Second."',
+      'step c changed: data.content "Third." → "Rewritten."',
+    ]);
   });
 
   it('reports the selected step changed in more than its text', () => {
     const after = withScene1([step('a', 'First.'), step('b', 'Rewritten.'), step('c', 'Third.')]);
 
-    expect(changesBeyondTheLine(before, after, target)).toEqual(['step b is not the selected line rewritten']);
+    expect(changesBeyondTheLine(before, after, target)).toEqual(['step b is not the selected line rewritten: data.speaker "Mira" → undefined']);
   });
 
   it('reports anything else in the story that moved', () => {
@@ -108,6 +111,15 @@ describe('whether a change was the selected line rewritten and nothing more', ()
       'scene scene_1 itself changed, beyond its steps',
       'scene scene_2 changed',
     ]);
+  });
+
+  // A triple click takes the line break after the line along; an agent may
+  // keep it or not, and either is the line rewritten.
+  it('takes any of the results it is offered for the selected step', () => {
+    const after = withScene1([step('a', 'First.'), step('b', 'Rewritten.\n', { speaker: 'Mira' }), step('c', 'Third.')]);
+
+    expect(changesBeyondTheLine(before, after, { ...target, content: ['Rewritten.', 'Rewritten.\n'] })).toEqual([]);
+    expect(changesBeyondTheLine(before, after, target)).toEqual(['step b is not the selected line rewritten: data.content "Rewritten." → "Rewritten.\\n"']);
   });
 
   it('does not pass a story nobody touched for a change to a step it does not have', () => {
