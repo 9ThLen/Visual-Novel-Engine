@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-10-21 — A block keeps its id across save and reopen
+
+Stage 0 of `docs/plans/COMIC-MODE-PLAN.md`; useful on its own to everything
+that addresses blocks, the assistant's editor context among them.
+
+- A step id did not survive a save: a block typed in the session, and every
+  run of text beside an inline chip, was saved as new steps each time, so a
+  block reopened under another id. Steps now carry `originBlockId` (and
+  `originPart` for a step made from one part of a block), and a scene opens
+  with every block under the id it was saved from.
+- Opening puts a block back together from its own steps only. It used to fold
+  any run of text and inline chips into one line, so two blocks could come
+  back as one; a line of dialogue with a chip came back as several. Steps
+  saved before this keep the old grouping.
+- A step whose block id is its own id says nothing new and is saved without
+  the fields, so a scene whose blocks all came from the store saves exactly as
+  before.
+- Two steps stored under one id get two ids when the scene opens. An
+  assistant's `replace_step` keeps the replaced step's block.
+- `src/lib/comic/comic-anchors.ts`: a sentence's address
+  (`<blockId>/p<part>/s<sentence>`), its print (the normalized full sentence),
+  and how an anchored setting finds its sentence again after edits — bound,
+  moved (once in the block, or once in the scene), changed (a corrected typo),
+  or detached. Nothing is fastened anew by guesswork.
+
 ## 2026-10-18 — Changing the block the author has open
 
 - **The assistant sees the settings of the block in focus.** When the author

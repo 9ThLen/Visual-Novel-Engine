@@ -261,6 +261,10 @@ export interface ResolveFocusedBlockInput {
   hasUnsavedChanges?: boolean;
 }
 
+function stepWithId(scene: SceneRecord, id: string | null): TimelineStep | undefined {
+  return id ? scene.timeline.find((item) => item.id === id) : undefined;
+}
+
 /** The id of the step a block will be saved as, when the block carries one. */
 function carriedStepId(block: DocumentBlock | undefined, partIndex: number | null): string | null {
   if (!block) return null;
@@ -310,10 +314,14 @@ export function resolveFocusedBlock(input: ResolveFocusedBlockInput): AiEditorFo
 
   let step = aligned?.stepByBlockPart.get(blockPartKey(focus.id, partIndex)) ?? null;
   if (!step) {
-    // With no document to read, a block loaded from the store still has the id
-    // of the step it was built from.
-    const carriedId = input.document ? carriedStepId(block, partIndex) : (partIndex === null ? focus.id : null);
-    const candidate = carriedId ? input.scene.timeline.find((item) => item.id === carriedId) : undefined;
+    // With no document to read, a block loaded from the store has the id of
+    // the step it was built from, or of the block that step was saved from.
+    const candidate = input.document
+      ? stepWithId(input.scene, carriedStepId(block, partIndex))
+      : partIndex === null
+        ? input.scene.timeline.find((item) => item.id === focus.id)
+          ?? input.scene.timeline.find((item) => item.originBlockId === focus.id && item.originPart === undefined)
+        : undefined;
     const expectedType = heldStep(block)?.blockType ?? (block?.kind === 'choice' ? 'choice' : null);
     if (candidate && (!expectedType || candidate.blockType === expectedType)) step = candidate;
   }

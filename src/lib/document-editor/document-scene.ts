@@ -177,11 +177,22 @@ function technicalSummary(step: TimelineStep, characters: Character[]): { label:
   return { label: step.blockType, summary: 'technical marker' };
 }
 
+/**
+ * The id a step's block opens under. A step that stands for its whole block
+ * gives the block back the id it was saved from; a step made from one part of
+ * a block is put back together with the rest of that block by
+ * `regroupBlocks`, and a step saved before blocks were remembered opens under
+ * its own id, as it always did.
+ */
+function blockIdForStep(step: TimelineStep): string {
+  return step.originBlockId && step.originPart === undefined ? step.originBlockId : step.id;
+}
+
 function timelineStepToDocumentBlock(step: TimelineStep, characters: Character[]): DocumentBlock {
   if (step.blockType === 'text') {
     const data = step.data as TextBlockData;
     return {
-      id: step.id,
+      id: blockIdForStep(step),
       kind: 'text',
       sourceStepId: step.id,
       sourceStep: step,
@@ -194,7 +205,7 @@ function timelineStepToDocumentBlock(step: TimelineStep, characters: Character[]
     const entry = data.entries[0];
     const character = characterForId(characters, entry?.characterId);
     return {
-      id: step.id,
+      id: blockIdForStep(step),
       kind: 'dialogue',
       sourceStepId: step.id,
       sourceStep: step,
@@ -209,7 +220,7 @@ function timelineStepToDocumentBlock(step: TimelineStep, characters: Character[]
   if (step.blockType === 'choice') {
     const data = step.data as ChoiceBlockData;
     return {
-      id: step.id,
+      id: blockIdForStep(step),
       kind: 'choice',
       sourceStepId: step.id,
       sourceStep: step,
@@ -224,7 +235,7 @@ function timelineStepToDocumentBlock(step: TimelineStep, characters: Character[]
 
   const summary = technicalSummary(step, characters);
   return {
-    id: step.id,
+    id: blockIdForStep(step),
     kind: 'technical',
     sourceStepId: step.id,
     sourceStep: step,
@@ -315,63 +326,154 @@ function isInlineSafeStep(step: TimelineStep): boolean {
   return step.enabled !== false && (step.conditions ?? []).length === 0;
 }
 
-function mergeInlineChipBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
+function inlineChipPart(block: DocumentBlock): DocumentInlinePart | null {
+  if (block.kind !== 'technical') return null;
+  if (block.blockType !== 'effect' && block.blockType !== 'music' && block.blockType !== 'sound') return null;
+  return isInlineSafeStep(block.step) ? timelineStepToInlinePart(block.step) : null;
+}
+
+/** The block a step made from one of its parts belongs to, if the step says so. */
+function partOrigin(block: DocumentBlock): string | undefined {
+  const step = block.sourceStep;
+  if (!step?.originBlockId || step.originPart === undefined) return undefined;
+  if (block.kind === 'text' || block.kind === 'dialogue' || inlineChipPart(block)) return step.originBlockId;
+  return undefined;
+}
+
+/**
+ * One block put back together from the steps its parts were saved as, in
+ * their order. A run of text that held only spaces is not saved as a step;
+ * it comes back as a space, so the parts keep the numbers they were saved
+ * under.
+ */
+function blockFromSavedParts(blockId: string, members: DocumentBlock[]): DocumentBlock {
+  const parts: DocumentInlinePart[] = [];
+  let hasChip = false;
+  for (const member of members) {
+    const at = member.sourceStep?.originPart ?? parts.length;
+    while (parts.length < at) parts.push({ type: 'text', text: ' ' });
+    if (member.kind === 'text') parts.push({ type: 'text', text: member.content });
+    else if (member.kind === 'dialogue') parts.push({ type: 'text', text: member.text });
+    else {
+      const chip = inlineChipPart(member);
+      if (chip) {
+        parts.push(chip);
+        hasChip = true;
+      }
+    }
+  }
+  const content = inlinePartsText(parts);
+  const dialogue = members.find((member): member is DocumentDialogueBlock => member.kind === 'dialogue');
+  if (dialogue) return { ...dialogue, id: blockId, text: content, parts };
+  const firstText = members.find((member): member is DocumentTextBlock => member.kind === 'text');
+  return {
+    id: blockId,
+    kind: 'text',
+    sourceStepId: firstText?.sourceStepId,
+    sourceStep: firstText?.sourceStep,
+    content,
+    ...(hasChip || parts.length > 1 ? { parts } : {}),
+  };
+}
+
+/**
+ * Puts the steps of a scene back into the blocks they were saved from.
+ *
+ * Steps that name the block they came from are grouped by it, and by nothing
+ * else: steps of two blocks stay two blocks, whatever lies between them. A
+ * step saved before blocks were remembered names none; such steps are grouped
+ * as they always were — a run of text with an inline chip in it becomes one
+ * line, and lines with no chip stay apart.
+ */
+function regroupBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
   const result: DocumentBlock[] = [];
-  let bufferedBlocks: DocumentBlock[] = [];
-  let bufferedParts: DocumentInlinePart[] = [];
-  let hasInlineChip = false;
+  let group: DocumentBlock[] = [];
+  let groupOrigin: string | undefined;
+  let legacyParts: DocumentInlinePart[] = [];
+  let legacyHasChip = false;
 
   const flush = () => {
-    if (!bufferedBlocks.length) return;
-    const firstText = bufferedBlocks.find((block): block is DocumentTextBlock => block.kind === 'text');
-    if (hasInlineChip) {
+    if (!group.length) return;
+    if (groupOrigin) {
+      result.push(blockFromSavedParts(groupOrigin, group));
+    } else if (legacyHasChip) {
+      const firstText = group.find((block): block is DocumentTextBlock => block.kind === 'text');
       result.push({
         id: firstText?.id || generateId('doc_text'),
         kind: 'text',
         sourceStepId: firstText?.sourceStepId,
         sourceStep: firstText?.sourceStep,
-        content: inlinePartsText(bufferedParts),
-        parts: bufferedParts,
+        content: inlinePartsText(legacyParts),
+        parts: legacyParts,
       });
     } else {
-      result.push(...bufferedBlocks);
+      result.push(...group);
     }
-    bufferedBlocks = [];
-    bufferedParts = [];
-    hasInlineChip = false;
+    group = [];
+    groupOrigin = undefined;
+    legacyParts = [];
+    legacyHasChip = false;
   };
 
   for (const block of blocks) {
-    if (block.kind === 'text') {
-      bufferedBlocks.push(block);
-      bufferedParts.push(...(block.parts ?? [{ type: 'text' as const, text: block.content }]));
+    const origin = partOrigin(block);
+    if (origin) {
+      if (!group.length || groupOrigin !== origin) flush();
+      groupOrigin = origin;
+      group.push(block);
       continue;
     }
-
-    if (
-      block.kind === 'technical'
-      && (block.blockType === 'effect' || block.blockType === 'music' || block.blockType === 'sound')
-      && isInlineSafeStep(block.step)
-    ) {
-      const inlinePart = timelineStepToInlinePart(block.step);
-      if (inlinePart) {
-        bufferedBlocks.push(block);
-        bufferedParts.push(inlinePart);
-        hasInlineChip = true;
-        continue;
-      }
+    const chip = inlineChipPart(block);
+    const legacy = !block.sourceStep?.originBlockId && (block.kind === 'text' || chip);
+    if (legacy) {
+      if (groupOrigin) flush();
+      group.push(block);
+      legacyParts.push(...(block.kind === 'text' ? (block.parts ?? [{ type: 'text' as const, text: block.content }]) : [chip!]));
+      if (chip) legacyHasChip = true;
+      continue;
     }
-
     flush();
     result.push(block);
   }
-
   flush();
-  return result;
+
+  // A block id is one block's: should two steps somewhere name the same
+  // block apart from each other, the later one opens under its own step id.
+  const used = new Set<string>();
+  return result.map((block) => {
+    if (!used.has(block.id)) {
+      used.add(block.id);
+      return block;
+    }
+    const id = block.sourceStep && !used.has(block.sourceStep.id) ? block.sourceStep.id : generateId('doc_block');
+    used.add(id);
+    return { ...block, id };
+  });
+}
+
+/**
+ * A scene can have been stored with two steps under one id, by an older
+ * editor or a copy that kept its original's. Each is saved under the id it
+ * opens with, so the later one opens under an id of its own: the first keeps
+ * the id, and the scene is set right by its next save. Block ids could once
+ * show the twins to the editor; a block now opens under the id it was saved
+ * from, and two twins can have been saved from two blocks.
+ */
+function withOwnStepIds(timeline: TimelineStep[]): TimelineStep[] {
+  const seen = new Set<string>();
+  return timeline.map((step) => {
+    if (!seen.has(step.id)) {
+      seen.add(step.id);
+      return step;
+    }
+    const id = generateId('step');
+    seen.add(id);
+    return { ...step, id };
+  });
 }
 
 export function sceneRecordToDocumentScene(sceneRecord: SceneRecord, characters: Character[] = []): DocumentScene {
-  const blocks = mergeInlineChipBlocks(sceneRecord.timeline.flatMap((step) => timelineStepToDocumentBlocks(step, characters)));
+  const blocks = regroupBlocks(withOwnStepIds(sceneRecord.timeline).flatMap((step) => timelineStepToDocumentBlocks(step, characters)));
   // Always ensure a trailing empty text block exists so the user has
   // somewhere to type (replaces the old separate line-draft input).
   // Avoid duplicating if the last block is already an empty text block.
@@ -693,44 +795,45 @@ function timelineStepFromInlineChip(part: Exclude<DocumentInlinePart, { type: 't
   return soundStepFromInlinePart(part);
 }
 
-type OnPartStep = (step: TimelineStep, partIndex: number) => void;
-
-function chipStepFromInlinePart(
-  part: Exclude<DocumentInlinePart, { type: 'text' }>,
-  partIndex: number,
-  onChipStep?: OnPartStep,
-): TimelineStep {
-  const step = timelineStepFromInlineChip(part);
-  onChipStep?.(step, partIndex);
-  return step;
-}
+/** Takes a step made from one part of a block and gives back the step as it is saved. */
+type OnPartStep = (step: TimelineStep, partIndex: number) => TimelineStep;
 
 function timelineFromInlineParts(
   parts: DocumentInlinePart[],
-  onTextStep?: OnPartStep,
-  onChipStep?: OnPartStep,
+  onTextStep: OnPartStep,
+  onChipStep: OnPartStep,
 ): TimelineStep[] {
   return parts.flatMap((part, partIndex) => {
-    if (part.type !== 'text') return [chipStepFromInlinePart(part, partIndex, onChipStep)];
-    const steps = textStepFromInlineText(part.text);
-    steps.forEach((step) => onTextStep?.(step, partIndex));
-    return steps;
+    if (part.type !== 'text') return [onChipStep(timelineStepFromInlineChip(part), partIndex)];
+    return textStepFromInlineText(part.text).map((step) => onTextStep(step, partIndex));
   });
 }
 
 function timelineFromDialogueInlineParts(
   block: DocumentDialogueBlock,
   characters: Character[],
-  onDialogueStep?: OnPartStep,
-  onChipStep?: OnPartStep,
+  onDialogueStep: OnPartStep,
+  onChipStep: OnPartStep,
 ): TimelineStep[] {
   return (block.parts ?? []).flatMap((part, partIndex) => {
-    if (part.type !== 'text') return [chipStepFromInlinePart(part, partIndex, onChipStep)];
+    if (part.type !== 'text') return [onChipStep(timelineStepFromInlineChip(part), partIndex)];
     const dialogueStep = dialogueStepForInlineText(block, characters, part.text);
-    if (!dialogueStep) return [];
-    onDialogueStep?.(dialogueStep, partIndex);
-    return [dialogueStep];
+    return dialogueStep ? [onDialogueStep(dialogueStep, partIndex)] : [];
   });
+}
+
+/**
+ * The step as it is saved from a block: it carries the block's id, and the
+ * part it came from when the block has parts. A step loaded from the store
+ * may carry another block's id from before a split or a merge; the block it
+ * is saved from now is the one it names. A step that is its whole block under
+ * the block's own id says nothing new and is saved without either, so a scene
+ * whose blocks all came from the store saves exactly as it was.
+ */
+function savedFromBlock(step: TimelineStep, blockId: string, partIndex: number | null): TimelineStep {
+  const { originBlockId: _formerBlock, originPart: _formerPart, ...rest } = step;
+  if (partIndex === null) return blockId === step.id ? rest : { ...rest, originBlockId: blockId };
+  return { ...rest, originBlockId: blockId, originPart: partIndex };
 }
 
 function generatedCharacterStepsForDialogue(
@@ -866,14 +969,16 @@ export function documentSceneToTimelineWithOrigins(
   const blockSteps: DocumentBlockStep[] = [];
   const recordBlock = (step: TimelineStep, blockId: string, partIndex: number | null = null): TimelineStep => {
     blockSteps.push({ stepId: step.id, blockId, partIndex });
-    return step;
+    return savedFromBlock(step, blockId, partIndex);
   };
-  const recordText = (step: TimelineStep, blockId: string, partIndex: number | null) => {
+  const recordText = (step: TimelineStep, blockId: string, partIndex: number | null): TimelineStep => {
     origins.push({ stepId: step.id, blockId, partIndex, field: 'content' });
+    return savedFromBlock(step, blockId, partIndex);
   };
-  const recordDialogue = (step: TimelineStep, blockId: string, partIndex: number | null) => {
+  const recordDialogue = (step: TimelineStep, blockId: string, partIndex: number | null): TimelineStep => {
     const entryId = (step.data as DialogueBlockData).entries[0]?.id;
     origins.push({ stepId: step.id, blockId, partIndex, field: 'entryText', ...(entryId ? { entryId } : {}) });
+    return savedFromBlock(step, blockId, partIndex);
   };
 
   const timeline = documentScene.blocks.flatMap((block, index) => {
@@ -902,8 +1007,7 @@ export function documentSceneToTimelineWithOrigins(
             },
           }
         : createTextStep({ content: block.content });
-      recordText(textStep, block.id, null);
-      return [textStep];
+      return [recordText(textStep, block.id, null)];
     }
 
     if (block.kind === 'dialogue') {
@@ -939,9 +1043,7 @@ export function documentSceneToTimelineWithOrigins(
           )
         : (() => {
             const dialogueStep = dialogueStepForBlock(block, characters);
-            if (!dialogueStep) return [];
-            recordDialogue(dialogueStep, block.id, null);
-            return [dialogueStep];
+            return dialogueStep ? [recordDialogue(dialogueStep, block.id, null)] : [];
           })();
       if (hideStep) {
         applyExplicitCharacterState(hideStep, visibleCharacters, currentSpriteByCharacter, currentPositionByCharacter);

@@ -16,13 +16,25 @@ export interface ScenePatchDescription { sceneId: string; sceneName: string; cha
 export class InvalidPatchError extends Error { constructor(message: string) { super(message); this.name = 'InvalidPatchError'; } }
 
 function clone<T>(value: T): T { return structuredClone(value); }
+/**
+ * Which editor block a step was saved from. A step put in another's place
+ * stays that block's: the assistant's step is read through a schema that
+ * knows nothing of where steps come from, and the block would otherwise open
+ * under a new id next time, losing what is anchored to it.
+ */
+function originOf(step: TimelineStep): Pick<TimelineStep, 'originBlockId' | 'originPart'> {
+  return {
+    ...(step.originBlockId !== undefined ? { originBlockId: step.originBlockId } : {}),
+    ...(step.originPart !== undefined ? { originPart: step.originPart } : {}),
+  };
+}
 /** A step with some fields of its `data` changed. Fields not named stay as they were; a named field is replaced whole. */
 function updatedStep(step: TimelineStep, data: Record<string, unknown>): TimelineStep {
   return { ...step, data: { ...(step.data as unknown as Record<string, unknown>), ...clone(data) } } as unknown as TimelineStep;
 }
 function applyOperation(scene: SceneRecord, operation: ScenePatchOperation): void {
   if (operation.op === 'insert_steps') { const index = operation.afterStepId === null ? 0 : scene.timeline.findIndex(s => s.id === operation.afterStepId) + 1; if (index < 0) throw new InvalidPatchError(`Unknown afterStepId: ${operation.afterStepId}`); scene.timeline.splice(index, 0, ...clone(operation.steps)); }
-  else if (operation.op === 'replace_step') { const index = scene.timeline.findIndex(s => s.id === operation.stepId); if (index < 0) throw new InvalidPatchError(`Unknown stepId: ${operation.stepId}`); scene.timeline[index] = clone(operation.step); }
+  else if (operation.op === 'replace_step') { const index = scene.timeline.findIndex(s => s.id === operation.stepId); if (index < 0) throw new InvalidPatchError(`Unknown stepId: ${operation.stepId}`); scene.timeline[index] = { ...originOf(scene.timeline[index]), ...clone(operation.step) }; }
   else if (operation.op === 'update_step') { const index = scene.timeline.findIndex(s => s.id === operation.stepId); if (index < 0) throw new InvalidPatchError(`Unknown stepId: ${operation.stepId}`); scene.timeline[index] = updatedStep(scene.timeline[index], operation.data); }
   else if (operation.op === 'delete_steps') { const ids = new Set(operation.stepIds); scene.timeline = scene.timeline.filter(s => !ids.has(s.id)); }
   else if (operation.op === 'update_scene_metadata') Object.assign(scene, clone(operation.updates));

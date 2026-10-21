@@ -116,6 +116,15 @@ export interface TimelineStep {
   collapsed: boolean;       // UI state: is block collapsed?
   enabled: boolean;         // Is this step active?
   conditions?: Condition[]; // Conditional execution
+  /**
+   * The editor block this step was saved from. A step id does not survive a
+   * save — a block typed this session, or a run of text beside an inline
+   * chip, is saved as new steps each time — so the block id is what stays,
+   * and reopening the scene gives the block that id back.
+   */
+  originBlockId?: string;
+  /** Which part of that block's inline parts this step was saved from, when the block had parts. */
+  originPart?: number;
 }
 
 // ── Block Data (union of all block payloads) ─────────────────────────────
