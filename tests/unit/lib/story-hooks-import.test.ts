@@ -2,6 +2,9 @@ import { exportStory, importStory } from '@/lib/story-hooks';
 import { CHARACTER_AUTHORING_SCHEMA_VERSION } from '@/lib/character-migration';
 import { useAppStore } from '@/stores/use-app-store';
 import { setMediaBlobStorageAdapterForTests } from '@/lib/idb-storage';
+import { addressSentences } from '@/lib/comic/comic-anchors';
+import { documentSceneToTimeline, sceneRecordToDocumentScene } from '@/lib/document-editor/document-scene';
+import { createTextStep } from '@/lib/engine/event-factory';
 
 const hasMediaBlob = vi.fn();
 const putMediaBlob = vi.fn();
@@ -21,6 +24,74 @@ describe('importStory', () => {
 
   afterAll(() => {
     setMediaBlobStorageAdapterForTests(null);
+  });
+
+  it('preserves block boundaries and sentence anchors through JSON export and import', async () => {
+    const timeline = documentSceneToTimeline({ sceneId: 'scene-1', sceneName: 'Scene', blocks: [
+      { id: 'paragraph-one', kind: 'text', content: 'Before.' },
+      { id: 'paragraph-two', kind: 'text', content: 'After.', parts: [
+        { type: 'effect', id: 'rain', effectType: 'rain', target: 'screen', intensity: 50, duration: 3 },
+        { type: 'text', text: 'After.' },
+      ] },
+    ] });
+    useAppStore.setState({
+      storiesMetadata: [{ id: 'story-origins', title: 'Origins', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 1 }],
+      sceneRecordsByStory: { 'story-origins': { 'scene-1': {
+        id: 'scene-1', storyId: 'story-origins', name: 'Scene', description: '', tags: [], timeline,
+        flowX: 0, flowY: 0, connections: [], isStart: true, createdAt: 1, updatedAt: 1,
+        sceneState: {
+          backgroundAssetId: null, backgroundTransition: 'fade', characters: [], activeEffects: [],
+          musicTrackId: null, musicPlaying: false, musicVolume: 1, variables: {}, dialogueHistory: [],
+          currentChoices: null, isTransitioning: false, transitionTarget: null,
+        },
+      } } },
+    });
+
+    const imported = await importStory(await exportStory('story-origins', useAppStore.getState()));
+    const scene = imported.scenes['scene-1'];
+    expect(scene.timeline.filter((step) => step.blockType !== 'background')).toEqual(
+      timeline.map((step) => ({ ...step, conditions: [] })),
+    );
+    expect(addressSentences(scene.timeline)).toEqual(addressSentences(timeline));
+    expect(sceneRecordToDocumentScene(scene).blocks.filter((block) => block.kind === 'text' && block.content)
+      .map((block) => block.id)).toEqual(['paragraph-one', 'paragraph-two']);
+  });
+
+  it.each([
+    { originBlockId: '' }, { originBlockId: 42 }, { originPart: 0 },
+    { originBlockId: 'block', originPart: -1 }, { originBlockId: 'block', originPart: 1.5 },
+    { originBlockId: 'block', originPart: '1' }, { originBlockId: 'block', originPart: Number.MAX_SAFE_INTEGER + 1 },
+  ])('drops an unreadable block origin and keeps the step with its words: %j', async (origin) => {
+    const step = createTextStep({ content: 'Keep this text.' });
+    const imported = await importStory(JSON.stringify({
+      title: 'Invalid origin', startSceneId: 'scene-1',
+      scenes: { 'scene-1': { id: 'scene-1', timeline: [{ ...step, ...origin }] } },
+    }));
+    const saved = imported.scenes['scene-1'].timeline.find((item) => item.id === step.id);
+    expect(saved).toEqual({ ...step, conditions: [] });
+    expect(sceneRecordToDocumentScene(imported.scenes['scene-1']).blocks)
+      .toContainEqual(expect.objectContaining({ id: step.id, kind: 'text', content: 'Keep this text.' }));
+  });
+
+  it('keeps a whole-block origin with no part', async () => {
+    const step = { ...createTextStep({ content: 'Whole line.' }), originBlockId: 'doc_line' };
+    const imported = await importStory(JSON.stringify({
+      title: 'Whole origin', startSceneId: 'scene-1',
+      scenes: { 'scene-1': { id: 'scene-1', timeline: [step] } },
+    }));
+    expect(imported.scenes['scene-1'].timeline.find((item) => item.id === step.id)).toMatchObject({ originBlockId: 'doc_line' });
+    expect(imported.scenes['scene-1'].timeline.find((item) => item.id === step.id)).not.toHaveProperty('originPart');
+  });
+
+  it('opens a sparse part left after deletions without allocating missing parts', async () => {
+    const step = { ...createTextStep({ content: 'Remaining sentence.' }), originBlockId: 'block', originPart: 1_000_000 };
+    const imported = await importStory(JSON.stringify({
+      title: 'Sparse origin', startSceneId: 'scene-1',
+      scenes: { 'scene-1': { id: 'scene-1', timeline: [step] } },
+    }));
+    const scene = sceneRecordToDocumentScene(imported.scenes['scene-1']);
+    expect(scene.blocks.find((block) => block.id === 'block')).toMatchObject({ kind: 'text', content: 'Remaining sentence.' });
+    expect(documentSceneToTimeline(scene).find((item) => item.id === step.id)?.data).toEqual(step.data);
   });
 
   it('keeps a video step through export and import', async () => {

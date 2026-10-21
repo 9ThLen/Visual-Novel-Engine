@@ -102,25 +102,24 @@ export function sentencePrint(sentence: string): string {
     .toLowerCase();
 }
 
-function textOf(step: TimelineStep): string | null {
-  if (step.blockType === 'text') return (step.data as TextBlockData).content ?? '';
-  if (step.blockType === 'dialogue') return (step.data as DialogueBlockData).entries[0]?.text ?? '';
-  return null;
+function textsOf(step: TimelineStep): string[] {
+  if (step.blockType === 'text') return [(step.data as TextBlockData).content ?? ''];
+  if (step.blockType === 'dialogue') return (step.data as DialogueBlockData).entries.map((entry) => entry.text ?? '');
+  return [];
 }
 
 /**
  * Every sentence of a scene's words, addressed. A step that does not say which
  * block it was saved from is its own block, under its own id — which is the
- * id that block opens under.
+ * id that block opens under. Dialogue entries keep their sentence boundaries,
+ * with sentence numbers continuing across entries within the same part.
  */
 export function addressSentences(timeline: TimelineStep[]): AddressedSentence[] {
   const addressed: AddressedSentence[] = [];
   for (const step of timeline) {
-    const text = textOf(step);
-    if (text === null) continue;
     const blockId = step.originBlockId ?? step.id;
     const part = step.originPart ?? 0;
-    splitSentences(text).forEach((sentence, index) => {
+    textsOf(step).flatMap((text) => splitSentences(text)).forEach((sentence, index) => {
       addressed.push({
         anchor: comicAnchor(blockId, part, index),
         blockId,

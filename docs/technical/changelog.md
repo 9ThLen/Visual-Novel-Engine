@@ -14,9 +14,15 @@ that addresses blocks, the assistant's editor context among them.
   any run of text and inline chips into one line, so two blocks could come
   back as one; a line of dialogue with a chip came back as several. Steps
   saved before this keep the old grouping.
-- A step whose block id is its own id says nothing new and is saved without
-  the fields, so a scene whose blocks all came from the store saves exactly as
-  before.
+- A block's parts become one line again only when nothing of theirs would be
+  lost. When the assistant gave one part another speaker or sprite, more
+  lines, a condition, its own text speed, or switched it off, the parts open
+  as lines of their own. A step put between the parts, or a chip switched off
+  among them, breaks the line in two; the second half opens as its own line,
+  with no spaces standing for the parts before it.
+- A step that never named a block and is its whole block under its own id is
+  saved without the fields, so a scene whose blocks all came from the store
+  saves exactly as before. A step that names a block keeps naming one.
 - Two steps stored under one id get two ids when the scene opens. An
   assistant's `replace_step` keeps the replaced step's block, also when the
   new step has an id of its own and the block named none: a block that opened
@@ -26,13 +32,17 @@ that addresses blocks, the assistant's editor context among them.
   opens under its step's id, so the block and its step share one id: the
   branch switcher finds the choice by its block, the story's branches by its
   step.
+- Story JSON import keeps `originBlockId` and `originPart`. An origin it
+  cannot read is dropped: the step opens as a block of its own and keeps its
+  words, as any other step does.
 - `src/lib/comic/comic-anchors.ts`: a sentence's address
   (`<blockId>/p<part>/s<sentence>`), its print (the normalized full sentence),
   and how an anchored setting finds its sentence again after edits — bound,
   moved (once in the block, or once in the scene), changed (a corrected typo),
-  or detached. Nothing is fastened anew by guesswork. Telling whether two
-  sentences are alike skips those too far apart in length and stops counting
-  an edit once it is too long.
+  or detached. Nothing is fastened anew by guesswork. Every line of a dialogue
+  step is addressed, its sentences numbered on from one line to the next.
+  Telling whether two sentences are alike skips those too far apart in length
+  and stops counting an edit once it is too long.
 
 ## 2026-10-18 — Changing the block the author has open
 
