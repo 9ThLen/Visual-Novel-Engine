@@ -182,9 +182,12 @@ function technicalSummary(step: TimelineStep, characters: Character[]): { label:
  * gives the block back the id it was saved from; a step made from one part of
  * a block is put back together with the rest of that block by
  * `regroupBlocks`, and a step saved before blocks were remembered opens under
- * its own id, as it always did.
+ * its own id, as it always did. A choice opens under its step's id whatever it
+ * names: the frame finds a choice's branch by its block's id, the story by its
+ * step's.
  */
 function blockIdForStep(step: TimelineStep): string {
+  if (step.blockType === 'choice') return step.id;
   return step.originBlockId && step.originPart === undefined ? step.originBlockId : step.id;
 }
 
@@ -326,10 +329,33 @@ function isInlineSafeStep(step: TimelineStep): boolean {
   return step.enabled !== false && (step.conditions ?? []).length === 0;
 }
 
+function isInlineChipStep(step: TimelineStep): boolean {
+  return (step.blockType === 'effect' || step.blockType === 'music' || step.blockType === 'sound') && isInlineSafeStep(step);
+}
+
 function inlineChipPart(block: DocumentBlock): DocumentInlinePart | null {
-  if (block.kind !== 'technical') return null;
-  if (block.blockType !== 'effect' && block.blockType !== 'music' && block.blockType !== 'sound') return null;
-  return isInlineSafeStep(block.step) ? timelineStepToInlinePart(block.step) : null;
+  return block.kind === 'technical' && isInlineChipStep(block.step) ? timelineStepToInlinePart(block.step) : null;
+}
+
+/** Text or an inline chip saved before blocks were remembered, which opening groups with its like beside it. */
+function isLegacyLineStep(step: TimelineStep): boolean {
+  return !step.originBlockId && (step.blockType === 'text' || isInlineChipStep(step));
+}
+
+/**
+ * The steps opening folds into one line with the step at `index`: a run of
+ * text and inline chips saved before blocks were remembered, with a chip among
+ * them. The line opens under the id of its first text step. Null when the step
+ * opens as a block of its own, or as a part of the block it names.
+ */
+export function legacyLineAt(timeline: TimelineStep[], index: number): { start: number; steps: TimelineStep[] } | null {
+  if (!isLegacyLineStep(timeline[index])) return null;
+  let start = index;
+  while (start > 0 && isLegacyLineStep(timeline[start - 1])) start -= 1;
+  let end = index + 1;
+  while (end < timeline.length && isLegacyLineStep(timeline[end])) end += 1;
+  const steps = timeline.slice(start, end);
+  return steps.some((step) => step.blockType !== 'text') ? { start, steps } : null;
 }
 
 /** The block a step made from one of its parts belongs to, if the step says so. */
@@ -424,8 +450,7 @@ function regroupBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
       continue;
     }
     const chip = inlineChipPart(block);
-    const legacy = !block.sourceStep?.originBlockId && (block.kind === 'text' || chip);
-    if (legacy) {
+    if (block.sourceStep && isLegacyLineStep(block.sourceStep)) {
       if (groupOrigin) flush();
       group.push(block);
       legacyParts.push(...(block.kind === 'text' ? (block.parts ?? [{ type: 'text' as const, text: block.content }]) : [chip!]));

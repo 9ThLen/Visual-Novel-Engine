@@ -134,23 +134,48 @@ export function addressSentences(timeline: TimelineStep[]): AddressedSentence[] 
   return addressed;
 }
 
+/**
+ * How many characters an edit has to change to make one print the other; past
+ * `limit`, only that it is more: the count stops at `limit + 1` once every
+ * way through the row has gone past it, since none comes back down.
+ */
+function editDistance(a: string, b: string, limit = Infinity): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    let least = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      least = Math.min(least, current[j]);
+    }
+    if (least > limit) return limit + 1;
+    previous = current;
+  }
+  return previous[b.length];
+}
+
 /** How alike two prints are, from 0 to 1: one less the share of characters an edit had to change. */
 export function printSimilarity(a: string, b: string): number {
   if (a === b) return 1;
   if (!a.length || !b.length) return 0;
-  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
-  for (let i = 1; i <= a.length; i += 1) {
-    const current = [i];
-    for (let j = 1; j <= b.length; j += 1) {
-      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-    previous = current;
-  }
-  return 1 - previous[b.length] / Math.max(a.length, b.length);
+  return 1 - editDistance(a, b) / Math.max(a.length, b.length);
 }
 
 /** Alike enough that a corrected typo, or a word changed, does not cut a setting loose. */
 export const SIMILAR_PRINT = 0.75;
+
+/**
+ * Whether two prints are `SIMILAR_PRINT` alike: whether an edit of at most
+ * `1 - SIMILAR_PRINT` of the longer one's characters makes one the other. An
+ * edit changes at least as many characters as the lengths differ by, so
+ * prints too far apart in length are told apart without counting.
+ */
+function isSimilarPrint(a: string, b: string): boolean {
+  if (a === b) return true;
+  const limit = Math.floor((1 - SIMILAR_PRINT) * Math.max(a.length, b.length));
+  if (Math.abs(a.length - b.length) > limit) return false;
+  return editDistance(a, b, limit) <= limit;
+}
 
 /**
  * Finds the sentence an anchored setting belongs to now.
@@ -178,9 +203,9 @@ export function resolveComicAnchor(anchored: ComicAnchored, sentences: Addressed
   if (sameWords.length === 1) return { status: 'moved', anchor: sameWords[0].anchor, from: anchored.anchor };
   if (sameWords.length > 1) return { status: 'detached' };
 
-  if (at && printSimilarity(at.print, print) >= SIMILAR_PRINT) {
-    const alike = sentences.filter((sentence) => sentence !== at && printSimilarity(sentence.print, print) >= SIMILAR_PRINT);
-    if (!alike.length) return { status: 'changed', anchor: at.anchor };
+  if (at && isSimilarPrint(at.print, print)) {
+    const alikeElsewhere = sentences.some((sentence) => sentence !== at && isSimilarPrint(sentence.print, print));
+    if (!alikeElsewhere) return { status: 'changed', anchor: at.anchor };
   }
   return { status: 'detached' };
 }

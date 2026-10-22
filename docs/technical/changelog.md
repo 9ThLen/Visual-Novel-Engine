@@ -18,15 +18,21 @@ that addresses blocks, the assistant's editor context among them.
   the fields, so a scene whose blocks all came from the store saves exactly as
   before.
 - Two steps stored under one id get two ids when the scene opens. An
-  assistant's `replace_step` keeps the replaced step's block.
-- A choice added in the editor is saved under its block's id, so the block and
-  its step share one id: the branch switcher finds the choice by its block,
-  the story's branches by its step.
+  assistant's `replace_step` keeps the replaced step's block, also when the
+  new step has an id of its own and the block named none: a block that opened
+  under the replaced step's id, or a line of text and chips saved before this
+  that opened under it.
+- A choice added in the editor is saved under its block's id, and a choice
+  opens under its step's id, so the block and its step share one id: the
+  branch switcher finds the choice by its block, the story's branches by its
+  step.
 - `src/lib/comic/comic-anchors.ts`: a sentence's address
   (`<blockId>/p<part>/s<sentence>`), its print (the normalized full sentence),
   and how an anchored setting finds its sentence again after edits — bound,
   moved (once in the block, or once in the scene), changed (a corrected typo),
-  or detached. Nothing is fastened anew by guesswork.
+  or detached. Nothing is fastened anew by guesswork. Telling whether two
+  sentences are alike skips those too far apart in length and stops counting
+  an edit once it is too long.
 
 ## 2026-10-18 — Changing the block the author has open
 

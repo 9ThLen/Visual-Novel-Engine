@@ -184,6 +184,56 @@ describe('a block keeps its id from one save to the next', () => {
     }
   });
 
+  describe('for a step the assistant replaced with a step of another id', () => {
+    const replace = (scene: SceneRecord, stepId: string, step: TimelineStep) => applyAiScenePatch(scene, {
+      storyId: scene.storyId, sceneId: scene.id, expectedRevision: computeSceneRevision(scene), explanation: '', operations: [{ op: 'replace_step', stepId, step }],
+    });
+    const text = (id: string, content: string) => ({ id, blockType: 'text', data: { content, typewriterSpeed: 30, anchorTo: 'background' }, collapsed: false, enabled: true }) as TimelineStep;
+
+    it('keeps a block saved this session', () => {
+      const scene = save(emptyScene(), [{ id: 'doc_a', kind: 'text', content: 'Old words.' }]);
+
+      const after = replace(scene, scene.timeline[0].id, text('ai-step-1', 'New words.'));
+
+      expect(contentBlocks(reopen(after)).map((block) => block.id)).toEqual(['doc_a']);
+      expect(anchorsOf(cycle(after))).toEqual(['doc_a/p0/s0']);
+    });
+
+    // Saved before blocks were remembered, the block opened under the step's own id.
+    it('keeps a block that opened under the step it replaced', () => {
+      const scene = emptyScene([text('step_a', 'Old words.'), text('step_b', 'Next line.')]);
+
+      const after = replace(scene, 'step_a', text('ai-step-1', 'New words.'));
+
+      expect(contentBlocks(reopen(after)).map((block) => block.id)).toEqual(['step_a', 'step_b']);
+      expect(anchorsOf(cycle(after))).toEqual(['step_a/p0/s0', 'step_b/p0/s0']);
+    });
+
+    it('keeps a line of text and chips saved before blocks were remembered, whichever of its steps it was', () => {
+      const scene = emptyScene([
+        text('step_a', 'Rain began. '),
+        { id: 'fx_rain', blockType: 'effect', data: { effectType: 'rain', target: 'screen', intensity: 50, duration: 3 }, collapsed: false, enabled: true } as TimelineStep,
+        text('step_b', 'It did not stop.'),
+      ]);
+
+      for (const after of [replace(scene, 'step_a', text('ai-step-1', 'Rain fell. ')), replace(scene, 'step_b', text('ai-step-2', 'It went on.'))]) {
+        const blocks = contentBlocks(reopen(after));
+        expect(blocks.map((block) => block.id)).toEqual(['step_a']);
+        expect(blocks[0].kind === 'text' && blocks[0].parts?.map((part) => part.type)).toEqual(['text', 'effect', 'text']);
+        expect(anchorsOf(cycle(after))).toEqual(['step_a/p0/s0', 'step_a/p2/s0']);
+      }
+    });
+
+    // The frame finds a choice's branch by its block's id, the story by its step's.
+    it('opens a choice under the step that replaced it', () => {
+      const choice = (id: string) => ({ id, blockType: 'choice', data: { options: [{ id: 'opt-a', text: 'Left', targetSceneId: null }] }, collapsed: false, enabled: true }) as TimelineStep;
+
+      const after = replace(emptyScene([choice('step_choice')]), 'step_choice', choice('ai-choice-1'));
+
+      expect(contentBlocks(reopen(after)).map((block) => block.id)).toEqual(['ai-choice-1']);
+    });
+  });
+
   it('for a line of dialogue with an inline chip, put back together as one line', () => {
     const dialogue: DocumentBlock = {
       id: 'doc_says',
@@ -286,6 +336,14 @@ describe('a setting fastened to a sentence, after the words were edited', () => 
     const setting = fastenedTo(typo, 'Nobdoy came.');
 
     expect(resolveComicAnchor(setting, sentencesOf(before))).toEqual({ status: 'changed', anchor: 'doc_a/p0/s1' });
+  });
+
+  // An edit changes at least as many characters as the lengths differ by.
+  it('is kept as changed when its words grew by a quarter, and cut loose when they grew more', () => {
+    const setting = fastenedTo([{ id: 'doc_a', kind: 'text', content: 'It was late.' }], 'It was late.');
+
+    expect(resolveComicAnchor(setting, sentencesOf([{ id: 'doc_a', kind: 'text', content: 'It was too late.' }]))).toEqual({ status: 'changed', anchor: 'doc_a/p0/s0' });
+    expect(resolveComicAnchor(setting, sentencesOf([{ id: 'doc_a', kind: 'text', content: 'It was far too late.' }]))).toEqual({ status: 'detached' });
   });
 
   it('is cut loose, not guessed, when its words are now in two places or nowhere alike', () => {
