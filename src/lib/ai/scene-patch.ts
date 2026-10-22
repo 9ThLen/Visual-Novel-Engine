@@ -1,3 +1,4 @@
+import { legacyLineAt } from '@/lib/document-editor/document-scene';
 import type { SceneRecord, TimelineStep } from '@/lib/engine/types';
 import { computeSceneRevision } from './scene-revision';
 import { stepDataUpdateProblems, type AiScenePatch, type ScenePatchOperation } from './scene-patch-types';
@@ -16,13 +17,43 @@ export interface ScenePatchDescription { sceneId: string; sceneName: string; cha
 export class InvalidPatchError extends Error { constructor(message: string) { super(message); this.name = 'InvalidPatchError'; } }
 
 function clone<T>(value: T): T { return structuredClone(value); }
+/**
+ * The timeline with `step` in place of the step at `index`, still in that
+ * step's block. The assistant's step is read through a schema that knows
+ * nothing of where steps come from, and may bring an id of its own: the block
+ * would otherwise open under another id next time, losing what is anchored to
+ * it.
+ */
+function withReplacedStep(timeline: TimelineStep[], index: number, step: TimelineStep): TimelineStep[] {
+  const before = timeline[index];
+  const result = [...timeline];
+  result[index] = step;
+  if (before.originBlockId !== undefined) {
+    result[index] = { originBlockId: before.originBlockId, ...(before.originPart !== undefined ? { originPart: before.originPart } : {}), ...step };
+    return result;
+  }
+  // A step that names no block opened under its own id, or in a line under the
+  // id of the line's first text. Under the same id it opens as it did.
+  if (step.id === before.id) return result;
+  const line = legacyLineAt(timeline, index);
+  if (!line) {
+    result[index] = { originBlockId: before.id, ...step };
+  } else if (line.steps.find((member) => member.blockType === 'text') === before) {
+    // The line's id is going: every step of it is fastened to that id, as the
+    // editor's next save would fasten them.
+    for (let part = 0; part < line.steps.length; part += 1) {
+      result[line.start + part] = { ...result[line.start + part], originBlockId: before.id, originPart: part };
+    }
+  }
+  return result;
+}
 /** A step with some fields of its `data` changed. Fields not named stay as they were; a named field is replaced whole. */
 function updatedStep(step: TimelineStep, data: Record<string, unknown>): TimelineStep {
   return { ...step, data: { ...(step.data as unknown as Record<string, unknown>), ...clone(data) } } as unknown as TimelineStep;
 }
 function applyOperation(scene: SceneRecord, operation: ScenePatchOperation): void {
   if (operation.op === 'insert_steps') { const index = operation.afterStepId === null ? 0 : scene.timeline.findIndex(s => s.id === operation.afterStepId) + 1; if (index < 0) throw new InvalidPatchError(`Unknown afterStepId: ${operation.afterStepId}`); scene.timeline.splice(index, 0, ...clone(operation.steps)); }
-  else if (operation.op === 'replace_step') { const index = scene.timeline.findIndex(s => s.id === operation.stepId); if (index < 0) throw new InvalidPatchError(`Unknown stepId: ${operation.stepId}`); scene.timeline[index] = clone(operation.step); }
+  else if (operation.op === 'replace_step') { const index = scene.timeline.findIndex(s => s.id === operation.stepId); if (index < 0) throw new InvalidPatchError(`Unknown stepId: ${operation.stepId}`); scene.timeline = withReplacedStep(scene.timeline, index, clone(operation.step)); }
   else if (operation.op === 'update_step') { const index = scene.timeline.findIndex(s => s.id === operation.stepId); if (index < 0) throw new InvalidPatchError(`Unknown stepId: ${operation.stepId}`); scene.timeline[index] = updatedStep(scene.timeline[index], operation.data); }
   else if (operation.op === 'delete_steps') { const ids = new Set(operation.stepIds); scene.timeline = scene.timeline.filter(s => !ids.has(s.id)); }
   else if (operation.op === 'update_scene_metadata') Object.assign(scene, clone(operation.updates));

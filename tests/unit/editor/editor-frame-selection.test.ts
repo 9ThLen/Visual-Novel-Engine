@@ -2,7 +2,7 @@ import { resolveFocusedBlock, resolveSelectionAnchors } from '@/lib/ai/editor-co
 import { createDocumentTechnicalBlock, sceneRecordToDocumentScene } from '@/lib/document-editor/document-scene';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import { saveDocumentSceneToRecord } from '@/lib/document-scene-persistence';
-import type { SceneRecord, TextBlockData } from '@/lib/engine/types';
+import type { SceneRecord, TextBlockData, TimelineStep } from '@/lib/engine/types';
 import { createVNPlateEditorHtml } from '@/lib/vn-plate-editor/embedded-html';
 import { normalizePlateDocumentScene } from '@/lib/vn-plate-editor/scene-normalizer';
 import type { VNPlateSelectionState } from '@/lib/vn-plate-editor/types';
@@ -538,6 +538,8 @@ describe('editor frame line ids', () => {
     return saveDocumentSceneToRecord(record, typed.scene, typed.characters);
   })();
   const [firstStep, secondStep] = stored.timeline;
+  // A line opens under the id of the block it was saved from; its step keeps its own.
+  const firstBlock = 'doc_first';
   let frame: ReturnType<typeof bootFrame>;
 
   beforeEach(() => {
@@ -568,14 +570,14 @@ describe('editor frame line ids', () => {
     .filter((block): block is Extract<DocumentBlock, { kind: 'text' }> => block.kind === 'text' && Boolean(block.content));
 
   it('gives the second half of a split line an id of its own, and its own step', () => {
-    const { line, clone } = split(firstStep.id, 'Перший', ' абзац, розбитий.');
+    const { line, clone } = split(firstBlock, 'Перший', ' абзац, розбитий.');
 
     const { document, scene } = saved();
     const [head, tail] = textBlocks(document);
 
-    expect(line.dataset.id).toBe(firstStep.id);
-    expect(clone.dataset.id).not.toBe(firstStep.id);
-    expect(head).toMatchObject({ id: firstStep.id, content: 'Перший', sourceStep: { id: firstStep.id } });
+    expect(line.dataset.id).toBe(firstBlock);
+    expect(clone.dataset.id).not.toBe(firstBlock);
+    expect(head).toMatchObject({ id: firstBlock, content: 'Перший', sourceStep: { id: firstStep.id } });
     expect(tail).toMatchObject({ id: clone.dataset.id, content: ' абзац, розбитий.' });
     expect(tail.sourceStep).toBeUndefined();
     expect(scene.timeline.map((step) => step.id).slice(0, 1)).toEqual([firstStep.id]);
@@ -586,18 +588,18 @@ describe('editor frame line ids', () => {
   // Enter at the start of a line leaves an empty line above the text: the text
   // is still the paragraph that was saved, so it is the one that keeps the id.
   it('leaves the id with the half that holds the text', () => {
-    const { line, clone } = split(firstStep.id, '', 'Перший абзац.');
+    const { line, clone } = split(firstBlock, '', 'Перший абзац.');
 
     const { document, scene } = saved();
 
-    expect(clone.dataset.id).toBe(firstStep.id);
-    expect(line.dataset.id).not.toBe(firstStep.id);
-    expect(textBlocks(document)[0]).toMatchObject({ id: firstStep.id, content: 'Перший абзац.' });
+    expect(clone.dataset.id).toBe(firstBlock);
+    expect(line.dataset.id).not.toBe(firstBlock);
+    expect(textBlocks(document)[0]).toMatchObject({ id: firstBlock, content: 'Перший абзац.' });
     expect(scene.timeline.map((step) => step.id)).toEqual([firstStep.id, secondStep.id]);
   });
 
   it('keeps apart a selection in the new half from the line it was split from', async () => {
-    const { clone } = split(firstStep.id, 'Перший', ' абзац, розбитий.');
+    const { clone } = split(firstBlock, 'Перший', ' абзац, розбитий.');
     const text = clone.firstChild as Text;
     frame.select(text, 1, text, 6);
     await settle();
@@ -669,7 +671,8 @@ describe('editor frame pasted blocks', () => {
     copy.dispatchEvent(new frame.target.Event('input', { bubbles: true }));
     return copy;
   };
-  const voidBlockOf = (stepId: string) => frame.target.document.querySelector(`#editor > [data-id="${stepId}"]`) as HTMLElement;
+  /** The block a stored step opens as: under the id of the block it was saved from. */
+  const voidBlockOf = (step: TimelineStep) => frame.target.document.querySelector(`#editor > [data-id="${step.originBlockId ?? step.id}"]`) as HTMLElement;
   const saved = () => {
     const document = frame.flush(false).scene as DocumentScene;
     const normalized = normalizePlateDocumentScene(document, []);
@@ -679,20 +682,20 @@ describe('editor frame pasted blocks', () => {
 
   it('gives a pasted block a step of its own, with the settings of the one it was copied from', () => {
     const background = stepOf('background');
-    const copy = paste(voidBlockOf(background.id));
+    const copy = paste(voidBlockOf(background));
 
     const scene = saved();
     const backgrounds = scene.timeline.filter((step) => step.blockType === 'background');
 
     idsAreOwn(scene);
-    expect(copy.dataset.id).not.toBe(background.id);
+    expect(copy.dataset.id).not.toBe(background.originBlockId);
     expect(backgrounds.map((step) => step.id)).toEqual([background.id, expect.not.stringMatching(background.id)]);
     expect(backgrounds[1].data).toEqual(backgrounds[0].data);
   });
 
   it('gives a pasted choice options of its own, so no two of them are one way out of the scene', () => {
     const choice = stepOf('choice');
-    paste(voidBlockOf(choice.id));
+    paste(voidBlockOf(choice));
 
     const scene = saved();
     const choices = scene.timeline.filter((step) => step.blockType === 'choice');
@@ -717,7 +720,10 @@ describe('editor frame pasted blocks', () => {
 
     idsAreOwn(scene);
     expect(effects).toHaveLength(2);
-    expect({ ...effects[1], id: effects[0].id }).toEqual(effects[0]);
+    // The same chip, each in a line of its own.
+    const asChip = ({ id: _id, originBlockId: _block, ...chip }: TimelineStep) => chip;
+    expect(asChip(effects[1])).toEqual(asChip(effects[0]));
+    expect(effects[1].originBlockId).not.toBe(effects[0].originBlockId);
   });
 
   // However two blocks came to be stored under one id, the next save of the
@@ -738,7 +744,7 @@ describe('editor frame pasted blocks', () => {
 
   it('keeps the copy under the same id of its own from one save to the next', () => {
     const background = stepOf('background');
-    const copy = paste(voidBlockOf(background.id));
+    const copy = paste(voidBlockOf(background));
 
     const first = saved();
     const idAfterFirst = copy.dataset.id;
