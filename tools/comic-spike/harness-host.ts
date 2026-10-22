@@ -5,7 +5,7 @@
  * sees the renderer and nothing else. Bundled by make-harness.mjs with the
  * real modules from src/lib/comic/spike.
  *
- * Query: ?pages=24&virtualize=1&keep=2&scale=1&img=img
+ * Query: ?pages=24&virtualize=1&keep=2&scale=1&img=img&unique=0
  * Results land in `window.__comicSpikeLog`; `window.__comicSpike.send(...)`
  * forwards a host message to the frame.
  */
@@ -32,8 +32,37 @@ target.__comicSpikeLog = log;
 
 const token = createComicSessionToken();
 const imageDir = params.get('img') || 'img';
-const images = Object.fromEntries(SPIKE_IMAGE_KEYS.map((key) => [key, new URL(`${imageDir}/${key}.png`, location.href).href]));
-const strip = { pages: buildSpikeStrip(number('pages', 24)), images };
+const imageUrl = (key: string, copy?: number) => new URL(`${imageDir}/${key}.png${copy === undefined ? '' : `?copy=${copy}`}`, location.href).href;
+const images: Record<string, string> = Object.fromEntries(SPIKE_IMAGE_KEYS.map((key) => [key, imageUrl(key)]));
+let pages = buildSpikeStrip(number('pages', 24));
+
+/*
+ * unique=N: the spike strip reuses ten pictures, so a browser decodes each
+ * once however long the strip is. A story has a new background every few
+ * pages. With unique=N, page i draws copy (i mod N) of each picture — a URL of
+ * its own, so a decode of its own — which is what a long strip of distinct art
+ * costs.
+ */
+const unique = number('unique', 0);
+if (unique > 0) {
+  pages = pages.map((page, index) => {
+    const copy = index % unique;
+    const rename = (key: string) => {
+      const copied = `${key}~${copy}`;
+      images[copied] = imageUrl(key, copy);
+      return copied;
+    };
+    return {
+      ...page,
+      panels: page.panels.map((panel) => ({
+        ...panel,
+        background: { ...panel.background, image: rename(panel.background.image) },
+        sprites: panel.sprites.map((sprite) => ({ ...sprite, image: rename(sprite.image) })),
+      })),
+    };
+  });
+}
+const strip = { pages, images };
 
 const frame = document.createElement('iframe');
 frame.title = 'Comic';

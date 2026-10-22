@@ -250,7 +250,9 @@ export default function ComicSpikeRoute() {
         keepScreens={keepScreens}
         font={font}
         textZoomMode={textZoomMode}
-        imageModules={renderer === 'native' ? spikeImageModules() : undefined}
+        // On Android expo-image takes the bundled module (it cannot read android_res
+        // URLs); on the web it wants the URL, which the strip already has.
+        imageModules={renderer === 'native' && Platform.OS !== 'web' ? spikeImageModules() : undefined}
         onMessage={handleMessage}
       />
     </View>

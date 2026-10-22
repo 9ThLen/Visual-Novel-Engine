@@ -1,6 +1,6 @@
 /**
  * Measures the comic spike in a browser, offline: every file is served from
- * <root> on disk through Playwright's router under http://comic.test, and every
+ * <root> on disk through Playwright's router under comic.test, and every
  * other request is aborted and listed. A page that needed the network shows up
  * as a blocked request, a missing image or a fallen-back font — never as a
  * quietly slower number.
@@ -36,6 +36,9 @@ const query = arg('query', 'pages=24&virtualize=1');
 const speed = Number(arg('speed', '2000'));
 const outFile = arg('out', '');
 const shotDir = arg('shots', '');
+// The studio needs a secure context (crypto.randomUUID at boot); the bare
+// harness does not care, and its published numbers were taken over http.
+const origin = mode === 'app' ? 'https://comic.test' : 'http://comic.test';
 
 const DEVICES = {
   phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
@@ -125,8 +128,8 @@ async function oneRun(browser, runIndex) {
   await cdp.send('Performance.enable');
 
   const url = mode === 'app'
-    ? `http://comic.test/comic-spike?${query}&autorun=1&speed=${speed}`
-    : `http://comic.test/index.html?${query}`;
+    ? `${origin}/comic-spike?${query}&autorun=1&speed=${speed}`
+    : `${origin}/index.html?${query}`;
   await page.goto(url, { waitUntil: 'commit' });
   const firstPage = await waitForEvent(page, 'firstPage');
 

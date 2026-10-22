@@ -204,10 +204,13 @@ const device = {
 };
 console.log(JSON.stringify({ device }));
 
-/** A run that never finishes is reported, with whatever the system says about it. */
+/**
+ * A run that never finishes is reported, with whatever the system says about
+ * it: the low-memory killer's lines for the app and for WebView's renderer.
+ */
 function killsOfApp() {
   return adb('logcat', '-d', '-v', 'brief').split(/\r?\n/)
-    .filter((line) => line.includes('lowmemorykiller') && line.includes(pkg))
+    .filter((line) => line.includes('lowmemorykiller') && (line.includes(pkg) || line.includes('sandboxed_process')))
     .map((line) => line.slice(0, 240));
 }
 
