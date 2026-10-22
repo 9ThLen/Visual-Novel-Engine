@@ -25,6 +25,12 @@ export interface ComicSpikeFrameProps {
    * scale text behind the renderer's back, to see what that does.
    */
   textZoomMode?: 'explicit' | 'system';
+  /**
+   * Native renderer only: the bundled image modules by key. expo-image loads
+   * a module directly; the file:///android_res/ URLs the WebView reads are
+   * nothing it understands.
+   */
+  imageModules?: Record<string, number>;
   onMessage: (message: ComicFrameMessage) => void;
   style?: StyleProp<ViewStyle>;
 }

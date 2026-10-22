@@ -143,10 +143,14 @@ const Panel = memo(function Panel({
   pageWidth: number;
   pageHeight: number;
   textScale: number;
-  images: Record<string, string>;
+  images: Record<string, string | number>;
   tracker: Tracker;
 }) {
   const width = panel.rect.w * pageWidth;
+  const source = (key: string) => {
+    const image = images[key];
+    return typeof image === 'number' ? image : { uri: image };
+  };
   const height = panel.rect.h * pageHeight;
   const { focusX, focusY, zoom } = panel.background;
   const [frames, setFrames] = useState<Record<string, { x: number; y: number; width: number; height: number }>>({});
@@ -221,7 +225,7 @@ const Panel = memo(function Panel({
     >
       <View style={{ position: 'absolute', left: 0, top: 0, width, height, transform: [{ translateX: shiftX }, { translateY: shiftY }, { scale: zoom }] }}>
         <Image
-          source={{ uri: images[panel.background.image] }}
+          source={source(panel.background.image)}
           contentFit="cover"
           contentPosition={{ left: `${Math.round(focusX * 100)}%`, top: `${Math.round(focusY * 100)}%` }}
           onLoad={() => markLoaded(`${panel.id}:bg`)}
@@ -234,7 +238,7 @@ const Panel = memo(function Panel({
           return (
             <Image
               key={`${sprite.image}-${index}`}
-              source={{ uri: images[sprite.image] }}
+              source={source(sprite.image)}
               contentFit="contain"
               onLoad={() => markLoaded(`${panel.id}:s${index}`)}
               onError={() => tracker.failedImages.push(sprite.image)}
@@ -313,7 +317,7 @@ const Page = memo(function Page({
   index: number;
   pageWidth: number;
   textScale: number;
-  images: Record<string, string>;
+  images: Record<string, string | number>;
   tracker: Tracker;
 }) {
   const pageHeight = pageWidth * page.aspect;
@@ -350,6 +354,7 @@ export const ComicSpikeNativeStrip = forwardRef<ComicSpikeFrameHandle, ComicSpik
   textScale,
   virtualize,
   keepScreens,
+  imageModules,
   onMessage,
   style,
 }, ref) {
@@ -372,8 +377,8 @@ export const ComicSpikeNativeStrip = forwardRef<ComicSpikeFrameHandle, ComicSpik
     releases: 0,
   });
   const tracker = trackerRef.current;
-  const pages = strip?.pages ?? [];
-  const images = strip?.images ?? {};
+  const pages = useMemo(() => strip?.pages ?? [], [strip]);
+  const images = useMemo<Record<string, string | number>>(() => imageModules ?? strip?.images ?? {}, [imageModules, strip]);
 
   const stats = useCallback((): ComicFrameStats => {
     let overflow = 0;

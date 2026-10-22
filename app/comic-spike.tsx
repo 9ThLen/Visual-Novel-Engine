@@ -11,7 +11,7 @@
  * (`adb shell am start -d <scheme>://comic-spike?...`, or a browser URL):
  *   renderer=html|native  pages=24  virtualize=1|0  keep=2  scale=<number>
  *   assets=cache|res (Android)  zoom=explicit|system (Android)
- *   autorun=1  speed=<px per second>
+ *   autorun=1  speed=<px per second>  delay=<ms before the scroll test>
  * Stage 2 replaces this screen with the real ComicReader.
  */
 import { useLocalSearchParams } from 'expo-router';
@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ComicSpikeFrame } from '@/components/comic/ComicSpikeFrame';
 import { ComicSpikeNativeStrip } from '@/components/comic/ComicSpikeNativeStrip';
 import type { ComicSpikeFrameHandle } from '@/components/comic/comic-spike-frame-types';
-import { resolveSpikeImageUrls, type SpikeAssetMode } from '@/components/comic/spike-image-urls';
+import { resolveSpikeImageUrls, spikeImageModules, type SpikeAssetMode } from '@/components/comic/spike-image-urls';
 import type { ComicFrameMessage } from '@/lib/comic/spike/comic-renderer-html';
 import { SPIKE_FONT_FAMILY, SPIKE_FONT_TTF_BASE64 } from '@/lib/comic/spike/spike-font';
 import { buildSpikeStrip } from '@/lib/comic/spike/spike-page-plan';
@@ -36,8 +36,27 @@ function numberParam(value: string | undefined, fallback: number, min: number, m
   return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
 }
 
+/*
+ * Android cuts a logcat line at about 4 KB, and the stats list every image URL
+ * the frame loaded. The console line keeps the count and any that left the
+ * device (http/https); the web log keeps everything.
+ */
+function compact(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const entries = Object.entries(value as Record<string, unknown>).map(([key, field]) => {
+    if (key === 'networkRequests' && Array.isArray(field)) {
+      return [key, { count: field.length, remote: field.filter((url) => /^https?:/.test(String(url))) }];
+    }
+    if ((key === 'failedImages' || key === 'missingImages') && Array.isArray(field)) {
+      return [key, { count: field.length, first: field.slice(0, 3) }];
+    }
+    return [key, compact(field)];
+  });
+  return Object.fromEntries(entries);
+}
+
 function record(event: string, data: Record<string, unknown>): string {
-  const line = JSON.stringify({ event, platform: Platform.OS, ...data });
+  const line = JSON.stringify(compact({ event, platform: Platform.OS, ...data }));
   console.log(`[comic-spike] ${line}`);
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     const target = window as unknown as { __comicSpikeLog?: unknown[] };
@@ -70,6 +89,7 @@ export default function ComicSpikeRoute() {
     zoom?: string;
     autorun?: string;
     speed?: string;
+    delay?: string;
   }>();
   const insets = useSafeAreaInsets();
   const [renderer, setRenderer] = useState<RendererKind>(params.renderer === 'native' ? 'native' : 'html');
@@ -79,7 +99,12 @@ export default function ComicSpikeRoute() {
   const pageCount = numberParam(params.pages, 24, 1, 200);
   const keepScreens = numberParam(params.keep, 2, 0.5, 10);
   const speed = numberParam(params.speed, 2000, 100, 20000);
-  const assetMode: SpikeAssetMode = params.assets === 'res' ? 'res' : 'cache';
+  // Room for an outside tool to read memory before the scroll starts, so its
+  // probing does not land in the frame times.
+  const scrollDelay = numberParam(params.delay, 1500, 0, 60000);
+  // 'res' by default: in a release build expo-asset hands back a drawable's
+  // name, not a file, so 'cache' leaves the WebView nothing to load.
+  const assetMode: SpikeAssetMode = params.assets === 'cache' ? 'cache' : 'res';
   const textZoomMode = params.zoom === 'system' ? 'system' : 'explicit';
   const autorun = params.autorun === '1';
 
@@ -130,7 +155,10 @@ export default function ComicSpikeRoute() {
     const step = autorunStepRef.current;
     autorunStepRef.current += 1;
     if (step === 0) {
-      setTimeout(() => frameRef.current?.send({ type: 'scrollTest', pxPerSecond: speed }), 1500);
+      setTimeout(() => {
+        record('scrollStart', { renderer });
+        frameRef.current?.send({ type: 'scrollTest', pxPerSecond: speed });
+      }, scrollDelay);
     } else if (step <= AUTORUN_SCALES.length) {
       setTextScale(AUTORUN_SCALES[step - 1]);
       setTimeout(() => {
@@ -140,7 +168,7 @@ export default function ComicSpikeRoute() {
     } else {
       record('done', { renderer });
     }
-  }, [autorun, renderer, speed]);
+  }, [autorun, renderer, scrollDelay, speed]);
 
   const handleMessage = useCallback((message: ComicFrameMessage) => {
     if (message.type === 'firstPage') {
@@ -222,6 +250,7 @@ export default function ComicSpikeRoute() {
         keepScreens={keepScreens}
         font={font}
         textZoomMode={textZoomMode}
+        imageModules={renderer === 'native' ? spikeImageModules() : undefined}
         onMessage={handleMessage}
       />
     </View>

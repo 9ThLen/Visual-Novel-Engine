@@ -1,3 +1,4 @@
+// @ts-expect-error The installed jsdom test runtime does not ship declarations.
 import { JSDOM } from 'jsdom';
 
 import {
@@ -20,12 +21,12 @@ const TOKEN = 'token-for-tests';
  * jsdom has no layout, decoder or IntersectionObserver, so those are stubbed.
  */
 function bootFrame(overrides: Partial<ComicRendererBoot> = {}) {
-  const posted: Array<Record<string, unknown>> = [];
+  const posted: Record<string, unknown>[] = [];
   const html = createComicRendererHtml({ token: TOKEN, textScale: 1, virtualize: true, keepScreens: 2, ...overrides });
   const dom = new JSDOM(html, {
     runScripts: 'dangerously',
     pretendToBeVisual: true,
-    beforeParse(window) {
+    beforeParse(window: Window & typeof globalThis) {
       Object.assign(window, {
         ReactNativeWebView: { postMessage: (data: string) => posted.push(JSON.parse(data)) },
         IntersectionObserver: class {
@@ -53,7 +54,7 @@ function stripOf(pages: ComicSpikePage[], images?: Record<string, string>) {
   };
 }
 
-const frames: JSDOM[] = [];
+const frames: { window: Window }[] = [];
 afterEach(() => {
   while (frames.length) frames.pop()?.window.close();
 });
@@ -88,7 +89,7 @@ describe('the comic frame, booted as a WebView boots it', () => {
     // Pages beyond the first wait for the observer.
     expect(document.querySelectorAll('.page')[5].children).toHaveLength(0);
 
-    const [firstPage] = frame.messages('firstPage') as unknown as Array<Extract<ComicFrameMessage, { type: 'firstPage' }>>;
+    const [firstPage] = frame.messages('firstPage') as unknown as Extract<ComicFrameMessage, { type: 'firstPage' }>[];
     expect(firstPage.marks.firstPagePainted).toBeGreaterThanOrEqual(firstPage.marks.stripReceived ?? 0);
     expect(firstPage.stats.pages).toBe(24);
     expect(firstPage.stats.livePages).toBe(1);
@@ -117,7 +118,7 @@ describe('the comic frame, booted as a WebView boots it', () => {
     frame.send({ type: 'strip', strip: stripOf(pages, {}) });
     await vi.waitFor(() => expect(frame.messages('firstPage')).toHaveLength(1));
 
-    const [firstPage] = frame.messages('firstPage') as unknown as Array<Extract<ComicFrameMessage, { type: 'firstPage' }>>;
+    const [firstPage] = frame.messages('firstPage') as unknown as Extract<ComicFrameMessage, { type: 'firstPage' }>[];
     expect(firstPage.stats.missingImages).toContain(pages[0].panels[0].background.image);
     expect(frame.dom.window.document.querySelectorAll('img[src]')).toHaveLength(0);
   });
@@ -130,7 +131,7 @@ describe('the comic frame, booted as a WebView boots it', () => {
     const firstPanel = frame.dom.window.document.querySelector('.panel');
 
     frame.send({ type: 'textScale', scale: 2 });
-    const [stats] = frame.messages('stats') as unknown as Array<Extract<ComicFrameMessage, { type: 'stats' }>>;
+    const [stats] = frame.messages('stats') as unknown as Extract<ComicFrameMessage, { type: 'stats' }>[];
     expect(stats.stats.textScale).toBe(2);
     expect(frame.dom.window.document.documentElement.style.getPropertyValue('--text-scale')).toBe('2');
     expect(frame.dom.window.document.querySelector('.panel')).toBe(firstPanel);
@@ -152,6 +153,9 @@ describe('the comic frame document', () => {
       font: { family: 'Spike Font', dataUri: 'data:font/ttf;base64,AAEAAA==' },
     });
     expect(accepted).toContain("font-family: 'Spike Font'");
+    // The font's --bubble-font must come after the default one, or the default
+    // wins and every bubble falls back with the font loaded and unused.
+    expect(accepted.lastIndexOf("--bubble-font: 'Spike Font'")).toBeGreaterThan(accepted.indexOf('--bubble-font: system-ui'));
 
     for (const font of [
       { family: 'Remote', dataUri: 'https://fonts.example/remote.ttf' },

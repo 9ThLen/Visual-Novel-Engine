@@ -244,6 +244,11 @@ body {
 .bubble.overflow { outline: 3px solid #e5484d; outline-offset: 1px; }
 `;
 
+/*
+ * The font's own :root rule must come after STYLES, whose :root sets the
+ * default --bubble-font: in one style sheet the later rule wins, and the first
+ * Android build drew every bubble in Roboto with the embedded font loaded.
+ */
 export function createComicRendererHtml(boot: ComicRendererBoot): string {
   const font = boot.font && FONT_DATA_URI.test(boot.font.dataUri) && FONT_FAMILY.test(boot.font.family)
     ? boot.font
@@ -267,7 +272,7 @@ export function createComicRendererHtml(boot: ComicRendererBoot): string {
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy" content="${FRAME_CSP}" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>${fontFace}${STYLES}</style>
+  <style>${STYLES}${fontFace}</style>
 </head>
 <body>
   <main id="strip" aria-label="Comic"></main>
