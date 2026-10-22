@@ -10,6 +10,7 @@ import {
   type ComicAnchored,
 } from '@/lib/comic/comic-anchors';
 import { sceneRecordToDocumentScene } from '@/lib/document-editor/document-scene';
+import { expandActivePath } from '@/lib/document-editor/story-path';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import { saveDocumentSceneToRecord } from '@/lib/document-scene-persistence';
 import type { SceneRecord, TextBlockData, TimelineStep } from '@/lib/engine/types';
@@ -138,6 +139,22 @@ describe('a block keeps its id from one save to the next', () => {
 
     expect(blocks).toHaveLength(1);
     expect(blocks[0]).toMatchObject({ id: 'step_a', content: 'Rain began. It did not stop.' });
+  });
+
+  // The frame finds a choice's branch by its block's id, the story by its step's.
+  it('for a choice added this session, saved under the id its branch is known by', () => {
+    const choice: DocumentBlock = {
+      id: 'doc_choice_new',
+      kind: 'choice',
+      question: 'Choice',
+      options: [{ id: 'opt-a', text: 'Left', targetSceneId: 'scene-a' }, { id: 'opt-b', text: 'Right', targetSceneId: null }],
+    };
+    const first = save(emptyScene(), [choice]);
+    const target = { ...emptyScene(), id: 'scene-a', isStart: false };
+
+    expect(Object.keys(expandActivePath([first, target]).branchInfoByChoiceStepId)).toEqual(['doc_choice_new']);
+    expect(contentBlocks(reopen(first)).map((block) => block.id)).toEqual(['doc_choice_new']);
+    expect(cycle(first).timeline).toEqual(first.timeline);
   });
 
   it('for a pasted copy: the copy has its own id, and the sentences of each are its own', () => {

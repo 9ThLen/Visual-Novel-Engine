@@ -19,6 +19,9 @@ that addresses blocks, the assistant's editor context among them.
   before.
 - Two steps stored under one id get two ids when the scene opens. An
   assistant's `replace_step` keeps the replaced step's block.
+- A choice added in the editor is saved under its block's id, so the block and
+  its step share one id: the branch switcher finds the choice by its block,
+  the story's branches by its step.
 - `src/lib/comic/comic-anchors.ts`: a sentence's address
   (`<blockId>/p<part>/s<sentence>`), its print (the normalized full sentence),
   and how an anchored setting finds its sentence again after edits — bound,

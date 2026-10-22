@@ -1068,14 +1068,19 @@ export function documentSceneToTimelineWithOrigins(
           },
         }, block.id)];
       }
+      // A new choice is saved under its block's id: the frame knows a choice's
+      // branch only by the id of its block, and the story knows it by its step's.
       return [
-        recordBlock(createChoiceStep({
-          options: block.options.map((option) => ({
-            id: option.id,
-            text: option.text,
-            targetSceneId: option.targetSceneId,
-          })),
-        }), block.id),
+        recordBlock({
+          ...createChoiceStep({
+            options: block.options.map((option) => ({
+              id: option.id,
+              text: option.text,
+              targetSceneId: option.targetSceneId,
+            })),
+          }),
+          id: block.id,
+        }, block.id),
       ];
     }
 
