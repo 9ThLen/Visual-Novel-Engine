@@ -27,7 +27,8 @@ that addresses blocks, the assistant's editor context among them.
   assistant's `replace_step` keeps the replaced step's block, also when the
   new step has an id of its own and the block named none: a block that opened
   under the replaced step's id, or a line of text and chips saved before this
-  that opened under it.
+  that opened under it. Such a line whose text has a speed of its own opens
+  as lines of their own after that, rather than lose the speed.
 - A choice added in the editor is saved under its block's id, and a choice
   opens under its step's id, so the block and its step share one id: the
   branch switcher finds the choice by its block, the story's branches by its

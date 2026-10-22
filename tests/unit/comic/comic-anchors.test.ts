@@ -13,7 +13,7 @@ import { sceneRecordToDocumentScene } from '@/lib/document-editor/document-scene
 import { expandActivePath } from '@/lib/document-editor/story-path';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import { saveDocumentSceneToRecord } from '@/lib/document-scene-persistence';
-import { createBackgroundStep, createDialogueEntry, createDialogueStep } from '@/lib/engine/event-factory';
+import { createBackgroundStep, createDialogueEntry, createDialogueStep, createTextStep } from '@/lib/engine/event-factory';
 import type { DialogueBlockData, SceneRecord, TextBlockData, TimelineStep } from '@/lib/engine/types';
 import { normalizePlateDocumentScene } from '@/lib/vn-plate-editor/scene-normalizer';
 
@@ -234,19 +234,32 @@ describe('a block keeps its id from one save to the next', () => {
       expect(anchorsOf(cycle(after))).toEqual(['step_a/p0/s0', 'step_b/p0/s0']);
     });
 
-    it('keeps a line of text and chips saved before blocks were remembered, whichever of its steps it was', () => {
-      const scene = emptyScene([
-        text('step_a', 'Rain began. '),
-        { id: 'fx_rain', blockType: 'effect', data: { effectType: 'rain', target: 'screen', intensity: 50, duration: 3 }, collapsed: false, enabled: true } as TimelineStep,
-        text('step_b', 'It did not stop.'),
-      ]);
+    const rainStep = { id: 'fx_rain', blockType: 'effect', data: { effectType: 'rain', target: 'screen', intensity: 50, duration: 3 }, collapsed: false, enabled: true } as TimelineStep;
 
-      for (const after of [replace(scene, 'step_a', text('ai-step-1', 'Rain fell. ')), replace(scene, 'step_b', text('ai-step-2', 'It went on.'))]) {
+    // The editor saved every run of text in a line with the settings a new text step has.
+    it('keeps a line of text and chips saved before blocks were remembered, whichever of its steps it was', () => {
+      const lineText = (id: string, content: string) => ({ ...createTextStep({ content }), id });
+      const scene = emptyScene([lineText('step_a', 'Rain began. '), rainStep, lineText('step_b', 'It did not stop.')]);
+
+      for (const after of [replace(scene, 'step_a', lineText('ai-step-1', 'Rain fell. ')), replace(scene, 'step_b', lineText('ai-step-2', 'It went on.'))]) {
         const blocks = contentBlocks(reopen(after));
         expect(blocks.map((block) => block.id)).toEqual(['step_a']);
         expect(blocks[0].kind === 'text' && blocks[0].parts?.map((part) => part.type)).toEqual(['text', 'effect', 'text']);
         expect(anchorsOf(cycle(after))).toEqual(['step_a/p0/s0', 'step_a/p2/s0']);
       }
+    });
+
+    // A line's runs of text are saved with a new text step's settings, so
+    // putting these back into one line would lose their speed.
+    it('opens such a line as lines of its own when its text has a speed of its own, and keeps the speed', () => {
+      const scene = emptyScene([text('step_a', 'Rain began. '), rainStep, text('step_b', 'It did not stop.')]);
+
+      const after = replace(scene, 'step_a', text('ai-step-1', 'Rain fell. '));
+
+      expect(contentBlocks(reopen(after)).map((block) => block.id)).toEqual(['step_a', 'fx_rain', 'step_b']);
+      const saved = cycle(after);
+      expect(anchorsOf(saved)).toEqual(['step_a/p0/s0', 'step_b/p0/s0']);
+      expect(saved.timeline.filter((step) => step.blockType === 'text').map((step) => (step.data as TextBlockData).typewriterSpeed)).toEqual([30, 30]);
     });
 
     // The frame finds a choice's branch by its block's id, the story by its step's.
