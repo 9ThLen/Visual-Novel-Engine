@@ -13,7 +13,8 @@ import { sceneRecordToDocumentScene } from '@/lib/document-editor/document-scene
 import { expandActivePath } from '@/lib/document-editor/story-path';
 import type { DocumentBlock, DocumentInlinePart, DocumentScene } from '@/lib/document-editor/types';
 import { saveDocumentSceneToRecord } from '@/lib/document-scene-persistence';
-import type { SceneRecord, TextBlockData, TimelineStep } from '@/lib/engine/types';
+import { createBackgroundStep, createDialogueEntry, createDialogueStep, createTextStep } from '@/lib/engine/event-factory';
+import type { DialogueBlockData, SceneRecord, TextBlockData, TimelineStep } from '@/lib/engine/types';
 import { normalizePlateDocumentScene } from '@/lib/vn-plate-editor/scene-normalizer';
 
 function emptyScene(timeline: TimelineStep[] = []): SceneRecord {
@@ -79,6 +80,30 @@ describe('sentences as the comic counts them', () => {
   it('reads an anchor back into its parts', () => {
     expect(parseComicAnchor(comicAnchor('doc_a/b', 2, 7))).toEqual({ blockId: 'doc_a/b', part: 2, sentence: 7 });
     expect(parseComicAnchor('not an anchor')).toBeNull();
+  });
+
+  it('numbers sentences across every dialogue entry without joining unfinished sentences', () => {
+    const step = {
+      ...createDialogueStep({ entries: [
+        createDialogueEntry({ text: 'One. Two.' }),
+        createDialogueEntry({ text: '' }),
+        createDialogueEntry({ text: 'An unfinished line' }),
+        createDialogueEntry({ text: 'Another line. Last.' }),
+      ] }),
+      originBlockId: 'doc_dialogue',
+      originPart: 2,
+    };
+    const sentences = addressSentences([step]);
+
+    expect(sentences.map(({ text, anchor }) => [text, anchor])).toEqual([
+      ['One.', 'doc_dialogue/p2/s0'], ['Two.', 'doc_dialogue/p2/s1'],
+      ['An unfinished line', 'doc_dialogue/p2/s2'],
+      ['Another line.', 'doc_dialogue/p2/s3'], ['Last.', 'doc_dialogue/p2/s4'],
+    ]);
+    expect(new Set(sentences.map(({ anchor }) => anchor)).size).toBe(sentences.length);
+    expect(resolveComicAnchor(sentences[4], sentences)).toEqual({ status: 'bound', anchor: 'doc_dialogue/p2/s4' });
+    const { originBlockId: _block, originPart: _part, ...legacy } = step;
+    expect(addressSentences([legacy]).at(-1)?.anchor).toBe(`${step.id}/p0/s4`);
   });
 });
 
@@ -209,19 +234,32 @@ describe('a block keeps its id from one save to the next', () => {
       expect(anchorsOf(cycle(after))).toEqual(['step_a/p0/s0', 'step_b/p0/s0']);
     });
 
-    it('keeps a line of text and chips saved before blocks were remembered, whichever of its steps it was', () => {
-      const scene = emptyScene([
-        text('step_a', 'Rain began. '),
-        { id: 'fx_rain', blockType: 'effect', data: { effectType: 'rain', target: 'screen', intensity: 50, duration: 3 }, collapsed: false, enabled: true } as TimelineStep,
-        text('step_b', 'It did not stop.'),
-      ]);
+    const rainStep = { id: 'fx_rain', blockType: 'effect', data: { effectType: 'rain', target: 'screen', intensity: 50, duration: 3 }, collapsed: false, enabled: true } as TimelineStep;
 
-      for (const after of [replace(scene, 'step_a', text('ai-step-1', 'Rain fell. ')), replace(scene, 'step_b', text('ai-step-2', 'It went on.'))]) {
+    // The editor saved every run of text in a line with the settings a new text step has.
+    it('keeps a line of text and chips saved before blocks were remembered, whichever of its steps it was', () => {
+      const lineText = (id: string, content: string) => ({ ...createTextStep({ content }), id });
+      const scene = emptyScene([lineText('step_a', 'Rain began. '), rainStep, lineText('step_b', 'It did not stop.')]);
+
+      for (const after of [replace(scene, 'step_a', lineText('ai-step-1', 'Rain fell. ')), replace(scene, 'step_b', lineText('ai-step-2', 'It went on.'))]) {
         const blocks = contentBlocks(reopen(after));
         expect(blocks.map((block) => block.id)).toEqual(['step_a']);
         expect(blocks[0].kind === 'text' && blocks[0].parts?.map((part) => part.type)).toEqual(['text', 'effect', 'text']);
         expect(anchorsOf(cycle(after))).toEqual(['step_a/p0/s0', 'step_a/p2/s0']);
       }
+    });
+
+    // A line's runs of text are saved with a new text step's settings, so
+    // putting these back into one line would lose their speed.
+    it('opens such a line as lines of its own when its text has a speed of its own, and keeps the speed', () => {
+      const scene = emptyScene([text('step_a', 'Rain began. '), rainStep, text('step_b', 'It did not stop.')]);
+
+      const after = replace(scene, 'step_a', text('ai-step-1', 'Rain fell. '));
+
+      expect(contentBlocks(reopen(after)).map((block) => block.id)).toEqual(['step_a', 'fx_rain', 'step_b']);
+      const saved = cycle(after);
+      expect(anchorsOf(saved)).toEqual(['step_a/p0/s0', 'step_b/p0/s0']);
+      expect(saved.timeline.filter((step) => step.blockType === 'text').map((step) => (step.data as TextBlockData).typewriterSpeed)).toEqual([30, 30]);
     });
 
     // The frame finds a choice's branch by its block's id, the story by its step's.
@@ -277,6 +315,99 @@ describe('a block keeps its id from one save to the next', () => {
     expect(saved.timeline.map((item) => item.id)[0]).toBe('step_twin');
     expect(new Set(saved.timeline.map((item) => item.id)).size).toBe(saved.timeline.length);
     expect(saved.timeline.map((item) => (item.data as TextBlockData).content)).toEqual(['First.', 'Second.']);
+  });
+});
+
+describe('saved inline parts after an assistant edits their canonical steps', () => {
+  const dialogueScene = () => save(emptyScene(), [{
+    id: 'doc_dialogue', kind: 'dialogue', characterId: 'alice', speakerName: 'Alice', spriteId: null,
+    text: 'First. Second.',
+    parts: [{ type: 'text', text: 'First. ' }, rain, { type: 'text', text: 'Second.' }],
+  }]);
+  const dialogueSteps = (scene: SceneRecord) => scene.timeline.filter((step) => step.blockType === 'dialogue');
+
+  it.each(['speaker', 'sprite', 'extra entry', 'disabled', 'condition', 'current entry'] as const)(
+    'preserves a changed %s over repeated saves', (change) => {
+      const before = dialogueScene();
+      const second = dialogueSteps(before)[1];
+      const data = structuredClone(second.data as DialogueBlockData);
+      if (change === 'speaker') Object.assign(data.entries[0], { characterId: 'bob', speakerName: 'Bob' });
+      if (change === 'sprite') data.entries[0].spriteId = 'angry';
+      if (change === 'extra entry' || change === 'current entry') {
+        data.entries.push(createDialogueEntry({ characterId: 'bob', text: 'Third.' }));
+      }
+      if (change === 'current entry') data.currentEntryIndex = 1;
+      const conditions = change === 'condition' ? [{ variableName: 'ready', operator: '==' as const, value: true }] : undefined;
+      const after = applyAiScenePatch(before, {
+        storyId: before.storyId, sceneId: before.id, expectedRevision: computeSceneRevision(before), explanation: '',
+        operations: change === 'disabled' || change === 'condition'
+          ? [{ op: 'replace_step', stepId: second.id, step: { ...second, enabled: change !== 'disabled', conditions } }]
+          : [{ op: 'update_step', stepId: second.id, data: { entries: data.entries, currentEntryIndex: data.currentEntryIndex } }],
+      });
+
+      for (const saved of [cycle(after), cycle(cycle(after))]) {
+        const steps = dialogueSteps(saved);
+        expect(steps).toHaveLength(2);
+        expect((steps[1].data as DialogueBlockData).entries).toEqual(data.entries.map((entry, index) =>
+          index === 0 ? { ...entry, speakerName: entry.characterId } : entry));
+        expect((steps[1].data as DialogueBlockData).currentEntryIndex).toBe(data.currentEntryIndex);
+        expect(steps[1].enabled).toBe(change !== 'disabled');
+        expect(steps[1].conditions).toEqual(conditions);
+        expect(steps[1].id).toBe(second.id);
+        expect(new Set(contentBlocks(reopen(saved)).map((block) => block.id)).size).toBe(contentBlocks(reopen(saved)).length);
+      }
+    },
+  );
+
+  it('preserves text playback settings changed in an inline part', () => {
+    const before = save(emptyScene(), [{
+      id: 'doc_text', kind: 'text', content: 'First. Second.',
+      parts: [{ type: 'text', text: 'First. ' }, rain, { type: 'text', text: 'Second.' }],
+    }]);
+    const second = before.timeline[2];
+    const after = applyAiScenePatch(before, {
+      storyId: before.storyId, sceneId: before.id, expectedRevision: computeSceneRevision(before), explanation: '',
+      operations: [{ op: 'update_step', stepId: second.id, data: { typewriterSpeed: 0.1, anchorTo: 'character', characterId: 'alice' } }],
+    });
+
+    expect(cycle(cycle(after)).timeline.find((step) => step.id === second.id)?.data).toEqual(after.timeline[2].data);
+  });
+
+  const lineWithRain = () => save(emptyScene(), [{
+    id: 'doc_text', kind: 'text', content: 'First. Second.',
+    parts: [{ type: 'text', text: 'First. ' }, rain, { type: 'text', text: 'Second.' }],
+  }]);
+  const textsOf = (blocks: DocumentBlock[]) => contentBlocks(blocks).map((block) => block.kind === 'text' ? block.content : block.kind);
+  /** Runs of text beside a chip are saved as new steps each time; what they hold and where they came from stays. */
+  const withoutStepIds = (scene: SceneRecord) => scene.timeline.map(({ id: _id, ...step }) => step);
+
+  it('opens the rest of a line broken by a step put between its parts as a line of its own, with no spaces before it', () => {
+    const before = lineWithRain();
+    const after = applyAiScenePatch(before, {
+      storyId: before.storyId, sceneId: before.id, expectedRevision: computeSceneRevision(before), explanation: '',
+      operations: [{ op: 'insert_steps', afterStepId: before.timeline[1].id, steps: [createBackgroundStep({ assetId: null })] }],
+    });
+
+    expect(textsOf(reopen(after))).toEqual(['First. ', 'technical', 'Second.']);
+    expect(contentBlocks(reopen(after))[0]).toMatchObject({ id: 'doc_text', parts: [{ type: 'text', text: 'First. ' }, rain] });
+    const saved = cycle(after);
+    expect(textsOf(reopen(saved))).toEqual(['First. ', 'technical', 'Second.']);
+    expect(withoutStepIds(cycle(saved))).toEqual(withoutStepIds(saved));
+  });
+
+  it('keeps a chip switched off in the middle of a line, and both halves of the line as they were', () => {
+    const before = lineWithRain();
+    const chip = before.timeline[1];
+    const after = applyAiScenePatch(before, {
+      storyId: before.storyId, sceneId: before.id, expectedRevision: computeSceneRevision(before), explanation: '',
+      operations: [{ op: 'replace_step', stepId: chip.id, step: { ...chip, enabled: false } }],
+    });
+
+    expect(textsOf(reopen(after))).toEqual(['First. ', 'technical', 'Second.']);
+    const saved = cycle(after);
+    expect(saved.timeline.map((step) => [step.blockType, step.enabled])).toEqual([['text', true], ['effect', false], ['text', true]]);
+    expect(saved.timeline.map((step) => (step.data as TextBlockData).content ?? null)).toEqual(['First. ', null, 'Second.']);
+    expect(cycle(saved).timeline).toEqual(saved.timeline);
   });
 });
 

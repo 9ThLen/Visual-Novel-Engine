@@ -253,6 +253,14 @@ function validateCanonicalTimelineStep(step: unknown, sceneId: string, index: nu
     return null;
   }
 
+  // The block a step was saved from only tells the editor how to put its
+  // blocks back together; a step whose origin is unreadable opens as a block
+  // of its own, as a step saved before origins did, and keeps its words.
+  const origin = validBlockOrigin(rawStep.originBlockId, rawStep.originPart);
+  if (!origin && (rawStep.originBlockId !== undefined || rawStep.originPart !== undefined)) {
+    if (shouldLogDevDiagnostics()) console.warn('[importStory] dropped invalid block origin', { sceneId, index, blockType });
+  }
+
   // All validations passed — construct TimelineStep with validated fields
   return {
     id: rawStep.id,
@@ -265,7 +273,18 @@ function validateCanonicalTimelineStep(step: unknown, sceneId: string, index: nu
     collapsed: rawStep.collapsed,
     enabled: rawStep.enabled,
     conditions: rawStep.conditions ?? [],
+    ...origin,
   };
+}
+
+function validBlockOrigin(
+  originBlockId: unknown,
+  originPart: unknown,
+): Pick<TimelineStep, 'originBlockId' | 'originPart'> | null {
+  if (!isString(originBlockId) || !originBlockId.trim()) return null;
+  if (originPart === undefined) return { originBlockId };
+  if (typeof originPart !== 'number' || !Number.isSafeInteger(originPart) || originPart < 0) return null;
+  return { originBlockId, originPart };
 }
 
 function validateCanonicalTimeline(sceneId: string, timeline: unknown[]): TimelineStep[] {

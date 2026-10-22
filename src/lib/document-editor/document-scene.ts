@@ -367,16 +367,48 @@ function partOrigin(block: DocumentBlock): string | undefined {
 }
 
 /**
+ * Whether the steps of one block's parts can be put back into one line with
+ * nothing lost. Inline parts cannot retain per-step playback settings or
+ * different speakers. `firstPart` is the part the line starts from.
+ */
+function canRegroupSavedParts(members: DocumentBlock[], firstPart: number): boolean {
+  const firstText = members.find((block) => block.kind === 'text' || block.kind === 'dialogue');
+  const textDefaults = createTextStep().data as TextBlockData;
+  return members.every((block) => {
+    const step = block.sourceStep;
+    if (!step || !isInlineSafeStep(step) || step.collapsed) return false;
+    // Only whitespace text runs are omitted on save. Larger gaps can follow
+    // AI deletions; keep those steps separate instead of allocating padding.
+    const part = step.originPart;
+    if (part === undefined || !Number.isSafeInteger(part) || part < firstPart || part - firstPart > members.length * 2) return false;
+    if (block.kind === 'text') {
+      const data = step.data as TextBlockData;
+      return firstText?.kind === 'text'
+        && data.typewriterSpeed === textDefaults.typewriterSpeed
+        && data.anchorTo === textDefaults.anchorTo
+        && data.characterId === undefined && data.spriteId === undefined;
+    }
+    if (block.kind === 'dialogue') {
+      const data = step.data as DialogueBlockData;
+      return firstText?.kind === 'dialogue'
+        && block.characterId === firstText.characterId && block.spriteId === firstText.spriteId
+        && data.entries.length === 1 && data.currentEntryIndex === 0;
+    }
+    return inlineChipPart(block) !== null;
+  });
+}
+
+/**
  * One block put back together from the steps its parts were saved as, in
  * their order. A run of text that held only spaces is not saved as a step;
  * it comes back as a space, so the parts keep the numbers they were saved
- * under.
+ * under, counted from `firstPart`.
  */
-function blockFromSavedParts(blockId: string, members: DocumentBlock[]): DocumentBlock {
+function blockFromSavedParts(blockId: string, members: DocumentBlock[], firstPart: number): DocumentBlock {
   const parts: DocumentInlinePart[] = [];
   let hasChip = false;
   for (const member of members) {
-    const at = member.sourceStep?.originPart ?? parts.length;
+    const at = (member.sourceStep?.originPart ?? firstPart + parts.length) - firstPart;
     while (parts.length < at) parts.push({ type: 'text', text: ' ' });
     if (member.kind === 'text') parts.push({ type: 'text', text: member.content });
     else if (member.kind === 'dialogue') parts.push({ type: 'text', text: member.text });
@@ -417,11 +449,19 @@ function regroupBlocks(blocks: DocumentBlock[]): DocumentBlock[] {
   let groupOrigin: string | undefined;
   let legacyParts: DocumentInlinePart[] = [];
   let legacyHasChip = false;
+  const regrouped = new Set<string>();
 
   const flush = () => {
     if (!group.length) return;
     if (groupOrigin) {
-      result.push(blockFromSavedParts(groupOrigin, group));
+      // A step that is not one of the block's parts any more — one the
+      // assistant put between them, or a chip it switched off — breaks the
+      // block in two. The second piece is a line of its own and starts from
+      // its own first part, not from spaces standing for the parts before it.
+      const firstPart = regrouped.has(groupOrigin) ? group[0].sourceStep?.originPart ?? 0 : 0;
+      regrouped.add(groupOrigin);
+      if (canRegroupSavedParts(group, firstPart)) result.push(blockFromSavedParts(groupOrigin, group, firstPart));
+      else result.push({ ...group[0], id: groupOrigin }, ...group.slice(1));
     } else if (legacyHasChip) {
       const firstText = group.find((block): block is DocumentTextBlock => block.kind === 'text');
       result.push({
@@ -851,13 +891,13 @@ function timelineFromDialogueInlineParts(
  * The step as it is saved from a block: it carries the block's id, and the
  * part it came from when the block has parts. A step loaded from the store
  * may carry another block's id from before a split or a merge; the block it
- * is saved from now is the one it names. A step that is its whole block under
- * the block's own id says nothing new and is saved without either, so a scene
- * whose blocks all came from the store saves exactly as it was.
+ * is saved from now is the one it names. Keep an existing explicit origin
+ * even when the ids match, so separated parts cannot rejoin a legacy group
+ * next time. A legacy whole-block step under its own id needs neither field.
  */
 function savedFromBlock(step: TimelineStep, blockId: string, partIndex: number | null): TimelineStep {
   const { originBlockId: _formerBlock, originPart: _formerPart, ...rest } = step;
-  if (partIndex === null) return blockId === step.id ? rest : { ...rest, originBlockId: blockId };
+  if (partIndex === null) return blockId === step.id && !step.originBlockId ? rest : { ...rest, originBlockId: blockId };
   return { ...rest, originBlockId: blockId, originPart: partIndex };
 }
 
