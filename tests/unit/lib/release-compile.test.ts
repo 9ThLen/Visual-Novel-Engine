@@ -128,6 +128,17 @@ describe('compileRelease', () => {
     expect(new TextDecoder().decode(payloadBytes)).not.toContain('TODO rewrite');
   });
 
+  it('ships a scene set to always be read as a comic with its setting', async () => {
+    const state = useAppStore.getState();
+    useAppStore.setState({ sceneRecordsByStory: { [STORY_ID]: {
+      ...state.sceneRecordsByStory[STORY_ID],
+      finish: { ...scene('finish'), comic: { presentation: 'comic' } },
+    } } });
+    const { payload } = await compileRelease(baseInput);
+    expect(payload.scenes.finish.comic).toEqual({ presentation: 'comic' });
+    expect(payload.scenes.start).not.toHaveProperty('comic');
+  });
+
   it('leaves the working copy untouched', async () => {
     await compileRelease(baseInput);
     const live = useAppStore.getState().sceneRecordsByStory[STORY_ID].start;
