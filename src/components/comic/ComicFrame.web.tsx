@@ -1,26 +1,28 @@
 /**
  * The comic frame on the web and in the desktop shell: an iframe whose srcdoc
- * is the renderer document. Spike code for stage 1 of the comic plan.
+ * is the frame document (src/lib/comic/comic-frame-document.ts).
  *
  * The frame runs with `allow-scripts allow-same-origin`, like the editor's, so
- * it can load whatever images the host can (same-origin URLs, blob: URLs) —
- * and so every message from it is checked three ways: the origin, that it came
- * from this frame's own window, and the session token.
+ * it can load whatever pictures the host can (same-origin URLs, blob: URLs of
+ * media kept in IndexedDB) — and so every message from it is checked three
+ * ways: the origin, that it came from this frame's own window, and the session
+ * token.
  */
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 
+import { createComicFrameHtml } from '@/lib/comic/comic-frame-document';
 import {
   comicHostEnvelope,
-  createComicRendererHtml,
   createComicSessionToken,
   readComicFrameMessage,
+  type ComicFrameMessage,
   type ComicHostMessage,
-} from '@/lib/comic/spike/comic-renderer-html';
+} from '@/lib/comic/comic-frame-protocol';
 
-import type { ComicSpikeFrameHandle, ComicSpikeFrameProps } from './comic-spike-frame-types';
+import type { ComicFrameProps } from './comic-frame-types';
 
-export type { ComicSpikeFrameHandle, ComicSpikeFrameProps } from './comic-spike-frame-types';
+export type { ComicFrameProps } from './comic-frame-types';
 
 const Iframe = 'iframe' as unknown as React.ComponentType<{
   srcDoc: string;
@@ -39,34 +41,25 @@ export function comicTargetOrigin(origin: string): string {
   return origin && origin !== 'null' ? origin : '*';
 }
 
-export const ComicSpikeFrame = forwardRef<ComicSpikeFrameHandle, ComicSpikeFrameProps>(function ComicSpikeFrame({
-  strip,
-  textScale,
-  virtualize,
-  keepScreens,
-  font,
-  onMessage,
-  style,
-}, ref) {
+export function ComicFrame({ strip, textScale, onTap, onChoose, onLayout, style }: ComicFrameProps) {
   const [token] = useState(createComicSessionToken);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const readyRef = useRef(false);
   const stripRef = useRef(strip);
   stripRef.current = strip;
-  const onMessageRef = useRef(onMessage);
-  onMessageRef.current = onMessage;
+  const textScaleRef = useRef(textScale);
+  textScaleRef.current = textScale;
+  const handlersRef = useRef({ onTap, onChoose, onLayout });
+  handlersRef.current = { onTap, onChoose, onLayout };
   // The scale a frame is built with; later changes travel as messages, so a
   // new text size does not throw the strip away.
   const initialTextScaleRef = useRef(textScale);
 
-  const html = useMemo(() => createComicRendererHtml({
+  const html = useMemo(() => createComicFrameHtml({
     token,
     hostOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
     textScale: initialTextScaleRef.current,
-    virtualize,
-    keepScreens,
-    font,
-  }), [font, keepScreens, token, virtualize]);
+  }), [token]);
 
   const send = useCallback((message: ComicHostMessage) => {
     const target = iframeRef.current?.contentWindow;
@@ -74,22 +67,30 @@ export const ComicSpikeFrame = forwardRef<ComicSpikeFrameHandle, ComicSpikeFrame
     target.postMessage(comicHostEnvelope(message, token), comicTargetOrigin(window.location.origin));
   }, [token]);
 
-  useImperativeHandle(ref, () => ({ send }), [send]);
-
   useEffect(() => {
     readyRef.current = false;
-    const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || event.source !== iframeRef.current?.contentWindow) return;
-      const message = readComicFrameMessage(event.data, token);
-      if (!message) return;
+    const handle = (message: ComicFrameMessage) => {
       if (message.type === 'ready') {
         readyRef.current = true;
+        if (textScaleRef.current !== initialTextScaleRef.current) send({ type: 'textScale', scale: textScaleRef.current });
         if (stripRef.current) send({ type: 'strip', strip: stripRef.current });
+      } else if (message.type === 'tap') {
+        handlersRef.current.onTap();
+      } else if (message.type === 'choose') {
+        handlersRef.current.onChoose(message.optionId);
+      } else if (message.type === 'layout') {
+        handlersRef.current.onLayout?.({ panels: message.panels, pages: message.pages });
+      } else if (__DEV__) {
+        console.warn('[ComicFrame] the frame reported an error:', message.message);
       }
-      onMessageRef.current(message);
     };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    const listener = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== iframeRef.current?.contentWindow) return;
+      const message = readComicFrameMessage(event.data, token);
+      if (message) handle(message);
+    };
+    window.addEventListener('message', listener);
+    return () => window.removeEventListener('message', listener);
   }, [html, send, token]);
 
   useEffect(() => {
@@ -111,4 +112,4 @@ export const ComicSpikeFrame = forwardRef<ComicSpikeFrameHandle, ComicSpikeFrame
       />
     </View>
   );
-});
+}

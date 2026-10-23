@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-10-23 — The comic renderer
+
+PR 2.4a of `docs/plans/COMIC-STAGE-2-PLAN.md`: the HTML renderer the spike
+chose, made to draw a real page plan. The reader does not use it yet (2.4b).
+
+- **`ComicPlanView`** (`src/components/comic/`) draws a scene's page plan:
+  backgrounds and sprites from the story's media and characters, captions,
+  bubbles under the speaker's name and leaning to the side they stand on,
+  and a choice at the end of the strip. It shows as many panels as the reader
+  has opened and keeps the ones already drawn, so a new panel comes up alone
+  and a rollback takes the last ones away.
+- **The frame** (`src/lib/comic/comic-frame-*.ts`) is one HTML document in an
+  iframe on the web and the desktop shell and in a WebView on Android. A
+  panel grows with its words instead of cutting them off at a large text
+  size; pages are cut from the panels' measured heights; pictures load only
+  near the viewport. Words always go in as text. The frame may not fetch
+  anything and uses the platform's fonts, which work offline and carry
+  Cyrillic. It reports taps (also Space and Enter) and the option picked.
+- **On Android** the WebView's own text zoom is pinned and the reader's font
+  scale is handed to the frame; a renderer process the system kills is
+  replaced with a new document, which asks for the strip again; a release
+  build's bundled art is read from `file:///android_res/`.
+- The spike's code (`/comic-spike`, `src/lib/comic/spike/`,
+  `tools/comic-spike/`) is gone; `docs/plans/COMIC-RENDERER-SPIKE.md` says
+  how to get it back from history.
+
 ## 2026-10-22 — The panels of a comic page, from a scene's steps
 
 PR 2.2 of `docs/plans/COMIC-STAGE-2-PLAN.md`: the page-plan generator, pure
