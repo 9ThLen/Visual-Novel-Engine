@@ -15,7 +15,7 @@ import { comicFrameStrip, comicPlanImageRefs, type ComicFrameAssets } from '@/li
 import type { ComicPagePlan } from '@/lib/comic/comic-layout';
 import { useAppStore } from '@/stores/use-app-store';
 
-import { ComicFrame } from './ComicFrame';
+import { ComicFrame } from '@/components/comic/ComicFrame';
 import { useComicImageUrls } from './comic-image-urls';
 
 const NO_CHARACTERS: Character[] = [];

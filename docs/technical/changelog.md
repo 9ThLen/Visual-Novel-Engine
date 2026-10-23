@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-10-23 — A scene set to always be a comic reads as one
+
+PR 2.4b of `docs/plans/COMIC-STAGE-2-PLAN.md`. A scene whose
+`comic.presentation` is `'comic'` now opens in the reader as a comic page;
+nothing in the studio sets it yet (2.6).
+
+- **`ComicReader`** (`src/components/comic/`) shows the scene's run from the
+  same `SceneRuntimeHost` the novel would: the panels of what was actually
+  read, from the run's journal, so a step a condition or a `goto` skipped
+  makes no panel and a step read twice makes two.
+- A tap opens the next panel of the current step — a paragraph is a caption
+  per sentence — and, when all are open, goes on to the next step, whose
+  words come up at once. A choice waits at the end of the strip and is passed
+  on as the novel passes it. Back closes a panel, then rolls the run back,
+  landing with every panel of that step open, then asks for the previous
+  scene, in the novel's order. Transitions, the scene's end and the audio
+  follow the run as they do for the novel.
+- The reader screen picks the comic or the novel for each scene with
+  `resolveScenePresentation`. A scene that plays a video or holds an
+  interactive object stays a novel.
+
 ## 2026-10-23 — The comic renderer
 
 PR 2.4a of `docs/plans/COMIC-STAGE-2-PLAN.md`: the HTML renderer the spike

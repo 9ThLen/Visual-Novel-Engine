@@ -36,6 +36,9 @@ export default defineConfig({
       '@/stores/use-app-store': mock('stores/use-app-store.ts'),
       '@/lib/asset-resolver': mock('lib/asset-resolver.ts'),
       '@/components/vn-plate-editor/PlateWebViewEditor': mock('components/vn-plate-editor/PlateWebViewEditor.tsx'),
+      // Tests run as the web: the comic frame is its iframe host, not the
+      // Android WebView one that Metro would pick on a phone.
+      '@/components/comic/ComicFrame': path.join(rootDir, 'src/components/comic/ComicFrame.web.tsx'),
       '@/lib/audio-manager-enhanced': mock('lib/audio-manager-enhanced.ts'),
       // `@/*` maps to `./src/*` first and the project root second (tsconfig.json).
       // Vite aliases have no fallback, so the five directories that moved under

@@ -42,6 +42,8 @@ const aliases = {
   '@/stores/use-app-store': path.join(rootDir, 'tests/mocks/stores/use-app-store.ts'),
   '@/lib/asset-resolver': path.join(rootDir, 'tests/mocks/lib/asset-resolver.ts'),
   '@/components/vn-plate-editor/PlateWebViewEditor': path.join(rootDir, 'tests/mocks/components/vn-plate-editor/PlateWebViewEditor.tsx'),
+  // Tests run as the web: the comic frame is its iframe host (see vitest.config.ts).
+  '@/components/comic/ComicFrame': path.join(rootDir, 'src/components/comic/ComicFrame.web.tsx'),
   '@/lib/audio-manager-enhanced': path.join(rootDir, 'tests/mocks/lib/audio-manager-enhanced.ts'),
   '@/lib/audio-library': path.join(rootDir, 'tests/mocks/lib/audio-library.ts'),
 };
