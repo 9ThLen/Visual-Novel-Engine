@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-22 — A scene can be set to always be read as a comic page
+
+PR 2.1 of stage 2 in `docs/plans/COMIC-STAGE-2-PLAN.md`. Nothing reads it
+yet: the comic reader and the editor's switch come with the next PRs.
+
+- A scene may carry `comic.presentation`: `'comic'` or `'novel'` to always
+  be read that way, whatever the story's format; none (or `'auto'`) follows
+  the format. Story JSON import keeps it and drops one it cannot read, keeping
+  the scene; the reader's projection of a scene carries it; a release ships
+  it.
+- `src/lib/comic/comic-presentation.ts` decides how a scene is read, from the
+  story's format, the scene's setting and the reader's choice when the story
+  offers both. A scene that plays a video or holds an interactive object is
+  read as the novel even when set to always be a comic, since a comic page
+  cannot show either yet; a switched-off step does not count, a step with
+  conditions does.
+
 ## 2026-10-21 — A block keeps its id across save and reopen
 
 Stage 0 of `docs/plans/COMIC-MODE-PLAN.md`; useful on its own to everything

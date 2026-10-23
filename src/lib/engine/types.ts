@@ -392,6 +392,20 @@ export interface SceneConnection {
   label?: string;       // optional label on the connection line
 }
 
+/**
+ * How a scene is read: as the story's reading format says ('auto'), or always
+ * as a comic page, or always as the novel, whatever the format.
+ */
+export type ScenePresentation = 'auto' | 'comic' | 'novel';
+
+/**
+ * A scene's comic settings (docs/plans/COMIC-MODE-PLAN.md, section 8). Only
+ * `presentation` so far; panel and element settings come with their stages.
+ */
+export interface SceneComicSettings {
+  presentation?: ScenePresentation;
+}
+
 export interface SceneRecord extends ProjectScene {
   storyId: string;
   description: string;
@@ -403,6 +417,7 @@ export interface SceneRecord extends ProjectScene {
     delay: number;
     nextSceneId: string;
   };
+  comic?: SceneComicSettings;
   connections: SceneConnection[];
   isStart: boolean;
   createdAt: number;

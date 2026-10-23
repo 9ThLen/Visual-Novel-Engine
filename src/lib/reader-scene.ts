@@ -1,12 +1,14 @@
 import type {
   BackgroundBlockData,
   DialogueBlockData,
+  SceneComicSettings,
   SceneConnection,
   SceneRecord,
   TextBlockData,
   TimelineStep,
 } from '@/lib/engine/types';
 import type { AudioTrigger } from '@/lib/audio-types';
+import { sanitizeSceneComicSettings } from '@/lib/comic/comic-presentation';
 import { getReaderSceneRecord, type SceneAccessSnapshot } from '@/lib/scene-access';
 
 export interface ReaderScene {
@@ -18,6 +20,8 @@ export interface ReaderScene {
   audioTriggers?: AudioTrigger[];
   connections: SceneConnection[];
   isStart: boolean;
+  /** Present only when the scene is set to always be read one way. */
+  comic?: SceneComicSettings;
 }
 
 export interface SaveSlotSceneMeta {
@@ -27,6 +31,7 @@ export interface SaveSlotSceneMeta {
 }
 
 export function toReaderScene(record: SceneRecord): ReaderScene {
+  const comic = sanitizeSceneComicSettings(record.comic);
   return {
     id: record.id,
     storyId: record.storyId,
@@ -36,6 +41,7 @@ export function toReaderScene(record: SceneRecord): ReaderScene {
     audioTriggers: record.audioTriggers ?? [],
     connections: record.connections,
     isStart: record.isStart,
+    ...(comic ? { comic } : {}),
   };
 }
 
