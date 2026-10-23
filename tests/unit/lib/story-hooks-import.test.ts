@@ -94,6 +94,30 @@ describe('importStory', () => {
     expect(documentSceneToTimeline(scene).find((item) => item.id === step.id)?.data).toEqual(step.data);
   });
 
+  it('keeps a scene set to always be read as a comic through import and export', async () => {
+    const imported = await importStory(JSON.stringify({
+      title: 'Comic insert', startSceneId: 'scene-1',
+      scenes: { 'scene-1': { id: 'scene-1', timeline: [createTextStep({ content: 'A page.' })], comic: { presentation: 'comic' } } },
+    }));
+    expect(imported.scenes['scene-1'].comic).toEqual({ presentation: 'comic' });
+
+    const again = await importStory(await exportStory(imported.id, useAppStore.getState()));
+    expect(again.scenes['scene-1'].comic).toEqual({ presentation: 'comic' });
+  });
+
+  it.each([
+    ['a string', 'comic'], ['an unknown presentation', { presentation: 'manga' }], ['Auto', { presentation: 'auto' }],
+    ['an array', ['comic']], ['null', null],
+  ])('leaves a scene whose comic setting is %s to the story format, and keeps its words', async (_label, comic) => {
+    const step = createTextStep({ content: 'Keep this text.' });
+    const imported = await importStory(JSON.stringify({
+      title: 'Unreadable comic setting', startSceneId: 'scene-1',
+      scenes: { 'scene-1': { id: 'scene-1', timeline: [step], comic } },
+    }));
+    expect(imported.scenes['scene-1']).not.toHaveProperty('comic');
+    expect(imported.scenes['scene-1'].timeline.find((item) => item.id === step.id)).toEqual({ ...step, conditions: [] });
+  });
+
   it('keeps a video step through export and import', async () => {
     useAppStore.setState({
       storiesMetadata: [{

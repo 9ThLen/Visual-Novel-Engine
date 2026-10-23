@@ -30,6 +30,7 @@ import {
 import type { StoryReaderLayoutPreset, StoryReaderTheme } from '@/lib/story-theme';
 import { useAppStore, type AppState } from '@/stores/use-app-store';
 import { normalizeEditorTimeline } from '@/lib/editor-scene-draft';
+import { sanitizeSceneComicSettings } from '@/lib/comic/comic-presentation';
 import {
   CHARACTER_AUTHORING_SCHEMA_VERSION,
   migrateCharacterLibrary,
@@ -307,17 +308,22 @@ function normalizeImportedSceneRecords(
 ): Record<string, SceneRecord> {
   const timestamp = Date.now();
   return Object.fromEntries(
-    Object.entries(scenes).map(([sceneId, scene]) => [
-      sceneId,
-      {
-        ...scene,
-        id: scene.id || sceneId,
-        storyId,
-        timeline: migrateSceneRecordTimeline(normalizeEditorTimeline(scene.timeline ?? [])),
-        createdAt: scene.createdAt ?? timestamp,
-        updatedAt: timestamp,
-      },
-    ]),
+    Object.entries(scenes).map(([sceneId, { comic: rawComic, ...scene }]) => {
+      // A comic setting it cannot read leaves the scene to the story's format.
+      const comic = sanitizeSceneComicSettings(rawComic);
+      return [
+        sceneId,
+        {
+          ...scene,
+          id: scene.id || sceneId,
+          storyId,
+          timeline: migrateSceneRecordTimeline(normalizeEditorTimeline(scene.timeline ?? [])),
+          ...(comic ? { comic } : {}),
+          createdAt: scene.createdAt ?? timestamp,
+          updatedAt: timestamp,
+        },
+      ];
+    }),
   );
 }
 

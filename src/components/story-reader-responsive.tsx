@@ -26,11 +26,10 @@ import {
 } from 'react-native-reanimated';
 import { useReaderColors } from '@/hooks/use-reader-colors';
 import type { UserSettings } from '@/lib/user-settings';
-import type { TimelineStep } from '@/lib/engine/types';
-import type { CharacterRuntimeState, RuntimeVariables, SceneState } from '@/lib/engine/runtime-types';
+import type { CharacterRuntimeState, SceneState } from '@/lib/engine/runtime-types';
 import type { Character } from '@/lib/character-types';
 import type { ReaderTransitionEvent } from '@/lib/reader-runtime';
-import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
+import { useSceneRuntime } from './reader/SceneRuntimeHost';
 import { getResponsiveFontSize } from '@/lib/responsive';
 import { DialogueHistory } from './dialogue-history';
 import { ReaderControls } from './reader/ReaderControls';
@@ -83,10 +82,12 @@ function resolveInteractiveDialogueCharacter(
   };
 }
 
+/**
+ * The scene, its run and its starting variables come from the
+ * SceneRuntimeHost above the reader, which owns the executor.
+ */
 interface Props {
   sceneId?: string;
-  timeline?: TimelineStep[];
-  initialVariables?: RuntimeVariables;
   onContinue?: (targetSceneId?: string) => void;
   onExecutorChoiceSelect?: (choice: { sceneId: string; choiceId: string; stepId: string; targetSceneId: string | null }) => void;
   onTransition?: (targetSceneId: string | null, transition?: ReaderTransitionEvent) => void;
@@ -97,12 +98,6 @@ interface Props {
   onHistoryVisibleChange?: (visible: boolean) => void;
   onSceneStateChange?: (sceneState: SceneState) => void;
   routeOnExecutorComplete?: boolean;
-  /**
-   * Bumped by the host whenever playback is replaced in place (loading a save
-   * for the scene already on screen). Restarts the executor — see
-   * useSceneExecutor's `resetKey`.
-   */
-  playbackGeneration?: number;
   /** True when the host can roll back to a previous scene (see onRollbackScene). */
   canRollbackScene?: boolean;
   /** Called when Back is pressed at the very start of the scene — the host may restore the previous scene. */
@@ -113,8 +108,6 @@ interface Props {
 
 export function StoryReaderResponsive({
   sceneId,
-  timeline,
-  initialVariables,
   onContinue,
   onExecutorChoiceSelect,
   onTransition,
@@ -124,14 +117,16 @@ export function StoryReaderResponsive({
   onHistoryVisibleChange,
   onSceneStateChange,
   routeOnExecutorComplete = false,
-  playbackGeneration,
   canRollbackScene = false,
   onRollbackScene,
 }: Props) {
   const { t } = useI18n();
   const dims = useWindowDimensions();
   const fontSize = getResponsiveFontSize(dims);
-  const firstTimelineStepId = timeline?.[0]?.id;
+  // ── Executor (owned by the SceneRuntimeHost above) ────────────────────
+  const executor = useSceneRuntime();
+  const { timeline } = executor;
+  const firstTimelineStepId = timeline[0]?.id;
   const currentStoryId = useAppStore((state) => state.currentStoryId);
   const colors = useReaderColors(currentStoryId ?? undefined);
   const readerLayoutPreset = useAppStore((state) => sanitizeReaderLayoutPreset(
@@ -153,12 +148,7 @@ export function StoryReaderResponsive({
     parallaxEnabled = true,
   } = settings;
 
-  // ── Executor ──────────────────────────────────────────────────────────
-  const executor = useSceneExecutor(timeline ?? [], {
-    initialVariables,
-    resetKey: playbackGeneration,
-  });
-  const usingExecutor = !!timeline && timeline.length > 0;
+  const usingExecutor = timeline.length > 0;
 
   const displaySceneId = useMemo(
     () => sceneId ?? `executed-scene:${firstTimelineStepId ?? 'empty'}`,
@@ -392,7 +382,7 @@ export function StoryReaderResponsive({
     onExecutorChoiceSelect?.({
       sceneId: displaySceneId,
       choiceId,
-      stepId: timeline?.[executor.currentStepIndex]?.id ?? '',
+      stepId: timeline[executor.currentStepIndex]?.id ?? '',
       targetSceneId: choice.targetSceneId,
     });
   };

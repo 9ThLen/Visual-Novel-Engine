@@ -6,6 +6,7 @@ import { StoryReaderResponsive } from '@/components/story-reader-responsive';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { ReaderMenu } from '@/components/ReaderMenu';
 import { PostFinaleRating } from '@/components/reader/PostFinaleRating';
+import { SceneRuntimeHost } from '@/components/reader/SceneRuntimeHost';
 import { shouldPromptForReview } from '@/lib/reviews/review-prompt';
 import { getReviewsStore } from '@/lib/reviews/reviews-storage';
 import type { ReviewRating } from '@/lib/reviews/reviews-domain';
@@ -515,28 +516,33 @@ export default function ReaderScreen() {
         <IconSymbol name="menu" size={18} color={colors['text-inverse']} />
       </Pressable>
 
-      <StoryReaderResponsive
+      <SceneRuntimeHost
         // The generation is part of the key so a load into the scene already on
         // screen remounts the subtree, exactly as loading a different scene
-        // does. That is what rebuilds reader-local per-scene state — page
-        // index, dialogue log, any blocking media/cutscene overlay — instead of
-        // leaving it stranded from the playback that was just replaced.
+        // does. That is what rebuilds the run and the reader-local per-scene
+        // state — page index, dialogue log, any blocking media/cutscene
+        // overlay — instead of leaving it stranded from the playback that was
+        // just replaced.
         key={`${activeSceneId}:${playbackGeneration}`}
-        sceneId={activeSceneId}
         timeline={timeline}
-        onTransition={handleTransition}
-        entryTransition={entryTransition}
-        onExecutorChoiceSelect={handleExecutorChoiceSelect}
-        onSceneStateChange={handleSceneStateChange}
+        // The variables the scene was entered with, not the run's current ones.
         initialVariables={playbackState?.variables ?? latestVariablesRef.current}
-        isLoading={isLoading}
-        settings={settings}
-        onHistoryVisibleChange={setHistoryOpen}
-        routeOnExecutorComplete={true}
-        playbackGeneration={playbackGeneration}
-        canRollbackScene={sceneHistoryDepth > 0}
-        onRollbackScene={handleRollbackScene}
-      />
+        resetKey={playbackGeneration}
+      >
+        <StoryReaderResponsive
+          sceneId={activeSceneId}
+          onTransition={handleTransition}
+          entryTransition={entryTransition}
+          onExecutorChoiceSelect={handleExecutorChoiceSelect}
+          onSceneStateChange={handleSceneStateChange}
+          isLoading={isLoading}
+          settings={settings}
+          onHistoryVisibleChange={setHistoryOpen}
+          routeOnExecutorComplete={true}
+          canRollbackScene={sceneHistoryDepth > 0}
+          onRollbackScene={handleRollbackScene}
+        />
+      </SceneRuntimeHost>
 
       {interactiveObjects.length > 0 && (
         <InteractiveObjectsLayer

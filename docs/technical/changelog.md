@@ -39,6 +39,45 @@ Preview (2.6) will.
   a test checks against the real executor. The same stops always give the same
   plan, and the plan is plain data.
 
+## 2026-10-22 — One run of a scene for every way of showing it
+
+PR 2.3 of stage 2 in `docs/plans/COMIC-STAGE-2-PLAN.md`. The novel reads as
+before.
+
+- **`SceneRuntimeHost`** (`src/components/reader/SceneRuntimeHost.tsx`) owns
+  the scene's executor; the reader takes it with `useSceneRuntime()`, and the
+  comic reader will take the same one. Showing the scene another way then
+  neither restarts it, nor applies `score += 1` twice, nor plays its sounds
+  again. The reader screen and the editor's play mode mount the host where
+  they mounted the reader, keyed the same way; it starts each run from the
+  variables the scene was entered with. `StoryReaderResponsive` no longer
+  takes `timeline`, `initialVariables` or `playbackGeneration`.
+- **The execution journal.** The executor lists every stop it reaches, in
+  order, with what could be seen there (background, characters, camera,
+  effects, the speaker, the choices): the path the scene actually took. A
+  step reached again by a backward `goto` is a new entry; a finished
+  typewriter adds nothing; a rollback takes back the stops it undoes; a
+  restart or a loaded save clears it; a choice remembers the option picked.
+  Unlike the rollback stack, which keeps the last 100 stops, it keeps the
+  whole scene.
+
+## 2026-10-22 — A scene can be set to always be read as a comic page
+
+PR 2.1 of stage 2 in `docs/plans/COMIC-STAGE-2-PLAN.md`. Nothing reads it
+yet: the comic reader and the editor's switch come with the next PRs.
+
+- A scene may carry `comic.presentation`: `'comic'` or `'novel'` to always
+  be read that way, whatever the story's format; none (or `'auto'`) follows
+  the format. Story JSON import keeps it and drops one it cannot read, keeping
+  the scene; the reader's projection of a scene carries it; a release ships
+  it.
+- `src/lib/comic/comic-presentation.ts` decides how a scene is read, from the
+  story's format, the scene's setting and the reader's choice when the story
+  offers both. A scene that plays a video or holds an interactive object is
+  read as the novel even when set to always be a comic, since a comic page
+  cannot show either yet; a switched-off step does not count, a step with
+  conditions does.
+
 ## 2026-10-21 — A block keeps its id across save and reopen
 
 Stage 0 of `docs/plans/COMIC-MODE-PLAN.md`; useful on its own to everything
