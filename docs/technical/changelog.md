@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-10-22 — One run of a scene for every way of showing it
+
+PR 2.3 of stage 2 in `docs/plans/COMIC-STAGE-2-PLAN.md`. The novel reads as
+before.
+
+- **`SceneRuntimeHost`** (`src/components/reader/SceneRuntimeHost.tsx`) owns
+  the scene's executor; the reader takes it with `useSceneRuntime()`, and the
+  comic reader will take the same one. Showing the scene another way then
+  neither restarts it, nor applies `score += 1` twice, nor plays its sounds
+  again. The reader screen and the editor's play mode mount the host where
+  they mounted the reader, keyed the same way; it starts each run from the
+  variables the scene was entered with. `StoryReaderResponsive` no longer
+  takes `timeline`, `initialVariables` or `playbackGeneration`.
+- **The execution journal.** The executor lists every stop it reaches, in
+  order, with what could be seen there (background, characters, camera,
+  effects, the speaker, the choices): the path the scene actually took. A
+  step reached again by a backward `goto` is a new entry; a finished
+  typewriter adds nothing; a rollback takes back the stops it undoes; a
+  restart or a loaded save clears it; a choice remembers the option picked.
+  Unlike the rollback stack, which keeps the last 100 stops, it keeps the
+  whole scene.
+
 ## 2026-10-22 — A scene can be set to always be read as a comic page
 
 PR 2.1 of stage 2 in `docs/plans/COMIC-STAGE-2-PLAN.md`. Nothing reads it

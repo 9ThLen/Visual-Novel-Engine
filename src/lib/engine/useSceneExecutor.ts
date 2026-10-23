@@ -50,9 +50,50 @@ function findLabelIndex(steps: TimelineStep[], name: string): number {
   );
 }
 
+/**
+ * What could be seen at a stop: enough to draw it again later, after the
+ * scene has moved on.
+ */
+export type JournalSceneSnapshot = Pick<
+  SceneState,
+  | 'backgroundAssetId'
+  | 'backgroundTransition'
+  | 'characters'
+  | 'cameraState'
+  | 'activeEffects'
+  | 'activeSpeakerCharacterId'
+  | 'currentChoices'
+>;
+
+/**
+ * One stop the executor reached, in the order it reached them: the path the
+ * scene actually took, which `currentStepIndex` alone cannot tell — a `goto`
+ * may skip steps or come back to one.
+ */
+export interface ExecutionJournalEntry {
+  /**
+   * Unique for as long as the executor is mounted. A step reached again — by a
+   * backward `goto`, or after a rollback — is a new execution with a new id.
+   */
+  executionId: number;
+  stepIndex: number;
+  stepId: string;
+  blockType: TimelineStep['blockType'];
+  snapshot: JournalSceneSnapshot;
+  /** For a choice the player has made: the option they picked. */
+  chosenOptionId?: string;
+}
+
 interface ExecutorState {
   sceneState: SceneState;
   currentStepIndex: number;
+  /**
+   * Every stop reached so far, the current one last. It lives in the state
+   * so a rollback, which restores a whole earlier state, also takes back the
+   * stops it undoes, and a reset starts it empty — while the rollback stack
+   * keeps only its last MAX_ROLLBACK_DEPTH stops, this keeps all of them.
+   */
+  journal: ExecutionJournalEntry[];
   isTyping: boolean;
   canAdvance: boolean;
   /** Transition reached but not yet confirmed by the player — see advance(). */
@@ -121,6 +162,8 @@ export interface UseSceneExecutorReturn {
   completeVideo: (stepId: string, session: number) => void;
   /** Resume because the player pressed Skip on a skippable cutscene. */
   skipVideo: (stepId: string, session: number) => void;
+  /** The stops reached in this scene, in order, the current one last. */
+  journal: readonly ExecutionJournalEntry[];
 }
 
 const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -134,12 +177,25 @@ function createInitialExecutorState(
       variables: initialVariables ?? {},
     },
     currentStepIndex: 0,
+    journal: [],
     isTyping: false,
     canAdvance: false,
     pendingTransition: null,
     pendingVideo: null,
     videoSession: 0,
     previousBackgroundVideo: null,
+  };
+}
+
+function journalSnapshot(state: SceneState): JournalSceneSnapshot {
+  return {
+    backgroundAssetId: state.backgroundAssetId,
+    backgroundTransition: state.backgroundTransition,
+    characters: state.characters,
+    cameraState: state.cameraState,
+    activeEffects: state.activeEffects,
+    activeSpeakerCharacterId: state.activeSpeakerCharacterId,
+    currentChoices: state.currentChoices,
   };
 }
 
@@ -210,6 +266,9 @@ export function useSceneExecutor(
   const rollbackStackRef = useRef<RollbackSnapshot[]>([]);
   const timelineRef = useRef(timeline);
   const advanceGuardRef = useRef(false);
+  // Never restored by a rollback nor restarted by a reset, so no two
+  // executions ever share an id while the executor is mounted.
+  const lastExecutionIdRef = useRef(0);
   const initialVariablesRef = useRef(options?.initialVariables);
   const resetKey = options?.resetKey;
   const execStateRef = useRef(execState);
@@ -575,6 +634,7 @@ export function useSceneExecutor(
         const isCutsceneStep = step.blockType === 'video'
           && currentState.activeVideo?.layer === 'cutscene';
 
+        lastExecutionIdRef.current += 1;
         return {
           nextIndex: resumeIndex,
           isHalted: true,
@@ -584,6 +644,13 @@ export function useSceneExecutor(
               ? { ...currentState, isTransitioning: false }
               : currentState,
             currentStepIndex: idx,
+            journal: [...prev.journal, {
+              executionId: lastExecutionIdRef.current,
+              stepIndex: idx,
+              stepId: step.id,
+              blockType: step.blockType,
+              snapshot: journalSnapshot(currentState),
+            }],
             isTyping: typing,
             // A cutscene is not dismissed by tapping: only completeVideo() or an
             // explicit skipVideo() may resume the timeline.
@@ -806,6 +873,10 @@ export function useSceneExecutor(
     internalIndexRef.current = internalIndexRef.current + 1;
     updateExecutorState((prev) => ({
       ...prev,
+      // The choice is the stop the journal ends on: it remembers the answer.
+      journal: prev.journal.map((entry, index) => (
+        index === prev.journal.length - 1 && entry.blockType === 'choice' ? { ...entry, chosenOptionId: optionId } : entry
+      )),
       sceneState: {
         ...prev.sceneState,
         variables: evaluateVariable(prev.sceneState.variables, '_last_choice', 'set', optionId),
@@ -835,5 +906,6 @@ export function useSceneExecutor(
     pendingVideo: execState.pendingVideo,
     completeVideo,
     skipVideo,
+    journal: execState.journal,
   };
 }

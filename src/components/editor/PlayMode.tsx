@@ -10,6 +10,7 @@ import { useColors } from '@/hooks/use-colors';
 import { selectSceneRecordMapForStory, useAppStore } from '@/stores/use-app-store';
 import { Button } from '@/components/ui';
 import { StoryReaderResponsive } from '@/components/story-reader-responsive';
+import { SceneRuntimeHost } from '@/components/reader/SceneRuntimeHost';
 import { getNextSceneId, getStartSceneId, type ReaderTransitionEvent } from '@/lib/reader-runtime';
 import { useI18n } from '@/hooks/use-i18n';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -131,15 +132,15 @@ export function PlayMode({ storyId }: PlayModeProps) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <PlayTopBar title={currentScene.name || metadata?.title || 'Story'} onBack={() => router.back()} colors={colors} insetsTop={insets.top} />
-      <StoryReaderResponsive
-        key={currentScene.id}
-        sceneId={currentScene.id}
-        timeline={currentScene.timeline || []}
-        settings={settings}
-        onTransition={handleTransition}
-        entryTransition={entryTransition}
-        routeOnExecutorComplete
-      />
+      <SceneRuntimeHost key={currentScene.id} timeline={currentScene.timeline || []}>
+        <StoryReaderResponsive
+          sceneId={currentScene.id}
+          settings={settings}
+          onTransition={handleTransition}
+          entryTransition={entryTransition}
+          routeOnExecutorComplete
+        />
+      </SceneRuntimeHost>
     </View>
   );
 }

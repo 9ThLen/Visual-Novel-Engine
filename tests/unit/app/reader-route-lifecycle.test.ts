@@ -2,20 +2,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 describe('ReaderScreen lifecycle contract', () => {
-  it('remounts StoryReaderResponsive when the current scene or playback is replaced', () => {
+  it('remounts the scene run and its reader when the current scene or playback is replaced', () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), 'app/reader.tsx'),
       'utf8',
     );
-    const reader = source.match(/<StoryReaderResponsive[\s\S]*?\/>/)?.[0] ?? '';
+    const host = source.match(/<SceneRuntimeHost[\s\S]*?<\/SceneRuntimeHost>/)?.[0] ?? '';
+    const hostProps = host.match(/<SceneRuntimeHost[\s\S]*?>/)?.[0] ?? '';
 
     // The generation belongs in the key too: loading a save for the scene
     // already on screen leaves the scene id identical, and without a remount
     // the reader keeps page index, dialogue log and overlay state from the
-    // playback that was just replaced.
-    expect(reader).toContain('key={`${activeSceneId}:${playbackGeneration}`}');
-    expect(reader).toContain('sceneId={activeSceneId}');
-    expect(reader).toContain('playbackGeneration={playbackGeneration}');
+    // playback that was just replaced. The reader sits inside the host, so it
+    // remounts with it.
+    expect(hostProps).toContain('key={`${activeSceneId}:${playbackGeneration}`}');
+    expect(hostProps).toContain('resetKey={playbackGeneration}');
+    expect(hostProps).toContain('initialVariables={playbackState?.variables ?? latestVariablesRef.current}');
+    expect(host).toMatch(/<StoryReaderResponsive[\s\S]*?sceneId=\{activeSceneId\}[\s\S]*?\/>/);
 
     // The scene id still comes from the record first and the playback second —
     // but read once, above the guard, so neither has to be asserted non-null
