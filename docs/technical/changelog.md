@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-10-24 — Comic scenes read one after another make one strip
+
+PR 2.5 of `docs/plans/COMIC-STAGE-2-PLAN.md`.
+
+- **`ComicReadingSession`** (`src/components/comic/`) sits above the scene's
+  `SceneRuntimeHost` on the reader screen and draws the strip. Each comic
+  scene adds its panels to it, so a comic scene after another continues the
+  same strip in the same frame instead of starting a new page. Of a scene
+  left behind, the strip keeps the panels that were open, and the choice it
+  ended on stays under its last panel as it was answered: the option taken,
+  the others not, nothing to press. The order of the strip lives in
+  `src/lib/comic/comic-reading-session.ts`.
+- Back at the start of a comic scene takes it and the scene before it off the
+  strip, as the scene before replays from its start, and rebuilds the rest in
+  the same frame.
+- From the novel to a comic, the strip comes in with the previous scene's
+  transition — a fade unless it set another. From a comic to the novel, the
+  strip slides up off the screen over the novel scene, then ends; the next
+  comic scene starts a new one. Loading a save starts a new strip too.
+- A `ComicReader` outside a session — the editor's preview later — brings a
+  session of its own.
+
 ## 2026-10-23 — A scene set to always be a comic reads as one
 
 PR 2.4b of `docs/plans/COMIC-STAGE-2-PLAN.md`. A scene whose

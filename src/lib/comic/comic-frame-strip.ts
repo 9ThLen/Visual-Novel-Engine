@@ -77,6 +77,8 @@ export interface ComicFrameStripOptions {
   /** How many panels the reader has opened; all of them when left out. */
   revealed?: number;
   choices?: ComicFrameChoices | null;
+  /** Choices made earlier in the strip, by the id of the panel they come after. */
+  panelChoices?: Readonly<Record<string, ComicFrameChoices>>;
 }
 
 export function comicFrameStrip(
@@ -84,7 +86,11 @@ export function comicFrameStrip(
   assets: ComicFrameAssets,
   options: ComicFrameStripOptions = {},
 ): ComicFrameStrip {
-  const panels = plan.panels.map((panel) => framePanel(panel, assets));
+  const panels = plan.panels.map((panel) => {
+    const drawn = framePanel(panel, assets);
+    const made = options.panelChoices?.[panel.id];
+    return made ? { ...drawn, choices: made } : drawn;
+  });
   const revealed = Math.max(0, Math.min(panels.length, Math.floor(options.revealed ?? panels.length)));
   return { panels, revealed, choices: options.choices ?? null };
 }

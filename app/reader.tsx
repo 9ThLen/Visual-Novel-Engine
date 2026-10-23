@@ -8,6 +8,7 @@ import { ReaderMenu } from '@/components/ReaderMenu';
 import { PostFinaleRating } from '@/components/reader/PostFinaleRating';
 import { SceneRuntimeHost } from '@/components/reader/SceneRuntimeHost';
 import { ComicReader } from '@/components/comic/ComicReader';
+import { ComicReadingSession } from '@/components/comic/ComicReadingSession';
 import { resolveScenePresentation, sceneComicCapabilities } from '@/lib/comic/comic-presentation';
 import { shouldPromptForReview } from '@/lib/reviews/review-prompt';
 import { getReviewsStore } from '@/lib/reviews/reviews-storage';
@@ -528,46 +529,55 @@ export default function ReaderScreen() {
         <IconSymbol name="menu" size={18} color={colors['text-inverse']} />
       </Pressable>
 
-      <SceneRuntimeHost
-        // The generation is part of the key so a load into the scene already on
-        // screen remounts the subtree, exactly as loading a different scene
-        // does. That is what rebuilds the run and the reader-local per-scene
-        // state — page index, dialogue log, any blocking media/cutscene
-        // overlay — instead of leaving it stranded from the playback that was
-        // just replaced.
-        key={`${activeSceneId}:${playbackGeneration}`}
-        timeline={timeline}
-        // The variables the scene was entered with, not the run's current ones.
-        initialVariables={playbackState?.variables ?? latestVariablesRef.current}
+      {/* Comic scenes read one after another share one strip; the novel ends it. */}
+      <ComicReadingSession
+        active={readsAsComic}
+        storyId={story.id}
+        settings={settings}
         resetKey={playbackGeneration}
+        entryTransition={entryTransition}
       >
-        {readsAsComic ? (
-          <ComicReader
-            sceneId={activeSceneId}
-            settings={settings}
-            onTransition={handleTransition}
-            onExecutorChoiceSelect={handleExecutorChoiceSelect}
-            onSceneStateChange={handleSceneStateChange}
-            routeOnExecutorComplete={true}
-            canRollbackScene={sceneHistoryDepth > 0}
-            onRollbackScene={handleRollbackScene}
-          />
-        ) : (
-          <StoryReaderResponsive
-            sceneId={activeSceneId}
-            onTransition={handleTransition}
-            entryTransition={entryTransition}
-            onExecutorChoiceSelect={handleExecutorChoiceSelect}
-            onSceneStateChange={handleSceneStateChange}
-            isLoading={isLoading}
-            settings={settings}
-            onHistoryVisibleChange={setHistoryOpen}
-            routeOnExecutorComplete={true}
-            canRollbackScene={sceneHistoryDepth > 0}
-            onRollbackScene={handleRollbackScene}
-          />
-        )}
-      </SceneRuntimeHost>
+        <SceneRuntimeHost
+          // The generation is part of the key so a load into the scene already on
+          // screen remounts the subtree, exactly as loading a different scene
+          // does. That is what rebuilds the run and the reader-local per-scene
+          // state — page index, dialogue log, any blocking media/cutscene
+          // overlay — instead of leaving it stranded from the playback that was
+          // just replaced.
+          key={`${activeSceneId}:${playbackGeneration}`}
+          timeline={timeline}
+          // The variables the scene was entered with, not the run's current ones.
+          initialVariables={playbackState?.variables ?? latestVariablesRef.current}
+          resetKey={playbackGeneration}
+        >
+          {readsAsComic ? (
+            <ComicReader
+              sceneId={activeSceneId}
+              settings={settings}
+              onTransition={handleTransition}
+              onExecutorChoiceSelect={handleExecutorChoiceSelect}
+              onSceneStateChange={handleSceneStateChange}
+              routeOnExecutorComplete={true}
+              canRollbackScene={sceneHistoryDepth > 0}
+              onRollbackScene={handleRollbackScene}
+            />
+          ) : (
+            <StoryReaderResponsive
+              sceneId={activeSceneId}
+              onTransition={handleTransition}
+              entryTransition={entryTransition}
+              onExecutorChoiceSelect={handleExecutorChoiceSelect}
+              onSceneStateChange={handleSceneStateChange}
+              isLoading={isLoading}
+              settings={settings}
+              onHistoryVisibleChange={setHistoryOpen}
+              routeOnExecutorComplete={true}
+              canRollbackScene={sceneHistoryDepth > 0}
+              onRollbackScene={handleRollbackScene}
+            />
+          )}
+        </SceneRuntimeHost>
+      </ComicReadingSession>
 
       {interactiveObjects.length > 0 && (
         <InteractiveObjectsLayer

@@ -223,6 +223,24 @@ describe('the comic frame', () => {
     expect(messages('choose')).toHaveLength(0);
   });
 
+  it('shows a choice an earlier scene ended on under that scene\'s last panel, with nothing to press', () => {
+    const { send, document, dom, messages } = bootFrame();
+    send({ type: 'strip', strip: { panels: [
+      { ...panel('p1'), choices: { options: [{ id: 'left', text: 'Left' }, { id: 'right', text: 'Right' }], chosenId: 'right' } },
+      panel('p2'),
+    ], revealed: 2, choices: null } });
+
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.panel[data-id="p1"] .past-choices .choice'));
+    expect(buttons.map((node) => [node.textContent, node.className, node.disabled])).toEqual([
+      ['Left', 'choice not-taken', true],
+      ['Right', 'choice taken', true],
+    ]);
+    buttons[1].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    expect(messages('choose')).toHaveLength(0);
+    expect(messages('tap')).toHaveLength(0);
+    expect(document.querySelectorAll('#choices .choice')).toHaveLength(0);
+  });
+
   it('takes its text size from the host', () => {
     const { send, document } = bootFrame({ textScale: 1.3 });
     expect(document.documentElement.style.getPropertyValue('--text-scale')).toBe('1.3');

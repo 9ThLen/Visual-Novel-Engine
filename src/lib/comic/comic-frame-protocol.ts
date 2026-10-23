@@ -54,6 +54,12 @@ export interface ComicFramePanel {
    */
   place: { x: number; y: number };
   words: ComicFrameWords[];
+  /**
+   * A choice made at the end of an earlier scene of the strip, shown under
+   * this panel's words as it was answered: the option taken, the others not,
+   * none to press.
+   */
+  choices?: ComicFrameChoices;
 }
 
 export interface ComicFrameChoiceOption {

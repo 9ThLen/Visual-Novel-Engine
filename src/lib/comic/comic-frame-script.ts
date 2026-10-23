@@ -156,8 +156,28 @@ export const COMIC_FRAME_SCRIPT = String.raw`
     }
     art.appendChild(stage);
     node.appendChild(art);
-    node.appendChild(buildWords(Array.isArray(panel.words) ? panel.words : []));
+    var words = buildWords(Array.isArray(panel.words) ? panel.words : []);
+    if (panel.choices && Array.isArray(panel.choices.options)) words.appendChild(buildPastChoices(panel.choices));
+    node.appendChild(words);
     return node;
+  }
+
+  /* A choice an earlier scene ended on, as it was answered: nothing to press. */
+  function buildPastChoices(choices) {
+    var box = element('div', 'past-choices');
+    box.setAttribute('role', 'group');
+    for (var i = 0; i < choices.options.length; i += 1) {
+      var option = choices.options[i];
+      if (!option || typeof option.id !== 'string') continue;
+      var button = element('button', 'choice');
+      button.type = 'button';
+      button.disabled = true;
+      button.textContent = String(option.text || '');
+      button.setAttribute('data-option', option.id);
+      button.classList.add(option.id === choices.chosenId ? 'taken' : 'not-taken');
+      box.appendChild(button);
+    }
+    return box;
   }
 
   /* Pictures near the viewport are loaded; far ones are let go. */
