@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-10-22 — The panels of a comic page, from a scene's steps
+
+PR 2.2 of `docs/plans/COMIC-STAGE-2-PLAN.md`: the page-plan generator, pure
+TypeScript. Nothing draws it yet; the comic reader (2.4) and the editor's
+Preview (2.6) will.
+
+- `src/lib/comic/comic-script.ts`: the words of a scene as the comic sets
+  them. Every sentence of a `text` step is a caption; every line of a
+  `dialogue` step with words is a bubble with its speaker and sprite, an
+  ordinary one until the author can pick another kind (stage 3). Words in
+  quotes inside narration stay narration. Every element is addressed as
+  `addressSentences` addresses it, so its anchor is the key its comic settings
+  will be kept under; a scene saved before blocks were remembered is addressed
+  by its steps' ids.
+- An inline chip goes with the sentence that follows it in its block, as in
+  the novel, where it runs on the tap that brings that sentence up. Rain, snow
+  or fog right after words goes with the sentence before it, since the novel
+  starts it while those words are on screen; so does a chip at the end of its
+  block. A chip switched off or with a condition is not a chip, and a
+  standalone effect, sound or music block is not one either.
+- `src/lib/comic/comic-layout.ts`: the panels, in reading order. A narration
+  sentence has a panel of its own; up to two lines of dialogue share one while
+  the picture stays the same; a new background, a character coming on or any
+  other change on screen opens the next. A panel nothing is put into never
+  appears. The shot: the whole stage with the cast on a third for narration, a
+  close-up for a short line and a medium shot for a longer one, a two-shot
+  when two talk in one panel, and the author's own camera over all of these.
+- Pages are not cut in TypeScript. The renderer cuts them from what it
+  measures, since fixed cuts lost bubbles at twice the text size in the
+  renderer spike; each panel carries the length of its words as a hint.
+- One generator, two ways in: the author's plan walks every step in order and
+  works out the screen as the executor would, rain set up ahead included; the
+  reader's plan takes the stops the executor made, each with its own snapshot
+  (`Pick<SceneState, 'backgroundAssetId' | 'characters' | 'cameraState' |
+  'activeEffects'>` fits as it is), so a step run again by a `goto` is a second
+  panel further down. A straight scene gives the same panels both ways, which
+  a test checks against the real executor. The same stops always give the same
+  plan, and the plan is plain data.
+
 ## 2026-10-22 — One run of a scene for every way of showing it
 
 PR 2.3 of stage 2 in `docs/plans/COMIC-STAGE-2-PLAN.md`. The novel reads as
