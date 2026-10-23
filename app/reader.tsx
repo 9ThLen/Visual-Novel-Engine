@@ -7,6 +7,8 @@ import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { ReaderMenu } from '@/components/ReaderMenu';
 import { PostFinaleRating } from '@/components/reader/PostFinaleRating';
 import { SceneRuntimeHost } from '@/components/reader/SceneRuntimeHost';
+import { ComicReader } from '@/components/comic/ComicReader';
+import { resolveScenePresentation, sceneComicCapabilities } from '@/lib/comic/comic-presentation';
 import { shouldPromptForReview } from '@/lib/reviews/review-prompt';
 import { getReviewsStore } from '@/lib/reviews/reviews-storage';
 import type { ReviewRating } from '@/lib/reviews/reviews-domain';
@@ -462,6 +464,16 @@ export default function ReaderScreen() {
     }).catch(() => {});
   };
 
+  // How the scene is read (docs/plans/COMIC-MODE-PLAN.md, section 2). The
+  // story's own reading format comes with stage 4; until then a scene is read
+  // as a comic only when it is set to always be one and nothing in it needs
+  // the novel.
+  const readsAsComic = useMemo(
+    () => !!timeline
+      && resolveScenePresentation(undefined, null, sceneRecord?.comic, sceneComicCapabilities(timeline)).readAs === 'comic',
+    [sceneRecord?.comic, timeline],
+  );
+
   // The scene to show comes from the record when there is one and from the
   // playback state otherwise. With neither — a reader opened at its URL for a
   // story that has no playback to resume — there is nothing to render, and
@@ -529,19 +541,32 @@ export default function ReaderScreen() {
         initialVariables={playbackState?.variables ?? latestVariablesRef.current}
         resetKey={playbackGeneration}
       >
-        <StoryReaderResponsive
-          sceneId={activeSceneId}
-          onTransition={handleTransition}
-          entryTransition={entryTransition}
-          onExecutorChoiceSelect={handleExecutorChoiceSelect}
-          onSceneStateChange={handleSceneStateChange}
-          isLoading={isLoading}
-          settings={settings}
-          onHistoryVisibleChange={setHistoryOpen}
-          routeOnExecutorComplete={true}
-          canRollbackScene={sceneHistoryDepth > 0}
-          onRollbackScene={handleRollbackScene}
-        />
+        {readsAsComic ? (
+          <ComicReader
+            sceneId={activeSceneId}
+            settings={settings}
+            onTransition={handleTransition}
+            onExecutorChoiceSelect={handleExecutorChoiceSelect}
+            onSceneStateChange={handleSceneStateChange}
+            routeOnExecutorComplete={true}
+            canRollbackScene={sceneHistoryDepth > 0}
+            onRollbackScene={handleRollbackScene}
+          />
+        ) : (
+          <StoryReaderResponsive
+            sceneId={activeSceneId}
+            onTransition={handleTransition}
+            entryTransition={entryTransition}
+            onExecutorChoiceSelect={handleExecutorChoiceSelect}
+            onSceneStateChange={handleSceneStateChange}
+            isLoading={isLoading}
+            settings={settings}
+            onHistoryVisibleChange={setHistoryOpen}
+            routeOnExecutorComplete={true}
+            canRollbackScene={sceneHistoryDepth > 0}
+            onRollbackScene={handleRollbackScene}
+          />
+        )}
       </SceneRuntimeHost>
 
       {interactiveObjects.length > 0 && (
