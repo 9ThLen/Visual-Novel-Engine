@@ -1,6 +1,4 @@
-export function jsonForScript(value: unknown): string {
-  return JSON.stringify(value).replace(/</g, '\\u003c');
-}
+export { jsonForScript } from '@/lib/json-for-script';
 
 export function escapeHtml(value: string): string {
   return value

@@ -8,7 +8,7 @@
  * come as a data: URI checked by the browser's font sanitizer first, as
  * COMIC-RENDERER-SPIKE.md found.
  */
-import { jsonForScript } from '@/lib/vn-plate-editor/embedded-utils';
+import { jsonForScript } from '@/lib/json-for-script';
 
 import { COMIC_FRAME_SCRIPT } from './comic-frame-script';
 

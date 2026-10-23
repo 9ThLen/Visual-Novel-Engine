@@ -14,7 +14,7 @@
  * PlateWebViewEditor.web.tsx does); a WebView's onMessage has neither, so there
  * the token is what tells the frame's messages from anything else.
  */
-import { jsonForScript } from '@/lib/vn-plate-editor/embedded-utils';
+import { jsonForScript } from '@/lib/json-for-script';
 
 export const COMIC_FRAME_SOURCE = 'vne-comic-frame';
 export const COMIC_HOST_SOURCE = 'vne-comic-host';
