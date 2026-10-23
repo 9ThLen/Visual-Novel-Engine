@@ -26,6 +26,8 @@ interface ComicPlanViewProps {
   /** How many panels the reader has opened; all of them when left out. */
   revealed?: number;
   choices?: ComicFrameChoices | null;
+  /** Choices made earlier in the strip, by the id of the panel they come after. */
+  panelChoices?: Readonly<Record<string, ComicFrameChoices>>;
   textScale?: number;
   onTap?: () => void;
   onChoose?: (optionId: string) => void;
@@ -38,6 +40,7 @@ export function ComicPlanView({
   storyId,
   revealed,
   choices = null,
+  panelChoices,
   textScale = 1,
   onTap,
   onChoose,
@@ -60,8 +63,8 @@ export function ComicPlanView({
       spriteRef,
       characterName: (characterId) => characters.find((character) => character.id === characterId)?.name ?? null,
     };
-    return comicFrameStrip(plan, assets, { revealed, choices });
-  }, [characters, choices, plan, revealed, spriteRef, urls]);
+    return comicFrameStrip(plan, assets, { revealed, choices, panelChoices });
+  }, [characters, choices, panelChoices, plan, revealed, spriteRef, urls]);
 
   const handleTap = useCallback(() => onTap?.(), [onTap]);
   const handleChoose = useCallback((optionId: string) => onChoose?.(optionId), [onChoose]);

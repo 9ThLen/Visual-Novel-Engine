@@ -12,10 +12,14 @@
  * host for the previous scene — the novel's order. A choice waits at the end
  * of the strip.
  *
+ * The scene's panels are its part of the reading session's strip
+ * (ComicReadingSession): the session draws the strip, so a comic scene after
+ * another continues it. Outside a session the reader brings one of its own.
+ *
  * It takes the novel reader's callbacks, so the reader screen can put either
  * one under the same host.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { useI18n } from '@/hooks/use-i18n';
@@ -28,7 +32,7 @@ import type { UserSettings } from '@/lib/user-settings';
 import { useAppStore } from '@/stores/use-app-store';
 
 import { useSceneRuntime } from '../reader/SceneRuntimeHost';
-import { ComicPlanView } from './ComicPlanView';
+import { ComicReadingSession, useComicSession, type ComicSession } from './ComicReadingSession';
 
 interface ComicReaderProps {
   sceneId: string;
@@ -43,23 +47,32 @@ interface ComicReaderProps {
   onRollbackScene?: () => void;
 }
 
-const TEXT_SIZE_SCALE = { small: 0.9, medium: 1, large: 1.15 } as const;
+export function ComicReader(props: ComicReaderProps) {
+  const session = useComicSession();
+  const storyId = useAppStore((state) => state.currentStoryId) ?? 'current';
+  if (session) return <ComicSceneReader {...props} session={session} />;
+  return (
+    <ComicReadingSession active storyId={storyId} settings={props.settings}>
+      <ComicReader {...props} />
+    </ComicReadingSession>
+  );
+}
 
-export function ComicReader({
+function ComicSceneReader({
+  session,
   sceneId,
-  settings = {},
   onTransition,
   onExecutorChoiceSelect,
   onSceneStateChange,
   routeOnExecutorComplete = false,
   canRollbackScene = false,
   onRollbackScene,
-}: ComicReaderProps) {
+}: ComicReaderProps & { session: ComicSession }) {
   const { t } = useI18n();
   const runtime = useSceneRuntime();
   const { timeline, journal, sceneState } = runtime;
-  const storyId = useAppStore((state) => state.currentStoryId) ?? 'current';
-  const textScale = (settings.readerFontScale ?? 1) * TEXT_SIZE_SCALE[settings.textSize ?? 'medium'];
+  // This visit's key in the session's strip.
+  const [visit] = useState(() => session.begin());
 
   const plan = useMemo(() => buildExecutedComicPlan(timeline, comicStopsFromJournal(timeline, journal)), [journal, timeline]);
   const current = journal.length ? journal[journal.length - 1] : null;
@@ -127,6 +140,14 @@ export function ComicReader({
     onExecutorChoiceSelect?.({ sceneId, choiceId: optionId, stepId: current.stepId, targetSceneId: option.targetSceneId });
   }, [choices, current, onExecutorChoiceSelect, runtime, sceneId]);
 
+  // This scene's part of the strip, as it now is.
+  useLayoutEffect(() => {
+    session.publish({ key: visit, plan, revealed, choices }, { onTap: handleTap, onChoose: handleChoose });
+  }, [choices, handleChoose, handleTap, plan, revealed, session, visit]);
+
+  // Leaving the scene keeps its panels in the strip, unless Back took it away.
+  useLayoutEffect(() => () => session.end(visit), [session, visit]);
+
   const canGoBack = openedNow > 1 || runtime.canRollback || canRollbackScene;
   const handleBack = useCallback(() => {
     if (openedNow > 1) {
@@ -138,22 +159,14 @@ export function ComicReader({
       runtime.rollback();
       return;
     }
+    if (!canRollbackScene) return;
+    // The scene before replays from its start: both leave the strip.
+    session.rollBack(visit);
     onRollbackScene?.();
-  }, [currentId, onRollbackScene, openedNow, runtime]);
+  }, [canRollbackScene, currentId, onRollbackScene, openedNow, runtime, session, visit]);
 
   return (
-    // The strip starts below the reader screen's menu button (top 48 px), so
-    // the first panel's words are never under it.
-    <View style={{ flex: 1, paddingTop: 88, backgroundColor: '#141417' }}>
-      <ComicPlanView
-        plan={plan}
-        storyId={storyId}
-        revealed={revealed}
-        choices={choices}
-        textScale={textScale}
-        onTap={handleTap}
-        onChoose={handleChoose}
-      />
+    <View pointerEvents="box-none" style={{ flex: 1 }}>
       <Pressable
         onPress={handleBack}
         disabled={!canGoBack}

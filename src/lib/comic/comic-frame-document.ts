@@ -141,6 +141,8 @@ body {
   text-align: left;
   cursor: pointer;
 }
+.past-choices { display: flex; flex-direction: column; gap: 6px; align-self: stretch; margin-top: 4px; }
+.past-choices .choice { font-size: calc(13px * var(--text-scale)); padding: 0.5em 0.8em; }
 .choice.taken { background: #ffe58a; }
 .choice.not-taken { opacity: 0.45; }
 .choice:disabled { cursor: default; }
