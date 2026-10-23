@@ -45,6 +45,13 @@ describe('reader-scene projections', () => {
     });
   });
 
+  it('carries a scene set to always be read one way, and nothing for Auto or an unreadable setting', () => {
+    expect(toReaderScene(makeScene({ comic: { presentation: 'comic' } })).comic).toEqual({ presentation: 'comic' });
+    expect(toReaderScene(makeScene({ comic: { presentation: 'novel' } })).comic).toEqual({ presentation: 'novel' });
+    expect(toReaderScene(makeScene({ comic: { presentation: 'auto' } }))).not.toHaveProperty('comic');
+    expect(toReaderScene(makeScene({ comic: { presentation: 'manga' } as never }))).not.toHaveProperty('comic');
+  });
+
   it('builds save slot metadata from reader scene timeline', () => {
     const timeline: TimelineStep[] = [
       {
