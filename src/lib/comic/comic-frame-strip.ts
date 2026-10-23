@@ -68,6 +68,7 @@ function framePanel(panel: ComicPanel, assets: ComicFrameAssets): ComicFramePane
     }),
     zoom: framing.zoom,
     focus: { x: framing.subject.x, y: framing.subject.y },
+    place: { x: framing.placement.x, y: framing.placement.y },
     words,
   };
 }

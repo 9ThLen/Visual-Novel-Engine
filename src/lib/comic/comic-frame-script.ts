@@ -86,6 +86,11 @@ export const COMIC_FRAME_SCRIPT = String.raw`
     return typeof value === 'number' && isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback;
   }
 
+  /* A fraction as a percentage, to a hundredth: no 26.999999999999996%. */
+  function percent(value) {
+    return Math.round(value * 10000) / 100;
+  }
+
   function picture(url, className) {
     var img = element('img', className);
     img.alt = '';
@@ -129,10 +134,19 @@ export const COMIC_FRAME_SCRIPT = String.raw`
     node.setAttribute('data-id', String(panel.id));
     var art = element('div', 'art');
     var stage = element('div', 'stage');
-    var zoom = typeof panel.zoom === 'number' && isFinite(panel.zoom) && panel.zoom > 0 ? Math.min(panel.zoom, 4) : 1;
+    /*
+     * The shot: the stage scaled by zoom and moved so its focus lands on the
+     * panel's place, but never so far that the stage stops covering the
+     * panel. The stage is the panel's size, so its own percentages are the
+     * panel's.
+     */
+    var zoom = typeof panel.zoom === 'number' && isFinite(panel.zoom) && panel.zoom >= 1 ? Math.min(panel.zoom, 4) : 1;
     var focus = panel.focus || {};
-    stage.style.transformOrigin = (fraction(focus.x, 0.5) * 100) + '% ' + (fraction(focus.y, 0.5) * 100) + '%';
-    stage.style.transform = 'scale(' + zoom + ')';
+    var place = panel.place || {};
+    var shiftX = Math.max(1 - zoom, Math.min(0, fraction(place.x, 0.5) - fraction(focus.x, 0.5) * zoom));
+    var shiftY = Math.max(1 - zoom, Math.min(0, fraction(place.y, 0.5) - fraction(focus.y, 0.5) * zoom));
+    stage.style.transformOrigin = '0 0';
+    stage.style.transform = 'translate(' + percent(shiftX) + '%, ' + percent(shiftY) + '%) scale(' + zoom + ')';
     stage.appendChild(picture(panel.background, 'bg'));
     var sprites = Array.isArray(panel.sprites) ? panel.sprites : [];
     for (var i = 0; i < sprites.length; i += 1) {

@@ -75,7 +75,7 @@ body {
 .art { position: absolute; inset: 0; overflow: hidden; }
 .stage { position: absolute; inset: 0; }
 .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.sprite { position: absolute; bottom: 0; height: 88%; width: auto; transform: translateX(-50%); }
+.sprite { position: absolute; bottom: 0; height: 80%; width: auto; transform: translateX(-50%); }
 .missing { visibility: hidden; }
 .words {
   position: relative;
@@ -98,7 +98,7 @@ body {
 }
 .bubble {
   position: relative;
-  max-width: 78%;
+  max-width: 70%;
   padding: 0.45em 0.8em;
   background: #fff;
   color: #121212;

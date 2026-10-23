@@ -10,7 +10,7 @@ function tokenOf(iframe: HTMLIFrameElement): string {
 }
 
 const strip: ComicFrameStrip = {
-  panels: [{ id: 'p1', background: null, sprites: [], zoom: 1, focus: { x: 0.5, y: 0.5 }, words: [] }],
+  panels: [{ id: 'p1', background: null, sprites: [], zoom: 1, focus: { x: 0.5, y: 0.5 }, place: { x: 0.5, y: 0.5 }, words: [] }],
   revealed: 1,
   choices: null,
 };

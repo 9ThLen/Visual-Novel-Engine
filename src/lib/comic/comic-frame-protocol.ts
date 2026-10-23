@@ -48,6 +48,11 @@ export interface ComicFramePanel {
   zoom: number;
   /** The point of the stage the shot is about, in fractions of the stage. */
   focus: { x: number; y: number };
+  /**
+   * Where in the panel that point goes, in fractions of the panel. The frame
+   * gives way where it must, so the stage still covers the panel.
+   */
+  place: { x: number; y: number };
   words: ComicFrameWords[];
 }
 

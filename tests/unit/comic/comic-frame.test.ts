@@ -62,6 +62,7 @@ function panel(id: string, words: ComicFramePanel['words'] = [{ id: `${id}-w`, k
     sprites: [{ id: 'ann', url: 'file:///media/ann.png', x: 0.25 }],
     zoom: 1,
     focus: { x: 0.5, y: 0.5 },
+    place: { x: 0.5, y: 0.5 },
     words,
   };
 }
@@ -140,6 +141,22 @@ describe('the comic frame', () => {
     expect(Array.from(document.querySelectorAll('.bubble')).map((node) => node.className)).toEqual([
       'bubble lean-left',
       'bubble lean-right',
+    ]);
+  });
+
+  it('frames a shot by moving its focus to its place, never so far that the stage stops covering the panel', () => {
+    const { send, document } = bootFrame();
+    send({ type: 'strip', strip: { panels: [
+      { ...panel('close'), zoom: 2, focus: { x: 0.25, y: 0.3 }, place: { x: 0.33, y: 0.33 } },
+      { ...panel('edge'), zoom: 2, focus: { x: 0.95, y: 0.3 }, place: { x: 0.33, y: 0.33 } },
+      { ...panel('wide'), zoom: 1, focus: { x: 0.5, y: 0.5 }, place: { x: 0.1, y: 0.9 } },
+    ], revealed: 3, choices: null } });
+
+    const transforms = Array.from(document.querySelectorAll<HTMLElement>('.stage')).map((stage) => stage.style.transform);
+    expect(transforms).toEqual([
+      'translate(-17%, -27%) scale(2)',
+      'translate(-100%, -27%) scale(2)',
+      'translate(0%, 0%) scale(1)',
     ]);
   });
 
