@@ -163,6 +163,16 @@ Four passes, all runnable without an Android SDK or an Expo account:
    extension Metro will not bundle. That last list is checked against Metro's own
    `assetExts` by a test, because it was wrong once: `.weba` — what a release
    calls an `audio/webm` object — was accepted here and silently dropped there.
+   Every PNG under `assets/` must also be whole enough for the release build to
+   crunch ([`tools/lib/png-integrity.ts`](../../tools/lib/png-integrity.ts)):
+   the chunk sequence, the critical chunks' CRCs, the IEND marker, and the image
+   data inflating to the exact size its header describes, with valid row
+   filters. AAPT2 decodes every bundled PNG in a release build, and on Windows a
+   damaged one crashes it with an empty "AAPT2 process unexpectedly exit" that
+   names no file. Browsers forgive the same damage, so the studio never shows
+   it. The check refuses only what AAPT2 8.11 failed on when tested case by
+   case. A bad CRC on an ancillary chunk, surplus image data and bytes after
+   IEND all compile, so they pass here too.
 2. **Completeness** — the player's whole module graph is walked *inside the
    staged copy*. An allowlist that missed a directory otherwise produces a
    project that uploads cleanly and fails in Metro twenty minutes later.
