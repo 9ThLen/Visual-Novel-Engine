@@ -25,7 +25,7 @@ const isCI = Boolean(process.env.CI);
 export default defineConfig({
   outputDir: path.resolve(REPO_ROOT, 'test-results'),
   testDir: '../tests/e2e/studio',
-  testMatch: /release\.spec\.ts/,
+  testMatch: /(release|comic)\.spec\.ts/,
   timeout: isCI ? 180_000 : 90_000,
   fullyParallel: false,
   workers: 1,

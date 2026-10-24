@@ -20,9 +20,14 @@
  * through `expo-asset`; a fixture that skipped it would produce releases the app
  * never produces, and bundles missing every sprite.
  *
+ * `--comic <scene id>` (repeatable) sets a scene to always be read as a comic,
+ * the way the editor's switch writes it: a story JSON from before the comic
+ * cannot say so itself.
+ *
  * Usage:
  *   pnpm demo:release --story assets/demo-story-advanced.json --out demo.vnerelease
  *                     [--media assets/background/bg-museum-entrance.png]
+ *                     [--comic scene_1_sign ...]
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -75,8 +80,9 @@ function fail(message: string): never {
 }
 
 function parseArgs(argv: string[]) {
-  const args: { story?: string; out?: string; media?: string; version: string } = {
+  const args: { story?: string; out?: string; media?: string; version: string; comic: string[] } = {
     version: '1.0.0',
+    comic: [],
   };
   for (let i = 0; i < argv.length; i += 1) {
     switch (argv[i]) {
@@ -84,6 +90,7 @@ function parseArgs(argv: string[]) {
       case '--out': args.out = argv[++i]; break;
       case '--media': args.media = argv[++i]; break;
       case '--version': args.version = argv[++i]; break;
+      case '--comic': args.comic.push(argv[++i]); break;
       default:
         if (argv[i].startsWith('--')) fail(`Unknown option: ${argv[i]}`);
     }
@@ -131,6 +138,11 @@ async function main(): Promise<void> {
   const scenes = buildCanonicalSceneRecordsFromLegacyScenes(raw.id, raw.scenes, raw.startSceneId);
   const sceneList = Object.values(scenes);
   if (!sceneList.length) fail('The story has no scenes');
+  for (const sceneId of args.comic) {
+    const scene = scenes[sceneId];
+    if (!scene) fail(`No such scene for --comic: ${sceneId}`);
+    scene.comic = { presentation: 'comic' };
+  }
 
   const assets: PreparedStoryBackupAsset[] = [];
   if (args.media) {

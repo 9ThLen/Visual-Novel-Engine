@@ -22,7 +22,16 @@ const REPO_ROOT = process.cwd();
 
 export const BUNDLE_DIR = path.join(REPO_ROOT, 'tests/e2e/player/.bundle');
 export const DESKTOP_DIR = path.join(REPO_ROOT, 'tests/e2e/player/.desktop');
+export const COMIC_BUNDLE_DIR = path.join(REPO_ROOT, 'tests/e2e/player/.comic-bundle');
 const RELEASE_FILE = path.join(REPO_ROOT, 'tests/e2e/player/.demo.vnerelease');
+const COMIC_RELEASE_FILE = path.join(REPO_ROOT, 'tests/e2e/player/.comic.vnerelease');
+
+/**
+ * Scenes the comic release sets to always be read as a comic. The sign scene
+ * can be one; the entrance holds interactive objects, so it is read as the
+ * novel all the same.
+ */
+const COMIC_SCENES = ['scene_1', 'scene_1_sign'];
 
 /**
  * Art that reaches a story through the media library, which is what makes this
@@ -42,7 +51,9 @@ function run(script: string, args: string[]): void {
 export default function globalSetup(): void {
   fs.rmSync(BUNDLE_DIR, { recursive: true, force: true });
   fs.rmSync(DESKTOP_DIR, { recursive: true, force: true });
+  fs.rmSync(COMIC_BUNDLE_DIR, { recursive: true, force: true });
   fs.rmSync(RELEASE_FILE, { force: true });
+  fs.rmSync(COMIC_RELEASE_FILE, { force: true });
 
   run('scripts/make-demo-release.ts', [
     '--story', 'assets/demo-story-advanced.json',
@@ -65,5 +76,19 @@ export default function globalSetup(): void {
     '--bundle', BUNDLE_DIR,
     '--out', DESKTOP_DIR,
     '--stage-only',
+  ]);
+
+  // The same story with comic scenes, through the same two tools: the setting
+  // has to survive the release and the export to reach a reader at all. The
+  // web build is the one made above.
+  run('scripts/make-demo-release.ts', [
+    '--story', 'assets/demo-story-advanced.json',
+    '--media', PACKAGED_MEDIA,
+    ...COMIC_SCENES.flatMap((sceneId) => ['--comic', sceneId]),
+    '--out', COMIC_RELEASE_FILE,
+  ]);
+  run('scripts/export-story-web.ts', [
+    '--release', COMIC_RELEASE_FILE,
+    '--out', COMIC_BUNDLE_DIR,
   ]);
 }

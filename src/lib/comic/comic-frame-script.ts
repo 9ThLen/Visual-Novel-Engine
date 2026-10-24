@@ -40,12 +40,14 @@ export const COMIC_FRAME_SCRIPT = String.raw`
   /*
    * The exact origin to address. Never read from location: a srcdoc document's
    * URL is about:srcdoc, whose origin serializes to "null", and posting to
-   * "null" throws. The host names itself; an opaque host (a page opened from
-   * file://) leaves nothing to name, and the receiver is the embedder anyway.
+   * "null" throws. The host names itself. Only an http(s) origin can be named:
+   * an opaque host (a page opened from file://, "null" or "file://"; a custom
+   * scheme) would have every message dropped, and the receiver is the
+   * embedder anyway.
    */
   var hostOrigin = (function () {
     var value = boot.hostOrigin;
-    return typeof value === 'string' && value !== '' && value !== 'null' ? value : '*';
+    return typeof value === 'string' && /^https?:\/\//i.test(value) ? value : '*';
   }());
 
   function post(message) {

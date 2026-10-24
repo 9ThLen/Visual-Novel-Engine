@@ -15,9 +15,10 @@ import { COMIC_FRAME_SCRIPT } from './comic-frame-script';
 export interface ComicFrameBoot {
   token: string;
   /**
-   * The origin the frame addresses its messages to. Left out, or "null" (a
-   * host opened from file://), the frame falls back to "*". Unused in a
-   * WebView, which posts through `ReactNativeWebView`.
+   * The origin the frame addresses its messages to. Left out, or anything but
+   * an http(s) origin (a host opened from file://, a custom scheme), the frame
+   * falls back to "*". Unused in a WebView, which posts through
+   * `ReactNativeWebView`.
    */
   hostOrigin?: string;
   /** Multiplies every text size in the frame: the reader's font scale. */

@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-10-24 — A comic scene, checked end to end
+
+PR 2.7 of `docs/plans/COMIC-STAGE-2-PLAN.md`: the checks, and three bugs
+they found.
+
+- **The player suite** builds a second release of the advanced demo with
+  two scenes set to always be a comic (`make-demo-release --comic <scene>`)
+  and exports it. `tests/e2e/player/comic.spec.ts` reads it served over HTTP
+  under the bundle's CSP, and from a double-clicked `index.html` with no
+  network: the entrance holds interactive objects, so it stays the novel; the
+  sign scene reads as a comic; the story goes back to the novel after it.
+- **The studio suite** gets `tests/e2e/studio/comic.spec.ts`: the author sets
+  a scene to always be a comic on its page, the page is reloaded, and the web
+  reader reads the scene as one. A scene with interactive objects stays the
+  novel, and the editor says why.
+- **A comic opened from disk drew nothing.** Chrome spells a `file://`
+  page's origin "file://", not "null", so the comic frame and its host
+  addressed each other by an opaque origin and every message was dropped.
+  Only an http(s) origin is addressed or compared now; anything else, the
+  desktop shell's `tauri://` on macOS and Linux included, uses "*", still
+  behind the source-window and token checks.
+- **On the web, a scene with interactive objects could only be left through
+  its objects.** Their full-screen layer took every tap, because
+  `getPointerEventsStyle('box-none')` put a value in an inline style that
+  React Native Web drops. `box-none` and `box-only` now go through
+  `StyleSheet.create`; the reader's control row and dialogue layer had the
+  same problem.
+- **On Android, a comic panel had no picture.** In a release build the asset
+  resolver hands back a bundled picture's bare drawable name, and the frame
+  read it against its own page. Bare names now become
+  `file:///android_res/drawable/<name>.png`.
+
 ## 2026-10-24 — The Preview shows a scene as a comic, and reads it as one
 
 PR 2.6b of `docs/plans/COMIC-STAGE-2-PLAN.md`.
