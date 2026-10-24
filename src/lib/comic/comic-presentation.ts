@@ -61,6 +61,23 @@ export function sanitizeSceneComicSettings(value: unknown): SceneComicSettings |
   return { presentation };
 }
 
+/** The scene's own setting, "Auto" when it has none. */
+export function scenePresentationOf(comic: SceneComicSettings | undefined): ScenePresentation {
+  return sanitizeSceneComicSettings(comic)?.presentation ?? 'auto';
+}
+
+/**
+ * The record with these comic settings, as they may be kept: settings that
+ * come to nothing ("Auto") leave the record with none. A record that already
+ * has them comes back as it is.
+ */
+export function withSceneComicSettings<T extends { comic?: SceneComicSettings }>(record: T, comic: unknown): T {
+  const next = sanitizeSceneComicSettings(comic);
+  if (next?.presentation === record.comic?.presentation && !next === !record.comic) return record;
+  const { comic: _previous, ...rest } = record;
+  return (next ? { ...rest, comic: next } : rest) as T;
+}
+
 /**
  * What in the scene's timeline keeps it a novel. A step counts when the
  * executor would run it: a switched-off step does not, a step with conditions

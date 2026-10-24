@@ -816,6 +816,36 @@ describe('app store slices', () => {
     vi.useRealTimers();
   });
 
+  it('sets how a scene is read, and keeps nothing for Auto', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(4000);
+    const harness = createSliceHarness();
+    const slice = createSceneSlice(harness.set, harness.get);
+    harness.set({
+      storiesMetadata: [
+        { id: 'story-1', title: 'Story', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 1 },
+      ],
+      sceneRecordsByStory: { 'story-1': { 'scene-1': makeSceneRecord('scene-1') } },
+      sceneRecordHydration: { 'story-1': 'full' },
+    });
+    const scene = () => harness.state.sceneRecordsByStory['story-1']['scene-1'];
+
+    slice.setSceneComicPresentation('story-1', 'scene-1', 'comic');
+    expect(scene()).toMatchObject({ comic: { presentation: 'comic' }, updatedAt: 4000 });
+    expect(harness.state.storiesMetadata[0].updatedAt).toBe(4000);
+
+    // The same setting again writes nothing.
+    vi.setSystemTime(5000);
+    const before = scene();
+    slice.setSceneComicPresentation('story-1', 'scene-1', 'comic');
+    expect(scene()).toBe(before);
+
+    slice.setSceneComicPresentation('story-1', 'scene-1', 'auto');
+    expect('comic' in scene()).toBe(false);
+    expect(scene().updatedAt).toBe(5000);
+    vi.useRealTimers();
+  });
+
   it('updates and removes scene connections', () => {
     const harness = createSliceHarness();
     const slice = createSceneSlice(harness.set, harness.get);

@@ -40,6 +40,8 @@ import { charactersEquivalent, mergeExternalCharacters } from '@/lib/character-m
 import { crumbsForSceneIndex, type BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
 import { exitEditorToStoryHome } from '@/lib/document-editor/editor-exit';
 import { ensureDocumentCharactersInBlocks } from '@/lib/document-editor/document-scene';
+import { documentSceneNovelOnly } from '@/lib/document-editor/document-comic';
+import { scenePresentationOf } from '@/lib/comic/comic-presentation';
 import type { SceneContentLedger } from '@/lib/document-editor/scene-content-ledger';
 import { loadSceneHeights, persistSceneHeight } from '@/lib/document-editor/scene-height-cache';
 import {
@@ -54,7 +56,7 @@ import { captureEditorContext as captureEditorContextFromEditor } from '@/lib/do
 import type { Character } from '@/lib/character-types';
 import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { DocumentScene } from '@/lib/document-editor/types';
-import type { SceneRecord } from '@/lib/engine/types';
+import type { ScenePresentation, SceneRecord } from '@/lib/engine/types';
 
 interface DocumentSceneEditorProps {
   storyId: string;
@@ -102,6 +104,8 @@ interface DocumentSceneEditorProps {
   onCreateNextScene: (sourceSceneId: string, documentScenes: DocumentScene[], characters: Character[]) => boolean;
   onDuplicateScene?: (sceneId: string) => void;
   onDeleteScene?: (sceneId: string) => void;
+  /** Sets how the scene is read; the setting goes to the record, not to the document. */
+  onSetSceneComicPresentation?: (sceneId: string, presentation: ScenePresentation) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onPickVideoAsset?: () => Promise<{ asset: VNPlateVideoAsset | null; error?: 'tooLarge' | 'unsupportedType' | 'failed' }>;
@@ -174,6 +178,7 @@ export function DocumentSceneEditor({
   onCreateNextScene,
   onDuplicateScene,
   onDeleteScene,
+  onSetSceneComicPresentation,
   onUploadBackgroundAsset,
   onUploadAudioAsset,
   onPickVideoAsset,
@@ -387,6 +392,12 @@ export function DocumentSceneEditor({
     localCharactersRef.current = merged;
     setLocalCharacters(merged);
   }, [characters]);
+
+  // Each scene's comic setting comes from its record: the document does not carry it.
+  const comicPresentationBySceneId = React.useMemo(
+    () => new Map(scenes.map((scene) => [scene.id, scenePresentationOf(scene.comic)])),
+    [scenes],
+  );
 
   // Live scene refs for transition/choice target pickers inside the webview
   // editors — names come from the in-session documents so renames show up
@@ -827,6 +838,9 @@ export function DocumentSceneEditor({
   const getOnRequestDeleteScene = useSceneCallback((_sceneId: string) => {
     handleRequestDeleteScene(_sceneId);
   }, documentsResetKey);
+  const getOnSetComicPresentation = useSceneCallback((_sceneId: string, presentation: ScenePresentation) => {
+    onSetSceneComicPresentation?.(_sceneId, presentation);
+  }, documentsResetKey);
   const getRegisterEditorRef = useSceneCallback(registerEditorRefImpl, documentsResetKey);
   const getOnFrameLayout = useSceneCallback(handleFrameLayoutImpl, documentsResetKey);
 
@@ -1100,6 +1114,9 @@ export function DocumentSceneEditor({
               branchColor={branchColorBySceneId?.[documentScene.sceneId]}
               isPhone={isPhone}
               isMounted={mountedSceneIds.has(documentScene.sceneId)}
+              comicPresentation={comicPresentationBySceneId.get(documentScene.sceneId) ?? 'auto'}
+              comicNovelOnly={documentSceneNovelOnly(documentScene)}
+              onSetComicPresentation={onSetSceneComicPresentation ? getOnSetComicPresentation(documentScene.sceneId) : undefined}
               contentEpoch={frameEpochBySceneId[documentScene.sceneId] ?? 0}
               cachedHeight={sceneLayoutRef.current.get(documentScene.sceneId)?.height ?? persistedHeights[documentScene.sceneId]}
               onChange={getOnChange(documentScene.sceneId)}

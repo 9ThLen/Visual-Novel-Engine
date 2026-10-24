@@ -18,6 +18,7 @@ import {
 } from '@/lib/document-editor/next-scene';
 import { useI18n } from '@/hooks/use-i18n';
 import { getPlaybackAudioLibraryPure } from '@/lib/audio-library';
+import { withSceneComicSettings } from '@/lib/comic/comic-presentation';
 import { addAssetToLibraryPure } from '@/lib/media-library-service';
 import { pickVideoFromDevice } from '@/lib/pick-video';
 import { getStoryGalleryImageAssets } from '@/lib/story-image-library';
@@ -34,7 +35,7 @@ import {
   type DocumentViewMode,
 } from '@/stores/use-branch-selections';
 import type { Character } from '@/lib/character-types';
-import type { DialogueBlockData, SceneRecord } from '@/lib/engine/types';
+import type { DialogueBlockData, ScenePresentation, SceneRecord } from '@/lib/engine/types';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
 
 export default function DocumentEditorRoute() {
@@ -72,6 +73,7 @@ export default function DocumentEditorRoute() {
   const addMediaAssetToStory = useAppStore((state) => state.addMediaAssetToStory);
   const reorderScenes = useAppStore((state) => state.reorderScenes);
   const deleteScene = useAppStore((state) => state.deleteScene);
+  const setSceneComicPresentation = useAppStore((state) => state.setSceneComicPresentation);
   const updateStoryMetadata = useAppStore((state) => state.updateStoryMetadata);
   const noteSceneOpened = useAppStore((state) => state.noteSceneOpened);
   const branchSelections = useBranchSelections(useMemo(() => selectBranchSelections(storyId), [storyId]));
@@ -260,9 +262,19 @@ export default function DocumentEditorRoute() {
     );
   }
 
+  // The page's switch writes a scene's comic settings straight to the store,
+  // and the documents never carry them: a record the editor writes takes them
+  // from the store as it is now, not from the copy the editor was handed.
+  const withStoredComicSettings = (record: SceneRecord): SceneRecord =>
+    withSceneComicSettings(record, selectCanonicalSceneRecord(storyId, record.id)(useAppStore.getState())?.comic);
+
   const handleSave = (sceneRecords: SceneRecord[], nextCharacters: Character[]) => {
     setCharacterLibrary(storyId, nextCharacters);
-    sceneRecords.forEach((record) => saveSceneRecord(record));
+    sceneRecords.forEach((record) => saveSceneRecord(withStoredComicSettings(record)));
+  };
+
+  const handleSetSceneComicPresentation = (targetSceneId: string, presentation: ScenePresentation) => {
+    setSceneComicPresentation(storyId, targetSceneId, presentation);
   };
 
   const handleUploadBackgroundAsset = async (
@@ -349,7 +361,7 @@ export default function DocumentEditorRoute() {
     // the end and the story metadata would undercount.
     const allScenes = selectSceneRecordsForStory(storyId)(useAppStore.getState());
     const recordsById = new Map(allScenes.map((scene) => [scene.id, scene]));
-    editedRecords.forEach((record) => recordsById.set(record.id, record));
+    editedRecords.forEach((record) => recordsById.set(record.id, withStoredComicSettings(record)));
 
     const sourceRecord = recordsById.get(sourceSceneId);
     // Nothing has been written yet, the edited records included: the editor
@@ -426,6 +438,7 @@ export default function DocumentEditorRoute() {
       onCreateNextScene={handleCreateNextScene}
       onDuplicateScene={handleDuplicateScene}
       onDeleteScene={handleDeleteScene}
+      onSetSceneComicPresentation={handleSetSceneComicPresentation}
       videoAssets={videoAssets}
       onUploadBackgroundAsset={handleUploadBackgroundAsset}
       onPickVideoAsset={handlePickVideoAsset}

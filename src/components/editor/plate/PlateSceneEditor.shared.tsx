@@ -11,7 +11,7 @@ import { createSceneContentLedger, type SceneContentLedger } from '@/lib/documen
 import type { BranchBreadcrumbItem } from '@/lib/document-editor/branch-breadcrumb';
 import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { Character } from '@/lib/character-types';
-import type { SceneRecord } from '@/lib/engine/types';
+import type { ScenePresentation, SceneRecord } from '@/lib/engine/types';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
 import type { PlateDocumentScene } from './types';
 import { sceneRecordToPlateDocument } from './serializers/scene-to-plate';
@@ -50,6 +50,8 @@ interface PlateSceneEditorProps {
   onCreateNextScene?: (sourceSceneId: string, sceneRecords: SceneRecord[], characters: Character[]) => boolean;
   onDuplicateScene?: (sceneId: string) => void;
   onDeleteScene?: (sceneId: string) => void;
+  /** Sets how the scene is read; the setting goes to the record, not to the document. */
+  onSetSceneComicPresentation?: (sceneId: string, presentation: ScenePresentation) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onPickVideoAsset?: () => Promise<{ asset: VNPlateVideoAsset | null; error?: 'tooLarge' | 'unsupportedType' | 'failed' }>;
@@ -82,6 +84,7 @@ export function PlateSceneEditor({
   onCreateNextScene,
   onDuplicateScene,
   onDeleteScene,
+  onSetSceneComicPresentation,
   onUploadBackgroundAsset,
   onUploadAudioAsset,
   onPickVideoAsset,
@@ -159,6 +162,7 @@ export function PlateSceneEditor({
       onCreateNextScene={createNextScene}
       onDuplicateScene={onDuplicateScene}
       onDeleteScene={onDeleteScene}
+      onSetSceneComicPresentation={onSetSceneComicPresentation}
       onUploadBackgroundAsset={onUploadBackgroundAsset}
       onUploadAudioAsset={onUploadAudioAsset}
       onPickVideoAsset={onPickVideoAsset}
