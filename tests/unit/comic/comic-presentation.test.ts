@@ -2,11 +2,13 @@ import {
   resolveScenePresentation,
   sanitizeSceneComicSettings,
   sceneComicCapabilities,
+  scenePresentationOf,
+  withSceneComicSettings,
   type ReadAs,
   type StoryReadingFormat,
 } from '@/lib/comic/comic-presentation';
 import { createTextStep } from '@/lib/engine/event-factory';
-import type { ScenePresentation, TimelineStep } from '@/lib/engine/types';
+import type { SceneComicSettings, ScenePresentation, TimelineStep } from '@/lib/engine/types';
 
 const comicPage = { novelOnly: null };
 
@@ -107,5 +109,35 @@ describe('a scene comic setting as it is kept', () => {
 
   it('keeps only what it knows', () => {
     expect(sanitizeSceneComicSettings({ presentation: 'comic', panels: [{ anchor: 'x/p0/s0' }] })).toEqual({ presentation: 'comic' });
+  });
+});
+
+describe('a scene comic setting written to its record', () => {
+  const record: { id: string; name: string; comic?: SceneComicSettings } = { id: 'scene-1', name: 'Scene' };
+
+  it('reads a record without a setting as Auto', () => {
+    expect(scenePresentationOf(undefined)).toBe('auto');
+    expect(scenePresentationOf({ presentation: 'manga' as ScenePresentation })).toBe('auto');
+    expect(scenePresentationOf({ presentation: 'comic' })).toBe('comic');
+  });
+
+  it('writes Always comic and takes it away again for Auto', () => {
+    const comic = withSceneComicSettings(record, { presentation: 'comic' });
+    expect(comic).toEqual({ id: 'scene-1', name: 'Scene', comic: { presentation: 'comic' } });
+
+    const auto = withSceneComicSettings(comic, { presentation: 'auto' });
+    expect(auto).toEqual(record);
+    expect('comic' in auto).toBe(false);
+  });
+
+  it('hands back the record itself when it already has the setting', () => {
+    const comic = { ...record, comic: { presentation: 'comic' as const } };
+    expect(withSceneComicSettings(comic, { presentation: 'comic' })).toBe(comic);
+    expect(withSceneComicSettings(record, undefined)).toBe(record);
+  });
+
+  it('cleans a setting that comes to nothing', () => {
+    expect(withSceneComicSettings({ ...record, comic: { presentation: 'auto' as const } }, undefined)).toEqual(record);
+    expect(withSceneComicSettings({ ...record, comic: {} }, undefined)).toEqual(record);
   });
 });

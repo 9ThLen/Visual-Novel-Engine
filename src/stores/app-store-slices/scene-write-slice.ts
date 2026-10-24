@@ -1,4 +1,5 @@
-import type { SceneConnection, SceneRecord } from '@/lib/engine/types';
+import { withSceneComicSettings } from '@/lib/comic/comic-presentation';
+import type { SceneConnection, ScenePresentation, SceneRecord } from '@/lib/engine/types';
 import {
   applyCanonicalSceneDelete,
   getCanonicalSceneRecordFromState,
@@ -25,6 +26,8 @@ export interface SceneWriteSlice {
     sceneId: string,
     updates: SceneRecordContentUpdates
   ) => void;
+  /** How the scene is read: "Auto", always as a comic, or always as the novel. */
+  setSceneComicPresentation: (storyId: string, sceneId: string, presentation: ScenePresentation) => void;
   updateSceneConnection: (storyId: string, fromSceneId: string, connection: SceneConnection) => void;
   removeSceneConnection: (
     storyId: string,
@@ -107,6 +110,25 @@ export function createSceneWriteSlice(set: AppStateSet): SceneWriteSlice {
 
         return {
           sceneRecordsByStory: { ...s.sceneRecordsByStory, [storyId]: storyRecords },
+          storiesMetadata: s.storiesMetadata.map((m) =>
+            m.id === storyId ? { ...m, updatedAt: Date.now() } : m
+          ),
+        };
+      }),
+
+    setSceneComicPresentation: (storyId, sceneId, presentation) =>
+      set((s) => {
+        assertFullSceneHydration(s.sceneRecordHydration, storyId);
+        const existingRecord = getCanonicalSceneRecordFromState(s, storyId, sceneId);
+        if (!existingRecord) return {};
+        const nextRecord = withSceneComicSettings(existingRecord, { ...existingRecord.comic, presentation });
+        if (nextRecord === existingRecord) return {};
+
+        return {
+          sceneRecordsByStory: {
+            ...s.sceneRecordsByStory,
+            [storyId]: { ...(s.sceneRecordsByStory[storyId] || {}), [sceneId]: { ...nextRecord, updatedAt: Date.now() } },
+          },
           storiesMetadata: s.storiesMetadata.map((m) =>
             m.id === storyId ? { ...m, updatedAt: Date.now() } : m
           ),

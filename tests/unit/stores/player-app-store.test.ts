@@ -45,6 +45,7 @@ const AUTHORING_ACTIONS = [
   'saveSceneRecord',
   'commitAiChangeSet',
   'updateSceneRecordPreservingMeta',
+  'setSceneComicPresentation',
   'updateSceneConnection',
   'removeSceneConnection',
   'setStartScene',

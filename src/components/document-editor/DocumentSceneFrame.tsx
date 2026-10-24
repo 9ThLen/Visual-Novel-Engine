@@ -13,13 +13,24 @@ import {
   getMinFrameHeight,
   type PlateWebViewEditorHandle,
 } from '@/components/vn-plate-editor/PlateWebViewEditor';
+import { SceneComicSwitch } from '@/components/document-editor/SceneComicSwitch';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { withAlpha } from '@/lib/_core/theme';
 import type { Character } from '@/lib/character-types';
+import type { NovelOnlyReason } from '@/lib/comic/comic-presentation';
 import type { IncomingScenePath } from '@/lib/document-editor/story-path';
 import type { DocumentScene } from '@/lib/document-editor/types';
+import type { ScenePresentation } from '@/lib/engine/types';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateBranchInfo, VNPlateFormatState, VNPlateSceneRef, VNPlateSelectionState, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
+
+/**
+ * The page's own stylesheet narrows the paper in a frame this wide or less
+ * (embedded-styles.ts, `max-width: 760px`), which lifts its "Scene" line and
+ * title. The page's controls sit on that line, clear of the title, in either.
+ */
+const NARROW_PAGE_MAX_WIDTH = 760;
+const CONTROLS_TOP = { narrow: 22, wide: 56 };
 
 interface DocumentSceneFrameProps {
   scene: DocumentScene;
@@ -40,6 +51,12 @@ interface DocumentSceneFrameProps {
   branchColor?: string;
   isPhone: boolean;
   isMounted: boolean;
+  /** The scene's comic setting, from its record ("Auto" when it has none). */
+  comicPresentation?: ScenePresentation;
+  /** Why the scene can only be read as the novel, or null. */
+  comicNovelOnly?: NovelOnlyReason | null;
+  /** Without it the page shows no comic switch. */
+  onSetComicPresentation?: (presentation: ScenePresentation) => void;
   /**
    * Bumped by the host when the stored scene was rewritten from outside the
    * editor. The editor is rebuilt from `scene`: a live frame takes no content
@@ -87,6 +104,9 @@ function DocumentSceneFrameImpl({
   branchColor,
   isPhone,
   isMounted,
+  comicPresentation = 'auto',
+  comicNovelOnly = null,
+  onSetComicPresentation,
   contentEpoch = 0,
   cachedHeight,
   onChange,
@@ -107,14 +127,23 @@ function DocumentSceneFrameImpl({
   const { t } = useI18n();
   const [isOverlayActive, setIsOverlayActive] = useState(false);
   const [isSceneMenuOpen, setIsSceneMenuOpen] = useState(false);
+  const [isComicMenuOpen, setIsComicMenuOpen] = useState(false);
   const [isMergePointTooltipVisible, setIsMergePointTooltipVisible] = useState(false);
   const frameRef = useRef<View>(null);
   const contentRef = useRef<View>(null);
   // Height of whatever sits above the editor inside this frame — the
   // merge-point banner. State, so the first measurement re-renders the frame.
   const [leadingHeight, setLeadingHeight] = useState(0);
+  const [pageWidth, setPageWidth] = useState(0);
   const sceneMenuRef = useRef<View>(null);
-  const closeSceneMenu = useCallback(() => setIsSceneMenuOpen(false), []);
+  const closeMenus = useCallback(() => {
+    setIsSceneMenuOpen(false);
+    setIsComicMenuOpen(false);
+  }, []);
+  const handleComicMenuOpenChange = useCallback((open: boolean) => {
+    setIsSceneMenuOpen(false);
+    setIsComicMenuOpen(open);
+  }, []);
   const onFrameLayoutRef = useRef(onFrameLayout);
   onFrameLayoutRef.current = onFrameLayout;
 
@@ -123,19 +152,19 @@ function DocumentSceneFrameImpl({
   }, [isMounted]);
 
   useEffect(() => {
-    if (!isSceneMenuOpen || typeof document === 'undefined') return;
+    if ((!isSceneMenuOpen && !isComicMenuOpen) || typeof document === 'undefined') return;
 
     const handlePointerDown = (event: PointerEvent) => {
       const menuNode = sceneMenuRef.current as unknown as HTMLElement | null;
       const target = event.target;
       if (menuNode && target && !menuNode.contains(target as Node)) {
-        closeSceneMenu();
+        closeMenus();
       }
     };
 
     document.addEventListener('pointerdown', handlePointerDown);
     return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [closeSceneMenu, isSceneMenuOpen]);
+  }, [closeMenus, isComicMenuOpen, isSceneMenuOpen]);
 
   // Re-measure on mount and on every measureVersion bump. On web the View ref
   // is the DOM element; offsetTop/offsetHeight match the y/height onLayout
@@ -149,6 +178,7 @@ function DocumentSceneFrameImpl({
     const report = () => {
       const contentNode = contentRef.current as unknown as HTMLElement | null;
       if (contentNode && typeof contentNode.offsetTop === 'number') setLeadingHeight(contentNode.offsetTop);
+      if (typeof node.offsetWidth === 'number') setPageWidth(node.offsetWidth);
       onFrameLayoutRef.current(node.offsetTop, node.offsetHeight);
     };
     report();
@@ -171,6 +201,7 @@ function DocumentSceneFrameImpl({
   const contentHeight = cachedHeight === undefined ? undefined : Math.max(0, cachedHeight - leadingHeight);
   const placeholderHeight = contentHeight ?? getMinFrameHeight(isPhone);
   const isMergePoint = (incomingCount ?? 0) >= 2;
+  const isNarrowPage = isPhone || (pageWidth > 0 && pageWidth <= NARROW_PAGE_MAX_WIDTH);
   const incomingPathDetails = (incomingPaths ?? []).map((path) => ({
     ...path,
     sceneName: storyScenes.find((storyScene) => storyScene.id === path.sceneId)?.name || path.sceneId,
@@ -191,7 +222,7 @@ function DocumentSceneFrameImpl({
         maxWidth: isPhone ? undefined : 920,
         alignSelf: 'center',
         position: 'relative',
-        zIndex: isOverlayActive || isMergePointTooltipVisible || isSceneMenuOpen ? 80 : 0,
+        zIndex: isOverlayActive || isMergePointTooltipVisible || isSceneMenuOpen || isComicMenuOpen ? 80 : 0,
       }}
     >
       {isMergePoint ? (
@@ -272,12 +303,24 @@ function DocumentSceneFrameImpl({
         </View>
       ) : null}
       <View ref={contentRef} style={{ width: '100%', position: 'relative' }}>
-        <View ref={sceneMenuRef} style={{ position: 'absolute', top: isPhone ? 40 : 56, right: isPhone ? 24 : 82, alignItems: 'flex-end', zIndex: 120 }}>
+        <View ref={sceneMenuRef} style={{ position: 'absolute', top: isNarrowPage ? CONTROLS_TOP.narrow : CONTROLS_TOP.wide, right: isPhone ? 24 : 82, flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 120 }}>
+          {onSetComicPresentation ? (
+            <SceneComicSwitch
+              presentation={comicPresentation}
+              novelOnly={comicNovelOnly}
+              open={isComicMenuOpen}
+              onOpenChange={handleComicMenuOpenChange}
+              onChange={onSetComicPresentation}
+            />
+          ) : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('editor.scenes')}
             hitSlop={6}
-          onPress={() => setIsSceneMenuOpen((open) => !open)}
+          onPress={() => {
+            setIsComicMenuOpen(false);
+            setIsSceneMenuOpen((open) => !open);
+          }}
             style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', padding: 2 }}
           >
             <Text style={{ color: colors.muted, fontSize: 22, lineHeight: 22, fontWeight: '800' }}>⋯</Text>
@@ -285,8 +328,10 @@ function DocumentSceneFrameImpl({
           {isSceneMenuOpen ? (
             <View
               style={{
+                position: 'absolute',
+                top: 34,
+                right: 0,
                 minWidth: 150,
-                marginTop: 6,
                 paddingVertical: 4,
                 borderRadius: 8,
                 backgroundColor: colors['surface-container'],
@@ -348,7 +393,7 @@ function DocumentSceneFrameImpl({
           onUploadAudioAsset={onUploadAudioAsset}
           onPickVideoAsset={onPickVideoAsset}
           onOverlayActiveChange={setIsOverlayActive}
-          onInteraction={closeSceneMenu}
+          onInteraction={closeMenus}
           onHistoryStateChange={onHistoryStateChange}
           onFormatStateChange={onFormatStateChange}
           onSelectionStateChange={onSelectionStateChange}

@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-10-24 — The author sets a scene to be read as a comic
+
+PR 2.6a of `docs/plans/COMIC-STAGE-2-PLAN.md`: the editor's half of the
+switch. The Preview's comic format is 2.6b.
+
+- **On the scene page** a pill beside the scene menu names how the scene is
+  read — "Auto format", "Comic" or "Novel" — and opens the three choices with
+  a line on each. A scene that plays a video or holds an interactive object is
+  read as the novel whatever it is set to: the pill warns and the menu says
+  why. The setting goes to the scene record (`setSceneComicPresentation` in
+  the store); "Auto" leaves the record with none.
+- **The scene list** marks a scene that is always a comic, with a warning when
+  it is read as the novel all the same.
+- The document never carries the setting, so the editor's own saves take it
+  from the store as it is now (`app/document-editor.tsx`), and writing it does
+  not rebuild the open page. Story snapshots keep it with the rest of the
+  record.
+- The page's controls sit on its "Scene" line in a frame narrow enough for
+  the page's own narrow layout (760 px or less, the phone included). They
+  used to cover the end of the title there.
+
 ## 2026-10-24 — Comic scenes read one after another make one strip
 
 PR 2.5 of `docs/plans/COMIC-STAGE-2-PLAN.md`.

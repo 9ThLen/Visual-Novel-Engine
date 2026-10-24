@@ -6,6 +6,7 @@ import { useColors } from '@/hooks/use-colors';
 import { withAlpha } from '@/lib/_core/theme';
 import { useI18n } from '@/hooks/use-i18n';
 import { resolveAssetUri } from '@/lib/asset-resolver';
+import { sceneComicCapabilities, scenePresentationOf } from '@/lib/comic/comic-presentation';
 import type { BackgroundBlockData, SceneRecord } from '@/lib/engine/types';
 import type { ColorScheme } from '@/constants/theme';
 
@@ -88,6 +89,7 @@ export function DocumentSceneSidebar({
                   <Text style={{ flex: 1, color: colors.foreground, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
                     {dirtySceneIds?.has(scene.id) ? '* ' : ''}{scene.name || t('document.untitledScene')}
                   </Text>
+                  <ComicBadge scene={scene} colorScheme={colorScheme} />
                 </View>
                 <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
                   {t('document.blockCount', { count: scene.timeline.length })}
@@ -118,9 +120,12 @@ export function DocumentSceneSidebar({
                 <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
                   <SceneThumbnail scene={scene} colorScheme={colorScheme} />
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
-                      {dirtySceneIds?.has(scene.id) ? '* ' : ''}{scene.name || t('document.untitledScene')}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ flex: 1, color: colors.foreground, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
+                        {dirtySceneIds?.has(scene.id) ? '* ' : ''}{scene.name || t('document.untitledScene')}
+                      </Text>
+                      <ComicBadge scene={scene} colorScheme={colorScheme} />
+                    </View>
                     <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
                       {t('document.blockCount', { count: scene.timeline.length })}
                     </Text>
@@ -131,6 +136,29 @@ export function DocumentSceneSidebar({
           </>
         ) : null}
       </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * Marks a scene set to always be read as a comic. A scene that holds what a
+ * comic page cannot show yet is read as the novel all the same: its mark warns.
+ */
+function ComicBadge({ scene, colorScheme }: { scene: SceneRecord; colorScheme?: ColorScheme }) {
+  const colors = useColors(colorScheme);
+  const { t } = useI18n();
+  if (scenePresentationOf(scene.comic) !== 'comic') return null;
+  const overruled = sceneComicCapabilities(scene.timeline).novelOnly !== null;
+  const tint = overruled ? colors.warning : colors.primary;
+  return (
+    <View
+      accessibilityLabel={t(overruled ? 'document.comic.badgeOverruled' : 'document.comic.badgeLabel')}
+      testID={`scene-comic-badge-${scene.id}`}
+      style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8, backgroundColor: withAlpha(tint, 0.14) }}
+    >
+      <Text style={{ color: tint, fontSize: 10, fontWeight: '800', letterSpacing: 0.3 }}>
+        {overruled ? '⚠ ' : ''}{t('document.comic.badge')}
+      </Text>
     </View>
   );
 }

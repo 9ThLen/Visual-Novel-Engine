@@ -2,7 +2,7 @@ import type { Language } from '@/lib/translations';
 import type { UserSettings } from '@/lib/user-settings';
 import type { PlaybackState } from '@/lib/engine/runtime-types';
 import type { SaveSlot, StoryMetadata } from '@/lib/story-domain';
-import type { SceneRecord, SceneConnection } from '@/lib/engine/types';
+import type { SceneRecord, SceneConnection, ScenePresentation } from '@/lib/engine/types';
 import type { SceneRecordContentUpdates } from '@/lib/scene-operations';
 import type { SnapshotMeta } from '@/lib/story-snapshots';
 import type { ReleaseMeta } from '@/lib/release/release-storage';
@@ -146,6 +146,7 @@ export interface AppActions {
     updates: SceneRecordContentUpdates
   ) => void;
   getScenesForStory: (storyId: string) => SceneRecord[];
+  setSceneComicPresentation: (storyId: string, sceneId: string, presentation: ScenePresentation) => void;
   updateSceneConnection: (storyId: string, fromSceneId: string, connection: SceneConnection) => void;
   removeSceneConnection: (
     storyId: string,
