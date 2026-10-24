@@ -1147,6 +1147,7 @@ export function DocumentSceneEditor({
             characters={localCharacters}
             storyScenes={storySceneRefs}
             onOpenScene={handleInspectorScenePress}
+            comicPresentation={comicPresentationBySceneId.get(activeSceneId)}
             beforeStoryMutation={handleStoryMutationBarrier}
             captureEditorContext={captureEditorContext}
           />

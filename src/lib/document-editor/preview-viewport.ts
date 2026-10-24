@@ -34,6 +34,11 @@ export const PREVIEW_DEVICE_IDS: readonly PreviewDevice[] = ['mobile', 'desktop'
 
 export const DEFAULT_PREVIEW_DEVICE: PreviewDevice = 'mobile';
 
+/** What the Preview draws: the novel's frames or the comic's panels. Apart from the device. */
+export type PreviewFormat = 'novel' | 'comic';
+
+export const PREVIEW_FORMATS: readonly PreviewFormat[] = ['novel', 'comic'];
+
 export function sanitizePreviewDevice(input: unknown): PreviewDevice {
   return input === 'mobile' || input === 'desktop' ? input : DEFAULT_PREVIEW_DEVICE;
 }
