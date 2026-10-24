@@ -33,12 +33,16 @@ const Iframe = 'iframe' as unknown as React.ComponentType<{
 }>;
 
 /**
- * A page opened from file:// has the opaque origin "null", which postMessage
- * refuses as a target. The message goes straight to our own frame's window
- * either way, and the frame checks the token.
+ * The origin to address the frame by, and to expect its messages from. Only an
+ * http(s) origin can be named. A page opened from file:// has an opaque one —
+ * "null", or "file://" as Chrome spells it — and so does a custom scheme like
+ * the desktop shell's tauri:// on macOS and Linux: a message addressed to an
+ * opaque origin is dropped without a word, and the comic never draws. Those
+ * hosts use "*". The message goes straight to our own frame's window either
+ * way, the source window is checked, and both sides check the token.
  */
 export function comicTargetOrigin(origin: string): string {
-  return origin && origin !== 'null' ? origin : '*';
+  return /^https?:\/\//i.test(origin) ? origin : '*';
 }
 
 export function ComicFrame({ strip, textScale, onTap, onChoose, onLayout, style }: ComicFrameProps) {
@@ -57,7 +61,7 @@ export function ComicFrame({ strip, textScale, onTap, onChoose, onLayout, style 
 
   const html = useMemo(() => createComicFrameHtml({
     token,
-    hostOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
+    hostOrigin: typeof window !== 'undefined' ? comicTargetOrigin(window.location.origin) : undefined,
     textScale: initialTextScaleRef.current,
   }), [token]);
 
@@ -84,8 +88,10 @@ export function ComicFrame({ strip, textScale, onTap, onChoose, onLayout, style 
         console.warn('[ComicFrame] the frame reported an error:', message.message);
       }
     };
+    const expectedOrigin = comicTargetOrigin(window.location.origin);
     const listener = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || event.source !== iframeRef.current?.contentWindow) return;
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      if (expectedOrigin !== '*' && event.origin !== expectedOrigin) return;
       const message = readComicFrameMessage(event.data, token);
       if (message) handle(message);
     };

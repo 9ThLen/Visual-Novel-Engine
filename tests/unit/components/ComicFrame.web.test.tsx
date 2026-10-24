@@ -84,7 +84,11 @@ describe('ComicFrame on the web', () => {
 
   it('falls back to "*" only for a host with an opaque origin', () => {
     expect(comicTargetOrigin('https://studio.example')).toBe('https://studio.example');
+    expect(comicTargetOrigin('http://127.0.0.1:8095')).toBe('http://127.0.0.1:8095');
     expect(comicTargetOrigin('null')).toBe('*');
     expect(comicTargetOrigin('')).toBe('*');
+    // Chrome spells a file:// page's origin out, and it is no more addressable.
+    expect(comicTargetOrigin('file://')).toBe('*');
+    expect(comicTargetOrigin('tauri://localhost')).toBe('*');
   });
 });
