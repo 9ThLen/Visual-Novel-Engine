@@ -1,20 +1,26 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View, Text, Pressable, type LayoutChangeEvent } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
-import { selectCanonicalSceneRecord, useAppStore } from '@/stores/use-app-store';
-import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
+import { selectCanonicalSceneRecord, selectSceneRecordMapForStory, useAppStore } from '@/stores/use-app-store';
+import { createEmptySceneState } from '@/lib/engine/conditionUtils';
+import type { RuntimeVariables, SceneState } from '@/lib/engine/runtime-types';
+import type { TimelineStep } from '@/lib/engine/types';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 import { AudioPlayerService } from '@/lib/audio-player-service';
 import { useI18n } from '@/hooks/use-i18n';
-import { getTimelineDisplayPages } from '@/lib/reader-runtime';
+import { getNextSceneId, getTimelineDisplayPages, type ReaderTransitionEvent } from '@/lib/reader-runtime';
+import { resolveScenePresentation, sceneComicCapabilities } from '@/lib/comic/comic-presentation';
 import { withAlpha } from '@/lib/_core/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { PreviewInspector } from '@/components/editor/PreviewInspector';
 import { InteractiveObjectsLayer } from '@/components/InteractiveObjectsLayer';
 import { CharacterDisplay } from '@/components/CharacterDisplay';
+import { ComicReader } from '@/components/comic/ComicReader';
+import { ComicReadingSession } from '@/components/comic/ComicReadingSession';
+import { SceneRuntimeHost, useSceneRuntime } from '@/components/reader/SceneRuntimeHost';
 import { useReaderAssets } from '@/hooks/useReaderAssets';
 import { EffectsLayerStack, effectsForCharacter, effectsForTarget } from '@/components/reader/EffectsLayerStack';
 import { useCameraTransform } from '@/components/reader/useCameraTransform';
@@ -24,7 +30,7 @@ import { useEffectAmbience } from '@/hooks/useEffectAmbience';
 import { SceneVideoLayer } from '@/components/reader/SceneVideoLayer';
 import { DevicePreviewSwitch } from '@/components/document-editor/inspector/ScenePreviewCard';
 import { useEditorPreviewDevice } from '@/components/document-editor/inspector/useEditorPreviewDevice';
-import { getPreviewGeometry, getPreviewLayerStyle } from '@/lib/document-editor/preview-viewport';
+import { getPreviewGeometry, getPreviewLayerStyle, type PreviewGeometry } from '@/lib/document-editor/preview-viewport';
 import { showToast } from '@/lib/toast-store';
 
 function secondsToMs(value: number | null | undefined, fallbackMs = 0): number {
@@ -32,6 +38,32 @@ function secondsToMs(value: number | null | undefined, fallbackMs = 0): number {
   return Math.max(0, Math.round(value * 1000));
 }
 
+/** What the screen around the device shows of the run inside it: the inspector, the step count, the sound. */
+interface RunReport {
+  sceneState: SceneState;
+  timeline: TimelineStep[];
+  currentStepIndex: number;
+  isTyping: boolean;
+  isComplete: boolean;
+}
+
+/** The scene on screen and how the preview came to it. */
+interface PreviewVisit {
+  /** A new visit, even of the same scene, is a new run. */
+  count: number;
+  sceneId: string;
+  /** The variables the scene was entered with. */
+  variables?: RuntimeVariables;
+  transition: ReaderTransitionEvent | null;
+}
+
+/**
+ * The editor's full-screen preview. The scene runs in a SceneRuntimeHost and is
+ * shown as the reader would show it: a scene set to always be a comic, with
+ * nothing in it a comic page cannot show, is read as one, and goes on to the
+ * next scene as the reader's does, so comic scenes read one after another make
+ * one strip. Any other scene is drawn as the novel.
+ */
 export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: string }) {
   const router = useRouter();
   const colors = useColors();
@@ -40,36 +72,47 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const [device, setDevice] = useEditorPreviewDevice();
   const [stage, setStage] = useState({ width: 0, height: 0 });
   const geometry = getPreviewGeometry(device, stage);
-  const sceneRecord = useAppStore(selectCanonicalSceneRecord(storyId, sceneId));
-  const characterLibrary = useAppStore((s) => s.characterLibraries[storyId] || []);
-  const sfxVolume = useAppStore((s) => s.settings.sfxVolume);
+  const [visit, setVisit] = useState<PreviewVisit>({ count: 0, sceneId, transition: null });
+  const [ended, setEnded] = useState(false);
+  const sceneRecord = useAppStore(selectCanonicalSceneRecord(storyId, visit.sceneId));
+  const settings = useAppStore((s) => s.settings);
+  const sfxVolume = settings.sfxVolume;
 
   const timeline = useMemo(
     () => sceneRecord?.timeline ?? [],
     [sceneRecord]
   );
 
-  const { sceneState, currentStepIndex, isComplete, isTyping, advance, selectChoice } =
-    useSceneExecutor(timeline);
+  // As in the reader: the story's reading format comes with stage 4, so for
+  // now only the scene's own setting makes it a comic.
+  const readsAsComic = useMemo(
+    () => resolveScenePresentation(undefined, null, sceneRecord?.comic, sceneComicCapabilities(timeline)).readAs === 'comic',
+    [sceneRecord?.comic, timeline],
+  );
+
+  const [run, setRun] = useState<RunReport>(() => ({
+    sceneState: createEmptySceneState(),
+    timeline: [],
+    currentStepIndex: 0,
+    isTyping: false,
+    isComplete: false,
+  }));
+  const { sceneState } = run;
+  // Set with the report, before the run's own effects ask to move on.
+  const variablesRef = useRef<RuntimeVariables | undefined>(undefined);
+  const handleReport = useCallback((report: RunReport) => {
+    variablesRef.current = report.sceneState.variables;
+    setRun(report);
+  }, []);
 
   useEffectAmbience(sceneState.activeEffects, sfxVolume);
 
-  const [displayedText, setDisplayedText] = useState('');
   const [audioService] = useState(() => new AudioPlayerService());
-  const typewriterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const playedSoundEventsRef = useRef<Set<string>>(new Set());
   const prevMusicTrackRef = useRef<string | null>(null);
   const prevMusicBoundToRef = useRef<'scene' | 'continuous'>('continuous');
   const prevMusicFadeOutMsRef = useRef(800);
   const previewAutoFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const currentStep = timeline[currentStepIndex];
-
-  const currentText = useMemo(() => {
-    return getTimelineDisplayPages(currentStep)[0] ?? '';
-  }, [currentStep]);
-
-  const [backgroundSource, setBackgroundSource] = useState<number | { uri: string } | null>(null);
 
   const clearPreviewAutoFadeTimer = useCallback(() => {
     if (previewAutoFadeTimerRef.current) {
@@ -77,24 +120,6 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
       previewAutoFadeTimerRef.current = null;
     }
   }, []);
-
-  useEffect(() => {
-    let active = true;
-    if (!sceneState.backgroundAssetId) {
-      setBackgroundSource(null);
-      return () => { active = false; };
-    }
-    resolveAssetUri(sceneState.backgroundAssetId)
-      .then((resolved) => {
-        if (!active || !resolved) {
-          if (active) setBackgroundSource(null);
-          return;
-        }
-        setBackgroundSource(typeof resolved === 'number' ? resolved : { uri: resolved });
-      })
-      .catch(() => { if (active) setBackgroundSource(null); });
-    return () => { active = false; };
-  }, [sceneState.backgroundAssetId]);
 
   useEffect(() => {
     clearPreviewAutoFadeTimer();
@@ -179,7 +204,187 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
 
   useEffect(() => {
     playedSoundEventsRef.current.clear();
-  }, [sceneId]);
+  }, [visit.sceneId]);
+
+  useEffect(() => {
+    return () => {
+      clearPreviewAutoFadeTimer();
+      void audioService.cleanup();
+    };
+  }, [audioService, clearPreviewAutoFadeTimer]);
+
+  // A comic scene moves on as the reader's does: to the scene its transition
+  // or choice names, else along its "next" connection. Where the story would
+  // end, so does the preview.
+  //
+  // A visit moves on once. A choice that is the scene's last step leaves the
+  // run both on its way to the scene it names and out of steps, and the second
+  // notice would follow the "next" connection, or end the preview, over the first.
+  const movedOnRef = useRef<number | null>(null);
+  const handleTransition = useCallback((targetSceneId: string | null, transition?: ReaderTransitionEvent) => {
+    if (movedOnRef.current === visit.count) return;
+    movedOnRef.current = visit.count;
+    const nextSceneId = getNextSceneId(
+      selectSceneRecordMapForStory(storyId)(useAppStore.getState()),
+      visit.sceneId,
+      targetSceneId,
+      transition?.mode ?? (targetSceneId ? 'scene' : 'end'),
+    );
+    if (!nextSceneId) {
+      setEnded(true);
+      return;
+    }
+    setVisit((current) => ({
+      count: current.count + 1,
+      sceneId: nextSceneId,
+      variables: variablesRef.current,
+      transition: transition ?? null,
+    }));
+  }, [storyId, visit.count, visit.sceneId]);
+
+  const handleBack = useCallback(() => {
+    void audioService.cleanup();
+    router.back();
+  }, [audioService, router]);
+
+  const surfaceContainer = colors['surface-container'] || colors.surface;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* paddingRight keeps the row clear of PreviewInspector's floating toggle. */}
+      <View style={{
+        paddingTop: insets.top + 8,
+        paddingLeft: 16,
+        paddingRight: 64,
+        paddingBottom: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+      }}>
+        <Pressable testID="full-preview-back" onPress={handleBack} style={{ padding: 8, borderRadius: 8, backgroundColor: surfaceContainer, flexDirection: 'row', alignItems: 'center', gap: 6 }} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
+          <IconSymbol name="arrow.left" size={14} color={colors.foreground} />
+          <Text style={{ color: colors.foreground, fontSize: 14 }}>{t('menu.back')}</Text>
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <DevicePreviewSwitch colors={colors} device={device} onSelect={setDevice} />
+        </View>
+      </View>
+      <View
+        testID="full-preview-stage"
+        onLayout={({ nativeEvent }) => setStage({ width: nativeEvent.layout.width, height: nativeEvent.layout.height })}
+        style={{ flex: 1, overflow: 'hidden', marginBottom: insets.bottom }}
+      >
+      <View testID="full-preview-device" style={[getPreviewLayerStyle(geometry), { overflow: 'hidden', backgroundColor: colors.background }]}>
+        {/* The reader's arrangement: the strip outlives each scene's run. */}
+        <ComicReadingSession active={readsAsComic} storyId={storyId} settings={settings} entryTransition={visit.transition}>
+          <SceneRuntimeHost key={visit.count} timeline={timeline} initialVariables={visit.variables}>
+            <ReportRun onReport={handleReport} />
+            {readsAsComic ? (
+              <ComicReader sceneId={visit.sceneId} onTransition={handleTransition} routeOnExecutorComplete />
+            ) : (
+              <PreviewNovelStage storyId={storyId} sceneId={visit.sceneId} geometry={geometry} audioService={audioService} />
+            )}
+          </SceneRuntimeHost>
+        </ComicReadingSession>
+
+        {ended || (!readsAsComic && run.isComplete) ? (
+          <View style={{
+            position: 'absolute',
+            bottom: 20,
+            left: 20,
+            right: 20,
+            zIndex: 4,
+          }}>
+            <Pressable
+              onPress={handleBack}
+              style={{
+                backgroundColor: surfaceContainer,
+                borderRadius: 12,
+                padding: 16,
+                alignItems: 'center',
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={t('menu.back')}
+            >
+              <Text style={{ fontSize: 14, color: colors.foreground }}>
+                {t('editor.preview.complete')}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <Text style={{ position: 'absolute', top: 8, right: 8, zIndex: 4, color: colors.foreground, backgroundColor: surfaceContainer, padding: 8, borderRadius: 8, fontSize: 12 }}>
+          {run.currentStepIndex + 1}/{run.timeline.length}
+        </Text>
+      </View>
+      </View>
+
+      <PreviewInspector
+        sceneState={sceneState}
+        timeline={run.timeline}
+        currentStepIndex={run.currentStepIndex}
+        isTyping={run.isTyping}
+        isComplete={run.isComplete}
+      />
+    </View>
+  );
+}
+
+/** Hands the run's state up to the screen around the device, before it paints. */
+function ReportRun({ onReport }: { onReport: (report: RunReport) => void }) {
+  const { sceneState, timeline, currentStepIndex, isTyping, isComplete } = useSceneRuntime();
+  useLayoutEffect(() => {
+    onReport({ sceneState, timeline, currentStepIndex, isTyping, isComplete });
+  }, [currentStepIndex, isComplete, isTyping, onReport, sceneState, timeline]);
+  return null;
+}
+
+/** The run drawn as the novel. */
+function PreviewNovelStage({
+  storyId,
+  sceneId,
+  geometry,
+  audioService,
+}: {
+  storyId: string;
+  sceneId: string;
+  geometry: PreviewGeometry;
+  audioService: AudioPlayerService;
+}) {
+  const router = useRouter();
+  const colors = useColors();
+  const { t } = useI18n();
+  const characterLibrary = useAppStore((s) => s.characterLibraries[storyId] || []);
+  const { timeline, sceneState, currentStepIndex, isTyping, advance, selectChoice } = useSceneRuntime();
+
+  const [displayedText, setDisplayedText] = useState('');
+  const typewriterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const currentStep = timeline[currentStepIndex];
+
+  const currentText = useMemo(() => {
+    return getTimelineDisplayPages(currentStep)[0] ?? '';
+  }, [currentStep]);
+
+  const [backgroundSource, setBackgroundSource] = useState<number | { uri: string } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!sceneState.backgroundAssetId) {
+      setBackgroundSource(null);
+      return () => { active = false; };
+    }
+    resolveAssetUri(sceneState.backgroundAssetId)
+      .then((resolved) => {
+        if (!active || !resolved) {
+          if (active) setBackgroundSource(null);
+          return;
+        }
+        setBackgroundSource(typeof resolved === 'number' ? resolved : { uri: resolved });
+      })
+      .catch(() => { if (active) setBackgroundSource(null); });
+    return () => { active = false; };
+  }, [sceneState.backgroundAssetId]);
 
   const typewriteText = useCallback((text: string) => {
     if (typewriterIntervalRef.current) {
@@ -214,10 +419,8 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
         clearInterval(typewriterIntervalRef.current);
         typewriterIntervalRef.current = null;
       }
-      clearPreviewAutoFadeTimer();
-      void audioService.cleanup();
     };
-  }, [audioService, clearPreviewAutoFadeTimer]);
+  }, []);
 
   const handleAdvance = useCallback(() => {
     advance();
@@ -233,11 +436,6 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   const handleVideoPlaybackError = useCallback(() => {
     showToast(t('editor.videoPlaybackFailed').replace('{name}', activeVideoAssetId ?? ''), 'error');
   }, [activeVideoAssetId, t]);
-
-  const handleBack = useCallback(() => {
-    void audioService.cleanup();
-    router.back();
-  }, [audioService, router]);
 
   const surfaceContainer = colors['surface-container'] || colors.surface;
   const showChoices = !!sceneState.currentChoices;
@@ -279,32 +477,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* paddingRight keeps the row clear of PreviewInspector's floating toggle. */}
-      <View style={{
-        paddingTop: insets.top + 8,
-        paddingLeft: 16,
-        paddingRight: 64,
-        paddingBottom: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-      }}>
-        <Pressable testID="full-preview-back" onPress={handleBack} style={{ padding: 8, borderRadius: 8, backgroundColor: surfaceContainer, flexDirection: 'row', alignItems: 'center', gap: 6 }} accessibilityRole="button" accessibilityLabel={t('menu.back')}>
-          <IconSymbol name="arrow.left" size={14} color={colors.foreground} />
-          <Text style={{ color: colors.foreground, fontSize: 14 }}>{t('menu.back')}</Text>
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <DevicePreviewSwitch colors={colors} device={device} onSelect={setDevice} />
-        </View>
-      </View>
-      <View
-        testID="full-preview-stage"
-        onLayout={({ nativeEvent }) => setStage({ width: nativeEvent.layout.width, height: nativeEvent.layout.height })}
-        style={{ flex: 1, overflow: 'hidden', marginBottom: insets.bottom }}
-      >
-      <View testID="full-preview-device" style={[getPreviewLayerStyle(geometry), { overflow: 'hidden', backgroundColor: colors.background }]}>
-
+    <>
       <View style={{
         flex: 1,
         backgroundColor: colors['surface-1'] ?? colors.background,
@@ -449,46 +622,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
           ))}
         </View>
       ) : null}
-
-      {isComplete && (
-        <View style={{
-          position: 'absolute',
-          bottom: 20,
-          left: 20,
-          right: 20,
-        }}>
-          <Pressable
-            onPress={handleBack}
-            style={{
-              backgroundColor: surfaceContainer,
-              borderRadius: 12,
-              padding: 16,
-              alignItems: 'center',
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={t('menu.back')}
-          >
-            <Text style={{ fontSize: 14, color: colors.foreground }}>
-              {t('editor.preview.complete')}
-            </Text>
-          </Pressable>
-        </View>
-      )}
-
-      <Text style={{ position: 'absolute', top: 8, right: 8, color: colors.foreground, backgroundColor: surfaceContainer, padding: 8, borderRadius: 8, fontSize: 12 }}>
-        {currentStepIndex + 1}/{timeline.length}
-      </Text>
-      </View>
-      </View>
-
-      <PreviewInspector
-        sceneState={sceneState}
-        timeline={timeline}
-        currentStepIndex={currentStepIndex}
-        isTyping={isTyping}
-        isComplete={isComplete}
-      />
-    </View>
+    </>
   );
 }
 
