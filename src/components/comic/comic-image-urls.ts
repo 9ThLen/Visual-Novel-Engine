@@ -12,6 +12,9 @@
  *    as file:///android_res/drawable/<name>, which WebView reads straight from
  *    the APK (COMIC-RENDERER-SPIKE.md: expo-asset's `localUri` there is a bare
  *    drawable name and every image failed to load); in a dev build, Metro's URL.
+ *    The bare name comes as a module's resolved source or as the string the
+ *    asset resolver hands back for a bundled picture; left bare, the frame
+ *    reads it against its own page and finds nothing.
  */
 import { Asset } from 'expo-asset';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -21,6 +24,11 @@ import { acquireResolvedAssetUri, type ResolvedAssetLease } from '@/lib/asset-re
 
 function hasScheme(uri: string): boolean {
   return /^[a-z][a-z0-9+.-]*:/i.test(uri);
+}
+
+/** A bundled picture's drawable resource, as WebView reads it out of the APK. */
+function androidDrawableUrl(name: string): string {
+  return `file:///android_res/drawable/${name}.png`;
 }
 
 function absolute(uri: string): string {
@@ -40,9 +48,10 @@ export function comicFrameUrlFor(source: string | number | null): string | null 
     const resolved = Image.resolveAssetSource(source)?.uri ?? '';
     if (!resolved) return null;
     // A release build keeps bundled art as drawable resources under their minified names.
-    return hasScheme(resolved) ? resolved : `file:///android_res/drawable/${resolved}.png`;
+    return hasScheme(resolved) ? resolved : androidDrawableUrl(resolved);
   }
-  return Platform.OS === 'web' ? absolute(source) : source;
+  if (Platform.OS === 'web') return absolute(source);
+  return hasScheme(source) ? source : androidDrawableUrl(source);
 }
 
 /**
