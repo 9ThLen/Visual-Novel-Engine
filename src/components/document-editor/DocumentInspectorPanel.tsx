@@ -1,21 +1,30 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { ComicReadOverlay } from '@/components/document-editor/inspector/ComicReadOverlay';
 import { ScenePreviewCard } from '@/components/document-editor/inspector/ScenePreviewCard';
 import { ScenePreviewOverlay } from '@/components/document-editor/inspector/ScenePreviewOverlay';
 import { SceneFactsCard, type SceneRef } from '@/components/document-editor/inspector/SceneFactsCard';
 import { INSPECTOR_RAIL_PADDING, INSPECTOR_RAIL_WIDTH } from '@/components/document-editor/inspector/rail-metrics';
 import { useColors } from '@/hooks/use-colors';
 import { withAlpha } from '@/lib/_core/theme';
+import { buildAuthorComicPlan, type ComicPagePlan } from '@/lib/comic/comic-layout';
+import { resolveScenePresentation } from '@/lib/comic/comic-presentation';
+import { documentSceneNovelOnly } from '@/lib/document-editor/document-comic';
+import { documentSceneToTimelineWithOrigins } from '@/lib/document-editor/document-scene';
 import { buildPreviewFrames } from '@/lib/document-editor/preview-frames';
+import type { PreviewFormat } from '@/lib/document-editor/preview-viewport';
 import { sanitizeReaderLayoutPreset } from '@/lib/story-theme';
 import { useAppStore } from '@/stores/use-app-store';
 import { useEditorPreviewDevice } from '@/components/document-editor/inspector/useEditorPreviewDevice';
 import type { ColorScheme } from '@/constants/theme';
 import type { Character } from '@/lib/character-types';
 import type { DocumentBlock, DocumentScene } from '@/lib/document-editor/types';
+import type { ScenePresentation, TimelineStep } from '@/lib/engine/types';
 
 type InspectorTab = 'block' | 'scene' | 'issues';
+
+const EMPTY_COMIC_PLAN: ComicPagePlan = { panels: [] };
 
 interface DocumentInspectorPanelProps {
   colorScheme?: ColorScheme;
@@ -24,6 +33,8 @@ interface DocumentInspectorPanelProps {
   characters: Character[];
   storyScenes: SceneRef[];
   onOpenScene?: (sceneId: string) => void;
+  /** The scene's comic setting, from its record ("Auto" when left out). */
+  comicPresentation?: ScenePresentation;
 }
 
 export function DocumentInspectorPanel({
@@ -33,6 +44,7 @@ export function DocumentInspectorPanel({
   characters,
   storyScenes,
   onOpenScene,
+  comicPresentation,
 }: DocumentInspectorPanelProps) {
   const colors = useColors(colorScheme);
   const [tab, setTab] = useState<InspectorTab>('scene');
@@ -62,9 +74,49 @@ export function DocumentInspectorPanel({
     setFrameIndex((current) => Math.min(current, Math.max(0, frames.length - 1)));
   }, [frames.length]);
 
+  // The Preview draws a scene the way it is read — a comic when it is set to
+  // be one and nothing in it needs the novel — until the author picks a
+  // format for that scene.
+  const sceneId = scene?.sceneId ?? null;
+  const readsAs = useMemo(() => resolveScenePresentation(
+    undefined,
+    null,
+    comicPresentation ? { presentation: comicPresentation } : undefined,
+    { novelOnly: scene ? documentSceneNovelOnly(scene) : null },
+  ).readAs, [comicPresentation, scene]);
+  const [formatChoice, setFormatChoice] = useState<{ sceneId: string; format: PreviewFormat } | null>(null);
+  const format: PreviewFormat = sceneId && formatChoice?.sceneId === sceneId ? formatChoice.format : readsAs;
+  const selectFormat = useCallback((next: PreviewFormat) => {
+    if (sceneId) setFormatChoice({ sceneId, format: next });
+  }, [sceneId]);
+
+  // The author's plan: every step, as the comic would draw it. Built only
+  // while the comic is shown, as it converts the whole scene on every edit.
+  const comicPlan = useMemo(
+    () => (format === 'comic' && scene
+      ? buildAuthorComicPlan(documentSceneToTimelineWithOrigins(scene, characters).timeline)
+      : EMPTY_COMIC_PLAN),
+    [characters, format, scene],
+  );
+  const [panelIndex, setPanelIndex] = useState(0);
+  useEffect(() => {
+    setPanelIndex((current) => Math.min(current, Math.max(0, comicPlan.panels.length - 1)));
+  }, [comicPlan.panels.length]);
+
+  // The scene as it was when the author asked to read it.
+  const [reading, setReading] = useState<{ sceneId: string; timeline: TimelineStep[] } | null>(null);
+  const readAsComic = useCallback(() => {
+    if (scene) setReading({ sceneId: scene.sceneId, timeline: documentSceneToTimelineWithOrigins(scene, characters).timeline });
+  }, [characters, scene]);
+  const previewTotal = format === 'comic' ? comicPlan.panels.length : frames.length;
+
   return (
     <View
       style={{
+        // As tall as the rail gives it, not as its content: otherwise the
+        // panel outgrows the rail, its ScrollView never scrolls, and the
+        // whole page grows instead.
+        flex: 1,
         width: INSPECTOR_RAIL_WIDTH,
         borderLeftWidth: 1,
         borderLeftColor: colors.border,
@@ -82,7 +134,13 @@ export function DocumentInspectorPanel({
           settings={readerSettings}
           frameIndex={frameIndex}
           onFrameIndexChange={setFrameIndex}
-          onExpand={frames.length ? () => setExpanded(true) : undefined}
+          onExpand={previewTotal ? () => setExpanded(true) : undefined}
+          format={format}
+          onSelectFormat={selectFormat}
+          comicPlan={comicPlan}
+          panelIndex={panelIndex}
+          onPanelIndexChange={setPanelIndex}
+          onReadAsComic={readAsComic}
         />
 
         <View>
@@ -142,6 +200,22 @@ export function DocumentInspectorPanel({
           colorScheme={colorScheme}
           frameIndex={frameIndex}
           onFrameIndexChange={setFrameIndex}
+          format={format}
+          onSelectFormat={selectFormat}
+          comicPlan={comicPlan}
+          panelIndex={panelIndex}
+          onPanelIndexChange={setPanelIndex}
+        />
+      ) : null}
+
+      {reading ? (
+        <ComicReadOverlay
+          sceneId={reading.sceneId}
+          timeline={reading.timeline}
+          storyId={storyId}
+          device={device}
+          settings={readerSettings}
+          onClose={() => setReading(null)}
         />
       ) : null}
     </View>

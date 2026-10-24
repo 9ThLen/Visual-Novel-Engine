@@ -1,17 +1,20 @@
 /**
- * The inspector's preview widget: a device viewport, the device switch under
- * it, and a stepper that scrubs the scene's frames.
+ * The inspector's preview widget: a device viewport, the format and device
+ * switches under it, and a stepper that scrubs the scene's frames — or, in the
+ * comic format, its panels.
  */
 
 import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import { ComicPreviewStage } from '@/components/document-editor/inspector/ComicPreviewStage';
 import { ScenePreviewStage } from '@/components/document-editor/inspector/ScenePreviewStage';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { withAlpha } from '@/lib/_core/theme';
 import { INSPECTOR_RAIL_PADDING, INSPECTOR_RAIL_WIDTH } from '@/components/document-editor/inspector/rail-metrics';
-import { PREVIEW_DEVICE_IDS, type PreviewDevice } from '@/lib/document-editor/preview-viewport';
+import { PREVIEW_DEVICE_IDS, PREVIEW_FORMATS, type PreviewDevice, type PreviewFormat } from '@/lib/document-editor/preview-viewport';
+import type { ComicPagePlan } from '@/lib/comic/comic-layout';
 import type { PreviewFrame } from '@/lib/document-editor/preview-frames';
 import type { ColorScheme } from '@/constants/theme';
 import type { StoryReaderLayoutPreset } from '@/lib/story-theme';
@@ -40,6 +43,15 @@ interface ScenePreviewCardProps {
   frameIndex: number;
   onFrameIndexChange: (index: number) => void;
   onExpand?: () => void;
+  format: PreviewFormat;
+  onSelectFormat: (format: PreviewFormat) => void;
+  /** The author's plan of the scene, for the comic format. */
+  comicPlan: ComicPagePlan;
+  /** The last open panel of the plan; controlled like `frameIndex`. */
+  panelIndex: number;
+  onPanelIndexChange: (index: number) => void;
+  /** Runs the scene in the reader's comic view. */
+  onReadAsComic?: () => void;
 }
 
 export function ScenePreviewCard({
@@ -53,12 +65,20 @@ export function ScenePreviewCard({
   frameIndex,
   onFrameIndexChange,
   onExpand,
+  format,
+  onSelectFormat,
+  comicPlan,
+  panelIndex,
+  onPanelIndexChange,
+  onReadAsComic,
 }: ScenePreviewCardProps) {
   const colors = useColors(colorScheme);
   const { t } = useI18n();
   const [stageSize, setStageSize] = useState({ width: STAGE_WIDTH, height: STAGE_HEIGHT });
 
   const frame = frames[frameIndex] ?? null;
+  const isComic = format === 'comic';
+  const total = isComic ? comicPlan.panels.length : frames.length;
   const stage = useMemo(
     () => ({ width: stageSize.width, height: stageSize.height }),
     [stageSize.width, stageSize.height],
@@ -109,7 +129,16 @@ export function ScenePreviewCard({
         }}
       >
         {stage.width > 0 && stage.height > 0 ? (
-          frames.length ? (
+          isComic && total ? (
+            <ComicPreviewStage
+              plan={comicPlan}
+              revealed={panelIndex + 1}
+              device={device}
+              stage={stage}
+              storyId={storyId}
+              settings={settings}
+            />
+          ) : !isComic && total ? (
             <ScenePreviewStage
               frame={frame}
               device={device}
@@ -121,21 +150,86 @@ export function ScenePreviewCard({
           ) : (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
               <Text style={{ color: colors.muted, fontSize: 12, textAlign: 'center' }}>
-                {t('document.preview.empty')}
+                {t(isComic ? 'document.preview.comicEmpty' : 'document.preview.empty')}
               </Text>
             </View>
           )
         ) : null}
       </View>
 
+      <PreviewFormatSwitch colors={colors} format={format} onSelect={onSelectFormat} />
       <DevicePreviewSwitch colors={colors} device={device} onSelect={onSelectDevice} />
 
       <FrameStepper
         colors={colors}
-        index={frameIndex}
-        total={frames.length}
-        onChange={onFrameIndexChange}
+        kind={isComic ? 'panel' : 'frame'}
+        index={isComic ? panelIndex : frameIndex}
+        total={total}
+        onChange={isComic ? onPanelIndexChange : onFrameIndexChange}
       />
+
+      {isComic && onReadAsComic && total ? (
+        <Pressable
+          onPress={onReadAsComic}
+          accessibilityRole="button"
+          testID="preview-read-as-comic"
+          style={{
+            minHeight: 34,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: 7,
+            backgroundColor: colors.primary,
+          }}
+        >
+          <Text style={{ color: colors.background, fontSize: 12, fontWeight: '800' }}>
+            {`▶ ${t('document.preview.readAsComic')}`}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/** Novel or comic: what the Preview draws, apart from the device it draws it for. */
+export function PreviewFormatSwitch({
+  colors,
+  format,
+  onSelect,
+}: {
+  colors: ReturnType<typeof useColors>;
+  format: PreviewFormat;
+  onSelect: (format: PreviewFormat) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <View
+      accessibilityRole="radiogroup"
+      style={{ flexDirection: 'row', padding: 2, borderRadius: 8, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}
+    >
+      {PREVIEW_FORMATS.map((item) => {
+        const active = item === format;
+        return (
+          <Pressable
+            key={item}
+            onPress={() => onSelect(item)}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: active }}
+            testID={`preview-format-${item}`}
+            style={{
+              flex: 1,
+              minHeight: 28,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 6,
+              backgroundColor: active ? withAlpha(colors.primary, 0.14) : 'transparent',
+            }}
+          >
+            <Text style={{ color: active ? colors.primary : colors.muted, fontSize: 12, fontWeight: '800' }}>
+              {t(item === 'novel' ? 'document.preview.formatNovel' : 'document.preview.formatComic')}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -193,11 +287,14 @@ export function DevicePreviewSwitch({
 
 function FrameStepper({
   colors,
+  kind,
   index,
   total,
   onChange,
 }: {
   colors: ReturnType<typeof useColors>;
+  /** Frames of the novel or panels of the comic. */
+  kind: 'frame' | 'panel';
   index: number;
   total: number;
   onChange: (index: number) => void;
@@ -214,20 +311,20 @@ function FrameStepper({
           label="◀"
           disabled={!canGoBack}
           onPress={() => onChange(index - 1)}
-          accessibilityLabel={t('document.preview.previousFrame')}
+          accessibilityLabel={t(kind === 'panel' ? 'document.preview.previousPanel' : 'document.preview.previousFrame')}
         />
         <Text
           testID="preview-frame-counter"
           style={{ flex: 1, textAlign: 'center', color: colors.muted, fontSize: 12, fontWeight: '700' }}
         >
-          {total ? t('document.preview.frameCounter', { index: index + 1, total }) : '—'}
+          {total ? t(kind === 'panel' ? 'document.preview.panelCounter' : 'document.preview.frameCounter', { index: index + 1, total }) : '—'}
         </Text>
         <StepperButton
           colors={colors}
           label="▶"
           disabled={!canGoForward}
           onPress={() => onChange(index + 1)}
-          accessibilityLabel={t('document.preview.nextFrame')}
+          accessibilityLabel={t(kind === 'panel' ? 'document.preview.nextPanel' : 'document.preview.nextFrame')}
         />
       </View>
 

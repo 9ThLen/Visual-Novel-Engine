@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-10-24 — The Preview shows a scene as a comic, and reads it as one
+
+PR 2.6b of `docs/plans/COMIC-STAGE-2-PLAN.md`.
+
+- **A Novel / Comic format** in the inspector's Preview, apart from the
+  Phone / Browser device. A scene opens in the format it is read in — the
+  comic when it is set to always be one and nothing in it needs the novel —
+  until the author picks a format for it.
+- **The comic format** draws the author's plan of the scene — every step, as
+  the comic would draw it — with the reader's own comic frame at the device's
+  size, scaled onto the stage like the novel's frames. ◀ ▶ open the panels one
+  at a time ("Panel 3 / 5"); the expanded Preview has the same.
+- **"Read the scene as a comic"** runs the scene with the engine in the
+  reader's comic view, at the Preview's device size: conditions apply and the
+  choices wait for an answer. It reads that scene alone and starts over on
+  "Read again".
+- The inspector panel is now as tall as the rail and scrolls inside it. When
+  its content was taller than the rail, it used to stretch the whole page.
+
 ## 2026-10-24 — The author sets a scene to be read as a comic
 
 PR 2.6a of `docs/plans/COMIC-STAGE-2-PLAN.md`: the editor's half of the

@@ -9,12 +9,14 @@
 import React, { useMemo } from 'react';
 import { Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
 
+import { ComicPreviewStage } from '@/components/document-editor/inspector/ComicPreviewStage';
 import { ScenePreviewStage } from '@/components/document-editor/inspector/ScenePreviewStage';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { withAlpha } from '@/lib/_core/theme';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
-import { PREVIEW_DEVICE_IDS, type PreviewDevice } from '@/lib/document-editor/preview-viewport';
+import { PREVIEW_DEVICE_IDS, PREVIEW_FORMATS, type PreviewDevice, type PreviewFormat } from '@/lib/document-editor/preview-viewport';
+import type { ComicPagePlan } from '@/lib/comic/comic-layout';
 import type { PreviewFrame } from '@/lib/document-editor/preview-frames';
 import type { ColorScheme } from '@/constants/theme';
 import type { StoryReaderLayoutPreset } from '@/lib/story-theme';
@@ -32,6 +34,12 @@ interface ScenePreviewOverlayProps {
   /** Shared with the panel's stepper so both stay on the same frame. */
   frameIndex: number;
   onFrameIndexChange: (index: number) => void;
+  format: PreviewFormat;
+  onSelectFormat: (format: PreviewFormat) => void;
+  comicPlan: ComicPagePlan;
+  /** Shared with the panel like `frameIndex`, for the comic format. */
+  panelIndex: number;
+  onPanelIndexChange: (index: number) => void;
 }
 
 export function ScenePreviewOverlay({
@@ -45,6 +53,11 @@ export function ScenePreviewOverlay({
   colorScheme,
   frameIndex,
   onFrameIndexChange,
+  format,
+  onSelectFormat,
+  comicPlan,
+  panelIndex,
+  onPanelIndexChange,
 }: ScenePreviewOverlayProps) {
   const colors = useColors(colorScheme);
   const { t } = useI18n();
@@ -56,6 +69,10 @@ export function ScenePreviewOverlay({
   );
 
   const frame = frames[frameIndex] ?? null;
+  const isComic = format === 'comic';
+  const index = isComic ? panelIndex : frameIndex;
+  const total = isComic ? comicPlan.panels.length : frames.length;
+  const onIndexChange = isComic ? onPanelIndexChange : onFrameIndexChange;
 
   return (
     // Mounted only while open (see DocumentInspectorPanel): React Native Web's
@@ -84,17 +101,51 @@ export function ScenePreviewOverlay({
             borderColor: withAlpha('#ffffff', 0.2),
           }}
         >
-          <ScenePreviewStage
-            frame={frame}
-            device={device}
-            stage={stage}
-            storyId={storyId}
-            layoutPreset={layoutPreset}
-            settings={settings}
-          />
+          {isComic ? (
+            <ComicPreviewStage
+              plan={comicPlan}
+              revealed={panelIndex + 1}
+              device={device}
+              stage={stage}
+              storyId={storyId}
+              settings={settings}
+            />
+          ) : (
+            <ScenePreviewStage
+              frame={frame}
+              device={device}
+              stage={stage}
+              storyId={storyId}
+              layoutPreset={layoutPreset}
+              settings={settings}
+            />
+          )}
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {PREVIEW_FORMATS.map((item) => (
+            <Pressable
+              key={item}
+              onPress={() => onSelectFormat(item)}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: item === format }}
+              style={{
+                paddingHorizontal: 16,
+                minHeight: 36,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: item === format ? colors.primary : withAlpha('#ffffff', 0.3),
+                backgroundColor: item === format ? withAlpha(colors.primary, 0.22) : withAlpha('#000000', 0.4),
+              }}
+            >
+              <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '800' }}>
+                {t(item === 'novel' ? 'document.preview.formatNovel' : 'document.preview.formatComic')}
+              </Text>
+            </Pressable>
+          ))}
+
           {PREVIEW_DEVICE_IDS.map((item) => (
             <Pressable
               key={item}
@@ -119,14 +170,14 @@ export function ScenePreviewOverlay({
             </Pressable>
           ))}
 
-          <OverlayButton label="◀" disabled={frameIndex <= 0} onPress={() => onFrameIndexChange(frameIndex - 1)} />
+          <OverlayButton label="◀" disabled={index <= 0} onPress={() => onIndexChange(index - 1)} />
           <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '800', minWidth: 90, textAlign: 'center' }}>
-            {frames.length ? t('document.preview.frameCounter', { index: frameIndex + 1, total: frames.length }) : '—'}
+            {total ? t(isComic ? 'document.preview.panelCounter' : 'document.preview.frameCounter', { index: index + 1, total }) : '—'}
           </Text>
           <OverlayButton
             label="▶"
-            disabled={frameIndex >= frames.length - 1}
-            onPress={() => onFrameIndexChange(frameIndex + 1)}
+            disabled={index >= total - 1}
+            onPress={() => onIndexChange(index + 1)}
           />
 
           <OverlayButton label={t('common.close')} onPress={onClose} wide />
@@ -136,7 +187,7 @@ export function ScenePreviewOverlay({
   );
 }
 
-function OverlayButton({
+export function OverlayButton({
   label,
   onPress,
   disabled,

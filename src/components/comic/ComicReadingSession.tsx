@@ -53,6 +53,11 @@ export const COMIC_EXIT_MS = 420;
 /** Room above the strip for the reader screen's menu button (top 48 px). */
 const TOP_ROOM = 88;
 const TEXT_SIZE_SCALE = { small: 0.9, medium: 1, large: 1.15 } as const;
+
+/** How much larger than the frame's own the reader's settings make the comic's words. */
+export function comicTextScale(settings: Partial<Pick<UserSettings, 'textSize' | 'readerFontScale'>>): number {
+  return (settings.readerFontScale ?? 1) * TEXT_SIZE_SCALE[settings.textSize ?? 'medium'];
+}
 const FILL = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as const;
 
 interface ComicReadingSessionProps {
@@ -79,7 +84,7 @@ export function ComicReadingSession({
   const handlersRef = useRef<ComicSessionHandlers | null>(null);
   const visitRef = useRef(0);
   const { height } = useWindowDimensions();
-  const textScale = (settings.readerFontScale ?? 1) * TEXT_SIZE_SCALE[settings.textSize ?? 'medium'];
+  const textScale = comicTextScale(settings);
 
   const session = useMemo<ComicSession>(() => ({
     begin: () => {
