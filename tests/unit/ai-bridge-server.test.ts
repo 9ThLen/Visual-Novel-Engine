@@ -407,8 +407,10 @@ describe('AI bridge protocol server', () => {
     const sessionId = String(payload(started).sessionId);
     send(socket, 'user_message', { text: 'first' }, sessionId);
     await next(socket);
+    // The first turn keeps streaming, so a delta can still land ahead of the refusal.
+    const refusal = nextMatching(socket, message => message.type !== 'assistant_delta');
     send(socket, 'user_message', { text: 'second' }, sessionId);
-    expect(await next(socket)).toMatchObject({
+    expect(await refusal).toMatchObject({
       type: 'error',
       payload: {
         code: 'PROVIDER_UNAVAILABLE',
