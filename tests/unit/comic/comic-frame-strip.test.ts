@@ -1,5 +1,5 @@
 import { sentencePrint } from '@/lib/comic/comic-anchors';
-import { comicFrameStrip, comicPlanImageRefs, type ComicFrameAssets } from '@/lib/comic/comic-frame-strip';
+import { comicFrameStrip, comicPlanPictures, type ComicFrameAssets } from '@/lib/comic/comic-frame-strip';
 import { buildAuthorComicPlan, type ComicPagePlan } from '@/lib/comic/comic-layout';
 import type { SceneComicSettings, TimelineStep } from '@/lib/engine/types';
 
@@ -26,8 +26,18 @@ function assets(resolved: Record<string, string> = {}): ComicFrameAssets {
 }
 
 describe('a page plan as the frame draws it', () => {
-  it('needs the backgrounds and the sprites of its panels, each once', () => {
-    expect(comicPlanImageRefs(plan, assets()).sort()).toEqual(['media:ann-smile', 'media:hall']);
+  it('needs the backgrounds and the sprites of its panels, each once, and knows which is which', () => {
+    const pictures = comicPlanPictures(plan, assets()).sort((a, b) => a.ref.localeCompare(b.ref));
+    expect(pictures).toEqual([
+      { ref: 'media:ann-smile', roles: ['sprite'] },
+      { ref: 'media:hall', roles: ['background'] },
+    ]);
+  });
+
+  it('remembers every way a picture is drawn, for the size of its copy', () => {
+    const both = assets();
+    both.spriteRef = () => 'media:hall';
+    expect(comicPlanPictures(plan, both)).toEqual([{ ref: 'media:hall', roles: ['background', 'sprite'] }]);
   });
 
   it('draws a picture once it is resolved, and nothing for it before', () => {

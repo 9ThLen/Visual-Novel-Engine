@@ -15,12 +15,12 @@
  * returns null and callers fall back to the original, which is exactly the
  * behaviour they had before this module existed.
  */
+import { drawScaledImage, resetImageDecodeSlotsForTests, withImageDecodeSlot } from '@/lib/image-scaling';
 
 /** Long side in CSS pixels: 2× the widest tile the grid lays out. */
 export const THUMBNAIL_MAX_SIDE = 320;
 
-/** Decodes are the expensive part, so only a couple run at a time. */
-const MAX_CONCURRENT_DECODES = 2;
+const THUMBNAIL_FORMAT = { type: 'image/webp', quality: 0.82 };
 
 /**
  * Object URLs are small; the originals they stand in for are not. Keeping a few
@@ -36,22 +36,6 @@ const inFlight = new Map<string, Promise<string | null>>();
 const refused = new Set<string>();
 const retryAfter = new Map<string, number>();
 const TRANSIENT_FAILURE_TTL_MS = 30_000;
-
-let active = 0;
-const waiting: (() => void)[] = [];
-
-async function withDecodeSlot<T>(run: () => Promise<T>): Promise<T> {
-  if (active >= MAX_CONCURRENT_DECODES) {
-    await new Promise<void>((resolve) => waiting.push(resolve));
-  }
-  active += 1;
-  try {
-    return await run();
-  } finally {
-    active -= 1;
-    waiting.shift()?.();
-  }
-}
 
 /**
  * Fit inside a square of `maxSide` without upscaling.
@@ -72,29 +56,8 @@ export function thumbnailDimensions(
   };
 }
 
-async function drawThumbnail(blob: Blob, maxSide: number): Promise<Blob | null> {
-  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return null;
-
-  const bitmap = await createImageBitmap(blob);
-  try {
-    const { width, height } = thumbnailDimensions(bitmap.width, bitmap.height, maxSide);
-    if (!width || !height) return null;
-    // Already small enough that a copy would only cost memory.
-    if (width === bitmap.width && height === bitmap.height) return null;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d');
-    if (!context) return null;
-    context.drawImage(bitmap, 0, 0, width, height);
-
-    return await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((result) => resolve(result), 'image/webp', 0.82);
-    });
-  } finally {
-    bitmap.close();
-  }
+function drawThumbnail(blob: Blob, maxSide: number): Promise<Blob | null> {
+  return drawScaledImage(blob, (width, height) => thumbnailDimensions(width, height, maxSide), THUMBNAIL_FORMAT);
 }
 
 let generate: ThumbnailGenerator = drawThumbnail;
@@ -136,7 +99,7 @@ export async function getThumbnailUri(
   const pending = inFlight.get(sourceUri);
   if (pending) return pending;
 
-  const work = withDecodeSlot(async () => {
+  const work = withImageDecodeSlot(async () => {
     const response = await fetch(sourceUri);
     if (!response.ok) throw new Error(`Thumbnail fetch failed: ${response.status}`);
     const thumbnail = await generate(await response.blob(), maxSide);
@@ -171,7 +134,6 @@ export function resetThumbnailsForTests(): void {
   inFlight.clear();
   refused.clear();
   retryAfter.clear();
-  active = 0;
-  waiting.length = 0;
+  resetImageDecodeSlotsForTests();
   generate = drawThumbnail;
 }
