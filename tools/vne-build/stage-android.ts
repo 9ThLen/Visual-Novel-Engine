@@ -26,6 +26,7 @@ import path from 'node:path';
 
 import { chooseIconSource, type IconCandidate, type IconChoice } from '../lib/icon-source';
 import { beginOutPath } from '../lib/out-path';
+import { pngFileProblem } from '../lib/png-integrity';
 
 import { RELEASE_MEDIA_DIR, releaseObjectFileName } from '@/lib/release/asset-map';
 import {
@@ -703,6 +704,8 @@ interface StagedEasJson {
 export function verifyStagedAndroidProject(outDir: string): string[] {
   const problems: string[] = [];
   let storedIdentity: StoredNativeIdentity | null = null;
+  /** What the story calls each staged media file, by its path under `assets/`. */
+  const storyNames = new Map<string, string[]>();
   const read = (...parts: string[]) => path.join(outDir, ...parts);
   const exists = (...parts: string[]) => fs.existsSync(read(...parts));
 
@@ -828,6 +831,9 @@ export function verifyStagedAndroidProject(outDir: string): string[] {
         problems.push(`The asset map names ${file}, which is not in the staged project.`);
       }
     }
+    for (const [reference, file] of Object.entries(config.assets ?? {})) {
+      storyNames.set(file, [...(storyNames.get(file) ?? []), reference]);
+    }
   }
 
   // 4. The generated module, and that every require in it is a real file.
@@ -884,6 +890,32 @@ export function verifyStagedAndroidProject(outDir: string): string[] {
     if (!exists(...file.split('/'))) problems.push(`The staged project has no ${file}.`);
   }
 
+  // 7. Pictures the release build has to decode. Every bundled PNG is crunched
+  //    by AAPT2, which cannot read a damaged one: the build fails after the
+  //    upload on EAS, and on Windows AAPT2 crashes without naming the file.
+  problems.push(...damagedPictures(read('assets'), storyNames));
+
+  return problems;
+}
+
+/** One problem per PNG under `assetsDir` that AAPT2 could not crunch. */
+function damagedPictures(assetsDir: string, storyNames: Map<string, string[]>): string[] {
+  if (!fs.existsSync(assetsDir)) return [];
+  const problems: string[] = [];
+  const files = (fs.readdirSync(assetsDir, { recursive: true }) as string[])
+    .map((file) => file.split(path.sep).join('/'))
+    .filter((file) => file.toLowerCase().endsWith('.png'))
+    .sort();
+  for (const file of files) {
+    const problem = pngFileProblem(path.join(assetsDir, ...file.split('/')));
+    if (!problem) continue;
+    const names = storyNames.get(file) ?? [];
+    const named = names.length > 0 ? ` (the story's ${names.slice(0, 2).join(', ')})` : '';
+    problems.push(
+      `assets/${file}${named} ${problem}. Android's resource compiler cannot read it and `
+      + 'stops the build; save the picture again from an image editor and make a new release.',
+    );
+  }
   return problems;
 }
 
