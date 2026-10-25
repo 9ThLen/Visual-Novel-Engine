@@ -67,7 +67,7 @@
   поля — «авто», запис без якоря — викидається, дублікати якоря —
   лишається останній. Імпорт не падає через поле сцени (як для
   `originBlockId`). `toReaderScene` копіює `comic` цілим після санітизації.
-- `resolveComicSettings(settings, sentences)` → `{ effective, notes }`:
+- `resolveComicSettings(settings, sentences)` → `{ edits, notes }`:
   кожна правка проходить `resolveComicAnchor`; `bound`/`moved`/`changed`
   діють за новим якорем, `detached` не діє; `notes` — відв'язані й «текст
   змінено, перевірте».
