@@ -46,6 +46,24 @@ export interface ComicFrameWords {
   style?: ComicWordsStyle;
   /** The side the author turned the bubble to, over its speaker's: where it leans and its tail points. */
   tail?: 'left' | 'right';
+  /** The words' sentences, each with its anchor: sent only with the author's marks, which stand between them. */
+  sentences?: ComicFrameSentence[];
+}
+
+export interface ComicFrameSentence {
+  anchor: string;
+  text: string;
+}
+
+/**
+ * The author's ✂ and × over the strip (the editor's Preview; the reader never
+ * has them): a ✂ before every sentence a panel does not begin with, to start
+ * a panel there, and a × over every panel but the first, to join it to the
+ * one before. What each says to a screen reader comes from the host.
+ */
+export interface ComicFrameMarks {
+  breakLabel: string;
+  mergeLabel: string;
 }
 
 export interface ComicFramePanel {
@@ -59,6 +77,8 @@ export interface ComicFramePanel {
    * whole width, as a panel left out does.
    */
   size?: 'full' | 'half';
+  /** The anchor of the sentence the panel begins with: what its × joins. Sent only with the author's marks. */
+  anchor?: string;
   /** 1 is the whole stage; 2 is twice as close. */
   zoom: number;
   /** The point of the stage the shot is about, in fractions of the stage. */
@@ -100,6 +120,8 @@ export interface ComicFrameStrip {
    * rather than taking the whole width and giving it up when the next comes.
    */
   more?: boolean;
+  /** The author's marks; left out, the strip has none. */
+  marks?: ComicFrameMarks;
 }
 
 export type ComicHostMessage =
@@ -115,6 +137,8 @@ export type ComicFrameMessage =
    */
   | { type: 'tap'; panelId?: string }
   | { type: 'choose'; optionId: string }
+  /** The author pressed a mark: the sentence at `anchor` should begin a panel (✂), or go on in the one before (×). */
+  | { type: 'mark'; anchor: string; begins: boolean }
   /** The strip as drawn: how many panels are on screen and how many pages they make. */
   | { type: 'layout'; panels: number; pages: number }
   | { type: 'error'; message: string };
@@ -130,6 +154,8 @@ function isFrameMessage(value: Record<string, unknown>): boolean {
       return value.panelId === undefined || typeof value.panelId === 'string';
     case 'choose':
       return typeof value.optionId === 'string';
+    case 'mark':
+      return typeof value.anchor === 'string' && typeof value.begins === 'boolean';
     case 'layout':
       return typeof value.panels === 'number' && typeof value.pages === 'number';
     case 'error':

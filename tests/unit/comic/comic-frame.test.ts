@@ -456,6 +456,66 @@ describe('the comic frame', () => {
     expect(styles).not.toMatch(/\.(panel|words|bubble|caption)\s*\{[^}]*overflow:\s*hidden/);
   });
 
+  describe('with the author\'s marks', () => {
+    const marks = { breakLabel: 'Start a new panel here', mergeLabel: 'Join with the panel before' };
+    const marked = (): ComicFrameStrip => ({
+      panels: [
+        { ...panel('p1', [{ id: 'c', kind: 'caption', text: 'Rain.', sentences: [{ anchor: 'n/p0/s0', text: 'Rain.' }] }]), anchor: 'n/p0/s0' },
+        {
+          ...panel('p2', [
+            { id: 'a', kind: 'bubble', text: 'Who? Me.', speaker: 'Ann', sentences: [{ anchor: 'l1/p0/s0', text: 'Who?' }, { anchor: 'l1/p0/s1', text: 'Me.' }] },
+            { id: 'b', kind: 'bubble', text: 'You.', speaker: 'Bo', style: 'shout', sentences: [{ anchor: 'l2/p0/s0', text: 'You.' }] },
+          ]),
+          anchor: 'l1/p0/s0',
+        },
+      ],
+      revealed: 2,
+      choices: null,
+      marks,
+    });
+
+    it('puts a ✂ before every sentence a panel does not begin with, and a × over every panel but the first', () => {
+      const { send, document } = bootFrame();
+      send({ type: 'strip', strip: marked() });
+
+      const breaks = Array.from(document.querySelectorAll('.mark-break'));
+      expect(breaks.map((node) => [node.closest('.panel')?.getAttribute('data-id'), node.getAttribute('data-anchor')]))
+        .toEqual([['p2', 'l1/p0/s1'], ['p2', 'l2/p0/s0']]);
+      expect(breaks[0].getAttribute('aria-label')).toBe('Start a new panel here');
+      const merges = Array.from(document.querySelectorAll('.mark-merge'));
+      expect(merges.map((node) => [node.closest('.panel')?.getAttribute('data-id'), node.getAttribute('data-anchor')])).toEqual([['p2', 'l1/p0/s0']]);
+      expect(merges[0].getAttribute('aria-label')).toBe('Join with the panel before');
+      // The words read as they did, the ✂ between them.
+      expect(document.querySelector('.panel[data-id="p2"] .bubble .line')?.textContent).toBe('Who? \u2702Me.');
+      expect(document.documentElement.classList.contains('marking')).toBe(true);
+    });
+
+    it('says which sentence a mark was pressed on, and takes the press for no tap', () => {
+      const { send, document, dom, messages } = bootFrame();
+      send({ type: 'strip', strip: marked() });
+
+      document.querySelector('.mark-break')!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      document.querySelector('.mark-merge')!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      document.querySelector('.mark-merge')!.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+      expect(messages('mark')).toEqual([
+        expect.objectContaining({ anchor: 'l1/p0/s1', begins: true }),
+        expect.objectContaining({ anchor: 'l1/p0/s0', begins: false }),
+      ]);
+      expect(messages('tap')).toHaveLength(0);
+    });
+
+    it('draws a strip without them as the reader has it, and takes them away when the next strip has none', () => {
+      const { send, document } = bootFrame();
+      send({ type: 'strip', strip: marked() });
+      send({ type: 'strip', strip: { ...marked(), marks: undefined } });
+
+      expect(document.querySelectorAll('.mark')).toHaveLength(0);
+      expect(document.querySelector('.panel[data-id="p2"] .bubble .line')?.textContent).toBe('Who? Me.');
+      expect(document.documentElement.classList.contains('marking')).toBe(false);
+    });
+  });
+
   it('allows no fetching and no fonts from outside', () => {
     const html = createComicFrameHtml({ token: TOKEN, textScale: 1 });
     expect(html).toContain("connect-src 'none'");
@@ -473,6 +533,8 @@ describe('frame messages', () => {
     expect(readComicFrameMessage(envelope({ type: 'choose' }), TOKEN)).toBeNull();
     expect(readComicFrameMessage(envelope({ type: 'tap', panelId: 'p1' }), TOKEN)).toEqual({ type: 'tap', panelId: 'p1' });
     expect(readComicFrameMessage(envelope({ type: 'tap', panelId: 7 }), TOKEN)).toBeNull();
+    expect(readComicFrameMessage(envelope({ type: 'mark', anchor: 'a/p0/s1', begins: true }), TOKEN)).toEqual({ type: 'mark', anchor: 'a/p0/s1', begins: true });
+    expect(readComicFrameMessage(envelope({ type: 'mark', anchor: 'a/p0/s1', begins: 'yes' }), TOKEN)).toBeNull();
     expect(readComicFrameMessage(envelope({ type: 'layout', panels: '2', pages: 1 }), TOKEN)).toBeNull();
     expect(readComicFrameMessage(envelope({ type: 'navigate' }), TOKEN)).toBeNull();
     expect(readComicFrameMessage('{not json', TOKEN)).toBeNull();

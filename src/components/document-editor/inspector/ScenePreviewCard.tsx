@@ -50,6 +50,8 @@ interface ScenePreviewCardProps {
   /** The last open panel of the plan; controlled like `frameIndex`. */
   panelIndex: number;
   onPanelIndexChange: (index: number) => void;
+  /** The author's ✂ or × on a sentence of the comic; left out, the Preview shows no marks. */
+  onMarkPanelStart?: (anchor: string, begins: boolean) => void;
   /** Runs the scene in the reader's comic view. */
   onReadAsComic?: () => void;
 }
@@ -70,6 +72,7 @@ export function ScenePreviewCard({
   comicPlan,
   panelIndex,
   onPanelIndexChange,
+  onMarkPanelStart,
   onReadAsComic,
 }: ScenePreviewCardProps) {
   const colors = useColors(colorScheme);
@@ -138,6 +141,7 @@ export function ScenePreviewCard({
               storyId={storyId}
               settings={settings}
               onSelectPanel={onPanelIndexChange}
+              onMarkPanelStart={onMarkPanelStart}
             />
           ) : !isComic && total ? (
             <ScenePreviewStage

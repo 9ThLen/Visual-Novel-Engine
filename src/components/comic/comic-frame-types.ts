@@ -10,6 +10,8 @@ export interface ComicFrameProps {
   /** The reader tapped the strip: the next panel, or the next step. */
   onTap: (panelId?: string) => void;
   onChoose: (optionId: string) => void;
+  /** The author pressed a ✂ (`begins`) or a × on the sentence at `anchor`. */
+  onMark?: (anchor: string, begins: boolean) => void;
   /** The strip as drawn: panels on screen and the pages they make. */
   onLayout?: (layout: { panels: number; pages: number }) => void;
   style?: StyleProp<ViewStyle>;

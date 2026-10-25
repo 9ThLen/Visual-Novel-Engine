@@ -9,6 +9,7 @@ import React, { useCallback, useMemo } from 'react';
 import { View } from 'react-native';
 
 import { ComicPlanView } from '@/components/comic/ComicPlanView';
+import { useI18n } from '@/hooks/use-i18n';
 import { comicTextScale } from '@/components/comic/ComicReadingSession';
 import type { ComicPagePlan } from '@/lib/comic/comic-layout';
 import { getPreviewGeometry, getPreviewLayerStyle, type PreviewDevice } from '@/lib/document-editor/preview-viewport';
@@ -25,6 +26,11 @@ interface ComicPreviewStageProps {
   maxScale?: number;
   /** The author clicked a panel: its place in the plan. */
   onSelectPanel?: (index: number) => void;
+  /**
+   * The author pressed a ✂ (`begins`: start a panel at the sentence) or a ×
+   * (join its panel to the one before). Left out, the Preview shows no marks.
+   */
+  onMarkPanelStart?: (anchor: string, begins: boolean) => void;
 }
 
 export const ComicPreviewStage = React.memo(function ComicPreviewStage({
@@ -36,7 +42,13 @@ export const ComicPreviewStage = React.memo(function ComicPreviewStage({
   settings,
   maxScale = 1,
   onSelectPanel,
+  onMarkPanelStart,
 }: ComicPreviewStageProps) {
+  const { t } = useI18n();
+  const marks = useMemo(
+    () => (onMarkPanelStart ? { breakLabel: t('document.comicMarks.break'), mergeLabel: t('document.comicMarks.merge') } : undefined),
+    [onMarkPanelStart, t],
+  );
   const geometry = useMemo(() => getPreviewGeometry(device, stage, { maxScale }), [device, maxScale, stage]);
   const handleTap = useCallback((panelId?: string) => {
     const index = panelId ? plan.panels.findIndex((panel) => panel.id === panelId) : -1;
@@ -55,6 +67,8 @@ export const ComicPreviewStage = React.memo(function ComicPreviewStage({
           revealed={revealed}
           textScale={comicTextScale(settings)}
           onTap={handleTap}
+          marks={marks}
+          onMark={onMarkPanelStart}
           style={{ flex: 1 }}
         />
       </View>

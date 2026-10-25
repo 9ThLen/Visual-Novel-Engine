@@ -40,6 +40,8 @@ interface ScenePreviewOverlayProps {
   /** Shared with the panel like `frameIndex`, for the comic format. */
   panelIndex: number;
   onPanelIndexChange: (index: number) => void;
+  /** The author's ✂ or × on a sentence of the comic; left out, the Preview shows no marks. */
+  onMarkPanelStart?: (anchor: string, begins: boolean) => void;
 }
 
 export function ScenePreviewOverlay({
@@ -58,6 +60,7 @@ export function ScenePreviewOverlay({
   comicPlan,
   panelIndex,
   onPanelIndexChange,
+  onMarkPanelStart,
 }: ScenePreviewOverlayProps) {
   const colors = useColors(colorScheme);
   const { t } = useI18n();
@@ -110,6 +113,7 @@ export function ScenePreviewOverlay({
               storyId={storyId}
               settings={settings}
               onSelectPanel={onPanelIndexChange}
+              onMarkPanelStart={onMarkPanelStart}
             />
           ) : (
             <ScenePreviewStage

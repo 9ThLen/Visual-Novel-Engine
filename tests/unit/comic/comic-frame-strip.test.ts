@@ -99,6 +99,18 @@ describe('a page plan as the frame draws it', () => {
     expect(JSON.stringify(comicFrameStrip(plan, assets()))).not.toMatch(/"(size|style|tail|more)"/);
   });
 
+  it('carries the author\'s marks with every panel\'s and sentence\'s anchor, and only when asked', () => {
+    const marks = { breakLabel: 'Cut', mergeLabel: 'Join' };
+    const strip = comicFrameStrip(plan, assets(), { marks });
+
+    expect(strip.marks).toEqual(marks);
+    expect(strip.panels.map((panel) => panel.anchor)).toEqual(plan.panels.map((panel) => panel.anchor));
+    expect(strip.panels.flatMap((panel) => panel.words.map((words) => words.sentences))).toEqual(
+      plan.panels.flatMap((panel) => panel.elements.map((element) => element.sentences.map(({ anchor, text }) => ({ anchor, text })))),
+    );
+    expect(JSON.stringify(comicFrameStrip(plan, assets()))).not.toMatch(/"(marks|anchor|sentences)"/);
+  });
+
   it('says more panels may come only when told the strip is being read', () => {
     expect(comicFrameStrip(plan, assets(), { more: true }).more).toBe(true);
     expect(comicFrameStrip(plan, assets()).more).toBeUndefined();
