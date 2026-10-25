@@ -394,6 +394,10 @@ export function DocumentSceneEditor({
   }, [characters]);
 
   // Each scene's comic setting comes from its record: the document does not carry it.
+  const comicSettingsBySceneId = React.useMemo(
+    () => new Map(scenes.map((scene) => [scene.id, scene.comic])),
+    [scenes],
+  );
   const comicPresentationBySceneId = React.useMemo(
     () => new Map(scenes.map((scene) => [scene.id, scenePresentationOf(scene.comic)])),
     [scenes],
@@ -1147,7 +1151,7 @@ export function DocumentSceneEditor({
             characters={localCharacters}
             storyScenes={storySceneRefs}
             onOpenScene={handleInspectorScenePress}
-            comicPresentation={comicPresentationBySceneId.get(activeSceneId)}
+            comicSettings={comicSettingsBySceneId.get(activeSceneId)}
             beforeStoryMutation={handleStoryMutationBarrier}
             captureEditorContext={captureEditorContext}
           />

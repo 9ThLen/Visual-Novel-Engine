@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-10-25 — A scene's comic panels can carry the author's edits
+
+PR 3.1 of `docs/plans/COMIC-STAGE-3-PLAN.md`: the data and the logic. Nothing
+in the editor sets the edits yet (3.3, 3.4); the renderer draws the new sizes
+and kinds of bubble in 3.2.
+
+- **`SceneComicSettings`** keeps the author's edits beside `presentation`:
+  ✂ (`breaks`, a new panel starts with this line), × (`merges`, this line's
+  panel joins the one before), a panel's `shot` (now five: wide, full,
+  medium, close, dramatic), `focus` and `size`, and a line's `style` (speech,
+  shout, whisper, thought, caption) and `tail`. Each is fastened to a sentence
+  with its words. Storage, import, export and the reader keep them;
+  `sanitizeSceneComicSettings` drops what it cannot read and edits that would
+  change nothing.
+- **`src/lib/comic/comic-settings.ts`** finds every edit in the scene as it is
+  now: one whose sentence is where it was, moved, or only a little changed
+  still acts; one whose sentence is gone does nothing and is reported, for
+  Issues (3.5). `rebindComicSettings` fastens moved edits where their words
+  are now.
+- **The panel plan applies them** (`buildComicPagePlan`, `buildAuthorComicPlan`,
+  `buildExecutedComicPlan`): the reader, Preview Story, the editor's Preview
+  and its "Read the scene as a comic" all draw a scene with its edits. ✂ and ×
+  on one line cancel out; × across a change of picture keeps the first
+  panel's. A scene with no edits is laid out exactly as before.
+- Writing a record's comic settings compares them whole. It used to compare
+  only `presentation`, so with edits a save could have kept old ones.
+
 ## 2026-10-25 — Staging refuses a picture the Android build cannot read
 
 - **`pnpm stage:android` checks every PNG it stages.** A release build has

@@ -12,7 +12,7 @@ import type { ColorScheme } from '@/constants/theme';
 import type { Character } from '@/lib/character-types';
 import type { SceneRef } from '@/components/document-editor/inspector/SceneFactsCard';
 import type { DocumentScene } from '@/lib/document-editor/types';
-import type { ScenePresentation } from '@/lib/engine/types';
+import type { SceneComicSettings } from '@/lib/engine/types';
 import { useAiChatStore } from '@/stores/ai-chat-store';
 
 type RightRailTab = 'inspector' | 'ai';
@@ -27,8 +27,8 @@ interface DocumentRightRailProps {
   /** Scene id/name pairs so the inspector can name this scene's destinations. */
   storyScenes: SceneRef[];
   onOpenScene?: (sceneId: string) => void;
-  /** The scene's comic setting, from its record; the Preview draws the scene as it is read. */
-  comicPresentation?: ScenePresentation;
+  /** The scene's comic settings, from its record: the Preview draws the scene as it is read, with its edits. */
+  comicSettings?: SceneComicSettings;
   /**
    * Save barrier. AI mutations compare revisions against the store, so the
    * editor's unsaved draft has to land there first or every staleness guard is
@@ -48,7 +48,7 @@ export function DocumentRightRail({
   characters,
   storyScenes,
   onOpenScene,
-  comicPresentation,
+  comicSettings,
   beforeStoryMutation,
   captureEditorContext,
 }: DocumentRightRailProps) {
@@ -133,7 +133,7 @@ export function DocumentRightRail({
             characters={characters}
             storyScenes={storyScenes}
             onOpenScene={onOpenScene}
-            comicPresentation={comicPresentation}
+            comicSettings={comicSettings}
           />
         ) : (
           <AiChatPanel

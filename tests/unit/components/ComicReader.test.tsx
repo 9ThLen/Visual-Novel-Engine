@@ -3,6 +3,7 @@ import React from 'react';
 
 import { ComicReader } from '@/components/comic/ComicReader';
 import { SceneRuntimeHost } from '@/components/reader/SceneRuntimeHost';
+import { sentencePrint } from '@/lib/comic/comic-anchors';
 import { COMIC_FRAME_SOURCE, type ComicFrameStrip } from '@/lib/comic/comic-frame-protocol';
 import type { TimelineStep } from '@/lib/engine/types';
 
@@ -71,6 +72,14 @@ describe('ComicReader', () => {
     reader.fromFrame({ type: 'tap' });
     await waitFor(() => expect(reader.shown()).toEqual(['The door creaks.', 'Nobody comes.', 'Hello?']));
     expect(reader.lastStrip().panels.at(-1)?.words[0]).toMatchObject({ kind: 'bubble', speaker: 'Ann' });
+  });
+
+  it('draws the scene with the author\'s edits of its panels', async () => {
+    // A × on the paragraph's second sentence keeps it in the first panel.
+    const reader = setup({ comic: { merges: [{ anchor: 'para/p0/s1', print: sentencePrint('Nobody comes.') }] } });
+
+    await waitFor(() => expect(reader.shown()).toEqual(['The door creaks.', 'Nobody comes.']));
+    expect(reader.lastStrip().panels[0].words.map((words) => words.text)).toEqual(['The door creaks.', 'Nobody comes.']);
   });
 
   it('offers the choice at the end, and passes the pick on as the novel does', async () => {

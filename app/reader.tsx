@@ -553,6 +553,7 @@ export default function ReaderScreen() {
           {readsAsComic ? (
             <ComicReader
               sceneId={activeSceneId}
+              comic={sceneRecord?.comic}
               settings={settings}
               onTransition={handleTransition}
               onExecutorChoiceSelect={handleExecutorChoiceSelect}

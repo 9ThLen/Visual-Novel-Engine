@@ -280,7 +280,7 @@ export function PreviewScreen({ storyId, sceneId }: { storyId: string; sceneId: 
           <SceneRuntimeHost key={visit.count} timeline={timeline} initialVariables={visit.variables}>
             <ReportRun onReport={handleReport} />
             {readsAsComic ? (
-              <ComicReader sceneId={visit.sceneId} onTransition={handleTransition} routeOnExecutorComplete />
+              <ComicReader sceneId={visit.sceneId} comic={sceneRecord?.comic} onTransition={handleTransition} routeOnExecutorComplete />
             ) : (
               <PreviewNovelStage storyId={storyId} sceneId={visit.sceneId} geometry={geometry} audioService={audioService} />
             )}

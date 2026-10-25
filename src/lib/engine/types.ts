@@ -399,11 +399,58 @@ export interface SceneConnection {
 export type ScenePresentation = 'auto' | 'comic' | 'novel';
 
 /**
- * A scene's comic settings (docs/plans/COMIC-MODE-PLAN.md, section 8). Only
- * `presentation` so far; panel and element settings come with their stages.
+ * A comic setting fastened to a sentence (docs/plans/COMIC-MODE-PLAN.md,
+ * section 3): the sentence's address and the words it held, so the setting can
+ * follow them when the text is edited (comic-anchors.ts).
+ */
+export interface ComicAnchoredSetting {
+  /** `"<blockId>/p<part>/s<sentence>"`. */
+  anchor: string;
+  /** The sentence's words when the setting was made, as `sentencePrint` gives them. */
+  print?: string;
+}
+
+/**
+ * How close a panel looks: wide (the whole stage), full, medium, close and
+ * dramatic. The automatic framing picks from wide, medium and close; the
+ * author has all five.
+ */
+export type ComicShot = 'wide' | 'full' | 'medium' | 'close' | 'dramatic';
+
+export type ComicPanelSize = 'auto' | 'full' | 'half';
+
+/** A panel's own settings, fastened to a sentence of the panel. */
+export interface ComicPanelSetting extends ComicAnchoredSetting {
+  shot?: ComicShot;
+  /** The point of the stage the panel is about, in fractions of the stage. */
+  focus?: { x: number; y: number };
+  size?: ComicPanelSize;
+}
+
+/** How a line's words are drawn: a bubble of speech, a shout, a whisper or a thought, or a caption box. */
+export type ComicWordsStyle = 'speech' | 'shout' | 'whisper' | 'thought' | 'caption';
+
+export type ComicTailSide = 'auto' | 'left' | 'right';
+
+/** A caption's or a bubble's own settings, fastened to its first sentence. */
+export interface ComicElementSetting extends ComicAnchoredSetting {
+  style?: ComicWordsStyle;
+  tail?: ComicTailSide;
+}
+
+/**
+ * A scene's comic settings (docs/plans/COMIC-MODE-PLAN.md, section 8): how it
+ * is read, and the author's edits of its automatic panels (stage 3). Layout
+ * and appearance effects come with their stages.
  */
 export interface SceneComicSettings {
   presentation?: ScenePresentation;
+  /** ✂: a new panel starts with the caption or bubble this sentence is in. */
+  breaks?: ComicAnchoredSetting[];
+  /** ×: the panel that starts with the caption or bubble this sentence is in joins the panel before it. */
+  merges?: ComicAnchoredSetting[];
+  panels?: ComicPanelSetting[];
+  elements?: ComicElementSetting[];
 }
 
 export interface SceneRecord extends ProjectScene {

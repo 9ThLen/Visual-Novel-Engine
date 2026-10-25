@@ -15,7 +15,7 @@ import { SceneRuntimeHost } from '@/components/reader/SceneRuntimeHost';
 import { useI18n } from '@/hooks/use-i18n';
 import { withAlpha } from '@/lib/_core/theme';
 import { getPreviewGeometry, getPreviewLayerStyle, type PreviewDevice } from '@/lib/document-editor/preview-viewport';
-import type { TimelineStep } from '@/lib/engine/types';
+import type { SceneComicSettings, TimelineStep } from '@/lib/engine/types';
 import { getPointerEventsStyle } from '@/lib/react-native-web-interop';
 import type { UserSettings } from '@/lib/user-settings';
 
@@ -23,13 +23,15 @@ interface ComicReadOverlayProps {
   sceneId: string;
   /** The scene as it was when the author asked to read it. */
   timeline: TimelineStep[];
+  /** The scene's comic settings, so the reading draws the author's edits. */
+  comic?: SceneComicSettings;
   storyId: string;
   device: PreviewDevice;
   settings: Pick<UserSettings, 'textSize' | 'readerFontScale'>;
   onClose: () => void;
 }
 
-export function ComicReadOverlay({ sceneId, timeline, storyId, device, settings, onClose }: ComicReadOverlayProps) {
+export function ComicReadOverlay({ sceneId, timeline, comic, storyId, device, settings, onClose }: ComicReadOverlayProps) {
   const { t } = useI18n();
   const { width, height } = useWindowDimensions();
   // Each "Read again" is a new run and a new strip.
@@ -71,7 +73,7 @@ export function ComicReadOverlay({ sceneId, timeline, storyId, device, settings,
           <View style={getPreviewLayerStyle({ ...geometry, stageWidth: geometry.renderedWidth, stageHeight: geometry.renderedHeight })}>
             <ComicReadingSession active storyId={storyId} settings={settings} resetKey={run}>
               <SceneRuntimeHost key={run} timeline={timeline}>
-                <ComicReader sceneId={sceneId} />
+                <ComicReader sceneId={sceneId} comic={comic} />
               </SceneRuntimeHost>
             </ComicReadingSession>
           </View>

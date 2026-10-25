@@ -27,6 +27,7 @@ import { useReaderNotifications } from '@/hooks/useReaderNotifications';
 import { buildExecutedComicPlan } from '@/lib/comic/comic-layout';
 import { comicStopsFromJournal, currentStopPanels, openedInStop } from '@/lib/comic/comic-reading';
 import type { SceneState } from '@/lib/engine/runtime-types';
+import type { SceneComicSettings } from '@/lib/engine/types';
 import type { ReaderTransitionEvent } from '@/lib/reader-runtime';
 import type { UserSettings } from '@/lib/user-settings';
 import { useAppStore } from '@/stores/use-app-store';
@@ -36,6 +37,8 @@ import { ComicReadingSession, useComicSession, type ComicSession } from './Comic
 
 interface ComicReaderProps {
   sceneId: string;
+  /** The scene's comic settings: the author's edits of its panels are drawn with it. */
+  comic?: SceneComicSettings;
   settings?: Partial<UserSettings>;
   onTransition?: (targetSceneId: string | null, transition?: ReaderTransitionEvent) => void;
   onExecutorChoiceSelect?: (choice: { sceneId: string; choiceId: string; stepId: string; targetSceneId: string | null }) => void;
@@ -61,6 +64,7 @@ export function ComicReader(props: ComicReaderProps) {
 function ComicSceneReader({
   session,
   sceneId,
+  comic,
   onTransition,
   onExecutorChoiceSelect,
   onSceneStateChange,
@@ -74,7 +78,10 @@ function ComicSceneReader({
   // This visit's key in the session's strip.
   const [visit] = useState(() => session.begin());
 
-  const plan = useMemo(() => buildExecutedComicPlan(timeline, comicStopsFromJournal(timeline, journal)), [journal, timeline]);
+  const plan = useMemo(
+    () => buildExecutedComicPlan(timeline, comicStopsFromJournal(timeline, journal), comic),
+    [comic, journal, timeline],
+  );
   const current = journal.length ? journal[journal.length - 1] : null;
   const currentId = current ? String(current.executionId) : null;
   const stop = useMemo(() => currentStopPanels(plan, currentId), [currentId, plan]);

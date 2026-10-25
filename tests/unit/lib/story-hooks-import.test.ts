@@ -105,6 +105,22 @@ describe('importStory', () => {
     expect(again.scenes['scene-1'].comic).toEqual({ presentation: 'comic' });
   });
 
+  it('keeps the author\'s edits of the panels through import and export, and drops what it cannot read', async () => {
+    const comic = {
+      merges: [{ anchor: 'b/p0/s1', print: 'two.' }, { anchor: 'not an anchor' }],
+      elements: [{ anchor: 'b/p0/s0', print: 'one.', style: 'shout', tail: 'left' }],
+    };
+    const imported = await importStory(JSON.stringify({
+      title: 'Edited comic', startSceneId: 'scene-1',
+      scenes: { 'scene-1': { id: 'scene-1', timeline: [createTextStep({ content: 'One. Two.' })], comic } },
+    }));
+    const kept = { merges: [comic.merges[0]], elements: comic.elements };
+    expect(imported.scenes['scene-1'].comic).toEqual(kept);
+
+    const again = await importStory(await exportStory(imported.id, useAppStore.getState()));
+    expect(again.scenes['scene-1'].comic).toEqual(kept);
+  });
+
   it.each([
     ['a string', 'comic'], ['an unknown presentation', { presentation: 'manga' }], ['Auto', { presentation: 'auto' }],
     ['an array', ['comic']], ['null', null],

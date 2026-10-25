@@ -52,6 +52,17 @@ describe('reader-scene projections', () => {
     expect(toReaderScene(makeScene({ comic: { presentation: 'manga' } as never }))).not.toHaveProperty('comic');
   });
 
+  it('carries the author\'s edits of the panels, as they may be kept', () => {
+    const comic = {
+      breaks: [{ anchor: 'b/p0/s1', print: 'two.' }],
+      panels: [{ anchor: 'b/p0/s0', shot: 'close' as const, size: 'enormous' as never }],
+    };
+    expect(toReaderScene(makeScene({ comic })).comic).toEqual({
+      breaks: [{ anchor: 'b/p0/s1', print: 'two.' }],
+      panels: [{ anchor: 'b/p0/s0', shot: 'close' }],
+    });
+  });
+
   it('builds save slot metadata from reader scene timeline', () => {
     const timeline: TimelineStep[] = [
       {
