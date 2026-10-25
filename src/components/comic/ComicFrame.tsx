@@ -74,7 +74,7 @@ export function ComicFrame({ strip, textScale, onTap, onChoose, onLayout, style 
       if (textScaleRef.current !== builtScaleRef.current) send({ type: 'textScale', scale: textScaleRef.current });
       if (stripRef.current) send({ type: 'strip', strip: stripRef.current });
     } else if (message.type === 'tap') {
-      handlersRef.current.onTap();
+      handlersRef.current.onTap(message.panelId);
     } else if (message.type === 'choose') {
       handlersRef.current.onChoose(message.optionId);
     } else if (message.type === 'layout') {

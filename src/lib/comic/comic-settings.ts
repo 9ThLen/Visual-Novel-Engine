@@ -15,6 +15,7 @@
 import {
   parseComicAnchor,
   resolveComicAnchor,
+  sentencePrint,
   type AddressedSentence,
   type ComicAnchor,
   type ComicAnchored,
@@ -214,4 +215,131 @@ export function rebindComicSettings<T extends SceneComicSettings | undefined>(se
     if (list) (next as Record<EditKind, ComicAnchored[] | undefined>)[kind] = list.map(rebind);
   }
   return moved ? next as T : settings;
+}
+
+/** A sentence of the scene as it is now, as a panel or a line holds it. */
+export interface ComicEditTarget {
+  anchor: ComicAnchor;
+  text: string;
+}
+
+/** A change to a panel's edit: a value sets it, null puts it back to automatic, left out keeps it. */
+export interface ComicPanelChange {
+  shot?: ComicShot | null;
+  focus?: { x: number; y: number } | null;
+  size?: ComicPanelSize | null;
+}
+
+/** A change to a line's edit, as for a panel's. */
+export interface ComicElementChange {
+  style?: ComicWordsStyle | null;
+  tail?: ComicTailSide | null;
+}
+
+/** The edits of the settings, in a form they can be put back from. */
+export function comicEditsOf(settings: SceneComicSettings | undefined): ComicEdits {
+  return sanitizeComicEdits({ ...settings });
+}
+
+/** The settings with their edits replaced: how the scene is read stays. */
+export function withComicEdits(settings: SceneComicSettings | undefined, edits: ComicEdits): SceneComicSettings {
+  const presentation = settings?.presentation;
+  return { ...(presentation ? { presentation } : {}), ...sanitizeComicEdits({ ...edits }) };
+}
+
+/** An edit acting on a panel or a line, and the sentence of it that it acts on. */
+interface ActingEdit<T extends ComicAnchored> {
+  edit: T;
+  at: ComicEditTarget;
+}
+
+/** The first of the target's sentences with an edit acting on it, as the plan takes it. */
+function actingOn<T extends ComicAnchored>(
+  map: ReadonlyMap<ComicAnchor, T>,
+  target: readonly ComicEditTarget[],
+): ActingEdit<T> | undefined {
+  for (const sentence of target) {
+    const edit = map.get(sentence.anchor);
+    if (edit) return { edit, at: sentence };
+  }
+  return undefined;
+}
+
+/** The edit acting on a panel; `target` is every sentence of the panel, in order. */
+export function actingPanelEdit(edits: ResolvedComicEdits, target: readonly ComicEditTarget[]): ComicPanelSetting | undefined {
+  return actingOn(edits.panels, target)?.edit;
+}
+
+/** The edit acting on a line; `target` is every sentence of the line. */
+export function actingElementEdit(edits: ResolvedComicEdits, target: readonly ComicEditTarget[]): ComicElementSetting | undefined {
+  return actingOn(edits.elements, target)?.edit;
+}
+
+/**
+ * The edit acting on the target changed, or a new one made on its first
+ * sentence. Either way it is fastened to where its sentence is now, with the
+ * words it has now: an author changing it has seen it. A value of null takes
+ * a field away.
+ */
+function withEditOn<T extends ComicAnchored>(
+  list: readonly T[] | undefined,
+  acting: ActingEdit<T> | undefined,
+  target: readonly ComicEditTarget[],
+  change: object,
+): T[] {
+  const at = acting?.at ?? target[0];
+  const rest = (list ?? []).filter((edit) => edit !== acting?.edit && edit.anchor !== at.anchor);
+  const next: Record<string, unknown> = { ...acting?.edit, anchor: at.anchor, print: sentencePrint(at.text) };
+  for (const [key, value] of Object.entries(change)) {
+    if (value === null) delete next[key];
+    else if (value !== undefined) next[key] = value;
+  }
+  return [...rest, next as unknown as T];
+}
+
+/**
+ * The settings with a panel's edit changed. `sentences` addresses the scene as
+ * it is now; `target` is every sentence of the panel, in order.
+ */
+export function withPanelEdit(
+  settings: SceneComicSettings | undefined,
+  sentences: AddressedSentence[],
+  target: readonly ComicEditTarget[],
+  change: ComicPanelChange,
+): SceneComicSettings | undefined {
+  if (!target.length) return settings;
+  const acting = actingOn(resolveComicSettings(settings, sentences).edits.panels, target);
+  return withComicEdits(settings, { ...comicEditsOf(settings), panels: withEditOn(settings?.panels, acting, target, change) });
+}
+
+/** The settings with a line's edit changed; `target` is every sentence of the line. */
+export function withElementEdit(
+  settings: SceneComicSettings | undefined,
+  sentences: AddressedSentence[],
+  target: readonly ComicEditTarget[],
+  change: ComicElementChange,
+): SceneComicSettings | undefined {
+  if (!target.length) return settings;
+  const acting = actingOn(resolveComicSettings(settings, sentences).edits.elements, target);
+  return withComicEdits(settings, { ...comicEditsOf(settings), elements: withEditOn(settings?.elements, acting, target, change) });
+}
+
+/**
+ * The settings with every panel and line edit acting on a panel taken away:
+ * the automatic panel again. Where its panels begin and end (✂ and ×) stays.
+ */
+export function withoutPanelEdits(
+  settings: SceneComicSettings | undefined,
+  sentences: AddressedSentence[],
+  target: readonly ComicEditTarget[],
+): SceneComicSettings | undefined {
+  const { edits } = resolveComicSettings(settings, sentences);
+  const panels = new Set(target.map((sentence) => edits.panels.get(sentence.anchor)).filter(Boolean));
+  const elements = new Set(target.map((sentence) => edits.elements.get(sentence.anchor)).filter(Boolean));
+  if (!panels.size && !elements.size) return settings;
+  return withComicEdits(settings, {
+    ...comicEditsOf(settings),
+    panels: settings?.panels?.filter((edit) => !panels.has(edit)),
+    elements: settings?.elements?.filter((edit) => !elements.has(edit)),
+  });
 }

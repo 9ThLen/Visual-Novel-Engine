@@ -108,8 +108,12 @@ export type ComicHostMessage =
 
 export type ComicFrameMessage =
   | { type: 'ready' }
-  /** The reader tapped the strip, or pressed Space or Enter in it: the next panel, please. */
-  | { type: 'tap' }
+  /**
+   * The reader tapped the strip, or pressed Space or Enter in it: the next
+   * panel, please. A tap on a panel names it, which the editor's Preview uses
+   * to pick the panel the author edits; the reader does not need it.
+   */
+  | { type: 'tap'; panelId?: string }
   | { type: 'choose'; optionId: string }
   /** The strip as drawn: how many panels are on screen and how many pages they make. */
   | { type: 'layout'; panels: number; pages: number }
@@ -121,8 +125,9 @@ export type ComicHostEnvelope = ComicHostMessage & { source: typeof COMIC_HOST_S
 function isFrameMessage(value: Record<string, unknown>): boolean {
   switch (value.type) {
     case 'ready':
-    case 'tap':
       return true;
+    case 'tap':
+      return value.panelId === undefined || typeof value.panelId === 'string';
     case 'choose':
       return typeof value.optionId === 'string';
     case 'layout':

@@ -3,9 +3,9 @@
  * author's plan of the scene — every step, whatever a condition would skip —
  * drawn by the reader's own comic frame at a real device's size, then scaled
  * onto the stage like the novel's frames. The first `revealed` panels are
- * open, so the stepper walks through them.
+ * open, so the stepper walks through them; a click on one picks it.
  */
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View } from 'react-native';
 
 import { ComicPlanView } from '@/components/comic/ComicPlanView';
@@ -23,6 +23,8 @@ interface ComicPreviewStageProps {
   settings: Pick<UserSettings, 'textSize' | 'readerFontScale'>;
   /** Cap on upscaling; the panel keeps 1, the expanded overlay may allow more. */
   maxScale?: number;
+  /** The author clicked a panel: its place in the plan. */
+  onSelectPanel?: (index: number) => void;
 }
 
 export const ComicPreviewStage = React.memo(function ComicPreviewStage({
@@ -33,8 +35,13 @@ export const ComicPreviewStage = React.memo(function ComicPreviewStage({
   storyId,
   settings,
   maxScale = 1,
+  onSelectPanel,
 }: ComicPreviewStageProps) {
   const geometry = useMemo(() => getPreviewGeometry(device, stage, { maxScale }), [device, maxScale, stage]);
+  const handleTap = useCallback((panelId?: string) => {
+    const index = panelId ? plan.panels.findIndex((panel) => panel.id === panelId) : -1;
+    if (index >= 0) onSelectPanel?.(index);
+  }, [onSelectPanel, plan]);
 
   return (
     <View
@@ -47,6 +54,7 @@ export const ComicPreviewStage = React.memo(function ComicPreviewStage({
           storyId={storyId}
           revealed={revealed}
           textScale={comicTextScale(settings)}
+          onTap={handleTap}
           style={{ flex: 1 }}
         />
       </View>

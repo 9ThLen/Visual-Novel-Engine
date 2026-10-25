@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { AiChatPanel } from '@/components/ai-chat/AiChatPanel';
-import { DocumentInspectorPanel } from '@/components/document-editor/DocumentInspectorPanel';
+import { DocumentInspectorPanel, type ComicSettingsUpdate } from '@/components/document-editor/DocumentInspectorPanel';
 import { useColors } from '@/hooks/use-colors';
 import { useI18n } from '@/hooks/use-i18n';
 import { withAlpha } from '@/lib/_core/theme';
@@ -29,6 +29,8 @@ interface DocumentRightRailProps {
   onOpenScene?: (sceneId: string) => void;
   /** The scene's comic settings, from its record: the Preview draws the scene as it is read, with its edits. */
   comicSettings?: SceneComicSettings;
+  /** Writes the scene's comic settings: the author's edits of its panels, made in the Inspector. */
+  onUpdateComicSettings?: (update: ComicSettingsUpdate) => void;
   /**
    * Save barrier. AI mutations compare revisions against the store, so the
    * editor's unsaved draft has to land there first or every staleness guard is
@@ -49,6 +51,7 @@ export function DocumentRightRail({
   storyScenes,
   onOpenScene,
   comicSettings,
+  onUpdateComicSettings,
   beforeStoryMutation,
   captureEditorContext,
 }: DocumentRightRailProps) {
@@ -134,6 +137,7 @@ export function DocumentRightRail({
             storyScenes={storyScenes}
             onOpenScene={onOpenScene}
             comicSettings={comicSettings}
+            onUpdateComicSettings={onUpdateComicSettings}
           />
         ) : (
           <AiChatPanel

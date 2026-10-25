@@ -109,6 +109,7 @@ export function ScenePreviewOverlay({
               stage={stage}
               storyId={storyId}
               settings={settings}
+              onSelectPanel={onPanelIndexChange}
             />
           ) : (
             <ScenePreviewStage
