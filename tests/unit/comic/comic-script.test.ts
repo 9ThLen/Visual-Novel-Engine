@@ -94,7 +94,7 @@ describe('the words of a scene as the comic sets them', () => {
 
     expect(comicStepElements(step)).toEqual<ComicBubble[]>([{
       kind: 'bubble',
-      style: 'normal',
+      style: 'speech',
       anchor: 'step-alice/p0/s0',
       stepId: 'step-alice',
       text: 'You came back. I knew it.',
@@ -189,7 +189,7 @@ describe('inline chips go with their sentence', () => {
       ['doc_says/p0/s0', 'Listen.', []],
       ['doc_says/p2/s0', 'It stopped.', ['sfx_thunder']],
     ]);
-    expect(bubbles.every((bubble) => bubble.characterId === 'mira' && bubble.style === 'normal')).toBe(true);
+    expect(bubbles.every((bubble) => bubble.characterId === 'mira' && bubble.style === 'speech')).toBe(true);
   });
 
   it('keeps a chip to its own block: none goes to the next block, and a block with no words gives its chip to none', () => {

@@ -22,6 +22,12 @@
  * both speakers when two talk in one panel; and the author's own camera, when
  * it is anywhere but at rest, over all of these.
  *
+ * The author's edits of the panels go over everything above (stage 3,
+ * comic-settings.ts): ✂ opens a panel with a line, × keeps the panel before it
+ * open for the line instead, and a panel's shot, focus and size and a line's
+ * kind of bubble and tail are the author's where they were set. A scene with
+ * no edits is laid out exactly as it was before there were any.
+ *
  * Pages are not cut here. Where a page ends depends on how much room the words
  * take at the reader's width and text size, which only the renderer can
  * measure: the spike's fixed cuts lost 16 of 19 bubbles at twice the text size
@@ -29,7 +35,7 @@
  * words as a hint. The same stops always give the same plan: no clock, no
  * chance, and keys made only from anchors and execution ids (section 4.5).
  */
-import type { ComicAnchor } from '@/lib/comic/comic-anchors';
+import { addressSentences, type ComicAnchor } from '@/lib/comic/comic-anchors';
 import { comicCues, comicStepElements, type ComicElement } from '@/lib/comic/comic-script';
 import { characterPositionCenterFraction } from '@/lib/character-position';
 import { isBlockingEffectType, normalizeEffectDurationMode } from '@/lib/engine/effect-duration';
@@ -43,10 +49,14 @@ import type {
   BackgroundBlockData,
   CameraBlockData,
   CharacterBlockData,
+  ComicPanelSetting,
+  ComicShot,
   EffectBlockData,
+  SceneComicSettings,
   StopEffectBlockData,
   TimelineStep,
 } from '@/lib/engine/types';
+import { hasComicEdits, resolveComicSettings, type ResolvedComicEdits } from '@/lib/comic/comic-settings';
 
 // ── What is on screen at a stop ──────────────────────────────────────────
 
@@ -118,7 +128,7 @@ export interface ComicPicture {
   effects: ComicPanelEffect[];
 }
 
-export type ComicShot = 'wide' | 'medium' | 'close';
+export type { ComicShot };
 
 /** A point, in fractions of the thing it is in, origin top-left. */
 export interface ComicPoint {
@@ -154,6 +164,8 @@ export interface ComicPanel {
   anchor: ComicAnchor;
   picture: ComicPicture;
   framing: ComicFraming;
+  /** How wide the author made it; left out, the renderer sizes it. */
+  size?: 'full' | 'half';
   elements: ComicPanelElement[];
   /** How many characters of words the panel holds: a hint for where the renderer may cut a page before it measures. */
   textWeight: number;
@@ -338,8 +350,8 @@ function pictureOf(state: ComicVisibleState): ComicPicture {
 
 // ── Framing ──────────────────────────────────────────────────────────────
 
-/** The spike's zoom for each shot. */
-const SHOT_ZOOM: Record<ComicShot, number> = { wide: 1, medium: 1.45, close: 2.1 };
+/** The zoom of each shot: the spike's for wide, medium and close; full and dramatic either side of medium and close. */
+const SHOT_ZOOM: Record<ComicShot, number> = { wide: 1, full: 1.2, medium: 1.45, close: 2.1, dramatic: 2.8 };
 const MAX_CAMERA_ZOOM = 3;
 /** Where a face is taken to be on the stage until a sprite says (`faceAnchor`, a later stage): high, as a standing figure's head is. */
 const FACE_Y = 0.3;
@@ -438,13 +450,57 @@ function joins(panel: OpenPanel, element: ComicPanelElement, pictureKey: string)
     && panel.elements.every((placed) => placed.kind === 'bubble');
 }
 
-function closePanel(panel: OpenPanel): ComicPanel {
+/** Whether one of the element's sentences is in `anchors`. */
+function touches(element: ComicPanelElement, anchors: ReadonlySet<ComicAnchor>): boolean {
+  return anchors.size > 0 && element.sentences.some((sentence) => anchors.has(sentence.anchor));
+}
+
+/** The panel's own settings: those fastened to the first of its sentences that has any. */
+function panelSettingOf(elements: readonly ComicPanelElement[], edits: ResolvedComicEdits): ComicPanelSetting | undefined {
+  if (!edits.panels.size) return undefined;
+  for (const element of elements) {
+    for (const sentence of element.sentences) {
+      const setting = edits.panels.get(sentence.anchor);
+      if (setting) return setting;
+    }
+  }
+  return undefined;
+}
+
+/** The automatic framing with the author's shot and focus over it. */
+function framedBy(auto: ComicFraming, setting: ComicPanelSetting | undefined): ComicFraming {
+  if (!setting?.shot && !setting?.focus) return auto;
+  return {
+    ...auto,
+    shot: setting.shot ?? auto.shot,
+    zoom: setting.shot ? SHOT_ZOOM[setting.shot] : auto.zoom,
+    subject: setting.focus ?? auto.subject,
+    // A point the author picked is what the panel is about: it goes in the middle.
+    placement: setting.focus ? CENTRE : auto.placement,
+  };
+}
+
+/** The element with the kind of bubble and the tail the author picked for it. */
+function styledBy(element: ComicPanelElement, edits: ResolvedComicEdits): ComicPanelElement {
+  if (!edits.elements.size) return element;
+  const setting = element.sentences.map((sentence) => edits.elements.get(sentence.anchor)).find(Boolean);
+  if (!setting) return element;
+  return {
+    ...element,
+    ...(setting.style ? { style: setting.style } : {}),
+    ...(setting.tail && setting.tail !== 'auto' ? { tail: setting.tail } : {}),
+  };
+}
+
+function closePanel(panel: OpenPanel, edits: ResolvedComicEdits): ComicPanel {
   const [first] = panel.elements;
+  const setting = panelSettingOf(panel.elements, edits);
   return {
     id: first.id,
     anchor: first.anchor,
     picture: panel.picture,
-    framing: framingOf(panel.picture, panel.elements),
+    framing: framedBy(framingOf(panel.picture, panel.elements), setting),
+    ...(setting?.size && setting.size !== 'auto' ? { size: setting.size } : {}),
     elements: panel.elements,
     textWeight: panel.elements.reduce((sum, element) => sum + lengthOf(element.text), 0),
   };
@@ -454,9 +510,16 @@ function closePanel(panel: OpenPanel): ComicPanel {
  * The plan for a scene's stops, in their order. `timeline` is the whole scene,
  * which the stops' steps are from: an inline chip goes with a sentence by where
  * it stands in its block, and a step that ran need not be next to it.
+ * `settings` are the scene's comic settings; their edits are found in the
+ * scene as it is now, and one whose sentence is gone does nothing.
  */
-export function buildComicPagePlan(timeline: readonly TimelineStep[], stops: readonly ComicStop[]): ComicPagePlan {
+export function buildComicPagePlan(
+  timeline: readonly TimelineStep[],
+  stops: readonly ComicStop[],
+  settings?: SceneComicSettings,
+): ComicPagePlan {
   const cues = comicCues(timeline);
+  const { edits } = resolveComicSettings(settings, hasComicEdits(settings) ? addressSentences([...timeline]) : []);
   const panels: ComicPanel[] = [];
   const usedIds = new Set<string>();
   // A scene stored with one step twice can address one sentence twice; the
@@ -475,31 +538,36 @@ export function buildComicPagePlan(timeline: readonly TimelineStep[], stops: rea
     const picture = pictureOf(stop.state);
     const pictureKey = JSON.stringify(picture);
     for (const element of elements) {
-      const placed: ComicPanelElement = {
+      const placed = styledBy({
         ...element,
         id: keyFor(stop.executionId === undefined ? element.anchor : `${stop.executionId}:${element.anchor}`),
         ...(stop.executionId === undefined ? {} : { executionId: stop.executionId }),
-      };
-      if (!open || !joins(open, placed, pictureKey)) {
-        if (open) panels.push(closePanel(open));
+      }, edits);
+      // ✂ opens a panel, × keeps the open one; both on one line cancel out,
+      // and the automatic choice stands.
+      const cut = touches(placed, edits.breaks);
+      const join = touches(placed, edits.merges);
+      if (!open || (cut !== join ? cut : !joins(open, placed, pictureKey))) {
+        if (open) panels.push(closePanel(open, edits));
         open = { picture, pictureKey, elements: [] };
       }
       open.elements.push(placed);
     }
   }
-  if (open) panels.push(closePanel(open));
+  if (open) panels.push(closePanel(open, edits));
   return { panels };
 }
 
 /** The author's plan for a scene: every step, in order (the editor's Preview). */
-export function buildAuthorComicPlan(timeline: readonly TimelineStep[]): ComicPagePlan {
-  return buildComicPagePlan(timeline, authorComicStops(timeline));
+export function buildAuthorComicPlan(timeline: readonly TimelineStep[], settings?: SceneComicSettings): ComicPagePlan {
+  return buildComicPagePlan(timeline, authorComicStops(timeline), settings);
 }
 
 /** The plan for what was read: the stops of the scene's execution journal, in order (the reader). */
 export function buildExecutedComicPlan(
   timeline: readonly TimelineStep[],
   stops: readonly ComicExecutedStop[],
+  settings?: SceneComicSettings,
 ): ComicPagePlan {
-  return buildComicPagePlan(timeline, stops);
+  return buildComicPagePlan(timeline, stops, settings);
 }

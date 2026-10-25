@@ -36,7 +36,7 @@ function renderInspector(documentScene: DocumentScene, comicPresentation?: Scene
       storyId="story-1"
       characters={[]}
       storyScenes={[]}
-      comicPresentation={comicPresentation}
+      comicSettings={comicPresentation ? { presentation: comicPresentation } : undefined}
     />,
   );
 }

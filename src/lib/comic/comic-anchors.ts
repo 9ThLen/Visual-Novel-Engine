@@ -14,17 +14,14 @@
  * Plain TypeScript, no React and no store: the editor gives it the timeline its
  * converter makes, the reader and the player the stored one.
  */
-import type { DialogueBlockData, TextBlockData, TimelineStep } from '@/lib/engine/types';
+import type { ComicAnchoredSetting, DialogueBlockData, TextBlockData, TimelineStep } from '@/lib/engine/types';
 import { stripRichText } from '@/lib/rich-text';
 
 /** `"<blockId>/p<part>/s<sentence>"` */
 export type ComicAnchor = string;
 
-export interface ComicAnchored {
-  anchor: ComicAnchor;
-  /** The words of the sentence it was fastened to, as `sentencePrint` gives them. */
-  print?: string;
-}
+/** A setting's anchor and the words of the sentence it was fastened to, as `sentencePrint` gives them. */
+export type ComicAnchored = ComicAnchoredSetting;
 
 export interface AddressedSentence {
   anchor: ComicAnchor;

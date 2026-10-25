@@ -7,8 +7,8 @@
  * setting can be fastened to. A `dialogue` step is speech, and every line of it
  * is a bubble with its speaker and sprite. Nothing else is speech: words in
  * quotes inside narration stay narration, since only the author can say who
- * speaks. Every bubble is an ordinary one until the author picks another kind
- * (stage 3).
+ * speaks. Every bubble is speech and every caption a caption box until the
+ * author picks another kind (stage 3, comic-settings.ts).
  *
  * An inline chip — an effect, a sound or music set inside a line — goes with
  * the sentence that follows it in its block, because that is when it runs in
@@ -28,6 +28,7 @@
 import { addressSentences, splitSentences, type ComicAnchor } from '@/lib/comic/comic-anchors';
 import { isBlockingEffectType } from '@/lib/engine/effect-duration';
 import type {
+  ComicWordsStyle,
   DialogueBlockData,
   EffectBlockData,
   EffectType,
@@ -58,6 +59,8 @@ export type ComicCue =
 interface ComicElementBase {
   /** Its first sentence's address: the element's key, and where its settings are fastened. */
   anchor: ComicAnchor;
+  /** The side a bubble's tail points to, when the author picked one; otherwise toward the speaker. */
+  tail?: 'left' | 'right';
   /** The step the words are from. */
   stepId: string;
   /** The words as the renderer sets them: plain text, its sentences joined by a space. */
@@ -69,10 +72,12 @@ interface ComicElementBase {
 
 export interface ComicCaption extends ComicElementBase {
   kind: 'caption';
+  /** Left out, a caption box; the author can draw narration as another kind (stage 3). */
+  style?: ComicWordsStyle;
 }
 
-/** Only `'normal'` until the author can pick a thought, a shout or a whisper (stage 3). */
-export type ComicBubbleStyle = 'normal';
+/** Speech until the author picks a shout, a whisper, a thought or a caption box (stage 3). */
+export type ComicBubbleStyle = ComicWordsStyle;
 
 export interface ComicBubble extends ComicElementBase {
   kind: 'bubble';
@@ -232,7 +237,7 @@ export function comicStepElements(step: TimelineStep, cues: ComicCues = NO_CUES)
     if (!own.length) continue;
     bubbles.push({
       kind: 'bubble',
-      style: 'normal',
+      style: 'speech',
       ...element(own, step.id, cues),
       entryId: entry.id,
       characterId: entry.characterId ?? '',

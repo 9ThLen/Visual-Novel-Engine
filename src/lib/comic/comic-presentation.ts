@@ -12,6 +12,7 @@
  * Plain TypeScript, no React and no store: the reader decides from the stored
  * scene, the editor from the scene it has open.
  */
+import { sanitizeComicEdits } from '@/lib/comic/comic-settings';
 import type {
   SceneComicSettings,
   ScenePresentation,
@@ -52,13 +53,16 @@ function isScenePresentation(value: unknown): value is ScenePresentation {
 
 /**
  * A scene's comic settings as they may be kept: an unknown presentation is
- * "Auto", and "Auto" is the same as no setting, so neither is kept.
+ * "Auto", and "Auto" is the same as no setting, so neither is kept; the
+ * author's edits of its panels are kept as `sanitizeComicEdits` reads them.
+ * Settings that come to nothing are no settings.
  */
 export function sanitizeSceneComicSettings(value: unknown): SceneComicSettings | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const { presentation } = value as Record<string, unknown>;
-  if (!isScenePresentation(presentation) || presentation === 'auto') return undefined;
-  return { presentation };
+  const raw = value as Record<string, unknown>;
+  const presentation = isScenePresentation(raw.presentation) && raw.presentation !== 'auto' ? raw.presentation : undefined;
+  const settings: SceneComicSettings = { ...(presentation ? { presentation } : {}), ...sanitizeComicEdits(raw) };
+  return Object.keys(settings).length ? settings : undefined;
 }
 
 /** The scene's own setting, "Auto" when it has none. */
@@ -73,7 +77,8 @@ export function scenePresentationOf(comic: SceneComicSettings | undefined): Scen
  */
 export function withSceneComicSettings<T extends { comic?: SceneComicSettings }>(record: T, comic: unknown): T {
   const next = sanitizeSceneComicSettings(comic);
-  if (next?.presentation === record.comic?.presentation && !next === !record.comic) return record;
+  // Settings are built in one order, so the same settings print the same.
+  if (JSON.stringify(next) === JSON.stringify(record.comic)) return record;
   const { comic: _previous, ...rest } = record;
   return (next ? { ...rest, comic: next } : rest) as T;
 }

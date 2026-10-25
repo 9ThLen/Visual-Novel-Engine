@@ -26,6 +26,7 @@ import {
 } from '@/lib/engine/event-factory';
 import type { CharacterBlockData, TimelineStep } from '@/lib/engine/types';
 import { useSceneExecutor } from '@/lib/engine/useSceneExecutor';
+import { sentencePrint } from '@/lib/comic/comic-anchors';
 
 const withId = (step: TimelineStep, id: string, origin: Partial<TimelineStep> = {}): TimelineStep => ({ ...step, id, ...origin });
 const text = (id: string, content: string, origin?: Partial<TimelineStep>) => withId(createTextStep({ content }), id, origin);
@@ -105,7 +106,7 @@ describe('the author\'s plan of a scene', () => {
 
     expect(short.picture.characters).toEqual([{ characterId: 'alice', spriteId: 'alice-smile', position: 'right', x: 0.75 }]);
     expect(short.elements).toEqual([expect.objectContaining({
-      kind: 'bubble', style: 'normal', characterId: 'alice', spriteId: 'alice-calm', text: 'Who is there?', id: 'step-1/p0/s0',
+      kind: 'bubble', style: 'speech', characterId: 'alice', spriteId: 'alice-calm', text: 'Who is there?', id: 'step-1/p0/s0',
     })]);
     expect(short.framing).toEqual({
       shot: 'close', zoom: 2.1, subject: { x: 0.75, y: 0.3 }, placement: { x: 0.667, y: 0.4 }, characterIds: ['alice'],
@@ -293,7 +294,7 @@ describe('the author\'s plan of a scene', () => {
       framing: { shot: 'close', zoom: 2, subject: { x: 0.5, y: 0.5 }, placement: { x: 0.5, y: 0.5 }, characterIds: [] },
       elements: [{
         kind: 'bubble',
-        style: 'normal',
+        style: 'speech',
         anchor: 'step-4/p0/s0',
         stepId: 'step-4',
         text: 'You came back.',
@@ -399,5 +400,108 @@ describe('the plan of what was read', () => {
     expect(read.panels.map((panel) => panel.id)).toEqual([
       'run-1:step-1/p0/s0', 'run-1:step-1/p0/s1', 'run-2:step-2/p0/s0', 'run-4:step-4/p0/s0', 'run-5:step-5/p0/s0',
     ]);
+  });
+});
+
+describe('the author\'s edits of the panels', () => {
+  // Two lines that share a panel, then two sentences of narration.
+  const scene = [
+    background('bg', 'hall'),
+    show('on-ann', 'ann', 'left'),
+    show('on-bo', 'bo', 'right'),
+    line('l1', 'ann', 'Who is there?'),
+    line('l2', 'bo', 'Only me.'),
+    text('n1', 'The wind rose. A door slammed.'),
+  ];
+  const at = (anchor: string, words: string) => ({ anchor, print: sentencePrint(words) });
+  const automatic = [['Who is there?', 'Only me.'], ['The wind rose.'], ['A door slammed.']];
+
+  it('lays a scene out as before when it has no edits', () => {
+    expect(buildAuthorComicPlan(scene, { presentation: 'comic' })).toEqual(buildAuthorComicPlan(scene));
+    expect(texts(buildAuthorComicPlan(scene))).toEqual(automatic);
+  });
+
+  it('opens a panel with the line a ✂ is on', () => {
+    const plan = buildAuthorComicPlan(scene, { breaks: [at('l2/p0/s0', 'Only me.')] });
+    expect(texts(plan)).toEqual([['Who is there?'], ['Only me.'], ['The wind rose.'], ['A door slammed.']]);
+  });
+
+  it('joins the panel a × is on to the panel before it, narration and dialogue alike', () => {
+    expect(texts(buildAuthorComicPlan(scene, { merges: [at('n1/p0/s0', 'The wind rose.')] })))
+      .toEqual([['Who is there?', 'Only me.', 'The wind rose.'], ['A door slammed.']]);
+    expect(texts(buildAuthorComicPlan(scene, { merges: [at('n1/p0/s1', 'A door slammed.')] })))
+      .toEqual([['Who is there?', 'Only me.'], ['The wind rose.', 'A door slammed.']]);
+  });
+
+  it('keeps the first panel\'s picture when a × joins a panel with another', () => {
+    const changing = [background('bg-1', 'hall'), text('a', 'Inside.'), background('bg-2', 'yard'), text('b', 'Outside.')];
+    const plan = buildAuthorComicPlan(changing, { merges: [at('b/p0/s0', 'Outside.')] });
+
+    expect(texts(plan)).toEqual([['Inside.', 'Outside.']]);
+    expect(plan.panels[0].picture.backgroundAssetId).toBe('hall');
+  });
+
+  it('lets ✂ and × on one line cancel out, and a × on the first line do nothing', () => {
+    const both = { breaks: [at('l2/p0/s0', 'Only me.')], merges: [at('l2/p0/s0', 'Only me.')] };
+    expect(texts(buildAuthorComicPlan(scene, both))).toEqual(automatic);
+    expect(texts(buildAuthorComicPlan(scene, { merges: [at('l1/p0/s0', 'Who is there?')] }))).toEqual(automatic);
+  });
+
+  it('gives a panel the author\'s shot, focus and size', () => {
+    const plan = buildAuthorComicPlan(scene, {
+      panels: [{ ...at('n1/p0/s1', 'A door slammed.'), shot: 'dramatic', focus: { x: 0.2, y: 0.4 }, size: 'half' }],
+    });
+    const panel = plan.panels[2];
+
+    expect(panel.framing).toMatchObject({ shot: 'dramatic', zoom: 2.8, subject: { x: 0.2, y: 0.4 }, placement: { x: 0.5, y: 0.5 } });
+    expect(panel.size).toBe('half');
+    expect(plan.panels[1]).not.toHaveProperty('size');
+  });
+
+  it('keeps the automatic subject when only the shot is the author\'s', () => {
+    const auto = buildAuthorComicPlan(scene).panels[0].framing;
+    const plan = buildAuthorComicPlan(scene, { panels: [{ ...at('l1/p0/s0', 'Who is there?'), shot: 'wide' }] });
+
+    expect(plan.panels[0].framing).toEqual({ ...auto, shot: 'wide', zoom: 1 });
+  });
+
+  it('finds a panel\'s settings on any of its lines, so a × does not lose them', () => {
+    const plan = buildAuthorComicPlan(scene, {
+      merges: [at('n1/p0/s0', 'The wind rose.')],
+      panels: [{ ...at('n1/p0/s0', 'The wind rose.'), shot: 'close' }],
+    });
+    expect(plan.panels[0].framing.shot).toBe('close');
+  });
+
+  it('draws a line as the kind of bubble the author picked, with the tail on their side', () => {
+    const plan = buildAuthorComicPlan(scene, {
+      elements: [{ ...at('l1/p0/s0', 'Who is there?'), style: 'shout', tail: 'left' }, { ...at('n1/p0/s0', 'The wind rose.'), style: 'thought' }],
+    });
+
+    expect(plan.panels[0].elements[0]).toMatchObject({ kind: 'bubble', style: 'shout', tail: 'left' });
+    expect(plan.panels[0].elements[1]).toMatchObject({ kind: 'bubble', style: 'speech' });
+    expect(plan.panels[0].elements[1]).not.toHaveProperty('tail');
+    expect(plan.panels[1].elements[0]).toMatchObject({ kind: 'caption', style: 'thought' });
+    expect(plan.panels[2].elements[0]).not.toHaveProperty('style');
+  });
+
+  it('follows its sentence when words are written before it', () => {
+    const edited = [...scene.slice(0, 5), text('n1', 'The wind rose. Then silence. A door slammed.')];
+    const plan = buildAuthorComicPlan(edited, { panels: [{ ...at('n1/p0/s1', 'A door slammed.'), shot: 'close' }] });
+
+    expect(plan.panels.map((panel) => panel.framing.shot)).toEqual([buildAuthorComicPlan(edited).panels[0].framing.shot, 'wide', 'wide', 'close']);
+  });
+
+  it('does nothing where its sentence is gone', () => {
+    const plan = buildAuthorComicPlan(scene, { breaks: [at('l2/p0/s0', 'A line nobody wrote anywhere at all.')] });
+    expect(texts(plan)).toEqual(automatic);
+  });
+
+  it('draws what was read with the same edits', () => {
+    const settings = { breaks: [at('l2/p0/s0', 'Only me.')], panels: [{ ...at('n1/p0/s0', 'The wind rose.'), size: 'full' as const }] };
+    const read = buildExecutedComicPlan(scene, readThrough(scene), settings);
+
+    expect(withoutRuns(read)).toEqual(withoutRuns(buildAuthorComicPlan(scene, settings)));
+    expect(read.panels[2].size).toBe('full');
   });
 });

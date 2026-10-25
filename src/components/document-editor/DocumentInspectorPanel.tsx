@@ -20,7 +20,7 @@ import { useEditorPreviewDevice } from '@/components/document-editor/inspector/u
 import type { ColorScheme } from '@/constants/theme';
 import type { Character } from '@/lib/character-types';
 import type { DocumentBlock, DocumentScene } from '@/lib/document-editor/types';
-import type { ScenePresentation, TimelineStep } from '@/lib/engine/types';
+import type { SceneComicSettings, TimelineStep } from '@/lib/engine/types';
 
 type InspectorTab = 'block' | 'scene' | 'issues';
 
@@ -33,8 +33,8 @@ interface DocumentInspectorPanelProps {
   characters: Character[];
   storyScenes: SceneRef[];
   onOpenScene?: (sceneId: string) => void;
-  /** The scene's comic setting, from its record ("Auto" when left out). */
-  comicPresentation?: ScenePresentation;
+  /** The scene's comic settings, from its record: how it is read, and the author's edits of its panels. */
+  comicSettings?: SceneComicSettings;
 }
 
 export function DocumentInspectorPanel({
@@ -44,7 +44,7 @@ export function DocumentInspectorPanel({
   characters,
   storyScenes,
   onOpenScene,
-  comicPresentation,
+  comicSettings,
 }: DocumentInspectorPanelProps) {
   const colors = useColors(colorScheme);
   const [tab, setTab] = useState<InspectorTab>('scene');
@@ -81,9 +81,9 @@ export function DocumentInspectorPanel({
   const readsAs = useMemo(() => resolveScenePresentation(
     undefined,
     null,
-    comicPresentation ? { presentation: comicPresentation } : undefined,
+    comicSettings,
     { novelOnly: scene ? documentSceneNovelOnly(scene) : null },
-  ).readAs, [comicPresentation, scene]);
+  ).readAs, [comicSettings, scene]);
   const [formatChoice, setFormatChoice] = useState<{ sceneId: string; format: PreviewFormat } | null>(null);
   const format: PreviewFormat = sceneId && formatChoice?.sceneId === sceneId ? formatChoice.format : readsAs;
   const selectFormat = useCallback((next: PreviewFormat) => {
@@ -94,9 +94,9 @@ export function DocumentInspectorPanel({
   // while the comic is shown, as it converts the whole scene on every edit.
   const comicPlan = useMemo(
     () => (format === 'comic' && scene
-      ? buildAuthorComicPlan(documentSceneToTimelineWithOrigins(scene, characters).timeline)
+      ? buildAuthorComicPlan(documentSceneToTimelineWithOrigins(scene, characters).timeline, comicSettings)
       : EMPTY_COMIC_PLAN),
-    [characters, format, scene],
+    [characters, comicSettings, format, scene],
   );
   const [panelIndex, setPanelIndex] = useState(0);
   useEffect(() => {
@@ -212,6 +212,7 @@ export function DocumentInspectorPanel({
         <ComicReadOverlay
           sceneId={reading.sceneId}
           timeline={reading.timeline}
+          comic={comicSettings}
           storyId={storyId}
           device={device}
           settings={readerSettings}
