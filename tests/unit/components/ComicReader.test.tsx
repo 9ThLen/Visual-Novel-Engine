@@ -94,6 +94,29 @@ describe('ComicReader', () => {
     expect(reader.onExecutorChoiceSelect).toHaveBeenCalledTimes(1);
   });
 
+  // The choice is the scene's last step, so the pick also completes the run.
+  // The reader screen routes on completion, and must still hear one move: the
+  // pick's, not a "next" after it that would end the story under it.
+  it.each([
+    { optionId: 'left', target: 'scene-left', mode: 'scene' },
+    { optionId: 'right', target: null, mode: 'next' },
+  ])('reports the pick of $optionId at the scene\'s end as one move, when the reader routes on completion', async ({ optionId, target, mode }) => {
+    const reader = setup({ routeOnExecutorComplete: true });
+    for (const expected of [2, 3]) {
+      reader.fromFrame({ type: 'tap' });
+      await waitFor(() => expect(reader.shown()).toHaveLength(expected));
+    }
+    reader.fromFrame({ type: 'tap' });
+    await waitFor(() => expect(reader.lastStrip().choices?.options).toHaveLength(2));
+
+    reader.fromFrame({ type: 'choose', optionId });
+    await waitFor(() => expect(reader.onTransition).toHaveBeenCalled());
+    await act(async () => {});
+
+    expect(reader.onTransition).toHaveBeenCalledTimes(1);
+    expect(reader.onTransition).toHaveBeenCalledWith(target, expect.objectContaining({ mode }));
+  });
+
   it('goes back a panel, then a stop — landing with all its panels open — then asks for the previous scene', async () => {
     const reader = setup();
     reader.fromFrame({ type: 'tap' });
