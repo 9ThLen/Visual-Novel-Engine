@@ -73,6 +73,15 @@ describe('the author\'s ✂ and ×', () => {
     expect(withPanelStartAt(settings, scene, 'gone/p0/s0', true)).toBe(settings);
   });
 
+  it('✂ inside a line of dialogue splits the line there', () => {
+    const talk = [background('bg', 'hall'), show('on-ann', 'ann', 'left'), line('l1', 'ann', 'First. Second.')];
+    const settings = withPanelStartAt(undefined, talk, 'l1/p0/s1', true);
+
+    expect(settings).toEqual({ breaks: [at('l1/p0/s1', 'Second.')] });
+    expect(texts(buildAuthorComicPlan(talk, settings))).toEqual([['First.'], ['Second.']]);
+    expect(withPanelStartAt(settings, talk, 'l1/p0/s1', false)).toEqual({});
+  });
+
   it('keeps every other edit as it was', () => {
     const settings: SceneComicSettings = {
       presentation: 'comic',

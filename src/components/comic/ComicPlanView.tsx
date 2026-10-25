@@ -10,7 +10,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 
 import type { Character } from '@/lib/character-types';
 import { resolveCharacterSpriteUri } from '@/lib/character-resolver';
-import type { ComicFrameChoices } from '@/lib/comic/comic-frame-protocol';
+import type { ComicFrameChoices, ComicFrameMarks } from '@/lib/comic/comic-frame-protocol';
 import { comicFrameStrip, comicPlanPictures, type ComicFrameAssets } from '@/lib/comic/comic-frame-strip';
 import type { ComicPagePlan } from '@/lib/comic/comic-layout';
 import { useAppStore } from '@/stores/use-app-store';
@@ -30,6 +30,9 @@ interface ComicPlanViewProps {
   panelChoices?: Readonly<Record<string, ComicFrameChoices>>;
   /** Panels may still come after the last one: the strip is being read, not shown whole. */
   more?: boolean;
+  /** The author's ✂ and × over the strip, and what a press on one says; the editor's Preview only. */
+  marks?: ComicFrameMarks;
+  onMark?: (anchor: string, begins: boolean) => void;
   textScale?: number;
   /** A tap on the strip, with the panel it landed on when it landed on one. */
   onTap?: (panelId?: string) => void;
@@ -45,6 +48,8 @@ export function ComicPlanView({
   choices = null,
   panelChoices,
   more = false,
+  marks,
+  onMark,
   textScale = 1,
   onTap,
   onChoose,
@@ -67,8 +72,8 @@ export function ComicPlanView({
       spriteRef,
       characterName: (characterId) => characters.find((character) => character.id === characterId)?.name ?? null,
     };
-    return comicFrameStrip(plan, assets, { revealed, choices, panelChoices, more });
-  }, [characters, choices, more, panelChoices, plan, revealed, spriteRef, urls]);
+    return comicFrameStrip(plan, assets, { revealed, choices, panelChoices, more, marks });
+  }, [characters, choices, marks, more, panelChoices, plan, revealed, spriteRef, urls]);
 
   const handleTap = useCallback((panelId?: string) => onTap?.(panelId), [onTap]);
   const handleChoose = useCallback((optionId: string) => onChoose?.(optionId), [onChoose]);
@@ -79,6 +84,7 @@ export function ComicPlanView({
       textScale={textScale}
       onTap={handleTap}
       onChoose={handleChoose}
+      onMark={onMark}
       onLayout={onLayout}
       style={style}
     />

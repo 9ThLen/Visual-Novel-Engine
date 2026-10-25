@@ -9,8 +9,9 @@ import { SceneFactsCard, type SceneRef } from '@/components/document-editor/insp
 import { INSPECTOR_RAIL_PADDING, INSPECTOR_RAIL_WIDTH } from '@/components/document-editor/inspector/rail-metrics';
 import { useColors } from '@/hooks/use-colors';
 import { withAlpha } from '@/lib/_core/theme';
-import { addressSentences } from '@/lib/comic/comic-anchors';
+import { addressSentences, type ComicAnchor } from '@/lib/comic/comic-anchors';
 import { buildAuthorComicPlan, type ComicPagePlan, type ComicPanel, type ComicPanelElement } from '@/lib/comic/comic-layout';
+import { withPanelStartAt } from '@/lib/comic/comic-marks';
 import { resolveScenePresentation } from '@/lib/comic/comic-presentation';
 import {
   comicEditsOf,
@@ -153,12 +154,14 @@ export function DocumentInspectorPanel({
   // The Panel section's own Undo: the scene's edits as they were before each
   // change made here, per scene, for as long as the editor is open.
   const [comicUndo, setComicUndo] = useState<{ sceneId: string; edits: ComicEdits }[]>([]);
+  /** Writes a change of the scene's comic edits; false when it changes nothing, and nothing is written. */
   const changeComic = useCallback((change: (settings: SceneComicSettings | undefined) => SceneComicSettings | undefined) => {
-    if (!sceneId || !onUpdateComicSettings) return;
+    if (!sceneId || !onUpdateComicSettings) return false;
     const before = comicEditsOf(comicSettings);
-    if (JSON.stringify(comicEditsOf(change(comicSettings))) === JSON.stringify(before)) return;
+    if (JSON.stringify(comicEditsOf(change(comicSettings))) === JSON.stringify(before)) return false;
     setComicUndo((stack) => [...stack, { sceneId, edits: before }].slice(-COMIC_UNDO_DEPTH));
     onUpdateComicSettings(change);
+    return true;
   }, [comicSettings, onUpdateComicSettings, sceneId]);
   const undoComic = useMemo(() => {
     const last = comicUndo.map((entry) => entry.sceneId).lastIndexOf(sceneId ?? '');
@@ -182,6 +185,23 @@ export function DocumentInspectorPanel({
   const shownPanelEdited = Boolean(shownPanel && sentencesOfPanel(shownPanel).some(
     (sentence) => comicEdits.panels.has(sentence.anchor) || comicEdits.elements.has(sentence.anchor),
   ));
+  // ✂ and × in the Preview. Once the plan the mark makes is drawn — not the
+  // one it was pressed on — the Preview shows the panel the pressed sentence
+  // is in now.
+  const [marked, setMarked] = useState<{ anchor: ComicAnchor; pressedOn: ComicPagePlan } | null>(null);
+  const markPanelStart = useCallback((anchor: ComicAnchor, begins: boolean) => {
+    if (!comicTimeline) return;
+    if (changeComic((settings) => withPanelStartAt(settings, comicTimeline, anchor, begins))) {
+      setMarked({ anchor, pressedOn: comicPlan });
+    }
+  }, [changeComic, comicPlan, comicTimeline]);
+  useEffect(() => {
+    if (!marked || marked.pressedOn === comicPlan) return;
+    const index = comicPlan.panels.findIndex((panel) => sentencesOfPanel(panel).some((sentence) => sentence.anchor === marked.anchor));
+    if (index >= 0) setPanelIndex(index);
+    setMarked(null);
+  }, [comicPlan, marked]);
+
   const restorePanel = useCallback(() => {
     if (!shownPanel) return;
     const target = sentencesOfPanel(shownPanel);
@@ -225,6 +245,7 @@ export function DocumentInspectorPanel({
           comicPlan={comicPlan}
           panelIndex={panelIndex}
           onPanelIndexChange={setPanelIndex}
+          onMarkPanelStart={onUpdateComicSettings ? markPanelStart : undefined}
           onReadAsComic={readAsComic}
         />
 
@@ -306,6 +327,7 @@ export function DocumentInspectorPanel({
           comicPlan={comicPlan}
           panelIndex={panelIndex}
           onPanelIndexChange={setPanelIndex}
+          onMarkPanelStart={onUpdateComicSettings ? markPanelStart : undefined}
         />
       ) : null}
 

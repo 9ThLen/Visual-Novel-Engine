@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-10-25 — ✂ and × in the comic Preview
+
+PR 3.4 of `docs/plans/COMIC-STAGE-3-PLAN.md`: the author splits and joins
+panels in the editor's Preview (decision 1 in #78: marks in the Preview
+first, in the page's text later).
+
+- **The marks.** In the Preview's comic format:
+  - a ✂ stands before every sentence a panel does not begin with, inside a
+    line of dialogue too;
+  - a × sits on the edge above every panel but the first.
+  The reader never has them: only the Preview's strip carries them
+  (`ComicFrameStrip.marks`, with each panel's and sentence's anchor).
+- **What a press does** (`withPanelStartAt`, `src/lib/comic/comic-marks.ts`).
+  A ✂ makes the sentence begin a panel; a × makes it go on in the panel
+  before. A mark of the other kind on that sentence is taken away first, so
+  a × on a boundary a ✂ made only removes the ✂. A new mark is added only
+  when the automatic panels would still not do as asked. So no mark is
+  kept where it changes nothing, and no press merely clears one.
+- **After a press** the Preview shows the panel the sentence is in now. The
+  Panel section's Undo takes a mark back like any other edit.
+
+
 ## 2026-10-25 — The Inspector edits a comic panel
 
 PR 3.3 of `docs/plans/COMIC-STAGE-3-PLAN.md`. Under the Preview, a scene

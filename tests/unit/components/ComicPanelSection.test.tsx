@@ -148,6 +148,35 @@ describe('the Panel section', () => {
     expect(title()).toContain('Panel 1 of 3');
   });
 
+  it('starts a panel at a ✂ pressed in the Preview, shows that panel, and joins it back at its ×', () => {
+    const inspector = renderInspector();
+    next();
+    next();
+    const iframe = screen.getByTestId('comic-preview-stage').querySelector('iframe')!;
+    const token = JSON.parse(/window\.__VNE_COMIC_BOOT = (\{.*?\});/.exec(iframe.getAttribute('srcdoc') ?? '')?.[1] ?? '{}').token;
+    const mark = (anchor: string, begins: boolean) => act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        data: { source: COMIC_FRAME_SOURCE, token, type: 'mark', anchor, begins },
+        origin: window.location.origin,
+        source: iframe.contentWindow,
+      }));
+    });
+
+    mark('line/p0/s1', true);
+    inspector.redraw();
+    expect(inspector.settings()).toEqual({ presentation: 'comic', breaks: [{ anchor: 'line/p0/s1', print: sentencePrint('Answer me!') }] });
+    expect(title()).toContain('Panel 4 of 4');
+
+    mark('line/p0/s1', false);
+    inspector.redraw();
+    expect(inspector.settings()).toEqual({ presentation: 'comic' });
+    expect(title()).toContain('Panel 3 of 3');
+
+    // A mark is an edit like the others: Undo takes it back.
+    inspector.press('comic-panel-undo');
+    expect(inspector.settings()?.breaks).toHaveLength(1);
+  });
+
   it('is not there when the scene\'s comic settings cannot be written', () => {
     render(<DocumentInspectorPanel scene={scene} storyId="story-1" characters={[]} storyScenes={[]} comicSettings={{ presentation: 'comic' }} />);
     expect(screen.queryByTestId('comic-panel-section')).toBeNull();

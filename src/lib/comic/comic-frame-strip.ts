@@ -16,6 +16,7 @@ import type {
   ComicFramePanel,
   ComicFrameStrip,
   ComicFrameWords,
+  ComicFrameMarks,
 } from '@/lib/comic/comic-frame-protocol';
 import type { ComicPictureRole } from '@/lib/comic/comic-picture-size';
 
@@ -52,16 +53,18 @@ export function comicPlanPictures(plan: ComicPagePlan, assets: Pick<ComicFrameAs
   return [...roles].map(([ref, used]) => ({ ref, roles: [...used].sort() }));
 }
 
-function framePanel(panel: ComicPanel, assets: ComicFrameAssets): ComicFramePanel {
+/** `marked`: the strip has the author's marks, which need each panel's and sentence's anchor. */
+function framePanel(panel: ComicPanel, assets: ComicFrameAssets, marked: boolean): ComicFramePanel {
   const { picture, framing } = panel;
   const words: ComicFrameWords[] = [];
   for (const element of panel.elements) {
     if (!element.text.trim()) continue;
     // Only what the author changed travels: the frame draws each kind its own way otherwise.
     const tail = element.tail ? { tail: element.tail } : {};
+    const sentences = marked ? { sentences: element.sentences.map(({ anchor, text }) => ({ anchor, text })) } : {};
     if (element.kind === 'caption') {
       const style = element.style && element.style !== 'caption' ? { style: element.style } : {};
-      words.push({ id: element.id, kind: 'caption', text: element.text, ...style, ...tail });
+      words.push({ id: element.id, kind: 'caption', text: element.text, ...style, ...tail, ...sentences });
       continue;
     }
     const speaker = element.speakerName?.trim() || assets.characterName(element.characterId)?.trim();
@@ -74,6 +77,7 @@ function framePanel(panel: ComicPanel, assets: ComicFrameAssets): ComicFramePane
       ...(speakerX === undefined ? {} : { speakerX }),
       ...(element.style !== 'speech' ? { style: element.style } : {}),
       ...tail,
+      ...sentences,
     });
   }
   return {
@@ -84,6 +88,7 @@ function framePanel(panel: ComicPanel, assets: ComicFrameAssets): ComicFramePane
       return { id: character.characterId, url: ref ? assets.imageUrl(ref) : null, x: character.x };
     }),
     ...(panel.size ? { size: panel.size } : {}),
+    ...(marked ? { anchor: panel.anchor } : {}),
     zoom: framing.zoom,
     focus: { x: framing.subject.x, y: framing.subject.y },
     place: { x: framing.placement.x, y: framing.placement.y },
@@ -99,6 +104,8 @@ export interface ComicFrameStripOptions {
   panelChoices?: Readonly<Record<string, ComicFrameChoices>>;
   /** Panels may still come after the last one: the strip is being read. */
   more?: boolean;
+  /** The author's ✂ and ×, with what each says: the editor's Preview. The reader never has them. */
+  marks?: ComicFrameMarks;
 }
 
 export function comicFrameStrip(
@@ -107,10 +114,16 @@ export function comicFrameStrip(
   options: ComicFrameStripOptions = {},
 ): ComicFrameStrip {
   const panels = plan.panels.map((panel) => {
-    const drawn = framePanel(panel, assets);
+    const drawn = framePanel(panel, assets, Boolean(options.marks));
     const made = options.panelChoices?.[panel.id];
     return made ? { ...drawn, choices: made } : drawn;
   });
   const revealed = Math.max(0, Math.min(panels.length, Math.floor(options.revealed ?? panels.length)));
-  return { panels, revealed, choices: options.choices ?? null, ...(options.more ? { more: true } : {}) };
+  return {
+    panels,
+    revealed,
+    choices: options.choices ?? null,
+    ...(options.more ? { more: true } : {}),
+    ...(options.marks ? { marks: options.marks } : {}),
+  };
 }
