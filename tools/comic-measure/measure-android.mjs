@@ -13,6 +13,12 @@
  *    sandboxed renderer, after the first page, after every panel has been
  *    opened (a tap each, as a reader opens them), and after the strip has been
  *    flung from top to bottom with real touch swipes;
+ *  - peaks: the most anonymous memory (`RssAnon`) the app and the renderer
+ *    held at any moment of the run, and the least memory the system had left
+ *    (`MemAvailable`), sampled on the device five times a second. A picture
+ *    costs its full size while it is decoded and drawn, and a 2 GB phone dies
+ *    of the peaks; between them the renderer keeps tiles, not pictures, so a
+ *    snapshot of PSS can miss the difference altogether;
  *  - smoothness: `dumpsys gfxinfo` over the flings — WebView draws through the
  *    app's RenderThread;
  *  - survival: whether the app process or the renderer was replaced during
@@ -23,7 +29,7 @@
  * scene ends on a choice, which nothing here answers. The strip is about
  * 19,000 CSS pixels tall on a 1080-pixel phone, and twenty flings cross it.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 
 function arg(name, fallback) {
@@ -45,7 +51,17 @@ if (!pkg || !scheme) {
   process.exit(1);
 }
 
-const adb = (...args) => execFileSync(adbPath, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+/** adb, again after the emulator's transport drops for a moment, which it does under load. */
+function adb(...args) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return execFileSync(adbPath, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    } catch (error) {
+      if (attempt >= 3 || !/offline|not found|closed/i.test(String(error.stderr ?? error.message))) throw error;
+      execFileSync(adbPath, ['wait-for-device'], { timeout: 60_000 });
+    }
+  }
+}
 const shell = (...args) => adb('shell', ...args);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -123,6 +139,46 @@ function screen() {
   return { width: Number(size?.[1] ?? 1080), height: Number(size?.[2] ?? 2424) };
 }
 
+const RENDERER = 'com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0';
+
+/**
+ * Samples the app's and the renderer's anonymous memory and the system's
+ * available memory on the device until stopped; `stop()` answers the extremes
+ * in MB. A process started anew during the run (a renderer the system killed)
+ * is sampled too, under the same role.
+ */
+function startPeakSampler() {
+  const script = [
+    'while true; do',
+    `for p in $(pidof ${pkg}); do echo "app $(grep RssAnon /proc/$p/status)"; done;`,
+    `for p in $(pidof ${RENDERER}); do echo "renderer $(grep RssAnon /proc/$p/status)"; done;`,
+    'echo "system $(grep MemAvailable /proc/meminfo)";',
+    'sleep 0.2; done',
+  ].join(' ');
+  const child = spawn(adbPath, ['shell', script]);
+  const peaks = { app: 0, renderer: 0, system: Infinity };
+  let buffer = '';
+  child.stdout.on('data', (chunk) => {
+    buffer += chunk.toString('utf8');
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      const match = /^(app|renderer|system) \S+:\s+(\d+) kB/.exec(line.trim());
+      if (!match) continue;
+      const kb = Number(match[2]);
+      if (match[1] === 'system') peaks.system = Math.min(peaks.system, kb);
+      else peaks[match[1]] = Math.max(peaks[match[1]], kb);
+    }
+  });
+  return {
+    stop() {
+      child.kill();
+      const mb = (kb) => (Number.isFinite(kb) && kb > 0 ? Math.round(kb / 1024) : null);
+      return { appAnonPeak: mb(peaks.app), rendererAnonPeak: mb(peaks.renderer), systemAvailableLow: mb(peaks.system) };
+    },
+  };
+}
+
 async function fling(from, to) {
   const { width, height } = screen();
   shell('input', 'swipe', String(width / 2), String(Math.round(height * from)), String(width / 2), String(Math.round(height * to)), '90');
@@ -131,8 +187,12 @@ async function fling(from, to) {
 
 async function measureRun(index) {
   shell('am', 'force-stop', pkg);
-  await sleep(1500);
+  // Every run starts with the background apps a 2 GB device keeps cached let
+  // go, so one run is not measured against another's leftovers.
+  shell('am', 'kill-all');
+  await sleep(5000);
   adb('logcat', '-b', 'all', '-c');
+  const sampler = startPeakSampler();
   const url = `${scheme}://reader?storyId=${storyId}`;
   shell('am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `'${url}'`, pkg);
   // The first page: the frame built, its document loaded, its pictures decoded.
@@ -158,6 +218,7 @@ async function measureRun(index) {
   await sleep(1500);
   const gfx = gfxinfo();
   const afterScroll = memory();
+  const peaks = sampler.stop();
 
   const endApp = appPid();
   const endRenderers = rendererPids();
@@ -168,6 +229,7 @@ async function measureRun(index) {
     afterFirstPage,
     afterReveal,
     afterScroll,
+    peaks,
     gfx,
     deaths: deaths(),
   };
