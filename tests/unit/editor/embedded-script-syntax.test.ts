@@ -314,6 +314,23 @@ const sceneWithEffect = {
 };
 
 describe('createEmbeddedScript', () => {
+  // The evaluated script arms timers as it works: the 140 ms resize post, the
+  // save and selection debounces, and animation frames for popover layout.
+  // Every test here is synchronous, so none of them ever fires inside a test;
+  // with real timers they all wait for the file to end, and one still pending
+  // when jsdom is torn down reads `document` from a scope that no longer has
+  // it, failing the run with an unhandled ReferenceError although every test
+  // passed. A fake clock keeps each timer inside the test that armed it, and
+  // clearing it drops them before the next test or the teardown.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] });
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
   it('ignores host-shaped messages that were not sent by the parent window', () => {
     document.body.innerHTML = '<main class="paper"><input id="title" value="Scene 1"><div id="editor"></div></main><div id="slashMenu"></div>';
     const api = evalEmbeddedScriptForHarness({
