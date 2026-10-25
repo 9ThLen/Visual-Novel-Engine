@@ -56,7 +56,7 @@ const refused = new Set<string>();
 const retryAfter = new Map<string, number>();
 
 function evictUnleased(): void {
-  let unleased = [...copies.keys()].filter((key) => !leases.has(key));
+  const unleased = [...copies.keys()].filter((key) => !leases.has(key));
   while (unleased.length > MAX_UNLEASED_COPIES) {
     const key = unleased.shift() as string;
     URL.revokeObjectURL(copies.get(key) as string);
@@ -112,7 +112,9 @@ export async function acquireDisplayCopy(
 ): Promise<DisplayCopyLease> {
   const key = `${sizeKey}\n${sourceUri}`;
   const none: DisplayCopyLease = { uri: null, release: () => {} };
-  if (!sourceUri || refused.has(key)) return none;
+  // A file:// picture cannot be fetched (Chromium refuses the scheme, and says
+  // so in the console) nor drawn into a canvas the page may read.
+  if (!sourceUri || /^file:/i.test(sourceUri) || refused.has(key)) return none;
   const retryAt = retryAfter.get(key);
   if (retryAt && retryAt > Date.now()) return none;
   retryAfter.delete(key);

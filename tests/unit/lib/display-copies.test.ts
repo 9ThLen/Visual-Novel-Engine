@@ -91,21 +91,28 @@ describe('a display copy of a picture', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('is none for a picture on disk, which a page can neither fetch nor read back from a canvas', async () => {
+    const fetchMock = stubFetch();
+    setDisplayCopyGeneratorForTests(async () => new Blob(['small']));
+    expect((await acquireDisplayCopy('file:///story/media/hall.png', 'background', half)).uri).toBeNull();
+    // Not even asked: Chromium would print the refusal to the console.
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('is none when the original cannot be read back, and is tried again later', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      // A page opened from file:// cannot fetch its own pictures.
       const fetchMock = stubFetch(async () => { throw new TypeError('Failed to fetch'); });
       setDisplayCopyGeneratorForTests(async () => new Blob(['small']));
 
-      expect((await acquireDisplayCopy('file:///story/media/hall.png', 'background', half)).uri).toBeNull();
-      expect((await acquireDisplayCopy('file:///story/media/hall.png', 'background', half)).uri).toBeNull();
+      expect((await acquireDisplayCopy('blob:http://localhost/hall', 'background', half)).uri).toBeNull();
+      expect((await acquireDisplayCopy('blob:http://localhost/hall', 'background', half)).uri).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
       vi.setSystemTime(Date.now() + 31_000);
       stubFetch();
-      expect((await acquireDisplayCopy('file:///story/media/hall.png', 'background', half)).uri).toBe('blob:copy-1');
+      expect((await acquireDisplayCopy('blob:http://localhost/hall', 'background', half)).uri).toBe('blob:copy-1');
       warn.mockRestore();
     } finally {
       vi.useRealTimers();
