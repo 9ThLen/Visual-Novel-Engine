@@ -17,6 +17,7 @@ import {
   BUNDLEABLE_MEDIA_EXTENSIONS,
   GENERATED_MODULE,
   NATIVE_IDENTITY_FILE,
+  STAGED_DISPLAY_MEDIA_DIR,
   STAGED_ICON,
   STAGED_MEDIA_DIR,
   STAGED_RELEASE_JSON,
@@ -217,6 +218,19 @@ describe('the generated release module', () => {
     // The map says `media/<sha>.png`; the runtime looks that string up here.
     expect(generatedReleaseModule(['a.png'], 'now')).toContain("'media/a.png':");
   });
+
+  it('names each display copy for the comic by the media file it stands for', () => {
+    const source = generatedReleaseModule(['a.png', 'b.png'], 'now', { 'media/b.png': 'b.webp', 'media/a.png': 'a.webp' });
+    expect(source).toContain("'media/a.png': require('../../../assets/display-media/a.webp')");
+    // Sorted, so staging the same release twice writes the same module.
+    expect(source.indexOf("'media/a.png': require('../../../assets/display-")).toBeLessThan(
+      source.indexOf("'media/b.png': require('../../../assets/display-"),
+    );
+  });
+
+  it('carries no copies for a story with no comic', () => {
+    expect(generatedReleaseModule(['a.png'], 'now')).not.toContain('display-media');
+  });
 });
 
 describe('which studio routes the player still needs', () => {
@@ -305,6 +319,16 @@ describe('verifying a staged project', () => {
     write(root, `${STAGED_MEDIA_DIR}/odd.bin`, 'bytes');
     write(root, GENERATED_MODULE, generatedReleaseModule(['abc.png', 'odd.bin'], 'now'));
     expect(verifyStagedAndroidProject(root).join('\n')).toContain('does not bundle as an asset');
+  });
+
+  it('catches a display copy nobody wrote, or one Metro will not bundle', () => {
+    root = stagedProject({ skip: ['generated'] });
+    write(root, `${STAGED_DISPLAY_MEDIA_DIR}/odd.bin`, 'bytes');
+    write(root, GENERATED_MODULE, generatedReleaseModule(['abc.png'], 'now', { 'media/abc.png': 'gone.webp' }));
+    expect(verifyStagedAndroidProject(root).join('\n')).toContain('display-media/gone.webp, which is missing');
+
+    write(root, GENERATED_MODULE, generatedReleaseModule(['abc.png'], 'now', { 'media/abc.png': 'odd.bin' }));
+    expect(verifyStagedAndroidProject(root).join('\n')).toContain('odd.bin has an extension Metro does not bundle');
   });
 
   it('catches the committed stub, which would build an app with no story', () => {

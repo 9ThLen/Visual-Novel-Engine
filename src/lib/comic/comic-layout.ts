@@ -23,8 +23,10 @@
  * it is anywhere but at rest, over all of these.
  *
  * The author's edits of the panels go over everything above (stage 3,
- * comic-settings.ts): ✂ opens a panel with a line, × keeps the panel before it
- * open for the line instead, and a panel's shot, focus and size and a line's
+ * comic-settings.ts): ✂ opens a panel with a sentence — a line of dialogue
+ * cut after its first sentence goes on in a bubble of its own in the next
+ * panel — × keeps the panel before it open for the line instead, and a
+ * panel's shot, focus and size and a line's
  * kind of bubble and tail are the author's where they were set. A scene with
  * no edits is laid out exactly as it was before there were any.
  *
@@ -36,7 +38,13 @@
  * chance, and keys made only from anchors and execution ids (section 4.5).
  */
 import { addressSentences, type ComicAnchor } from '@/lib/comic/comic-anchors';
-import { comicCues, comicStepElements, type ComicElement } from '@/lib/comic/comic-script';
+import {
+  comicCues,
+  comicStepElements,
+  type ComicCues,
+  type ComicElement,
+  type ComicSentence,
+} from '@/lib/comic/comic-script';
 import { characterPositionCenterFraction } from '@/lib/character-position';
 import { isBlockingEffectType, normalizeEffectDurationMode } from '@/lib/engine/effect-duration';
 import type {
@@ -450,9 +458,27 @@ function joins(panel: OpenPanel, element: ComicPanelElement, pictureKey: string)
     && panel.elements.every((placed) => placed.kind === 'bubble');
 }
 
-/** Whether one of the element's sentences is in `anchors`. */
-function touches(element: ComicPanelElement, anchors: ReadonlySet<ComicAnchor>): boolean {
-  return anchors.size > 0 && element.sentences.some((sentence) => anchors.has(sentence.anchor));
+/**
+ * A line of dialogue cut by ✂ at a sentence after its first, as the pieces
+ * the cuts make: each a bubble of the same speaker with its own sentences and
+ * the inline chips that go with them. A caption is one sentence, and an
+ * element with no cut in it stays whole.
+ */
+function splitAtBreaks(element: ComicElement, breaks: ReadonlySet<ComicAnchor>, cues: ComicCues): ComicElement[] {
+  if (element.kind !== 'bubble' || !breaks.size || element.sentences.length < 2) return [element];
+  const pieces: ComicSentence[][] = [[]];
+  element.sentences.forEach((sentence, index) => {
+    if (index > 0 && breaks.has(sentence.anchor)) pieces.push([]);
+    pieces[pieces.length - 1].push(sentence);
+  });
+  if (pieces.length === 1) return [element];
+  return pieces.map((sentences) => ({
+    ...element,
+    anchor: sentences[0].anchor,
+    text: sentences.map((sentence) => sentence.text).join(' '),
+    sentences,
+    cues: sentences.flatMap((sentence) => cues.get(sentence.anchor) ?? []),
+  }));
 }
 
 /** The panel's own settings: those fastened to the first of its sentences that has any. */
@@ -537,16 +563,17 @@ export function buildComicPagePlan(
     if (!elements.length) continue;
     const picture = pictureOf(stop.state);
     const pictureKey = JSON.stringify(picture);
-    for (const element of elements) {
+    for (const element of elements.flatMap((whole) => splitAtBreaks(whole, edits.breaks, cues))) {
       const placed = styledBy({
         ...element,
         id: keyFor(stop.executionId === undefined ? element.anchor : `${stop.executionId}:${element.anchor}`),
         ...(stop.executionId === undefined ? {} : { executionId: stop.executionId }),
       }, edits);
       // ✂ opens a panel, × keeps the open one; both on one line cancel out,
-      // and the automatic choice stands.
-      const cut = touches(placed, edits.breaks);
-      const join = touches(placed, edits.merges);
+      // and the automatic choice stands. Either acts where an element begins:
+      // one later in a line has already cut it, or would join it to itself.
+      const cut = edits.breaks.has(placed.anchor);
+      const join = edits.merges.has(placed.anchor);
       if (!open || (cut !== join ? cut : !joins(open, placed, pictureKey))) {
         if (open) panels.push(closePanel(open, edits));
         open = { picture, pictureKey, elements: [] };

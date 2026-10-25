@@ -50,6 +50,28 @@ export function getPackagedMediaMap(): Record<string, string> | null {
 }
 
 /**
+ * Display-size copies a native release carries of its pictures, by the same
+ * references (comic-picture-size.ts; made when the release is staged). Only the
+ * comic frame asks for them: its WebView decodes a picture at full size
+ * whatever size it draws it at, which is the cost a copy exists to avoid. The
+ * novel keeps the originals.
+ */
+let packagedDisplayCopiesByReference: Record<string, string> | null = null;
+
+/** Called once at player boot, with the media map. `null` when the build carries none. */
+export function setPackagedDisplayCopyMap(map: Record<string, string> | null): void {
+  packagedDisplayCopiesByReference = map && Object.keys(map).length > 0 ? map : null;
+}
+
+/** The packaged display copy of a reference, or null when there is none: give the original. */
+export function getPackagedDisplayCopyUri(reference: string | undefined | null): string | null {
+  if (!reference || !packagedDisplayCopiesByReference) return null;
+  const target = packagedDisplayCopiesByReference[reference]
+    ?? packagedDisplayCopiesByReference[reference.replace('bundle://', '')];
+  return target ? resolveWebUrl(target) : null;
+}
+
+/**
  * The packaged file for a reference, resolved synchronously.
  *
  * Some callers cannot await — a list item drawing an image as it scrolls — and
@@ -529,6 +551,7 @@ export function resetAssetResolverForTests(): void {
   mediaLeaseCounts.clear();
   pinnedEvictionWarned = false;
   packagedMediaByReference = null;
+  packagedDisplayCopiesByReference = null;
   uriCache.clear();
   playableUriCache.clear();
   moduleUriCache.clear();

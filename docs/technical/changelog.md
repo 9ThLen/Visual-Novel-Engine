@@ -26,6 +26,63 @@ shown as a comic gets a "Panel" section for the panel the Preview shows.
   now (`withPanelEdit`, `withElementEdit`, `withoutPanelEdits` in
   `comic-settings.ts`).
 
+## 2026-10-25 — The comic frame gets display-size copies of its pictures
+
+Condition 1 of `docs/plans/COMIC-RENDERER-SPIKE.md`, which stage 2 should
+have shipped. The frame's document decodes every picture at full size, so a
+demo background (2508×1672) took ≈ 16.8 MB of pixels in a panel a phone draws
+about 1080 px wide. The frame is now given a copy at the size it draws the
+picture.
+
+- **The size** (`src/lib/comic/comic-picture-size.ts`): a background just
+  covers a 1600×1000 panel, and a sprite is at most 1200 px tall. A picture
+  drawn both ways gets the larger of the two. No copy is made of a picture
+  that is already about that size (within 10 %).
+- **Web, desktop, the editor's Preview:** the host decodes the original once
+  with `createImageBitmap`, draws it into a canvas at that size, and gives the
+  frame a WebP object URL (`src/lib/display-copies.ts`). Copies are leased the
+  way the resolver's blob URLs are, because the frame lets far pictures go and
+  loads them again. The thumbnail code now shares the scaler and its decode
+  queue (`src/lib/image-scaling.ts`). A page opened from `file://` cannot read
+  its own pictures back, so there the frame still gets the originals.
+- **Android release:** `pnpm stage:android` makes the copies with **sharp**,
+  a new devDependency used only by `tools/vne-build`. It copies the
+  backgrounds and character sprites of the scenes the reader reads as a
+  comic, as WebP files in `assets/display-media/`, named after the original's
+  hash. The generated release module maps each media file to its copy, and
+  the player gives the frame the copy. The novel keeps the originals. A story
+  with no comic scenes stages exactly what it did before.
+- **Fixed on the way: an Android player APK loaded none of its packaged
+  pictures.** `activatePackagedRelease` resolves each packaged file to a
+  drawable name, and then seeding the story set the map again from
+  `config.assets`. Those are the web bundle's paths (`media/<sha>.png`), which
+  name nothing in an APK. The config handed back now carries the resolved
+  map. The novel resolves its pictures through the same map, so it was most
+  likely affected too. That was not checked on a device.
+- **Measured** on the 2 GB emulator with a release APK and a 72-panel strip,
+  six runs of each build: the renderer's peak fell from 99–102 to 85–92 MB.
+  Total PSS (about 300 MB after the strip), survival (5 of 6 each) and jank
+  did not change. On that WebView a decoded picture lives only while it is
+  drawn, and the emulator's GPU memory is on the host. Section 9 of the
+  spike doc has the numbers and what is left to measure on a phone.
+  `tools/comic-measure/` makes the release and runs the measurement.
+  `scripts/make-demo-release.ts` now packages a story JSON's own `characters`.
+
+## 2026-10-25 — A ✂ inside a line of dialogue splits its bubble
+
+A line of dialogue is one bubble, however many sentences it has. A ✂ on its
+second sentence or later used to cut before the whole bubble, so the line
+stayed in one panel. A × there joined the whole bubble to the panel before.
+Found by an outside review of stage 3.
+
+- The bubble now splits where the ✂ is. The rest of the line goes on in a
+  bubble of its own, with the same speaker, in the next panel. Each piece
+  keeps the inline chips and the kind of bubble fastened to its own
+  sentences. The reader opens the pieces one tap at a time, as it does the
+  sentences of a paragraph.
+- ✂ and × act only where a bubble or caption begins. A × later in a line
+  does nothing: that sentence is already in the line's panel.
+
 ## 2026-10-25 — The comic draws half panels and every kind of bubble
 
 PR 3.2 of `docs/plans/COMIC-STAGE-3-PLAN.md`: the comic frame draws what the

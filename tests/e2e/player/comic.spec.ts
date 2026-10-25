@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 
 /**
  * A comic scene in a published story (docs/plans/COMIC-STAGE-2-PLAN.md, 2.7),
@@ -63,7 +63,26 @@ async function chooseInNovel(page: Page, option: string): Promise<void> {
   await choice.click();
 }
 
-async function readTheComicRoute(page: Page): Promise<void> {
+/**
+ * The sign's background as the frame decoded it. Served, the host gives the
+ * frame a display-size copy it made (src/lib/comic/comic-picture-size.ts): a
+ * blob: URL no wider than a panel needs, where the original is 2508 wide.
+ * Opened from disk, the page cannot read its own pictures back to make one,
+ * and the frame gets the original — which must still draw.
+ */
+async function expectBackground(comic: FrameLocator, copied: boolean): Promise<void> {
+  const background = comic.locator('img.bg[src]').first();
+  await expect.poll(
+    () => background.evaluate((img: HTMLImageElement) => (img.complete ? img.naturalWidth : 0)),
+    { timeout: 30_000 },
+  ).toBeGreaterThan(0);
+  const { src, width } = await background.evaluate((img: HTMLImageElement) => ({ src: img.src, width: img.naturalWidth }));
+  if (!copied) return;
+  expect(src).toMatch(/^blob:/);
+  expect(width).toBe(1600);
+}
+
+async function readTheComicRoute(page: Page, copied: boolean): Promise<void> {
   await expect(page.locator('body')).toContainText(/Welcome to the Enchanted Museum/i, { timeout: 60_000 });
   // Set to be a comic, read as the novel: the entrance has interactive objects.
   await expect(page.locator('iframe[title="Comic"]')).toHaveCount(0);
@@ -73,6 +92,7 @@ async function readTheComicRoute(page: Page): Promise<void> {
   const comic = page.frameLocator('iframe[title="Comic"]');
   await expect(page.locator('iframe[title="Comic"]')).toHaveCount(1, { timeout: 30_000 });
   await expect(comic.locator('#strip')).toContainText('You approach the ornate sign', { timeout: 30_000 });
+  await expectBackground(comic, copied);
 
   // A tap opens the next panel; the choice waits at the end of the strip.
   const enter = comic.locator('button.choice', { hasText: 'Enter the museum' });
@@ -118,7 +138,7 @@ test.describe('a comic scene in a published story', () => {
     const trouble = watch(page, comicOrigin);
     await page.goto(`${comicOrigin}/`);
 
-    await readTheComicRoute(page);
+    await readTheComicRoute(page, true);
 
     expect(trouble.failures).toEqual([]);
     expect(trouble.outside).toEqual([]);
@@ -128,7 +148,7 @@ test.describe('a comic scene in a published story', () => {
     const trouble = watch(page, null);
     await page.goto(pathToFileURL(path.join(COMIC_BUNDLE, 'index.html')).href);
 
-    await readTheComicRoute(page);
+    await readTheComicRoute(page, false);
 
     expect(trouble.failures).toEqual([]);
     expect(trouble.outside).toEqual([]);
