@@ -76,6 +76,12 @@ export function useReaderNotifications({
   useEffect(() => {
     if (!routeOnExecutorComplete || !isComplete) return;
     if (hasActiveBlockingEffect) return;
+    // A choice that is the scene's last step leaves the run both transitioning
+    // and complete. The transition effect above runs first and has already said
+    // where the scene goes; a second, "next" report would follow the next
+    // connection or end the story under that navigation. The ref is cleared on
+    // every scene change, so a value here is a transition of this scene.
+    if (transitionNotifiedRef.current !== null) return;
     const key = `${displaySceneId}:complete`;
     if (completeNotifiedRef.current === key) return;
     completeNotifiedRef.current = key;

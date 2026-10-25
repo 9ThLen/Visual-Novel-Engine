@@ -8,10 +8,10 @@
   The crash is an access violation, and all the build says is "AAPT2 process
   unexpectedly exit", with no file named. libpng can't read such a file on
   Linux either, so an EAS build fails too, after the upload. Browsers show such
-  pictures, so nothing in the studio warns about
-  them. Staging now refuses them and names each one twice: by its staged file,
-  and by the reference the story uses for it, e.g. `(the story's
-  idb-media://cover) is truncated: it has no IEND chunk`.
+  pictures, so nothing in the studio warns about them. Staging now refuses
+  them and names each one twice: by its staged file, and by the reference the
+  story uses for it, e.g. `(the story's idb-media://cover) is truncated: it has
+  no IEND chunk`.
 - **What it refuses was measured against AAPT2 8.11**, case by case, in both
   directions. Damage AAPT2 compiles without complaint is let through: a bad CRC
   on an ancillary chunk, surplus image data, image data interrupted by another
@@ -22,6 +22,27 @@
   and `assembleRelease` with crunching on succeed, so PNG crunching stays on.
   It saves about 20 MB of the studio APK. What that build hit fits a damaged
   copy in its own tree, which no longer exists to check.
+
+## 2026-10-24 — "Preview Story" reads a comic scene as a comic
+
+The end-to-end checks of 2.7 found that the editor's full-screen preview
+("Preview Story", "Save and play") ran its own executor and always drew the
+novel.
+
+- **A scene set to always be a comic** is read there as the reader reads it:
+  the strip at the chosen device size, a tap opening the next panel, the
+  choice at the end. A scene that plays a video or holds an interactive
+  object stays the novel, as in the reader.
+- **A comic scene goes on** to the scene its transition or choice names, else
+  along its "next" connection, with the variables it set. Comic scenes read
+  one after another make one strip, and a novel scene after them takes over
+  as in the reader. Where the story would end, the preview says the scene is
+  complete.
+- `PreviewScreen` runs the scene in a `SceneRuntimeHost` inside a
+  `ComicReadingSession`, keyed by the visit, as `app/reader.tsx` does. The
+  novel's drawing moved to `PreviewNovelStage` under the same host; the
+  inspector, the step count and the sound read the run from a report it hands
+  up. A novel scene still stops at its own transitions, as before.
 
 ## 2026-10-24 — A comic scene, checked end to end
 
