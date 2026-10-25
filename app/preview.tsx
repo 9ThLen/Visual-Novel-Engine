@@ -101,5 +101,7 @@ export default function PreviewRoute() {
     );
   }
 
-  return <PreviewScreen storyId={storyId} sceneId={sceneId} />;
+  // The screen follows the story from the scene it opens on; another scene in
+  // the route is another preview.
+  return <PreviewScreen key={`${storyId}:${sceneId}`} storyId={storyId} sceneId={sceneId} />;
 }
