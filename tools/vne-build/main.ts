@@ -439,6 +439,12 @@ async function main(): Promise<void> {
   console.log(`  Application: ${color.green(staged.identity.productName)} `
     + color.dim(`${staged.identity.applicationId}, version code ${staged.identity.androidVersionCode}`));
   console.log(color.dim(`  Media: ${staged.mediaFiles.length} file(s), ${describeBytes(staged.mediaBytes)}`));
+  if (staged.displayCopies > 0) {
+    console.log(color.dim(
+      `  Comic: ${staged.displayCopies} display-size cop${staged.displayCopies === 1 ? 'y' : 'ies'}, `
+      + `${describeBytes(staged.displayCopyBytes)}`,
+    ));
+  }
   console.log(color.dim(`  Icons: ${staged.icon.reason}`));
   console.log(color.dim(
     `  Dropped ${staged.prunedAssets} bundled asset(s) the player never shows, `

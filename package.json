@@ -128,6 +128,7 @@
     "patch-package": "^8.0.1",
     "prettier": "^3.7.4",
     "qrcode": "^1.5.4",
+    "sharp": "^0.35.5",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.22.3",
     "typescript": "~5.7.2",
