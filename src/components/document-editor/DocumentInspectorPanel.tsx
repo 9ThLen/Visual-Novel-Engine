@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { ComicPanelSection } from '@/components/document-editor/inspector/ComicPanelSection';
 import { ComicReadOverlay } from '@/components/document-editor/inspector/ComicReadOverlay';
 import { ScenePreviewCard } from '@/components/document-editor/inspector/ScenePreviewCard';
 import { ScenePreviewOverlay } from '@/components/document-editor/inspector/ScenePreviewOverlay';
@@ -8,14 +9,27 @@ import { SceneFactsCard, type SceneRef } from '@/components/document-editor/insp
 import { INSPECTOR_RAIL_PADDING, INSPECTOR_RAIL_WIDTH } from '@/components/document-editor/inspector/rail-metrics';
 import { useColors } from '@/hooks/use-colors';
 import { withAlpha } from '@/lib/_core/theme';
-import { buildAuthorComicPlan, type ComicPagePlan } from '@/lib/comic/comic-layout';
+import { addressSentences } from '@/lib/comic/comic-anchors';
+import { buildAuthorComicPlan, type ComicPagePlan, type ComicPanel, type ComicPanelElement } from '@/lib/comic/comic-layout';
 import { resolveScenePresentation } from '@/lib/comic/comic-presentation';
-import { documentSceneNovelOnly } from '@/lib/document-editor/document-comic';
+import {
+  comicEditsOf,
+  resolveComicSettings,
+  withComicEdits,
+  withElementEdit,
+  withoutPanelEdits,
+  withPanelEdit,
+  type ComicEdits,
+  type ComicElementChange,
+  type ComicPanelChange,
+} from '@/lib/comic/comic-settings';
+import { documentSceneNovelOnly, selectionComicAnchor } from '@/lib/document-editor/document-comic';
 import { documentSceneToTimelineWithOrigins } from '@/lib/document-editor/document-scene';
 import { buildPreviewFrames } from '@/lib/document-editor/preview-frames';
 import type { PreviewFormat } from '@/lib/document-editor/preview-viewport';
 import { sanitizeReaderLayoutPreset } from '@/lib/story-theme';
 import { useAppStore } from '@/stores/use-app-store';
+import { useEditorContextStore } from '@/stores/editor-context-store';
 import { useEditorPreviewDevice } from '@/components/document-editor/inspector/useEditorPreviewDevice';
 import type { ColorScheme } from '@/constants/theme';
 import type { Character } from '@/lib/character-types';
@@ -25,6 +39,16 @@ import type { SceneComicSettings, TimelineStep } from '@/lib/engine/types';
 type InspectorTab = 'block' | 'scene' | 'issues';
 
 const EMPTY_COMIC_PLAN: ComicPagePlan = { panels: [] };
+/** How many of a scene's comic edits the Panel section can undo, newest kept. */
+const COMIC_UNDO_DEPTH = 50;
+
+/** Changes a scene's comic settings as they are in the store. */
+export type ComicSettingsUpdate = (settings: SceneComicSettings | undefined) => SceneComicSettings | undefined;
+
+/** Every sentence of a panel, in order: what its edit is fastened to. */
+function sentencesOfPanel(panel: ComicPanel) {
+  return panel.elements.flatMap((element) => element.sentences);
+}
 
 interface DocumentInspectorPanelProps {
   colorScheme?: ColorScheme;
@@ -35,6 +59,8 @@ interface DocumentInspectorPanelProps {
   onOpenScene?: (sceneId: string) => void;
   /** The scene's comic settings, from its record: how it is read, and the author's edits of its panels. */
   comicSettings?: SceneComicSettings;
+  /** Writes the scene's comic settings: the Panel section's edits. Left out, the section is not shown. */
+  onUpdateComicSettings?: (update: ComicSettingsUpdate) => void;
 }
 
 export function DocumentInspectorPanel({
@@ -45,6 +71,7 @@ export function DocumentInspectorPanel({
   storyScenes,
   onOpenScene,
   comicSettings,
+  onUpdateComicSettings,
 }: DocumentInspectorPanelProps) {
   const colors = useColors(colorScheme);
   const [tab, setTab] = useState<InspectorTab>('scene');
@@ -92,16 +119,74 @@ export function DocumentInspectorPanel({
 
   // The author's plan: every step, as the comic would draw it. Built only
   // while the comic is shown, as it converts the whole scene on every edit.
-  const comicPlan = useMemo(
-    () => (format === 'comic' && scene
-      ? buildAuthorComicPlan(documentSceneToTimelineWithOrigins(scene, characters).timeline, comicSettings)
-      : EMPTY_COMIC_PLAN),
-    [characters, comicSettings, format, scene],
+  const comicTimeline = useMemo(
+    () => (format === 'comic' && scene ? documentSceneToTimelineWithOrigins(scene, characters).timeline : null),
+    [characters, format, scene],
   );
+  const comicPlan = useMemo(
+    () => (comicTimeline ? buildAuthorComicPlan(comicTimeline, comicSettings) : EMPTY_COMIC_PLAN),
+    [comicSettings, comicTimeline],
+  );
+  const comicSentences = useMemo(() => (comicTimeline ? addressSentences(comicTimeline) : []), [comicTimeline]);
+  const comicEdits = useMemo(() => resolveComicSettings(comicSettings, comicSentences).edits, [comicSentences, comicSettings]);
   const [panelIndex, setPanelIndex] = useState(0);
   useEffect(() => {
     setPanelIndex((current) => Math.min(current, Math.max(0, comicPlan.panels.length - 1)));
   }, [comicPlan.panels.length]);
+
+  // The Preview follows the author's caret to the panel of its sentence: on a
+  // new caret or selection only, so an edit that redraws the plan leaves the
+  // panel the author stepped to.
+  const selection = useEditorContextStore((state) => state.selection);
+  const followedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!comicTimeline || !selection || selection.storyId !== storyId || selection.sceneId !== sceneId) return;
+    const key = `${selection.sceneId}:${selection.seq}`;
+    if (followedRef.current === key) return;
+    followedRef.current = key;
+    const anchor = selectionComicAnchor(selection, comicTimeline);
+    if (!anchor) return;
+    const index = comicPlan.panels.findIndex((panel) => sentencesOfPanel(panel).some((sentence) => sentence.anchor === anchor));
+    if (index >= 0) setPanelIndex(index);
+  }, [comicPlan, comicTimeline, sceneId, selection, storyId]);
+
+  // The Panel section's own Undo: the scene's edits as they were before each
+  // change made here, per scene, for as long as the editor is open.
+  const [comicUndo, setComicUndo] = useState<{ sceneId: string; edits: ComicEdits }[]>([]);
+  const changeComic = useCallback((change: (settings: SceneComicSettings | undefined) => SceneComicSettings | undefined) => {
+    if (!sceneId || !onUpdateComicSettings) return;
+    const before = comicEditsOf(comicSettings);
+    if (JSON.stringify(comicEditsOf(change(comicSettings))) === JSON.stringify(before)) return;
+    setComicUndo((stack) => [...stack, { sceneId, edits: before }].slice(-COMIC_UNDO_DEPTH));
+    onUpdateComicSettings(change);
+  }, [comicSettings, onUpdateComicSettings, sceneId]);
+  const undoComic = useMemo(() => {
+    const last = comicUndo.map((entry) => entry.sceneId).lastIndexOf(sceneId ?? '');
+    if (last < 0 || !onUpdateComicSettings) return undefined;
+    return () => {
+      const { edits } = comicUndo[last];
+      setComicUndo((stack) => stack.filter((_entry, index) => index !== last));
+      onUpdateComicSettings((settings) => withComicEdits(settings, edits));
+    };
+  }, [comicUndo, onUpdateComicSettings, sceneId]);
+
+  const shownPanel = format === 'comic' ? comicPlan.panels[panelIndex] ?? null : null;
+  const changePanel = useCallback((change: ComicPanelChange) => {
+    if (!shownPanel) return;
+    const target = sentencesOfPanel(shownPanel);
+    changeComic((settings) => withPanelEdit(settings, comicSentences, target, change));
+  }, [changeComic, comicSentences, shownPanel]);
+  const changeElement = useCallback((element: ComicPanelElement, change: ComicElementChange) => {
+    changeComic((settings) => withElementEdit(settings, comicSentences, element.sentences, change));
+  }, [changeComic, comicSentences]);
+  const shownPanelEdited = Boolean(shownPanel && sentencesOfPanel(shownPanel).some(
+    (sentence) => comicEdits.panels.has(sentence.anchor) || comicEdits.elements.has(sentence.anchor),
+  ));
+  const restorePanel = useCallback(() => {
+    if (!shownPanel) return;
+    const target = sentencesOfPanel(shownPanel);
+    changeComic((settings) => withoutPanelEdits(settings, comicSentences, target));
+  }, [changeComic, comicSentences, shownPanel]);
 
   // The scene as it was when the author asked to read it.
   const [reading, setReading] = useState<{ sceneId: string; timeline: TimelineStep[] } | null>(null);
@@ -142,6 +227,22 @@ export function DocumentInspectorPanel({
           onPanelIndexChange={setPanelIndex}
           onReadAsComic={readAsComic}
         />
+
+        {shownPanel && onUpdateComicSettings ? (
+          <ComicPanelSection
+            colors={colors}
+            storyId={storyId}
+            characters={characters}
+            panel={shownPanel}
+            index={panelIndex}
+            total={comicPlan.panels.length}
+            edits={comicEdits}
+            onChangePanel={changePanel}
+            onChangeElement={changeElement}
+            onRestore={shownPanelEdited ? restorePanel : undefined}
+            onUndo={undoComic}
+          />
+        ) : null}
 
         <View>
           <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: '800', marginBottom: 10 }}>

@@ -846,6 +846,39 @@ describe('app store slices', () => {
     vi.useRealTimers();
   });
 
+  it('changes a scene\'s comic settings by what they are in the store, writing only what changes', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(4000);
+    const harness = createSliceHarness();
+    const slice = createSceneSlice(harness.set, harness.get);
+    harness.set({
+      storiesMetadata: [
+        { id: 'story-1', title: 'Story', startSceneId: 'scene-1', createdAt: 1, updatedAt: 1, sceneCount: 1 },
+      ],
+      sceneRecordsByStory: { 'story-1': { 'scene-1': { ...makeSceneRecord('scene-1'), comic: { presentation: 'comic' } } } },
+      sceneRecordHydration: { 'story-1': 'full' },
+    });
+    const scene = () => harness.state.sceneRecordsByStory['story-1']['scene-1'];
+    const shout = { anchor: 'b1/p0/s0', print: 'run!', style: 'shout' as const };
+
+    slice.updateSceneComicSettings('story-1', 'scene-1', (comic) => ({ ...comic, elements: [shout] }));
+    expect(scene()).toMatchObject({ comic: { presentation: 'comic', elements: [shout] }, updatedAt: 4000 });
+    expect(harness.state.storiesMetadata[0].updatedAt).toBe(4000);
+
+    // The same settings again, or an edit that changes nothing, write nothing.
+    vi.setSystemTime(5000);
+    const before = scene();
+    slice.updateSceneComicSettings('story-1', 'scene-1', (comic) => ({ ...comic }));
+    slice.updateSceneComicSettings('story-1', 'scene-1', (comic) => ({ ...comic, panels: [{ anchor: 'b1/p0/s0', size: 'auto' }] }));
+    expect(scene()).toBe(before);
+
+    // How the scene is read stays when its edits go.
+    slice.updateSceneComicSettings('story-1', 'scene-1', (comic) => ({ presentation: comic?.presentation }));
+    expect(scene().comic).toEqual({ presentation: 'comic' });
+    expect(scene().updatedAt).toBe(5000);
+    vi.useRealTimers();
+  });
+
   it('updates and removes scene connections', () => {
     const harness = createSliceHarness();
     const slice = createSceneSlice(harness.set, harness.get);

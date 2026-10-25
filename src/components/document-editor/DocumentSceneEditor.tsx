@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DocumentBranchBreadcrumb } from '@/components/document-editor/DocumentBranchBreadcrumb';
 import { DocumentEditorHeader } from '@/components/document-editor/DocumentEditorHeader';
 import { AiBridgeSessionProvider } from '@/components/ai-chat/AiBridgeSessionProvider';
+import type { ComicSettingsUpdate } from '@/components/document-editor/DocumentInspectorPanel';
 import { DocumentRightRail } from '@/components/document-editor/DocumentRightRail';
 import { DocumentSceneFrame } from '@/components/document-editor/DocumentSceneFrame';
 import { DocumentSceneSidebar } from '@/components/document-editor/DocumentSceneSidebar';
@@ -106,6 +107,8 @@ interface DocumentSceneEditorProps {
   onDeleteScene?: (sceneId: string) => void;
   /** Sets how the scene is read; the setting goes to the record, not to the document. */
   onSetSceneComicPresentation?: (sceneId: string, presentation: ScenePresentation) => void;
+  /** Changes the scene's comic settings — the author's edits of its panels — on its record, as the setting above. */
+  onUpdateSceneComicSettings?: (sceneId: string, update: ComicSettingsUpdate) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onPickVideoAsset?: () => Promise<{ asset: VNPlateVideoAsset | null; error?: 'tooLarge' | 'unsupportedType' | 'failed' }>;
@@ -179,6 +182,7 @@ export function DocumentSceneEditor({
   onDuplicateScene,
   onDeleteScene,
   onSetSceneComicPresentation,
+  onUpdateSceneComicSettings,
   onUploadBackgroundAsset,
   onUploadAudioAsset,
   onPickVideoAsset,
@@ -845,6 +849,10 @@ export function DocumentSceneEditor({
   const getOnSetComicPresentation = useSceneCallback((_sceneId: string, presentation: ScenePresentation) => {
     onSetSceneComicPresentation?.(_sceneId, presentation);
   }, documentsResetKey);
+  // The Inspector edits the comic of the scene it shows: the active one.
+  const handleUpdateActiveComicSettings = useCallback((update: ComicSettingsUpdate) => {
+    onUpdateSceneComicSettings?.(activeSceneId, update);
+  }, [activeSceneId, onUpdateSceneComicSettings]);
   const getRegisterEditorRef = useSceneCallback(registerEditorRefImpl, documentsResetKey);
   const getOnFrameLayout = useSceneCallback(handleFrameLayoutImpl, documentsResetKey);
 
@@ -1152,6 +1160,7 @@ export function DocumentSceneEditor({
             storyScenes={storySceneRefs}
             onOpenScene={handleInspectorScenePress}
             comicSettings={comicSettingsBySceneId.get(activeSceneId)}
+            onUpdateComicSettings={onUpdateSceneComicSettings ? handleUpdateActiveComicSettings : undefined}
             beforeStoryMutation={handleStoryMutationBarrier}
             captureEditorContext={captureEditorContext}
           />

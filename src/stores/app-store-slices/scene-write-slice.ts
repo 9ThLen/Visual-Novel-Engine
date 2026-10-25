@@ -1,5 +1,5 @@
 import { withSceneComicSettings } from '@/lib/comic/comic-presentation';
-import type { SceneConnection, ScenePresentation, SceneRecord } from '@/lib/engine/types';
+import type { SceneComicSettings, SceneConnection, ScenePresentation, SceneRecord } from '@/lib/engine/types';
 import {
   applyCanonicalSceneDelete,
   getCanonicalSceneRecordFromState,
@@ -10,6 +10,7 @@ import {
   type SceneRecordContentUpdates,
 } from '@/lib/scene-operations';
 import type { AppStateSet } from '@/stores/app-store-slices/types';
+import type { AppState } from '@/stores/app-store-types';
 import type { AiChangeSetApplyResult } from '@/lib/ai/change-set';
 
 /**
@@ -28,6 +29,16 @@ export interface SceneWriteSlice {
   ) => void;
   /** How the scene is read: "Auto", always as a comic, or always as the novel. */
   setSceneComicPresentation: (storyId: string, sceneId: string, presentation: ScenePresentation) => void;
+  /**
+   * A scene's comic settings changed by `update`, which is handed them as
+   * they are in the store: the author's edits of its panels, or how it is
+   * read. Nothing is written when they come back the same.
+   */
+  updateSceneComicSettings: (
+    storyId: string,
+    sceneId: string,
+    update: (settings: SceneComicSettings | undefined) => SceneComicSettings | undefined,
+  ) => void;
   updateSceneConnection: (storyId: string, fromSceneId: string, connection: SceneConnection) => void;
   removeSceneConnection: (
     storyId: string,
@@ -43,6 +54,33 @@ export interface SceneWriteSlice {
  * Writing a scene from a windowed hydration would persist the window as if it
  * were the whole story, dropping every scene outside it.
  */
+/**
+ * A scene record with its comic settings changed, written straight to the
+ * store as the editor's page switch does: the documents never carry them.
+ */
+function writeSceneComicSettings(
+  s: AppState,
+  storyId: string,
+  sceneId: string,
+  update: (settings: SceneComicSettings | undefined) => SceneComicSettings | undefined,
+): Partial<AppState> {
+  assertFullSceneHydration(s.sceneRecordHydration, storyId);
+  const existingRecord = getCanonicalSceneRecordFromState(s, storyId, sceneId);
+  if (!existingRecord) return {};
+  const nextRecord = withSceneComicSettings(existingRecord, update(existingRecord.comic));
+  if (nextRecord === existingRecord) return {};
+
+  return {
+    sceneRecordsByStory: {
+      ...s.sceneRecordsByStory,
+      [storyId]: { ...(s.sceneRecordsByStory[storyId] || {}), [sceneId]: { ...nextRecord, updatedAt: Date.now() } },
+    },
+    storiesMetadata: s.storiesMetadata.map((m) =>
+      m.id === storyId ? { ...m, updatedAt: Date.now() } : m
+    ),
+  };
+}
+
 function assertFullSceneHydration(
   sceneRecordHydration: Record<string, 'window' | 'full'>,
   storyId: string,
@@ -117,23 +155,10 @@ export function createSceneWriteSlice(set: AppStateSet): SceneWriteSlice {
       }),
 
     setSceneComicPresentation: (storyId, sceneId, presentation) =>
-      set((s) => {
-        assertFullSceneHydration(s.sceneRecordHydration, storyId);
-        const existingRecord = getCanonicalSceneRecordFromState(s, storyId, sceneId);
-        if (!existingRecord) return {};
-        const nextRecord = withSceneComicSettings(existingRecord, { ...existingRecord.comic, presentation });
-        if (nextRecord === existingRecord) return {};
+      set((s) => writeSceneComicSettings(s, storyId, sceneId, (comic) => ({ ...comic, presentation }))),
 
-        return {
-          sceneRecordsByStory: {
-            ...s.sceneRecordsByStory,
-            [storyId]: { ...(s.sceneRecordsByStory[storyId] || {}), [sceneId]: { ...nextRecord, updatedAt: Date.now() } },
-          },
-          storiesMetadata: s.storiesMetadata.map((m) =>
-            m.id === storyId ? { ...m, updatedAt: Date.now() } : m
-          ),
-        };
-      }),
+    updateSceneComicSettings: (storyId, sceneId, update) =>
+      set((s) => writeSceneComicSettings(s, storyId, sceneId, update)),
 
     updateSceneConnection: (storyId, fromSceneId, connection) =>
       set((s) => {

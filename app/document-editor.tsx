@@ -35,6 +35,7 @@ import {
   type DocumentViewMode,
 } from '@/stores/use-branch-selections';
 import type { Character } from '@/lib/character-types';
+import type { ComicSettingsUpdate } from '@/components/document-editor/DocumentInspectorPanel';
 import type { DialogueBlockData, ScenePresentation, SceneRecord } from '@/lib/engine/types';
 import type { VNPlateAudioAsset, VNPlateBackgroundAsset, VNPlateVideoAsset } from '@/lib/vn-plate-editor/types';
 
@@ -74,6 +75,7 @@ export default function DocumentEditorRoute() {
   const reorderScenes = useAppStore((state) => state.reorderScenes);
   const deleteScene = useAppStore((state) => state.deleteScene);
   const setSceneComicPresentation = useAppStore((state) => state.setSceneComicPresentation);
+  const updateSceneComicSettings = useAppStore((state) => state.updateSceneComicSettings);
   const updateStoryMetadata = useAppStore((state) => state.updateStoryMetadata);
   const noteSceneOpened = useAppStore((state) => state.noteSceneOpened);
   const branchSelections = useBranchSelections(useMemo(() => selectBranchSelections(storyId), [storyId]));
@@ -277,6 +279,10 @@ export default function DocumentEditorRoute() {
     setSceneComicPresentation(storyId, targetSceneId, presentation);
   };
 
+  const handleUpdateSceneComicSettings = (targetSceneId: string, update: ComicSettingsUpdate) => {
+    updateSceneComicSettings(storyId, targetSceneId, update);
+  };
+
   const handleUploadBackgroundAsset = async (
     name: string,
     dataUri: string,
@@ -439,6 +445,7 @@ export default function DocumentEditorRoute() {
       onDuplicateScene={handleDuplicateScene}
       onDeleteScene={handleDeleteScene}
       onSetSceneComicPresentation={handleSetSceneComicPresentation}
+      onUpdateSceneComicSettings={handleUpdateSceneComicSettings}
       videoAssets={videoAssets}
       onUploadBackgroundAsset={handleUploadBackgroundAsset}
       onPickVideoAsset={handlePickVideoAsset}

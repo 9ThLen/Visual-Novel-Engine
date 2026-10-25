@@ -1,7 +1,16 @@
 import { addressSentences, sentencePrint } from '@/lib/comic/comic-anchors';
 import { buildAuthorComicPlan } from '@/lib/comic/comic-layout';
 import { sanitizeSceneComicSettings, withSceneComicSettings } from '@/lib/comic/comic-presentation';
-import { hasComicEdits, rebindComicSettings, resolveComicSettings } from '@/lib/comic/comic-settings';
+import {
+  comicEditsOf,
+  hasComicEdits,
+  rebindComicSettings,
+  resolveComicSettings,
+  withComicEdits,
+  withElementEdit,
+  withoutPanelEdits,
+  withPanelEdit,
+} from '@/lib/comic/comic-settings';
 import { documentSceneToTimelineWithOrigins, sceneRecordToDocumentScene } from '@/lib/document-editor/document-scene';
 import type { DocumentBlock, DocumentScene } from '@/lib/document-editor/types';
 import { saveDocumentSceneToRecord } from '@/lib/document-scene-persistence';
@@ -171,5 +180,54 @@ describe('edits made in the editor, after a save and a reopening', () => {
       expect(resolveComicSettings(settings, addressSentences(scene.timeline)).notes).toEqual([]);
       expect(buildAuthorComicPlan(scene.timeline, settings).panels.map((panel) => panel.framing.shot)).toEqual(['wide', 'close']);
     }
+  });
+});
+
+describe('an edit made in the Inspector', () => {
+  const page: DocumentBlock[] = [{ id: 'doc_a', kind: 'text', content: 'The door creaked. Nobody came.' }];
+  const sentences = addressSentences(documentSceneToTimelineWithOrigins({ sceneId: 'scene-1', sceneName: 'Scene', blocks: page }).timeline);
+  const [first, second] = sentences;
+  const target = (...of: typeof sentences) => of.map(({ anchor, text }) => ({ anchor, text }));
+
+  it('is made on the first sentence of its panel or line, with its words', () => {
+    const settings = withPanelEdit({ presentation: 'comic' }, sentences, target(first, second), { shot: 'close', size: 'half' });
+    expect(settings).toEqual({ presentation: 'comic', panels: [{ anchor: first.anchor, print: first.print, shot: 'close', size: 'half' }] });
+  });
+
+  it('changes the edit acting on the panel, on whichever sentence it is, fastened where its words are now', () => {
+    // Made on "Nobody came." while it was the first sentence; a sentence was written before it since.
+    const moved = { anchor: 'doc_a/p0/s0', print: second.print, shot: 'close' as const };
+    const settings = withPanelEdit({ panels: [moved] }, sentences, target(first, second), { shot: null, focus: { x: 0.2, y: 0.4 } });
+    expect(settings).toEqual({ panels: [{ anchor: second.anchor, print: second.print, focus: { x: 0.2, y: 0.4 } }] });
+  });
+
+  it('puts a field back to automatic, and drops the edit when nothing is left of it', () => {
+    const settings: SceneComicSettings = { panels: [{ anchor: first.anchor, print: first.print, shot: 'close' }] };
+    expect(withPanelEdit(settings, sentences, target(first), { shot: null })).toEqual({});
+  });
+
+  it('gives a line its kind of words and its tail', () => {
+    const settings = withElementEdit(undefined, sentences, target(second), { style: 'shout', tail: 'right' });
+    expect(settings).toEqual({ elements: [{ anchor: second.anchor, print: second.print, style: 'shout', tail: 'right' }] });
+    expect(withElementEdit(settings, sentences, target(second), { tail: 'auto' }))
+      .toEqual({ elements: [{ anchor: second.anchor, print: second.print, style: 'shout' }] });
+  });
+
+  it('puts the automatic panel back: its panel and line edits go, where it begins and ends stays', () => {
+    const breaks = [at(second.anchor, second.text)];
+    const settings: SceneComicSettings = {
+      breaks,
+      panels: [{ anchor: first.anchor, print: first.print, shot: 'close' }],
+      elements: [{ anchor: second.anchor, print: second.print, style: 'thought' }],
+    };
+    expect(withoutPanelEdits(settings, sentences, target(first, second))).toEqual({ breaks });
+    const untouched: SceneComicSettings = { breaks };
+    expect(withoutPanelEdits(untouched, sentences, target(first, second))).toBe(untouched);
+  });
+
+  it('is undone by putting the edits back as they were, keeping how the scene is read now', () => {
+    const before: SceneComicSettings = { presentation: 'comic', panels: [{ anchor: first.anchor, print: first.print, size: 'half' }] };
+    const after: SceneComicSettings = { presentation: 'novel', elements: [{ anchor: second.anchor, print: second.print, style: 'shout' }] };
+    expect(withComicEdits(after, comicEditsOf(before))).toEqual({ presentation: 'novel', panels: before.panels });
   });
 });

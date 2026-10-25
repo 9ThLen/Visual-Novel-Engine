@@ -1,3 +1,4 @@
+import type { ComicSettingsUpdate } from '@/components/document-editor/DocumentInspectorPanel';
 import React, { useMemo, useRef } from 'react';
 import { useRouter } from 'expo-router';
 
@@ -52,6 +53,7 @@ interface PlateSceneEditorProps {
   onDeleteScene?: (sceneId: string) => void;
   /** Sets how the scene is read; the setting goes to the record, not to the document. */
   onSetSceneComicPresentation?: (sceneId: string, presentation: ScenePresentation) => void;
+  onUpdateSceneComicSettings?: (sceneId: string, update: ComicSettingsUpdate) => void;
   onUploadBackgroundAsset?: (name: string, dataUri: string, purpose?: 'background' | 'sprite') => Promise<VNPlateBackgroundAsset | null>;
   onUploadAudioAsset?: (name: string, dataUri: string) => Promise<VNPlateAudioAsset | null>;
   onPickVideoAsset?: () => Promise<{ asset: VNPlateVideoAsset | null; error?: 'tooLarge' | 'unsupportedType' | 'failed' }>;
@@ -85,6 +87,7 @@ export function PlateSceneEditor({
   onDuplicateScene,
   onDeleteScene,
   onSetSceneComicPresentation,
+  onUpdateSceneComicSettings,
   onUploadBackgroundAsset,
   onUploadAudioAsset,
   onPickVideoAsset,
@@ -163,6 +166,7 @@ export function PlateSceneEditor({
       onDuplicateScene={onDuplicateScene}
       onDeleteScene={onDeleteScene}
       onSetSceneComicPresentation={onSetSceneComicPresentation}
+      onUpdateSceneComicSettings={onUpdateSceneComicSettings}
       onUploadBackgroundAsset={onUploadBackgroundAsset}
       onUploadAudioAsset={onUploadAudioAsset}
       onPickVideoAsset={onPickVideoAsset}
