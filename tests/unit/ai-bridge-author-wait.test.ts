@@ -236,18 +236,22 @@ describe('a bridge call that waits for the author', () => {
     expect(payloadOf(await turn.message('assistant_done'))).toMatchObject({ stopReason: 'end_turn' });
   });
 
+  // Only the clock is faked, so the time a turn has spent before it asks is
+  // exact however busy the machine is, while its timer still runs for real.
+  // The turn asks with 50 ms of its minute left: given the whole minute again,
+  // or a clock that never started again, it would outlast the test.
   it('goes on with what was left of the turn’s time once the author has decided', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    onTestFinished(() => { vi.useRealTimers(); });
     const turn = await startTurn(async function* (provider) {
+      vi.advanceTimersByTime(59_950);
       await askPermission(provider.tools);
       while (!provider.aborted) await tick(5);
-    }, { turnTimeoutMs: 60 });
+    }, { turnTimeoutMs: 60_000 });
     const toolCallId = String(payloadOf(await turn.message('tool_call')).toolCallId);
-    await tick(120);
-    const decidedAt = Date.now();
     turn.send('tool_result', { toolCallId, ok: true, result: { allowed: true } });
 
     expect(payloadOf(await turn.message('assistant_done'))).toMatchObject({ stopReason: 'timeout' });
-    expect(Date.now() - decidedAt).toBeLessThan(110);
   });
 });
 
