@@ -27,6 +27,29 @@ and kinds of bubble in 3.2.
 - Writing a record's comic settings compares them whole. It used to compare
   only `presentation`, so with edits a save could have kept old ones.
 
+## 2026-10-25 — Staging refuses a picture the Android build cannot read
+
+- **`pnpm stage:android` checks every PNG it stages.** A release build has
+  AAPT2 decode and re-compress ("crunch") each bundled PNG. On Windows, any
+  libpng error crashes it: a truncated file, a bad CRC, a zlib stream cut short.
+  The crash is an access violation, and all the build says is "AAPT2 process
+  unexpectedly exit", with no file named. libpng can't read such a file on
+  Linux either, so an EAS build fails too, after the upload. Browsers show such
+  pictures, so nothing in the studio warns about them. Staging now refuses
+  them and names each one twice: by its staged file, and by the reference the
+  story uses for it, e.g. `(the story's idb-media://cover) is truncated: it has
+  no IEND chunk`.
+- **What it refuses was measured against AAPT2 8.11**, case by case, in both
+  directions. Damage AAPT2 compiles without complaint is let through: a bad CRC
+  on an ancillary chunk, surplus image data, image data interrupted by another
+  chunk, an unknown critical chunk, bytes after IEND. Refusing a picture that
+  would have built stops a release for nothing.
+- Found while chasing a local release build that died on
+  `bg-rabbits-pattern-soft.png`. That file was never damaged: a fresh prebuild
+  and `assembleRelease` with crunching on succeed, so PNG crunching stays on.
+  It saves about 20 MB of the studio APK. What that build hit fits a damaged
+  copy in its own tree, which no longer exists to check.
+
 ## 2026-10-24 — "Preview Story" reads a comic scene as a comic
 
 The end-to-end checks of 2.7 found that the editor's full-screen preview

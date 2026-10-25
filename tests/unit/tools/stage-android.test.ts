@@ -33,6 +33,7 @@ import {
 import { deriveAndroidIdentity } from '@/lib/release/native-identity';
 
 import playerProfile from '../../../config/player-profile.js';
+import { ascii, concat, encodePng } from './png-fixture';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 const PROJECT_A = '11111111-1111-4111-8111-111111111111';
@@ -48,7 +49,7 @@ function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'vne-android-'));
 }
 
-function write(root: string, relative: string, contents: string): void {
+function write(root: string, relative: string, contents: string | Uint8Array): void {
   const file = path.join(root, ...relative.split('/'));
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, contents);
@@ -93,13 +94,13 @@ function stagedProject(overrides: { skip?: string[] } = {}): string {
       assets: { 'idb-media://cover': 'media/abc.png' },
       release: { releaseId: 'r1', version: '2.1.0', releasedAt: 'now' },
     }));
-    write(root, `${STAGED_MEDIA_DIR}/abc.png`, 'png-bytes');
+    write(root, `${STAGED_MEDIA_DIR}/abc.png`, encodePng({ width: 1, height: 1 }));
   }
   if (!skip.has('generated')) {
     write(root, GENERATED_MODULE, generatedReleaseModule(['abc.png'], 'now'));
   }
-  write(root, STAGED_ICON, 'icon');
-  write(root, 'assets/player-splash.png', 'splash');
+  write(root, STAGED_ICON, encodePng({ width: 1, height: 1 }));
+  write(root, 'assets/player-splash.png', encodePng({ width: 1, height: 1 }));
   // Metro resolves a substituted module before swapping it, so a properly
   // staged project still carries the originals.
   if (!skip.has('substitutions')) {
@@ -398,6 +399,41 @@ export const PACKAGED_RELEASE: PackagedRelease | null = null;
     const problems = verifyStagedAndroidProject(root).join('\n');
     expect(problems).toContain('disagree about VNE_EAS_PROJECT_ID');
     expect(problems).toContain('disagree about VNE_PLAYER_ICON');
+  });
+
+  /**
+   * A picture every browser shows and AAPT2 cannot read. On Windows the release
+   * build crashes on it without naming the file, so the author hears which
+   * picture it is here — by the name their story uses, not the staged hash.
+   */
+  it('catches a picture the resource compiler cannot read, named the way the story names it', () => {
+    root = stagedProject();
+    write(root, `${STAGED_MEDIA_DIR}/abc.png`, encodePng({ width: 4, height: 4 }, { noEnd: true }));
+    const problems = verifyStagedAndroidProject(root);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain(
+      "assets/media/abc.png (the story's idb-media://cover) is truncated: it has no IEND chunk",
+    );
+    expect(problems[0]).toContain('save the picture again');
+  });
+
+  /** The icon and the engine's own art are crunched too. */
+  it('checks every PNG the build bundles, not only the release media', () => {
+    root = stagedProject();
+    write(root, STAGED_ICON, new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70]));
+    write(root, 'assets/images/frame.png', encodePng({ width: 4, height: 4 }, { noEnd: true }));
+    const problems = verifyStagedAndroidProject(root).join('\n');
+    expect(problems).toContain('assets/player-icon.png is JPEG data with a .png name');
+    expect(problems).toContain('assets/images/frame.png is truncated');
+  });
+
+  it('lets through damage the resource compiler shrugs off', () => {
+    root = stagedProject();
+    write(root, `${STAGED_MEDIA_DIR}/abc.png`, concat(
+      encodePng({ width: 4, height: 4 }),
+      ascii('bytes after the end marker'),
+    ));
+    expect(verifyStagedAndroidProject(root)).toEqual([]);
   });
 
   it('says so when there is no project at all', () => {
