@@ -35,6 +35,7 @@ describe('the sentence under the author\'s caret', () => {
     { id: 'storm', kind: 'text', content: 'Listen. Thunder. It stopped.', parts: [{ type: 'text', text: 'Listen. Thunder. ' }, thunder, { type: 'text', text: 'It stopped.' }] },
     { id: 'line', kind: 'dialogue', speakerName: 'Ann', characterId: 'ann', spriteId: 'ann-smile', text: 'Who is there? Answer me!' },
     { id: 'long', kind: 'text', content: long },
+    { id: 'lines', kind: 'text', content: 'One fell.\n\nWhere now? How so?' },
   ];
   const timeline = documentSceneToTimelineWithOrigins({ sceneId: 's', sceneName: 'S', blocks }).timeline;
 
@@ -73,6 +74,11 @@ describe('the sentence under the author\'s caret', () => {
   it('is found far into a long block, past the 300 characters the editor tells of', () => {
     const start = long.indexOf('Line 33');
     expect(selectionComicAnchor(selection({ id: 'long', kind: 'text' }, long, start + 3), timeline)).toBe('long/p0/s32');
+  });
+
+  it('is found past a line break, which the editor\'s frame tells of as no text at all', () => {
+    const caret = { blocks: [{ id: 'lines', kind: 'text' as const, quote: '', occurrence: 0 }], before: 'One fell.Where now? ', after: 'How so?' };
+    expect(selectionComicAnchor(caret, timeline)).toBe('lines/p0/s2');
   });
 
   it('is none in a block of no words, or one the scene does not have', () => {

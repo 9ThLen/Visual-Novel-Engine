@@ -514,7 +514,10 @@ export const COMIC_FRAME_SCRIPT = String.raw`
     }
   }
 
-  /* A tap anywhere but on an option asks for the next panel; so do Space and Enter. */
+  /*
+   * A tap anywhere but on an option asks for the next panel, naming the panel
+   * it landed on; so do Space and Enter, naming none.
+   */
   document.addEventListener('click', function (event) {
     var target = event.target;
     var option = target && target.closest ? target.closest('[data-option]') : null;
@@ -522,7 +525,10 @@ export const COMIC_FRAME_SCRIPT = String.raw`
       if (!option.disabled) post({ type: 'choose', optionId: option.getAttribute('data-option') });
       return;
     }
-    post({ type: 'tap' });
+    var panel = target && target.closest ? target.closest('.panel') : null;
+    var message = { type: 'tap' };
+    if (panel && panel.getAttribute('data-id')) message.panelId = panel.getAttribute('data-id');
+    post(message);
   });
   document.addEventListener('keydown', function (event) {
     if (event.key !== ' ' && event.key !== 'Enter') return;

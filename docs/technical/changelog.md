@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-10-25 — The Inspector edits a comic panel
+
+PR 3.3 of `docs/plans/COMIC-STAGE-3-PLAN.md`. Under the Preview, a scene
+shown as a comic gets a "Panel" section for the panel the Preview shows.
+
+- **Picking a panel.** The stepper picks it, and so does a click on a panel
+  in the Preview (the frame's `tap` now names the panel). Putting the caret in
+  a sentence of the text also moves the Preview to that sentence's panel
+  (`selectionComicAnchor`, read from what the editor's frame reports of the
+  selection).
+- **The panel.** Its shot (Auto, or one of the five), its focus (a click on a
+  small picture of the scene, outlined with what the panel shows) and its
+  size (Auto, Whole width, Half).
+- **Each line in it.** Its kind of words (Speech, Shout, Whisper, Thought,
+  Caption box) and the side of its tail. A line's own kind is no edit at all.
+- **Undo and restore.** The section's own Undo takes back its last edit, for
+  as long as the editor is open. "Restore automatic panel" takes the panel's
+  shot, focus, size and lines' kinds away; where the panel begins and ends
+  (✂, ×) stays.
+- **Storage.** Edits go to the scene record through a new store action,
+  `updateSceneComicSettings`, as the page's comic switch does. The editor's
+  page is not rebuilt, and the Preview and the reader draw them at once.
+  Each edit is fastened to its sentence's words, on the sentence it acts on
+  now (`withPanelEdit`, `withElementEdit`, `withoutPanelEdits` in
+  `comic-settings.ts`).
+
 ## 2026-10-25 — The comic draws half panels and every kind of bubble
 
 PR 3.2 of `docs/plans/COMIC-STAGE-3-PLAN.md`: the comic frame draws what the

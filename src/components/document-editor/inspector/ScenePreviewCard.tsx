@@ -137,6 +137,7 @@ export function ScenePreviewCard({
               stage={stage}
               storyId={storyId}
               settings={settings}
+              onSelectPanel={onPanelIndexChange}
             />
           ) : !isComic && total ? (
             <ScenePreviewStage

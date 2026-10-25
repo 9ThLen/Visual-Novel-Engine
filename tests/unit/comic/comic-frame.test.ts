@@ -238,16 +238,17 @@ describe('the comic frame', () => {
     expect(document.querySelector('.bg')?.classList.contains('missing')).toBe(true);
   });
 
-  it('asks for the next panel on a tap, Space or Enter', () => {
+  it('asks for the next panel on a tap, Space or Enter, naming the panel a tap landed on', () => {
     const { send, document, dom, messages } = bootFrame();
-    send({ type: 'strip', strip: strip(1) });
+    send({ type: 'strip', strip: strip(2) });
 
-    document.querySelector('.panel')!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    document.querySelector('.panel[data-id="p2"] .caption')!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    document.body.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     document.body.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: ' ', bubbles: true }));
     document.body.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     document.body.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
 
-    expect(messages('tap')).toHaveLength(3);
+    expect(messages('tap').map((message) => message.panelId)).toEqual(['p2', undefined, undefined, undefined]);
   });
 
   it('offers a choice once every panel is open, and reports the option picked', () => {
@@ -470,6 +471,8 @@ describe('frame messages', () => {
     expect(readComicFrameMessage(envelope({ type: 'choose', optionId: 'a' }), TOKEN)).toEqual({ type: 'choose', optionId: 'a' });
     expect(readComicFrameMessage(envelope({ type: 'choose', optionId: 'a' }, 'other'), TOKEN)).toBeNull();
     expect(readComicFrameMessage(envelope({ type: 'choose' }), TOKEN)).toBeNull();
+    expect(readComicFrameMessage(envelope({ type: 'tap', panelId: 'p1' }), TOKEN)).toEqual({ type: 'tap', panelId: 'p1' });
+    expect(readComicFrameMessage(envelope({ type: 'tap', panelId: 7 }), TOKEN)).toBeNull();
     expect(readComicFrameMessage(envelope({ type: 'layout', panels: '2', pages: 1 }), TOKEN)).toBeNull();
     expect(readComicFrameMessage(envelope({ type: 'navigate' }), TOKEN)).toBeNull();
     expect(readComicFrameMessage('{not json', TOKEN)).toBeNull();

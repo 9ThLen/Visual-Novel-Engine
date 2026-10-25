@@ -20,9 +20,18 @@ export function documentSceneNovelOnly(scene: Pick<DocumentScene, 'blocks'>): No
   return sceneComicCapabilities(scene.blocks.flatMap((block) => (block.kind === 'technical' ? [block.step] : []))).novelOnly;
 }
 
-/** Words as the editor's frame reads them out of its page: markup gone, no-break spaces plain. */
+/**
+ * Words as the editor's frame reads them out of its page: markup gone,
+ * no-break spaces plain, and no line breaks \u2014 the page draws a break as an
+ * element with no text, so what the frame tells of a selection has none.
+ */
+function asFrameReads(text: string): string {
+  return text.replace(/\u00a0/g, ' ').replace(/[\r\n]/g, '');
+}
+
+/** A step's words as the frame reads them. */
 function visible(text: string): string {
-  return stripRichText(text).replace(/\u00a0/g, ' ');
+  return asFrameReads(stripRichText(text));
 }
 
 function wordsOf(step: TimelineStep): string {
@@ -73,7 +82,7 @@ export function selectionComicAnchor(
   const sentences = addressSentences(steps);
   if (!sentences.length) return null;
 
-  const at = selectionStartIn(text, selection.before, quote, selection.after) ?? 0;
+  const at = selectionStartIn(text, asFrameReads(selection.before), asFrameReads(quote), asFrameReads(selection.after)) ?? 0;
   let found = sentences[0];
   let from = 0;
   for (const sentence of sentences) {

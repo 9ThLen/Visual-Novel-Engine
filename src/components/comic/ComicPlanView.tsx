@@ -31,7 +31,8 @@ interface ComicPlanViewProps {
   /** Panels may still come after the last one: the strip is being read, not shown whole. */
   more?: boolean;
   textScale?: number;
-  onTap?: () => void;
+  /** A tap on the strip, with the panel it landed on when it landed on one. */
+  onTap?: (panelId?: string) => void;
   onChoose?: (optionId: string) => void;
   onLayout?: (layout: { panels: number; pages: number }) => void;
   style?: StyleProp<ViewStyle>;
@@ -69,7 +70,7 @@ export function ComicPlanView({
     return comicFrameStrip(plan, assets, { revealed, choices, panelChoices, more });
   }, [characters, choices, more, panelChoices, plan, revealed, spriteRef, urls]);
 
-  const handleTap = useCallback(() => onTap?.(), [onTap]);
+  const handleTap = useCallback((panelId?: string) => onTap?.(panelId), [onTap]);
   const handleChoose = useCallback((optionId: string) => onChoose?.(optionId), [onChoose]);
 
   return (

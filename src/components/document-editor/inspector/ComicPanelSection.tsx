@@ -266,10 +266,18 @@ function FocusPicture({
     size: 1 / zoom,
   };
 
+  // Where the press landed on the picture: a native press says so itself; on
+  // the web it is a mouse event, measured against the picture's own box.
   const pick = (event: GestureResponderEvent) => {
     const native = event.nativeEvent as unknown as { locationX?: number; locationY?: number; clientX?: number; clientY?: number };
-    const x = typeof native.locationX === 'number' ? native.locationX : native.clientX;
-    const y = typeof native.locationY === 'number' ? native.locationY : native.clientY;
+    let x = native.locationX;
+    let y = native.locationY;
+    if ((typeof x !== 'number' || typeof y !== 'number') && typeof native.clientX === 'number' && typeof native.clientY === 'number') {
+      const box = (event.currentTarget as unknown as { getBoundingClientRect?: () => { left: number; top: number } })
+        .getBoundingClientRect?.() ?? { left: 0, top: 0 };
+      x = native.clientX - box.left;
+      y = native.clientY - box.top;
+    }
     if (typeof x !== 'number' || typeof y !== 'number') return;
     const round = (value: number) => Math.round(Math.min(1, Math.max(0, value)) * 100) / 100;
     onPick({ x: round(x / PICTURE_WIDTH), y: round(y / PICTURE_HEIGHT) });
