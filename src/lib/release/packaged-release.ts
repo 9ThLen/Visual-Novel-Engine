@@ -90,7 +90,12 @@ export async function activatePackagedRelease(
   setPackagedMediaMap(Object.keys(resolved).length > 0 ? resolved : null);
   setPackagedDisplayCopyMap(Object.keys(copies).length > 0 ? copies : null);
 
-  return config;
+  // The boot seeds the story with `config.assets` (player-mode-boot.ts), which
+  // is right for a web bundle, whose map holds paths beside index.html. Here
+  // those paths name nothing: handed back as they were, they replaced the map
+  // just set, and every packaged picture in an APK resolved to `media/…`,
+  // which no image loads.
+  return { ...config, assets: resolved };
 }
 
 /**

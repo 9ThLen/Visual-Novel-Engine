@@ -81,6 +81,20 @@ describe('a release packaged inside a native build', () => {
   });
 
   /**
+   * The boot seeds the story with the config's asset map. A web bundle's map
+   * holds paths beside index.html; an APK has no such files, so the config
+   * handed back must name what was resolved — or seeding puts `media/…` back
+   * and no packaged picture loads.
+   */
+  it('hands the boot an asset map of what it resolved, not the web paths', async () => {
+    const config = await activatePackagedRelease(packaged(), fakeResolver);
+    expect(config?.assets).toEqual({
+      'idb-media://cover': 'file:///android_asset/11.bin',
+      'assets/bg.png': 'file:///android_asset/22.bin',
+    });
+  });
+
+  /**
    * The comic frame decodes what it is given at full size, so staging packs
    * a display-size copy of each picture (comic-picture-size.ts). The copies
    * are found by the same references as the originals.
