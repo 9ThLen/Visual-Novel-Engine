@@ -11,7 +11,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import type { Character } from '@/lib/character-types';
 import { resolveCharacterSpriteUri } from '@/lib/character-resolver';
 import type { ComicFrameChoices } from '@/lib/comic/comic-frame-protocol';
-import { comicFrameStrip, comicPlanImageRefs, type ComicFrameAssets } from '@/lib/comic/comic-frame-strip';
+import { comicFrameStrip, comicPlanPictures, type ComicFrameAssets } from '@/lib/comic/comic-frame-strip';
 import type { ComicPagePlan } from '@/lib/comic/comic-layout';
 import { useAppStore } from '@/stores/use-app-store';
 
@@ -57,8 +57,8 @@ export function ComicPlanView({
       resolveCharacterSpriteUri(characterId, spriteId, { [storyId]: characters }, storyId),
     [characters, storyId],
   );
-  const refs = useMemo(() => comicPlanImageRefs(plan, { spriteRef }), [plan, spriteRef]);
-  const urls = useComicImageUrls(refs);
+  const pictures = useMemo(() => comicPlanPictures(plan, { spriteRef }), [plan, spriteRef]);
+  const urls = useComicImageUrls(pictures);
 
   const strip = useMemo(() => {
     const assets: ComicFrameAssets = {

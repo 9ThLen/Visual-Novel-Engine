@@ -17,6 +17,7 @@ import type {
   ComicFrameStrip,
   ComicFrameWords,
 } from '@/lib/comic/comic-frame-protocol';
+import type { ComicPictureRole } from '@/lib/comic/comic-picture-size';
 
 export interface ComicFrameAssets {
   /** A URL the frame can load for an asset reference, or null while it is not resolved. */
@@ -27,17 +28,28 @@ export interface ComicFrameAssets {
   characterName(characterId: string): string | null;
 }
 
-/** Every asset reference the plan's pictures use, once each: what to resolve before drawing. */
-export function comicPlanImageRefs(plan: ComicPagePlan, assets: Pick<ComicFrameAssets, 'spriteRef'>): string[] {
-  const refs = new Set<string>();
+/** A picture the plan shows: what to resolve, and the ways it is drawn, which decide the size of its copy. */
+export interface ComicPlanPicture {
+  ref: string;
+  roles: ComicPictureRole[];
+}
+
+/** Every picture the plan's panels use, once each, with every way it is drawn. */
+export function comicPlanPictures(plan: ComicPagePlan, assets: Pick<ComicFrameAssets, 'spriteRef'>): ComicPlanPicture[] {
+  const roles = new Map<string, Set<ComicPictureRole>>();
+  const add = (ref: string, role: ComicPictureRole) => {
+    const known = roles.get(ref);
+    if (known) known.add(role);
+    else roles.set(ref, new Set([role]));
+  };
   for (const panel of plan.panels) {
-    if (panel.picture.backgroundAssetId) refs.add(panel.picture.backgroundAssetId);
+    if (panel.picture.backgroundAssetId) add(panel.picture.backgroundAssetId, 'background');
     for (const character of panel.picture.characters) {
       const ref = assets.spriteRef(character.characterId, character.spriteId);
-      if (ref) refs.add(ref);
+      if (ref) add(ref, 'sprite');
     }
   }
-  return [...refs];
+  return [...roles].map(([ref, used]) => ({ ref, roles: [...used].sort() }));
 }
 
 function framePanel(panel: ComicPanel, assets: ComicFrameAssets): ComicFramePanel {

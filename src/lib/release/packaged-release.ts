@@ -19,7 +19,7 @@
  */
 import { Asset } from 'expo-asset';
 
-import { setPackagedMediaMap } from '@/lib/asset-resolver';
+import { setPackagedDisplayCopyMap, setPackagedMediaMap } from '@/lib/asset-resolver';
 import {
   parsePlayerConfig,
   registerPackagedReleaseLoader,
@@ -32,6 +32,12 @@ export interface PackagedRelease {
   config: unknown;
   /** `media/<sha256>.<ext>` → the module reference Metro assigned it. */
   media: Record<string, number | string>;
+  /**
+   * `media/<sha256>.<ext>` → the module of its display-size copy, for the
+   * pictures staging made one of (comic-picture-size.ts). Left out by a
+   * release staged before there were copies.
+   */
+  displayCopies?: Record<string, number | string>;
 }
 
 /** Injectable so the mapping can be tested without a device. */
@@ -71,13 +77,18 @@ export async function activatePackagedRelease(
   if (!config) return null;
 
   const resolved: Record<string, string> = {};
+  const copies: Record<string, string> = {};
   for (const [reference, file] of Object.entries(config.assets ?? {})) {
     const module = packaged.media[file];
     if (module === undefined) continue;
     const uri = await resolve(module);
     if (uri) resolved[reference] = uri;
+    const copy = packaged.displayCopies?.[file];
+    const copyUri = copy === undefined ? null : await resolve(copy);
+    if (copyUri) copies[reference] = copyUri;
   }
   setPackagedMediaMap(Object.keys(resolved).length > 0 ? resolved : null);
+  setPackagedDisplayCopyMap(Object.keys(copies).length > 0 ? copies : null);
 
   return config;
 }
