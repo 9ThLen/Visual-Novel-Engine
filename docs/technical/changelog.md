@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-10-25 — A ✂ inside a line of dialogue splits its bubble
+
+A line of dialogue is one bubble, however many sentences it has. A ✂ on its
+second sentence or later used to cut before the whole bubble, so the line
+stayed in one panel. A × there joined the whole bubble to the panel before.
+Found by an outside review of stage 3.
+
+- The bubble now splits where the ✂ is. The rest of the line goes on in a
+  bubble of its own, with the same speaker, in the next panel. Each piece
+  keeps the inline chips and the kind of bubble fastened to its own
+  sentences. The reader opens the pieces one tap at a time, as it does the
+  sentences of a paragraph.
+- ✂ and × act only where a bubble or caption begins. A × later in a line
+  does nothing: that sentence is already in the line's panel.
+
 ## 2026-10-25 — The comic draws half panels and every kind of bubble
 
 PR 3.2 of `docs/plans/COMIC-STAGE-3-PLAN.md`: the comic frame draws what the
