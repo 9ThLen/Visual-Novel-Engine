@@ -81,6 +81,12 @@ describe('the sentence under the author\'s caret', () => {
     expect(selectionComicAnchor(caret, timeline)).toBe('lines/p0/s2');
   });
 
+  it('is none, not a guess, when what the editor told of the selection is not in the scene\'s words', () => {
+    // A report from before an edit reached the document.
+    const stale = { blocks: [{ id: 'rain', kind: 'text' as const, quote: '', occurrence: 0 }], before: 'Snow fell. Hail', after: ' came.' };
+    expect(selectionComicAnchor(stale, timeline)).toBeNull();
+  });
+
   it('is none in a block of no words, or one the scene does not have', () => {
     expect(selectionComicAnchor({ blocks: [], before: '', after: '' }, timeline)).toBeNull();
     expect(selectionComicAnchor(selection({ id: 'pick', kind: 'choice' }, '', 0), timeline)).toBeNull();

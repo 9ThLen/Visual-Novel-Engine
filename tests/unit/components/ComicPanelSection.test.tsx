@@ -177,6 +177,51 @@ describe('the Panel section', () => {
     expect(inspector.settings()?.breaks).toHaveLength(1);
   });
 
+  describe('in Issues', () => {
+    const openIssues = () => fireEvent.click(screen.getByText('issues'));
+
+    it('lists an edit whose sentence is gone, and fastens it to the sentence under the caret', () => {
+      const inspector = renderInspector({ panels: [{ anchor: 'rain/p0/s0', print: sentencePrint('A sentence nobody wrote.'), shot: 'close' }] });
+      openIssues();
+      const key = 'panels:rain/p0/s0';
+      expect(screen.getByTestId(`comic-issue-${key}`).textContent).toContain('its sentence is gone');
+      expect(screen.getByTestId(`comic-issue-fasten-${key}`).hasAttribute('disabled')).toBe(true);
+
+      act(() => {
+        useEditorContextStore.getState().reportSelection('story-1', 'scene-1', {
+          seq: 1, collapsed: true, text: '', textLength: 0, truncated: false,
+          before: 'Who is there? An', after: 'swer me!', crossesChip: false,
+          blocks: [{ id: 'line', kind: 'dialogue', quote: '', occurrence: 0 }],
+        });
+      });
+      inspector.press(`comic-issue-fasten-${key}`);
+
+      expect(inspector.settings()?.panels).toEqual([{ anchor: 'line/p0/s1', print: sentencePrint('Answer me!'), shot: 'close' }]);
+      expect(screen.queryByTestId('comic-edit-issues')).toBeNull();
+    });
+
+    it('lists an edit whose words changed, and takes them as they are now when marked as checked', () => {
+      const inspector = renderInspector({ elements: [{ anchor: 'rain/p0/s1', print: sentencePrint('Wind howled.'), style: 'whisper' }] });
+      openIssues();
+      const key = 'elements:rain/p0/s1';
+      expect(screen.getByTestId(`comic-issue-${key}`).textContent).toContain('its words changed');
+      expect(screen.getByTestId(`comic-issue-${key}`).textContent).toContain('Now: “Wind howls.”');
+
+      inspector.press(`comic-issue-checked-${key}`);
+      expect(inspector.settings()?.elements).toEqual([{ anchor: 'rain/p0/s1', print: sentencePrint('Wind howls.'), style: 'whisper' }]);
+      expect(screen.queryByTestId('comic-edit-issues')).toBeNull();
+    });
+
+    it('removes an edit, and the removal can be undone', () => {
+      const inspector = renderInspector({ breaks: [{ anchor: 'rain/p0/s1', print: sentencePrint('Gone.') }] });
+      openIssues();
+      inspector.press('comic-issue-remove-breaks:rain/p0/s1');
+      expect(inspector.settings()).toEqual({ presentation: 'comic' });
+      inspector.press('comic-panel-undo');
+      expect(inspector.settings()?.breaks).toHaveLength(1);
+    });
+  });
+
   it('is not there when the scene\'s comic settings cannot be written', () => {
     render(<DocumentInspectorPanel scene={scene} storyId="story-1" characters={[]} storyScenes={[]} comicSettings={{ presentation: 'comic' }} />);
     expect(screen.queryByTestId('comic-panel-section')).toBeNull();

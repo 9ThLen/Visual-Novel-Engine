@@ -43,6 +43,7 @@ import { exitEditorToStoryHome } from '@/lib/document-editor/editor-exit';
 import { ensureDocumentCharactersInBlocks } from '@/lib/document-editor/document-scene';
 import { documentSceneNovelOnly } from '@/lib/document-editor/document-comic';
 import { scenePresentationOf } from '@/lib/comic/comic-presentation';
+import { countComicEdits, withComicEdits } from '@/lib/comic/comic-settings';
 import type { SceneContentLedger } from '@/lib/document-editor/scene-content-ledger';
 import { loadSceneHeights, persistSceneHeight } from '@/lib/document-editor/scene-height-cache';
 import {
@@ -404,6 +405,10 @@ export function DocumentSceneEditor({
   );
   const comicPresentationBySceneId = React.useMemo(
     () => new Map(scenes.map((scene) => [scene.id, scenePresentationOf(scene.comic)])),
+    [scenes],
+  );
+  const comicEditCountBySceneId = React.useMemo(
+    () => new Map(scenes.map((scene) => [scene.id, countComicEdits(scene.comic)])),
     [scenes],
   );
 
@@ -849,6 +854,9 @@ export function DocumentSceneEditor({
   const getOnSetComicPresentation = useSceneCallback((_sceneId: string, presentation: ScenePresentation) => {
     onSetSceneComicPresentation?.(_sceneId, presentation);
   }, documentsResetKey);
+  const getOnResetComicEdits = useSceneCallback((_sceneId: string) => {
+    onUpdateSceneComicSettings?.(_sceneId, (comic) => withComicEdits(comic, {}));
+  }, documentsResetKey);
   // The Inspector edits the comic of the scene it shows: the active one.
   const handleUpdateActiveComicSettings = useCallback((update: ComicSettingsUpdate) => {
     onUpdateSceneComicSettings?.(activeSceneId, update);
@@ -1129,6 +1137,8 @@ export function DocumentSceneEditor({
               comicPresentation={comicPresentationBySceneId.get(documentScene.sceneId) ?? 'auto'}
               comicNovelOnly={documentSceneNovelOnly(documentScene)}
               onSetComicPresentation={onSetSceneComicPresentation ? getOnSetComicPresentation(documentScene.sceneId) : undefined}
+              comicEditCount={comicEditCountBySceneId.get(documentScene.sceneId) ?? 0}
+              onResetComicEdits={onUpdateSceneComicSettings ? getOnResetComicEdits(documentScene.sceneId) : undefined}
               contentEpoch={frameEpochBySceneId[documentScene.sceneId] ?? 0}
               cachedHeight={sceneLayoutRef.current.get(documentScene.sceneId)?.height ?? persistedHeights[documentScene.sceneId]}
               onChange={getOnChange(documentScene.sceneId)}

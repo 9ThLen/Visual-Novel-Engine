@@ -38,7 +38,9 @@ const TAIL_SIDES: readonly ComicTailSide[] = ['auto', 'left', 'right'];
 /** The edits of a scene's comic settings: everything but how the scene is read. */
 export type ComicEdits = Pick<SceneComicSettings, 'breaks' | 'merges' | 'panels' | 'elements'>;
 
-type EditKind = keyof ComicEdits;
+/** A kind of edit: ✂, ×, a panel's, a line's. */
+export type ComicEditKind = keyof ComicEdits;
+type EditKind = ComicEditKind;
 const EDIT_KINDS: readonly EditKind[] = ['breaks', 'merges', 'panels', 'elements'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -342,4 +344,44 @@ export function withoutPanelEdits(
     panels: settings?.panels?.filter((edit) => !panels.has(edit)),
     elements: settings?.elements?.filter((edit) => !elements.has(edit)),
   });
+}
+
+/** The settings without the edit of `kind` kept on `anchor`: what Issues' "Remove" does. */
+export function withoutComicEdit(
+  settings: SceneComicSettings | undefined,
+  kind: ComicEditKind,
+  anchor: ComicAnchor,
+): SceneComicSettings | undefined {
+  const edits = comicEditsOf(settings);
+  const list: ComicAnchored[] = edits[kind] ?? [];
+  if (!list.some((edit) => edit.anchor === anchor)) return settings;
+  return withComicEdits(settings, { ...edits, [kind]: list.filter((edit) => edit.anchor !== anchor) });
+}
+
+/**
+ * The settings with the edit of `kind` kept on `anchor` fastened to `sentence`
+ * as it is now, words and all: Issues' "Fasten to the sentence under the
+ * caret", and "Mark as checked" for an edit whose words changed. An edit of
+ * the same kind already on that sentence gives way to it.
+ */
+export function withComicEditFastened(
+  settings: SceneComicSettings | undefined,
+  kind: ComicEditKind,
+  anchor: ComicAnchor,
+  sentence: ComicEditTarget,
+): SceneComicSettings | undefined {
+  const edits = comicEditsOf(settings);
+  const list: ComicAnchored[] = edits[kind] ?? [];
+  const edit = list.find((item) => item.anchor === anchor);
+  if (!edit) return settings;
+  const rest = list.filter((item) => item !== edit && item.anchor !== sentence.anchor);
+  return withComicEdits(settings, {
+    ...edits,
+    [kind]: [...rest, { ...edit, anchor: sentence.anchor, print: sentencePrint(sentence.text) }],
+  });
+}
+
+/** How many edits the settings hold: what the scene list and the reset tell of. */
+export function countComicEdits(settings: SceneComicSettings | undefined): number {
+  return EDIT_KINDS.reduce((sum, kind) => sum + (settings?.[kind]?.length ?? 0), 0);
 }

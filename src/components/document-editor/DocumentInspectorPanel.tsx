@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { ComicEditIssues } from '@/components/document-editor/inspector/ComicEditIssues';
 import { ComicPanelSection } from '@/components/document-editor/inspector/ComicPanelSection';
 import { ComicReadOverlay } from '@/components/document-editor/inspector/ComicReadOverlay';
 import { ScenePreviewCard } from '@/components/document-editor/inspector/ScenePreviewCard';
@@ -15,11 +16,15 @@ import { withPanelStartAt } from '@/lib/comic/comic-marks';
 import { resolveScenePresentation } from '@/lib/comic/comic-presentation';
 import {
   comicEditsOf,
+  hasComicEdits,
   resolveComicSettings,
+  withComicEditFastened,
+  withoutComicEdit,
   withComicEdits,
   withElementEdit,
   withoutPanelEdits,
   withPanelEdit,
+  type ComicEditNote,
   type ComicEdits,
   type ComicElementChange,
   type ComicPanelChange,
@@ -118,18 +123,22 @@ export function DocumentInspectorPanel({
     if (sceneId) setFormatChoice({ sceneId, format: next });
   }, [sceneId]);
 
-  // The author's plan: every step, as the comic would draw it. Built only
-  // while the comic is shown, as it converts the whole scene on every edit.
+  // The scene's words as the comic addresses them, and the author's plan:
+  // every step, as the comic would draw it. Converted only while the comic is
+  // shown or the scene has edits for Issues to check, as it converts the whole
+  // scene on every edit.
+  const hasEdits = hasComicEdits(comicSettings);
   const comicTimeline = useMemo(
-    () => (format === 'comic' && scene ? documentSceneToTimelineWithOrigins(scene, characters).timeline : null),
-    [characters, format, scene],
+    () => ((format === 'comic' || hasEdits) && scene ? documentSceneToTimelineWithOrigins(scene, characters).timeline : null),
+    [characters, format, hasEdits, scene],
   );
   const comicPlan = useMemo(
-    () => (comicTimeline ? buildAuthorComicPlan(comicTimeline, comicSettings) : EMPTY_COMIC_PLAN),
-    [comicSettings, comicTimeline],
+    () => (format === 'comic' && comicTimeline ? buildAuthorComicPlan(comicTimeline, comicSettings) : EMPTY_COMIC_PLAN),
+    [comicSettings, comicTimeline, format],
   );
   const comicSentences = useMemo(() => (comicTimeline ? addressSentences(comicTimeline) : []), [comicTimeline]);
-  const comicEdits = useMemo(() => resolveComicSettings(comicSettings, comicSentences).edits, [comicSentences, comicSettings]);
+  const comicResolution = useMemo(() => resolveComicSettings(comicSettings, comicSentences), [comicSentences, comicSettings]);
+  const comicEdits = comicResolution.edits;
   const [panelIndex, setPanelIndex] = useState(0);
   useEffect(() => {
     setPanelIndex((current) => Math.min(current, Math.max(0, comicPlan.panels.length - 1)));
@@ -139,6 +148,12 @@ export function DocumentInspectorPanel({
   // new caret or selection only, so an edit that redraws the plan leaves the
   // panel the author stepped to.
   const selection = useEditorContextStore((state) => state.selection);
+  const caretAnchor = useMemo(
+    () => (comicTimeline && selection?.storyId === storyId && selection.sceneId === sceneId
+      ? selectionComicAnchor(selection, comicTimeline)
+      : null),
+    [comicTimeline, sceneId, selection, storyId],
+  );
   const followedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!comicTimeline || !selection || selection.storyId !== storyId || selection.sceneId !== sceneId) return;
@@ -201,6 +216,21 @@ export function DocumentInspectorPanel({
     if (index >= 0) setPanelIndex(index);
     setMarked(null);
   }, [comicPlan, marked]);
+
+  // Issues: a lost edit fastened to a sentence the author points at, a
+  // changed one taken as it is now, or either removed.
+  const sentenceText = useCallback(
+    (anchor: ComicAnchor) => comicSentences.find((sentence) => sentence.anchor === anchor)?.text ?? null,
+    [comicSentences],
+  );
+  const fastenEdit = useCallback((note: ComicEditNote, anchor: ComicAnchor) => {
+    const text = sentenceText(anchor);
+    if (text === null) return;
+    changeComic((settings) => withComicEditFastened(settings, note.kind, note.edit.anchor, { anchor, text }));
+  }, [changeComic, sentenceText]);
+  const removeEdit = useCallback((note: ComicEditNote) => {
+    changeComic((settings) => withoutComicEdit(settings, note.kind, note.edit.anchor));
+  }, [changeComic]);
 
   const restorePanel = useCallback(() => {
     if (!shownPanel) return;
@@ -306,7 +336,17 @@ export function DocumentInspectorPanel({
           <BlockList scene={scene} colors={colors} />
         ) : null}
         {tab === 'issues' ? (
-          <IssuesList issues={issues} colors={colors} />
+          <>
+            <IssuesList issues={issues} colors={colors} />
+            <ComicEditIssues
+              colors={colors}
+              notes={comicResolution.notes}
+              sentenceText={sentenceText}
+              caretAnchor={caretAnchor}
+              onFasten={onUpdateComicSettings ? fastenEdit : undefined}
+              onRemove={onUpdateComicSettings ? removeEdit : undefined}
+            />
+          </>
         ) : null}
       </ScrollView>
 

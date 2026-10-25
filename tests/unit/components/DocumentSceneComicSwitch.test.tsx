@@ -47,7 +47,11 @@ function record(overrides: Partial<SceneRecord> = {}): SceneRecord {
 
 type EditorProps = React.ComponentProps<typeof PlateSceneEditor>;
 
-function renderEditor(initial: SceneRecord, onSetSceneComicPresentation?: EditorProps['onSetSceneComicPresentation']) {
+function renderEditor(
+  initial: SceneRecord,
+  onSetSceneComicPresentation?: EditorProps['onSetSceneComicPresentation'],
+  extra: Partial<EditorProps> = {},
+) {
   const element = (scene: SceneRecord) => (
     <PlateSceneEditor
       storyId="story-1"
@@ -60,6 +64,7 @@ function renderEditor(initial: SceneRecord, onSetSceneComicPresentation?: Editor
       audioAssets={[]}
       onSave={vi.fn()}
       onSetSceneComicPresentation={onSetSceneComicPresentation}
+      {...extra}
     />
   );
   const view = render(element(initial));
@@ -128,6 +133,39 @@ describe('the scene page comic switch', () => {
     expect(screen.getByTestId('scene-comic-novel-only').textContent).toMatch(/plays a video, so it is read as the novel/);
   });
 
+  it('resets all the scene\'s comic edits once the author confirms', () => {
+    const onUpdate = vi.fn();
+    const comic = {
+      presentation: 'comic' as const,
+      breaks: [{ anchor: 'step-1/p0/s0', print: 'rain.' }],
+      panels: [{ anchor: 'step-1/p0/s0', print: 'rain.', shot: 'close' as const }],
+    };
+    renderEditor(record({ comic }), vi.fn(), { onUpdateSceneComicSettings: onUpdate });
+
+    fireEvent.click(pill());
+    expect(screen.getByTestId('scene-comic-reset').textContent).toContain('Edits: 2');
+    fireEvent.click(screen.getByTestId('scene-comic-reset'));
+    fireEvent.click(screen.getByTestId('scene-comic-reset-cancel'));
+    expect(onUpdate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('scene-comic-reset'));
+    expect(screen.getByText('Reset all comic edits of this scene?')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('scene-comic-reset-confirm'));
+
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+    const [sceneId, update] = onUpdate.mock.calls[0];
+    expect(sceneId).toBe('scene-1');
+    // How the scene is read stays.
+    expect(update(comic)).toEqual({ presentation: 'comic' });
+    expect(screen.queryByRole('radio')).toBeNull();
+  });
+
+  it('offers no reset for a scene without comic edits', () => {
+    renderEditor(record({ comic: { presentation: 'comic' } }), vi.fn(), { onUpdateSceneComicSettings: vi.fn() });
+    fireEvent.click(pill());
+    expect(screen.queryByTestId('scene-comic-reset')).toBeNull();
+  });
+
   it('has no switch without somewhere to write the setting', () => {
     renderEditor(record());
     expect(screen.queryByTestId('scene-comic-switch')).toBeNull();
@@ -144,6 +182,7 @@ describe('the scene list', () => {
           record({ id: 'comic', name: 'Comic scene', comic: { presentation: 'comic' } }),
           record({ id: 'video', name: 'Video scene', timeline: [videoStep], comic: { presentation: 'comic' } }),
           record({ id: 'novel', name: 'Novel scene', comic: { presentation: 'novel' } }),
+          record({ id: 'edited', name: 'Edited scene', comic: { merges: [{ anchor: 'step-1/p0/s0', print: 'rain.' }], elements: [{ anchor: 'step-1/p0/s0', print: 'rain.', style: 'shout' }] } }),
         ]}
         onScenePress={vi.fn()}
         onAddScene={vi.fn()}
@@ -154,5 +193,10 @@ describe('the scene list', () => {
     expect(screen.queryByTestId('scene-comic-badge-novel')).toBeNull();
     expect(screen.getByTestId('scene-comic-badge-comic').getAttribute('aria-label')).toBe('Read as a comic');
     expect(screen.getByTestId('scene-comic-badge-video').getAttribute('aria-label')).toBe('Set to be a comic, read as the novel');
+    // A scene with comic edits says how many, whatever it is set to.
+    expect(screen.queryByTestId('scene-comic-badge-edited')).toBeNull();
+    expect(screen.getByTestId('scene-comic-edits-edited').textContent).toBe('✎ 2');
+    expect(screen.getByTestId('scene-comic-edits-edited').getAttribute('aria-label')).toBe('Comic edits: 2');
+    expect(screen.queryByTestId('scene-comic-edits-comic')).toBeNull();
   });
 });

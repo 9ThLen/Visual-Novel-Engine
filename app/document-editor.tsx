@@ -18,7 +18,7 @@ import {
 } from '@/lib/document-editor/next-scene';
 import { useI18n } from '@/hooks/use-i18n';
 import { getPlaybackAudioLibraryPure } from '@/lib/audio-library';
-import { withSceneComicSettings } from '@/lib/comic/comic-presentation';
+import { withSavedComicSettings } from '@/lib/comic/comic-presentation';
 import { addAssetToLibraryPure } from '@/lib/media-library-service';
 import { pickVideoFromDevice } from '@/lib/pick-video';
 import { getStoryGalleryImageAssets } from '@/lib/story-image-library';
@@ -264,11 +264,12 @@ export default function DocumentEditorRoute() {
     );
   }
 
-  // The page's switch writes a scene's comic settings straight to the store,
-  // and the documents never carry them: a record the editor writes takes them
-  // from the store as it is now, not from the copy the editor was handed.
+  // The page's switch and the Inspector write a scene's comic settings straight
+  // to the store, and the documents never carry them: a record the editor
+  // writes takes them from the store as it is now, not from the copy the
+  // editor was handed — with every edit whose sentence moved fastened anew.
   const withStoredComicSettings = (record: SceneRecord): SceneRecord =>
-    withSceneComicSettings(record, selectCanonicalSceneRecord(storyId, record.id)(useAppStore.getState())?.comic);
+    withSavedComicSettings(record, selectCanonicalSceneRecord(storyId, record.id)(useAppStore.getState())?.comic);
 
   const handleSave = (sceneRecords: SceneRecord[], nextCharacters: Character[]) => {
     setCharacterLibrary(storyId, nextCharacters);

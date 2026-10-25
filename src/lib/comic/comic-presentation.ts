@@ -12,7 +12,8 @@
  * Plain TypeScript, no React and no store: the reader decides from the stored
  * scene, the editor from the scene it has open.
  */
-import { sanitizeComicEdits } from '@/lib/comic/comic-settings';
+import { addressSentences } from '@/lib/comic/comic-anchors';
+import { rebindComicSettings, sanitizeComicEdits } from '@/lib/comic/comic-settings';
 import type {
   SceneComicSettings,
   ScenePresentation,
@@ -81,6 +82,17 @@ export function withSceneComicSettings<T extends { comic?: SceneComicSettings }>
   if (JSON.stringify(next) === JSON.stringify(record.comic)) return record;
   const { comic: _previous, ...rest } = record;
   return (next ? { ...rest, comic: next } : rest) as T;
+}
+
+/**
+ * A record the editor is about to save, with the scene's comic settings as
+ * the store has them: every edit whose sentence moved is fastened to where its
+ * words are in the record's new timeline, so the next opening finds it in
+ * place. Edits whose words changed or whose sentence is gone stay as they are,
+ * for Issues to show.
+ */
+export function withSavedComicSettings<T extends { comic?: SceneComicSettings; timeline: TimelineStep[] }>(record: T, comic: unknown): T {
+  return withSceneComicSettings(record, rebindComicSettings(sanitizeSceneComicSettings(comic), addressSentences(record.timeline)));
 }
 
 /**

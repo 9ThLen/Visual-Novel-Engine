@@ -57,6 +57,9 @@ interface DocumentSceneFrameProps {
   comicNovelOnly?: NovelOnlyReason | null;
   /** Without it the page shows no comic switch. */
   onSetComicPresentation?: (presentation: ScenePresentation) => void;
+  /** How many comic edits the scene has, and how to take them all away (the switch's menu). */
+  comicEditCount?: number;
+  onResetComicEdits?: () => void;
   /**
    * Bumped by the host when the stored scene was rewritten from outside the
    * editor. The editor is rebuilt from `scene`: a live frame takes no content
@@ -107,6 +110,8 @@ function DocumentSceneFrameImpl({
   comicPresentation = 'auto',
   comicNovelOnly = null,
   onSetComicPresentation,
+  comicEditCount = 0,
+  onResetComicEdits,
   contentEpoch = 0,
   cachedHeight,
   onChange,
@@ -311,6 +316,8 @@ function DocumentSceneFrameImpl({
               open={isComicMenuOpen}
               onOpenChange={handleComicMenuOpenChange}
               onChange={onSetComicPresentation}
+              editCount={comicEditCount}
+              onResetEdits={onResetComicEdits}
             />
           ) : null}
           <Pressable
