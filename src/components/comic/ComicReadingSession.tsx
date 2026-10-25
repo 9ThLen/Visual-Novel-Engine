@@ -183,6 +183,8 @@ export function ComicReadingSession({
               revealed={view.revealed}
               choices={view.choices}
               panelChoices={view.panelChoices}
+              // A strip being read can always go on: the next stop, or the next comic scene.
+              more
               textScale={textScale}
               onTap={handleTap}
               onChoose={handleChoose}

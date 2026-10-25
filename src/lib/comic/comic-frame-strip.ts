@@ -45,8 +45,11 @@ function framePanel(panel: ComicPanel, assets: ComicFrameAssets): ComicFramePane
   const words: ComicFrameWords[] = [];
   for (const element of panel.elements) {
     if (!element.text.trim()) continue;
+    // Only what the author changed travels: the frame draws each kind its own way otherwise.
+    const tail = element.tail ? { tail: element.tail } : {};
     if (element.kind === 'caption') {
-      words.push({ id: element.id, kind: 'caption', text: element.text });
+      const style = element.style && element.style !== 'caption' ? { style: element.style } : {};
+      words.push({ id: element.id, kind: 'caption', text: element.text, ...style, ...tail });
       continue;
     }
     const speaker = element.speakerName?.trim() || assets.characterName(element.characterId)?.trim();
@@ -57,6 +60,8 @@ function framePanel(panel: ComicPanel, assets: ComicFrameAssets): ComicFramePane
       text: element.text,
       ...(speaker ? { speaker } : {}),
       ...(speakerX === undefined ? {} : { speakerX }),
+      ...(element.style !== 'speech' ? { style: element.style } : {}),
+      ...tail,
     });
   }
   return {
@@ -66,6 +71,7 @@ function framePanel(panel: ComicPanel, assets: ComicFrameAssets): ComicFramePane
       const ref = assets.spriteRef(character.characterId, character.spriteId);
       return { id: character.characterId, url: ref ? assets.imageUrl(ref) : null, x: character.x };
     }),
+    ...(panel.size ? { size: panel.size } : {}),
     zoom: framing.zoom,
     focus: { x: framing.subject.x, y: framing.subject.y },
     place: { x: framing.placement.x, y: framing.placement.y },
@@ -79,6 +85,8 @@ export interface ComicFrameStripOptions {
   choices?: ComicFrameChoices | null;
   /** Choices made earlier in the strip, by the id of the panel they come after. */
   panelChoices?: Readonly<Record<string, ComicFrameChoices>>;
+  /** Panels may still come after the last one: the strip is being read. */
+  more?: boolean;
 }
 
 export function comicFrameStrip(
@@ -92,5 +100,5 @@ export function comicFrameStrip(
     return made ? { ...drawn, choices: made } : drawn;
   });
   const revealed = Math.max(0, Math.min(panels.length, Math.floor(options.revealed ?? panels.length)));
-  return { panels, revealed, choices: options.choices ?? null };
+  return { panels, revealed, choices: options.choices ?? null, ...(options.more ? { more: true } : {}) };
 }

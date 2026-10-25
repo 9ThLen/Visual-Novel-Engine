@@ -8,17 +8,30 @@ import {
   readComicFrameMessage,
   type ComicFramePanel,
   type ComicFrameStrip,
+  type ComicFrameWords,
   type ComicHostMessage,
 } from '@/lib/comic/comic-frame-protocol';
 
 const TOKEN = 'token-for-tests';
 
+interface FrameOptions {
+  observer?: boolean;
+  /** The frame's width, in place of jsdom's 1024 px. */
+  width?: number;
+  /**
+   * What jsdom cannot lay out: a panel's height, a bubble's inner width and
+   * height, and the size of its words. Read each time the frame measures, so
+   * a test can change them.
+   */
+  sizes?: { panel?: number; bubble?: [number, number]; font?: number };
+}
+
 /**
  * The frame's real document and script, booted the way a WebView boots them:
  * `ReactNativeWebView.postMessage` is the way out, injected script the way in.
- * jsdom has no layout, so every panel measures 0 px high.
+ * jsdom has no layout, so everything measures 0 px unless `sizes` says.
  */
-function bootFrame(overrides: Partial<ComicFrameBoot> = {}, options: { observer?: boolean } = {}) {
+function bootFrame(overrides: Partial<ComicFrameBoot> = {}, options: FrameOptions = {}) {
   const posted: Record<string, unknown>[] = [];
   const observed: Element[] = [];
   const html = createComicFrameHtml({ token: TOKEN, textScale: 1, ...overrides });
@@ -38,6 +51,22 @@ function bootFrame(overrides: Partial<ComicFrameBoot> = {}, options: { observer?
       }
       window.HTMLElement.prototype.scrollIntoView = () => {};
       window.scrollTo = () => {};
+      if (options.width !== undefined) Object.defineProperty(window, 'innerWidth', { configurable: true, value: options.width });
+      const sizes = options.sizes;
+      if (sizes) {
+        const measured = (pick: (node: HTMLElement) => number) => ({
+          configurable: true,
+          get(this: HTMLElement) { return pick(this); },
+        });
+        const proto = window.HTMLElement.prototype;
+        Object.defineProperty(proto, 'offsetHeight', measured((node) => (node.classList.contains('panel') ? sizes.panel ?? 0 : 0)));
+        Object.defineProperty(proto, 'clientWidth', measured((node) => (node.classList.contains('bubble') ? sizes.bubble?.[0] ?? 0 : 0)));
+        Object.defineProperty(proto, 'clientHeight', measured((node) => (node.classList.contains('bubble') ? sizes.bubble?.[1] ?? 0 : 0)));
+        const computed = window.getComputedStyle.bind(window);
+        window.getComputedStyle = (node: Element) => (node.classList.contains('bubble') && sizes.font
+          ? { fontSize: `${sizes.font}px` } as CSSStyleDeclaration
+          : computed(node));
+      }
     },
   });
   frames.push(dom);
@@ -70,6 +99,29 @@ function panel(id: string, words: ComicFramePanel['words'] = [{ id: `${id}-w`, k
 function strip(count: number, revealed = count, extra: Partial<ComicFrameStrip> = {}): ComicFrameStrip {
   return { panels: Array.from({ length: count }, (_, index) => panel(`p${index + 1}`)), revealed, choices: null, ...extra };
 }
+
+/** Panels p1, p2, … of the sizes given, all open unless `extra` says. */
+function sizedStrip(sizes: (ComicFramePanel['size'] | null)[], extra: Partial<ComicFrameStrip> = {}): ComicFrameStrip {
+  const panels = sizes.map((size, index) => ({ ...panel(`p${index + 1}`), ...(size ? { size } : {}) }));
+  return { panels, revealed: panels.length, choices: null, ...extra };
+}
+
+/** Each panel's place in a row, as its classes give it. */
+function rowsOf(document: Document): [string | null, string][] {
+  return Array.from(document.querySelectorAll('.panel')).map((node) => [
+    node.getAttribute('data-id'),
+    ['half', 'row-first', 'row-second'].filter((name) => node.classList.contains(name)).join(' '),
+  ]);
+}
+
+const EVERY_KIND: ComicFrameWords[] = [
+  { id: 'speech', kind: 'bubble', text: 'Hi.', speaker: 'Ann' },
+  { id: 'shout', kind: 'bubble', text: 'Run!', speaker: 'Ann', style: 'shout' },
+  { id: 'whisper', kind: 'bubble', text: 'Quiet.', speaker: 'Ann', style: 'whisper' },
+  { id: 'thought', kind: 'bubble', text: 'Hm.', speaker: 'Ann', style: 'thought' },
+  { id: 'boxed', kind: 'bubble', text: 'Later, she said.', speaker: 'Ann', style: 'caption' },
+  { id: 'narration', kind: 'caption', text: 'Rain.', style: 'thought' },
+];
 
 describe('the comic frame', () => {
   it('says it is ready, carrying its token', () => {
@@ -254,6 +306,153 @@ describe('the comic frame', () => {
     const { send, panelIds } = bootFrame();
     send({ type: 'strip', strip: strip(2) }, 'guessed');
     expect(panelIds()).toEqual([]);
+  });
+
+  it('draws words as the author picked them — a shout, a whisper, a thought, a caption box — and as their kind\'s own otherwise', () => {
+    const { send, document } = bootFrame();
+    send({ type: 'strip', strip: { panels: [panel('p1', EVERY_KIND)], revealed: 1, choices: null } });
+
+    const drawn = Array.from(document.querySelectorAll('.words > *')).map((node) => [node.tagName, node.className, node.textContent]);
+    expect(drawn).toEqual([
+      ['DIV', 'bubble lean-left', 'AnnHi.'],
+      ['DIV', 'bubble lean-left style-shout', 'AnnRun!'],
+      ['DIV', 'bubble lean-left style-whisper', 'AnnQuiet.'],
+      ['DIV', 'bubble lean-left style-thought', 'AnnHm.'],
+      // A line drawn as a caption box keeps the name of who says it.
+      ['P', 'caption', 'AnnLater, she said.'],
+      ['DIV', 'bubble lean-left style-thought', 'Rain.'],
+    ]);
+    expect(document.querySelector('.caption .speaker')?.textContent).toBe('Ann');
+    expect(Array.from(document.querySelectorAll('.bubble')).map((node) => node.querySelectorAll('.outline circle').length))
+      .toEqual([0, 0, 0, 2, 2]);
+    expect(document.querySelectorAll('.bubble.style-shout .outline path')).toHaveLength(1);
+  });
+
+  it('draws words of a kind it does not know as their kind\'s own', () => {
+    const { send, document } = bootFrame();
+    send({ type: 'strip', strip: { panels: [panel('p1', [
+      { id: 'a', kind: 'bubble', text: 'Hi.', style: 'sparkle' as never },
+      { id: 'b', kind: 'caption', text: 'Rain.', style: 'constructor' as never },
+    ])], revealed: 1, choices: null } });
+
+    expect(Array.from(document.querySelectorAll('.words > *')).map((node) => node.className)).toEqual(['bubble lean-left', 'caption']);
+  });
+
+  it('turns a bubble to the side the author picked, over the side its speaker stands on', () => {
+    const { send, document } = bootFrame();
+    send({ type: 'strip', strip: { panels: [panel('p1', [
+      { id: 'a', kind: 'bubble', text: 'Hi.', speakerX: 0.2, tail: 'right' },
+      { id: 'b', kind: 'bubble', text: 'Hello.', speakerX: 0.8, tail: 'left' },
+      { id: 'c', kind: 'bubble', text: 'Hey.', speakerX: 0.8, tail: 'up' as never },
+      { id: 'd', kind: 'caption', text: 'Rain.', style: 'shout', tail: 'right' },
+    ])], revealed: 1, choices: null } });
+
+    expect(Array.from(document.querySelectorAll('.bubble')).map((node) => node.classList.contains('lean-right'))).toEqual([true, false, true, true]);
+  });
+
+  it('draws a shout\'s spikes and a thought\'s cloud to the bubble\'s size, with the tail under the side it leans to', () => {
+    const sizes: { bubble: [number, number]; font: number } = { bubble: [200, 48], font: 15 };
+    const { send, document } = bootFrame({}, { sizes });
+    send({ type: 'strip', strip: { panels: [panel('p1', [
+      { id: 'left', kind: 'bubble', text: 'Run!', speakerX: 0.2, style: 'shout' },
+      { id: 'right', kind: 'bubble', text: 'Now!', speakerX: 0.8, style: 'shout' },
+      { id: 'thinks', kind: 'bubble', text: 'Hm.', speakerX: 0.2, style: 'thought' },
+    ])], revealed: 1, choices: null } });
+
+    const bubbles = Array.from(document.querySelectorAll('.bubble'));
+    expect(bubbles.map((node) => node.classList.contains('shaped'))).toEqual([true, true, true]);
+    const [left, right, thinks] = bubbles.map((node) => node.querySelector('.outline path')!.getAttribute('d')!);
+    // The tail: a spike 16 px under the bubble, 6 px out from 22 px in.
+    expect(left).toMatch(/^M0 0 L.* L16 64 L.* Z$/);
+    expect(right).toContain(' L184 64 ');
+    expect(thinks).toMatch(/^M0 0( A\S+ \S+ 0 0 1 \S+ \S+)+ Z$/);
+    const puffs = () => Array.from(bubbles[2].querySelectorAll('circle')).map((puff) => ['cx', 'cy', 'r'].map((name) => puff.getAttribute(name)));
+    expect(puffs()).toEqual([['18', '59', '4'], ['10', '68', '2.5']]);
+
+    // Twice the text makes a larger bubble: its outline is drawn again to
+    // fit, and its tail and puffs grow with its words.
+    sizes.bubble = [260, 70];
+    sizes.font = 30;
+    send({ type: 'textScale', scale: 2 });
+    expect(bubbles[0].querySelector('.outline path')!.getAttribute('d')).toContain(' L10 102 ');
+    expect(puffs()).toEqual([['36', '92', '8'], ['20', '110', '5']]);
+  });
+
+  it('keeps a plain outline on a shout or a thought it cannot measure yet', () => {
+    const { send, document } = bootFrame();
+    send({ type: 'strip', strip: { panels: [panel('p1', EVERY_KIND)], revealed: 1, choices: null } });
+
+    expect(document.querySelectorAll('.bubble.shaped')).toHaveLength(0);
+    expect(document.querySelector('.bubble.style-shout .outline path')?.hasAttribute('d')).toBe(false);
+  });
+
+  it('sets two half panels side by side in a row, and a half panel alone across the whole width', () => {
+    const { send, document } = bootFrame();
+    send({ type: 'strip', strip: sizedStrip(['half', 'half', 'half', 'full', null, 'half']) });
+
+    expect(rowsOf(document)).toEqual([
+      ['p1', 'half row-first'],
+      ['p2', 'half row-second'],
+      ['p3', ''],
+      ['p4', ''],
+      ['p5', ''],
+      ['p6', ''],
+    ]);
+  });
+
+  it('opens a half panel at the width it keeps: paired with a panel not open yet, or, while more may come, with the next', () => {
+    const notOpenYet = bootFrame();
+    notOpenYet.send({ type: 'strip', strip: sizedStrip([null, 'half', 'half'], { revealed: 2 }) });
+    expect(rowsOf(notOpenYet.document)).toEqual([['p1', ''], ['p2', 'half row-first']]);
+
+    const reading = bootFrame();
+    reading.send({ type: 'strip', strip: sizedStrip([null, 'half'], { more: true }) });
+    expect(rowsOf(reading.document)).toEqual([['p1', ''], ['p2', 'half row-first']]);
+
+    reading.send({ type: 'strip', strip: sizedStrip([null, 'half']) });
+    expect(rowsOf(reading.document)).toEqual([['p1', ''], ['p2', '']]);
+  });
+
+  it('sets every panel across the whole width on a narrow screen', () => {
+    const { send, document } = bootFrame({}, { width: 400 });
+    send({ type: 'strip', strip: sizedStrip(['half', 'half']) });
+    expect(rowsOf(document)).toEqual([['p1', ''], ['p2', '']]);
+  });
+
+  it('keeps a row of two on one page', () => {
+    const { send, document, messages } = bootFrame();
+    send({ type: 'strip', strip: sizedStrip([null, null, null, null, null, 'half', 'half']) });
+
+    const pages = Array.from(document.querySelectorAll('.panel')).map((node) => [
+      node.getAttribute('data-id'),
+      node.getAttribute('data-page'),
+      node.classList.contains('page-gap'),
+    ]);
+    expect(pages.slice(4)).toEqual([['p5', null, false], ['p6', '2', true], ['p7', null, true]]);
+    expect(messages('layout').at(-1)).toMatchObject({ panels: 7, pages: 2 });
+  });
+
+  it('counts a row\'s height once when it cuts pages', () => {
+    // 300 px panels, under a page of about 1037 px (768 × 1.35): three rows fit, the fourth starts the next.
+    const { send, document } = bootFrame({}, { sizes: { panel: 300 } });
+    send({ type: 'strip', strip: sizedStrip([null, 'half', 'half', null, null]) });
+
+    expect(Array.from(document.querySelectorAll('.panel.page-start')).map((node) => node.getAttribute('data-id'))).toEqual(['p1', 'p5']);
+  });
+
+  it('loses no words at twice the text size', () => {
+    const { send, document } = bootFrame({ textScale: 2 });
+    const halves = [{ ...panel('p1', EVERY_KIND), size: 'half' as const }, { ...panel('p2', EVERY_KIND), size: 'half' as const }];
+    send({ type: 'strip', strip: { panels: halves, revealed: 2, choices: null } });
+
+    for (const node of Array.from(document.querySelectorAll('.panel'))) {
+      const words = Array.from(node.querySelectorAll('.words > *')).map((item) => item.querySelector('.line')?.textContent ?? item.textContent);
+      expect(words).toEqual(EVERY_KIND.map((item) => item.text));
+    }
+    // Nothing in the frame cuts words short: a panel grows to hold them.
+    const styles = document.querySelector('style')!.textContent!;
+    expect(styles).not.toMatch(/line-clamp|text-overflow|max-height/);
+    expect(styles).not.toMatch(/\.(panel|words|bubble|caption)\s*\{[^}]*overflow:\s*hidden/);
   });
 
   it('allows no fetching and no fonts from outside', () => {

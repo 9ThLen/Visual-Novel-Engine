@@ -1,6 +1,7 @@
+import { sentencePrint } from '@/lib/comic/comic-anchors';
 import { comicFrameStrip, comicPlanImageRefs, type ComicFrameAssets } from '@/lib/comic/comic-frame-strip';
 import { buildAuthorComicPlan, type ComicPagePlan } from '@/lib/comic/comic-layout';
-import type { TimelineStep } from '@/lib/engine/types';
+import type { SceneComicSettings, TimelineStep } from '@/lib/engine/types';
 
 function step(id: string, blockType: TimelineStep['blockType'], data: Record<string, unknown>): TimelineStep {
   return { id, blockType, data, collapsed: false, enabled: true } as unknown as TimelineStep;
@@ -62,6 +63,35 @@ describe('a page plan as the frame draws it', () => {
     expect(comicFrameStrip(plan, assets(), { revealed: 1 }).revealed).toBe(1);
     expect(comicFrameStrip(plan, assets(), { revealed: 99 }).revealed).toBe(plan.panels.length);
     expect(comicFrameStrip(plan, assets(), { revealed: -3 }).revealed).toBe(0);
+  });
+
+  it('carries the author\'s panel size, kind of words and tail to the frame', () => {
+    const settings: SceneComicSettings = {
+      panels: [{ anchor: 'line/p0/s0', print: sentencePrint('Hello?'), size: 'half' }],
+      elements: [
+        { anchor: 'words/p0/s0', print: sentencePrint('The hall was quiet.'), style: 'thought' },
+        { anchor: 'line/p0/s0', print: sentencePrint('Hello?'), style: 'shout', tail: 'right' },
+        // Speech is what a bubble is anyway: nothing to tell the frame.
+        { anchor: 'named/p0/s0', print: sentencePrint('Who is there?'), style: 'speech' },
+      ],
+    };
+    const edited = comicFrameStrip(buildAuthorComicPlan(timeline, settings), assets());
+
+    expect(edited.panels.map((panel) => panel.size)).toEqual([undefined, 'half']);
+    expect(edited.panels.flatMap((panel) => panel.words.map(({ text, style, tail }) => ({ text, style, tail })))).toEqual([
+      { text: 'The hall was quiet.', style: 'thought', tail: undefined },
+      { text: 'Hello?', style: 'shout', tail: 'right' },
+      { text: 'Who is there?', style: undefined, tail: undefined },
+    ]);
+  });
+
+  it('tells the frame nothing of sizes, kinds or tails where the author changed nothing', () => {
+    expect(JSON.stringify(comicFrameStrip(plan, assets()))).not.toMatch(/"(size|style|tail|more)"/);
+  });
+
+  it('says more panels may come only when told the strip is being read', () => {
+    expect(comicFrameStrip(plan, assets(), { more: true }).more).toBe(true);
+    expect(comicFrameStrip(plan, assets()).more).toBeUndefined();
   });
 
   it('carries a choice to the end of the strip', () => {

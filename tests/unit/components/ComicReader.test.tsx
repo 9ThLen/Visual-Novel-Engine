@@ -82,6 +82,12 @@ describe('ComicReader', () => {
     expect(reader.lastStrip().panels[0].words.map((words) => words.text)).toEqual(['The door creaks.', 'Nobody comes.']);
   });
 
+  it('tells the frame more panels may come while the strip is read', async () => {
+    const reader = setup();
+    await waitFor(() => expect(reader.shown()).toEqual(['The door creaks.']));
+    expect(reader.lastStrip().more).toBe(true);
+  });
+
   it('offers the choice at the end, and passes the pick on as the novel does', async () => {
     const reader = setup();
     for (const expected of [2, 3]) {
