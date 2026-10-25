@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-10-25 — Comic edits follow their words, and Issues lists the lost ones
+
+PR 3.5 of `docs/plans/COMIC-STAGE-3-PLAN.md`.
+
+- **Saving rebinds.** When the editor saves a scene, every comic edit whose
+  sentence moved is fastened to where its words are in the new timeline
+  (`withSavedComicSettings`). The next opening finds it in place rather
+  than searching for it again. Edits whose words changed, or whose sentence
+  is gone, stay as they are.
+- **Issues** in the Inspector lists those edits, whatever format the
+  Preview shows:
+  - an edit whose sentence is gone: "Fasten to the sentence under the
+    caret" or "Remove";
+  - an edit whose words changed a little: it shows the words it was made
+    on and the words now, with "Mark as checked" (it takes the words as
+    they are now) or "Remove".
+  These go through the Panel section's Undo.
+- **Reset.** The page's comic switch menu offers "Reset all comic edits"
+  for a scene that has any. It asks once more before it acts. How the
+  scene is read stays.
+- **The scene list** shows how many comic edits a scene has ("✎ 2") beside
+  its Comic badge, whatever the scene is set to.
+
+
 ## 2026-10-25 — ✂ and × in the comic Preview
 
 PR 3.4 of `docs/plans/COMIC-STAGE-3-PLAN.md`: the author splits and joins

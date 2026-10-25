@@ -7,6 +7,7 @@ import { withAlpha } from '@/lib/_core/theme';
 import { useI18n } from '@/hooks/use-i18n';
 import { resolveAssetUri } from '@/lib/asset-resolver';
 import { sceneComicCapabilities, scenePresentationOf } from '@/lib/comic/comic-presentation';
+import { countComicEdits } from '@/lib/comic/comic-settings';
 import type { BackgroundBlockData, SceneRecord } from '@/lib/engine/types';
 import type { ColorScheme } from '@/constants/theme';
 
@@ -143,22 +144,40 @@ export function DocumentSceneSidebar({
 /**
  * Marks a scene set to always be read as a comic. A scene that holds what a
  * comic page cannot show yet is read as the novel all the same: its mark warns.
+ * Beside it, how many comic edits the scene has, whatever it is set to.
  */
 function ComicBadge({ scene, colorScheme }: { scene: SceneRecord; colorScheme?: ColorScheme }) {
   const colors = useColors(colorScheme);
   const { t } = useI18n();
-  if (scenePresentationOf(scene.comic) !== 'comic') return null;
-  const overruled = sceneComicCapabilities(scene.timeline).novelOnly !== null;
+  const comic = scenePresentationOf(scene.comic) === 'comic';
+  const edits = countComicEdits(scene.comic);
+  if (!comic && !edits) return null;
+  const overruled = comic && sceneComicCapabilities(scene.timeline).novelOnly !== null;
   const tint = overruled ? colors.warning : colors.primary;
   return (
-    <View
-      accessibilityLabel={t(overruled ? 'document.comic.badgeOverruled' : 'document.comic.badgeLabel')}
-      testID={`scene-comic-badge-${scene.id}`}
-      style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8, backgroundColor: withAlpha(tint, 0.14) }}
-    >
-      <Text style={{ color: tint, fontSize: 10, fontWeight: '800', letterSpacing: 0.3 }}>
-        {overruled ? '⚠ ' : ''}{t('document.comic.badge')}
-      </Text>
+    <View style={{ flexDirection: 'row', gap: 4 }}>
+      {comic ? (
+        <View
+          accessibilityLabel={t(overruled ? 'document.comic.badgeOverruled' : 'document.comic.badgeLabel')}
+          testID={`scene-comic-badge-${scene.id}`}
+          style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8, backgroundColor: withAlpha(tint, 0.14) }}
+        >
+          <Text style={{ color: tint, fontSize: 10, fontWeight: '800', letterSpacing: 0.3 }}>
+            {overruled ? '⚠ ' : ''}{t('document.comic.badge')}
+          </Text>
+        </View>
+      ) : null}
+      {edits ? (
+        <View
+          accessibilityLabel={t('document.comic.editsBadgeLabel', { count: edits })}
+          testID={`scene-comic-edits-${scene.id}`}
+          style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8, backgroundColor: withAlpha(colors.muted, 0.14) }}
+        >
+          <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 0.3 }}>
+            {t('document.comic.editsBadge', { count: edits })}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }

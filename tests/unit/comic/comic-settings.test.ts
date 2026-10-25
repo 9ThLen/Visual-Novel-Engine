@@ -1,12 +1,15 @@
 import { addressSentences, sentencePrint } from '@/lib/comic/comic-anchors';
 import { buildAuthorComicPlan } from '@/lib/comic/comic-layout';
-import { sanitizeSceneComicSettings, withSceneComicSettings } from '@/lib/comic/comic-presentation';
+import { sanitizeSceneComicSettings, withSavedComicSettings, withSceneComicSettings } from '@/lib/comic/comic-presentation';
 import {
   comicEditsOf,
+  countComicEdits,
   hasComicEdits,
   rebindComicSettings,
   resolveComicSettings,
+  withComicEditFastened,
   withComicEdits,
+  withoutComicEdit,
   withElementEdit,
   withoutPanelEdits,
   withPanelEdit,
@@ -229,5 +232,46 @@ describe('an edit made in the Inspector', () => {
     const before: SceneComicSettings = { presentation: 'comic', panels: [{ anchor: first.anchor, print: first.print, size: 'half' }] };
     const after: SceneComicSettings = { presentation: 'novel', elements: [{ anchor: second.anchor, print: second.print, style: 'shout' }] };
     expect(withComicEdits(after, comicEditsOf(before))).toEqual({ presentation: 'novel', panels: before.panels });
+  });
+});
+
+describe('edits kept through saves and Issues', () => {
+  it('are fastened where their words are when the scene is saved, and left alone when nothing moved', () => {
+    const saved = save(emptyScene(), [{ id: 'doc_a', kind: 'text', content: 'The door creaked. Nobody came.' }]);
+    const nobody = addressSentences(saved.timeline).find((sentence) => sentence.text === 'Nobody came.')!;
+    const comic: SceneComicSettings = { presentation: 'comic', panels: [{ anchor: nobody.anchor, print: nobody.print, shot: 'close' }] };
+
+    // A sentence written before it moves it one place on.
+    const edited = save(saved, [{ id: 'doc_a', kind: 'text', content: 'The door creaked. Wind. Nobody came.' }]);
+    const moved = addressSentences(edited.timeline).find((sentence) => sentence.text === 'Nobody came.')!;
+    expect(moved.anchor).not.toBe(nobody.anchor);
+    const stored = withSavedComicSettings(edited, comic);
+    expect(stored.comic).toEqual({ presentation: 'comic', panels: [{ anchor: moved.anchor, print: nobody.print, shot: 'close' }] });
+
+    expect(withSavedComicSettings(stored, stored.comic)).toBe(stored);
+  });
+
+  it('are removed one at a time by kind and sentence', () => {
+    const settings: SceneComicSettings = {
+      presentation: 'comic',
+      breaks: [at('b/p0/s1', 'Two.')],
+      elements: [{ ...at('b/p0/s1', 'Two.'), style: 'shout' }],
+    };
+    expect(withoutComicEdit(settings, 'breaks', 'b/p0/s1')).toEqual({ presentation: 'comic', elements: settings.elements });
+    expect(withoutComicEdit(settings, 'merges', 'b/p0/s1')).toBe(settings);
+  });
+
+  it('are fastened to another sentence with its words, an edit of the same kind there giving way', () => {
+    const settings: SceneComicSettings = {
+      panels: [{ ...at('b/p0/s0', 'One.'), shot: 'close' }, { ...at('b/p0/s2', 'Three.'), size: 'half' }],
+    };
+    expect(withComicEditFastened(settings, 'panels', 'b/p0/s0', { anchor: 'b/p0/s2', text: 'Three!' }))
+      .toEqual({ panels: [{ anchor: 'b/p0/s2', print: sentencePrint('Three!'), shot: 'close' }] });
+    expect(withComicEditFastened(settings, 'breaks', 'b/p0/s0', { anchor: 'b/p0/s2', text: 'Three.' })).toBe(settings);
+  });
+
+  it('are counted for the scene list and the reset', () => {
+    expect(countComicEdits(undefined)).toBe(0);
+    expect(countComicEdits({ presentation: 'comic', breaks: [at('b/p0/s1', 'Two.')], panels: [{ ...at('b/p0/s0', 'One.'), shot: 'close' }] })).toBe(2);
   });
 });

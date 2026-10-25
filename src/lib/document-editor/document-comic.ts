@@ -82,7 +82,10 @@ export function selectionComicAnchor(
   const sentences = addressSentences(steps);
   if (!sentences.length) return null;
 
-  const at = selectionStartIn(text, asFrameReads(selection.before), asFrameReads(quote), asFrameReads(selection.after)) ?? 0;
+  // Where the frame's words cannot be found in the scene's (a report from
+  // before an edit reached the document), no sentence is better than a guess.
+  const at = selectionStartIn(text, asFrameReads(selection.before), asFrameReads(quote), asFrameReads(selection.after));
+  if (at === null) return null;
   let found = sentences[0];
   let from = 0;
   for (const sentence of sentences) {
