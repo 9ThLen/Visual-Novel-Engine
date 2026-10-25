@@ -12,7 +12,7 @@
  * wrong: a key that does not match the asset map, or a missing entry silently
  * dropping a picture.
  */
-import { getPackagedMediaMap } from '@/lib/asset-resolver';
+import { getPackagedDisplayCopyUri, getPackagedMediaMap } from '@/lib/asset-resolver';
 import { __resetPlayerModeForTests, loadPlayerConfig } from '@/lib/player-mode';
 import {
   activatePackagedRelease,
@@ -78,6 +78,42 @@ describe('a release packaged inside a native build', () => {
     );
     expect(config).not.toBeNull();
     expect(getPackagedMediaMap()).toEqual({ 'idb-media://cover': 'file:///android_asset/11.bin' });
+  });
+
+  /**
+   * The boot seeds the story with the config's asset map. A web bundle's map
+   * holds paths beside index.html; an APK has no such files, so the config
+   * handed back must name what was resolved — or seeding puts `media/…` back
+   * and no packaged picture loads.
+   */
+  it('hands the boot an asset map of what it resolved, not the web paths', async () => {
+    const config = await activatePackagedRelease(packaged(), fakeResolver);
+    expect(config?.assets).toEqual({
+      'idb-media://cover': 'file:///android_asset/11.bin',
+      'assets/bg.png': 'file:///android_asset/22.bin',
+    });
+  });
+
+  /**
+   * The comic frame decodes what it is given at full size, so staging packs
+   * a display-size copy of each picture (comic-picture-size.ts). The copies
+   * are found by the same references as the originals.
+   */
+  it('finds the display copies by the references of their originals', async () => {
+    await activatePackagedRelease(
+      packaged({ displayCopies: { 'media/abc.png': 33 } }),
+      fakeResolver,
+    );
+    expect(getPackagedDisplayCopyUri('idb-media://cover')).toBe('file:///android_asset/33.bin');
+    expect(getPackagedDisplayCopyUri('assets/bg.png')).toBeNull();
+    // The novel keeps the originals.
+    expect(getPackagedMediaMap()?.['idb-media://cover']).toBe('file:///android_asset/11.bin');
+  });
+
+  it('carries no copies when it was staged before there were any', async () => {
+    await activatePackagedRelease(packaged({ displayCopies: { 'media/abc.png': 33 } }), fakeResolver);
+    await activatePackagedRelease(packaged(), fakeResolver);
+    expect(getPackagedDisplayCopyUri('idb-media://cover')).toBeNull();
   });
 
   it('carries nothing when the build was never staged', async () => {

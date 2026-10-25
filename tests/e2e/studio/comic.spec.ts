@@ -58,6 +58,16 @@ test('an author sets a scene to always be a comic, and the reader reads it as on
   const comic = page.frameLocator('iframe[title="Comic"]');
   await expect(comic.locator('#strip')).toContainText('You wake up in a vast, dimly lit library.', { timeout: 60_000 });
 
+  // The frame decodes what it is given whole, so the host gives it a copy the
+  // size a panel draws (src/lib/comic/comic-picture-size.ts): the library is
+  // 2508 wide, its copy 1600.
+  const background = comic.locator('img.bg[src]').first();
+  await expect.poll(
+    () => background.evaluate((img: HTMLImageElement) => (img.complete ? img.naturalWidth : 0)),
+    { timeout: 30_000 },
+  ).toBe(1600);
+  await expect(background).toHaveAttribute('src', /^blob:/);
+
   const option = comic.locator('button.choice', { hasText: 'Explore the shelves to your left' });
   for (let attempt = 0; attempt < 30 && !(await option.isVisible()); attempt += 1) {
     await comic.locator('#strip').click({ position: { x: 20, y: 20 } });

@@ -497,6 +497,47 @@ describe('the author\'s edits of the panels', () => {
     expect(texts(plan)).toEqual(automatic);
   });
 
+  describe('inside a line of dialogue', () => {
+    const talk = [
+      background('bg', 'hall'),
+      show('on-ann', 'ann', 'left'),
+      line('l1', 'ann', 'First sentence. Second sentence. Third sentence.'),
+      line('l2', 'ann', 'Done.'),
+    ];
+
+    it('splits the line where a ✂ is: the rest goes on in a bubble of its own, in the next panel', () => {
+      expect(texts(buildAuthorComicPlan(talk))).toEqual([['First sentence. Second sentence. Third sentence.', 'Done.']]);
+
+      const plan = buildAuthorComicPlan(talk, { breaks: [at('l1/p0/s1', 'Second sentence.')] });
+      expect(texts(plan)).toEqual([['First sentence.'], ['Second sentence. Third sentence.', 'Done.']]);
+      const [first, rest] = plan.panels.flatMap((panel) => panel.elements);
+      expect([first, rest].map((element) => [element.kind, element.anchor, element.id, element.kind === 'bubble' && element.characterId]))
+        .toEqual([['bubble', 'l1/p0/s0', 'l1/p0/s0', 'ann'], ['bubble', 'l1/p0/s1', 'l1/p0/s1', 'ann']]);
+    });
+
+    it('splits it at every ✂, and keeps each piece\'s kind of bubble apart', () => {
+      const plan = buildAuthorComicPlan(talk, {
+        breaks: [at('l1/p0/s1', 'Second sentence.'), at('l1/p0/s2', 'Third sentence.')],
+        elements: [{ ...at('l1/p0/s2', 'Third sentence.'), style: 'shout' }],
+      });
+
+      expect(texts(plan)).toEqual([['First sentence.'], ['Second sentence.'], ['Third sentence.', 'Done.']]);
+      expect(plan.panels.flatMap((panel) => panel.elements).map((element) => element.kind === 'bubble' && element.style))
+        .toEqual(['speech', 'speech', 'shout', 'speech']);
+    });
+
+    it('does nothing with a × after the line\'s first sentence: it is in the line\'s panel already', () => {
+      expect(texts(buildAuthorComicPlan(talk, { merges: [at('l1/p0/s1', 'Second sentence.')] })))
+        .toEqual(texts(buildAuthorComicPlan(talk)));
+    });
+
+    it('splits what was read the same way', () => {
+      const settings = { breaks: [at('l1/p0/s1', 'Second sentence.')] };
+      expect(withoutRuns(buildExecutedComicPlan(talk, readThrough(talk), settings)))
+        .toEqual(withoutRuns(buildAuthorComicPlan(talk, settings)));
+    });
+  });
+
   it('draws what was read with the same edits', () => {
     const settings = { breaks: [at('l2/p0/s0', 'Only me.')], panels: [{ ...at('n1/p0/s0', 'The wind rose.'), size: 'full' as const }] };
     const read = buildExecutedComicPlan(scene, readThrough(scene), settings);

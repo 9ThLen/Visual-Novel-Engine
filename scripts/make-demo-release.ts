@@ -24,6 +24,10 @@
  * the way the editor's switch writes it: a story JSON from before the comic
  * cannot say so itself.
  *
+ * A story JSON may carry a `characters` library, as the editor keeps one; it
+ * becomes the release's, and its sprites are packaged like the scenes' art.
+ * The demo stories carry none, so their comics draw no sprites.
+ *
  * Usage:
  *   pnpm demo:release --story assets/demo-story-advanced.json --out demo.vnerelease
  *                     [--media assets/background/bg-museum-entrance.png]
@@ -53,6 +57,7 @@ import type {
   PreparedStoryBackupAsset,
   StoryArchiveBinarySink,
 } from '@/lib/story-backup/types';
+import type { Character } from '@/lib/character-types';
 import type { SceneRecord } from '@/lib/engine/types';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -176,10 +181,13 @@ async function main(): Promise<void> {
     }
   }
 
-  // Everything the scenes name out of the app's own `assets/` tree. Capture
-  // packages these at runtime; the fixture has the same files on disk.
+  const characters: Character[] = Array.isArray(raw.characters) ? raw.characters : [];
+
+  // Everything the scenes and the characters name out of the app's own
+  // `assets/` tree. Capture packages these at runtime; the fixture has the
+  // same files on disk.
   const bundledReferences = new Set<string>();
-  for (const match of JSON.stringify(scenes).matchAll(/"(assets\/[^"]+)"/g)) {
+  for (const match of JSON.stringify({ scenes, characters }).matchAll(/"(assets\/[^"]+)"/g)) {
     bundledReferences.add(match[1]);
   }
   for (const reference of bundledReferences) {
@@ -218,7 +226,7 @@ async function main(): Promise<void> {
     });
   }
 
-  const payload: ReleasePayloadV1 = { scenes, characters: [], audioLibrary: [] };
+  const payload: ReleasePayloadV1 = { scenes, characters, audioLibrary: [] };
   const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
   const payloadDigest = await sha256Chunks(sourceFromBytes(payloadBytes).open());
 
@@ -275,7 +283,7 @@ async function main(): Promise<void> {
     },
     counts: {
       scenes: sceneList.length,
-      characters: 0,
+      characters: characters.length,
       audioItems: 0,
       embeddedAssets: assets.length,
       totalAssetBytes: assets.reduce((total, asset) => total + asset.metadata.size, 0),

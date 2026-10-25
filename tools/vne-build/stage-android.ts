@@ -27,6 +27,13 @@ import path from 'node:path';
 import { chooseIconSource, type IconCandidate, type IconChoice } from '../lib/icon-source';
 import { beginOutPath } from '../lib/out-path';
 import { pngFileProblem } from '../lib/png-integrity';
+import {
+  comicPictureFiles,
+  DISPLAY_COPY_EXTENSION,
+  isCopyablePicture,
+  makeDisplayCopyWithSharp,
+  type DisplayCopyMaker,
+} from './display-copies';
 
 import { RELEASE_MEDIA_DIR, releaseObjectFileName } from '@/lib/release/asset-map';
 import {
@@ -104,6 +111,9 @@ export const STAGED_ROOT_DIRS = [
 
 /** Where the release's media lands, relative to the staged project root. */
 export const STAGED_MEDIA_DIR = `assets/${RELEASE_MEDIA_DIR}`;
+/** Display-size copies of the pictures a comic shows (display-copies.ts), under `assets/`. */
+export const DISPLAY_MEDIA_DIR = 'display-media';
+export const STAGED_DISPLAY_MEDIA_DIR = `assets/${DISPLAY_MEDIA_DIR}`;
 /** The boot config, as a file Metro will inline through a static require. */
 export const STAGED_RELEASE_JSON = 'assets/player-release.json';
 /** The module the runtime imports. Committed as a stub; overwritten here. */
@@ -183,6 +193,8 @@ export interface StageAndroidInput {
   iconOverride?: string;
   /** Injectable so a staged project can be byte-identical across runs. */
   generatedAt?: string;
+  /** Makes the comic's display copies. Tests substitute it; sharp otherwise. */
+  makeDisplayCopy?: DisplayCopyMaker;
 }
 
 export interface StagedAndroidProject {
@@ -192,6 +204,9 @@ export interface StagedAndroidProject {
   icon: IconChoice;
   mediaFiles: string[];
   mediaBytes: number;
+  /** Display-size copies made for the comic frame, and what they weigh. */
+  displayCopies: number;
+  displayCopyBytes: number;
   /** Env every build profile in the staged `eas.json` carries. */
   env: Record<string, string>;
   /** Art no longer named by anything the player bundles. See {@link pruneUnreferencedAssets}. */
@@ -318,10 +333,18 @@ function pruneBlockedTrees(outDir: string): string[] {
  * see. The paths are relative rather than aliased: a generated file should not
  * depend on `tsconfig` path mapping surviving into whatever bundles it.
  */
-export function generatedReleaseModule(mediaFiles: string[], generatedAt: string): string {
+export function generatedReleaseModule(
+  mediaFiles: string[],
+  generatedAt: string,
+  displayCopies: Record<string, string> = {},
+): string {
   const toAssets = path.posix.relative(path.posix.dirname(GENERATED_MODULE), 'assets');
   const entries = mediaFiles
     .map((file) => `  '${RELEASE_MEDIA_DIR}/${file}': require('${toAssets}/${RELEASE_MEDIA_DIR}/${file}'),`)
+    .join('\n');
+  const copies = Object.entries(displayCopies)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([media, copy]) => `    '${media}': require('${toAssets}/${DISPLAY_MEDIA_DIR}/${copy}'),`)
     .join('\n');
 
   return `/**
@@ -337,6 +360,9 @@ export const PACKAGED_RELEASE: PackagedRelease | null = {
   config: require('${toAssets}/player-release.json'),
   media: {
 ${entries}
+  },
+  displayCopies: {
+${copies}
   },
 };
 `;
@@ -547,6 +573,13 @@ export async function stageAndroidProject(
     // player profile, so refuse before replacing the destination.
     assertEveryReferencePackaged(payload, manifest);
 
+    const displayCopies = await stageDisplayCopies(
+      stageDir,
+      payload,
+      manifest,
+      input.makeDisplayCopy ?? makeDisplayCopyWithSharp,
+    );
+
     const stamp = generatedAt ?? manifest.release.releasedAt;
     const bootConfig = buildPlayerBootConfig({ manifest, payload, generatedAt: stamp });
     fs.writeFileSync(
@@ -557,7 +590,7 @@ export async function stageAndroidProject(
     const mediaFiles = fs.readdirSync(mediaDir).sort();
     const generatedFile = path.join(stageDir, ...GENERATED_MODULE.split('/'));
     fs.mkdirSync(path.dirname(generatedFile), { recursive: true });
-    fs.writeFileSync(generatedFile, generatedReleaseModule(mediaFiles, stamp));
+    fs.writeFileSync(generatedFile, generatedReleaseModule(mediaFiles, stamp, displayCopies));
 
     const icon = stageIcons(stageDir, repoRoot, bootConfig, input.iconOverride);
     const env = buildEnv(identity, easProjectId);
@@ -589,6 +622,10 @@ export async function stageAndroidProject(
       (total, file) => total + fs.statSync(path.join(mediaDir, file)).size,
       0,
     );
+    const displayCopyBytes = Object.values(displayCopies).reduce(
+      (total, file) => total + fs.statSync(path.join(stageDir, ...STAGED_DISPLAY_MEDIA_DIR.split('/'), file)).size,
+      0,
+    );
     const finalIcon = icon.file.startsWith(`${stageDir}${path.sep}`)
       ? { ...icon, file: path.join(outDir, path.relative(stageDir, icon.file)) }
       : icon;
@@ -608,6 +645,8 @@ export async function stageAndroidProject(
       icon: finalIcon,
       mediaFiles,
       mediaBytes,
+      displayCopies: Object.keys(displayCopies).length,
+      displayCopyBytes,
       env,
       prunedAssets: pruned.files,
       prunedBytes: pruned.bytes,
@@ -617,6 +656,44 @@ export async function stageAndroidProject(
     transaction.abort();
     throw error;
   }
+}
+
+/**
+ * A display-size copy of every picture a comic can show, beside the originals
+ * (display-copies.ts), and which media file each stands for: `media/<file>` →
+ * the copy's file name under {@link STAGED_DISPLAY_MEDIA_DIR}.
+ *
+ * Named after the original's hash, like the media, so staging the same release
+ * twice writes the same files.
+ */
+async function stageDisplayCopies(
+  stageDir: string,
+  payload: ReleasePayloadV1,
+  manifest: ReleaseManifestV1,
+  make: DisplayCopyMaker,
+): Promise<Record<string, string>> {
+  const copiesDir = path.join(stageDir, ...STAGED_DISPLAY_MEDIA_DIR.split('/'));
+  fs.rmSync(copiesDir, { recursive: true, force: true });
+  const copies: Record<string, string> = {};
+  for (const [media, roles] of comicPictureFiles(payload, manifest)) {
+    if (!isCopyablePicture(media)) continue;
+    const source = path.join(stageDir, 'assets', ...media.split('/'));
+    let bytes: Uint8Array | null;
+    try {
+      bytes = await make(source, roles);
+    } catch (error) {
+      throw new Error(
+        `Could not make a display-size copy of assets/${media} for the comic: ${(error as Error).message}. `
+        + 'Save the picture again from an image editor and make a new release.',
+      );
+    }
+    if (!bytes) continue;
+    const copy = `${path.posix.basename(media).replace(/\.[^.]+$/, '')}${DISPLAY_COPY_EXTENSION}`;
+    fs.mkdirSync(copiesDir, { recursive: true });
+    fs.writeFileSync(path.join(copiesDir, copy), bytes);
+    copies[media] = copy;
+  }
+  return copies;
 }
 
 /**
@@ -850,7 +927,7 @@ export function verifyStagedAndroidProject(outDir: string): string[] {
       const target = path.resolve(moduleDir, match[1]);
       if (!fs.existsSync(target)) problems.push(`The generated module requires ${match[1]}, which is missing.`);
       else if (
-        match[1].includes(`/${RELEASE_MEDIA_DIR}/`)
+        (match[1].includes(`/${RELEASE_MEDIA_DIR}/`) || match[1].includes(`/${DISPLAY_MEDIA_DIR}/`))
         && !BUNDLEABLE_MEDIA_EXTENSIONS.has(path.extname(target).toLowerCase())
       ) {
         // Metro only bundles extensions it treats as assets; anything else
