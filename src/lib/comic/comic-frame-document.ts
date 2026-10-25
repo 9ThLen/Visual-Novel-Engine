@@ -62,17 +62,28 @@ body {
   user-select: none;
   cursor: pointer;
 }
-#strip { max-width: 760px; margin: 0 auto; padding: 12px 0 0; }
+#strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  align-content: flex-start;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 12px 0 0;
+}
 .panel {
   position: relative;
+  width: calc(100% - 30px);
   aspect-ratio: 16 / 10;
   margin: 10px 12px 0;
   border: 3px solid #0d0d0f;
   background: #2a2a30;
   contain: layout paint style;
 }
-.panel.page-start { margin-top: 34px; }
-.panel.page-start:first-child { margin-top: 10px; }
+.panel.half { width: calc(50% - 23.5px); }
+.panel.row-first { margin-right: 5px; }
+.panel.row-second { margin-left: 5px; }
+.panel.page-gap { margin-top: 34px; }
 .art { position: absolute; inset: 0; overflow: hidden; }
 .stage { position: absolute; inset: 0; }
 .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -97,8 +108,17 @@ body {
   font: italic calc(15px * var(--text-scale)) / 1.35 var(--caption-font);
   overflow-wrap: break-word;
 }
+.caption .speaker {
+  display: block;
+  font: 700 0.7em / 1.3 var(--words-font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+.caption .line { display: block; }
 .bubble {
   position: relative;
+  z-index: 0;
   max-width: 70%;
   padding: 0.45em 0.8em;
   background: #fff;
@@ -130,6 +150,28 @@ body {
   opacity: 0.6;
 }
 .bubble .line { display: block; }
+.bubble .outline {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  z-index: -1;
+  pointer-events: none;
+}
+.outline path, .outline circle { fill: #fff; stroke: #0d0d0f; stroke-width: 2; stroke-linejoin: round; }
+.bubble.shaped { background: transparent; border-color: transparent; }
+.bubble.shaped .outline { display: block; }
+.bubble.shaped::after { display: none; }
+/* Room for the spikes, and under a shout for its tail and under a thought for its puffs, at any text size. */
+.bubble.style-shout { margin: 0.4em 0 0.6em; padding: 0.6em 1em; font-weight: 800; }
+.bubble.style-shout .outline path { stroke-linejoin: miter; stroke-miterlimit: 12; }
+.bubble.style-whisper { border-style: dashed; color: #5b5b63; }
+.bubble.style-whisper::after { border-right-style: dashed; border-bottom-style: dashed; }
+.bubble.style-thought { margin-bottom: 1em; padding: 0.55em 1em; border-radius: 2em; }
+.bubble.style-thought::after { display: none; }
 #choices { max-width: 760px; margin: 0 auto; padding: 18px 12px 0; display: flex; flex-direction: column; gap: 10px; }
 #choices:empty { display: none; }
 .choice {

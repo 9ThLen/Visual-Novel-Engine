@@ -14,6 +14,7 @@
  * PlateWebViewEditor.web.tsx does); a WebView's onMessage has neither, so there
  * the token is what tells the frame's messages from anything else.
  */
+import type { ComicWordsStyle } from '@/lib/engine/types';
 import { jsonForScript } from '@/lib/json-for-script';
 
 export const COMIC_FRAME_SOURCE = 'vne-comic-frame';
@@ -37,6 +38,14 @@ export interface ComicFrameWords {
   speaker?: string;
   /** Where the speaker stands, 0–1 across the stage: the side a bubble leans to. */
   speakerX?: number;
+  /**
+   * How the words are drawn, when the author picked another way than their
+   * kind's: a caption is a caption box and a bubble is speech when left out.
+   * A bubble drawn as a caption box keeps its speaker's name in it.
+   */
+  style?: ComicWordsStyle;
+  /** The side the author turned the bubble to, over its speaker's: where it leans and its tail points. */
+  tail?: 'left' | 'right';
 }
 
 export interface ComicFramePanel {
@@ -44,6 +53,12 @@ export interface ComicFramePanel {
   /** Null until the background is resolved, or when the stage has none. */
   background: string | null;
   sprites: ComicFrameSprite[];
+  /**
+   * How wide the author made the panel. Two half panels one after the other
+   * share a row; a half panel alone, and any on a narrow screen, takes the
+   * whole width, as a panel left out does.
+   */
+  size?: 'full' | 'half';
   /** 1 is the whole stage; 2 is twice as close. */
   zoom: number;
   /** The point of the stage the shot is about, in fractions of the stage. */
@@ -79,6 +94,12 @@ export interface ComicFrameStrip {
   revealed: number;
   /** A choice waiting at the end of the strip, or made there. */
   choices: ComicFrameChoices | null;
+  /**
+   * Panels may still come after the last one, as they do while the strip is
+   * read: a half panel at the end keeps the place beside it for the next,
+   * rather than taking the whole width and giving it up when the next comes.
+   */
+  more?: boolean;
 }
 
 export type ComicHostMessage =

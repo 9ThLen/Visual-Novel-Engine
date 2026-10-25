@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-10-25 — The comic draws half panels and every kind of bubble
+
+PR 3.2 of `docs/plans/COMIC-STAGE-3-PLAN.md`: the comic frame draws what the
+author's edits (3.1) ask for. Nothing in the editor sets them yet (3.3, 3.4).
+
+- **Sizes.** Two half panels one after the other share a row; a half panel
+  alone, and every panel on a screen under 480 px wide, takes the whole width.
+  Rows are paired over the whole strip, so a half panel opens at the width it
+  keeps. While the strip is read, the last half panel keeps the place beside
+  it for the next (`ComicFrameStrip.more`). A row is never split across pages,
+  and its height counts once.
+- **Kinds of words.** Speech as before; a shout with spikes and bold words; a
+  whisper dashed, in lighter words; a thought as a cloud with puffs instead of
+  a tail; a caption box, which keeps the speaker's name for a line. The
+  author's tail side wins over the side the speaker stands on. Shout and
+  thought outlines are SVG drawn to the bubble's measured size; their tail and
+  puffs grow with the text.
+- The frame's policy is unchanged: no fonts, no network, words only as text.
+- Only what the author changed crosses into the frame, so a scene without
+  edits sends the same strip as before.
+
 ## 2026-10-25 — A scene's comic panels can carry the author's edits
 
 PR 3.1 of `docs/plans/COMIC-STAGE-3-PLAN.md`: the data and the logic. Nothing
