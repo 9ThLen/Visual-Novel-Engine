@@ -40,7 +40,7 @@ function isFramePage(url: string): boolean {
   return url === 'about:blank' || url.startsWith(BASE_URL);
 }
 
-export function ComicFrame({ strip, textScale, onTap, onChoose, onLayout, style }: ComicFrameProps) {
+export function ComicFrame({ strip, textScale, onTap, onChoose, onMark, onLayout, style }: ComicFrameProps) {
   const [token] = useState(createComicSessionToken);
   // Bumped when the renderer process dies: a new WebView, a new document.
   const [generation, setGeneration] = useState(0);
@@ -50,8 +50,8 @@ export function ComicFrame({ strip, textScale, onTap, onChoose, onLayout, style 
   stripRef.current = strip;
   const textScaleRef = useRef(textScale);
   textScaleRef.current = textScale;
-  const handlersRef = useRef({ onTap, onChoose, onLayout });
-  handlersRef.current = { onTap, onChoose, onLayout };
+  const handlersRef = useRef({ onTap, onChoose, onMark, onLayout });
+  handlersRef.current = { onTap, onChoose, onMark, onLayout };
 
   // A document per generation, built with the scale of its moment; a later
   // scale travels as a message.
@@ -73,6 +73,8 @@ export function ComicFrame({ strip, textScale, onTap, onChoose, onLayout, style 
       readyRef.current = true;
       if (textScaleRef.current !== builtScaleRef.current) send({ type: 'textScale', scale: textScaleRef.current });
       if (stripRef.current) send({ type: 'strip', strip: stripRef.current });
+    } else if (message.type === 'mark') {
+      handlersRef.current.onMark?.(message.anchor, message.begins);
     } else if (message.type === 'tap') {
       handlersRef.current.onTap(message.panelId);
     } else if (message.type === 'choose') {

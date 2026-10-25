@@ -45,7 +45,7 @@ export function comicTargetOrigin(origin: string): string {
   return /^https?:\/\//i.test(origin) ? origin : '*';
 }
 
-export function ComicFrame({ strip, textScale, onTap, onChoose, onLayout, style }: ComicFrameProps) {
+export function ComicFrame({ strip, textScale, onTap, onChoose, onMark, onLayout, style }: ComicFrameProps) {
   const [token] = useState(createComicSessionToken);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const readyRef = useRef(false);
@@ -53,8 +53,8 @@ export function ComicFrame({ strip, textScale, onTap, onChoose, onLayout, style 
   stripRef.current = strip;
   const textScaleRef = useRef(textScale);
   textScaleRef.current = textScale;
-  const handlersRef = useRef({ onTap, onChoose, onLayout });
-  handlersRef.current = { onTap, onChoose, onLayout };
+  const handlersRef = useRef({ onTap, onChoose, onMark, onLayout });
+  handlersRef.current = { onTap, onChoose, onMark, onLayout };
   // The scale a frame is built with; later changes travel as messages, so a
   // new text size does not throw the strip away.
   const initialTextScaleRef = useRef(textScale);
@@ -78,6 +78,8 @@ export function ComicFrame({ strip, textScale, onTap, onChoose, onLayout, style 
         readyRef.current = true;
         if (textScaleRef.current !== initialTextScaleRef.current) send({ type: 'textScale', scale: textScaleRef.current });
         if (stripRef.current) send({ type: 'strip', strip: stripRef.current });
+      } else if (message.type === 'mark') {
+        handlersRef.current.onMark?.(message.anchor, message.begins);
       } else if (message.type === 'tap') {
         handlersRef.current.onTap(message.panelId);
       } else if (message.type === 'choose') {

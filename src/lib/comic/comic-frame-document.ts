@@ -80,6 +80,22 @@ body {
   background: #2a2a30;
   contain: layout paint style;
 }
+/* The author's marks: a × sits on the edge above its panel, so the panel may not clip it. */
+.marking .panel { contain: layout style; }
+.mark {
+  padding: 0;
+  border: 1.5px solid #0d0d0f;
+  border-radius: 50%;
+  background: #ffe58a;
+  color: #121212;
+  font: normal 700 1em / 1 var(--words-font);
+  text-align: center;
+  cursor: pointer;
+}
+.mark:hover { background: #ffd23f; }
+.mark:focus-visible { outline: 2px solid #3d8bfd; outline-offset: 1px; }
+.mark-break { display: inline-block; width: 1.5em; height: 1.5em; margin-right: 0.3em; font-size: 0.8em; vertical-align: 0.1em; }
+.mark-merge { position: absolute; z-index: 3; top: -12px; left: 50%; width: 24px; height: 24px; margin-left: -12px; font-size: 16px; }
 .panel.half { width: calc(50% - 23.5px); }
 .panel.row-first { margin-right: 5px; }
 .panel.row-second { margin-left: 5px; }

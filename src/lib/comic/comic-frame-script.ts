@@ -23,6 +23,9 @@
  *  - Pages are cut once panels are laid out, from their measured heights: a
  *    page ends after six panels or before one that would take it past about a
  *    screen and a third. A row is cut as one: both its panels on one page.
+ *  - In the editor's Preview the strip carries the author's marks: a ✂
+ *    before every sentence a panel does not begin with, and a × over every
+ *    panel but the first. A press says which sentence; the host decides.
  *  - Words are drawn as the author picked — speech, a shout, a whisper, a
  *    thought or a caption box — or as their kind's own. A shout's spikes and
  *    a thought's cloud are SVG drawn to the bubble's measured size, so they
@@ -85,6 +88,8 @@ export const COMIC_FRAME_SCRIPT = String.raw`
   var more = false;
   /* A shown panel's place in a row of two: 'first' or 'second'. */
   var rowOf = Object.create(null);
+  /* The author's marks of the strip drawn now ({ breakLabel, mergeLabel }), or null: the reader's strip. */
+  var marks = null;
   var drawnOnce = false;
   var observer = null;
 
@@ -133,22 +138,59 @@ export const COMIC_FRAME_SCRIPT = String.raw`
     return speaker;
   }
 
-  function lineOf(item) {
+  /* A ✂ or a × of the author's, for the sentence at anchor. */
+  function markButton(kind, anchor) {
+    var button = element('button', 'mark mark-' + kind);
+    var label = String((kind === 'break' ? marks.breakLabel : marks.mergeLabel) || '');
+    button.type = 'button';
+    button.setAttribute('data-mark', kind);
+    button.setAttribute('data-anchor', anchor);
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    button.textContent = kind === 'break' ? '\u2702' : '\u00d7';
+    return button;
+  }
+
+  /* The sentences of the words, with the author's marks, when the strip has them. */
+  function markedSentences(item) {
+    return marks && Array.isArray(item.sentences) && item.sentences.length ? item.sentences : null;
+  }
+
+  /*
+   * The words' line. With the author's marks it is set sentence by sentence,
+   * a ✂ before each but the panel's first (place.first, which this turns
+   * off): a panel cannot begin again where it begins.
+   */
+  function lineOf(item, place) {
     var line = element('span', 'line');
-    line.textContent = item.text;
+    var sentences = markedSentences(item);
+    if (!sentences) {
+      line.textContent = item.text;
+      place.first = false;
+      return line;
+    }
+    for (var i = 0; i < sentences.length; i += 1) {
+      var sentence = sentences[i];
+      if (!sentence || typeof sentence.text !== 'string') continue;
+      if (i > 0) line.appendChild(document.createTextNode(' '));
+      if (!place.first && typeof sentence.anchor === 'string') line.appendChild(markButton('break', sentence.anchor));
+      place.first = false;
+      line.appendChild(document.createTextNode(sentence.text));
+    }
     return line;
   }
 
   /* A caption box; a line drawn as one keeps the name of who says it. */
-  function buildCaption(item) {
+  function buildCaption(item, place) {
     var caption = element('p', 'caption');
     var speaker = item.kind === 'bubble' ? speakerLabel(item) : null;
-    if (!speaker) {
+    if (!speaker && !markedSentences(item)) {
       caption.textContent = item.text;
+      place.first = false;
       return caption;
     }
-    caption.appendChild(speaker);
-    caption.appendChild(lineOf(item));
+    if (speaker) caption.appendChild(speaker);
+    caption.appendChild(lineOf(item, place));
     return caption;
   }
 
@@ -172,7 +214,7 @@ export const COMIC_FRAME_SCRIPT = String.raw`
   }
 
   /* A bubble leans to the side its tail points to: the author's, or its speaker's. */
-  function buildBubble(item, style) {
+  function buildBubble(item, style, place) {
     var bubble = element('div', 'bubble');
     var leanRight = item.tail === 'left' || item.tail === 'right'
       ? item.tail === 'right'
@@ -182,17 +224,18 @@ export const COMIC_FRAME_SCRIPT = String.raw`
     if (style === 'shout' || style === 'thought') bubble.appendChild(outline(style === 'thought'));
     var speaker = speakerLabel(item);
     if (speaker) bubble.appendChild(speaker);
-    bubble.appendChild(lineOf(item));
+    bubble.appendChild(lineOf(item, place));
     return bubble;
   }
 
   function buildWords(words) {
     var box = element('div', 'words');
+    var place = { first: true };
     for (var i = 0; i < words.length; i += 1) {
       var item = words[i];
       if (!item || typeof item.text !== 'string') continue;
       var style = styleOf(item);
-      box.appendChild(style === 'caption' ? buildCaption(item) : buildBubble(item, style));
+      box.appendChild(style === 'caption' ? buildCaption(item, place) : buildBubble(item, style, place));
     }
     return box;
   }
@@ -300,7 +343,8 @@ export const COMIC_FRAME_SCRIPT = String.raw`
     }
   }
 
-  function buildPanel(panel) {
+  /* A panel; joins: it has a panel before it, which the author's × can join it to. */
+  function buildPanel(panel, joins) {
     var node = element('section', 'panel');
     node.setAttribute('data-id', String(panel.id));
     var art = element('div', 'art');
@@ -330,6 +374,7 @@ export const COMIC_FRAME_SCRIPT = String.raw`
     var words = buildWords(Array.isArray(panel.words) ? panel.words : []);
     if (panel.choices && Array.isArray(panel.choices.options)) words.appendChild(buildPastChoices(panel.choices));
     node.appendChild(words);
+    if (marks && joins && typeof panel.anchor === 'string') node.appendChild(markButton('merge', panel.anchor));
     return node;
   }
 
@@ -467,13 +512,17 @@ export const COMIC_FRAME_SCRIPT = String.raw`
       sized.push({ id: list[s].id, size: list[s].size });
     }
     more = !!(next && next.more === true);
+    var nextMarks = next && next.marks && typeof next.marks === 'object' ? next.marks : null;
+    marks = nextMarks;
+    root.classList.toggle('marking', !!marks);
+    var marking = marks ? JSON.stringify(marks) : '';
     for (var i = 0; i < revealed; i += 1) {
       var panel = list[i];
       if (!panel || typeof panel.id !== 'string' || keepIds[panel.id]) continue;
-      var signature = JSON.stringify(panel);
+      var signature = JSON.stringify(panel) + (marking ? '|' + (i > 0) + marking : '');
       var known = panels[panel.id];
       if (!known || known.signature !== signature) {
-        var node = buildPanel(panel);
+        var node = buildPanel(panel, i > 0);
         if (known) {
           if (observer) observer.unobserve(known.node);
           strip.replaceChild(node, known.node);
@@ -520,6 +569,11 @@ export const COMIC_FRAME_SCRIPT = String.raw`
    */
   document.addEventListener('click', function (event) {
     var target = event.target;
+    var mark = target && target.closest ? target.closest('[data-mark]') : null;
+    if (mark) {
+      post({ type: 'mark', anchor: mark.getAttribute('data-anchor'), begins: mark.getAttribute('data-mark') === 'break' });
+      return;
+    }
     var option = target && target.closest ? target.closest('[data-option]') : null;
     if (option) {
       if (!option.disabled) post({ type: 'choose', optionId: option.getAttribute('data-option') });
@@ -533,7 +587,7 @@ export const COMIC_FRAME_SCRIPT = String.raw`
   document.addEventListener('keydown', function (event) {
     if (event.key !== ' ' && event.key !== 'Enter') return;
     var target = event.target;
-    if (target && target.closest && target.closest('[data-option]')) return;
+    if (target && target.closest && (target.closest('[data-option]') || target.closest('[data-mark]'))) return;
     event.preventDefault();
     post({ type: 'tap' });
   });
